@@ -577,7 +577,7 @@ pub fn parse_self_counter_entry_tokens(tokens: &[OwnedLexToken]) -> Option<SelfC
     );
     let count = if revealed_total {
         Value::TotalManaValue(crate::target::ObjectFilter::tagged(
-            crate::tag::CompilerReferenceTag::PublicRevealed.key(),
+            crate::tag::CompilerReferenceTag::PublicRevealed.bind(),
         ))
     } else {
         Value::X

@@ -679,34 +679,39 @@ export default function MyZone({
                 data-my-zone-header-content
               >
                 <span
-                  className={cn(
-                    "battlefield-life text-[23px] font-bold leading-none text-[#f5d08b] tabular-nums",
-                    isPlayerLegalTarget
-                      && "text-[#d7ebff] rounded-none px-1 py-0.5 shadow-[0_0_10px_rgba(100,169,255,0.5)] ring-1 ring-[#64a9ff]/55"
-                  )}
-                  onPointerDown={handlePlayerTargetPointerDown}
-                  onClick={handlePlayerTargetClick}
-                  style={{ cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined }}
-                >
-                  {player.life}
-                </span>
-                <span
-                  className={cn(
-                    "battlefield-name min-w-0 text-[16px] uppercase tracking-wider font-bold",
-                    isPlayerLegalTarget && "drop-shadow-[0_0_7px_rgba(100,169,255,0.7)]"
-                  )}
+                  className={cn("player-identity-box inline-flex min-w-0 items-center gap-2", isPlayerLegalTarget && canPickTargetFromBoard && "player-target-box")}
                   data-player-target={player.id}
-                  data-player-target-name={player.id}
-                  onPointerDown={handlePlayerTargetPointerDown}
-                  onClick={handlePlayerTargetClick}
-                  style={{
-                    cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined,
-                  }}
+                  onPointerDown={(event) => { if (event.target === event.currentTarget) handlePlayerTargetPointerDown(event); }}
+                  onClick={(event) => { if (event.target === event.currentTarget) handlePlayerTargetClick(event); }}
                 >
-                  <span className={cn(isActivePlayer && "battlefield-name-text--active")}>
-                    {playerDisplayName(state?.players || [], player)}
+                  <span
+                    className={cn(
+                      "battlefield-life text-[23px] font-bold leading-none text-[#f5d08b] tabular-nums"
+                    )}
+                    data-player-target={player.id}
+                    onPointerDown={handlePlayerTargetPointerDown}
+                    onClick={handlePlayerTargetClick}
+                    style={{ cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined }}
+                  >
+                    {player.life}
                   </span>
-                  {zoneName && <span className="text-muted-foreground">{zoneName}</span>}
+                  <span
+                    className={cn(
+                      "battlefield-name min-w-0 text-[16px] uppercase tracking-wider font-bold"
+                    )}
+                    data-player-target={player.id}
+                    data-player-target-name={player.id}
+                    onPointerDown={handlePlayerTargetPointerDown}
+                    onClick={handlePlayerTargetClick}
+                    style={{
+                      cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined,
+                    }}
+                  >
+                    <span className={cn(isActivePlayer && "battlefield-name-text--active")}>
+                      {playerDisplayName(state?.players || [], player)}
+                    </span>
+                    {zoneName && <span className="text-muted-foreground">{zoneName}</span>}
+                  </span>
                 </span>
                 {!mergedMobileHeader && (
                   <ManaPool

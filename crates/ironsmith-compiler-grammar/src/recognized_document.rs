@@ -6,7 +6,7 @@ use crate::ir::ChosenOptionContext;
 use crate::line_info::LineInfo;
 use crate::model::facts::MetadataLine;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum KeywordLinePayload {
     Ast(Box<LineAst>),
     Kicker {

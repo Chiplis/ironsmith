@@ -136,13 +136,13 @@ pub fn parse_if_any_tagged_cards_share_card_type_with_triggering_spell(
 
     let mut filter = ObjectFilter::default();
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: crate::tag::CompilerReferenceTag::Triggering.key(),
+        tag: crate::tag::CompilerReferenceTag::Triggering.bind(),
         relation: TaggedOpbjectRelation::SharesCardType,
     });
     let if_true = parse_effect_chain_inner(shape.effect_tokens)?;
 
     Ok(Some(vec![EffectAst::Conditional {
-        predicate: PredicateAst::TaggedMatches(crate::tag::CompilerReferenceTag::It.key(), filter),
+        predicate: PredicateAst::TaggedMatches(crate::tag::CompilerReferenceTag::It.bind(), filter),
         if_true,
         if_false: Vec::new(),
     }]))

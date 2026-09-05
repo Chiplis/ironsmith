@@ -207,7 +207,7 @@ fn append_shared_subject_pump_to_target(
 fn bind_shared_subject_characteristic_fallback(value: &Value) -> Value {
     let shared_target = || {
         Box::new(ChooseSpec::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
         ))
     };
     match value {
@@ -627,6 +627,10 @@ fn parse_direct_quoted_object_restriction(
     ))]))
 }
 
+use crate::recognition::ParseOutcome;
+#[path = "gain_ability/granted_component_readings.rs"]
+mod granted_component_readings;
+
 fn parse_granted_ability_component_for_gain(
     ability_tokens: &[OwnedLexToken],
     clause_words: &[&str],
@@ -709,130 +713,18 @@ fn parse_granted_ability_component_for_gain(
     // the static-rule probe can claim the nested token anthem as the whole
     // granted ability. A filtered static grant has its colon inside the
     // apostrophes and keeps the existing static-first route below.
-    if (top_level_activated_ability || top_level_triggered_ability)
-        && let Some(granted) =
-            parse_granted_activated_or_triggered_ability_for_gain(&ability_tokens, clause_words)?
-    {
-        return Ok(Some(vec![granted]));
-    }
-
-    if authored_as_quoted_ability
-        && let Some(restriction) = parse_direct_quoted_object_restriction(&ability_tokens)?
-    {
-        return Ok(Some(restriction));
-    }
-
-    if authored_as_quoted_ability
-        && let Some(static_abilities) = parse_static_ability_ast_line_lexed(&ability_tokens)?
-        && !static_abilities.is_empty()
-    {
-        if matches!(
-            static_abilities.as_slice(),
-            [StaticAbilityAst::Static(ability)]
-                if ability.id() == StaticAbilityId::Unblockable
-        ) {
-            let restriction = crate::effect::Restriction::block_specific_attacker(
-                ObjectFilter::creature(),
-                ObjectFilter::source(),
-            );
-            return Ok(Some(vec![GrantedAbilityAst::StaticAbility(Box::new(
-                StaticAbilityAst::Static(StaticAbility::restriction(
-                    restriction,
-                    "This creature can't be blocked.".to_string(),
-                )),
-            ))]));
-        }
-        return parsed_static_granted_abilities(&ability_tokens, static_abilities).map(Some);
-    }
-
-    if let Some(granted) =
-        parse_granted_activated_or_triggered_ability_for_gain(&ability_tokens, clause_words)?
-    {
-        return Ok(Some(vec![granted]));
-    }
-
-    if let Some(actions) = parse_ability_line(&ability_tokens) {
-        reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
-        if authored_as_quoted_ability && matches!(actions.as_slice(), [KeywordAction::Unblockable])
-        {
-            let restriction = crate::effect::Restriction::block_specific_attacker(
-                ObjectFilter::creature(),
-                ObjectFilter::source(),
-            );
-            return Ok(Some(vec![GrantedAbilityAst::StaticAbility(Box::new(
-                StaticAbilityAst::Static(StaticAbility::restriction(
-                    restriction,
-                    "This creature can't be blocked.".to_string(),
-                )),
-            ))]));
-        }
-        return Ok(Some(
-            actions.into_iter().map(GrantedAbilityAst::from).collect(),
-        ));
-    }
-
-    if let Some(equip_spec) =
-        crate::grammar::keyword_activated_lines::parse_equip_line_spec_tokens(&ability_tokens)
-        && let Some(parsed) =
-            crate::activation_and_restrictions::parse_equip_line_lexed(&ability_tokens)?
-    {
-        let typed_cost = match &equip_spec {
-            crate::grammar::keyword_activated_lines::EquipLineSpec::Mana { cost } => {
-                cost.to_oracle()
-            }
-            crate::grammar::keyword_activated_lines::EquipLineSpec::QualifiedCost {
-                qualifier,
-                ..
-            } => {
-                let qualifier = qualifier
-                    .subtypes
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                let crate::model::CompilerAbilityKindCore::Activated(activated) = parsed.kind()
-                else {
-                    return Err(CardTextError::InvariantViolation(
-                        "equip grammar produced a non-activated ability".to_string(),
-                    ));
-                };
-                format!("{qualifier} {}", activated.mana_cost.display())
-            }
-            crate::grammar::keyword_activated_lines::EquipLineSpec::ActivationCost { .. } => {
-                let crate::model::CompilerAbilityKindCore::Activated(activated) = parsed.kind()
-                else {
-                    return Err(CardTextError::InvariantViolation(
-                        "equip grammar produced a non-activated ability".to_string(),
-                    ));
-                };
-                activated.mana_cost.display()
-            }
-            crate::grammar::keyword_activated_lines::EquipLineSpec::MissingCost => {
-                return Err(CardTextError::InvariantViolation(
-                    "equip grammar produced an ability without a cost".to_string(),
-                ));
-            }
-        };
-        return Ok(Some(vec![GrantedAbilityAst::ParsedObjectAbility {
-            display: format!("Equip {typed_cost}"),
-            ability: Box::new(parsed),
-        }]));
-    }
-
-    if let Some(abilities) = parse_static_ability_ast_line_lexed(&ability_tokens)? {
-        return Ok(Some(parsed_static_granted_abilities(
-            &ability_tokens,
-            abilities,
-        )?));
-    }
-
-    if let Some(action) = ability_tokens
-        .first()
-        .and_then(OwnedLexToken::as_word)
-        .filter(|_| ability_tokens.len() == 1)
-        .and_then(parse_single_word_keyword_action)
-    {
-        return Ok(Some(vec![GrantedAbilityAst::from(action)]));
+    let input = granted_component_readings::GrantedComponent {
+        tokens: &ability_tokens,
+        clause_words,
+        authored_as_quoted_ability,
+        top_level_activated_ability,
+        top_level_triggered_ability,
+        read_by_cache: Default::default(),
+    };
+    match granted_component_readings::read(&input) {
+        ParseOutcome::Match(matched) => return Ok(Some(matched.value.value)),
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
 
     Ok(None)
@@ -1486,7 +1378,7 @@ fn source_target_from_subject_tokens(tokens: &[OwnedLexToken]) -> Option<TargetA
         &[&["the", "those"], &["copies"]],
     ) {
         return Some(TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::CopiedStackObject.key(),
+            crate::tag::CompilerReferenceTag::CopiedStackObject.bind(),
             span_from_lexed_tokens(tokens),
         ));
     }
@@ -1495,7 +1387,7 @@ fn source_target_from_subject_tokens(tokens: &[OwnedLexToken]) -> Option<TargetA
         &["the", "creature", "that", "attacked"],
     ) {
         return Some(TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::Triggering.key(),
+            crate::tag::CompilerReferenceTag::Triggering.bind(),
             span_from_lexed_tokens(tokens),
         ));
     }
@@ -1746,7 +1638,7 @@ fn parse_simple_ability_modifier_clause_lexed(
     if is_pronoun_subject {
         let set_quantifier_surface = pronoun_set_quantifier_surface(&subject_word_refs);
         let target = TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             span_from_lexed_tokens(subject_tokens),
         );
         if losing {
@@ -1783,7 +1675,7 @@ fn parse_simple_ability_modifier_clause_lexed(
     if is_demonstrative_subject || subject_shape.target {
         let target = if is_demonstrative_subject {
             TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 span_from_lexed_tokens(subject_tokens),
             )
         } else {
@@ -1927,7 +1819,7 @@ fn parse_complete_simple_source_gain_ability_sentence(
             return Ok(None);
         }
         TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             span_from_tokens(&subject_tokens),
         )
     };

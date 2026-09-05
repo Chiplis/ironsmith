@@ -260,7 +260,7 @@ pub fn linked_created_token_next_turn_sacrifice_effects(
         player: PlayerAst::You,
         effects: vec![EffectAst::subject_verb_sacrifice(
             PlayerAst::You,
-            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
+            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
             1,
             None,
         )],
@@ -1809,7 +1809,7 @@ fn parse_villainous_choice_statement_chunk(
     else {
         return Ok(None);
     };
-    let target_tag = crate::tag::CompilerReferenceTag::It.key();
+    let target_tag = crate::tag::CompilerReferenceTag::It.bind();
     let mut effects = match shape.target {
         semantic_grammar::VillainousChoiceTarget::CreaturesYouDontControl => {
             let target = TargetAst::WithCount(
@@ -1828,7 +1828,7 @@ fn parse_villainous_choice_statement_chunk(
     let player = match shape.chooser {
         semantic_grammar::VillainousChoiceChooser::IteratedCreaturesController => {
             PlayerFilter::ControllerOf(crate::target::ObjectRef::tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
             ))
         }
     };
@@ -2047,7 +2047,7 @@ fn returned_object_static_followup_start<S: AsRef<[OwnedLexToken]>>(
 }
 
 fn filter_is_exact_tagged_it(filter: &ObjectFilter) -> bool {
-    filter == &ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key())
+    filter == &ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind())
 }
 
 fn push_returned_object_keyword_grant_effect(
@@ -2055,7 +2055,7 @@ fn push_returned_object_keyword_grant_effect(
     action: KeywordAction,
     condition: Option<PredicateAst>,
 ) {
-    let target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None);
+    let target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None);
     let ability = GrantedAbilityAst::from(action);
     let effect = if let Some(condition) = condition {
         EffectAst::subject_verb_grant_abilities_to_target_with_condition(
@@ -2128,7 +2128,7 @@ fn returned_object_static_followup_effects<S: AsRef<[OwnedLexToken]>>(
         }
         if let Some(colors) = grammar_facts.as_ref().and_then(|facts| facts.colors) {
             effects.push(EffectAst::subject_verb_add_colors(
-                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                 colors,
                 Until::Forever,
             ));
@@ -2139,7 +2139,7 @@ fn returned_object_static_followup_effects<S: AsRef<[OwnedLexToken]>>(
             .filter(|subtypes| !subtypes.is_empty())
         {
             effects.push(EffectAst::subject_verb_add_subtypes(
-                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                 subtypes,
                 Until::Forever,
             ));

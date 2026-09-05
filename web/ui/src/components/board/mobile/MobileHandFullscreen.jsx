@@ -1,3 +1,4 @@
+import useModalFocus from "@/hooks/useModalFocus";
 import { X } from "lucide-react";
 import HandZone from "@/components/board/HandZone";
 import { cn } from "@/lib/utils";
@@ -12,9 +13,12 @@ export default function MobileHandFullscreen({
   onClose,
   className,
 }) {
+  const dialogRef = useModalFocus(onClose);
   const handCount = Number(me?.hand_size ?? 0);
   return (
     <section
+      ref={dialogRef}
+      tabIndex={-1}
       className={cn("mobile-mtga-hand-fullscreen", className)}
       role="dialog"
       aria-modal="true"
@@ -40,7 +44,7 @@ export default function MobileHandFullscreen({
           selectedObjectId={selectedObjectId}
           onInspect={onInspect}
           isExpanded
-          layout="mobile-fan"
+          layout="mobile-fullscreen"
         />
       </div>
     </section>

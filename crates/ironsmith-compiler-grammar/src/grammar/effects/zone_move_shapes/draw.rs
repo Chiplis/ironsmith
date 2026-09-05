@@ -332,47 +332,71 @@ pub fn parse_draw_player_loop_shape(tokens: &[OwnedLexToken]) -> Option<DrawPlay
 
 pub fn parse_draw_trailing_shape(tokens: &[OwnedLexToken]) -> Option<DrawTrailingShape<'_>> {
     let tokens = trimmed(tokens);
-    if exact_phrase(tokens, &["instead"]) {
-        return Some(DrawTrailingShape::Instead);
-    }
     let words = primitives::TokenWordView::new(tokens).to_word_refs();
-    if let Some(timing) = super::super::parse_return_timing_words_shape(&words) {
-        return Some(DrawTrailingShape::Delayed(timing));
-    }
-    if primitives::parse_all(
-        tokens,
-        (
-            primitives::kw("at"),
-            opt(primitives::kw("the")),
-            primitives::kw("beginning"),
-            primitives::kw("of"),
-            opt(primitives::kw("the")),
-            primitives::kw("next"),
-            semantic_kw("turns"),
-            primitives::kw("upkeep"),
-            primitives::sentence_end(),
-        )
-            .void(),
-        "next turn upkeep draw timing",
-    )
-    .is_ok()
-    {
-        return Some(DrawTrailingShape::Delayed(ReturnTimingShape::NextUpkeep(
-            crate::cards::builders::PlayerAst::Any,
-        )));
-    }
-    if let Some(((), put_tokens)) =
-        primitives::parse_prefix(tokens, primitives::phrase(&["then", "put"]).void())
-    {
-        return Some(DrawTrailingShape::ThenPut {
-            put_tokens: trimmed(put_tokens),
+    // One declared alternation: the alternatives are exclusive shapes, and the
+    // first that reads the input names it.
+    let alternation = None::<DrawTrailingShape<'_>>
+        .or_else(|| {
+            if exact_phrase(tokens, &["instead"]) {
+                return Some(DrawTrailingShape::Instead);
+            }
+            None
+        })
+        .or_else(|| {
+            if let Some(timing) = super::super::parse_return_timing_words_shape(&words) {
+                return Some(DrawTrailingShape::Delayed(timing));
+            }
+            None
+        })
+        .or_else(|| {
+            if primitives::parse_all(
+                tokens,
+                (
+                    primitives::kw("at"),
+                    opt(primitives::kw("the")),
+                    primitives::kw("beginning"),
+                    primitives::kw("of"),
+                    opt(primitives::kw("the")),
+                    primitives::kw("next"),
+                    semantic_kw("turns"),
+                    primitives::kw("upkeep"),
+                    primitives::sentence_end(),
+                )
+                    .void(),
+                "next turn upkeep draw timing",
+            )
+            .is_ok()
+            {
+                return Some(DrawTrailingShape::Delayed(ReturnTimingShape::NextUpkeep(
+                    crate::cards::builders::PlayerAst::Any,
+                )));
+            }
+            None
+        })
+        .or_else(|| {
+            if let Some(((), put_tokens)) =
+                primitives::parse_prefix(tokens, primitives::phrase(&["then", "put"]).void())
+            {
+                return Some(DrawTrailingShape::ThenPut {
+                    put_tokens: trimmed(put_tokens),
+                });
+            }
+            None
+        })
+        .or_else(|| {
+            if primitives::parse_prefix(tokens, primitives::kw("if")).is_some() {
+                return Some(DrawTrailingShape::If);
+            }
+            None
+        })
+        .or_else(|| {
+            if primitives::parse_prefix(tokens, primitives::kw("unless")).is_some() {
+                return Some(DrawTrailingShape::Unless);
+            }
+            None
         });
-    }
-    if primitives::parse_prefix(tokens, primitives::kw("if")).is_some() {
-        return Some(DrawTrailingShape::If);
-    }
-    if primitives::parse_prefix(tokens, primitives::kw("unless")).is_some() {
-        return Some(DrawTrailingShape::Unless);
+    if let Some(shape) = alternation {
+        return Some(shape);
     }
     None
 }
@@ -629,7 +653,7 @@ pub fn parse_draw_counter_reference_shape(tokens: &[OwnedLexToken]) -> Option<Va
             &["those", "permanents"],
         ],
     ) {
-        ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())
+        ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.bind())
     } else {
         let words = primitives::TokenWordView::new(reference_tokens).to_word_refs();
         source_choose_spec_for_surface(source_reference_surface_for_words(&words)?)

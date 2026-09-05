@@ -110,43 +110,67 @@ pub fn parse_combat_attach_object_shape_lexed(
     if words.is_empty() {
         return None;
     }
-    if is_source_reference_words(&words)
-        || primitives::parse_prefix(tokens, primitives::any_phrase(SOURCE_ATTACHMENT_PREFIXES))
-            .is_some()
-    {
-        return Some(CombatAttachObjectShape::Source);
-    }
-    if let Some(shape) = parse_combat_attach_tagged_object_shape_lexed(tokens) {
-        return Some(CombatAttachObjectShape::Tagged(shape));
-    }
-    if let Some(((), object_tokens)) =
-        primitives::parse_prefix(tokens, primitives::kw("all").void())
-    {
-        let object_tokens = trim_lexed_commas(object_tokens);
-        if object_tokens.is_empty() {
-            return None;
-        }
-        return Some(CombatAttachObjectShape::All { object_tokens });
-    }
-    if let Some((count, used)) = parse_choice_count_token_prefix_consumed(tokens) {
-        let object_tokens = trim_lexed_commas(tokens.get(used..)?);
-        if object_tokens.is_empty() {
-            return None;
-        }
-        return Some(CombatAttachObjectShape::Counted {
-            count,
-            object_tokens,
-            starts_with_target: primitives::parse_prefix(
-                object_tokens,
-                primitives::any_phrase(&[&["target"], &["targets"]]),
-            )
-            .is_some(),
+    // One declared alternation: the alternatives are exclusive shapes, and the
+    // first that reads the input names it.
+    let alternation = None::<CombatAttachObjectShape<'_>>
+        .or_else(|| {
+            if is_source_reference_words(&words)
+                || primitives::parse_prefix(
+                    tokens,
+                    primitives::any_phrase(SOURCE_ATTACHMENT_PREFIXES),
+                )
+                .is_some()
+            {
+                return Some(CombatAttachObjectShape::Source);
+            }
+            None
+        })
+        .or_else(|| {
+            if let Some(shape) = parse_combat_attach_tagged_object_shape_lexed(tokens) {
+                return Some(CombatAttachObjectShape::Tagged(shape));
+            }
+            None
+        })
+        .or_else(|| {
+            if let Some(((), object_tokens)) =
+                primitives::parse_prefix(tokens, primitives::kw("all").void())
+            {
+                let object_tokens = trim_lexed_commas(object_tokens);
+                if object_tokens.is_empty() {
+                    return None;
+                }
+                return Some(CombatAttachObjectShape::All { object_tokens });
+            }
+            None
+        })
+        .or_else(|| {
+            if let Some((count, used)) = parse_choice_count_token_prefix_consumed(tokens) {
+                let object_tokens = trim_lexed_commas(tokens.get(used..)?);
+                if object_tokens.is_empty() {
+                    return None;
+                }
+                return Some(CombatAttachObjectShape::Counted {
+                    count,
+                    object_tokens,
+                    starts_with_target: primitives::parse_prefix(
+                        object_tokens,
+                        primitives::any_phrase(&[&["target"], &["targets"]]),
+                    )
+                    .is_some(),
+                });
+            }
+            None
+        })
+        .or_else(|| {
+            if primitives::parse_prefix(tokens, primitives::kw("target")).is_some() {
+                return Some(CombatAttachObjectShape::Target {
+                    target_tokens: tokens,
+                });
+            }
+            None
         });
-    }
-    if primitives::parse_prefix(tokens, primitives::kw("target")).is_some() {
-        return Some(CombatAttachObjectShape::Target {
-            target_tokens: tokens,
-        });
+    if let Some(shape) = alternation {
+        return Some(shape);
     }
     let name_like_source = words.len() >= 2
         && !words

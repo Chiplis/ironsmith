@@ -1321,7 +1321,7 @@ fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
         return Some(PredicateAst::ValueComparison {
             left: Value::CountersOn(
                 Box::new(crate::target::ChooseSpec::Tagged(
-                    crate::tag::CompilerReferenceTag::It.key(),
+                    crate::tag::CompilerReferenceTag::It.bind(),
                 )),
                 Some(counter_type),
             ),
@@ -1505,7 +1505,7 @@ fn parse_source_verbless_counted_counter_predicate(tokens: &[OwnedLexToken]) -> 
         let counter_type = parse_terminal_counter_phrase(counter_tokens)??;
         return Some(PredicateAst::ValueComparison {
             left: Value::CountersOn(
-                Box::new(crate::target::ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())),
+                Box::new(crate::target::ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.bind())),
                 Some(counter_type),
             ),
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
@@ -1568,7 +1568,7 @@ fn parse_triggering_object_had_counter_predicate(tokens: &[OwnedLexToken]) -> Op
         return Some(PredicateAst::ValueComparison {
             left: Value::CountersOn(
                 Box::new(crate::target::ChooseSpec::Tagged(
-                    crate::tag::CompilerReferenceTag::Triggering.key(),
+                    crate::tag::CompilerReferenceTag::Triggering.bind(),
                 )),
                 None,
             ),
@@ -2153,7 +2153,7 @@ fn parse_player_controls_zero_quantity_predicate(
         filter.controller = Some(controller);
         if tagged_neither {
             filter = filter.match_tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 TaggedOpbjectRelation::IsTaggedObject,
             );
         }
@@ -2315,7 +2315,7 @@ fn parse_you_control_or_returned_to_hand_this_way_predicate(
                     }),
                     Box::new(PredicateAst::PlayerTaggedObjectMatches {
                         player: PlayerAst::You,
-                        tag: crate::tag::CompilerReferenceTag::It.key(),
+                        tag: crate::tag::CompilerReferenceTag::It.bind(),
                         filter: returned_filter,
                         mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
                     }),
@@ -2975,7 +2975,7 @@ fn parse_this_way_object_filter_clause(clause: LexedClause<'_>) -> Option<Object
             filter.set_explicit_card_noun(stripped_card_noun);
             if needs_chosen_name {
                 filter.tagged_constraints.push(TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::ChosenName.key(),
+                    tag: crate::tag::CompilerReferenceTag::ChosenName.bind(),
                     relation: TaggedOpbjectRelation::SameNameAsTagged,
                 });
             }
@@ -2988,7 +2988,7 @@ fn parse_this_way_object_filter_clause(clause: LexedClause<'_>) -> Option<Object
             }
             if needs_chosen_name {
                 filter.tagged_constraints.push(TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::ChosenName.key(),
+                    tag: crate::tag::CompilerReferenceTag::ChosenName.bind(),
                     relation: TaggedOpbjectRelation::SameNameAsTagged,
                 });
             }
@@ -3001,7 +3001,7 @@ fn parse_this_way_object_filter_clause(clause: LexedClause<'_>) -> Option<Object
             }
             if needs_chosen_name {
                 filter.tagged_constraints.push(TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::ChosenName.key(),
+                    tag: crate::tag::CompilerReferenceTag::ChosenName.bind(),
                     relation: TaggedOpbjectRelation::SameNameAsTagged,
                 });
             }
@@ -3087,7 +3087,7 @@ fn parse_passive_this_way_tagged_object_predicate(
             .map(|(action, _)| action),
     );
     Ok(Some(PredicateAst::TaggedMatches(
-        reference_tag.key(),
+        reference_tag.bind(),
         filter,
     )))
 }
@@ -3131,7 +3131,7 @@ fn parse_active_this_way_discard_predicate(
     filter.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Discarded));
     Ok(Some(PredicateAst::PlayerTaggedObjectMatches {
         player,
-        tag: crate::tag::CompilerReferenceTag::It.key(),
+        tag: crate::tag::CompilerReferenceTag::It.bind(),
         filter,
         mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
     }))
@@ -3176,7 +3176,7 @@ fn parse_negative_put_tagged_object_predicate(tokens: &[OwnedLexToken]) -> Optio
     Some(PredicateAst::Not(Box::new(
         PredicateAst::PlayerTaggedObjectMatches {
             player: PlayerAst::You,
-            tag: crate::tag::CompilerReferenceTag::It.key(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
             filter: ObjectFilter::default().in_zone(zone),
             mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
         },
@@ -3277,7 +3277,7 @@ fn parse_active_this_way_battlefield_predicate(
     }
     Ok(Some(PredicateAst::PlayerTaggedObjectMatches {
         player: PlayerAst::You,
-        tag: crate::tag::CompilerReferenceTag::It.key(),
+        tag: crate::tag::CompilerReferenceTag::It.bind(),
         filter,
         mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
     }))
@@ -3327,7 +3327,7 @@ fn parse_passive_this_way_battlefield_predicate(
         filter.zone = Some(Zone::Battlefield);
     }
     Ok(Some(PredicateAst::TaggedMatches(
-        crate::tag::CompilerReferenceTag::It.key(),
+        crate::tag::CompilerReferenceTag::It.bind(),
         filter,
     )))
 }
@@ -4003,7 +4003,7 @@ fn parse_demonstrative_shares_predicate(tokens: &[OwnedLexToken]) -> Option<Pred
         ],
     ) {
         return Some(PredicateAst::ItMatches(
-            ObjectFilter::default().shares_card_type_with_tagged("triggering"),
+            ObjectFilter::default().shares_card_type_with_tagged(crate::tag::CompilerReferenceTag::Triggering.bind()),
         ));
     }
     if surface::exact_any(

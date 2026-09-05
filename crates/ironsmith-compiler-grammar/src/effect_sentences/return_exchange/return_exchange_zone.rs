@@ -122,7 +122,7 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                 source_filter.subtypes.push(subtype);
             }
             let exiled_filter =
-                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.key())
+                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind())
                     .in_zone(Zone::Exile);
             let mut filter = ObjectFilter::default();
             filter.any_of = vec![source_filter, exiled_filter];
@@ -194,11 +194,11 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                 .tagged_constraints
                 .retain(|constraint| constraint.relation != TaggedOpbjectRelation::IsTaggedObject);
             filter = filter.match_tagged(
-                crate::tag::CompilerReferenceTag::SourceExiled.key(),
+                crate::tag::CompilerReferenceTag::SourceExiled.bind(),
                 TaggedOpbjectRelation::IsTaggedObject,
             );
             if source_linked_excludes_current {
-                filter = filter.not_tagged(crate::tag::CompilerReferenceTag::It.key());
+                filter = filter.not_tagged(crate::tag::CompilerReferenceTag::It.bind());
             }
             filter.other |= excludes_source;
             match destination.zone {
@@ -381,10 +381,10 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
             }
             if let Some(excluded) = chosen_this_way_excluded {
                 filter = if excluded {
-                    filter.not_tagged(crate::tag::CompilerReferenceTag::It.key())
+                    filter.not_tagged(crate::tag::CompilerReferenceTag::It.bind())
                 } else {
                     filter.match_tagged(
-                        crate::tag::CompilerReferenceTag::It.key(),
+                        crate::tag::CompilerReferenceTag::It.bind(),
                         TaggedOpbjectRelation::IsTaggedObject,
                     )
                 };

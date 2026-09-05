@@ -74,12 +74,12 @@ pub fn parse_consult_match_into_hand_others_graveyard(
             tag: parts.all_tag.clone(),
             effects: vec![EffectAst::Conditional {
                 predicate: PredicateAst::TaggedMatches(
-                    crate::tag::CompilerReferenceTag::It.key(),
+                    crate::tag::CompilerReferenceTag::It.bind(),
                     ObjectFilter::tagged(parts.match_tag.clone()),
                 ),
                 if_true: Vec::new(),
                 if_false: vec![EffectAst::subject_verb_move_to_zone(
-                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                     Zone::Graveyard,
                     false,
                     crate::cards::builders::ReturnControllerAst::Preserve,

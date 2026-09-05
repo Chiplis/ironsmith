@@ -417,11 +417,11 @@ pub fn parse_shuffle_object_into_library_sentence(
         && shape.reference == search_grammar::SearchShuffleObjectReference::PluralTaggedReference
     {
         return append_trailing(vec![EffectAst::ForEachTagged {
-            tag: crate::tag::CompilerReferenceTag::It.key(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
             effects: vec![
                 EffectAst::subject_verb_move_to_zone(
                     TargetAst::Tagged(
-                        crate::tag::CompilerReferenceTag::It.key(),
+                        crate::tag::CompilerReferenceTag::It.bind(),
                         span_from_tokens(target_tokens),
                     ),
                     Zone::Library,
@@ -539,10 +539,10 @@ pub fn parse_target_player_exiles_creature_and_graveyard_sentence(
             count: ChoiceCount::exactly(1),
             count_value: None,
             player: subject_player,
-            tag: crate::tag::CompilerReferenceTag::It.key(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
         },
         EffectAst::subject_verb_exile(
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
             false,
         ),
         EffectAst::subject_verb_exile_all(graveyard_filter, false),
@@ -577,7 +577,7 @@ pub fn parse_for_each_exiled_this_way_sentence(
         let matched_tag = helper_tag_for_tokens(tokens, "chosen");
 
         return Ok(Some(vec![EffectAst::ForEachTagged {
-            tag: crate::tag::CompilerReferenceTag::It.as_str().into(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
             effects: vec![
                 EffectAst::subject_verb_consult_top_of_library(
                     PlayerAst::Implicit,
@@ -680,7 +680,7 @@ pub fn parse_for_each_exiled_this_way_sentence(
     };
 
     Ok(Some(vec![EffectAst::ForEachTagged {
-        tag: crate::tag::CompilerReferenceTag::It.as_str().into(),
+        tag: crate::tag::CompilerReferenceTag::It.bind(),
         effects,
     }]))
 }
@@ -707,7 +707,7 @@ pub fn parse_each_player_put_permanent_cards_exiled_with_source_sentence(
         CardType::Battle,
     ];
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
+        tag: crate::tag::CompilerReferenceTag::SourceExiled.bind(),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
 
@@ -770,7 +770,7 @@ pub fn parse_for_each_destroyed_this_way_sentence(
     }
 
     Ok(Some(vec![EffectAst::ForEachTagged {
-        tag: crate::tag::CompilerReferenceTag::It.as_str().into(),
+        tag: crate::tag::CompilerReferenceTag::It.bind(),
         effects: vec![EffectAst::Conditional {
             predicate: PredicateAst::ItMatchedLastKnown(filter),
             if_true: effects,

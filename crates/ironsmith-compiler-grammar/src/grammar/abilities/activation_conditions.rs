@@ -153,81 +153,19 @@ pub fn parse_activation_count_per_turn(words: &[&str]) -> Option<u32> {
     (parsed.1 == count_words.len()).then_some(parsed.0)
 }
 
+use crate::recognition::ParseOutcome;
+#[path = "activation_conditions/condition_readings.rs"]
+mod condition_readings;
+
 pub fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    if let Some(condition) = parse_repeated_or_if_activation_condition(tokens) {
-        return Some(condition);
-    }
-    if let Some(condition) = parse_once_each_turn_and_if_activation_condition(tokens) {
-        return Some(condition);
-    }
-    if let Some(condition) = parse_combined_once_and_timing_condition(tokens) {
-        return Some(condition);
-    }
-    if let Some(condition) = parse_activate_count_each_turn_condition(tokens) {
-        return Some(condition);
-    }
-    if let Some(condition) = parse_activate_only_count_per_turn_condition(tokens) {
-        return Some(condition);
-    }
-    if matches_any_prefix_tokens(tokens, ACTIVATE_ONLY_INSTANT_PREFIXES) {
-        return Some(PredicateAst::ActivationTiming(ActivationTiming::AnyTime));
-    }
-    if let Some(condition) = parse_graveyard_condition(tokens) {
-        return Some(condition);
-    }
-    if let Some(status_tokens) = tokens.get(3..)
-        && let Some(condition) =
-            super::super::conditions::parse_player_status_condition(status_tokens)
-        && condition.status == super::super::conditions::PlayerStatusAst::MaxSpeed
-    {
-        return condition.condition_expr();
-    }
-    if let Some(condition) = parse_total_power_condition(tokens) {
-        return Some(condition);
-    }
-    if let Some(condition) = parse_sources_damage_condition(tokens) {
-        return Some(condition);
-    }
-    if let Some(condition) = parse_controlled_creature_power_condition(tokens) {
-        return Some(condition);
-    }
-    if let Some(condition) = parse_source_entered_this_turn_condition(tokens) {
-        return Some(condition);
-    }
-    if let Some(condition) =
-        super::super::restriction_normalization::parse_text_only_activation_restriction_tokens(
-            tokens,
-        )
-    {
-        return Some(match condition {
-            super::super::restriction_normalization::TextOnlyActivationRestriction::SourceDidNotAttackThisTurn => {
-                PredicateAst::Not(Box::new(PredicateAst::SourceAttackedThisTurn))
-            }
-            super::super::restriction_normalization::TextOnlyActivationRestriction::SourceAttackedThisTurn => {
-                PredicateAst::SourceAttackedThisTurn
-            }
-        });
-    }
-    if let Some(condition_tokens) = parse_activate_only_if_tail_tokens(tokens)
-        && let Ok(predicate) = super::super::filters::parse_predicate(condition_tokens)
-    {
-        match predicate {
-            crate::cards::builders::PredicateAst::SourceHasCounterAtLeast {
-                counter_type,
-                count,
-                surface,
-            } => {
-                return Some(PredicateAst::SourceHasCounterAtLeast {
-                    counter_type,
-                    count,
-                    surface,
-                });
-            }
-            crate::cards::builders::PredicateAst::SourceMatches(filter) => {
-                return Some(PredicateAst::SourceMatches(filter));
-            }
-            _ => {}
-        }
+    let input = condition_readings::ActivationCondition {
+        tokens,
+        read_by_cache: Default::default(),
+    };
+    match condition_readings::read(&input) {
+        ParseOutcome::Match(matched) => return Some(matched.value.value),
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(_) => return None,
     }
     let control_tokens = parse_activate_only_if_you_control_tail_tokens(tokens)?;
     if let Some(control_condition) =

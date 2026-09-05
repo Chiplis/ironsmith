@@ -182,7 +182,7 @@ pub fn parse_exile_then_return_same_object_sentence(
     }) {
         return Ok(None);
     }
-    let source_exiled_tag = crate::tag::CompilerReferenceTag::SourceExiled.key();
+    let source_exiled_tag = crate::tag::CompilerReferenceTag::SourceExiled.bind();
     let return_reference_surface =
         replacement_grammar::parse_exile_return_reference_shape(shape.return_tokens).map(
             |surface| match surface {
@@ -245,7 +245,7 @@ pub fn parse_exile_then_return_same_object_sentence(
         second_effects.push(EffectAst::subject_verb_put_counters(
             counter_type,
             Value::Fixed(count as i32),
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
             None,
             false,
         ));
@@ -403,7 +403,7 @@ pub fn parse_look_at_hand_sentence(
         effects.push(EffectAst::subject_verb_choose_card_name(
             PlayerAst::You,
             None,
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
         ));
     }
     Ok(Some(effects))
@@ -466,7 +466,7 @@ pub fn parse_you_and_each_opponent_voted_with_you_sentence(
     };
 
     let opponent_effect = EffectAst::ForEachTaggedPlayer {
-        tag: crate::tag::CompilerReferenceTag::VotedWithYou.key(),
+        tag: crate::tag::CompilerReferenceTag::VotedWithYou.bind(),
         effects: vec![EffectAst::May {
             effects: vec![EffectAst::subject_verb(
                 SubjectVerbRoleAst::Chooser,

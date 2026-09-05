@@ -42,7 +42,7 @@ pub fn parse_effect_with_verb(
                 && matches!(subject, Some(SubjectAst::This) | None)
             {
                 return Ok(EffectAst::subject_verb_remove_abilities_from_target(
-                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), span_from_tokens(tokens)),
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span_from_tokens(tokens)),
                     Vec::new(),
                     Until::Forever,
                 ));
@@ -170,7 +170,7 @@ pub fn parse_effect_with_verb(
                     }
                     let declared = std::mem::replace(
                         target,
-                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.as_str().into(), None),
+                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                     );
                     return Ok(EffectAst::Sequence {
                         effects: vec![
@@ -363,7 +363,7 @@ pub fn parse_look(
     match shape {
         ResourceLookShape::PlayTaggedWhileExiled => Ok(
             EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 PlayerAst::You,
                 true,
                 false,
@@ -409,7 +409,7 @@ pub fn parse_look(
                         EffectAst::subject_verb_look_at_top_cards(
                             PlayerAst::That,
                             Value::Fixed(1),
-                            crate::tag::CompilerReferenceTag::It.key(),
+                            crate::tag::CompilerReferenceTag::It.bind(),
                         ),
                     ],
                 }),
@@ -419,7 +419,7 @@ pub fn parse_look(
                         EffectAst::subject_verb_look_at_top_cards(
                             PlayerAst::That,
                             Value::Fixed(1),
-                            crate::tag::CompilerReferenceTag::It.key(),
+                            crate::tag::CompilerReferenceTag::It.bind(),
                         ),
                         EffectAst::subject_verb_look_at_objects(
                             PlayerAst::That,
@@ -444,13 +444,13 @@ pub fn parse_look(
             )))
         }
         ResourceLookShape::TopCards { player, count } => Ok(
-            EffectAst::subject_verb_look_at_top_cards(player, count, crate::tag::CompilerReferenceTag::It.key()),
+            EffectAst::subject_verb_look_at_top_cards(player, count, crate::tag::CompilerReferenceTag::It.bind()),
         ),
         ResourceLookShape::EachPlayerTopCards { count } => Ok(EffectAst::ForEachPlayer {
             effects: vec![EffectAst::subject_verb_look_at_top_cards(
                 PlayerAst::That,
                 count,
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
             )],
         }),
     }
@@ -525,10 +525,10 @@ pub fn parse_shuffle(
             player: destination_player,
             to_bottom,
         } => Ok(EffectAst::ForEachTagged {
-            tag: crate::tag::CompilerReferenceTag::It.key(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
             effects: vec![
                 EffectAst::subject_verb_move_to_zone(
-                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), span_from_tokens(tokens)),
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span_from_tokens(tokens)),
                     Zone::Library,
                     to_bottom,
                     ReturnControllerAst::Preserve,
@@ -568,7 +568,7 @@ pub fn parse_goad(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> 
     }
     if resource_grammar::parse_resource_tagged_reference_shape(&target_tokens) {
         return Ok(EffectAst::subject_verb_goad(TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             span_from_tokens(&target_tokens),
         )));
     }
@@ -606,7 +606,7 @@ fn add_chosen_name_constraint_to_target(
     match target {
         TargetAst::Object(filter, _, _) => {
             filter.tagged_constraints.push(TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::ChosenName.key(),
+                tag: crate::tag::CompilerReferenceTag::ChosenName.bind(),
                 relation: TaggedOpbjectRelation::SameNameAsTagged,
             });
             filter.set_chosen_name_source_surface(Some(chosen_name_source));
@@ -628,7 +628,7 @@ pub fn parse_detain(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
 
     if resource_grammar::parse_resource_tagged_reference_shape(&target_tokens) {
         return Ok(EffectAst::subject_verb_detain(TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             span_from_tokens(&target_tokens),
         )));
     }
@@ -648,7 +648,7 @@ pub fn parse_suspect(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
 
     if resource_grammar::parse_resource_tagged_reference_shape(&target_tokens) {
         return Ok(EffectAst::subject_verb_suspect(TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             span_from_tokens(&target_tokens),
         )));
     }

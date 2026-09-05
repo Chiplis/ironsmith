@@ -239,7 +239,7 @@ fn bind_singular_damage_source_to_ability_source(effect: &mut crate::cards::buil
                 return;
             }
             TargetAst::Object(filter, None, span)
-                if *filter == ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()) =>
+                if *filter == ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()) =>
             {
                 *source = TargetAst::Source(*span);
                 return;

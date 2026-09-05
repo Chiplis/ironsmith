@@ -43,6 +43,9 @@ fn parse_complete_typed_emblem_trigger(tokens: &[OwnedLexToken]) -> Option<Emble
     })
 }
 
+#[path = "emblem_actions/emblem_ability_readings.rs"]
+mod emblem_ability_readings;
+
 fn parse_emblem_ability_tokens(tokens: &[OwnedLexToken]) -> Option<EmblemAbilityAst> {
     let tokens = if tokens
         .first()
@@ -60,38 +63,12 @@ fn parse_emblem_ability_tokens(tokens: &[OwnedLexToken]) -> Option<EmblemAbility
     } else {
         tokens
     };
-    if let Ok(Some(ability)) = crate::keyword_static::parse_no_maximum_hand_size_line(tokens) {
-        return Some(EmblemAbilityAst::Static(vec![StaticAbilityAst::Static(
-            ability,
-        )]));
+    let input = emblem_ability_readings::EmblemAbility { tokens };
+    match emblem_ability_readings::read(&input) {
+        crate::recognition::ParseOutcome::Match(matched) => return Some(matched.value.value),
+        crate::recognition::ParseOutcome::NoMatch => {}
+        crate::recognition::ParseOutcome::Error(_) => return None,
     }
-    if let Some(ability) = parse_complete_typed_emblem_trigger(tokens) {
-        return Some(ability);
-    }
-
-    if clause_grammar::parse_trigger_intro_tokens(tokens).body_first > 0
-        && let Ok(LineAst::Triggered {
-            trigger,
-            effects,
-            max_triggers_per_turn,
-        }) = parse_triggered_line_lexed(tokens)
-    {
-        return Some(EmblemAbilityAst::Triggered {
-            trigger,
-            effects,
-            trigger_limit_condition: trigger_surface::parse_trigger_frequency_condition_tokens(
-                tokens,
-                max_triggers_per_turn,
-            ),
-        });
-    }
-
-    if activated_lines::parse_activated_line_split_tokens(tokens).is_some()
-        && let Ok(Some(ability)) = parse_activated_line(tokens)
-    {
-        return Some(EmblemAbilityAst::Activated(ability));
-    }
-
     crate::grammar::primitives::probe_shape(parse_static_ability_ast_line_lexed(tokens))
         .flatten()
         .filter(|abilities| !abilities.is_empty())

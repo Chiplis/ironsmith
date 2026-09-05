@@ -43,7 +43,7 @@ pub fn parse_for_each_put_into_graveyard_this_way_sentence(
     };
 
     Ok(Some(vec![EffectAst::ForEachTagged {
-        tag: crate::tag::CompilerReferenceTag::It.as_str().into(),
+        tag: crate::tag::CompilerReferenceTag::It.bind(),
         effects,
     }]))
 }

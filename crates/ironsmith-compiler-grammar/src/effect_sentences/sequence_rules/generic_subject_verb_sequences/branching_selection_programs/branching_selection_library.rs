@@ -106,7 +106,7 @@ pub fn parse_look_then_may_sacrifice_if_did_select_battlefield_rest_bottom(
                 tag: selected_tag.clone(),
                 effects: vec![EffectAst::subject_verb_put_onto_battlefield(
                     chooser,
-                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                     tapped,
                     ReturnControllerAst::Preserve,
                 )],
@@ -273,7 +273,7 @@ pub fn parse_reveal_top_optional_battlefield_then_hand_rest_graveyard(
     remainder_filter = remainder_filter
         .not_tagged(battlefield_tag.clone())
         .not_tagged(hand_tag.clone());
-    let iterated = || TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None);
+    let iterated = || TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None);
     let mut battlefield_effects = vec![EffectAst::subject_verb_move_to_zone_with_attack_target(
         iterated(),
         Zone::Battlefield,
@@ -376,19 +376,19 @@ pub(crate) fn compose_look_at_top_may_put_onto_battlefield_or_into_hand_rest_bot
     let mut hand_filter = ObjectFilter::tagged(looked_tag.clone());
     hand_filter.zone = Some(Zone::Library);
 
-    let it = || TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None);
+    let it = || TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None);
     let mut in_battlefield_choice_filter = ObjectFilter::default();
     in_battlefield_choice_filter
         .tagged_constraints
         .push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.key(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
             relation: TaggedOpbjectRelation::SameStableId,
         });
     let mut in_hand_choice_filter = ObjectFilter::default();
     in_hand_choice_filter
         .tagged_constraints
         .push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.key(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
             relation: TaggedOpbjectRelation::SameStableId,
         });
 

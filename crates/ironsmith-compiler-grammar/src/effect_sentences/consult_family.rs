@@ -254,7 +254,7 @@ fn parse_typed_consult_damage_and_collection_disposition(
             parts.all_tag.clone(),
             disposition
                 .exclude_current_reference
-                .then(|| crate::tag::CompilerReferenceTag::It.key()),
+                .then(|| crate::tag::CompilerReferenceTag::It.bind()),
             order,
             player,
             disposition.surface,
@@ -889,7 +889,7 @@ mod tests {
         )
         .expect("consult cast clause should lex");
         let clause = parse_consult_cast_clause(&tokens).expect("consult cast clause should parse");
-        let effects = consult_cast_effects(&clause, TagKey::from("consult_match"))
+        let effects = consult_cast_effects(&clause, crate::tag::declared_key("consult_match"))
             .expect("consult cast clause should lower");
 
         assert!(matches!(

@@ -5,6 +5,10 @@ pub fn parse_commander_cast_count_player(tokens: &[OwnedLexToken]) -> Option<Pla
     value_helper_shapes::parse_commander_cast_count_player(&words)
 }
 
+use crate::recognition::ParseOutcome;
+#[path = "value_semantics_reference/equal_to_count_readings.rs"]
+mod equal_to_count_readings;
+
 pub fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let word_view = TokenWordView::new(tokens);
     let words_all = word_view.to_word_refs();
@@ -26,113 +30,23 @@ pub fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option
     let filter_word_view = TokenWordView::new(&filter_tokens);
     let filter_words = filter_word_view.to_word_refs();
     let possessive_filter_words = possessive_normalized_word_refs(&filter_words);
-    if crate::word_primitives::parse_sequence_suffix(
-        &possessive_filter_words,
-        &[
-            "that",
-            "opponent",
-            "or",
-            "that",
-            "planeswalkers",
-            "controller",
-            "controls",
-        ],
-    ) {
-        // This is a coordinated player antecedent, not the narrower
-        // `that OBJECT's controller` relation below. The ordinary typed
-        // object-filter grammar already owns the complete suffix and maps it
-        // to TargetPlayerOrControllerOfTarget; let it retain both arms.
-        let filter =
-            crate::grammar::primitives::probe_shape(parse_object_filter(&filter_tokens, false))?;
-        return Some(Value::Count(filter).with_surface_hint(ValueSurfaceHint::EqualTo));
+    let input = equal_to_count_readings::CountedPhrase {
+        tokens,
+        value_tokens: &value_tokens,
+        filter_tokens: &filter_tokens,
+        filter_word_view: &filter_word_view,
+        filter_words: &filter_words,
+        possessive_filter_words: &possessive_filter_words,
+        read_by_cache: Default::default(),
+    };
+    match equal_to_count_readings::read(&input) {
+        ParseOutcome::Match(matched) => return Some(matched.value.value),
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(_) => return None,
     }
-    // A relative controller clause scopes the counted set to the object
-    // targeted by this same effect. Parse the set independently from the
-    // back-reference so characteristic words in `that creature's controller`
-    // cannot leak into the counted filter as an additional Creature type.
-    if let Some(that_idx) =
-        crate::word_primitives::parse_last_sequence_start(&filter_words, &["that"])
-    {
-        let relative = possessive_normalized_word_refs(&filter_words[that_idx..]);
-        let relative_noun = relative.get(1).map(|word| word.trim_end_matches('s'));
-        if relative.len() == 4
-            && relative[0] == "that"
-            && matches!(
-                relative_noun,
-                Some("creature" | "permanent" | "object" | "planeswalker")
-            )
-            && relative[2] == "controller"
-            && relative[3] == "controls"
-            && that_idx > 0
-        {
-            let base_range = filter_word_view.token_span_for_words(0, that_idx)?;
-            let mut filter = crate::grammar::primitives::probe_shape(parse_object_filter(
-                &trim_edge_punctuation(&filter_tokens[base_range]),
-                false,
-            ))?;
-            filter.controller = Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target));
-            return Some(Value::Count(filter).with_surface_hint(ValueSurfaceHint::EqualTo));
-        }
-    }
-    if let Some(value) = parse_turn_history_count_value(&filter_tokens) {
-        return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
-    }
-    if let Some(value) = parse_creatures_died_this_turn_count_value(&filter_tokens) {
-        return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
-    }
-    if let Some(value) = parse_cards_discarded_this_turn_count_value(&filter_tokens) {
-        return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
-    }
-    if let Some((players, minimum)) = parse_players_with_cards_in_hand_at_least(&filter_tokens) {
-        return Some(
-            Value::CountPlayersWithCardsInHandAtLeast(players, minimum)
-                .with_surface_hint(ValueSurfaceHint::EqualTo),
-        );
-    }
-    if let Some(player) = value_helper_shapes::parse_cards_in_hand_player(&filter_words) {
-        let mut value = Value::CardsInHand(player).with_surface_hint(ValueSurfaceHint::EqualTo);
-        if value_helper_shapes::has_that_player_possessive(&filter_words) {
-            value = value.with_surface_hint(ValueSurfaceHint::ThatPlayerPossessive);
-        }
+    // The value-expression grammar is the fallback for what no typed count reads.
+    if let Some(value) = equal_to_count_readings::read_value_expression(&input) {
         return Some(value);
-    }
-    if let Some(value) = parse_spells_cast_this_turn_matching_count_value(&filter_tokens) {
-        return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
-    }
-    if let Some(player) = value_helper_shapes::parse_party_size_player(&filter_words) {
-        return Some(Value::PartySize(player).with_surface_hint(ValueSurfaceHint::EqualTo));
-    }
-    if let Some(value) = parse_aggregate_scope_value_lexed(&filter_tokens) {
-        return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
-    }
-    let mut for_each_words = vec!["for", "each"];
-    for_each_words.extend(filter_words.iter().copied());
-    if let Some((value @ Value::PendingPriorEffectMetric(_), used)) =
-        super::super::count_shapes::parse_for_each_count_value_words(&for_each_words)
-        && used == for_each_words.len()
-    {
-        return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
-    }
-    if let Some(distinct_filter_tokens) =
-        primitives::parse_word_sequence_prefix(&filter_words, &["differently", "named"]).and_then(
-            |remaining| {
-                let consumed = filter_words.len().saturating_sub(remaining.len());
-                filter_word_view
-                    .token_span_for_words(consumed, filter_word_view.len())
-                    .map(|range| &filter_tokens[range])
-            },
-        )
-    {
-        let filter = crate::grammar::primitives::probe_shape(parse_object_filter(
-            distinct_filter_tokens,
-            false,
-        ))?;
-        return Some(Value::DistinctNames(filter).with_surface_hint(ValueSurfaceHint::EqualTo));
-    }
-    if let Some((value, used)) = value_expr::parse_value_expr_tokens(&value_tokens)
-        && TokenWordView::new(&value_tokens[used..]).is_empty()
-    {
-        return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
     }
     let filter =
         crate::grammar::primitives::probe_shape(parse_object_filter(&filter_tokens, false))?;

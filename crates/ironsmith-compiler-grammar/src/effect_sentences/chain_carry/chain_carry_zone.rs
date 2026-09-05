@@ -9,7 +9,7 @@ pub fn parse_return_it_then_loses_all_abilities_lexed(
     let mut effects = parse_effect_chain_inner_lexed(return_tokens)?;
     effects.push(EffectAst::subject_verb_remove_abilities_from_target(
         TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             span_from_tokens(tokens),
         ),
         Vec::new(),

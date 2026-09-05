@@ -15,7 +15,7 @@
   --ui-border-strong: rgba(218, 188, 126, 0.42);
   --ui-text-primary: #f3ead8;
   --ui-text-secondary: #c4b79f;
-  --ui-text-muted: #8f8779;
+  --ui-text-muted: #aaa18f;
   --ui-action: #d4a44a;
   --ui-action-hover: #edc56f;
   --ui-target: #67c7ff;
@@ -23,6 +23,30 @@
   --ui-combat: #ff6b5f;
   --ui-warning: #e7ad62;
   --ui-danger: #df716c;
+  --ui-radius-control: 5px;
+  --ui-radius-panel: 10px;
+  --ui-shadow-panel: 0 24px 80px rgba(0, 0, 0, 0.5);
+  --background: var(--ui-surface-canvas);
+  --foreground: var(--ui-text-primary);
+  --card: var(--ui-surface-raised);
+  --card-foreground: var(--ui-text-primary);
+  --popover: var(--ui-surface-raised);
+  --popover-foreground: var(--ui-text-primary);
+  --primary: var(--ui-action);
+  --primary-foreground: #17130b;
+  --secondary: var(--ui-surface-control);
+  --secondary-foreground: var(--ui-text-primary);
+  --muted: var(--ui-surface-raised);
+  --muted-foreground: var(--ui-text-muted);
+  --accent: var(--ui-surface-control);
+  --accent-foreground: var(--ui-text-primary);
+  --border: var(--ui-border-subtle);
+  --input: var(--ui-border-strong);
+  --ring: var(--ui-target);
+  --game-panel: var(--ui-surface-raised);
+  --game-panel-2: var(--ui-surface-control);
+  --game-line: var(--ui-border-strong);
+  --game-line-2: var(--ui-border-subtle);
   --ui-focus-ring: 0 0 0 2px var(--ui-surface-canvas), 0 0 0 4px var(--ui-target);
 }
 
@@ -875,7 +899,12 @@ body {
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
+textarea:focus-visible,
 select:focus-visible,
+[role="checkbox"]:focus-visible,
+[role="radio"]:focus-visible,
+[role="slider"]:focus-visible,
+[role="tab"]:focus-visible,
 [role="button"]:focus-visible,
 .game-card:focus-visible {
   outline: none !important;
@@ -1318,18 +1347,8 @@ select.stone-select.topbar-phase-perspective-select:disabled {
   border: 1px solid rgba(var(--decision-main-rgb, 183, 156, 255), 0.78) !important;
   color: #fff !important;
   -webkit-text-fill-color: #fff !important;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.2), transparent 38%),
-    linear-gradient(
-      180deg,
-      rgba(var(--decision-main-rgb, 183, 156, 255), 0.92),
-      color-mix(in srgb, var(--decision-main-accent, #b79cff) 48%, #111015)
-    ) !important;
-  box-shadow:
-    inset 0 1px rgba(255, 255, 255, 0.18),
-    0 0 0 1px rgba(var(--decision-main-rgb, 183, 156, 255), 0.22),
-    0 0 16px rgba(var(--decision-main-rgb, 183, 156, 255), 0.22),
-    0 8px 18px rgba(0, 0, 0, 0.3) !important;
+  background: #111314 !important;
+  box-shadow: none !important;
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.72) !important;
   text-transform: none !important;
   letter-spacing: 0.015em !important;
@@ -1340,16 +1359,8 @@ select.stone-select.topbar-phase-perspective-select:disabled {
 .decision-submit-button.decision-main-button:hover:not(:disabled),
 .mobile-decision-primary-button:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--decision-main-accent, #b79cff) 68%, white) !important;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.26), transparent 36%),
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--decision-main-accent, #b79cff) 84%, white),
-      color-mix(in srgb, var(--decision-main-accent, #b79cff) 58%, #111015)
-    ) !important;
-  box-shadow:
-    0 0 20px rgba(var(--decision-main-rgb, 183, 156, 255), 0.34),
-    0 10px 20px rgba(0, 0, 0, 0.34) !important;
+  background: #111314 !important;
+  box-shadow: none !important;
   transform: translateY(-1px) !important;
 }
 
@@ -2055,39 +2066,28 @@ select.stone-select.topbar-phase-perspective-select:disabled {
     .priority-inline-panel[data-replaces-middle-controls="true"]
     .action-strip-decision-toolbar {
     position: relative;
-    height: 34px !important;
-    min-height: 34px !important;
-    padding: 1px 14px 1px 174px !important;
+    height: auto !important;
+    min-height: 54px !important;
+    flex-shrink: 0;
+    padding: 5px 14px 5px 174px !important;
   }
 
   .table-action-bar[data-expanded="true"]
     .priority-inline-panel[data-replaces-middle-controls="true"]
     .action-strip-decision-content {
-    padding: 0 14px !important;
+    padding: 8px 14px !important;
     overflow-y: auto !important;
-  }
-
-  .table-action-bar[data-expanded="true"]
-    .priority-inline-panel[data-replaces-middle-controls="true"]
-    .action-strip-decision-content[data-option-rows="single"] {
-    overflow-y: clip !important;
-    scrollbar-width: none;
-  }
-
-  .table-action-bar[data-expanded="true"]
-    .priority-inline-panel[data-replaces-middle-controls="true"]
-    .action-strip-decision-content[data-option-rows="single"]::-webkit-scrollbar {
-    display: none;
   }
 
   .priority-inline-panel[data-replaces-middle-controls="true"]
     .decision-main-button--middle-replacement {
     position: absolute !important;
-    top: 2px;
+    top: 5px;
     left: 12px;
     z-index: 4;
     width: 148px !important;
-    height: 30px !important;
+    height: 44px !important;
+    min-height: 44px !important;
     min-width: 148px !important;
     padding-inline: 10px !important;
     overflow: hidden;
@@ -2313,4 +2313,723 @@ select.stone-select.topbar-phase-perspective-select:disabled {
 
 .floating-card-preview {
   z-index: 30010 !important;
+}
+
+/* Shared application chrome. Card frames and player identity keep their own colors. */
+[data-slot="sheet-overlay"] {
+  background: rgba(5, 7, 9, 0.68);
+  backdrop-filter: blur(5px);
+}
+
+[data-slot="sheet-content"] {
+  color: var(--ui-text-primary);
+  border-color: var(--ui-border-strong);
+  background: var(--ui-surface-table);
+  box-shadow: var(--ui-shadow-panel);
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-border-strong) transparent;
+}
+
+[data-slot="sheet-content"][data-side="center"] {
+  border: 1px solid var(--ui-border-strong);
+  border-radius: var(--ui-radius-panel);
+  overflow: hidden;
+}
+
+[data-slot="sheet-header"] {
+  padding: 22px 56px 20px 24px;
+}
+
+[data-slot="sheet-title"] {
+  font-size: 23px;
+  line-height: 1.2;
+  letter-spacing: 0.035em !important;
+}
+
+[data-slot="sheet-description"] {
+  max-width: 65ch;
+  color: var(--ui-text-secondary);
+  line-height: 1.6;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+[data-slot="sheet-content"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="color"]), select, textarea),
+.setup-screen :is(input, select, textarea),
+.fantasy-field,
+.decision-inline-input {
+  border: 1px solid var(--ui-border-strong) !important;
+  border-radius: var(--ui-radius-control) !important;
+  color: var(--ui-text-primary) !important;
+  background-color: var(--ui-surface-canvas) !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.16) !important;
+  clip-path: none !important;
+  font-size: 14px !important;
+  line-height: 1.5;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+[data-slot="sheet-content"] :is(input, select):not([type="checkbox"]):not([type="radio"]),
+.setup-screen :is(input, select) {
+  min-height: 40px;
+}
+
+textarea::placeholder,
+input::placeholder {
+  color: var(--ui-text-muted);
+  opacity: 0.8;
+}
+
+[data-slot="sheet-content"] textarea,
+.setup-screen textarea {
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace !important;
+  line-height: 1.65;
+  scrollbar-width: thin;
+}
+
+[data-slot="sheet-content"] [data-slot="button"],
+.setup-screen [data-slot="button"] {
+  min-height: 36px;
+  border-radius: var(--ui-radius-control) !important;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.015em !important;
+  text-transform: none !important;
+}
+
+[data-slot="sheet-content"] [data-slot="button"][data-variant="ghost"],
+.setup-screen [data-slot="button"][data-variant="ghost"] {
+  border: 1px solid var(--ui-border-subtle);
+  color: var(--ui-text-secondary);
+  background-color: var(--ui-surface-control);
+}
+
+[data-slot="sheet-content"] [data-slot="button"]:hover:not(:disabled),
+.setup-screen [data-slot="button"]:hover:not(:disabled) {
+  border-color: var(--ui-border-strong);
+  color: var(--ui-text-primary);
+}
+
+.ui-primary-action.ui-primary-action {
+  border: 1px solid var(--ui-action) !important;
+  color: #21180a !important;
+  background: linear-gradient(180deg, #e7bf70, #c99a44) !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.25), 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+.ui-primary-action.ui-primary-action:hover:not(:disabled) {
+  color: #171109 !important;
+  background: var(--ui-action-hover) !important;
+}
+
+button:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+[data-slot="slider"][data-orientation="horizontal"] {
+  min-height: 28px;
+}
+
+[data-slot="slider-thumb"] {
+  border-radius: 50% !important;
+  background: var(--ui-action-hover) !important;
+}
+
+[data-slot="checkbox"],
+[data-slot="radio-group-item"] {
+  border-color: var(--ui-border-strong);
+}
+
+[data-slot="checkbox"][data-state="checked"] {
+  background: var(--ui-action);
+  color: #17130b;
+}
+
+[data-slot="popover-content"],
+[data-slot="select-content"],
+[data-slot="tooltip-content"] {
+  border: 1px solid var(--ui-border-strong);
+  border-radius: var(--ui-radius-control);
+  color: var(--ui-text-primary);
+  background: var(--ui-surface-raised);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+.setup-screen {
+  color: var(--ui-text-primary);
+  background: radial-gradient(ellipse at 20% 0, rgba(212, 164, 74, 0.07), transparent 55%), var(--ui-surface-table) !important;
+  padding: clamp(12px, 2vw, 28px);
+}
+
+.setup-screen h1 {
+  font-family: var(--font-heading), Georgia, serif;
+  font-size: 26px;
+  letter-spacing: 0.025em;
+  color: var(--ui-text-primary);
+}
+
+.setup-editor {
+  border-color: var(--ui-border-subtle) !important;
+  border-radius: var(--ui-radius-panel);
+  background: var(--ui-surface-raised) !important;
+  padding: 16px;
+}
+
+.settings-sheet-section {
+  gap: 16px;
+}
+
+.fantasy-log-entry {
+  border-radius: 0 var(--ui-radius-control) var(--ui-radius-control) 0;
+  padding: 10px 12px;
+  overflow-wrap: anywhere;
+}
+
+.fantasy-log-toolbar {
+  flex-wrap: wrap;
+}
+
+.decklist-section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ui-border-subtle);
+  color: var(--ui-text-secondary);
+  font-size: 13px;
+}
+
+.decklist-section-heading h3 {
+  margin: 0;
+  color: var(--ui-text-primary);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.decklist-row {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  border-radius: var(--ui-radius-control);
+  padding: 7px 10px;
+  background: var(--ui-surface-raised);
+  color: var(--ui-text-primary);
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.decklist-row > :first-child {
+  color: var(--ui-action-hover);
+  font-variant-numeric: tabular-nums;
+}
+
+.decklist-empty {
+  padding: 16px 10px;
+  color: var(--ui-text-muted);
+  font-size: 14px;
+}
+
+/* Focus must remain visible after surface and state overrides. */
+:where(button, a, input, select, textarea, [tabindex], [role="checkbox"], [role="radio"], [role="slider"]):focus-visible {
+  outline: 2px solid var(--ui-target) !important;
+  outline-offset: 3px;
+}
+
+@media (max-width: 767px), (max-height: 500px) {
+  [data-slot="sheet-header"] {
+    padding: 14px 52px 14px 16px;
+  }
+
+  [data-slot="sheet-title"] {
+    font-size: 20px;
+  }
+
+  .deck-loading-screen {
+    overflow-y: auto;
+  }
+
+  .deck-loading-screen > .grid.flex-1 {
+    flex: none;
+    overflow: visible;
+  }
+
+  [data-slot="sheet-content"] :is(input, select, textarea),
+  .setup-screen :is(input, select, textarea) {
+    font-size: 16px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* The measured mobile lanes must not inherit desktop battlefield padding. */
+.mobile-mtga-battlefield-lane .battlefield-row {
+  padding: 0 !important;
+  min-height: 100%;
+  height: 100%;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.mobile-mtga-battlefield-lane .battlefield-row::before,
+.mobile-mtga-battlefield-lane .battlefield-row::after {
+  content: none !important;
+}
+
+.mobile-mtga-battlefield-band {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent);
+}
+
+.mobile-mtga-control-row {
+  border-block: 1px solid var(--ui-border-subtle);
+  background: var(--ui-surface-table) !important;
+}
+
+.mobile-mtga-turn-action-stack .mobile-decision-primary-button,
+.mobile-mtga-turn-action-stack .mobile-decision-secondary-button {
+  border-radius: var(--ui-radius-control) !important;
+  font-size: 12px;
+  text-shadow: none !important;
+  box-shadow: none !important;
+}
+
+.mobile-mtga-hand-fullscreen-close {
+  min-width: 32px;
+  min-height: 32px;
+}
+
+.mobile-mtga-hand-fullscreen {
+  background: rgba(13, 14, 15, 0.97);
+}
+
+.mobile-mtga-hand-fullscreen .hand-zone-row-mobile-fan {
+  align-items: center;
+  padding-bottom: 24px;
+}
+
+.mobile-mtga-hand-fullscreen-count {
+  color: var(--ui-text-secondary);
+  opacity: 1;
+}
+
+/* Choice controls use the same shape and spacing in panels and strips. */
+.decision-option-row {
+  min-height: 36px !important;
+  height: auto;
+  border-radius: var(--ui-radius-control) !important;
+  clip-path: none !important;
+  font-size: 13px !important;
+  line-height: 1.45 !important;
+  letter-spacing: 0 !important;
+  text-shadow: none !important;
+  white-space: normal;
+}
+
+.decision-option-row--strip {
+  white-space: normal !important;
+}
+
+.decision-option-row > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.decision-option-row.is-selected,
+.decision-option-row[aria-pressed="true"] {
+  color: var(--ui-text-primary) !important;
+  -webkit-text-fill-color: var(--ui-text-primary) !important;
+  background: linear-gradient(90deg, rgba(127, 211, 154, 0.17), rgba(127, 211, 154, 0.04)) !important;
+  box-shadow: inset 3px 0 var(--ui-selected) !important;
+}
+
+.decision-option-row.is-highlighted:not(.is-selected) {
+  background: rgba(103, 199, 255, 0.08) !important;
+  box-shadow: inset 3px 0 var(--ui-target) !important;
+}
+
+.decision-submit-button:not(.decision-main-button) {
+  min-height: 36px !important;
+  border-radius: var(--ui-radius-control) !important;
+  clip-path: none !important;
+  letter-spacing: 0.015em !important;
+}
+
+.decision-submit-button:not(.decision-main-button):not(:disabled) {
+  color: #f9e9c7 !important;
+  -webkit-text-fill-color: #f9e9c7 !important;
+  border-color: var(--ui-border-strong) !important;
+  background: #44351e !important;
+  text-shadow: none !important;
+}
+
+[data-slot="sheet-description"] {
+  font-family: var(--ironsmith-ui-font), system-ui, sans-serif !important;
+}
+
+[data-slot="sheet-content"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="color"]), textarea),
+.setup-screen :is(input, textarea),
+.decision-inline-input {
+  background-image: none !important;
+}
+
+[data-slot="sheet-content"] select,
+.setup-screen select {
+  appearance: auto !important;
+  background-image: none !important;
+}
+
+.fantasy-sheet .stone-pill {
+  border: 1px solid var(--ui-border-subtle) !important;
+  border-radius: var(--ui-radius-control) !important;
+  color: var(--ui-text-secondary) !important;
+  background: var(--ui-surface-control) !important;
+  box-shadow: none !important;
+  clip-path: none !important;
+  text-shadow: none !important;
+}
+
+.fantasy-sheet .stone-pill:hover:not(:disabled) {
+  border-color: var(--ui-border-strong) !important;
+  color: var(--ui-text-primary) !important;
+  background: #353027 !important;
+}
+
+.fantasy-sheet .stone-pill.settings-reset-button {
+  border-color: rgba(223, 113, 108, 0.4) !important;
+  color: #ffc5bf !important;
+  background: #402321 !important;
+}
+
+.mana-plan-actions {
+  flex: none;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-top: 1px solid var(--ui-border-subtle);
+  background: var(--ui-surface-table);
+}
+
+.mana-plan-source-row,
+.mana-plan-pool {
+  border-color: var(--ui-border-subtle) !important;
+  border-radius: var(--ui-radius-control);
+  background: var(--ui-surface-raised) !important;
+}
+
+[data-slot="tooltip-content"] {
+  z-index: 31000;
+  max-width: min(340px, calc(100vw - 24px));
+  padding: 8px 11px;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+[data-slot="tooltip-content"] > svg {
+  fill: var(--ui-surface-raised);
+  background: var(--ui-surface-raised);
+}
+
+/* Editors keep useful working space and scroll vertically at every size. */
+.mobile-mtga-scene .mobile-mtga-scene-layout {
+  /* Focusing a fanned card must not scroll the entire fixed battlefield. */
+  overflow: clip;
+}
+
+.puzzle-setup-shell {
+  overflow-y: auto;
+  grid-template-rows: max-content max-content max-content;
+  align-content: start;
+}
+
+.puzzle-player-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: max-content;
+  overflow: visible;
+}
+
+.puzzle-player-panel { grid-template-rows: max-content max-content; }
+
+.puzzle-player-header {
+  grid-template-columns: minmax(0, 1fr) 90px;
+}
+
+.puzzle-player-summary { grid-column: 1 / -1; justify-self: start; }
+.puzzle-zone-grid { grid-template-rows: none; grid-auto-rows: minmax(160px, auto); }
+.puzzle-zone-textarea { min-height: 120px; }
+
+.puzzle-setup-hero,
+.puzzle-player-panel,
+.puzzle-share-panel,
+.puzzle-zone-editor,
+.card-forge-panel,
+.card-forge-inline-editor,
+.card-forge-inline-frame {
+  border-color: var(--ui-border-subtle);
+  border-radius: var(--ui-radius-control);
+  background: var(--ui-surface-raised);
+  box-shadow: none;
+}
+
+.card-forge-main { overflow-y: auto; }
+.card-forge-face-tabs,
+.card-forge-single-face { min-height: 540px; flex-shrink: 0; }
+.card-forge-face-content { overflow: visible; }
+.card-forge-inline-editor,
+.card-forge-inline-frame { height: auto; min-height: 100%; }
+.card-forge-inline-rules { min-height: 140px; }
+.card-forge-inline-frame { grid-template-rows: min-content min-content minmax(140px, 1fr) min-content; }
+.card-forge-choice,
+.card-forge-chip,
+.card-forge-color { border-radius: var(--ui-radius-control); }
+.lobby-sheet button[aria-pressed="true"] {
+  border-color: var(--ui-action);
+  box-shadow: inset 0 -2px 0 var(--ui-action);
+  opacity: 1;
+}
+
+@media (max-width: 1180px) {
+  .puzzle-player-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 600px) {
+  .puzzle-zone-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (min-width: 1024px) {
+  .topbar-phase-status { font-size: 10px; }
+  .topbar-phase-perspective { font-size: 10px; }
+  select.stone-select.topbar-phase-perspective-select { font-size: 10px !important; }
+  .topbar-minor-controls .stone-pill { min-width: 32px; min-height: 32px; }
+  .table-tools-toggle { width: 32px; min-height: 32px; flex-basis: 32px; }
+  .player-header-zone-visibility [data-zone-viewer] label,
+  .player-header-zone-visibility .zone-viewer-core-count { font-size: 11px !important; }
+}
+
+/* Main decisions communicate availability independently of seat colors. */
+:is(.topbar-main-decision-host, .priority-inline-panel) .action-strip-command-region:has(.decision-main-button:is(:disabled, [aria-disabled="true"])),
+.priority-inline-panel .action-strip-layout--segmented > .action-strip-main-region:has(.decision-main-button:is(:disabled, [aria-disabled="true"])) {
+  border: 1px solid #696969 !important;
+  background: #171819 !important;
+  box-shadow: none !important;
+  filter: none !important;
+  transform: none !important;
+  animation: none !important;
+}
+
+:is(.topbar-main-decision-host, .priority-inline-panel) .action-strip-main-region:has(.decision-main-button:is(:disabled, [aria-disabled="true"])) {
+  animation: none !important;
+}
+
+:is(.topbar-main-decision-host, .priority-inline-panel) .action-strip-command-region:has(.decision-main-button:is(:disabled, [aria-disabled="true"]))::before,
+:is(.topbar-main-decision-host, .priority-inline-panel) .action-strip-command-region:has(.decision-main-button:is(:disabled, [aria-disabled="true"]))::after {
+  display: none !important;
+}
+
+:is(.topbar-main-decision-host, .priority-inline-panel) .action-strip-main-region:has(.decision-main-button:is(:disabled, [aria-disabled="true"])) .action-strip-main-title-text {
+  color: #999 !important;
+  -webkit-text-fill-color: #999 !important;
+  text-shadow: none !important;
+}
+
+:is(.topbar-main-decision-host, .priority-inline-panel) .action-strip-main-region:has(.decision-main-button:not(:disabled):not([aria-disabled="true"]):hover) .action-strip-main-title-text,
+.decision-main-button:not(:disabled):not([aria-disabled="true"]):hover,
+.mobile-decision-primary-button:not(:disabled):not([aria-disabled="true"]):hover {
+  color: #fff4c2 !important;
+  -webkit-text-fill-color: #fff4c2 !important;
+  text-shadow: 0 0 4px #ffe083, 0 0 12px rgba(255, 224, 131, 0.85), 0 0 26px rgba(255, 224, 131, 0.65) !important;
+}
+
+:is(.topbar-main-decision-host, .priority-inline-panel) .action-strip-command-region:has(.decision-main-button:not(:disabled):not([aria-disabled="true"]):hover) {
+  background: #111314 !important;
+}
+
+/* Keep the action surface dark; yellow diffusion belongs to the text only. */
+:is(.topbar-main-decision-host, .priority-inline-panel)
+:is(.action-strip-command-region, .action-strip-main-region):has(.decision-main-button:not(:disabled):not([aria-disabled="true"])),
+:is(.topbar-main-decision-host, .priority-inline-panel)
+:is(.action-strip-command-region, .action-strip-main-region):has(.decision-main-button:not(:disabled):not([aria-disabled="true"])):hover,
+.decision-main-button:not(:disabled):not([aria-disabled="true"]),
+.decision-main-button:not(:disabled):not([aria-disabled="true"]):hover,
+.mobile-decision-primary-button:not(:disabled):not([aria-disabled="true"]),
+.mobile-decision-primary-button:not(:disabled):not([aria-disabled="true"]):hover {
+  background: #111314 !important;
+  box-shadow: none !important;
+  filter: none !important;
+  animation: none !important;
+}
+
+:is(.topbar-main-decision-host, .priority-inline-panel)
+:is(.action-strip-command-region, .action-strip-main-region):has(.decision-main-button)::before,
+:is(.topbar-main-decision-host, .priority-inline-panel)
+:is(.action-strip-command-region, .action-strip-main-region):has(.decision-main-button)::after,
+.decision-main-button::before,
+.decision-main-button::after {
+  display: none !important;
+}
+
+/* A steady, full perimeter makes every available card action easy to spot. */
+.game-card.card-action-available:is(.hand-card, .field-card),
+.game-card.card-action-available:is(.hand-card, .field-card):is(:hover, .hovered, .inspected) {
+  --glow-rgb: 255, 224, 131;
+  box-shadow: 0 0 0 2px #ffe083, 0 0 10px 3px rgba(255, 224, 131, 0.85) !important;
+}
+
+.game-card.card-action-available::before,
+.game-card.card-action-available::after,
+.game-card.card-action-available .game-card-surface::before {
+  display: none !important;
+}
+
+.game-card.card-action-available .card-action-border {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  border: 3px solid #ffe083;
+  border-radius: inherit;
+  box-shadow: inset 0 0 7px rgba(255, 224, 131, 0.85);
+}
+
+.game-card.card-action-available .battlefield-group-stack-layer {
+  border: 2px solid #ffe083;
+  box-shadow: 0 0 8px 2px rgba(255, 224, 131, 0.85);
+}
+
+.game-card.field-card.battlefield-token-card.card-action-available,
+.game-card.field-card.battlefield-token-card.card-action-available:is(:hover, .hovered, .inspected) {
+  box-shadow: none !important;
+}
+
+.game-card.field-card.battlefield-token-card.card-action-available .battlefield-token-ring {
+  stroke: #ffe083 !important;
+  stroke-width: 3;
+  filter: drop-shadow(0 0 4px #ffe083);
+}
+
+/* Battlefield frames stay slimmer than hand frames, with room for the glow. */
+.game-card.field-card.card-action-available:not(.battlefield-token-card),
+.game-card.field-card.card-action-available:not(.battlefield-token-card):is(:hover, .hovered, .inspected) {
+  box-shadow: 0 0 0 0.5px #ffe083, 0 0 6px 1px rgba(255, 224, 131, 0.8) !important;
+}
+
+.game-card.field-card.card-action-available .card-action-border,
+.game-card.field-card.card-action-available .battlefield-group-stack-layer {
+  border-width: 1px;
+}
+
+.game-card.field-card.battlefield-token-card.card-action-available .battlefield-token-ring {
+  stroke-width: 1;
+}
+
+@media (min-width: 1024px) {
+  /* The decision overlay always fits its toolbar plus one horizontal row. */
+  .table-shared-control-band[data-expanded-decision="true"] .table-shared-action-slot,
+  .table-shared-control-band[data-expanded-decision="true"] .table-shared-action-slot > .table-action-bar {
+    min-height: 120px !important;
+  }
+
+  .table-action-bar[data-expanded="true"]
+    .priority-inline-panel[data-replaces-middle-controls="true"]
+    .action-strip-decision-content {
+    min-height: 46px !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scrollbar-width: thin;
+  }
+
+  .priority-inline-panel[data-replaces-middle-controls="true"]
+    .action-strip-decision-content > * {
+    flex: 0 0 auto;
+    min-width: max-content;
+  }
+
+  .priority-inline-panel[data-replaces-middle-controls="true"]
+    .action-strip-decision-content .decision-strip-options-row {
+    flex-wrap: nowrap !important;
+  }
+}
+
+/* Target selection replaces action availability, rather than mixing both cues. */
+.game-card.card-targeting-mode::before,
+.game-card.card-targeting-mode::after,
+.game-card.card-targeting-mode .game-card-surface::before {
+  display: none !important;
+}
+
+.game-card.card-targeting-mode:not(.target-legal) {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.game-card.card-targeting-mode.target-legal {
+  --target-highlight: #fff;
+  --glow-rgb: 255, 255, 255;
+  outline: 1px solid var(--target-highlight) !important;
+  outline-offset: 0;
+  box-shadow: 0 0 9px 2px var(--target-highlight) !important;
+  translate: 0 0;
+  transition: translate 160ms ease, transform 300ms ease, opacity 220ms ease;
+}
+
+.game-card.card-targeting-mode.target-legal:is(:hover, .hovered) {
+  --target-highlight: #ffe083;
+  --glow-rgb: 255, 224, 131;
+  translate: 0 -5px;
+}
+
+.game-card.card-targeting-mode.target-legal .card-action-border {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  border: 1px solid var(--target-highlight);
+  box-shadow: inset 0 0 6px var(--target-highlight);
+}
+
+.game-card.card-targeting-mode.target-legal .battlefield-group-stack-layer {
+  border: 1px solid var(--target-highlight);
+  box-shadow: 0 0 6px var(--target-highlight);
+}
+
+.game-card.field-card.battlefield-token-card.card-targeting-mode {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.game-card.field-card.battlefield-token-card.card-targeting-mode.target-legal .battlefield-token-ring {
+  stroke: var(--target-highlight) !important;
+  stroke-width: 2;
+  filter: drop-shadow(0 0 4px var(--target-highlight));
+}
+
+[data-player-target].player-target-box {
+  outline: 1px solid #fff !important;
+  outline-offset: 3px;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.7) !important;
+  filter: none !important;
+}
+
+[data-player-target].player-target-box:is(:hover, :focus-visible) {
+  outline-color: #ffe083 !important;
+  box-shadow: 0 0 9px #ffe083 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-card.card-targeting-mode.target-legal { transition: none; }
 }

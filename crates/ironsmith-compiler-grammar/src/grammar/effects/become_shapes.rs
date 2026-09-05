@@ -81,7 +81,7 @@ fn enchanted_target() -> TargetAst {
     filter
         .tagged_constraints
         .push(crate::target::TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::Enchanted.key(),
+            tag: crate::tag::CompilerReferenceTag::Enchanted.bind(),
             relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
         });
     TargetAst::Object(filter, None, None)
@@ -206,7 +206,7 @@ fn parse_controller_owner_subject_tokens_with_optional_context(
         return Some(ControllerOwnerSubjectShape {
             subject: SubjectAst::TriggeringSourceController,
             target: TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::TriggeringSource.key(),
+                crate::tag::CompilerReferenceTag::TriggeringSource.bind(),
                 None,
             ),
         });
@@ -222,7 +222,7 @@ fn parse_controller_owner_subject_tokens_with_optional_context(
         };
         return Some(ControllerOwnerSubjectShape {
             subject: SubjectAst::Player(player),
-            target: TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+            target: TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
         });
     }
 

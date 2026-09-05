@@ -204,7 +204,7 @@ pub(super) fn read_for_each_dynamic_target_effect(
             ))
             .map(Some);
         }
-        let tag = crate::tag::CompilerReferenceTag::It.key();
+        let tag = crate::tag::CompilerReferenceTag::It.bind();
         return Ok(Some(vec![
             EffectAst::ChooseObjects {
                 filter,

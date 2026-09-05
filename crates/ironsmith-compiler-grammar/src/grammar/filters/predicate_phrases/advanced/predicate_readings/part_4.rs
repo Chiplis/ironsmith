@@ -281,7 +281,7 @@ pub(super) fn read_demonstrative_descriptor(
                 }
                 if tagged_that_enchantment && match_time == DemonstrativeMatchTime::Current {
                     return Ok(Some(PredicateAst::TaggedMatches(
-                        crate::tag::CompilerReferenceTag::Triggering.key(),
+                        crate::tag::CompilerReferenceTag::Triggering.bind(),
                         filter,
                     )));
                 }
@@ -669,6 +669,10 @@ pub(super) const READINGS: &[Reading] = &[
                 && !input.read_by("source-verbless-counted-counter-predicate")
                 && !input.read_by("stack-object-targets-object-predicate")
                 && !input.read_by("tagged-state-predicate")
+                // Readings ranked above this one that read the input read it.
+                && !input.read_by("it-demonstrative-value")
+                // Readings ranked above this one that read the input read it.
+                && !input.read_by("triggering-spell-ordinal-predicate")
         },
         read: |input| input.outcome(read_demonstrative_or_descriptor(input)),
     },
@@ -704,6 +708,14 @@ pub(super) const READINGS: &[Reading] = &[
                 && !input.read_by("triggering-object-first-tap-this-turn-predicate")
                 && !input.read_by("turn-history-intervening-predicate")
                 && !input.read_by("value-reference-comparison-predicate")
+                // Readings ranked above this one that read the input read it.
+                && !input.read_by("it-demonstrative-value")
+                && !input.read_by("source-keyword-predicate")
+                // Readings ranked above this one that read the input read it.
+                && !input.read_by("attached-tagged-predicate")
+                && !input.read_by("demonstrative-or-descriptor")
+                // Readings ranked above this one that read the input read it.
+                && !input.read_by("triggering-spell-ordinal-predicate")
         },
         read: |input| input.outcome(read_demonstrative_descriptor(input)),
     },
@@ -717,6 +729,8 @@ pub(super) const READINGS: &[Reading] = &[
                     .as_word()
                     .is_some_and(|_| !is_article(token.parser_text()))
             }))
+                // Readings ranked above this one that read the input read it.
+                && !input.read_by("implicit-subject-and-predicate")
         },
         read: |input| input.outcome(read_player_controls_no_predicate(input)),
     },
@@ -749,6 +763,11 @@ pub(super) const READINGS: &[Reading] = &[
                 && !input.read_by("player-controls-more-than-each-other-player-predicate")
                 && !input.read_by("player-controls-no-predicate")
                 && !input.read_by("spell-context-predicate")
+                // Readings ranked above this one that read the input read it.
+                && !input.read_by("you-control-or-graveyard-predicate")
+                && !input.read_by("you-control-or-returned-to-hand-this-way-predicate")
+                // Readings ranked above this one that read the input read it.
+                && !input.read_by("implicit-subject-and-predicate")
         },
         read: |input| input.outcome(read_you_control_or_player_controls(input)),
     },
@@ -893,6 +912,11 @@ pub(super) const READINGS: &[Reading] = &[
                 && !input.read_by("stack-object-targets-object-predicate")
                 && !input.read_by("tagged-state-predicate")
                 && !input.read_by("you-control-or-graveyard-predicate")
+                // Readings ranked above this one that read the input read it.
+                && !input.read_by("demonstrative-descriptor")
+                && !input.read_by("demonstrative-or-descriptor")
+                && !input.read_by("implicit-subject-and-predicate")
+                && !input.read_by("it-demonstrative-value")
         },
         read: |input| input.outcome(read_or_predicate(input)),
     },

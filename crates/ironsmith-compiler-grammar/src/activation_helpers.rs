@@ -29,7 +29,7 @@ fn bind_revealed_this_way_count_to_last_object(value: Value) -> Value {
                 if constraint.tag.as_str()
                     == crate::tag::CompilerReferenceTag::PublicRevealed.as_str()
                 {
-                    constraint.tag = crate::tag::CompilerReferenceTag::It.key();
+                    constraint.tag = crate::tag::CompilerReferenceTag::It.bind();
                 }
             }
             Value::Count(filter)

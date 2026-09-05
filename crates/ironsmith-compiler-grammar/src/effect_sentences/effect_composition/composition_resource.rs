@@ -4,8 +4,8 @@ pub(super) fn parse_controller_sacrifice_consult_bundle(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
     let shape = bundle_grammar::parse_controller_sacrifice_consult_tokens(tokens)?;
-    let revealed_tag = crate::tag::CompilerReferenceTag::ControllerConsultRevealed.key();
-    let matched_tag = crate::tag::CompilerReferenceTag::ControllerConsultMatched.key();
+    let revealed_tag = crate::tag::CompilerReferenceTag::ControllerConsultRevealed.bind();
+    let matched_tag = crate::tag::CompilerReferenceTag::ControllerConsultMatched.bind();
     let target = TargetAst::Object(shape.target_filter, Some(TextSpan::synthetic()), None);
     let sacrifice = EffectAst::subject_verb_sacrifice(
         PlayerAst::ItsController,

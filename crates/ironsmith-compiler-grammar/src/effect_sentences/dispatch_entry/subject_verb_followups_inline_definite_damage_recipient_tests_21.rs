@@ -21,7 +21,7 @@ fn definite_permanent_or_player_reuses_the_prior_any_target_damage_recipient() {
         matches!(
             &exact_target,
             TargetAst::Tagged(tag, None)
-                if tag == &crate::tag::CompilerReferenceTag::Damaged0.key()
+                if tag == &crate::tag::CompilerReferenceTag::Damaged0.bind()
         ),
         "{exact_target:#?}"
     );

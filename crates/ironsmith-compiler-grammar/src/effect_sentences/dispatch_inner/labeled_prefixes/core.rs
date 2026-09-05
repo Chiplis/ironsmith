@@ -10,7 +10,10 @@ pub(super) fn parse_passive_color_type_addition_sentence(
     };
 
     let target = if shape.tagged_subject {
-        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), Some(TextSpan::synthetic()))
+        TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.bind(),
+            Some(TextSpan::synthetic()),
+        )
     } else {
         parse_target_phrase(shape.subject_tokens)?
     };

@@ -182,7 +182,7 @@ pub(super) fn open_copy_next_spell_retarget(
                 from_not_hand: false,
             },
             effects: vec![EffectAst::subject_verb_copy_spell(
-                TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), None),
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None),
                 crate::effect::Value::Fixed(1),
                 PlayerAst::You,
                 true,

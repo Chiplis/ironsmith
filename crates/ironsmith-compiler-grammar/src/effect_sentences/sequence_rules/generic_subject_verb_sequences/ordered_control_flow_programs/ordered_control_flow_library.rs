@@ -114,12 +114,12 @@ pub fn parse_top_cards_choose_for_each_filter_one_battlefield_others_hand_rest_g
         tag: chosen_tag.clone(),
         effects: vec![EffectAst::Conditional {
             predicate: PredicateAst::TaggedMatches(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 ObjectFilter::tagged(battlefield_tag.clone()),
             ),
             if_true: Vec::new(),
             if_false: vec![EffectAst::subject_verb_move_to_zone(
-                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                 Zone::Hand,
                 false,
                 crate::cards::builders::ReturnControllerAst::Preserve,
@@ -132,12 +132,12 @@ pub fn parse_top_cards_choose_for_each_filter_one_battlefield_others_hand_rest_g
         tag: looked_tag,
         effects: vec![EffectAst::Conditional {
             predicate: PredicateAst::TaggedMatches(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 ObjectFilter::tagged(chosen_tag),
             ),
             if_true: Vec::new(),
             if_false: vec![EffectAst::subject_verb_move_to_zone(
-                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                 Zone::Graveyard,
                 false,
                 crate::cards::builders::ReturnControllerAst::Preserve,
@@ -446,14 +446,14 @@ pub fn parse_look_at_top_reveal_match_put_rest_bottom(
     effects.push(EffectAst::ForEachTagged {
         tag: chosen_tag.clone(),
         effects: vec![EffectAst::subject_verb_reveal_tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
         )],
     });
     effects.push(EffectAst::ForEachTagged {
         tag: chosen_tag.clone(),
         effects: vec![
             EffectAst::subject_verb_move_to_zone(
-                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                 Zone::Hand,
                 false,
                 crate::cards::builders::ReturnControllerAst::Preserve,

@@ -44,7 +44,8 @@ pub(crate) struct SpanKey {
 #[derive(Debug, Clone)]
 struct Entry {
     result: Result<Vec<EffectAst>, CardTextError>,
-    loss: Vec<ParseLossDiagnostic>,
+    loss: Vec<ParseLossDiagnostic>,    /// The reference keys the parse minted, replayed on every hit.
+    minted: Vec<ironsmith_compiler_ast::reference_ledger::MintedReference>,
 }
 
 const MAX_ENTRIES: usize = 8_192;
@@ -104,6 +105,8 @@ pub fn memoized(
     if let Some(entry) = hit {
         crate::parse_ledger::note_hit();
         crate::parse_loss::replay(&entry.loss);
+        // The keys the parse minted belong to this use of the span as well.
+        ironsmith_compiler_ast::reference_ledger::replay(&entry.minted);
         return entry.result;
     }
     let reentrant = IN_PROGRESS.with(|keys| !keys.borrow_mut().insert(key.clone()));
@@ -112,7 +115,8 @@ pub fn memoized(
         return compute();
     }
     crate::parse_ledger::note(rule, tokens, caller);
-    let (result, loss) = crate::parse_loss::observe(compute);
+    let ((result, loss), minted) =
+        ironsmith_compiler_ast::reference_ledger::observe(|| crate::parse_loss::observe(compute));
     IN_PROGRESS.with(|keys| keys.borrow_mut().remove(&key));
     MEMO.with(|memo| {
         let mut memo = memo.borrow_mut();
@@ -124,6 +128,7 @@ pub fn memoized(
             Entry {
                 result: result.clone(),
                 loss,
+                minted,
             },
         );
     });

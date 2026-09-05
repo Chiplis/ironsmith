@@ -159,7 +159,7 @@ fn parse_negated_who_this_way_predicate(
 
     Ok(Some(PredicateAst::PlayerTaggedObjectMatches {
         player: PlayerAst::That,
-        tag: crate::tag::CompilerReferenceTag::It.key(),
+        tag: crate::tag::CompilerReferenceTag::It.bind(),
         filter,
         mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
     }))

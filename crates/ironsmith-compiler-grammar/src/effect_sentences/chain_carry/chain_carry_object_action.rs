@@ -12,7 +12,7 @@ pub(super) fn parse_tap_those_then_unattach_equipment_lexed(
     tapped_filter
         .tagged_constraints
         .push(crate::filter::TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.key(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
 
@@ -23,7 +23,7 @@ pub(super) fn parse_tap_those_then_unattach_equipment_lexed(
     equipment_filter
         .tagged_constraints
         .push(crate::filter::TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.key(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
             relation: TaggedOpbjectRelation::AttachedToTaggedObject,
         });
 

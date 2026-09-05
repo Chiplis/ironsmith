@@ -456,6 +456,26 @@ fn except_for_cant_attack_static_ability(
     )))
 }
 
+/// Whether the clause after a leading restriction duration is a mana-retention
+/// clause ("until end of turn, you don't lose this mana ..."), which is not a
+/// static restriction.
+fn restriction_duration_remainder_retains_mana(tokens: &[OwnedLexToken]) -> bool {
+    let Ok(Some((_, remainder))) = parse_restriction_duration(tokens) else {
+        return false;
+    };
+    if remainder.len() >= tokens.len() {
+        return false;
+    }
+    let storage = normalize_cant_words(&remainder);
+    let words = storage.iter().map(String::as_str).collect::<Vec<_>>();
+    crate::grammar::activation_restrictions::parse_mana_retention_negated_clause_words(&words)
+        .is_some()
+}
+
+use crate::recognition::ParseOutcome;
+#[path = "activation_costs/cant_clause_readings.rs"]
+mod cant_clause_readings;
+
 pub fn parse_cant_clauses(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
@@ -550,78 +570,18 @@ pub fn parse_cant_clauses(
     // payment clause. Claim its typed attack-unless meaning first so the
     // blocking-cost parser does not reinterpret the condition as a payment
     // segment (for example, `control seven or more lands`).
-    if let Some(ability) = attack_unless_static_ability(tokens) {
-        return Ok(Some(vec![ability]));
+    let input = cant_clause_readings::CantClause {
+        tokens,
+        read_by_cache: Default::default(),
+    };
+    match cant_clause_readings::read(&input) {
+        ParseOutcome::Match(matched) => return Ok(Some(matched.value.value)),
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
-
-    if let Some(ability) = block_cost_static_ability(tokens)? {
-        return Ok(Some(vec![ability]));
-    }
-
-    if let Some(ability) = except_for_cant_attack_static_ability(tokens)? {
-        return Ok(Some(vec![ability]));
-    }
-
-    if let Some(resolution) = direct_cant_static_ability(tokens) {
-        return Ok(match resolution {
-            StaticAbilityShapeResolution::Ability(ability) => Some(vec![ability]),
-            StaticAbilityShapeResolution::Decline => None,
-        });
-    }
-
-    if cant_shapes::parse_direct_temporary_cast_decline_tokens(tokens).is_some() {
+    // The declines the ladder made before its fallback still gate the fallback.
+    if cant_clause_readings::declines(&input) {
         return Ok(None);
-    }
-
-    let normalized_words_storage = normalize_cant_words(tokens);
-    let normalized_words = normalized_words_storage
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
-    if let Some(restriction) = parse_cant_cast_restriction_words(&normalized_words) {
-        return Ok(Some(vec![StaticAbility::restriction(
-            restriction,
-            format_negated_restriction_display(tokens),
-        )]));
-    }
-    if cant_shapes::parse_iterated_player_who_decline_tokens(tokens).is_some() {
-        return Ok(None);
-    }
-    if cant_shapes::parse_leading_if_cant_decline_tokens(tokens).is_some() {
-        return Ok(None);
-    }
-    if matches!(
-        crate::grammar::activation_restrictions::parse_mana_retention_negated_clause_words(
-            &normalized_words,
-        ),
-        Some(
-            crate::grammar::activation_restrictions::ManaRetentionNegatedClause {
-                tail: crate::grammar::activation_restrictions::ManaRetentionTailKind::ThisMana,
-            }
-        )
-    ) {
-        return Ok(None);
-    }
-    if let Some((_, remainder)) = parse_restriction_duration(tokens)?
-        && remainder.len() < tokens.len()
-    {
-        let remainder_words_storage = normalize_cant_words(&remainder);
-        let remainder_words = remainder_words_storage
-            .iter()
-            .map(String::as_str)
-            .collect::<Vec<_>>();
-        if crate::grammar::activation_restrictions::parse_mana_retention_negated_clause_words(
-            &remainder_words,
-        )
-        .is_some()
-        {
-            return Ok(None);
-        }
-    }
-    // "Players/You don't lose unspent [color] mana as steps and phases end."
-    // Parsed before the and-splitting below tears apart "steps and phases end".
-    if let Some(ability) = parse_unspent_mana_retention_static(tokens, &normalized_words) {
-        return Ok(Some(vec![ability]));
     }
     if cant_shapes::parse_stat_modifier_conjunction_decline_tokens(tokens).is_some() {
         return Ok(None);

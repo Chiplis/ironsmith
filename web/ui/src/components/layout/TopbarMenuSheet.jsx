@@ -376,6 +376,7 @@ export default function TopbarMenuSheet({
                 </span>
               </span>
               <Slider
+                aria-label="Card fidelity threshold"
                 min={0}
                 max={100}
                 step={1}

@@ -348,7 +348,7 @@ export default function HandZone({
   const { hoveredObjectId, hoveredLinkedObjectIds, hoverCard, clearHover } = useHover();
   const { startDrag, updateDrag, endDrag } = useDragActions();
   const dragState = useDragState();
-  const handScale = useManabrewHandScale();
+  const handScale = useManabrewHandScale(layout === "mobile-fullscreen");
   const dragThresholdRef = useRef(null);
   const activePointerIdRef = useRef(null);
   const dragHandlersRef = useRef(null);
@@ -673,7 +673,7 @@ export default function HandZone({
   );
   const renderedHandCardCount = handCards.length + extraCards.length;
   const hasExtra = extraCards.length > 0;
-  const isMobileFan = layout === "mobile-fan";
+  const isMobileFan = layout === "mobile-fan" || layout === "mobile-fullscreen";
   const isVerticalRail = layout === "vertical-rail";
   const isRoulette = !isVerticalRail && !isMobileFan && renderedHandCardCount >= HAND_ROULETTE_THRESHOLD;
   const handDimensions = useMemo(

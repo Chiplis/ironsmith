@@ -9,6 +9,8 @@ function Slider({
   className,
   defaultValue,
   value,
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledby,
   min = 0,
   max = 100,
   ...props
@@ -47,6 +49,8 @@ function Slider({
         <SliderPrimitive.Thumb
           data-slot="slider-thumb"
           key={index}
+          aria-label={ariaLabel || (ariaLabelledby ? undefined : (_values.length > 1 ? `Value ${index + 1}` : "Value"))}
+          aria-labelledby={ariaLabelledby}
           className="block size-4 shrink-0 rounded-none border border-primary bg-white shadow-sm ring-ring/50 transition-[color,box-shadow] hover:ring-4 focus-visible:ring-4 focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50" />
       ))}
     </SliderPrimitive.Root>

@@ -4,7 +4,7 @@ pub(super) fn membership_predicate_for_iterated_object(tag: &TagKey) -> Predicat
     PredicateAst::TaggedMatches(
         tag.clone(),
         ObjectFilter::default()
-            .same_stable_id_as_tagged(crate::tag::CompilerReferenceTag::It.key()),
+            .same_stable_id_as_tagged(crate::tag::CompilerReferenceTag::It.bind()),
     )
 }
 
@@ -51,7 +51,7 @@ pub fn exact_target_same_name_graveyard_may_cast_bundle(
     filter
         .tagged_constraints
         .push(crate::target::TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::Triggering.key(),
+            tag: crate::tag::CompilerReferenceTag::Triggering.bind(),
             relation: crate::target::TaggedOpbjectRelation::SameNameAsTagged,
         });
     filter.set_same_name_antecedent_surface(Some(ironsmith_core::SameNameAntecedentSurface::Spell));

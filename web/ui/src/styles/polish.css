@@ -1064,7 +1064,7 @@
   border-left: 0 !important;
 }
 
-@media (max-width: 720px) and (orientation: landscape) {
+@media (max-width: 720px) and (orientation: landscape), (max-width: 1023px) and (max-height: 540px) and (orientation: landscape) {
   .priority-inline-panel {
     padding-top: 0;
     padding-bottom: 0;
@@ -1171,7 +1171,7 @@
     ) !important;
 }
 
-@media (max-width: 720px) and (orientation: landscape) {
+@media (max-width: 720px) and (orientation: landscape), (max-width: 1023px) and (max-height: 540px) and (orientation: landscape) {
   .action-strip-options-region.action-strip-scroll button.action-strip-pill,
   .action-strip-options-region .action-strip-scroll button.action-strip-pill,
   .action-strip-options-region .action-strip-pill {
@@ -2390,28 +2390,13 @@
   stroke-width: 2.25;
 }
 
-.table-shared-action-slot {
-  --table-tools-rail-cutoff: 132px;
-}
-
-.table-shared-action-slot > .table-action-bar {
-  transition: margin-left 180ms ease, width 180ms ease;
-}
-
-.table-shared-action-slot[data-tools-expanded="true"] > .table-action-bar {
-  width: calc(100% - var(--table-tools-rail-cutoff)) !important;
-  margin-left: var(--table-tools-rail-cutoff);
-}
-
 .my-zone-action-rail {
   z-index: 130 !important;
-  align-self: stretch;
-  margin-right: -8px;
   padding: 6px 8px 10px 12px !important;
   border-right: 1px solid rgba(156, 129, 82, 0.18);
   background:
     linear-gradient(180deg, rgba(32, 28, 24, 0.98), rgba(15, 14, 13, 0.94) 68%, rgba(15, 14, 13, 0.32));
-  box-shadow: 8px 0 18px rgba(0, 0, 0, 0.22);
+  box-shadow: 8px 10px 24px rgba(0, 0, 0, 0.55);
 }
 
 [data-my-zone][data-tools-expanded="true"] {

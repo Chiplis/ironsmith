@@ -239,7 +239,7 @@ pub(super) fn read_counter_linked_land_subtype_followup(
     if let Some(shape) = followup_grammar::parse_counter_linked_land_subtype_followup(tokens) {
         return Ok(Some(EffectAst::subject_verb_add_subtypes(
             TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 span_from_tokens(tokens),
             ),
             vec![shape.subtype],
@@ -611,7 +611,7 @@ pub(super) fn read_cast_target_from_your_graveyard_this_turn(
             effects: vec![
                 EffectAst::subject_verb_target_only(target),
                 EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-                    crate::tag::CompilerReferenceTag::It.key(),
+                    crate::tag::CompilerReferenceTag::It.bind(),
                     PlayerAst::You,
                     false,
                     false,

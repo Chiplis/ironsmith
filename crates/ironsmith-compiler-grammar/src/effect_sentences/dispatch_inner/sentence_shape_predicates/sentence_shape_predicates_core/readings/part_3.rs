@@ -112,7 +112,7 @@ pub(super) fn read_spell_cast_this_way_tax(
             spell_filter.cast_by = Some(caster);
         }
         return Ok(Some(vec![EffectAst::subject_verb_grant_to_target(
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
             crate::model::CompilerGrantableCore::Ability(
                 crate::model::CompilerStaticAbilityCore::new(
                     crate::model::CompilerCostIncreaseManaCost::new(

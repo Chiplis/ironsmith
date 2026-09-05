@@ -7,19 +7,19 @@ fn parse_return_back_reference_target(
     if let Some(reference) = crate::grammar::effects::parse_return_back_reference_shape(tokens) {
         let span = span_from_tokens(tokens);
         if reference == crate::grammar::effects::ReturnBackReferenceShape::Them {
-            let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
+            let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
             filter.set_plural_pronoun_reference_surface(true);
             return Ok(TargetAst::Object(filter, None, span));
         }
         if reference == crate::grammar::effects::ReturnBackReferenceShape::Demonstrative {
-            let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
+            let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
             filter.source_surface = Some(crate::target::SourceReferenceSurface::ThisPermanentType(
                 crate::lexer::render_token_slice(tokens).trim().to_string(),
             ));
             return Ok(TargetAst::Object(filter, None, span));
         }
         Ok(TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             span,
         ))
     } else {

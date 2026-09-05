@@ -62,39 +62,25 @@ pub fn parse_exact_permission_subject(tokens: &[OwnedLexToken]) -> Option<ExactP
     )
 }
 
+use crate::recognition::ParseOutcome;
+#[path = "subject_filters/permission_subject_readings.rs"]
+mod permission_subject_readings;
+
 pub fn parse_permission_subject_filter_tokens(
     filter_tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     if filter_tokens.is_empty() {
         return Ok(None);
     }
-
-    if parse_aura_enchant_creature_subject(filter_tokens).is_some() {
-        return Ok(Some(
-            ObjectFilter::default()
-                .with_subtype(Subtype::Aura)
-                .with_ability_marker("enchant creature"),
-        ));
+    let input = permission_subject_readings::PermissionSubject {
+        tokens: filter_tokens,
+        read_by_cache: Default::default(),
+    };
+    match permission_subject_readings::read(&input) {
+        ParseOutcome::Match(matched) => return Ok(Some(matched.value.value)),
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
-    if matches!(
-        parse_exact_permission_subject(filter_tokens),
-        Some(ExactPermissionSubject::NoncreatureSpells)
-    ) {
-        return Ok(Some(ObjectFilter::noncreature_spell()));
-    }
-    if matches!(
-        parse_exact_permission_subject(filter_tokens),
-        Some(ExactPermissionSubject::PermanentSpell | ExactPermissionSubject::PermanentSpells)
-    ) {
-        return Ok(Some(permanent_spell_filter()));
-    }
-    if let Some(filter) = parse_simple_spell_type_list_filter_tokens(filter_tokens) {
-        return Ok(Some(filter));
-    }
-    if let Some(filter) = parse_binary_permission_subject_filter_tokens(filter_tokens)? {
-        return Ok(Some(filter));
-    }
-
     if let Ok(mut filter) = parse_object_filter_with_grammar_entrypoint_lexed(filter_tokens, false)
     {
         if filter.all_card_types.is_empty()

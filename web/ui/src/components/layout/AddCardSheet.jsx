@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useId } from "react";
 import { useGame } from "@/context/GameContext";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -49,6 +49,7 @@ export default function AddCardSheet({
   const [autocompleteOptions, setAutocompleteOptions] = useState([]);
   const [autocompleteOpen, setAutocompleteOpen] = useState(false);
   const [autocompleteIndex, setAutocompleteIndex] = useState(-1);
+  const autocompleteId = useId();
   const autocompleteRef = useRef(null);
   const cardNameInputRef = useRef(null);
   const suppressAutocompleteRef = useRef(false);
@@ -220,6 +221,11 @@ export default function AddCardSheet({
               Card Name
               <input
                 ref={cardNameInputRef}
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded={autocompleteVisible}
+                aria-controls={autocompleteVisible ? autocompleteId : undefined}
+                aria-activedescendant={autocompleteVisible && autocompleteIndex >= 0 ? `${autocompleteId}-${autocompleteIndex}` : undefined}
                 className={inputClass}
                 placeholder="Card name"
                 value={cardName}
@@ -253,7 +259,9 @@ export default function AddCardSheet({
                     return;
                   }
 
-                  if (event.key === "Escape") {
+                  if (event.key === "Escape" && autocompleteVisible) {
+                    event.preventDefault();
+                    event.stopPropagation();
                     setAutocompleteOpen(false);
                     setAutocompleteIndex(-1);
                     return;
@@ -279,10 +287,14 @@ export default function AddCardSheet({
               />
             </label>
             {autocompleteVisible ? (
-              <div className="add-card-autocomplete absolute left-0 top-[calc(100%+0.35rem)] z-40 w-full overflow-hidden p-1">
+              <div id={autocompleteId} role="listbox" aria-label="Matching cards" className="add-card-autocomplete absolute left-0 top-[calc(100%+0.35rem)] z-40 w-full overflow-hidden p-1">
                 {visibleAutocompleteOptions.map((option, index) => (
                   <button
                     key={option}
+                    id={`${autocompleteId}-${index}`}
+                    role="option"
+                    aria-selected={index === autocompleteIndex}
+                    tabIndex={-1}
                     type="button"
                     className={`add-card-autocomplete-option block w-full px-3 py-2 text-left text-[13px] transition-colors ${
                       index === autocompleteIndex ? "is-active font-medium" : ""
@@ -355,9 +367,9 @@ export default function AddCardSheet({
             <Button
               type="button"
               size="sm"
-              className="add-card-submit w-full justify-center uppercase tracking-wide"
+              className="add-card-submit ui-primary-action w-full justify-center uppercase tracking-wide"
               onClick={() => handleAdd()}
-              disabled={addLocked}
+              disabled={addLocked || !cardName.trim()}
             >
               Add to Game
             </Button>

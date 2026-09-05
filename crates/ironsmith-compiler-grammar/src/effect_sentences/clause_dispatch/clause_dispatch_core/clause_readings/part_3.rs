@@ -373,7 +373,7 @@ pub(super) fn read_choose_player(input: &Clause<'_>) -> Result<Option<EffectAst>
         return Ok(Some(EffectAst::subject_verb_choose_player(
             choice_player,
             PlayerFilter::Any,
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             false,
             0,
         )));
@@ -431,7 +431,7 @@ pub(super) fn read_ordered_choose_all(
                 Value::Count(filter).with_surface_hint(ValueSurfaceHint::ChooseAllInOrder),
             ),
             player: PlayerAst::You,
-            tag: crate::tag::CompilerReferenceTag::It.key(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
         }));
     }
     Ok(None)
@@ -523,7 +523,7 @@ pub(super) fn read_you_choose_player(
         return Ok(Some(EffectAst::subject_verb_choose_player(
             chooser,
             choose_filter,
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             random,
             exclude_previous_choices,
         )));
@@ -570,7 +570,7 @@ pub(super) fn read_target_player_choose_objects_with_count(
             count: choose_count,
             count_value,
             player: chooser,
-            tag: crate::tag::CompilerReferenceTag::It.key(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
         }));
     }
     Ok(None)
@@ -615,7 +615,7 @@ pub(super) fn read_you_choose_objects_with_count(
             count: choose_count,
             count_value,
             player: chooser,
-            tag: crate::tag::CompilerReferenceTag::It.key(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
         }));
     }
     Ok(None)
@@ -666,7 +666,7 @@ pub(super) fn read_assigns_no_combat_damage(
                 let source = match source {
                     clause_grammar::AssignDamageSourceShape::Source => TargetAst::Source(None),
                     clause_grammar::AssignDamageSourceShape::Tagged => TargetAst::Tagged(
-                        crate::tag::CompilerReferenceTag::It.key(),
+                        crate::tag::CompilerReferenceTag::It.bind(),
                         span_from_tokens(tokens),
                     ),
                     clause_grammar::AssignDamageSourceShape::Target(target_tokens) => {

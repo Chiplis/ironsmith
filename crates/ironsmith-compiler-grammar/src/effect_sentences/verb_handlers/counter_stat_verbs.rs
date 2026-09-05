@@ -1,6 +1,6 @@
+use crate::grammar::effects::counter_stat_shapes as counter_grammar;
 #[cfg(test)]
 use ironsmith_compiler::ParseCardText;
-use crate::grammar::effects::counter_stat_shapes as counter_grammar;
 
 const COUNTER_TARGET_WORDS: &[&str] = &["target", "targets"];
 const COUNTER_FROM_WORD: &str = "from";
@@ -623,7 +623,7 @@ pub fn parse_reveal(
             &["reveal", "the", "cards", "in", "your", "library"],
         ],
     ) {
-        let tag = crate::tag::CompilerReferenceTag::RevealedLibrary.key();
+        let tag = crate::tag::CompilerReferenceTag::RevealedLibrary.bind();
         let filter = ObjectFilter::default()
             .in_zone(Zone::Library)
             .owned_by(PlayerFilter::You);
@@ -642,7 +642,9 @@ pub fn parse_reveal(
     // The engine does not model hidden information, so this compiles to a semantic no-op
     // that still allows parsing and auditing to proceed.
     if counter_grammar::parse_reveal_reference(tokens).is_some() {
-        return Ok(EffectAst::subject_verb_reveal_tagged(crate::tag::CompilerReferenceTag::It.key()));
+        return Ok(EffectAst::subject_verb_reveal_tagged(
+            crate::tag::CompilerReferenceTag::It.bind(),
+        ));
     }
     if counter_grammar::find_word(&words, REVEAL_HAND_WORDS).is_some() {
         let is_full_hand_reveal = counter_grammar::parse_reveal_full_hand(tokens).is_some();
@@ -686,7 +688,7 @@ pub fn parse_reveal(
                             player,
                             ChoiceCount::dynamic_x(),
                             Some(count_value),
-                            crate::tag::CompilerReferenceTag::It.key(),
+                            crate::tag::CompilerReferenceTag::It.bind(),
                         ));
                     }
                 }
@@ -702,7 +704,7 @@ pub fn parse_reveal(
                         player,
                         ChoiceCount::dynamic_x(),
                         Some(count_value),
-                        crate::tag::CompilerReferenceTag::It.key(),
+                        crate::tag::CompilerReferenceTag::It.bind(),
                     ));
                 }
                 if matches!(parse_value(tokens), Some((Value::X, _)))
@@ -721,7 +723,7 @@ pub fn parse_reveal(
                         player,
                         ChoiceCount::dynamic_x(),
                         count_value,
-                        crate::tag::CompilerReferenceTag::It.key(),
+                        crate::tag::CompilerReferenceTag::It.bind(),
                     ));
                 }
                 if let Some((count, _used)) = parse_number(tokens)
@@ -732,10 +734,12 @@ pub fn parse_reveal(
                         player,
                         ChoiceCount::exactly(count as usize),
                         None,
-                        crate::tag::CompilerReferenceTag::It.key(),
+                        crate::tag::CompilerReferenceTag::It.bind(),
                     ));
                 }
-                return Ok(EffectAst::subject_verb_reveal_tagged(crate::tag::CompilerReferenceTag::It.key()));
+                return Ok(EffectAst::subject_verb_reveal_tagged(
+                    crate::tag::CompilerReferenceTag::It.bind(),
+                ));
             }
             return Err(CardTextError::ParseError(format!(
                 "unsupported reveal-hand clause (clause: '{}')",
@@ -781,7 +785,7 @@ pub fn parse_reveal(
                 source: ironsmith_core::EffectMetricSource::Outcome,
                 metric: ironsmith_core::EffectMetric::Count,
             },
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
         ));
     }
 
@@ -809,7 +813,7 @@ pub fn parse_reveal(
                 return Ok(EffectAst::subject_verb_reveal_top_cards(
                     player,
                     count,
-                    crate::tag::CompilerReferenceTag::It.key(),
+                    crate::tag::CompilerReferenceTag::It.bind(),
                 ));
             }
         }
@@ -844,6 +848,9 @@ pub fn parse_life_amount(
     })
 }
 
+#[path = "counter_stat_verbs/life_equal_amount_readings.rs"]
+mod life_equal_amount_readings;
+
 pub fn parse_life_equal_to_value(tokens: &[OwnedLexToken]) -> Result<Option<Value>, CardTextError> {
     let clause_words = crate::lexer::token_word_refs(tokens);
     if counter_grammar::parse_prefix(&clause_words, &[LIFE_EQUAL_TO_PREFIX]).is_none() {
@@ -852,45 +859,15 @@ pub fn parse_life_equal_to_value(tokens: &[OwnedLexToken]) -> Result<Option<Valu
 
     let amount_tokens = &tokens[1..];
     let amount_words = crate::lexer::token_word_refs(amount_tokens);
-
-    if let Some(value) = parse_add_mana_equal_amount_value(amount_tokens) {
-        return Ok(Some(
-            value.with_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo),
-        ));
-    }
-    if let Some(value) = parse_devotion_value_from_add_clause(amount_tokens)? {
-        return Ok(Some(
-            value.with_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo),
-        ));
-    }
-    if let Some(value) = parse_equal_to_number_of_filter_value(amount_tokens) {
-        return Ok(Some(value));
-    }
-    if let Some(value) = parse_equal_to_aggregate_filter_value(amount_tokens) {
-        return Ok(Some(value));
-    }
-    if let Some(surface) = counter_grammar::parse_life_equal_surface(&amount_words) {
-        let value = match surface {
-            counter_grammar::LifeEqualSurface::LifeLostThisWay => {
-                Value::EventValue(EventValueSpec::LifeAmount)
-            }
-            counter_grammar::LifeEqualSurface::DamagePreventedThisWay => {
-                Value::EventValue(EventValueSpec::Amount)
-            }
-            counter_grammar::LifeEqualSurface::AllPlayersLifeLostThisTurn => {
-                Value::LifeLostThisTurn(PlayerFilter::Any)
-            }
-            counter_grammar::LifeEqualSurface::IteratedPlayerLifeLostThisTurn => {
-                Value::LifeLostThisTurn(PlayerFilter::IteratedPlayer)
-            }
-            counter_grammar::LifeEqualSurface::TargetPlayerDamageThisTurn => {
-                Value::DamageDealtToPlayersThisTurn(PlayerFilter::target_player())
-            }
-        };
-        return Ok(Some(value));
-    }
-    if let Some(value) = parse_dynamic_cost_modifier_value(amount_tokens)? {
-        return Ok(Some(value));
+    let input = life_equal_amount_readings::LifeAmount {
+        tokens: amount_tokens,
+        amount_words: &amount_words,
+        read_by_cache: Default::default(),
+    };
+    match life_equal_amount_readings::read(&input) {
+        ParseOutcome::Match(matched) => return Ok(Some(matched.value.value)),
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
     if counter_grammar::parse_prefix(&amount_words, &[EQUAL_TO_PREFIX]).is_some() {
         let value_tokens = &amount_tokens[2..];
@@ -982,7 +959,8 @@ fn parse_possessive_target_stat_value(tokens: &[OwnedLexToken]) -> Option<Value>
         counter_grammar::TargetStatKind::Toughness => Value::ToughnessOf,
         counter_grammar::TargetStatKind::ManaValue => Value::ManaValueOf,
     };
-    let target = crate::grammar::primitives::probe_shape(parse_target_phrase(&shape.target_tokens))?;
+    let target =
+        crate::grammar::primitives::probe_shape(parse_target_phrase(&shape.target_tokens))?;
     let spec = crate::model::ast::choose_spec_for_target(&target);
     Some(constructor(Box::new(spec)))
 }
@@ -1121,7 +1099,9 @@ fn parse_for_each_counter_on_reference_value(tokens: &[OwnedLexToken]) -> Option
         counter_grammar::CounterReferenceShape::Tagged {
             counter_type_tokens,
         } => Some(Value::CountersOn(
-            Box::new(ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())),
+            Box::new(ChooseSpec::Tagged(
+                crate::tag::CompilerReferenceTag::It.bind(),
+            )),
             crate::grammar::filters::parse_counter_type_from_tokens(counter_type_tokens),
         )),
     }
@@ -1147,13 +1127,19 @@ pub fn remap_source_stat_value_to_it(value: Value) -> Value {
             hints,
         },
         Value::PowerOf(spec) if matches!(spec.as_ref(), ChooseSpec::Source) => {
-            Value::PowerOf(Box::new(ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())))
+            Value::PowerOf(Box::new(ChooseSpec::Tagged(
+                crate::tag::CompilerReferenceTag::It.bind(),
+            )))
         }
         Value::ToughnessOf(spec) if matches!(spec.as_ref(), ChooseSpec::Source) => {
-            Value::ToughnessOf(Box::new(ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())))
+            Value::ToughnessOf(Box::new(ChooseSpec::Tagged(
+                crate::tag::CompilerReferenceTag::It.bind(),
+            )))
         }
         Value::ManaValueOf(spec) if matches!(spec.as_ref(), ChooseSpec::Source) => {
-            Value::ManaValueOf(Box::new(ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())))
+            Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
+                crate::tag::CompilerReferenceTag::It.bind(),
+            )))
         }
         Value::Add(left, right) => Value::Add(
             Box::new(remap_source_stat_value_to_it(*left)),
@@ -1184,7 +1170,7 @@ fn player_filter_for_life_reference(player: PlayerAst) -> Option<PlayerFilter> {
         PlayerAst::LowestLifeTied => Some(PlayerFilter::LowestLifeTied),
         PlayerAst::ThatPlayerOrTargetController => None,
         PlayerAst::TriggeringSourceController => Some(PlayerFilter::ControllerOf(
-            crate::filter::ObjectRef::tagged("triggering_source"),
+            crate::filter::ObjectRef::tagged(crate::tag::CompilerReferenceTag::TriggeringSource.bind()),
         )),
         PlayerAst::ItsController | PlayerAst::ItsOwner | PlayerAst::Enchanted => None,
     }

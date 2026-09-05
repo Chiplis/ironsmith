@@ -814,7 +814,7 @@ fn strip_search_library_color_count_phrase_lexed(
             stripped.extend_from_slice(&trim_commas(&rest[consumed..]));
 
             let colors_expr = crate::effect::Value::ColorsAmong(
-                crate::target::ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
+                crate::target::ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
             );
             let comparison =
                 crate::filter::Comparison::EqualExpr(Box::new(crate::effect::Value::Add(
@@ -1450,7 +1450,7 @@ pub fn parse_search_library_same_name_reference_lexed(
     {
         filter_tokens = base_tokens;
         same_name_reference = Some(SearchLibrarySameNameReference::Tagged(
-            crate::tag::CompilerReferenceTag::ChosenName.key(),
+            crate::tag::CompilerReferenceTag::ChosenName.bind(),
         ));
     } else if let Some(base_tokens) = strip_search_library_suffix_lexed(
         raw_filter_tokens,
@@ -1458,14 +1458,14 @@ pub fn parse_search_library_same_name_reference_lexed(
     ) {
         filter_tokens = base_tokens;
         same_name_reference = Some(SearchLibrarySameNameReference::Tagged(
-            crate::tag::CompilerReferenceTag::ChosenName.key(),
+            crate::tag::CompilerReferenceTag::ChosenName.bind(),
         ));
     } else if let Some(base_tokens) =
         strip_search_library_suffix_lexed(raw_filter_tokens, search_library_with_chosen_name_suffix)
     {
         filter_tokens = base_tokens;
         same_name_reference = Some(SearchLibrarySameNameReference::Tagged(
-            crate::tag::CompilerReferenceTag::ChosenName.key(),
+            crate::tag::CompilerReferenceTag::ChosenName.bind(),
         ));
     } else if let Some((base_filter_tokens, reference_tokens, relation)) =
         split_search_same_name_reference_filter(raw_filter_tokens)
@@ -1510,11 +1510,11 @@ pub fn parse_search_library_same_name_reference_lexed(
         .is_ok();
         same_name_reference = if source_exiled_reference {
             Some(SearchLibrarySameNameReference::Tagged(
-                crate::tag::CompilerReferenceTag::SourceExiled.key(),
+                crate::tag::CompilerReferenceTag::SourceExiled.bind(),
             ))
         } else if is_same_name_that_reference_words(&reference_words) {
             Some(SearchLibrarySameNameReference::Tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
             ))
         } else if search_library_words_have_word(&reference_words, "target") {
             let target = parse_target_phrase(&reference_tokens).map_err(|_| {
@@ -1543,7 +1543,7 @@ pub fn parse_search_library_same_name_reference_lexed(
                 })?;
             Some(SearchLibrarySameNameReference::Choose {
                 filter: reference_filter,
-                tag: crate::tag::CompilerReferenceTag::SameNameReference.key(),
+                tag: crate::tag::CompilerReferenceTag::SameNameReference.bind(),
             })
         };
     }

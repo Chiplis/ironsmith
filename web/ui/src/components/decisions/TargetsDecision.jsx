@@ -320,7 +320,7 @@ function ActiveRequirementTargets({
             : "decision-option-row h-7 w-full justify-start rounded-none border-0 bg-[linear-gradient(180deg,rgba(49,42,36,0.94),rgba(21,18,17,0.98))] px-2.5 text-[13px] text-[#d8cbb0] transition-all hover:bg-[linear-gradient(180deg,rgba(82,66,45,0.98),rgba(33,25,19,0.98))] hover:text-[#fff1cb]",
           horizontal && isSelected && STRIP_ITEM_ACTIVE_CLASS,
           !horizontal && isSelected && "bg-[linear-gradient(180deg,rgba(95,75,50,0.98),rgba(42,32,21,0.98))] text-[#fff0cf]",
-          horizontal && !isSelected && isHoveredTarget && STRIP_ITEM_ACTIVE_CLASS,
+          horizontal && !isSelected && isHoveredTarget && "is-highlighted",
           !horizontal && !isSelected && isHoveredTarget && "bg-[linear-gradient(180deg,rgba(84,68,47,0.98),rgba(34,27,20,0.98))] text-[#f5e7c7]",
           isUnavailable
             && (horizontal
@@ -338,6 +338,7 @@ function ActiveRequirementTargets({
           if (!canAct || isUnavailable || !shouldHandleClick(event)) return;
           onSelectTarget(target, reqIdx, { toggleExisting: true, strictRequirement: true });
         }}
+        aria-pressed={isSelected}
         ref={(node) => {
           if (node) {
             targetButtonRefs.current.set(listKey, node);
@@ -889,6 +890,7 @@ export default function TargetsDecision({
                       return (
                         <Button
                           key={selIdx}
+                          aria-label={`Remove target: ${label}`}
                           variant="ghost"
                           size="sm"
                           className={cn(

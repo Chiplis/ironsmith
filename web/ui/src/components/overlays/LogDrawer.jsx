@@ -46,7 +46,7 @@ export default function LogDrawer({ open, onOpenChange }) {
             </button>
           </div>
         </SheetHeader>
-        <ScrollArea className="mt-1 h-[calc(100vh-108px)] px-4 pb-4">
+        <ScrollArea className="mt-1 min-h-0 flex-1 px-4 pb-4">
           <ul className="m-0 flex list-none flex-col gap-2 p-0">
             {visibleEntries.map((entry, i) => (
               <li

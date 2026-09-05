@@ -1,7 +1,10 @@
+use ironsmith_core::tag::TagKeyWalk;
+
 use super::*;
 
 /// A stated limit on how often a triggered ability may fire.
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum TriggerFrequencyPredicateAst {
     /// "for the first time this turn"
     FirstTimeThisTurn,
@@ -14,6 +17,7 @@ pub enum TriggerFrequencyPredicateAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum PredicateAst {
     ItIsNight,
     FirstCombatPhaseOfTurn,
@@ -436,6 +440,7 @@ pub enum PredicateAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum TurnHistoryPredicateAst {
     SpellsCastLastTurnAtLeast(u32),
     SourceCrewedByAtLeast {
@@ -498,6 +503,7 @@ pub enum TurnHistoryPredicateAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum PredicateReferenceAntecedent {
     SourceObject,
 }

@@ -383,7 +383,7 @@ pub fn bind_condition_collection_antecedent_in_effects(
         choice_filter
             .controller
             .get_or_insert(crate::filter::PlayerFilter::IteratedPlayer);
-        let tag = crate::tag::CompilerReferenceTag::ConditionCollectionChoice.key();
+        let tag = crate::tag::CompilerReferenceTag::ConditionCollectionChoice.bind();
         let choice = EffectAst::ChooseObjects {
             filter: choice_filter,
             count: *count,

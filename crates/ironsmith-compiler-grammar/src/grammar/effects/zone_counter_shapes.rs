@@ -360,50 +360,75 @@ fn parse_counter_count_prefix_shape_with_optional_context<'tokens>(
     tokens: &'tokens [OwnedLexToken],
     context: Option<crate::parse_context::ParseContextView<'_>>,
 ) -> CounterCountPrefixShape<'tokens> {
-    if let Some(((), inner_tokens)) =
-        primitives::parse_prefix(tokens, primitives::phrase(&["up", "to"]).void())
-    {
-        return CounterCountPrefixShape::UpTo { inner_tokens };
-    }
-    if let Some(((), rest)) = primitives::parse_prefix(
-        tokens,
-        alt((
-            primitives::phrase(&["that", "many"]),
-            primitives::phrase(&["that", "much"]),
-        )),
-    ) {
-        return CounterCountPrefixShape::EventAmount {
-            consumed: tokens.len().saturating_sub(rest.len()),
-        };
-    }
-    if primitives::parse_prefix(tokens, primitives::kw("another")).is_some() {
-        return CounterCountPrefixShape::Another;
-    }
-    if let Some(shape) = parse_referential_counter_count_shape(tokens, context) {
-        return CounterCountPrefixShape::Referential(shape);
-    }
-    if let Some(((), _)) =
-        primitives::parse_prefix(tokens, primitives::phrase(&["a", "number", "of"]).void())
-    {
-        let equal = equal_value_shape(tokens);
-        let equal_to_after_target = primitives::find_prefix(tokens, || primitives::kw("on").void())
-            .zip(primitives::find_prefix(tokens, || {
-                primitives::phrase(&["equal", "to"]).void()
-            }))
-            .is_some_and(|((on_idx, _, _), (equal_idx, _, _))| on_idx < equal_idx);
-        return CounterCountPrefixShape::NumberOf {
-            value_tokens: equal.map(|(value_tokens, _)| value_tokens),
-            equal_to_difference: equal.is_some_and(|(_, difference)| difference),
-            equal_to_after_target,
-        };
-    }
-    if filters::parse_counter_type_from_tokens(tokens).is_some()
-        && let Some((_, (), after_on)) =
-            primitives::find_prefix(tokens, || primitives::kw("on").void())
-        && let Some((value_tokens, _)) = equal_value_shape(after_on)
-        && !value_tokens.is_empty()
-    {
-        return CounterCountPrefixShape::ExistingCounterEqual { value_tokens };
+    // One declared alternation: the alternatives are exclusive shapes, and the
+    // first that reads the input names it.
+    let alternation = None::<CounterCountPrefixShape<'tokens>>
+        .or_else(|| {
+            if let Some(((), inner_tokens)) =
+                primitives::parse_prefix(tokens, primitives::phrase(&["up", "to"]).void())
+            {
+                return Some(CounterCountPrefixShape::UpTo { inner_tokens });
+            }
+            None
+        })
+        .or_else(|| {
+            if let Some(((), rest)) = primitives::parse_prefix(
+                tokens,
+                alt((
+                    primitives::phrase(&["that", "many"]),
+                    primitives::phrase(&["that", "much"]),
+                )),
+            ) {
+                return Some(CounterCountPrefixShape::EventAmount {
+                    consumed: tokens.len().saturating_sub(rest.len()),
+                });
+            }
+            None
+        })
+        .or_else(|| {
+            if primitives::parse_prefix(tokens, primitives::kw("another")).is_some() {
+                return Some(CounterCountPrefixShape::Another);
+            }
+            None
+        })
+        .or_else(|| {
+            if let Some(shape) = parse_referential_counter_count_shape(tokens, context) {
+                return Some(CounterCountPrefixShape::Referential(shape));
+            }
+            None
+        })
+        .or_else(|| {
+            if let Some(((), _)) =
+                primitives::parse_prefix(tokens, primitives::phrase(&["a", "number", "of"]).void())
+            {
+                let equal = equal_value_shape(tokens);
+                let equal_to_after_target =
+                    primitives::find_prefix(tokens, || primitives::kw("on").void())
+                        .zip(primitives::find_prefix(tokens, || {
+                            primitives::phrase(&["equal", "to"]).void()
+                        }))
+                        .is_some_and(|((on_idx, _, _), (equal_idx, _, _))| on_idx < equal_idx);
+                return Some(CounterCountPrefixShape::NumberOf {
+                    value_tokens: equal.map(|(value_tokens, _)| value_tokens),
+                    equal_to_difference: equal.is_some_and(|(_, difference)| difference),
+                    equal_to_after_target,
+                });
+            }
+            None
+        })
+        .or_else(|| {
+            if filters::parse_counter_type_from_tokens(tokens).is_some()
+                && let Some((_, (), after_on)) =
+                    primitives::find_prefix(tokens, || primitives::kw("on").void())
+                && let Some((value_tokens, _)) = equal_value_shape(after_on)
+                && !value_tokens.is_empty()
+            {
+                return Some(CounterCountPrefixShape::ExistingCounterEqual { value_tokens });
+            }
+            None
+        });
+    if let Some(shape) = alternation {
+        return shape;
     }
     CounterCountPrefixShape::Plain
 }

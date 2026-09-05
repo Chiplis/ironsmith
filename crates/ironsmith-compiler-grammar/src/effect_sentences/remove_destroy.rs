@@ -98,7 +98,7 @@ pub fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                                 effects: vec![EffectAst::subject_verb_remove_up_to_any_counters(
                                     amount,
                                     TargetAst::Tagged(
-                                        crate::tag::CompilerReferenceTag::It.key(),
+                                        crate::tag::CompilerReferenceTag::It.bind(),
                                         span_from_tokens(tokens),
                                     ),
                                     counter_type,
@@ -301,7 +301,7 @@ fn lower_destroy_all_shape(shape: shapes::DestroyAllShape<'_>) -> Result<EffectA
                 }
             };
             let filter = parse_object_filter(filter_tokens, false)?
-                .match_tagged(crate::tag::CompilerReferenceTag::It.key(), relation);
+                .match_tagged(crate::tag::CompilerReferenceTag::It.bind(), relation);
             Ok(EffectAst::subject_verb_destroy_all(filter))
         }
         shapes::DestroyAllShape::Plain { filter_tokens } => Ok(
@@ -320,7 +320,7 @@ pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
             effects: vec![
                 EffectAst::subject_verb_destroy(TargetAst::Source(None)),
                 EffectAst::subject_verb_destroy(TargetAst::Tagged(
-                    crate::tag::CompilerReferenceTag::It.key(),
+                    crate::tag::CompilerReferenceTag::It.bind(),
                     None,
                 )),
             ],
@@ -534,7 +534,7 @@ pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
                             PlayerAst::Opponent,
                         ),
                         EffectAst::subject_verb_destroy(TargetAst::Tagged(
-                            crate::tag::CompilerReferenceTag::It.as_str().into(),
+                            crate::tag::CompilerReferenceTag::It.bind(),
                             None,
                         )),
                     ],

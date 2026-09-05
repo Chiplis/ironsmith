@@ -506,6 +506,9 @@ fn parse_conjoined_payment_clause_as_total_cost(
     Ok(None)
 }
 
+#[path = "keyword_action_costs/payment_cost_readings.rs"]
+mod payment_cost_readings;
+
 pub fn parse_payment_clause_as_total_cost(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ironsmith_core::TotalCost<crate::model::CompilerCost>>, CardTextError> {
@@ -541,21 +544,14 @@ pub fn parse_payment_clause_as_total_cost(
         }
         DynamicPaymentParse::NotRecognized => {}
     }
-
-    if let Some(effect_cost) = parse_single_graveyard_bottom_library_compiler_payment(&trimmed) {
-        return Ok(Some(effect_cost));
+    let input = payment_cost_readings::PaymentClause { tokens: &trimmed };
+    match payment_cost_readings::read(&input) {
+        crate::recognition::ParseOutcome::Match(matched) => return Ok(Some(matched.value.value)),
+        crate::recognition::ParseOutcome::NoMatch => {}
+        crate::recognition::ParseOutcome::Error(diagnostic) => {
+            return Err(diagnostic.into_card_text_error());
+        }
     }
-
-    if let Ok(total_cost) = parse_activation_cost(&trimmed)
-        && !total_cost.is_free()
-    {
-        return Ok(Some(total_cost));
-    }
-
-    if let Some(total_cost) = parse_conjoined_payment_clause_as_total_cost(&trimmed)? {
-        return Ok(Some(total_cost));
-    }
-
     let Some(effects) = parse_payment_clause_as_effects(&trimmed)? else {
         return Ok(None);
     };
@@ -688,7 +684,7 @@ fn parse_dynamic_payment_clause_as_total_cost(
                                 ObjectFilter::default()
                                     .in_zone(Zone::Graveyard)
                                     .match_tagged(
-                                        crate::tag::CompilerReferenceTag::Triggering.key(),
+                                        crate::tag::CompilerReferenceTag::Triggering.bind(),
                                         crate::filter::TaggedOpbjectRelation::SameNameAsTagged,
                                     ),
                             )
@@ -832,6 +828,7 @@ pub fn parse_dynamic_soulshift_keyword_action(words: &[&str]) -> Option<KeywordA
     )))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeywordCostFallback {
     MarkerOnly,
     MarkerOrText,
@@ -1039,6 +1036,107 @@ fn parse_exact_ability_phrase(words: &[&str]) -> Option<KeywordAction> {
         .map(exact_ability_phrase_action)
 }
 
+/// The numeric keywords, each with its action constructor.
+const NUMERIC_KEYWORDS: &[(&str, fn(u32) -> KeywordAction)] = &[
+    ("bushido", KeywordAction::Bushido),
+    ("frenzy", KeywordAction::Frenzy),
+    ("poisonous", KeywordAction::Poisonous),
+    ("bloodthirst", KeywordAction::Bloodthirst),
+    ("tribute", KeywordAction::Tribute),
+    ("afflict", KeywordAction::Afflict),
+    ("backup", KeywordAction::Backup),
+    ("rampage", KeywordAction::Rampage),
+    ("annihilator", KeywordAction::Annihilator),
+    ("afterlife", KeywordAction::Afterlife),
+    ("fabricate", KeywordAction::Fabricate),
+    ("renown", KeywordAction::Renown),
+    ("soulshift", KeywordAction::Soulshift),
+];
+
+/// The cost keywords, each with its fallback and action constructor.
+const COST_KEYWORDS: &[(&str, KeywordCostFallback, fn(ManaCost) -> KeywordAction)] = &[
+    (
+        "outlast",
+        KeywordCostFallback::MarkerOnly,
+        KeywordAction::Outlast,
+    ),
+    (
+        "scavenge",
+        KeywordCostFallback::MarkerOrText,
+        KeywordAction::Scavenge,
+    ),
+    (
+        "unearth",
+        KeywordCostFallback::MarkerOnly,
+        KeywordAction::Unearth,
+    ),
+    (
+        "recover",
+        KeywordCostFallback::MarkerOrText,
+        KeywordAction::Recover,
+    ),
+    (
+        "embalm",
+        KeywordCostFallback::MarkerOrText,
+        KeywordAction::Embalm,
+    ),
+    ("eternalize", KeywordCostFallback::MarkerOrText, |cost| {
+        KeywordAction::Eternalize(
+            ironsmith_core::TotalCost::<crate::model::CompilerCost>::mana(cost),
+        )
+    }),
+    (
+        "ninjutsu",
+        KeywordCostFallback::MarkerOrText,
+        KeywordAction::Ninjutsu,
+    ),
+    (
+        "dash",
+        KeywordCostFallback::MarkerOrText,
+        KeywordAction::Dash,
+    ),
+    (
+        "blitz",
+        KeywordCostFallback::MarkerOrText,
+        KeywordAction::Blitz,
+    ),
+    (
+        "warp",
+        KeywordCostFallback::MarkerOrText,
+        KeywordAction::Warp,
+    ),
+    (
+        "plot",
+        KeywordCostFallback::MarkerOrText,
+        KeywordAction::Plot,
+    ),
+    (
+        "disturb",
+        KeywordCostFallback::MarkerOrText,
+        KeywordAction::Disturb,
+    ),
+    (
+        "foretell",
+        KeywordCostFallback::MarkerOrText,
+        KeywordAction::Foretell,
+    ),
+    (
+        "spectacle",
+        KeywordCostFallback::MarkerOrText,
+        KeywordAction::Spectacle,
+    ),
+    (
+        "overload",
+        KeywordCostFallback::MarkerOrText,
+        KeywordAction::Overload,
+    ),
+    (
+        "cleave",
+        KeywordCostFallback::MarkerOrText,
+        KeywordAction::Cleave,
+    ),
+];
+
 pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
     // "can't be blocked by more than N creature(s)" — a grantable blocking
     // restriction that rides in keyword lists ("trample and can't be blocked
@@ -1109,39 +1207,15 @@ pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
         _ => {}
     }
 
-    if let Some(action) = parse_numeric_keyword_action(&words, "bushido", KeywordAction::Bushido) {
-        return Some(action);
-    }
-    if let Some(action) = parse_numeric_keyword_action(&words, "frenzy", KeywordAction::Frenzy) {
-        return Some(action);
-    }
-    if let Some(action) =
-        parse_numeric_keyword_action(&words, "poisonous", KeywordAction::Poisonous)
+    // A numeric keyword ("bushido 2"): the heads are exclusive, so the table is
+    // a lookup, not a ranking.
+    if let Some(action) = NUMERIC_KEYWORDS
+        .iter()
+        .find_map(|(keyword, build)| parse_numeric_keyword_action(&words, keyword, *build))
     {
         return Some(action);
     }
-    if let Some(action) =
-        parse_numeric_keyword_action(&words, "bloodthirst", KeywordAction::Bloodthirst)
-    {
-        return Some(action);
-    }
-    if let Some(action) = parse_numeric_keyword_action(&words, "tribute", KeywordAction::Tribute) {
-        return Some(action);
-    }
-    if let Some(action) = parse_numeric_keyword_action(&words, "afflict", KeywordAction::Afflict) {
-        return Some(action);
-    }
-    if let Some(action) = parse_numeric_keyword_action(&words, "backup", KeywordAction::Backup) {
-        return Some(action);
-    }
-    if let Some(action) = parse_numeric_keyword_action(&words, "rampage", KeywordAction::Rampage) {
-        return Some(action);
-    }
-    if let Some(action) =
-        parse_numeric_keyword_action(&words, "annihilator", KeywordAction::Annihilator)
-    {
-        return Some(action);
-    }
+
     if keyword_head_is(head, "dredge")
         && let Some(amount) = second
         && let Some(amount) = parse_named_number(amount)
@@ -1201,33 +1275,13 @@ pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
         return Some(KeywordAction::Marker("saddle"));
     }
 
-    if let Some(action) =
-        parse_numeric_keyword_action(&words, "afterlife", KeywordAction::Afterlife)
-    {
-        return Some(action);
-    }
-    if let Some(action) =
-        parse_numeric_keyword_action(&words, "fabricate", KeywordAction::Fabricate)
-    {
-        return Some(action);
-    }
-
     if let Some(action) = simple_keyword_action_for_head(head) {
         return Some(action);
     }
 
-    if let Some(action) = parse_numeric_keyword_action(&words, "renown", KeywordAction::Renown) {
-        return Some(action);
-    }
     if let Some(action) = parse_dynamic_soulshift_keyword_action(&words) {
         return Some(action);
     }
-    if let Some(action) =
-        parse_numeric_keyword_action(&words, "soulshift", KeywordAction::Soulshift)
-    {
-        return Some(action);
-    }
-
     if matches!(&surface.head, KeywordAbilityHead::AuraSwap)
         && let Some(prefix) = keyword_mana_cost_prefix(phrase_tokens, 2)
     {
@@ -1245,61 +1299,11 @@ pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
         });
     }
 
-    if let Some(action) = parse_cost_keyword_action(
-        phrase_tokens,
-        "outlast",
-        KeywordCostFallback::MarkerOnly,
-        KeywordAction::Outlast,
-    ) {
-        return Some(action);
-    }
-
-    if let Some(action) = parse_cost_keyword_action(
-        phrase_tokens,
-        "scavenge",
-        KeywordCostFallback::MarkerOrText,
-        KeywordAction::Scavenge,
-    ) {
-        return Some(action);
-    }
-
-    if let Some(action) = parse_cost_keyword_action(
-        phrase_tokens,
-        "unearth",
-        KeywordCostFallback::MarkerOnly,
-        KeywordAction::Unearth,
-    ) {
-        return Some(action);
-    }
-
-    if let Some(action) = parse_cost_keyword_action(
-        phrase_tokens,
-        "recover",
-        KeywordCostFallback::MarkerOrText,
-        KeywordAction::Recover,
-    ) {
-        return Some(action);
-    }
-
-    if let Some(action) = parse_cost_keyword_action(
-        phrase_tokens,
-        "embalm",
-        KeywordCostFallback::MarkerOrText,
-        KeywordAction::Embalm,
-    ) {
-        return Some(action);
-    }
-
-    if let Some(action) = parse_cost_keyword_action(
-        phrase_tokens,
-        "eternalize",
-        KeywordCostFallback::MarkerOrText,
-        |cost| {
-            KeywordAction::Eternalize(
-                ironsmith_core::TotalCost::<crate::model::CompilerCost>::mana(cost),
-            )
-        },
-    ) {
+    // A cost keyword ("unearth {2}{B}"): the heads are exclusive, so the table
+    // is a lookup, not a ranking.
+    if let Some(action) = COST_KEYWORDS.iter().find_map(|(keyword, fallback, build)| {
+        parse_cost_keyword_action(phrase_tokens, keyword, *fallback, *build)
+    }) {
         return Some(action);
     }
 
@@ -1311,51 +1315,6 @@ pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
             KeywordAction::Emerge,
         )
     {
-        return Some(action);
-    }
-
-    if let Some(action) = parse_cost_keyword_action(
-        phrase_tokens,
-        "ninjutsu",
-        KeywordCostFallback::MarkerOrText,
-        KeywordAction::Ninjutsu,
-    ) {
-        return Some(action);
-    }
-
-    if let Some(action) = parse_cost_keyword_action(
-        phrase_tokens,
-        "dash",
-        KeywordCostFallback::MarkerOrText,
-        KeywordAction::Dash,
-    ) {
-        return Some(action);
-    }
-
-    if let Some(action) = parse_cost_keyword_action(
-        phrase_tokens,
-        "blitz",
-        KeywordCostFallback::MarkerOrText,
-        KeywordAction::Blitz,
-    ) {
-        return Some(action);
-    }
-
-    if let Some(action) = parse_cost_keyword_action(
-        phrase_tokens,
-        "warp",
-        KeywordCostFallback::MarkerOrText,
-        KeywordAction::Warp,
-    ) {
-        return Some(action);
-    }
-
-    if let Some(action) = parse_cost_keyword_action(
-        phrase_tokens,
-        "plot",
-        KeywordCostFallback::MarkerOrText,
-        KeywordAction::Plot,
-    ) {
         return Some(action);
     }
 
@@ -1376,33 +1335,6 @@ pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
             return Some(KeywordAction::MarkerText(display));
         }
         return Some(KeywordAction::Marker("suspend"));
-    }
-
-    if let Some(action) = parse_cost_keyword_action(
-        phrase_tokens,
-        "disturb",
-        KeywordCostFallback::MarkerOrText,
-        KeywordAction::Disturb,
-    ) {
-        return Some(action);
-    }
-
-    if let Some(action) = parse_cost_keyword_action(
-        phrase_tokens,
-        "foretell",
-        KeywordCostFallback::MarkerOrText,
-        KeywordAction::Foretell,
-    ) {
-        return Some(action);
-    }
-
-    if let Some(action) = parse_cost_keyword_action(
-        phrase_tokens,
-        "spectacle",
-        KeywordCostFallback::MarkerOrText,
-        KeywordAction::Spectacle,
-    ) {
-        return Some(action);
     }
 
     if keyword_head_is(head, "hideaway") {
@@ -1447,24 +1379,6 @@ pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
 
     if keyword_head_is(head, "airbend") {
         return marker_text_from_words(&words).map(KeywordAction::MarkerText);
-    }
-
-    if let Some(action) = parse_cost_keyword_action(
-        phrase_tokens,
-        "overload",
-        KeywordCostFallback::MarkerOrText,
-        KeywordAction::Overload,
-    ) {
-        return Some(action);
-    }
-
-    if let Some(action) = parse_cost_keyword_action(
-        phrase_tokens,
-        "cleave",
-        KeywordCostFallback::MarkerOrText,
-        KeywordAction::Cleave,
-    ) {
-        return Some(action);
     }
 
     if let KeywordAbilityHead::Echo { cost } = &surface.head {

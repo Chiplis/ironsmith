@@ -2010,75 +2010,20 @@ fn parse_moved_or_cast_origin_condition(
     )
 }
 
+use crate::recognition::ParseOutcome;
+#[path = "trigger_clause_core/trigger_clause_readings.rs"]
+mod trigger_clause_readings;
+
 pub fn parse_trigger_clause_lexed(tokens: &[OwnedLexToken]) -> Result<TriggerSpec, CardTextError> {
     // Beginning-of-combat clauses are a small, complete phase-event grammar.
     // Recognize that shape before entering the legacy aggregate matcher,
     // whose large filter temporaries otherwise dominate this hot path's
     // stack frame even though none of them can match a phase event.
-    if let Some(trigger) = try_parse_simple_beginning_of_combat_trigger_lexed(tokens) {
-        return Ok(trigger);
-    }
-    // A source ETB is one of the smallest and most frequent trigger clauses.
-    // Claim its complete grammar shape before entering the compatibility
-    // matchers below: several of those handlers carry large typed filter
-    // temporaries even when their first word cannot match this family.
-    if let Some(trigger) = try_parse_simple_source_enters_trigger_lexed(tokens) {
-        return Ok(trigger);
-    }
-    // `... while <condition>` qualifies the event itself. Preserve it as
-    // a typed matcher wrapper before union parsing or the broad attack/
-    // cast routes can accept only the event prefix and silently discard
-    // the board-state requirement. Recursive parsing is safe because the
-    // left slice no longer contains the `while` separator.
-    if let Some(while_idx) =
-        crate::slice_primitives::select_position(tokens, |token| token.is_word("while"))
-        && while_idx > 0
-        && while_idx + 1 < tokens.len()
-    {
-        let trigger_tokens = trim_edge_punctuation(&tokens[..while_idx]);
-        let condition_tokens = trim_edge_punctuation(&tokens[while_idx + 1..]);
-        let trigger = parse_trigger_clause_lexed(&trigger_tokens)?;
-        let condition = crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(
-            &condition_tokens,
-        )?;
-        return Ok(TriggerSpec::ConditionQualified {
-            trigger: Box::new(trigger),
-            condition,
-            surface: crate::lexer::render_token_slice(&condition_tokens)
-                .trim()
-                .trim_end_matches('.')
-                .to_string(),
-        });
-    }
-    if let Some(trigger) = try_parse_passive_sacrificed_or_destroyed_lexed(tokens)? {
-        return Ok(trigger);
-    }
-    if let Some(trigger) = try_parse_player_attack_with_aggregate_lexed(tokens)? {
-        return Ok(trigger);
-    }
-    if let Some(trigger) = try_parse_player_puts_object_onto_battlefield_lexed(tokens)? {
-        return Ok(trigger);
-    }
-    if let Some(trigger) = try_parse_player_attack_with_one_or_more_lexed(tokens)? {
-        return Ok(trigger);
-    }
-    if let Some(trigger) = try_parse_source_and_another_attack_different_players(tokens) {
-        return Ok(trigger);
-    }
-    if let Some(union) = try_parse_shared_player_attack_draw_cast_union_lexed(tokens)? {
-        return Ok(union);
-    }
-    if let Some(union) = try_parse_repeated_intro_attack_union_lexed(tokens) {
-        return Ok(union);
-    }
-    if let Some(union) = try_parse_trigger_union_lexed(tokens) {
-        return Ok(union);
-    }
-    if let Some(trigger) = try_parse_combat_damage_trigger_lexed(tokens)? {
-        return Ok(trigger);
-    }
-    if let Some(trigger) = try_parse_source_with_filtered_attack_count_trigger_lexed(tokens)? {
-        return Ok(trigger);
+    let input = trigger_clause_readings::TriggerClause { tokens };
+    match trigger_clause_readings::read(&input) {
+        ParseOutcome::Match(matched) => return Ok(matched.value.value),
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
     parse_trigger_clause_lexed_unstacked(tokens)
 }

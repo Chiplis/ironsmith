@@ -288,7 +288,7 @@ pub(super) fn read_shared_ability_gain(
     if let Some(shape) = clause_grammar::parse_shared_ability_gain_shape(tokens) {
         return Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
             TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 Some(crate::cards::builders::TextSpan::synthetic()),
             ),
             shape
@@ -451,7 +451,7 @@ pub(super) fn read_for_each_card_payment(
         filter
             .tagged_constraints
             .push(crate::target::TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::It.key(),
+                tag: crate::tag::CompilerReferenceTag::It.bind(),
                 relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
             });
         return Ok(Some(EffectAst::ForEachObject {
@@ -459,7 +459,7 @@ pub(super) fn read_for_each_card_payment(
             effects: vec![EffectAst::UnlessAction {
                 effects: vec![EffectAst::subject_verb_move_to_zone(
                     TargetAst::Tagged(
-                        crate::tag::CompilerReferenceTag::It.key(),
+                        crate::tag::CompilerReferenceTag::It.bind(),
                         span_from_tokens(tokens),
                     ),
                     crate::zone::Zone::Library,
@@ -520,7 +520,7 @@ pub(super) fn read_opponent_return_choice(
                 EffectAst::subject_verb_target_only(target),
                 EffectAst::UnlessAction {
                     effects: vec![EffectAst::subject_verb_return_to_hand(
-                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                         false,
                     )],
                     alternative: vec![EffectAst::subject_verb(

@@ -173,7 +173,7 @@ pub(super) fn search_two_disposition_then_shuffle(
     let mut hand_filter = ObjectFilter::tagged(searched_tag.clone());
     hand_filter.zone = Some(Zone::Library);
     let iterated_is_hand_card = ObjectFilter::default()
-        .same_stable_id_as_tagged(crate::tag::CompilerReferenceTag::It.key());
+        .same_stable_id_as_tagged(crate::tag::CompilerReferenceTag::It.bind());
 
     Ok(Some(vec![
         EffectAst::ChooseObjectsAcrossZones {
@@ -206,7 +206,7 @@ pub(super) fn search_two_disposition_then_shuffle(
                 predicate: PredicateAst::TaggedMatches(hand_tag, iterated_is_hand_card),
                 if_true: Vec::new(),
                 if_false: vec![EffectAst::subject_verb_move_to_zone(
-                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                     Zone::Graveyard,
                     false,
                     ReturnControllerAst::Preserve,
@@ -233,7 +233,7 @@ pub(super) fn tempting_offer_copy_effects() -> Vec<EffectAst> {
         has_mana_cost: true,
         ..Default::default()
     };
-    let target_spell = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None);
+    let target_spell = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None);
     let opponent_copy = EffectAst::subject_verb_copy_spell(
         target_spell.clone(),
         crate::effect::Value::Fixed(1),
@@ -413,7 +413,7 @@ pub(super) fn target_opponent_copy_retarget(
 
     let target = crate::util::parse_target_phrase(&first.lowered()[..5])?;
     let copy = EffectAst::subject_verb_copy_spell(
-        TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), None),
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None),
         Value::Fixed(1),
         PlayerAst::TargetOpponent,
         true,

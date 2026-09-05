@@ -452,7 +452,7 @@ fn parse_generic_mana_transaction(tokens: &[OwnedLexToken]) -> Option<ManaUsageR
         )
     } else if crate::word_primitives::sequence_occurs(&words, &["copy", "that", "spell"]) {
         EffectAst::subject_verb_copy_spell(
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::ManaPaidObject.key(), None),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::ManaPaidObject.bind(), None),
             Value::Fixed(1),
             PlayerAst::You,
             false,

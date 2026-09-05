@@ -195,6 +195,7 @@ export default function SelectObjectsDecision({
               return (
                 <Button
                   key={c.id}
+                  aria-pressed={isSelected}
                   variant="ghost"
                   size="sm"
                   className={cn(

@@ -3,6 +3,12 @@
 //! Tags are dynamic keys used to pass references (objects, players, counts)
 //! between effects during the same spell/ability resolution.
 
+#[path = "tag/tag_walk.rs"]
+mod tag_walk;
+
+pub use ironsmith_tag_walk_derive::TagKeyWalk;
+pub use tag_walk::{TagKeyWalk, tag_keys_of};
+
 use std::borrow::Borrow;
 use std::fmt;
 

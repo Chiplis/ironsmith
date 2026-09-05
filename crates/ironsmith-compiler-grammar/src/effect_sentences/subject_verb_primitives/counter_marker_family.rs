@@ -21,7 +21,7 @@ fn retarget_it_target_for_counter_followup(target: &mut TargetAst, source_target
             *target = source_target.clone();
         }
         TargetAst::Object(filter, _, _)
-            if *filter == ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()) =>
+            if *filter == ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()) =>
         {
             *target = source_target.clone();
         }
@@ -36,7 +36,7 @@ fn retarget_it_filter_for_counter_followup(
     filter: &mut ObjectFilter,
     source_filter: &ObjectFilter,
 ) {
-    if *filter == ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()) {
+    if *filter == ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()) {
         *filter = source_filter.clone();
         return;
     }
@@ -213,7 +213,7 @@ pub fn parse_sentence_sacrifice_at_end_of_combat(
         return Ok(None);
     };
     let filter = if shape.tagged_object {
-        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key())
+        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind())
     } else {
         parse_object_filter(shape.object_tokens, false)?
     };
@@ -284,6 +284,9 @@ fn lower_counter_placements(
     Ok(effects)
 }
 
+#[path = "counter_marker_family/put_counter_sequence_readings.rs"]
+mod put_counter_sequence_readings;
+
 pub fn parse_sentence_put_counter_sequence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -302,72 +305,16 @@ pub fn parse_sentence_put_counter_sequence(
         effects.extend(parse_effect_chain(tail_tokens)?);
         return Ok(Some(effects));
     }
-
-    if let Some(placements) =
-        counter_shapes::parse_counter_placement_sequence_tokens(clause.tokens())
-    {
-        return lower_counter_placements(placements).map(Some);
-    }
-
-    if let Some(effects) = parse_put_counter_choice_sequence(clause)? {
-        return Ok(Some(effects));
-    }
-
-    if let Some(shape) = counter_shapes::parse_shared_counter_target_tokens(clause.tokens()) {
-        let target = parse_target_phrase(shape.target_tokens)?;
-        let effects = shape
-            .descriptors
-            .into_iter()
-            .map(|descriptor| {
-                EffectAst::subject_verb_put_counters(
-                    descriptor.counter_type,
-                    Value::Fixed(descriptor.count as i32),
-                    target.clone(),
-                    None,
-                    false,
-                )
-            })
-            .collect();
-        return Ok(Some(effects));
-    }
-
-    if let Some(shape) = counter_shapes::parse_counter_followup_tokens(clause.tokens())
-        && let Ok(first) = parse_put_counters(shape.counter_tokens)
-        && let Ok(mut followup_effects) = parse_effect_chain(shape.followup_tokens)
-        && !followup_effects.is_empty()
-    {
-        let source_target = match &first {
-            effect if subject_verb_put_counters_target(effect).is_some() => {
-                subject_verb_put_counters_target(effect)
-            }
-            EffectAst::Conditional { if_true, .. } if if_true.len() == 1 => {
-                if_true.first().and_then(subject_verb_put_counters_target)
-            }
-            _ => None,
-        };
-
-        if let Some(source_target) = source_target {
-            for effect in &mut followup_effects {
-                retarget_it_effect_for_counter_followup(effect, &source_target);
-            }
-
-            let mut effects = vec![first];
-            effects.append(&mut followup_effects);
-            return Ok(Some(vec![EffectAst::Coordinated {
-                effects,
-                leading_duration: false,
-                result_conjunction: false,
-            }]));
+    let input = put_counter_sequence_readings::PutCounterSequence {
+        tokens: clause.tokens(),
+        clause,
+    };
+    match put_counter_sequence_readings::read(&input) {
+        crate::recognition::ParseOutcome::Match(matched) => return Ok(Some(matched.value.value)),
+        crate::recognition::ParseOutcome::NoMatch => {}
+        crate::recognition::ParseOutcome::Error(diagnostic) => {
+            return Err(diagnostic.into_card_text_error());
         }
-    }
-
-    if let Some(shape) = counter_shapes::parse_counter_pair_tokens(clause.tokens())
-        && let (Ok(first), Ok(second)) = (
-            parse_put_counters(shape.first_tokens),
-            parse_put_counters(shape.second_tokens),
-        )
-    {
-        return Ok(Some(vec![first, second]));
     }
 
     Ok(None)
@@ -461,7 +408,7 @@ pub fn parse_return_with_counters_on_it_sentence(
     };
     let mut effects = vec![return_effect];
     let tagged_target =
-        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), clause.span());
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), clause.span());
     for descriptor in shape.descriptors {
         let count = Value::Fixed(descriptor.count as i32)
             .with_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter);
@@ -573,7 +520,7 @@ pub fn parse_return_with_dynamic_entry_counters_sentence(
     let counter_effect = EffectAst::subject_verb_put_counters(
         counter_type,
         counter_amount,
-        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), clause.span()),
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), clause.span()),
         None,
         false,
     );
@@ -630,7 +577,7 @@ pub fn parse_put_onto_battlefield_with_counters_on_it_sentence(
     };
     let mut effects = vec![move_effect];
     let tagged_target =
-        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), clause.span());
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), clause.span());
     for descriptor in shape.descriptors {
         let count = Value::Fixed(descriptor.count as i32)
             .with_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter);

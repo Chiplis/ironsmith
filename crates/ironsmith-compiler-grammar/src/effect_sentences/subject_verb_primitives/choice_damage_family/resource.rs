@@ -95,7 +95,7 @@ pub fn parse_sentence_unless_pays(
                 EffectAst::subject_verb_target_only(target),
                 EffectAst::UnlessAction {
                     effects: vec![EffectAst::subject_verb_return_to_hand(
-                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                         false,
                     )],
                     alternative: vec![EffectAst::subject_verb(

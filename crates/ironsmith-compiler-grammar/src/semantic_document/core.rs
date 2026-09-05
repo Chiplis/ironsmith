@@ -50,13 +50,34 @@ pub(super) fn parse_rewrite_item(
     }
 }
 
+/// The display line an item was recognized on, when it has one; keys the
+/// item's conversion mints bind in that line's symbol scope.
+fn rewrite_item_display_line(item: &RewriteSemanticItem) -> Option<usize> {
+    match item {
+        RewriteSemanticItem::Keyword(line) => Some(line.info.display_line_index),
+        RewriteSemanticItem::ParsedLine(line) => Some(line.info.display_line_index),
+        RewriteSemanticItem::Unsupported(line) => Some(line.info.display_line_index),
+        RewriteSemanticItem::SagaChapter(saga) => Some(saga.info.display_line_index),
+        RewriteSemanticItem::Modal(modal) => Some(modal.header.display_line_index),
+        RewriteSemanticItem::Metadata | RewriteSemanticItem::LevelHeader(_) => None,
+    }
+}
+
 pub(super) fn parse_rewrite_items(
     items: Vec<RewriteSemanticItem>,
+    symbols: &std::cell::RefCell<ironsmith_compiler_ast::SymbolTable>,
 ) -> Result<Vec<ParsedCardItem>, CardTextError> {
-    items
-        .into_iter()
-        .filter_map(|item| parse_rewrite_item(item).transpose())
-        .collect()
+    let mut parsed = Vec::with_capacity(items.len());
+    for item in items {
+        let scope = rewrite_item_display_line(&item)
+            .and_then(|line| symbols.borrow().line_scope(line));
+        let _references = scope
+            .map(|scope| ironsmith_compiler_ast::reference_ledger::ReferenceScopeGuard::enter(symbols, scope));
+        if let Some(item) = parse_rewrite_item(item)? {
+            parsed.push(item);
+        }
+    }
+    Ok(parsed)
 }
 
 pub fn parse_semantic_document(
@@ -72,16 +93,20 @@ pub fn parse_semantic_document(
         cleave_items,
         allow_unsupported,
     } = doc;
+    // Conversion below still mints keys (keyword lines, saga chapters); they
+    // bind in the scopes of the lines they came from.
+    let symbols = std::cell::RefCell::new(symbols);
     let overload_branch = overload_items
-        .map(parse_rewrite_items)
+        .map(|items| parse_rewrite_items(items, &symbols))
         .transpose()?
         .map(|items| ParsedOverloadBranch { items });
     let cleave_branch = cleave_items
-        .map(parse_rewrite_items)
+        .map(|items| parse_rewrite_items(items, &symbols))
         .transpose()?
         .map(|items| ParsedCleaveBranch { items });
 
-    let items = parse_rewrite_items(items)?;
+    let items = parse_rewrite_items(items, &symbols)?;
+    let symbols = symbols.into_inner();
     let mut reference_resolution =
         crate::model::canonical_references::resolve_parsed_items_references(&items, &symbols);
     if let Some(branch) = &overload_branch {

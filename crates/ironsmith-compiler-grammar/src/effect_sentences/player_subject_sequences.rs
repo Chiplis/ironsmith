@@ -191,7 +191,7 @@ pub(super) fn parse_controller_and_defending_player_discard_or_sacrifice(
         }
     }
 
-    let moved_tag = crate::tag::CompilerReferenceTag::JointDiscardOrSacrifice.key();
+    let moved_tag = crate::tag::CompilerReferenceTag::JointDiscardOrSacrifice.bind();
     Some(vec![EffectAst::TagAffected {
         effect: Box::new(EffectAst::Coordinated {
             effects: vec![

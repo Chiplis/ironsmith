@@ -130,3 +130,20 @@ test("a drag target does not auto-submit while optional extra targets remain", (
     false,
   );
 });
+
+test("targeted casts require an explicit self player box but allow opponent dead zones", () => {
+  function surface({ explicit = false, self = false, id = 0 }) {
+    const root = {
+      getAttribute: (name) => name === (explicit ? "data-player-target" : "data-player-drop-target") ? String(id) : null,
+      hasAttribute: (name) => name === "data-my-zone" && self,
+    };
+    return { closest: (selector) => selector.includes("data-player-target") ? root : null };
+  }
+  assert.equal(dropTargetCandidateFromElements([surface({ self: true })]), null);
+  assert.deepEqual(dropTargetCandidateFromElements([surface({ self: true, explicit: true })]), {
+    kind: "player", playerIds: [0],
+  });
+  assert.deepEqual(dropTargetCandidateFromElements([surface({ id: 1 })]), {
+    kind: "player", playerIds: [1],
+  });
+});

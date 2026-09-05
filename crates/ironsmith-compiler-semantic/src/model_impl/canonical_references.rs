@@ -4,6 +4,7 @@
 //! symbols by identity, role, domain, cardinality, and lexical accessibility,
 //! and gives every control-flow edge an explicit join rule before lowering.
 
+use ironsmith_core::TagKey;
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::Infallible;
 use std::ops::ControlFlow;
@@ -79,6 +80,17 @@ pub struct CanonicalReferenceResolutionAst {
     pub resolved: Vec<ResolvedReferenceAst>,
     pub joins: Vec<ReferenceJoinAst>,
     pub diagnostics: Vec<CanonicalReferenceDiagnostic>,
+    /// Every reference key the effects carry, with the symbol the key was
+    /// bound to in the scope it is used from (`None`: minted without binding).
+    pub keyed: Vec<KeyedReferenceAst>,
+}
+
+/// A reference key found in the effects, looked up by key in its use scope.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyedReferenceAst {
+    pub key: TagKey,
+    pub use_scope: SymbolScopeId,
+    pub symbol: Option<SymbolId>,
 }
 
 impl CanonicalReferenceResolutionAst {
@@ -86,6 +98,12 @@ impl CanonicalReferenceResolutionAst {
         self.resolved.append(&mut other.resolved);
         self.joins.append(&mut other.joins);
         self.diagnostics.append(&mut other.diagnostics);
+        self.keyed.append(&mut other.keyed);
+    }
+
+    /// Keys used without a binding in their scope.
+    pub fn unbound_keys(&self) -> impl Iterator<Item = &KeyedReferenceAst> {
+        self.keyed.iter().filter(|keyed| keyed.symbol.is_none())
     }
 }
 
@@ -137,11 +155,34 @@ impl<'a> CanonicalReferenceResolver<'a> {
         }
     }
 
+    /// Records every reference key `effects` carry, resolved by key from
+    /// `scope` through its ancestors; a key already recorded for that scope is
+    /// not repeated.
+    fn collect_keys(&mut self, effects: &[EffectAst], scope: SymbolScopeId) {
+        for key in ironsmith_core::tag::tag_keys_of(effects) {
+            if self
+                .report
+                .keyed
+                .iter()
+                .any(|keyed| keyed.use_scope == scope && keyed.key == key)
+            {
+                continue;
+            }
+            let symbol = self.symbols.symbol_for_key(scope, &key);
+            self.report.keyed.push(KeyedReferenceAst {
+                key,
+                use_scope: scope,
+                symbol,
+            });
+        }
+    }
+
     fn resolve_sequence(
         &mut self,
         effects: &[EffectAst],
         mut env: LexicalReferenceEnv,
     ) -> LexicalReferenceEnv {
+        self.collect_keys(effects, env.scope);
         for effect in effects {
             env = self.resolve_effect(effect, env);
         }
@@ -571,7 +612,11 @@ fn resolve_item(
 ) {
     match item {
         ParsedCardItem::Line(line) => {
-            let mut env = LexicalReferenceEnv::at_scope(symbols, symbols.root_scope());
+            // Keys minted while the line parsed were bound in the line's scope.
+            let line_scope = symbols
+                .line_scope(line.info.display_line_index)
+                .unwrap_or(symbols.root_scope());
+            let mut env = LexicalReferenceEnv::at_scope(symbols, line_scope);
             let mut resolver = CanonicalReferenceResolver::new(symbols);
             for chunk in &line.chunks {
                 env = resolve_line_chunk(chunk, &mut resolver, env);
@@ -587,6 +632,7 @@ fn resolve_item(
                     resolver.resolve_binding(object, &mut trigger_env);
                 }
                 let wrapper = EffectAst::ControlFlow(Box::new(ability.program.clone()));
+                resolver.collect_keys(std::slice::from_ref(&wrapper), trigger_env.scope);
                 resolver.resolve_effect(&wrapper, trigger_env);
             }
             report.append(resolver.report);
@@ -649,7 +695,10 @@ fn resolve_line_chunk(
 
 fn resolve_modal(modal: &ParsedModalAst, symbols: &SymbolTable) -> CanonicalReferenceResolutionAst {
     let mut resolver = CanonicalReferenceResolver::new(symbols);
-    let mut env = LexicalReferenceEnv::at_scope(symbols, symbols.root_scope());
+    let modal_scope = symbols
+        .line_scope(modal.header.info.display_line_index)
+        .unwrap_or(symbols.root_scope());
+    let mut env = LexicalReferenceEnv::at_scope(symbols, modal_scope);
     env = resolver.resolve_sequence(&modal.header.prefix_effects_ast, env);
     env = resolver.resolve_sequence(&modal.header.common_prefix_effects_ast, env);
     let branches = modal

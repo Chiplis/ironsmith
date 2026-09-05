@@ -83,7 +83,7 @@ impl FilterEnvelopeDecorations {
         filter.distinct_names |= self.distinct_names;
         if self.vote_winners_only {
             filter = filter.match_tagged(
-                crate::tag::CompilerReferenceTag::VoteWinners.key(),
+                crate::tag::CompilerReferenceTag::VoteWinners.bind(),
                 TaggedOpbjectRelation::IsTaggedObject,
             );
         }

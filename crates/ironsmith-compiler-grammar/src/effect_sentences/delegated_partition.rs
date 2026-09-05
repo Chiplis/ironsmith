@@ -11,7 +11,7 @@ pub(super) fn parse_source_exiled_delegated_partition_program(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
     let shape = crate::grammar::effects::delegated_partition_shapes::parse_source_exiled_delegated_partition_shape(tokens)?;
-    let pool_tag = crate::tag::CompilerReferenceTag::SourceExiled.key();
+    let pool_tag = crate::tag::CompilerReferenceTag::SourceExiled.bind();
     let subset_tag = crate::tag::CompilerDerivedTag::DelegatedSubset.key(&pool_tag);
     let choose_subset = EffectAst::ChooseObjects {
         filter: ObjectFilter::tagged(pool_tag.clone()),

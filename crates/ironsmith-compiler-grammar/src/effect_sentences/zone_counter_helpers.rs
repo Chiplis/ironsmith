@@ -458,7 +458,7 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
         let target_spec = crate::model::ast::choose_spec_for_target(&target);
         count_value = Value::Add(
             Box::new(Value::PowerOf(Box::new(ChooseSpec::Tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
             )))),
             Box::new(Value::Scaled(
                 Box::new(Value::PowerOf(Box::new(target_spec))),
@@ -510,7 +510,7 @@ pub fn parse_sentence_put_multiple_counters_on_target(
         second.counter_type,
         Value::Fixed(second.count as i32),
         TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             span_from_tokens(tokens),
         ),
         None,
@@ -622,7 +622,7 @@ fn parse_transform_like(
             Ok(EffectAst::ForEachObject {
                 filter,
                 effects: vec![action(TargetAst::Tagged(
-                    crate::tag::CompilerReferenceTag::It.key(),
+                    crate::tag::CompilerReferenceTag::It.bind(),
                     span_from_tokens(tokens),
                 ))],
             })

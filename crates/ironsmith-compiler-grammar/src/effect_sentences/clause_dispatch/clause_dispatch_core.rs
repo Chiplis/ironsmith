@@ -17,7 +17,10 @@ pub(super) fn parse_effect_clause_unstacked(
     } else {
         tokens
     };
-    let input = clause_readings::Clause { tokens , read_by_cache: Default::default() };
+    let input = clause_readings::Clause {
+        tokens,
+        read_by_cache: Default::default(),
+    };
     match clause_readings::read_clause(&input) {
         ParseOutcome::Match(matched) => return Ok(matched.value.value),
         ParseOutcome::NoMatch => clause_readings::diagnose(&input)?,
@@ -89,34 +92,43 @@ pub(super) fn parse_effect_clause_unstacked(
             "explicit"
         }
     ));
-    if matches!(verb, Verb::Counter)
-        && !subject_tokens.is_empty()
-        && contains_token_word(tokens, "on")
-        && let Ok(effect) = parse_put_counters(tokens)
-    {
-        parser_trace("parse_effect_clause:counter-noun-treated-as-put", tokens);
-        return Ok(effect);
-    }
-    if matches!(verb, Verb::Get)
-        && let Some(effect) = parse_get_pump_clause(subject_tokens, rest, tokens)?
-    {
-        return Ok(effect);
-    }
-    if matches!(verb, Verb::Sacrifice)
-        && let Some((subject, target)) = parse_controller_or_owner_of_target_subject(subject_tokens)
-    {
-        return parse_sacrifice(rest, Some(subject), Some(target));
-    }
-    if matches!(verb, Verb::Put)
-        && let Some((SubjectAst::Player(PlayerAst::ItsOwner), target)) =
-            parse_controller_or_owner_of_target_subject(subject_tokens)
-        && is_pronoun_top_or_bottom_library_choice_put_tail(rest)
-    {
-        return Ok(EffectAst::subject_verb(
-            SubjectVerbRoleAst::Actor,
-            PlayerAst::ItsOwner,
-            SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target },
-        ));
+    // The verb names the clause family; each family's typed shape reads before
+    // the general verb dispatch below.
+    match verb {
+        Verb::Counter => {
+            if !subject_tokens.is_empty()
+                && contains_token_word(tokens, "on")
+                && let Ok(effect) = parse_put_counters(tokens)
+            {
+                parser_trace("parse_effect_clause:counter-noun-treated-as-put", tokens);
+                return Ok(effect);
+            }
+        }
+        Verb::Get => {
+            if let Some(effect) = parse_get_pump_clause(subject_tokens, rest, tokens)? {
+                return Ok(effect);
+            }
+        }
+        Verb::Sacrifice => {
+            if let Some((subject, target)) =
+                parse_controller_or_owner_of_target_subject(subject_tokens)
+            {
+                return parse_sacrifice(rest, Some(subject), Some(target));
+            }
+        }
+        Verb::Put => {
+            if let Some((SubjectAst::Player(PlayerAst::ItsOwner), target)) =
+                parse_controller_or_owner_of_target_subject(subject_tokens)
+                && is_pronoun_top_or_bottom_library_choice_put_tail(rest)
+            {
+                return Ok(EffectAst::subject_verb(
+                    SubjectVerbRoleAst::Actor,
+                    PlayerAst::ItsOwner,
+                    SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target },
+                ));
+            }
+        }
+        _ => {}
     }
     let subject_word_view = ClauseDispatchCompatWords::new(subject_tokens);
     let subject_words = subject_word_view.to_word_refs();
@@ -190,7 +202,7 @@ pub(super) fn parse_effect_clause_unstacked(
                 TargetAst::Source(span_from_tokens(subject_tokens))
             }
             clause_grammar::ReferenceSubjectShape::Tagged => TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 span_from_tokens(subject_tokens),
             ),
             clause_grammar::ReferenceSubjectShape::Other => parse_target_phrase(subject_tokens)?,
@@ -398,7 +410,7 @@ pub(super) fn parse_passive_goad_clause(
     };
     let target = match shape.target {
         clause_grammar::GoadTargetShape::TaggedToken => TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             span_from_tokens(tokens),
         ),
         clause_grammar::GoadTargetShape::Target(target_tokens) => {

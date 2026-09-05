@@ -1,4 +1,4 @@
-@media (max-width: 720px) and (orientation: landscape) {
+@media (max-width: 720px) and (orientation: landscape), (max-width: 1023px) and (max-height: 540px) and (orientation: landscape) {
   .app-shell {
     gap: 0;
     padding: 0;
@@ -3225,7 +3225,7 @@
    stack rail, and the cog-only Topbar overlay.
    Reuses Ironsmith's warm palette — no MTGA colors.
    ============================================================ */
-@media (max-width: 720px) and (orientation: landscape) {
+@media (max-width: 720px) and (orientation: landscape), (max-width: 1023px) and (max-height: 540px) and (orientation: landscape) {
   /* Topbar trims to a floating cog at the top-right corner. */
   .topbar-mobile-overlay--cog-only {
     position: fixed;

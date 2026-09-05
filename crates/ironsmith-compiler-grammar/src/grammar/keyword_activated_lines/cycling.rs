@@ -265,17 +265,35 @@ fn parse_cycling_filter_atom_lexed<'a>(input: &mut LexStream<'a>) -> WResult<Cyc
 }
 
 fn classify_cycling_filter_word(word: &str) -> CyclingFilterAtom {
-    if let Ok(supertype) = leaf::parse_leaf_supertype_complete(word) {
-        return CyclingFilterAtom::Supertype(supertype);
-    }
-    if let Ok(card_type) = leaf::parse_leaf_card_type_complete(word) {
-        return CyclingFilterAtom::CardType(card_type);
-    }
-    if let Ok(subtype) = leaf::parse_leaf_subtype_flexible_complete(word) {
-        return CyclingFilterAtom::Subtype(subtype);
-    }
-    if let Ok(colors) = leaf::parse_leaf_color_complete(word) {
-        return CyclingFilterAtom::Colors(colors);
+    // One declared alternation: the alternatives are exclusive shapes, and the
+    // first that reads the input names it.
+    let alternation = None::<CyclingFilterAtom>
+        .or_else(|| {
+            if let Ok(supertype) = leaf::parse_leaf_supertype_complete(word) {
+                return Some(CyclingFilterAtom::Supertype(supertype));
+            }
+            None
+        })
+        .or_else(|| {
+            if let Ok(card_type) = leaf::parse_leaf_card_type_complete(word) {
+                return Some(CyclingFilterAtom::CardType(card_type));
+            }
+            None
+        })
+        .or_else(|| {
+            if let Ok(subtype) = leaf::parse_leaf_subtype_flexible_complete(word) {
+                return Some(CyclingFilterAtom::Subtype(subtype));
+            }
+            None
+        })
+        .or_else(|| {
+            if let Ok(colors) = leaf::parse_leaf_color_complete(word) {
+                return Some(CyclingFilterAtom::Colors(colors));
+            }
+            None
+        });
+    if let Some(shape) = alternation {
+        return shape;
     }
     CyclingFilterAtom::Ignored
 }

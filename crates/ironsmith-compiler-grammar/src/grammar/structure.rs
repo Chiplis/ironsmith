@@ -1099,7 +1099,7 @@ pub fn split_if_clause_lexed(
         let mut effects = vec![EffectAst::subject_verb_choose_player(
             PlayerAst::You,
             tied_players.clone(),
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             false,
             0,
         )];

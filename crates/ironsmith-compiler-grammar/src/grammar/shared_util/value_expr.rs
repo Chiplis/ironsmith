@@ -266,7 +266,7 @@ pub fn colored_mana_symbols_in_costs(words: &[&str]) -> Option<(Value, usize)> {
     Some((
         Value::ManaSymbolsInManaCostOf {
             spec: Box::new(ChooseSpec::Tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
             )),
             color,
         }

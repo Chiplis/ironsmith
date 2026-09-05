@@ -51,7 +51,9 @@ pub fn parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(
     let look_clause = matched
         .capture_clause("look_clause", sentence_clause)?
         .trimmed();
-    let look_effect = crate::grammar::primitives::probe_shape(super::super::verb_handlers::parse_look(look_clause.tokens(), None))?;
+    let look_effect = crate::grammar::primitives::probe_shape(
+        super::super::verb_handlers::parse_look(look_clause.tokens(), None),
+    )?;
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         subject: SubjectVerbSubjectAst { player, .. },
         action: SubjectVerbActionAst::LookAtTopCards { count, .. },
@@ -120,7 +122,7 @@ pub fn parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(
     };
 
     let looked_tag = crate::util::helper_tag_for_tokens(tokens, "looked");
-    let exiled_tag = crate::tag::CompilerReferenceTag::It.key();
+    let exiled_tag = crate::tag::CompilerReferenceTag::It.bind();
     let mut choice_filter = ObjectFilter::tagged(looked_tag.clone());
     choice_filter.zone = Some(Zone::Library);
 

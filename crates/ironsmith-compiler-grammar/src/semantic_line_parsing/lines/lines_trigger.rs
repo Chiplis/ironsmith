@@ -2046,7 +2046,7 @@ pub(super) fn lower_special_rewrite_triggered_head(
         })
     {
         let trigger = parse_trigger_clause_lexed(trigger_parse_tokens)?;
-        let triggering_tag = crate::tag::CompilerReferenceTag::Triggering.key();
+        let triggering_tag = crate::tag::CompilerReferenceTag::Triggering.bind();
         let triggering_spell = TargetAst::Tagged(triggering_tag.clone(), None);
         let mut suspend_filter = ObjectFilter::default();
         suspend_filter.alternative_cast = Some(crate::filter::AlternativeCastKind::Suspend);
@@ -2099,7 +2099,7 @@ pub(super) fn lower_special_rewrite_triggered_head(
         let trigger = TriggerSpec::ThisBecomesBlockedByObject(ObjectFilter::creature());
         let effects = if effect_parse_tokens.is_empty() {
             vec![EffectAst::subject_verb_grant_abilities_to_target(
-                TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), None),
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None),
                 vec![KeywordAction::FirstStrike.into()],
                 Until::EndOfTurn,
             )]
@@ -2145,21 +2145,21 @@ pub(super) fn lower_special_rewrite_triggered_divvy(
             parse_effect_sentences_lexed(&join_sentences_with_period(&grouped))?
         };
         effects.push(EffectAst::subject_verb_tag_matching_objects(
-            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
+            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
             vec![Zone::Library],
-            crate::tag::CompilerReferenceTag::DivvySource.key(),
+            crate::tag::CompilerReferenceTag::DivvySource.bind(),
         ));
         effects.push(EffectAst::ChooseObjectsAcrossZones {
-            filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.key()),
+            filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
             count: ChoiceCount::exactly(1),
             count_value: None,
             player: PlayerAst::Opponent,
-            tag: crate::tag::CompilerReferenceTag::DivvyChosen.key(),
+            tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
             zones: vec![Zone::Library],
             search_mode: None,
         });
         effects.push(EffectAst::subject_verb_move_to_zone(
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyChosen.key(), None),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind(), None),
             Zone::Hand,
             false,
             ReturnControllerAst::Preserve,
@@ -2167,14 +2167,14 @@ pub(super) fn lower_special_rewrite_triggered_divvy(
             None,
         ));
         effects.push(EffectAst::ForEachTagged {
-            tag: crate::tag::CompilerReferenceTag::DivvySource.key(),
+            tag: crate::tag::CompilerReferenceTag::DivvySource.bind(),
             effects: vec![EffectAst::Conditional {
                 predicate: membership_predicate_for_iterated_object(
-                    &crate::tag::CompilerReferenceTag::DivvyChosen.key(),
+                    &crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
                 ),
                 if_true: Vec::new(),
                 if_false: vec![EffectAst::subject_verb_move_to_zone(
-                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                     Zone::Graveyard,
                     false,
                     ReturnControllerAst::Preserve,
@@ -2267,8 +2267,8 @@ pub(super) fn lower_special_rewrite_triggered_oath(
         } else {
             parse_trigger_clause_lexed(trigger_parse_tokens)?
         };
-        let revealed_tag = crate::tag::CompilerReferenceTag::OathRevealed.key();
-        let creature_tag = crate::tag::CompilerReferenceTag::OathCreature.key();
+        let revealed_tag = crate::tag::CompilerReferenceTag::OathRevealed.bind();
+        let creature_tag = crate::tag::CompilerReferenceTag::OathCreature.bind();
         let mut creature_card_filter = ObjectFilter::creature();
         creature_card_filter.zone = None;
         let effects = vec![
@@ -2307,7 +2307,7 @@ pub(super) fn lower_special_rewrite_triggered_oath(
                             predicate: membership_predicate_for_iterated_object(&creature_tag),
                             if_true: Vec::new(),
                             if_false: vec![EffectAst::subject_verb_move_to_zone(
-                                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                                 Zone::Graveyard,
                                 false,
                                 ReturnControllerAst::Preserve,
@@ -2390,7 +2390,7 @@ pub(super) fn lower_special_rewrite_triggered_tail(
         } else {
             parse_trigger_clause_lexed(trigger_parse_tokens)?
         };
-        let discarded_tag = crate::tag::CompilerReferenceTag::DiscardedThisWay.key();
+        let discarded_tag = crate::tag::CompilerReferenceTag::DiscardedThisWay.bind();
         let mut creature_card_filter = ObjectFilter::creature();
         creature_card_filter.zone = Some(Zone::Graveyard);
         creature_card_filter.owner = Some(PlayerFilter::You);
@@ -2456,13 +2456,13 @@ pub(super) fn lower_special_rewrite_triggered_tail(
                 count: ChoiceCount::any_number(),
                 count_value: None,
                 player: PlayerAst::That,
-                tag: crate::tag::CompilerReferenceTag::DivvyChosen.key(),
+                tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
             },
             EffectAst::subject_verb_cant(
                 crate::effect::Restriction::attack(
                     ObjectFilter::creature()
                         .controlled_by(PlayerFilter::IteratedPlayer)
-                        .not_tagged(crate::tag::CompilerReferenceTag::DivvyChosen.key()),
+                        .not_tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind()),
                 ),
                 Until::EndOfTurn,
                 None,

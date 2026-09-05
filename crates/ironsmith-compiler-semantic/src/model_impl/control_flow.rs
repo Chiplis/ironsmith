@@ -5,6 +5,8 @@
 //! the semantic distinction between conditions, replacements, prevention,
 //! permissions, durations, and delayed execution until lowering.
 
+use ironsmith_core::tag::TagKeyWalk;
+
 use std::collections::HashSet;
 
 use crate::IfResultPredicate;
@@ -14,6 +16,7 @@ use crate::model::provenance::SemanticProvenance;
 use crate::model::symbols::{SymbolReference, SymbolScopeId, SymbolScopeKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum ControlFlowSemanticAst {
     ControlFlow,
     Replacement,
@@ -22,6 +25,7 @@ pub enum ControlFlowSemanticAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum ConditionPositionAst {
     Precondition,
     ResultCondition,
@@ -30,6 +34,7 @@ pub enum ConditionPositionAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum ControlPredicateAst {
     State(PredicateAst),
     Result(IfResultPredicate),
@@ -37,14 +42,17 @@ pub enum ControlPredicateAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct ControlConditionAst {
     pub position: ConditionPositionAst,
     pub predicate: ControlPredicateAst,
     pub negated_surface: bool,
+    #[tag_walk(skip)]
     pub provenance: Option<SemanticProvenance>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum ReplacementKindAst {
     Instead,
     As,
@@ -54,6 +62,7 @@ pub enum ReplacementKindAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum ReplacedEventAst {
     PriorEffect,
     Damage,
@@ -67,6 +76,7 @@ pub enum ReplacedEventAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct ReplacementRelationshipAst {
     pub kind: ReplacementKindAst,
     pub event: ReplacedEventAst,
@@ -77,6 +87,7 @@ pub struct ReplacementRelationshipAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct PreventionRelationshipAst {
     pub event: ReplacedEventAst,
     pub condition: Option<ControlConditionAst>,
@@ -85,6 +96,7 @@ pub struct PreventionRelationshipAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct PermissionRelationshipAst {
     pub actor: ClauseActorAst,
     pub action: ClauseVerbAst,
@@ -93,6 +105,7 @@ pub struct PermissionRelationshipAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum CompilerDurationAst {
     Clause(ClauseDurationAst),
     ThisTurn,
@@ -105,6 +118,7 @@ pub enum CompilerDurationAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum DelayedScheduleAst {
     NextEndStep,
     NextCleanupStep,
@@ -117,6 +131,7 @@ pub enum DelayedScheduleAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum NestedProgramKindAst {
     Consequence,
     Alternative,
@@ -129,6 +144,7 @@ pub enum NestedProgramKindAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct ControlFlowScopeAst {
     pub id: SymbolScopeId,
     pub parent: Option<SymbolScopeId>,
@@ -136,6 +152,7 @@ pub struct ControlFlowScopeAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct ControlFlowReferenceEnvironmentAst {
     pub root: SymbolScopeId,
     pub scopes: Vec<ControlFlowScopeAst>,
@@ -169,6 +186,7 @@ impl ControlFlowReferenceEnvironmentAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct NestedProgramAst {
     pub scope: SymbolScopeId,
     pub parent_scope: SymbolScopeId,
@@ -176,6 +194,7 @@ pub struct NestedProgramAst {
     pub effects: Vec<EffectAst>,
     pub imports: Vec<SymbolReference>,
     pub exports: Vec<SymbolReference>,
+    #[tag_walk(skip)]
     pub provenance: Option<SemanticProvenance>,
 }
 
@@ -194,6 +213,7 @@ impl NestedProgramAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum ControlFlowNodeAst {
     Condition {
         condition: ControlConditionAst,
@@ -240,11 +260,13 @@ pub enum ControlFlowError {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct CompilerControlFlowAst {
     pub semantic: ControlFlowSemanticAst,
     pub node: ControlFlowNodeAst,
     pub programs: Vec<NestedProgramAst>,
     pub references: ControlFlowReferenceEnvironmentAst,
+    #[tag_walk(skip)]
     pub provenance: Option<SemanticProvenance>,
 }
 

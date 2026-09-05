@@ -5,10 +5,13 @@
 //! independent, so decoded values are interned for the process lifetime while
 //! preserving the cheap `Copy` semantics used throughout the engine.
 
+use crate::tag::TagKeyWalk;
+
 use std::fmt;
 use std::ops::Deref;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub struct InternedStr(&'static str);
 
 impl InternedStr {
@@ -81,6 +84,7 @@ impl<'de> serde::Deserialize<'de> for InternedStr {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub struct InternedI32Slice(&'static [i32]);
 
 impl InternedI32Slice {

@@ -1,3 +1,5 @@
+use crate::tag::TagKeyWalk;
+
 use crate::{
     CounterType, KeywordActionKind, ManaSymbol, ObjectFilter, ObjectRef, PlayerFilter,
     SourceReferenceSurface, Value,
@@ -5,6 +7,7 @@ use crate::{
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum SourceCounterPronounSurface {
     Him,
     Her,
@@ -21,6 +24,7 @@ impl SourceCounterPronounSurface {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum AnthemCountExpression {
     MatchingFilter(ObjectFilter),
     /// Number of players whose graveyards contain at least `minimum_cards`
@@ -65,6 +69,7 @@ pub enum AnthemCountExpression {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum AnthemValue {
     Fixed(i32),
     Dynamic(Value),

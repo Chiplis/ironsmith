@@ -1,3 +1,5 @@
+use crate::tag::TagKeyWalk;
+
 use crate::cost_model::{CoreCostComponent, TotalCost};
 use crate::{
     CardType, ColorSet, Condition, ManaSymbol, ObjectFilter, ObjectId, ResolutionProgram,
@@ -6,6 +8,7 @@ use crate::{
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(TagKeyWalk)]
 pub enum ActivationTiming {
     #[default]
     AnyTime,
@@ -27,6 +30,7 @@ pub enum ActivationTiming {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum ManaUsageSubtypeRequirement {
     Exact(Subtype),
     ChosenTypeOfSource,
@@ -34,6 +38,7 @@ pub enum ManaUsageSubtypeRequirement {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum ManaSpendBonusCondition {
     IfThisManaIsSpentToCast,
     IfThatManaIsSpentToCast,
@@ -44,6 +49,7 @@ pub enum ManaSpendBonusCondition {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum ManaSpendAbilityGrantDuration {
     UntilEndOfTurn,
     UntilYourNextTurn,
@@ -55,6 +61,7 @@ pub enum ManaSpendAbilityGrantDuration {
 /// riot, lower to triggered gameplay abilities rather than a static marker.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum ManaSpendGrantedKeyword {
     Riot,
 }
@@ -66,6 +73,7 @@ pub enum ManaSpendGrantedKeyword {
 /// runtime crate.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum ManaPaymentPurpose {
     CastSpell,
     ActivateAbility,
@@ -84,6 +92,7 @@ pub enum ManaPaymentPurpose {
     clippy::large_enum_variant,
     reason = "mana predicates intentionally retain value-semantic object filters"
 )]
+#[derive(TagKeyWalk)]
 pub enum ManaPaymentPredicate {
     Any,
     Purpose(ManaPaymentPurpose),
@@ -104,6 +113,7 @@ impl Eq for ManaPaymentPredicate {}
 /// is the per-unit multiplicity required by CR 106.6a.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct ManaSpendPayload<E> {
     pub predicate: ManaPaymentPredicate,
     pub effects: ResolutionProgram<E>,
@@ -118,6 +128,7 @@ impl<E: PartialEq> Eq for ManaSpendPayload<E> {}
     clippy::large_enum_variant,
     reason = "mana restrictions are a shared value model and retain typed filters inline"
 )]
+#[derive(TagKeyWalk)]
 pub enum ManaUsageRestriction<E> {
     CastSpell {
         card_types: Vec<CardType>,
@@ -246,6 +257,7 @@ impl<E> ManaUsageRestriction<E> {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct RestrictedManaUnit<E> {
     pub symbol: ManaSymbol,
     pub source: ObjectId,
@@ -262,6 +274,7 @@ impl<E: PartialEq> Eq for RestrictedManaUnit<E> {}
 /// `Cond` is the intervening-if condition; see [`TriggeredAbility`]. It
 /// defaults to the resolved [`Condition`] so the runtime spells this the way it
 /// always has.
+#[derive(TagKeyWalk)]
 pub struct Ability<SA, T, E, C, Cond = Condition> {
     pub kind: AbilityKind<SA, T, E, C, Cond>,
     pub functional_zones: Vec<Zone>,
@@ -269,6 +282,7 @@ pub struct Ability<SA, T, E, C, Cond = Condition> {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum AbilityKind<SA, T, E, C, Cond = Condition> {
     Static(SA),
     Triggered(TriggeredAbility<T, E, Cond>),
@@ -277,6 +291,7 @@ pub enum AbilityKind<SA, T, E, C, Cond = Condition> {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum ProtectionFrom {
     Color(ColorSet),
     Colorless,
@@ -292,6 +307,7 @@ pub enum ProtectionFrom {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct LevelAbility<SA> {
     pub min_level: u32,
     pub max_level: Option<u32>,
@@ -301,6 +317,7 @@ pub struct LevelAbility<SA> {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum PresentationKeyword {
     Prowess,
     Firebending(String),
@@ -392,6 +409,7 @@ impl PresentationKeyword {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum ActivatedPresentationLabel {
     Throw,
     ThrowEllipsis,
@@ -443,6 +461,7 @@ impl ActivatedPresentationLabel {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum PresentationLabel {
     AbilityWord(String),
     Keyword(PresentationKeyword),
@@ -515,6 +534,7 @@ impl PresentationLabel {
 /// [`Condition`], which is what lowering produces. Pinning this to the resolved
 /// type is what used to force recognizers to resolve mid-recognition.
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct TriggeredAbility<T, E, C = Condition> {
     pub trigger: T,
     pub effects: ResolutionProgram<E>,
@@ -530,6 +550,7 @@ pub struct TriggeredAbility<T, E, C = Condition> {
 /// `Cond` is the condition gating activation; see [`TriggeredAbility`]. It
 /// defaults to the resolved [`Condition`] so the runtime spells this the way it
 /// always has.
+#[derive(TagKeyWalk)]
 pub struct ActivatedAbility<E, C, Cond = Condition> {
     pub mana_cost: TotalCost<C>,
     pub effects: ResolutionProgram<E>,

@@ -7,6 +7,7 @@ edition = "2024"
 path = "src/lib.rs"
 
 [dependencies]
+ironsmith-tag-walk-derive = { path = "../ironsmith-tag-walk-derive" }
 serde = { version = "1.0.228", features = ["derive"], optional = true }
 
 [features]

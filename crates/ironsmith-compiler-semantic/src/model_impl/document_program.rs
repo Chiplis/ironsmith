@@ -4,13 +4,17 @@
 //! order, authored connective strength, lexical scope, and reference flow
 //! between those statements.
 
+use ironsmith_core::tag::TagKeyWalk;
+
 use crate::model::ast::EffectAst;
 use crate::model::symbols::{SymbolReference, SymbolScopeId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub struct CompilerStatementId(pub u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum CompilerStatementEdgeKindAst {
     Ordered,
     Then,
@@ -19,6 +23,7 @@ pub enum CompilerStatementEdgeKindAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct CompilerDocumentStatementAst {
     pub id: CompilerStatementId,
     pub scope: SymbolScopeId,
@@ -31,6 +36,7 @@ pub struct CompilerDocumentStatementAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct CompilerStatementEdgeAst {
     pub from: CompilerStatementId,
     pub to: CompilerStatementId,
@@ -39,6 +45,7 @@ pub struct CompilerStatementEdgeAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct CompilerDocumentProgramAst {
     pub scope: SymbolScopeId,
     pub parent_scope: SymbolScopeId,

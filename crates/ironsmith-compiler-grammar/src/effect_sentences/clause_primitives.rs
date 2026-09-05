@@ -135,7 +135,7 @@ pub fn parse_copy_targets_clause(
     Ok(Some(EffectAst::subject_verb_retarget_stack_object(
         PlayerAst::Implicit,
         TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::CopiedStackObject.key(),
+            crate::tag::CompilerReferenceTag::CopiedStackObject.bind(),
             LexedClause::new(tokens).span(),
         ),
         RetargetModeAst::OneToFixed {
@@ -159,10 +159,10 @@ pub fn parse_choose_new_targets_clause(
         let reference_tag = match clause_shapes::parse_retarget_reference_shape(split.target_tokens)
         {
             Some(clause_shapes::RetargetReferenceShape::Copy) => {
-                crate::tag::CompilerReferenceTag::CopiedStackObject.key()
+                crate::tag::CompilerReferenceTag::CopiedStackObject.bind()
             }
             Some(clause_shapes::RetargetReferenceShape::Other) => {
-                crate::tag::CompilerReferenceTag::It.key()
+                crate::tag::CompilerReferenceTag::It.bind()
             }
             None => {
                 return Err(CardTextError::ParseError(format!(
@@ -622,7 +622,7 @@ pub fn parse_choose_card_name_clause(
     Ok(Some(EffectAst::subject_verb_choose_card_name(
         shape.player,
         filter,
-        crate::tag::CompilerReferenceTag::ChosenName.key(),
+        crate::tag::CompilerReferenceTag::ChosenName.bind(),
     )))
 }
 
@@ -710,7 +710,7 @@ pub fn parse_attack_or_block_this_turn_if_able_clause(
     let subject_clause = LexedClause::new(shape.subject_tokens).trimmed();
     let result_filter = parse_dealt_damage_this_way_subject_filter(subject_clause.tokens())?;
     let target = if subject_clause.is_empty() {
-        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), clause.span())
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), clause.span())
     } else if let Some(filter) = result_filter.clone() {
         TargetAst::Object(filter, None, clause.span())
     } else {
@@ -732,7 +732,7 @@ pub fn parse_attack_or_block_this_turn_if_able_clause(
         || demonstrative_backref
     {
         let target = if demonstrative_backref {
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), clause.span())
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), clause.span())
         } else {
             target
         };
@@ -772,7 +772,7 @@ pub fn parse_attack_this_turn_if_able_clause(
     let subject_clause = LexedClause::new(shape.subject_tokens).trimmed();
     let result_filter = parse_dealt_damage_this_way_subject_filter(subject_clause.tokens())?;
     let target = if subject_clause.is_empty() {
-        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), clause.span())
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), clause.span())
     } else if let Some(filter) = result_filter.clone() {
         TargetAst::Object(filter, None, clause.span())
     } else {
@@ -794,7 +794,7 @@ pub fn parse_attack_this_turn_if_able_clause(
         || demonstrative_backref
     {
         let target = if demonstrative_backref {
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), clause.span())
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), clause.span())
         } else {
             target
         };
@@ -842,7 +842,7 @@ fn parse_dealt_damage_this_way_subject_filter(
         return Ok(None);
     };
     filter = filter.match_tagged(
-        crate::tag::CompilerReferenceTag::It.key(),
+        crate::tag::CompilerReferenceTag::It.bind(),
         TaggedOpbjectRelation::IsTaggedObject,
     );
     Ok(Some(filter))
@@ -871,7 +871,7 @@ pub fn parse_must_be_blocked_if_able_clause(
                 EffectAst::subject_verb_target_only(attacker_target),
                 EffectAst::subject_verb_cant(
                     crate::effect::Restriction::must_be_blocked(ObjectFilter::tagged(
-                        crate::tag::CompilerReferenceTag::It.key(),
+                        crate::tag::CompilerReferenceTag::It.bind(),
                     )),
                     Until::EndOfTurn,
                     None,
@@ -889,7 +889,7 @@ pub fn parse_must_be_blocked_if_able_clause(
     {
         return Ok(Some(EffectAst::subject_verb_cant(
             crate::effect::Restriction::must_be_blocked(ObjectFilter::tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
             )),
             Until::EndOfTurn,
             None,
@@ -1074,10 +1074,10 @@ pub fn parse_must_block_if_able_clause(
                 target_declarations.insert(
                     0,
                     EffectAst::SnapshotLastObjectTag {
-                        into: crate::tag::CompilerReferenceTag::Triggering.key(),
+                        into: crate::tag::CompilerReferenceTag::Triggering.bind(),
                     },
                 );
-                ObjectFilter::tagged("triggering")
+                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::Triggering.bind())
             } else if super::super::grammar::activation_restrictions::parse_target_indicator_tokens(
                 attacker_clause.tokens(),
             )
@@ -1205,7 +1205,7 @@ pub fn parse_until_duration_triggered_clause(
             source
                 .tagged_constraints
                 .push(crate::target::TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::It.key(),
+                    tag: crate::tag::CompilerReferenceTag::It.bind(),
                     relation: TaggedOpbjectRelation::IsTaggedObject,
                 });
         }
@@ -1301,7 +1301,7 @@ pub fn parse_anaphoric_object_deals_damage_clause(
     {
         TargetAst::Source(span_from_tokens(source_tokens))
     } else {
-        let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
+        let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
         if crate::word_primitives::parse_sequence_complete(source_words, &["that", "land"]) {
             // Identity remains the typed trigger-object constraint while the
             // authored demonstrative is explicit rendering provenance.
@@ -1318,7 +1318,7 @@ pub fn parse_anaphoric_object_deals_damage_clause(
             filter
                 .tagged_constraints
                 .push(crate::filter::TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::It.key(),
+                    tag: crate::tag::CompilerReferenceTag::It.bind(),
                     relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
                 });
             TargetAst::Object(filter, None, span_from_tokens(source_tokens))
@@ -1364,7 +1364,7 @@ pub fn parse_deal_damage_equal_to_power_clause(
     };
     let source = if shape.source_is_tagged {
         TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             span_from_tokens(shape.source_tokens),
         )
     } else {
@@ -1409,7 +1409,7 @@ pub fn parse_deal_damage_equal_to_power_clause(
             filter
                 .tagged_constraints
                 .push(crate::filter::TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::It.key(),
+                    tag: crate::tag::CompilerReferenceTag::It.bind(),
                     relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
                 });
             Some(filter)
@@ -1532,7 +1532,7 @@ pub fn parse_fight_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,
             )
         })
     {
-        let tag = crate::tag::CompilerReferenceTag::ChosenObjects.key();
+        let tag = crate::tag::CompilerReferenceTag::ChosenObjects.bind();
         return Ok(Some(
             EffectAst::subject_verb_fight(
                 TargetAst::Tagged(
@@ -1570,7 +1570,7 @@ pub fn parse_fight_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,
             )
         {
             TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 span_from_tokens(left_tokens),
             )
         } else {
@@ -1581,7 +1581,7 @@ pub fn parse_fight_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,
     };
     let creature2 = if shape.right_is_tagged_other {
         TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             span_from_tokens(shape.right_tokens),
         )
     } else {

@@ -3273,6 +3273,12 @@ pub fn recognize_document_with_context(
                 idx += 1;
             }
             PreprocessedItem::Line(line) => {
+                // Every recognizer of this line, and the later phases that parse
+                // its effects, bind the keys they mint in the line's symbol scope.
+                let line_context = context.child(ParseScopeKind::Line {
+                    source_line: line.info.display_line_index,
+                });
+                let _line_references = line_context.reference_scope();
                 if try_push_complete_typed_static_line(line, &mut lines)? {
                     idx += 1;
                     continue;
@@ -3288,7 +3294,7 @@ pub fn recognize_document_with_context(
                     continue;
                 }
                 idx = dispatch_remaining_preprocessed_line(
-                    context,
+                    line_context,
                     preprocessed,
                     idx,
                     line,
@@ -3304,16 +3310,13 @@ pub fn recognize_document_with_context(
 
 #[inline(never)]
 fn dispatch_remaining_preprocessed_line(
-    context: ParseContextView<'_>,
+    line_context: ParseContextView<'_>,
     preprocessed: &PreprocessedDocument,
     idx: usize,
     line: &PreprocessedLine,
     allow_unsupported: bool,
     lines: &mut Vec<RecognizedLine>,
 ) -> Result<usize, CardTextError> {
-    let line_context = context.child(ParseScopeKind::Line {
-        source_line: line.info.display_line_index,
-    });
     let _line_scope = parse_trace::scope(format!(
         "line {} parse: \"{}\"",
         line.info.display_line_index + 1,
@@ -3685,57 +3688,56 @@ fn try_push_complete_typed_static_line(
     Ok(true)
 }
 
+/// The lines another family owns even though they carry a quoted ability
+/// gain; the quoted-gain fast path declines them all alike, whatever the
+/// order.
+const QUOTED_GAIN_DECLINES: &[fn(&PreprocessedLine) -> Result<bool, CardTextError>] = &[
+    // a labeled body reaches labeled-line dispatch first
+    |line| {
+        Ok(split_label_prefix_lexed(&line.info.source_tokens).is_some()
+            || split_label_prefix_lexed(&line.tokens).is_some())
+    },
+    // one complete quoted ability-gain sentence only
+    |line| Ok(split_lexed_sentences(&line.tokens).len() != 1),
+    // a permanent anthem owns its trailing quoted grants
+    |line| {
+        Ok(
+            crate::keyword_static::parse_anthem_with_trailing_segments_line(&line.tokens)?
+                .is_some(),
+        )
+    },
+    // an enter-as-copy replacement owns its quoted exception
+    |line| {
+        Ok(
+            crate::grammar::keyword_static_lines::parse_enter_as_copy_tokens(&line.tokens)
+                .is_some(),
+        )
+    },
+    // an attachment-subject `has` line is a continuous grant
+    |line| {
+        Ok(matches!(
+            crate::keyword_static::parse_enchanted_creature_has_line(&line.tokens),
+            Ok(Some(_))
+        ))
+    },
+    // a conditioned grant list belongs to the conditional static family
+    |line| {
+        Ok(crate::word_primitives::sequence_occurs(
+            &crate::lexer::parser_token_word_refs(&line.tokens),
+            &["as", "long", "as"],
+        ))
+    },
+];
+
 #[inline(never)]
 fn try_push_complete_typed_quoted_gain_statement(
     line: &PreprocessedLine,
     lines: &mut Vec<RecognizedLine>,
 ) -> Result<bool, CardTextError> {
-    if split_label_prefix_lexed(&line.info.source_tokens).is_some()
-        || split_label_prefix_lexed(&line.tokens).is_some()
-    {
-        // Preserve the same single-owner boundary as the quoted-static fast
-        // path above: labeled bodies must reach labeled-line dispatch before
-        // a quote-aware statement probe interprets an inner colon.
-        return Ok(false);
-    }
-    if split_lexed_sentences(&line.tokens).len() != 1 {
-        // This fast path owns one complete quoted ability-gain sentence. A
-        // later sentence may instead describe a token created by an earlier
-        // instruction (`They have "Sacrifice this token: ..."`); parsing the
-        // whole source line here would mistake the inner colon for a host-card
-        // activation and discard the preceding resolution steps.
-        return Ok(false);
-    }
-    // Permanent anthems can grant quoted abilities after a pump clause. The
-    // quoted-gain statement parser understands the inner ability list, but
-    // the complete typed anthem owns the outer battlefield-static meaning.
-    if crate::keyword_static::parse_anthem_with_trailing_segments_line(&line.tokens)?.is_some() {
-        return Ok(false);
-    }
-    // An enter-as-copy replacement can carry a quoted ability inside its
-    // `except` exception. The copy static family owns that complete line;
-    // the quoted-gain fast path would reduce it to a bare ability grant.
-    if crate::grammar::keyword_static_lines::parse_enter_as_copy_tokens(&line.tokens).is_some() {
-        return Ok(false);
-    }
-    // An attachment-subject `has ...` line is a continuous grant owned by the
-    // attached-object static family. Reducing it to a resolution-time ability
-    // gain drops the attachment semantics and renders the authored `has` as
-    // `gains`.
-    if matches!(
-        crate::keyword_static::parse_enchanted_creature_has_line(&line.tokens),
-        Ok(Some(_))
-    ) {
-        return Ok(false);
-    }
-    // A conditioned grant list ("has X as long as you control a Y, ...")
-    // belongs to the conditional static family; reducing it to the quoted
-    // arm would drop every condition and every unquoted grant.
-    if crate::word_primitives::sequence_occurs(
-        &crate::lexer::parser_token_word_refs(&line.tokens),
-        &["as", "long", "as"],
-    ) {
-        return Ok(false);
+    for declines in QUOTED_GAIN_DECLINES {
+        if declines(line)? {
+            return Ok(false);
+        }
     }
     let first_quote = crate::slice_primitives::select_position(&line.tokens, |token| {
         token.kind == TokenKind::Quote
@@ -4036,6 +4038,9 @@ fn assemble_document_with_symbols(
     allow_unsupported: bool,
     symbols: crate::model::symbols::SymbolTable,
 ) -> Result<RewriteSemanticDocument, CardTextError> {
+    // Assembly parses the recognized lines' effects: keys minted for a line bind
+    // in the scope recognition opened for it.
+    let symbols = std::cell::RefCell::new(symbols);
     let overload_items = semantic_facts
         .overload_rewrite
         .as_ref()
@@ -4045,6 +4050,7 @@ fn assemble_document_with_symbols(
                 let Some(line) = rewrite_overload_recognized_line(line, payload) else {
                     continue;
                 };
+                let _references = line_reference_scope(&symbols, &line);
                 items.push(assemble_non_metadata_line(line, allow_unsupported)?);
             }
             Ok::<_, CardTextError>(items)
@@ -4062,6 +4068,7 @@ fn assemble_document_with_symbols(
                 {
                     continue;
                 }
+                let _references = line_reference_scope(&symbols, line);
                 items.push(assemble_non_metadata_line(line.clone(), allow_unsupported)?);
             }
             Ok::<_, CardTextError>(items)
@@ -4094,7 +4101,10 @@ fn assemble_document_with_symbols(
                 card = crate::card_metadata::apply_compiler_metadata_line(card, value)?;
                 items.push(RewriteSemanticItem::Metadata);
             }
-            other => items.push(assemble_non_metadata_line(other, allow_unsupported)?),
+            other => {
+                let _references = line_reference_scope(&symbols, &other);
+                items.push(assemble_non_metadata_line(other, allow_unsupported)?);
+            }
         }
     }
 
@@ -4102,7 +4112,7 @@ fn assemble_document_with_symbols(
         card,
         annotations,
         provenance: preprocessed.provenance,
-        symbols,
+        symbols: symbols.into_inner(),
         items,
         overload_items,
         cleave_items,
@@ -4164,6 +4174,18 @@ fn rewrite_overload_recognized_line(
         }
         other => Some(other.clone()),
     }
+}
+
+/// The reference scope of the line `line` was recognized on, when recognition
+/// opened one: keys minted while the guard lives bind there.
+fn line_reference_scope<'a>(
+    symbols: &'a std::cell::RefCell<crate::model::symbols::SymbolTable>,
+    line: &RecognizedLine,
+) -> Option<ironsmith_compiler_ast::reference_ledger::ReferenceScopeGuard<'a>> {
+    let scope = symbols
+        .borrow()
+        .line_scope(recognized_line_source_index(line)?)?;
+    Some(ironsmith_compiler_ast::reference_ledger::ReferenceScopeGuard::enter(symbols, scope))
 }
 
 fn recognized_line_source_index(line: &RecognizedLine) -> Option<usize> {

@@ -98,7 +98,7 @@ fn parse_during_counter_on_source_turn_play_permission(
     };
     Some(
         EffectAst::subject_verb_grant_play_tagged_during_turns_counter_put_on_source(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             PlayerAst::You,
             allow_land,
             counter_type,
@@ -922,7 +922,7 @@ fn parse_reveal_from_outside_game_or_choose_face_up_exile_to_hand(
 
     choose_filter.zone = None;
 
-    let chosen_tag = crate::tag::CompilerReferenceTag::OutsideGameOrExileSelected.key();
+    let chosen_tag = crate::tag::CompilerReferenceTag::OutsideGameOrExileSelected.bind();
     let effects = vec![
         EffectAst::ChooseObjectsAcrossZones {
             filter: choose_filter,
@@ -962,7 +962,7 @@ fn parse_reveal_from_outside_game_to_hand(
     filter.owner = Some(PlayerFilter::You);
     filter.zone = Some(Zone::OutsideGame);
 
-    let wish_tag = crate::tag::CompilerReferenceTag::SearchedOutsideGame.key();
+    let wish_tag = crate::tag::CompilerReferenceTag::SearchedOutsideGame.bind();
     let effects = vec![
         EffectAst::ChooseObjectsAcrossZones {
             filter,
@@ -1014,7 +1014,7 @@ fn parse_choose_objects_then_for_each_of_those_bundle(
     else {
         return Ok(None);
     };
-    let choose_tag = crate::tag::CompilerReferenceTag::It.key();
+    let choose_tag = crate::tag::CompilerReferenceTag::It.bind();
 
     let Some(loop_shape) = bundle_grammar::parse_for_each_chosen_shape(second) else {
         return Ok(None);
@@ -1072,7 +1072,7 @@ fn bind_prior_mixed_target_reference(target: &mut TargetAst, iteration: MixedTar
                     TargetAst::Player(PlayerFilter::IteratedPlayer, *span)
                 }
                 MixedTargetIteration::Object => {
-                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), *span)
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), *span)
                 }
             };
         }
@@ -1216,11 +1216,11 @@ fn parse_discard_reveal_choose_discard_chosen_bundle(
     else {
         return Ok(None);
     };
-    let discarded_tag = crate::tag::CompilerReferenceTag::DiscardedThisWay.key();
+    let discarded_tag = crate::tag::CompilerReferenceTag::DiscardedThisWay.bind();
     let count_value =
         count_value.map(|_| Value::Count(ObjectFilter::tagged(discarded_tag.clone())));
 
-    let mut discarded_filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
+    let mut discarded_filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
     discarded_filter.zone = Some(Zone::Hand);
 
     Ok(Some(vec![
@@ -1238,7 +1238,7 @@ fn parse_discard_reveal_choose_discard_chosen_bundle(
             count: choose_count,
             count_value,
             player: chooser,
-            tag: crate::tag::CompilerReferenceTag::It.key(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
         },
         EffectAst::subject_verb_discard(
             PlayerAst::That,
@@ -1413,7 +1413,7 @@ pub(super) fn parse_search_library_slots_to_hand_bundle(
             PlayerAst::You,
             slots,
             true,
-            crate::tag::CompilerReferenceTag::SearchLibrarySlotsProgress.key(),
+            crate::tag::CompilerReferenceTag::SearchLibrarySlotsProgress.bind(),
         ),
     ]))
 }
@@ -1441,7 +1441,7 @@ fn search_library_slots_to_hand_effect_from_items(
         PlayerAst::You,
         slots,
         true,
-        crate::tag::CompilerReferenceTag::SearchLibrarySlotsProgress.key(),
+        crate::tag::CompilerReferenceTag::SearchLibrarySlotsProgress.bind(),
     ))
 }
 
@@ -1505,7 +1505,7 @@ fn multi_zone_search_destination_effects(
     shape: &bundle_grammar::KickedMultiZoneSearchDestinationShape,
     destination: Zone,
 ) -> Vec<EffectAst> {
-    let searched_tag = crate::tag::CompilerReferenceTag::SearchedMultiZone.key();
+    let searched_tag = crate::tag::CompilerReferenceTag::SearchedMultiZone.bind();
     vec![
         EffectAst::ChooseObjectsAcrossZones {
             filter: shape.filter.clone(),
@@ -1588,7 +1588,7 @@ pub(crate) fn parse_complete_kicked_search_replacement_bundle(
 
 fn parse_persistent_exile_play_tax_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let shape = bundle_grammar::parse_persistent_exile_play_tax_tokens(tokens)?;
-    let tagged = crate::tag::CompilerReferenceTag::It.key();
+    let tagged = crate::tag::CompilerReferenceTag::It.bind();
     let target = TargetAst::Object(shape.target_filter, Some(TextSpan::synthetic()), None);
     let mut spell_filter = ObjectFilter::spell()
         .without_type(CardType::Land)

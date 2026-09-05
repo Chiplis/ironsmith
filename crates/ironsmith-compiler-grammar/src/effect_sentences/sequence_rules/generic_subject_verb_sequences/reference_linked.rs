@@ -80,8 +80,8 @@ pub fn parse_draw_reveal_then_triggering_creature_mana_value_result(
         return Ok(None);
     }
 
-    let drawn_tag = crate::tag::CompilerReferenceTag::DrawnRevealedCard.key();
-    let triggering_tag = crate::tag::CompilerReferenceTag::Triggering.key();
+    let drawn_tag = crate::tag::CompilerReferenceTag::DrawnRevealedCard.bind();
+    let triggering_tag = crate::tag::CompilerReferenceTag::Triggering.bind();
     let mana_value = Value::ManaValueOf(Box::new(ChooseSpec::Tagged(drawn_tag.clone())))
         .with_surface_hint(ironsmith_core::ValueSurfaceHint::WhereXIs);
     let draw = EffectAst::subject_verb(
@@ -411,7 +411,7 @@ pub fn parse_participant_secret_object_choice_then_reveal_and_sacrifice(
                 sacrifice_filter,
                 1,
                 Some(TargetAst::Tagged(
-                    crate::tag::CompilerReferenceTag::It.key(),
+                    crate::tag::CompilerReferenceTag::It.bind(),
                     None,
                 )),
             )],
@@ -659,8 +659,8 @@ pub fn parse_reciprocal_creature_control_sequence(
         return Ok(None);
     };
 
-    let your_tag = crate::tag::CompilerReferenceTag::TwistYourCreatures.key();
-    let target_tag = crate::tag::CompilerReferenceTag::TwistOpponentCreatures.key();
+    let your_tag = crate::tag::CompilerReferenceTag::TwistYourCreatures.bind();
+    let target_tag = crate::tag::CompilerReferenceTag::TwistOpponentCreatures.bind();
     let your_tagged = ObjectFilter::tagged(your_tag.clone());
     let target_tagged = ObjectFilter::tagged(target_tag.clone());
     let mut both_tagged = ObjectFilter::default();
@@ -949,7 +949,7 @@ pub fn parse_look_at_top_then_put_counted_hand_rest_bottom(
         EffectAst::ForEachTagged {
             tag: selected_tag.clone(),
             effects: vec![EffectAst::subject_verb_move_to_zone(
-                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                 Zone::Hand,
                 false,
                 ReturnControllerAst::Preserve,
@@ -1034,7 +1034,7 @@ pub fn parse_look_at_top_then_partition_selected_and_remainder(
                 tag: selected_tag.clone(),
                 effects: vec![
                     EffectAst::subject_verb_move_to_zone(
-                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                         Zone::Library,
                         true,
                         ReturnControllerAst::Preserve,
@@ -1483,10 +1483,10 @@ fn target_for_referenced_stack_object(
     match effect_grammar::parse_stack_object_reference_shape(tokens, previous) {
         effect_grammar::StackObjectReferenceShape::Source => TargetAst::Source(None),
         effect_grammar::StackObjectReferenceShape::PreviousChosen => {
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None)
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None)
         }
         effect_grammar::StackObjectReferenceShape::Triggering => {
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), None)
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None)
         }
     }
 }
@@ -1658,7 +1658,7 @@ pub fn parse_filtered_future_exile_then_return_next_end_step(
         return Ok(None);
     }
 
-    let linked_filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.key())
+    let linked_filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind())
         .in_zone(Zone::Exile);
     Ok(Some(vec![
         EffectAst::subject_verb_register_future_zone_replacement(

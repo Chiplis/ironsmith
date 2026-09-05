@@ -296,7 +296,7 @@ fn attacked_player_filter_from_words(words: &[&str]) -> Option<(PlayerFilter, bo
             AttackedPlayerFilterKind::Any => (PlayerFilter::Any, true),
             AttackedPlayerFilterKind::AnyPlayerOrPlaneswalker => (PlayerFilter::Any, false),
             AttackedPlayerFilterKind::Enchanted => (
-                PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.key()),
+                PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.bind()),
                 true,
             ),
             AttackedPlayerFilterKind::Opponent => (PlayerFilter::Opponent, true),
@@ -466,6 +466,9 @@ fn parse_hexproof_from_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordActi
     Some(vec![KeywordAction::HexproofFrom(filter)])
 }
 
+#[path = "clause_support/keyword_line_readings.rs"]
+mod keyword_line_readings;
+
 pub fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     fn parse_simple_keyword_phrase_lexed(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
         let words_view = TokenWordView::new(tokens);
@@ -606,23 +609,12 @@ pub fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordA
     fn parse_hexproof_from_chain_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
         parse_hexproof_from_chain(tokens)
     }
-
-    if let Some(actions) = parse_flashback_keyword_line(tokens) {
-        return Some(actions);
+    let input = keyword_line_readings::KeywordLine { tokens };
+    match keyword_line_readings::read(&input) {
+        crate::recognition::ParseOutcome::Match(matched) => return Some(matched.value.value),
+        crate::recognition::ParseOutcome::NoMatch => {}
+        crate::recognition::ParseOutcome::Error(_) => return None,
     }
-    if let Some(action) = super::keyword_static::parse_dynamic_firebending(tokens) {
-        return Some(vec![action]);
-    }
-    let words = TokenWordView::new(tokens).word_refs();
-    if let Some(action) =
-        super::activation_and_restrictions::keyword_action_costs::parse_dynamic_soulshift_keyword_action(&words)
-    {
-        return Some(vec![action]);
-    }
-    if let Some(action @ KeywordAction::CumulativeUpkeep { .. }) = parse_ability_phrase(tokens) {
-        return Some(vec![action]);
-    }
-
     let segments = clause_grammar::parse_ability_segments_tokens(tokens);
     let mut actions = Vec::new();
     for span in segments {
@@ -835,7 +827,7 @@ pub fn parse_linked_attack_group_combat_triggered_line_lexed(
         return Ok(None);
     };
 
-    let group_tag = crate::tag::CompilerReferenceTag::AttackingGroup.key();
+    let group_tag = crate::tag::CompilerReferenceTag::AttackingGroup.bind();
     effects.insert(
         0,
         EffectAst::subject_verb_tag_matching_objects(

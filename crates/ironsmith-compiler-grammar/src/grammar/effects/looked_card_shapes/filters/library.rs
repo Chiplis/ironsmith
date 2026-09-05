@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "library/looked_card_filter_readings.rs"]
+mod looked_card_filter_readings;
+
 pub fn parse_looked_card_reveal_filter_shape(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     let (filter_tokens, same_name) = split_same_name_suffix(tokens);
     let all_words = parser_token_word_refs(filter_tokens);
@@ -42,22 +45,16 @@ pub fn parse_looked_card_reveal_filter_shape(tokens: &[OwnedLexToken]) -> Option
         filter.excluded_card_types.push(CardType::Land);
         return Some(apply_same_name(filter, same_name));
     }
-    if let Some(filter) = parse_noncreature_nonland_permanent(filter_tokens, &words) {
-        return Some(apply_same_name(filter, same_name));
+    let input = looked_card_filter_readings::LookedCardFilter {
+        tokens: filter_tokens,
+        words: &words,
+        same_name,
+    };
+    match looked_card_filter_readings::read(&input) {
+        crate::recognition::ParseOutcome::Match(matched) => return Some(matched.value.value),
+        crate::recognition::ParseOutcome::NoMatch => {}
+        crate::recognition::ParseOutcome::Error(_) => return None,
     }
-    if let Some(filter) = parse_conjunctive_negated_card_filter(filter_tokens, &words) {
-        return Some(apply_same_name(filter, same_name));
-    }
-    if let Some(filter) = parse_land_or_legendary_permanent(filter_tokens, &words) {
-        return Some(apply_same_name(filter, same_name));
-    }
-    if let Some(filter) = parse_modified_permanent_cards(filter_tokens, &words) {
-        return Some(apply_same_name(filter, same_name));
-    }
-    if let Some(filter) = parse_filter_disjunction(filter_tokens, &words) {
-        return Some(apply_same_name(filter, same_name));
-    }
-
     let filter = parse_generic_disjunction_filter(filter_tokens).or_else(|| {
         crate::grammar::primitives::probe_shape(parse_object_filter_lexed(filter_tokens, false))
     })?;

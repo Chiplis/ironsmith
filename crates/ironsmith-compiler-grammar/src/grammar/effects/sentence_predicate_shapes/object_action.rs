@@ -4,44 +4,20 @@ pub fn parse_where_x_value_shape_tokens(
     where_tokens: &[OwnedLexToken],
     stripped_references_target: bool,
 ) -> Option<WhereXValueShape> {
-    if let Ok(shape) = primitives::parse_all(
-        where_tokens,
-        parse_commander_choice_where_lexed,
-        "where X commander mana value choice",
-    ) {
-        return Some(shape);
-    }
-    if let Ok(shape) = primitives::parse_all(
-        where_tokens,
+    // The typed "where X" values with a complete grammar each, in one table;
+    // colors-among precedes the prior-effect metric because its surface
+    // contains the generic prior-reference words.
+    for parser in [
+        parse_commander_choice_where_lexed
+            as for<'a> fn(&mut LexStream<'a>) -> WResult<WhereXValueShape>,
         parse_tap_cost_power_where_lexed,
-        "where X tap cost power",
-    ) {
-        return Some(shape);
-    }
-    if let Ok(shape) = primitives::parse_all(
-        where_tokens,
         parse_chosen_objects_power_difference_where_lexed,
-        "where X chosen-object power difference",
-    ) {
-        return Some(shape);
-    }
-    // This surface contains the generic prior-reference words `that ...
-    // was`, but its value is the color cardinality of the sacrificed object.
-    // Claim it before the broad prior-effect metric parser can reinterpret it
-    // as a current object count.
-    if let Ok(shape) = primitives::parse_all(
-        where_tokens,
         parse_colors_among_where_lexed,
-        "where X colors among sacrificed object",
-    ) {
-        return Some(shape);
-    }
-    if let Ok(shape) = primitives::parse_all(
-        where_tokens,
         parse_prior_effect_where_lexed,
-        "where X prior effect metric",
-    ) {
-        return Some(shape);
+    ] {
+        if let Ok(shape) = primitives::parse_all(where_tokens, parser, "typed where X value") {
+            return Some(shape);
+        }
     }
     if let Ok((metric, surface)) = primitives::parse_all(
         where_tokens,

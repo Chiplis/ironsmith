@@ -81,11 +81,11 @@ fn apply_target_preparation_facts(filter: &mut ObjectFilter, facts: TargetPrepar
 fn tagged_it_owner_or_controller_player_filter(word: &str) -> PlayerFilter {
     if matches!(word, "owner" | "owners") {
         PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
         ))
     } else {
         PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
         ))
     }
 }

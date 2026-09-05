@@ -19,13 +19,12 @@ pub(super) fn is_reserved_short_alias(alias: &str, alias_tokens: &[OwnedLexToken
     ) {
         return true;
     }
-    if super::super::super::leaf::parse_leaf_card_type_complete(&lower).is_ok() {
-        return true;
-    }
-    if super::super::super::leaf::parse_leaf_supertype_complete(&lower).is_ok() {
-        return true;
-    }
-    if super::super::super::leaf::parse_leaf_color_complete(&lower).is_ok() {
+    // A characteristic word (card type, supertype, color) is never a short
+    // card-name alias.
+    if super::super::super::leaf::parse_leaf_card_type_complete(&lower).is_ok()
+        || super::super::super::leaf::parse_leaf_supertype_complete(&lower).is_ok()
+        || super::super::super::leaf::parse_leaf_color_complete(&lower).is_ok()
+    {
         return true;
     }
     if let Ok(subtype) = super::super::super::leaf::parse_leaf_subtype_flexible_complete(&lower) {

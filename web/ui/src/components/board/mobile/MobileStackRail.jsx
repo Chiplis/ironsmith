@@ -1,3 +1,4 @@
+import useModalFocus from "@/hooks/useModalFocus";
 import { useCallback, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { useGame } from "@/context/GameContext";
@@ -60,9 +61,12 @@ function MobileStackRailEntry({
 }
 
 function MobileStackBrowser({ entries, focusedId, onFocus, onClose, onInspect }) {
+  const dialogRef = useModalFocus(onClose);
   return (
     <section
       className="mobile-mtga-stack-browser"
+      ref={dialogRef}
+      tabIndex={-1}
       role="dialog"
       aria-modal="true"
       aria-label="Full stack"

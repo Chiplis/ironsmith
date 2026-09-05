@@ -14,7 +14,7 @@ pub fn parse_gain_life_equal_to_power_sentence(
         _ => PlayerAst::Implicit,
     };
 
-    let amount = Value::PowerOf(Box::new(ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())));
+    let amount = Value::PowerOf(Box::new(ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.bind())));
     Ok(Some(vec![EffectAst::subject_verb(
         SubjectVerbRoleAst::AffectedPlayer,
         player,

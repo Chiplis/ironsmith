@@ -19,7 +19,7 @@ pub fn parse_choose_then_do_same_for_filter_then_return_to_battlefield(
 
     effects.push(EffectAst::subject_verb_return_to_battlefield(
         TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             effect_sentences::span_from_tokens(sentences[sentence_idx + 1].lowered()),
         ),
         return_shape.tapped,

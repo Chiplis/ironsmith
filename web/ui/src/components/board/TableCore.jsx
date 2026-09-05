@@ -155,12 +155,13 @@ export default function TableCore({
     const deck = sanitizeDeckCards(matchPlayer?.deck);
     const sideboard = sanitizeDeckCards(matchPlayer?.sideboard);
     const commanders = sanitizeDeckCards(matchPlayer?.commanders);
-    if (deck.length === 0 && sideboard.length === 0 && commanders.length === 0) return;
+    const available = Boolean(matchPlayer && Array.isArray(matchPlayer.deck));
     setOpenDecklist({
       playerName: playerDisplayName(state?.players || [], player),
       deck,
       sideboard,
       commanders,
+      available,
     });
   }, [multiplayer?.players, state?.players]);
 
@@ -202,43 +203,48 @@ export default function TableCore({
     >
       <div className="flex min-w-0 items-center gap-2" data-my-zone-header-content>
         <span
-          className={cn(
-            "battlefield-life text-[23px] font-bold leading-none text-[#f5d08b] tabular-nums",
-            isPlayerLegalTarget
-              && "text-[#d7ebff] rounded-none px-1 py-0.5 shadow-[0_0_10px_rgba(100,169,255,0.5)] ring-1 ring-[#64a9ff]/55"
-          )}
-          onPointerDown={handlePlayerTargetPointerDown}
-          onClick={handlePlayerTargetClick}
-          role={isPlayerLegalTarget && canPickTargetFromBoard ? "button" : undefined}
-          tabIndex={isPlayerLegalTarget && canPickTargetFromBoard ? 0 : undefined}
-          aria-label={isPlayerLegalTarget && canPickTargetFromBoard
-            ? `Target ${playerDisplayName(state?.players || [], me)}`
-            : undefined}
-          onKeyDown={(event) => {
-            if (!isPlayerLegalTarget || !canPickTargetFromBoard) return;
-            if (event.key !== "Enter" && event.key !== " ") return;
-            event.preventDefault();
-            dispatchPlayerTargetChoice();
-          }}
-          style={{ cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined }}
-        >
-          {me.life}
-        </span>
-        <span
-          className={cn(
-            "battlefield-name min-w-0 text-[16px] uppercase tracking-wider font-bold",
-            isPlayerLegalTarget && "drop-shadow-[0_0_7px_rgba(100,169,255,0.7)]"
-          )}
+          className={cn("player-identity-box inline-flex min-w-0 items-center gap-2", isPlayerLegalTarget && canPickTargetFromBoard && "player-target-box")}
           data-player-target={me.id}
-          data-player-target-name={me.id}
-          onPointerDown={handlePlayerTargetPointerDown}
-          onClick={handlePlayerTargetClick}
-          style={{
-            cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined,
-          }}
+          onPointerDown={(event) => { if (event.target === event.currentTarget) handlePlayerTargetPointerDown(event); }}
+          onClick={(event) => { if (event.target === event.currentTarget) handlePlayerTargetClick(event); }}
         >
-          <span className={cn(isActivePlayer && "battlefield-name-text--active")}>
-            {playerDisplayName(state?.players || [], me)}
+          <span
+            className={cn(
+              "battlefield-life text-[23px] font-bold leading-none text-[#f5d08b] tabular-nums"
+            )}
+            data-player-target={me.id}
+            onPointerDown={handlePlayerTargetPointerDown}
+            onClick={handlePlayerTargetClick}
+            role={isPlayerLegalTarget && canPickTargetFromBoard ? "button" : undefined}
+            tabIndex={isPlayerLegalTarget && canPickTargetFromBoard ? 0 : undefined}
+            aria-label={isPlayerLegalTarget && canPickTargetFromBoard
+              ? `Target ${playerDisplayName(state?.players || [], me)}`
+              : undefined}
+            onKeyDown={(event) => {
+              if (!isPlayerLegalTarget || !canPickTargetFromBoard) return;
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              dispatchPlayerTargetChoice();
+            }}
+            style={{ cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined }}
+          >
+            {me.life}
+          </span>
+          <span
+            className={cn(
+              "battlefield-name min-w-0 text-[16px] uppercase tracking-wider font-bold"
+            )}
+            data-player-target={me.id}
+            data-player-target-name={me.id}
+            onPointerDown={handlePlayerTargetPointerDown}
+            onClick={handlePlayerTargetClick}
+            style={{
+              cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined,
+            }}
+          >
+            <span className={cn(isActivePlayer && "battlefield-name-text--active")}>
+              {playerDisplayName(state?.players || [], me)}
+            </span>
           </span>
         </span>
         {zoneActionControls ? (

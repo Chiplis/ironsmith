@@ -161,20 +161,35 @@ pub fn parse_special_granted_keyword(tokens: &[OwnedLexToken]) -> Option<Special
     for sentence in &sentences[1..] {
         trailing.extend_from_slice(super::trim_anthem_clause_tokens(sentence));
     }
-    if parse_complete_keyword(leading, "blitz")
-        && super::parse_granted_blitz_cost_equals_mana(&trailing)
-    {
-        return Some(SpecialGrantedKeyword::Blitz);
-    }
-    if parse_complete_keyword(leading, "emerge")
-        && super::parse_granted_emerge_cost_equals_mana(&trailing)
-    {
-        return Some(SpecialGrantedKeyword::Emerge);
-    }
-    if parse_complete_keyword(leading, "scavenge")
-        && super::parse_granted_scavenge_cost_equals_mana(&trailing)
-    {
-        return Some(SpecialGrantedKeyword::Scavenge);
+    // One declared alternation: the alternatives are exclusive shapes, and the
+    // first that reads the input names it.
+    let alternation = None::<SpecialGrantedKeyword>
+        .or_else(|| {
+            if parse_complete_keyword(leading, "blitz")
+                && super::parse_granted_blitz_cost_equals_mana(&trailing)
+            {
+                return Some(SpecialGrantedKeyword::Blitz);
+            }
+            None
+        })
+        .or_else(|| {
+            if parse_complete_keyword(leading, "emerge")
+                && super::parse_granted_emerge_cost_equals_mana(&trailing)
+            {
+                return Some(SpecialGrantedKeyword::Emerge);
+            }
+            None
+        })
+        .or_else(|| {
+            if parse_complete_keyword(leading, "scavenge")
+                && super::parse_granted_scavenge_cost_equals_mana(&trailing)
+            {
+                return Some(SpecialGrantedKeyword::Scavenge);
+            }
+            None
+        });
+    if let Some(shape) = alternation {
+        return Some(shape);
     }
     None
 }

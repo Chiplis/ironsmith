@@ -3,6 +3,8 @@
 //! These nodes retain chooser and iterator scope explicitly so lowering never
 //! has to reconstruct choice identity from tags or copied source phrases.
 
+use ironsmith_core::tag::TagKeyWalk;
+
 use crate::color::Color;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::model::ast::EffectAst;
@@ -92,6 +94,7 @@ pub struct CompilerResourceClauseAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum CompilerChoiceVisibilityAst {
     Public,
     Secret,
@@ -99,6 +102,7 @@ pub enum CompilerChoiceVisibilityAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum CompilerChoiceDomainAst {
     Color,
     CardType(Vec<CardType>),
@@ -158,12 +162,14 @@ pub enum CompilerResourceChoiceClauseAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum CompilerVoteOrderAst {
     Simultaneous,
     TurnOrder,
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct CompilerVoteAst {
     pub voters: PlayerFilter,
     pub exclude_voter: bool,
@@ -178,6 +184,7 @@ pub struct CompilerVoteAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum CompilerIterationSourceAst {
     Opponents,
     Players(PlayerFilter),
@@ -191,6 +198,7 @@ pub enum CompilerIterationSourceAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum CompilerRepetitionKindAst {
     ForEach,
     Exactly,
@@ -199,6 +207,7 @@ pub enum CompilerRepetitionKindAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct CompilerIterationAst {
     pub kind: CompilerRepetitionKindAst,
     pub source: CompilerIterationSourceAst,

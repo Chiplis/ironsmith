@@ -1,14 +1,20 @@
+use ironsmith_core::tag::TagKeyWalk;
+
 use std::collections::HashMap;
 
 use crate::model::provenance::{ProvenanceId, SemanticProvenance};
+use ironsmith_core::TagKey;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(TagKeyWalk)]
 pub struct SymbolId(pub u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(TagKeyWalk)]
 pub struct SymbolScopeId(pub u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(TagKeyWalk)]
 pub enum ReferenceRole {
     Source,
     Target,
@@ -28,6 +34,7 @@ pub enum ReferenceRole {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum Cardinality {
     ExactlyOne,
     ZeroOrOne,
@@ -76,6 +83,7 @@ impl Cardinality {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(TagKeyWalk)]
 pub enum ObjectDomain {
     Object,
     Card,
@@ -88,10 +96,12 @@ pub enum ObjectDomain {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum SymbolScopeKind {
     Root,
     Document,
-    Line,
+    /// One physical line of the card text, by its display index.
+    Line { source_line: usize },
     NestedAbility,
     ModalMode,
     TokenDefinition,
@@ -114,6 +124,9 @@ pub struct SymbolBinding {
     pub cardinality: Cardinality,
     pub domain: ObjectDomain,
     pub provenance: Option<SemanticProvenance>,
+    /// The string reference key the grammar minted for this binding, while
+    /// string keys are still the identity consumers read (item 6).
+    pub key: Option<TagKey>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -221,10 +234,56 @@ impl SymbolTable {
                 primary,
                 related: Vec::new(),
             }),
+                    key: None,
         });
         self.by_scope.entry(scope).or_default().push(id);
         Ok(id)
     }
+
+    /// Bind a symbol the grammar minted under `key` in `scope`; one key is one
+    /// symbol per scope, so a repeated mint returns the existing binding.
+    pub fn bind_keyed(
+        &mut self,
+        scope: SymbolScopeId,
+        key: TagKey,
+        role: ReferenceRole,
+        cardinality: Cardinality,
+        domain: ObjectDomain,
+    ) -> Result<SymbolId, SymbolResolutionError> {
+        if let Some(existing) = self
+            .by_scope
+            .get(&scope)
+            .and_then(|ids| ids.iter().find(|id| self.bindings[id.0 as usize].key.as_ref() == Some(&key)))
+        {
+            return Ok(*existing);
+        }
+        let id = self.bind(scope, role, cardinality, domain, None)?;
+        self.bindings[id.0 as usize].key = Some(key);
+        Ok(id)
+    }
+
+    /// The symbol bound under `key` in `scope` or an enclosing scope.
+    /// The scope of the physical line with this display index, if one was opened.
+    pub fn line_scope(&self, source_line: usize) -> Option<SymbolScopeId> {
+        self.scopes
+            .iter()
+            .find(|scope| scope.kind == SymbolScopeKind::Line { source_line })
+            .map(|scope| scope.id)
+    }
+
+    pub fn symbol_for_key(&self, scope: SymbolScopeId, key: &TagKey) -> Option<SymbolId> {
+        let mut current = Some(scope);
+        while let Some(scope) = current {
+            if let Some(found) = self.by_scope.get(&scope).and_then(|ids| {
+                ids.iter().copied().find(|id| self.bindings[id.0 as usize].key.as_ref() == Some(key))
+            }) {
+                return Some(found);
+            }
+            current = self.scopes.get(scope.0 as usize).and_then(|s| s.parent);
+        }
+        None
+    }
+
 
     pub fn binding(&self, id: SymbolId) -> Option<&SymbolBinding> {
         self.bindings
@@ -332,12 +391,17 @@ impl SymbolTable {
         }
     }
 
+    pub fn scopes(&self) -> &[SymbolScope] {
+        &self.scopes
+    }
+
     pub fn bindings(&self) -> &[SymbolBinding] {
         &self.bindings
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub struct SymbolReference {
     pub symbol: SymbolId,
     pub role: ReferenceRole,

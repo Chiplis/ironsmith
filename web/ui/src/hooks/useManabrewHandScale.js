@@ -21,8 +21,11 @@ const REF_WIDTH = 1440;
 const MIN_SCALE = 0.65;
 const MAX_SCALE = 1.3;
 
-function currentScale() {
+function currentScale(fullscreen = false) {
   if (typeof window === "undefined") return 1;
+  if (fullscreen) {
+    return Math.max(MIN_SCALE, Math.min(1.5, (window.innerHeight - 80) / MANABREW_HAND_CARD_BASE.containerH, window.innerWidth / 700));
+  }
   const scale = window.innerWidth / REF_WIDTH;
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
 }
@@ -33,6 +36,6 @@ function subscribe(callback) {
   return () => window.removeEventListener("resize", callback);
 }
 
-export default function useManabrewHandScale() {
-  return useSyncExternalStore(subscribe, currentScale, () => 1);
+export default function useManabrewHandScale(fullscreen = false) {
+  return useSyncExternalStore(subscribe, () => currentScale(fullscreen), () => 1);
 }

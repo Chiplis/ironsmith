@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState, useId } from "react";
+import useModalFocus from "@/hooks/useModalFocus";
 import useViewportLayout from "@/hooks/useViewportLayout";
 
 function isStandaloneDisplayMode() {
@@ -16,6 +17,9 @@ export default function MobileLandscapeGate() {
     portraitCompactViewport,
     nonDesktopViewport,
   } = useViewportLayout();
+  const titleId = useId();
+  const [rotationMessage, setRotationMessage] = useState("");
+  const dialogRef = useModalFocus(undefined, portraitCompactViewport);
   const standaloneMode = useMemo(() => isStandaloneDisplayMode(), []);
 
   const tryLockLandscape = useCallback(async () => {
@@ -53,22 +57,24 @@ export default function MobileLandscapeGate() {
   if (!portraitCompactViewport) return null;
 
   return (
-    <div className="mobile-landscape-gate">
+    <div className="mobile-landscape-gate" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
       <div className="mobile-landscape-gate-panel">
         <div className="mobile-landscape-gate-kicker">Landscape Required</div>
-        <h2 className="mobile-landscape-gate-title">Rotate your phone</h2>
+        <h2 id={titleId} className="mobile-landscape-gate-title">Rotate your phone</h2>
         <p className="mobile-landscape-gate-copy">
           Ironsmith is tuned for landscape play on phones. Turn your device sideways to continue.
         </p>
         <button
           type="button"
           className="stone-pill mobile-landscape-gate-button"
-          onClick={() => {
-            void tryLockLandscape();
+          onClick={async () => {
+            const rotated = await tryLockLandscape();
+            setRotationMessage(rotated ? "Landscape rotation requested." : "Turn your phone sideways. If it stays upright, turn off rotation lock on your device.");
           }}
         >
           Try landscape
         </button>
+        {rotationMessage && <p className="mobile-landscape-gate-copy" role="status">{rotationMessage}</p>}
         <p className="mobile-landscape-gate-note">
           {standaloneMode
             ? "Standalone mode is active. Once the device rotates, the table will fill the screen."

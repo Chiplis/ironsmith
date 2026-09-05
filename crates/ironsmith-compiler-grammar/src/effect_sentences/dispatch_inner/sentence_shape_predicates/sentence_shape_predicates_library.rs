@@ -48,7 +48,7 @@ pub(super) fn parse_manifest_dread_graveyard_card_to_hand(
     }
 
     let mut filter =
-        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::ManifestDreadGraveyard.key());
+        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::ManifestDreadGraveyard.bind());
     filter.zone = Some(Zone::Graveyard);
     Some(vec![EffectAst::subject_verb_move_to_zone(
         TargetAst::Object(filter, None, None),
@@ -74,7 +74,7 @@ pub(super) fn parse_source_and_blocked_creatures_top_library_shuffle_sentence(
         filter: moved_objects,
         effects: vec![
             EffectAst::subject_verb_move_to_zone(
-                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                 Zone::Library,
                 true,
                 crate::cards::builders::ReturnControllerAst::Preserve,

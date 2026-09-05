@@ -41,7 +41,7 @@ fn push_excluded_type(filter: &mut ObjectFilter, card_type: CardType) {
 fn apply_same_name(mut filter: ObjectFilter, same_name: bool) -> ObjectFilter {
     if same_name {
         filter = filter.match_tagged(
-            crate::tag::CompilerReferenceTag::ChosenName.key(),
+            crate::tag::CompilerReferenceTag::ChosenName.bind(),
             TaggedOpbjectRelation::SameNameAsTagged,
         );
     }

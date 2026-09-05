@@ -159,9 +159,9 @@ pub(super) fn post_rule_self_replacement_common_suffix(
     ) && crate::word_primitives::sequence_occurs(&words, &["mana", "value"])
         && !effects_contain_gain_life(sentence_effects)
     {
-        let iterated = crate::tag::CompilerReferenceTag::It.key();
+        let iterated = crate::tag::CompilerReferenceTag::It.bind();
         sentence_effects.push(EffectAst::ForEachTagged {
-            tag: crate::tag::CompilerReferenceTag::ChosenObjects.key(),
+            tag: crate::tag::CompilerReferenceTag::ChosenObjects.bind(),
             effects: vec![EffectAst::subject_verb(
                 SubjectVerbRoleAst::AffectedPlayer,
                 PlayerAst::ItsController,

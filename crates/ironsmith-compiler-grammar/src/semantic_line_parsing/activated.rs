@@ -301,7 +301,7 @@ fn parse_standalone_x_definition_value(tokens: &[OwnedLexToken]) -> Option<crate
         // different resolution context. Check this typed shape before the
         // generic value parser can erase that distinction.
         return Some(crate::effect::Value::ManaValueOf(Box::new(
-            ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::SourceExiled.key()),
+            ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind()),
         )));
     }
 

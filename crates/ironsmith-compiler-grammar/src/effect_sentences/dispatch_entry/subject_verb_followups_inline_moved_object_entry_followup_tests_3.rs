@@ -61,7 +61,7 @@ fn entry_followup_does_not_attach_to_a_mandatory_move() {
         None,
     );
     let grant = EffectAst::subject_verb_grant_abilities_to_target(
-        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
         vec![KeywordAction::Indestructible.into()],
         Until::EndOfTurn,
     );

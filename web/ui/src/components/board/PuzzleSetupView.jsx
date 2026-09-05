@@ -160,7 +160,7 @@ export default function PuzzleSetupView({ onLoadPuzzle, onCancel }) {
 
   return (
     <main
-      className="puzzle-setup-shell table-gradient"
+      className="setup-screen puzzle-setup-shell table-gradient"
     >
       <section className="puzzle-setup-hero">
         <div className="puzzle-setup-copy">
@@ -252,7 +252,6 @@ export default function PuzzleSetupView({ onLoadPuzzle, onCancel }) {
 
       <div
         className="puzzle-player-grid"
-        style={{ gridTemplateColumns: `repeat(${Math.max(players.length, 1)}, minmax(620px, 1fr))` }}
       >
         {players.map((player, playerIndex) => {
           const playerPayload = payload.players[playerIndex];

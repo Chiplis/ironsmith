@@ -42,49 +42,73 @@ pub fn parse_for_each_rest(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]>
 
 pub fn parse_for_each_special_shape(tokens: &[OwnedLexToken]) -> Option<ForEachSpecialShape<'_>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
-    if let Ok(minimum_cards) = primitives::parse_all(
-        tokens,
-        parse_graveyard_card_threshold,
-        "graveyard threshold",
-    ) {
-        return Some(ForEachSpecialShape::GraveyardsWithAtLeastCards { minimum_cards });
-    }
-    if parse_complete_phrase(tokens, &["time", "it", "has", "attacked", "this", "turn"]) {
-        return Some(ForEachSpecialShape::AffectedAttackedThisTurn);
-    }
-    if parse_complete_any_phrase(
-        tokens,
-        &[
-            &["of", "its", "colors"],
-            &["of", "their", "colors"],
-            &["color", "it", "is"],
-            &["colors", "it", "is"],
-        ],
-    ) {
-        return Some(ForEachSpecialShape::ColorsOfAffected);
-    }
-    if parse_complete_any_phrase(
-        tokens,
-        &[
-            &["of", "its", "creature", "types"],
-            &["of", "their", "creature", "types"],
-        ],
-    ) {
-        return Some(ForEachSpecialShape::CreatureTypesOfAffected);
-    }
-    if parse_complete_any_phrase(
-        tokens,
-        &[
-            &["creature", "is", "blocking", "it"],
-            &["creature", "is", "blocking", "this", "creature"],
-            &["creatures", "are", "blocking", "it"],
-            &["creatures", "are", "blocking", "this", "creature"],
-        ],
-    ) {
-        return Some(ForEachSpecialShape::BlockingSource);
-    }
-    if parse_complete_phrase(tokens, &["unspent", "green", "mana", "you", "have"]) {
-        return Some(ForEachSpecialShape::UnspentGreenManaYouHave);
+    // One declared alternation: the alternatives are exclusive shapes, and the
+    // first that reads the input names it.
+    let alternation = None::<ForEachSpecialShape<'_>>
+        .or_else(|| {
+            if let Ok(minimum_cards) = primitives::parse_all(
+                tokens,
+                parse_graveyard_card_threshold,
+                "graveyard threshold",
+            ) {
+                return Some(ForEachSpecialShape::GraveyardsWithAtLeastCards { minimum_cards });
+            }
+            None
+        })
+        .or_else(|| {
+            if parse_complete_phrase(tokens, &["time", "it", "has", "attacked", "this", "turn"]) {
+                return Some(ForEachSpecialShape::AffectedAttackedThisTurn);
+            }
+            None
+        })
+        .or_else(|| {
+            if parse_complete_any_phrase(
+                tokens,
+                &[
+                    &["of", "its", "colors"],
+                    &["of", "their", "colors"],
+                    &["color", "it", "is"],
+                    &["colors", "it", "is"],
+                ],
+            ) {
+                return Some(ForEachSpecialShape::ColorsOfAffected);
+            }
+            None
+        })
+        .or_else(|| {
+            if parse_complete_any_phrase(
+                tokens,
+                &[
+                    &["of", "its", "creature", "types"],
+                    &["of", "their", "creature", "types"],
+                ],
+            ) {
+                return Some(ForEachSpecialShape::CreatureTypesOfAffected);
+            }
+            None
+        })
+        .or_else(|| {
+            if parse_complete_any_phrase(
+                tokens,
+                &[
+                    &["creature", "is", "blocking", "it"],
+                    &["creature", "is", "blocking", "this", "creature"],
+                    &["creatures", "are", "blocking", "it"],
+                    &["creatures", "are", "blocking", "this", "creature"],
+                ],
+            ) {
+                return Some(ForEachSpecialShape::BlockingSource);
+            }
+            None
+        })
+        .or_else(|| {
+            if parse_complete_phrase(tokens, &["unspent", "green", "mana", "you", "have"]) {
+                return Some(ForEachSpecialShape::UnspentGreenManaYouHave);
+            }
+            None
+        });
+    if let Some(shape) = alternation {
+        return Some(shape);
     }
     let (filter_tokens, tail) =
         primitives::split_lexed_once_on_separator(tokens, || primitives::kw("attached").void())?;

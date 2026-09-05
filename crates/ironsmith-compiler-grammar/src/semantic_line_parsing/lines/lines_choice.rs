@@ -81,7 +81,7 @@ pub(super) fn try_parse_chosen_type_behold_two_additional_cost(
             count: crate::effect::ChoiceCount::exactly(2),
             count_value: None,
             player: PlayerAst::You,
-            tag: crate::tag::CompilerReferenceTag::BeheldChosenType.key(),
+            tag: crate::tag::CompilerReferenceTag::BeheldChosenType.bind(),
         })),
     ]);
     let mut optional_cost = OptionalCost::custom(line.info.raw_line.trim(), total_cost);

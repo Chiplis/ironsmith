@@ -152,9 +152,10 @@ pub fn parse_anthem_and_keyword_line(
             if anthem_grant_grammar::parse_continuing_segment_shape(&segment)
                 == anthem_grant_grammar::ContinuingSegmentShape::MustAttack
             {
-                result.push(
-                    grant_for_anthem_subject(&grant_clause, StaticAbility::must_attack()),
-                );
+                result.push(grant_for_anthem_subject(
+                    &grant_clause,
+                    StaticAbility::must_attack(),
+                ));
                 continue;
             }
             let Some(actions) = parse_ability_line(&segment) else {
@@ -324,10 +325,11 @@ pub fn parse_anthem_and_keyword_line(
     }
     let mut trailing_type_color_addition: Option<TypeColorAdditionClause> = None;
     if let Some(split) = anthem_grant_grammar::split_anthem_keyword_and_is(&ability_tokens)
-        && let Some(additions) = parse_type_color_addition_clause(split.tail_tokens)? {
-            trailing_type_color_addition = Some(additions);
-            ability_tokens = split.head_tokens.to_vec();
-        }
+        && let Some(additions) = parse_type_color_addition_clause(split.tail_tokens)?
+    {
+        trailing_type_color_addition = Some(additions);
+        ability_tokens = split.head_tokens.to_vec();
+    }
 
     let mut keyword_actions: Vec<KeywordAction> = Vec::new();
     let mut granted_activated_ability: Option<ParsedAbility> = None;
@@ -352,38 +354,39 @@ pub fn parse_anthem_and_keyword_line(
         if !ability_tail_tokens.is_empty() {
             let mut handled_split_keyword_activation = false;
             if let Some(colon) = anthem_grant_grammar::parse_colon_tail_split(&ability_tail_tokens)
-                && let Some(split_and_idx) = colon.last_and_before_colon {
-                    let trailing_keyword_tokens =
-                        trim_edge_punctuation(&ability_tail_tokens[..split_and_idx]);
-                    let activated_tail =
-                        trim_edge_punctuation(&ability_tail_tokens[split_and_idx + 1..]);
-                    if !trailing_keyword_tokens.is_empty() {
-                        let Some(actions) = parse_ability_line(&trailing_keyword_tokens) else {
-                            return Ok(None);
-                        };
-                        reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
-                        keyword_actions.extend(
-                            actions
-                                .into_iter()
-                                .filter(|action| action.lowers_to_static_ability()),
-                        );
-                    }
-                    let has_colon =
-                        anthem_grant_grammar::parse_colon_tail_split(&activated_tail).is_some();
-                    let Some(parsed) = parse_activated_line(&activated_tail)? else {
-                        if has_colon {
-                            return Err(CardTextError::ParseError(format!(
-                                "unsupported granted activated ability in anthem clause (clause: '{}')",
-                                clause_words.join(" ")
-                            )));
-                        }
+                && let Some(split_and_idx) = colon.last_and_before_colon
+            {
+                let trailing_keyword_tokens =
+                    trim_edge_punctuation(&ability_tail_tokens[..split_and_idx]);
+                let activated_tail =
+                    trim_edge_punctuation(&ability_tail_tokens[split_and_idx + 1..]);
+                if !trailing_keyword_tokens.is_empty() {
+                    let Some(actions) = parse_ability_line(&trailing_keyword_tokens) else {
                         return Ok(None);
                     };
-                    let display = display_text_for_tokens(&activated_tail, false);
-                    granted_activated_display = Some(display);
-                    granted_activated_ability = Some(parsed);
-                    handled_split_keyword_activation = true;
+                    reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
+                    keyword_actions.extend(
+                        actions
+                            .into_iter()
+                            .filter(|action| action.lowers_to_static_ability()),
+                    );
                 }
+                let has_colon =
+                    anthem_grant_grammar::parse_colon_tail_split(&activated_tail).is_some();
+                let Some(parsed) = parse_activated_line(&activated_tail)? else {
+                    if has_colon {
+                        return Err(CardTextError::ParseError(format!(
+                            "unsupported granted activated ability in anthem clause (clause: '{}')",
+                            clause_words.join(" ")
+                        )));
+                    }
+                    return Ok(None);
+                };
+                let display = display_text_for_tokens(&activated_tail, false);
+                granted_activated_display = Some(display);
+                granted_activated_ability = Some(parsed);
+                handled_split_keyword_activation = true;
+            }
             if !handled_split_keyword_activation {
                 let has_colon =
                     anthem_grant_grammar::parse_colon_tail_split(&ability_tail_tokens).is_some();
@@ -519,7 +522,8 @@ fn is_plain_anthem_keyword_line(tokens: &[OwnedLexToken]) -> bool {
         let segments = anthem_grant_grammar::split_trailing_grant_segments(shape.keyword_tokens);
         return !segments.is_empty()
             && segments.into_iter().all(|raw_segment| {
-                let Some(segment) = anthem_grant_grammar::parse_trailing_grant_segment(&raw_segment)
+                let Some(segment) =
+                    anthem_grant_grammar::parse_trailing_grant_segment(&raw_segment)
                 else {
                     return false;
                 };
@@ -581,9 +585,7 @@ fn is_compound_animation_grant_line(tokens: &[OwnedLexToken]) -> bool {
         })
 }
 
-fn is_equipped_keyword_grant_line(
-    tokens: &[OwnedLexToken],
-) -> Result<bool, CardTextError> {
+fn is_equipped_keyword_grant_line(tokens: &[OwnedLexToken]) -> Result<bool, CardTextError> {
     let Some(has) = attached_grammar::parse_equipped_creature_has_tokens(tokens) else {
         return Ok(false);
     };
@@ -1095,10 +1097,7 @@ fn source_color_condition(color: ColorSet) -> PredicateAst {
     PredicateAst::SourceMatches(filter)
 }
 
-fn append_condition(
-    condition: Option<PredicateAst>,
-    next: PredicateAst,
-) -> PredicateAst {
+fn append_condition(condition: Option<PredicateAst>, next: PredicateAst) -> PredicateAst {
     match condition {
         Some(existing) => PredicateAst::And(Box::new(existing), Box::new(next)),
         None => next,
@@ -1220,18 +1219,18 @@ pub fn parse_equipment_you_control_have_equip_line(
         ability: Ability {
             kind: AbilityKind::Activated(
                 crate::model::compiler_semantic::CompilerActivatedAbilityCore {
-                mana_cost: total_cost,
-                effects: ironsmith_core::ResolutionProgram::from_effects(vec![
-                    EffectAst::subject_verb_attach(TargetAst::Source(None), target),
-                ]),
-                choices: vec![],
-                timing: crate::ability::ActivationTiming::SorcerySpeed,
-                additional_restrictions: vec![],
-                activation_restrictions: vec![],
-                mana_output: None,
-                activation_condition: None,
-                mana_usage_restrictions: vec![],
-                is_loyalty_ability: false,
+                    mana_cost: total_cost,
+                    effects: ironsmith_core::ResolutionProgram::from_effects(vec![
+                        EffectAst::subject_verb_attach(TargetAst::Source(None), target),
+                    ]),
+                    choices: vec![],
+                    timing: crate::ability::ActivationTiming::SorcerySpeed,
+                    additional_restrictions: vec![],
+                    activation_restrictions: vec![],
+                    mana_output: None,
+                    activation_condition: None,
+                    mana_usage_restrictions: vec![],
+                    is_loyalty_ability: false,
                 },
             ),
             functional_zones: vec![Zone::Battlefield],
@@ -1299,16 +1298,12 @@ fn parse_triggered_granted_ability(
     if trigger_tokens.is_empty() {
         return Ok(None);
     }
-    let intro = crate::grammar::clause_support::parse_trigger_intro_tokens(
-        &trigger_tokens,
-    );
+    let intro = crate::grammar::clause_support::parse_trigger_intro_tokens(&trigger_tokens);
     if intro.body_first == 0 {
         return Ok(None);
     }
 
-    let ability = match crate::clause_support::parse_triggered_line_lexed(
-        &trigger_tokens,
-    )? {
+    let ability = match crate::clause_support::parse_triggered_line_lexed(&trigger_tokens)? {
         LineAst::Triggered {
             trigger,
             effects,
@@ -1366,6 +1361,9 @@ fn parse_granted_keyword_fragment(segment: &[OwnedLexToken]) -> Option<Vec<Keywo
     })
 }
 
+#[path = "anthem_grant_conditionals/granted_object_segment_readings.rs"]
+mod granted_object_segment_readings;
+
 fn parse_granted_object_ability_segment(
     raw_segment: &[OwnedLexToken],
     clause_words: &[&str],
@@ -1381,15 +1379,6 @@ fn parse_granted_object_ability_segment(
         return Ok(None);
     }
 
-    if let Some(actions) = parse_ability_line(&ability_tokens)
-        && actions.len() == 1
-        && let Some(granted) = nonstatic_keyword_action_as_granted_object_ability(
-            actions.into_iter().next().expect("single action exists"),
-        )
-    {
-        return Ok(Some(granted));
-    }
-
     if attached_subject && contains_token_kind(&ability_tokens, TokenKind::Colon) {
         let Some(parsed) = parse_attached_granted_activated_line(raw_segment)? else {
             return Err(CardTextError::ParseError(format!(
@@ -1402,31 +1391,19 @@ fn parse_granted_object_ability_segment(
             display_text_for_tokens(&ability_tokens, false),
         )));
     }
-
-    if let Some(GrantedAbilityAst::ParsedObjectAbility { ability, display }) =
-        parse_granted_activated_or_triggered_ability_for_gain(&ability_tokens, clause_words)?
-    {
-        return Ok(Some((*ability, display)));
+    let input = granted_object_segment_readings::GrantedObjectSegment {
+        tokens: &ability_tokens,
+        raw_segment,
+        clause_words: &clause_words,
+        attached_subject,
+    };
+    match granted_object_segment_readings::read(&input) {
+        crate::recognition::ParseOutcome::Match(matched) => return Ok(Some(matched.value.value)),
+        crate::recognition::ParseOutcome::NoMatch => {}
+        crate::recognition::ParseOutcome::Error(diagnostic) => {
+            return Err(diagnostic.into_card_text_error());
+        }
     }
-
-    if let Some(parsed) = parse_attached_nonstatic_keyword_ability(&ability_tokens)? {
-        return Ok(Some(parsed));
-    }
-
-    if let Some(parsed) = parse_cycling_line(&ability_tokens)? {
-        return Ok(Some((
-            parsed,
-            display_text_for_tokens(&ability_tokens, false),
-        )));
-    }
-
-    if let Some(parsed) = parse_equip_line_lexed(&ability_tokens)? {
-        return Ok(Some((
-            parsed,
-            display_text_for_tokens(&ability_tokens, false),
-        )));
-    }
-
     if contains_token_kind(&ability_tokens, TokenKind::Colon) {
         let Some(parsed) = parse_activated_line(&ability_tokens)? else {
             return Err(CardTextError::ParseError(format!(
@@ -1593,7 +1570,8 @@ pub fn parse_heterogeneous_granted_tail(
     clause_words: &[&str],
     attached_subject: bool,
 ) -> Result<Option<ParsedGrantedTailAst>, CardTextError> {
-    if let Some(parsed) = parse_complete_single_quoted_object_ability_tail(tail_tokens, clause_words)?
+    if let Some(parsed) =
+        parse_complete_single_quoted_object_ability_tail(tail_tokens, clause_words)?
     {
         return Ok(Some(parsed));
     }
@@ -1703,16 +1681,13 @@ fn parse_heterogeneous_granted_tail_remaining(
         if let Some(mut marker) = parse_static_text_marker_line(&segment) {
             if authored_additional_entry
                 && let ironsmith_core::StaticAbilityPayload::EntersWithCountersValue {
-                    count,
-                    ..
+                    count, ..
                 } = &mut marker.payload
-                && !count.has_surface_hint(
-                    ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter,
-                )
+                && !count.has_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter)
             {
-                *count = count.clone().with_surface_hint(
-                    ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter,
-                );
+                *count = count
+                    .clone()
+                    .with_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter);
             }
             parsed.granted_static.push(marker.into());
             continue;
@@ -1725,16 +1700,13 @@ fn parse_heterogeneous_granted_tail_remaining(
         if let Some(mut marker) = parse_static_text_marker_line(&segment_with_period) {
             if authored_additional_entry
                 && let ironsmith_core::StaticAbilityPayload::EntersWithCountersValue {
-                    count,
-                    ..
+                    count, ..
                 } = &mut marker.payload
-                && !count.has_surface_hint(
-                    ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter,
-                )
+                && !count.has_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter)
             {
-                *count = count.clone().with_surface_hint(
-                    ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter,
-                );
+                *count = count
+                    .clone()
+                    .with_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter);
             }
             parsed.granted_static.push(marker.into());
             continue;
@@ -1859,12 +1831,18 @@ pub fn parse_attached_anthem_reach_shadow_permission_line(
         return None;
     }
 
-    let filter = ObjectFilter::creature().in_zone(Zone::Battlefield).match_tagged(
-        "enchanted",
-        crate::filter::TaggedOpbjectRelation::IsTaggedObject,
-    );
+    let filter = ObjectFilter::creature()
+        .in_zone(Zone::Battlefield)
+        .match_tagged(
+            "enchanted",
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+        );
     Some(vec![
-        StaticAbilityAst::Static(StaticAbility::new(crate::model::CompilerAnthem::new(filter.clone(), 1, 1))),
+        StaticAbilityAst::Static(StaticAbility::new(crate::model::CompilerAnthem::new(
+            filter.clone(),
+            1,
+            1,
+        ))),
         StaticAbilityAst::GrantStaticAbility {
             filter: filter.clone(),
             ability: Box::new(StaticAbilityAst::Static(StaticAbility::reach())),
@@ -1901,8 +1879,7 @@ pub fn parse_source_can_block_shadow_as_though_no_shadow_line(
 pub fn parse_targeting_as_though_no_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
-    let Some(spec) = crate::effect_sentences::
-        parse_targeting_as_though_no_ability_spec(tokens)?
+    let Some(spec) = crate::effect_sentences::parse_targeting_as_though_no_ability_spec(tokens)?
     else {
         return Ok(None);
     };
@@ -1930,8 +1907,7 @@ fn shadow_block_permission_is_typed_and_rejects_plain_shadow() {
         "This creature has shadow.",
         "This creature can block creatures with shadow.",
     ] {
-        let tokens = crate::lexer::lex_line(near_miss, 0)
-            .expect("near miss should lex");
+        let tokens = crate::lexer::lex_line(near_miss, 0).expect("near miss should lex");
         assert!(
             parse_source_can_block_shadow_as_though_no_shadow_line(&tokens)
                 .expect("near miss should parse safely")
@@ -2086,9 +2062,7 @@ fn wrap_conditioned_animation_static_ability(
     ability.into()
 }
 
-pub fn lower_static_animation_bundle(
-    bundle: StaticAnimationBundleAst,
-) -> Vec<StaticAbilityAst> {
+pub fn lower_static_animation_bundle(bundle: StaticAnimationBundleAst) -> Vec<StaticAbilityAst> {
     let filter = anthem_subject_filter(&bundle.subject);
     let mut lowered = Vec::new();
 
@@ -2156,6 +2130,9 @@ fn grant_static_anthem_abilities_for_subject(
     granted
 }
 
+#[path = "anthem_grant_conditionals/granted_segment_readings.rs"]
+mod granted_segment_readings;
+
 fn parse_continuing_anthem_granted_segment(
     clause: &ParsedAnthemClause,
     clause_words: &[&str],
@@ -2170,58 +2147,15 @@ fn parse_continuing_anthem_granted_segment(
     if ability_tokens.is_empty() {
         return Ok(None);
     }
-
-    if let Some(GrantedAbilityAst::ParsedObjectAbility { ability, display }) =
-        parse_granted_activated_or_triggered_ability_for_gain(&ability_tokens, clause_words)?
-    {
-        return Ok(Some(vec![grant_object_ability_for_anthem_subject(
-            clause, *ability, display,
-        )]));
-    }
-
-    if let Some(actions) = parse_ability_line(&ability_tokens) {
-        reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
-        let granted = actions
-            .into_iter()
-            .filter_map(keyword_action_to_static_ability)
-            .collect::<Vec<_>>();
-        if granted.is_empty() {
-            return Ok(None);
-        }
-        return Ok(Some(
-            granted
-                .into_iter()
-                .map(|ability| grant_for_anthem_subject(clause, ability))
-                .collect(),
-        ));
-    }
-
-    if let Some(marker) = parse_static_text_marker_line(&ability_tokens) {
-        return Ok(Some(vec![grant_for_anthem_subject(clause, marker)]));
-    }
-
-    let mut ability_tokens_with_period = ability_tokens.to_vec();
-    ability_tokens_with_period.push(OwnedLexToken::period(
-        crate::cards::builders::TextSpan::synthetic(),
-    ));
-    if let Some(amount) =
-        super::grammar::abilities::parse_ward_pay_life_amount_lexed(&ability_tokens_with_period)
-    {
-        return Ok(Some(vec![grant_for_anthem_subject(
-            clause,
-            StaticAbility::ward(ironsmith_core::TotalCost::from_cost(
-                crate::model::CompilerCost::Life(Value::Fixed(amount as i32)),
-            )),
-        )]));
-    }
-    if let Some(marker) = parse_static_text_marker_line(&ability_tokens_with_period) {
-        return Ok(Some(vec![grant_for_anthem_subject(clause, marker)]));
-    }
-
-    if let Some(abilities) = parse_static_ability_ast_line_lexed(&ability_tokens)? {
-        return Ok(Some(grant_static_anthem_abilities_for_subject(
-            clause, abilities,
-        )));
+    let input = granted_segment_readings::GrantedSegment {
+        tokens: &ability_tokens,
+        clause,
+        clause_words,
+    };
+    match granted_segment_readings::read(&input) {
+        ParseOutcome::Match(matched) => return Ok(Some(matched.value.value)),
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
 
     Ok(None)
@@ -2284,19 +2218,20 @@ pub fn parse_anthem_with_trailing_segments_line(
 
             let segment_shape = anthem_grant_grammar::parse_continuing_segment_shape(&segment);
             if segment_shape == anthem_grant_grammar::ContinuingSegmentShape::MustAttack {
-                extras.push(grant_for_anthem_subject(&clause, StaticAbility::must_attack()));
+                extras.push(grant_for_anthem_subject(
+                    &clause,
+                    StaticAbility::must_attack(),
+                ));
                 continue;
             }
             if segment_shape == anthem_grant_grammar::ContinuingSegmentShape::CantAttackAlone {
-                extras.push(
-                    grant_for_anthem_subject(
-                        &clause,
-                        StaticAbility::restriction(
-                            crate::effect::Restriction::attack_alone(ObjectFilter::source()),
-                            "This creature can't attack alone".to_string(),
-                        ),
+                extras.push(grant_for_anthem_subject(
+                    &clause,
+                    StaticAbility::restriction(
+                        crate::effect::Restriction::attack_alone(ObjectFilter::source()),
+                        "This creature can't attack alone".to_string(),
                     ),
-                );
+                ));
                 continue;
             }
             if let anthem_grant_grammar::ContinuingSegmentShape::BeEverySubtype(family) =
@@ -2332,34 +2267,36 @@ pub fn parse_anthem_with_trailing_segments_line(
 
         let segment_shape = anthem_grant_grammar::parse_continuing_segment_shape(&segment);
         if segment_shape == anthem_grant_grammar::ContinuingSegmentShape::CantBlock {
-            extras.push(grant_for_anthem_subject(&clause, StaticAbility::cant_block()));
+            extras.push(grant_for_anthem_subject(
+                &clause,
+                StaticAbility::cant_block(),
+            ));
             continue;
         }
         if segment_shape == anthem_grant_grammar::ContinuingSegmentShape::CantAttackAlone {
-            extras.push(
-                grant_for_anthem_subject(
-                    &clause,
-                    StaticAbility::restriction(
-                        crate::effect::Restriction::attack_alone(ObjectFilter::source()),
-                        "This creature can't attack alone".to_string(),
-                    ),
+            extras.push(grant_for_anthem_subject(
+                &clause,
+                StaticAbility::restriction(
+                    crate::effect::Restriction::attack_alone(ObjectFilter::source()),
+                    "This creature can't attack alone".to_string(),
                 ),
-            );
+            ));
             continue;
         }
         if segment_shape == anthem_grant_grammar::ContinuingSegmentShape::MustAttack {
-            extras.push(grant_for_anthem_subject(&clause, StaticAbility::must_attack()));
+            extras.push(grant_for_anthem_subject(
+                &clause,
+                StaticAbility::must_attack(),
+            ));
             continue;
         }
         if let anthem_grant_grammar::ContinuingSegmentShape::CantBeBlockedByMoreThan(count) =
             segment_shape
         {
-            extras.push(
-                grant_for_anthem_subject(
-                    &clause,
-                    StaticAbility::cant_be_blocked_by_more_than(count),
-                ),
-            );
+            extras.push(grant_for_anthem_subject(
+                &clause,
+                StaticAbility::cant_be_blocked_by_more_than(count),
+            ));
             continue;
         }
         if let anthem_grant_grammar::ContinuingSegmentShape::SetColor { color_word } = segment_shape
@@ -2398,10 +2335,9 @@ pub fn parse_anthem_with_trailing_segments_line(
                 &crate::lexer::token_word_refs(&ability_tokens),
                 &["all", "abilities"],
             ) {
-                let remove: StaticAbilityAst = StaticAbility::remove_all_abilities(
-                    anthem_subject_filter(&clause.subject),
-                )
-                .into();
+                let remove: StaticAbilityAst =
+                    StaticAbility::remove_all_abilities(anthem_subject_filter(&clause.subject))
+                        .into();
                 extras.push(match &clause.condition {
                     Some(condition) => StaticAbilityAst::ConditionalStaticAbility {
                         ability: Box::new(remove),
@@ -2550,7 +2486,10 @@ pub fn parse_anthem_with_trailing_segments_line(
             }
 
             if grant_must_attack {
-                extras.push(grant_for_anthem_subject(&clause, StaticAbility::must_attack()));
+                extras.push(grant_for_anthem_subject(
+                    &clause,
+                    StaticAbility::must_attack(),
+                ));
             }
             continuing_have_clause = true;
             continue;
@@ -2651,11 +2590,8 @@ fn persistent_lure_cards_lower_to_specific_attacker_rule_restrictions() {
     }
 
     // Nessian Boar and Shinen of Life's Roar share this unconditional line.
-    let tokens = crate::lexer::lex_line(
-        "All creatures able to block this creature do so.",
-        0,
-    )
-    .expect("lex unconditional lure line");
+    let tokens = crate::lexer::lex_line("All creatures able to block this creature do so.", 0)
+        .expect("lex unconditional lure line");
     let unconditional = parse_all_creatures_able_to_block_source_line(&tokens)
         .expect("parse unconditional lure line")
         .expect("unconditional lure line should be recognized");
@@ -2757,9 +2693,7 @@ pub fn parse_plain_can_attack_as_though_no_defender_line(
         return Ok(None);
     };
     let subject = parse_anthem_subject(shape.subject_tokens)?;
-    let permission = StaticAbilityAst::Static(
-        StaticAbility::can_attack_as_though_no_defender(),
-    );
+    let permission = StaticAbilityAst::Static(StaticAbility::can_attack_as_though_no_defender());
     Ok(Some(match subject {
         AnthemSubjectAst::Source => permission,
         AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantStaticAbility {
@@ -2823,11 +2757,8 @@ fn plain_no_defender_permissions_lower_to_the_typed_combat_ability() {
         );
     }
 
-    let near_miss = crate::lexer::lex_line(
-        "Wall creatures have defender.",
-        0,
-    )
-    .expect("lex near miss");
+    let near_miss =
+        crate::lexer::lex_line("Wall creatures have defender.", 0).expect("lex near miss");
     assert!(
         parse_plain_can_attack_as_though_no_defender_line(&near_miss)
             .expect("parse near miss")
@@ -2936,9 +2867,7 @@ pub fn parse_subject_is_every_subtype_family_line(
     )))
 }
 
-pub fn parse_anthem_line(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<StaticAbility>, CardTextError> {
+pub fn parse_anthem_line(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, CardTextError> {
     let keyword_head = anthem_grant_grammar::parse_anthem_keyword_head(tokens);
     let trailing_condition_start =
         match anthem_grant_grammar::split_anthem_keyword_trailing_condition(tokens) {
@@ -3011,9 +2940,7 @@ pub fn parse_multi_subject_anthem_line(
     ) {
         return Ok(None);
     }
-    if subject_tokens.iter().any(OwnedLexToken::is_comma)
-        && parse_anthem_line(tokens)?.is_some()
-    {
+    if subject_tokens.iter().any(OwnedLexToken::is_comma) && parse_anthem_line(tokens)?.is_some() {
         return Ok(None);
     }
     let Some(segments) = anthem_grant_grammar::parse_multi_subject_segments(&subject_tokens) else {
@@ -3062,11 +2989,9 @@ fn subtype_list_anthem_remains_one_subject() {
 
 #[test]
 fn shared_head_supertype_subtype_anthem_remains_one_typed_subject() {
-    let tokens = crate::lexer::lex_line(
-        "Other snow and Zombie creatures you control get +1/+1.",
-        0,
-    )
-    .expect("lex shared-head anthem");
+    let tokens =
+        crate::lexer::lex_line("Other snow and Zombie creatures you control get +1/+1.", 0)
+            .expect("lex shared-head anthem");
 
     assert!(
         parse_multi_subject_anthem_line(&tokens)
@@ -3122,9 +3047,7 @@ pub fn parse_has_base_power_toughness_static_line(
         anthem_grant_grammar::BasePowerToughnessConditionShape::Tokens(condition_tokens) => {
             parse_static_condition_clause(condition_tokens)?
         }
-        anthem_grant_grammar::BasePowerToughnessConditionShape::YourTurn => {
-            PredicateAst::YourTurn
-        }
+        anthem_grant_grammar::BasePowerToughnessConditionShape::YourTurn => PredicateAst::YourTurn,
     };
     let condition = bind_attachment_condition_to_subject(condition, &subject);
     Ok(Some(base.with_condition(condition)))
@@ -3178,9 +3101,7 @@ pub fn parse_isnt_creature_line(
         let unless_condition =
             PredicateAst::Not(Box::new(parse_static_condition_clause(unless_tokens)?));
         condition = Some(match condition {
-            Some(existing) => {
-                PredicateAst::And(Box::new(existing), Box::new(unless_condition))
-            }
+            Some(existing) => PredicateAst::And(Box::new(existing), Box::new(unless_condition)),
             None => unless_condition,
         });
     }
@@ -3384,9 +3305,7 @@ pub fn parse_filter_has_granted_ability_line(
     // `have`, but it is a comparison inside the permission rather than a
     // subject-to-ability grant.  Once either complete conditional permission
     // grammar proves the line, keep it outside this broad `has`/`have` family.
-    if let Ok(Some(_)) =
-        parse_as_long_as_condition_can_attack_as_though_no_defender_line(tokens)
-    {
+    if let Ok(Some(_)) = parse_as_long_as_condition_can_attack_as_though_no_defender_line(tokens) {
         return Ok(None);
     }
     if let Ok(Some(_)) = parse_source_can_attack_as_though_no_defender_as_long_as_line(tokens) {
@@ -3399,22 +3318,23 @@ pub fn parse_filter_has_granted_ability_line(
     if matches!(
         parse_has_base_power_toughness_and_type_color_addition_static_line(tokens),
         Ok(Some(_))
-    ) || matches!(parse_targeting_as_though_no_ability_line(tokens), Ok(Some(_)))
-        || matches!(parse_equipment_you_control_have_equip_line(tokens), Ok(Some(_)))
-        || matches!(
-            crate::keyword_static::parse_all_have_indestructible_line(tokens),
-            Ok(Some(_))
-        )
-    {
+    ) || matches!(
+        parse_targeting_as_though_no_ability_line(tokens),
+        Ok(Some(_))
+    ) || matches!(
+        parse_equipment_you_control_have_equip_line(tokens),
+        Ok(Some(_))
+    ) || matches!(
+        crate::keyword_static::parse_all_have_indestructible_line(tokens),
+        Ok(Some(_))
+    ) {
         return Ok(None);
     }
     let clause_words = crate::lexer::token_word_refs(tokens);
     let mut deferred_error: Option<CardTextError> = None;
     let leading_condition_subject_start =
         anthem_grant_grammar::parse_prefix_condition_shape(tokens, tokens.len())
-            .filter(|shape| {
-                shape.kind == anthem_grant_grammar::AnthemPrefixConditionKind::AsLongAs
-            })
+            .filter(|shape| shape.kind == anthem_grant_grammar::AnthemPrefixConditionKind::AsLongAs)
             .and_then(|shape| shape.comma_subject_start);
     for candidate in anthem_grant_grammar::parse_granted_ability_candidates(tokens) {
         let has_idx = candidate.has_token;
@@ -3437,83 +3357,84 @@ pub fn parse_filter_has_granted_ability_line(
             continue;
         }
         if let Some(split) = anthem_grant_grammar::split_type_addition_subject(&subject_tokens)
-            && let Some(additions) = parse_type_color_addition_clause(split.addition_tokens)? {
-                let base_subject = match parse_anthem_subject(split.base_subject_tokens) {
-                    Ok(subject) => subject,
-                    Err(err) => {
-                        deferred_error.get_or_insert(err);
-                        continue;
-                    }
-                };
-                let AnthemSubjectAst::Filter(filter) = &base_subject else {
+            && let Some(additions) = parse_type_color_addition_clause(split.addition_tokens)?
+        {
+            let base_subject = match parse_anthem_subject(split.base_subject_tokens) {
+                Ok(subject) => subject,
+                Err(err) => {
+                    deferred_error.get_or_insert(err);
                     continue;
-                };
-                let ability_tokens = trim_commas(&tokens[has_idx + 1..]);
-                let attached_subject =
-                    anthem_grant_grammar::parse_granted_subject_facts(split.base_subject_tokens)
-                        .attached_subject;
-                let granted_tail = match parse_heterogeneous_granted_tail(
-                    &ability_tokens,
-                    &clause_words,
-                    attached_subject,
-                ) {
-                    Ok(Some(tail)) => tail,
-                    Ok(None) => continue,
-                    Err(err) => {
-                        deferred_error.get_or_insert(err);
-                        continue;
-                    }
-                };
-                let mut result = Vec::new();
-                let with_shared_condition = |ability: StaticAbility| match condition.clone() {
-                    Some(condition) => ability.with_condition(condition),
-                    None => ability,
-                };
-                if !additions.set_colors.is_empty() {
-                    result.push(
-                        with_shared_condition(StaticAbility::set_colors(
-                            filter.clone(),
-                            additions.set_colors,
-                        ))
-                        .into(),
-                    );
                 }
-                if !additions.added_colors.is_empty() {
-                    result.push(
-                        with_shared_condition(StaticAbility::add_colors(
-                            filter.clone(),
-                            additions.added_colors,
-                        ))
-                        .into(),
-                    );
+            };
+            let AnthemSubjectAst::Filter(filter) = &base_subject else {
+                continue;
+            };
+            let ability_tokens = trim_commas(&tokens[has_idx + 1..]);
+            let attached_subject =
+                anthem_grant_grammar::parse_granted_subject_facts(split.base_subject_tokens)
+                    .attached_subject;
+            let granted_tail = match parse_heterogeneous_granted_tail(
+                &ability_tokens,
+                &clause_words,
+                attached_subject,
+            ) {
+                Ok(Some(tail)) => tail,
+                Ok(None) => continue,
+                Err(err) => {
+                    deferred_error.get_or_insert(err);
+                    continue;
                 }
-                if !additions.card_types.is_empty() {
-                    result.push(
-                        with_shared_condition(StaticAbility::add_card_types(
-                            filter.clone(),
-                            additions.card_types,
-                        ))
-                        .into(),
-                    );
-                }
-                if !additions.subtypes.is_empty() {
-                    result.push(
-                        with_shared_condition(StaticAbility::add_subtypes(
-                            filter.clone(),
-                            additions.subtypes,
-                        ))
-                        .into(),
-                    );
-                }
-                result.extend(lower_granted_tail_for_anthem_subject(
-                    &base_subject,
-                    &condition,
-                    granted_tail,
-                ));
-                if !result.is_empty() {
-                    return Ok(Some(result));
-                }
+            };
+            let mut result = Vec::new();
+            let with_shared_condition = |ability: StaticAbility| match condition.clone() {
+                Some(condition) => ability.with_condition(condition),
+                None => ability,
+            };
+            if !additions.set_colors.is_empty() {
+                result.push(
+                    with_shared_condition(StaticAbility::set_colors(
+                        filter.clone(),
+                        additions.set_colors,
+                    ))
+                    .into(),
+                );
             }
+            if !additions.added_colors.is_empty() {
+                result.push(
+                    with_shared_condition(StaticAbility::add_colors(
+                        filter.clone(),
+                        additions.added_colors,
+                    ))
+                    .into(),
+                );
+            }
+            if !additions.card_types.is_empty() {
+                result.push(
+                    with_shared_condition(StaticAbility::add_card_types(
+                        filter.clone(),
+                        additions.card_types,
+                    ))
+                    .into(),
+                );
+            }
+            if !additions.subtypes.is_empty() {
+                result.push(
+                    with_shared_condition(StaticAbility::add_subtypes(
+                        filter.clone(),
+                        additions.subtypes,
+                    ))
+                    .into(),
+                );
+            }
+            result.extend(lower_granted_tail_for_anthem_subject(
+                &base_subject,
+                &condition,
+                granted_tail,
+            ));
+            if !result.is_empty() {
+                return Ok(Some(result));
+            }
+        }
         let subject_facts = anthem_grant_grammar::parse_granted_subject_facts(&subject_tokens);
         let prefix_attached_subject_filter =
             anthem_grant_grammar::parse_prefix_condition_shape(tokens, has_idx)
@@ -3557,9 +3478,7 @@ pub fn parse_filter_has_granted_ability_line(
                 }
             };
             condition = Some(match condition {
-                Some(existing) => {
-                    PredicateAst::And(Box::new(existing), Box::new(parsed_condition))
-                }
+                Some(existing) => PredicateAst::And(Box::new(existing), Box::new(parsed_condition)),
                 None => parsed_condition,
             });
             if kind == anthem_grant_grammar::GrantedAbilityConditionKind::If {
@@ -3578,9 +3497,8 @@ pub fn parse_filter_has_granted_ability_line(
         if let Some(keyword_prefix) =
             anthem_grant_grammar::split_trailing_during_your_turn_clause(&ability_tokens)
         {
-            let timing = PredicateAst::ActivationTiming(
-                crate::ability::ActivationTiming::DuringYourTurn,
-            );
+            let timing =
+                PredicateAst::ActivationTiming(crate::ability::ActivationTiming::DuringYourTurn);
             condition = Some(match condition {
                 Some(existing) => PredicateAst::And(Box::new(existing), Box::new(timing)),
                 None => timing,
@@ -3715,10 +3633,10 @@ pub fn parse_filter_has_granted_ability_line(
 
 #[test]
 fn attached_object_anthem_subject_uses_tagged_constraints() {
-    let enchanted = AnthemSubjectAst::Filter(ObjectFilter::tagged("enchanted"));
+    let enchanted = AnthemSubjectAst::Filter(ObjectFilter::tagged(crate::tag::CompilerReferenceTag::Enchanted.bind()));
     assert!(attached_object_anthem_subject_filter(&enchanted).is_some());
 
-    let equipped = AnthemSubjectAst::Filter(ObjectFilter::tagged("equipped"));
+    let equipped = AnthemSubjectAst::Filter(ObjectFilter::tagged(crate::tag::CompilerReferenceTag::Equipped.bind()));
     assert!(attached_object_anthem_subject_filter(&equipped).is_some());
 
     let creature = AnthemSubjectAst::Filter(ObjectFilter::creature());
@@ -3839,12 +3757,9 @@ fn quoted_static_marker_grants_parse_for_filtered_subjects() {
     assert_eq!(candidates.len(), 1, "expected one have-tail candidate");
     let has_token = candidates[0].has_token;
     let tail = trim_commas(&tokens[has_token + 1..]);
-    let parsed_tail = parse_heterogeneous_granted_tail(
-        &tail,
-        &crate::lexer::token_word_refs(&tokens),
-        false,
-    )
-    .expect("parse heterogeneous quoted tail");
+    let parsed_tail =
+        parse_heterogeneous_granted_tail(&tail, &crate::lexer::token_word_refs(&tokens), false)
+            .expect("parse heterogeneous quoted tail");
     assert!(parsed_tail.is_some(), "expected quoted marker tail");
     let abilities = parse_filter_has_granted_ability_line(&tokens)
         .expect("parse quoted static grant")
@@ -3918,7 +3833,10 @@ fn quoted_commander_cost_reduction_stays_owned_by_the_granted_ability() {
     let has_token = candidates[0].has_token;
     let subject_tokens = trim_commas(&tokens[..has_token]);
     let subject = parse_anthem_subject(&subject_tokens).expect("commander creature subject");
-    assert!(matches!(subject, AnthemSubjectAst::Filter(_)), "{subject:#?}");
+    assert!(
+        matches!(subject, AnthemSubjectAst::Filter(_)),
+        "{subject:#?}"
+    );
     let tail_tokens = trim_commas(&tokens[has_token + 1..]);
     let tail = parse_heterogeneous_granted_tail(
         &tail_tokens,
@@ -3937,11 +3855,13 @@ fn quoted_commander_cost_reduction_stays_owned_by_the_granted_ability() {
         .expect("quoted reduction should be recognized");
     assert_eq!(routed, direct);
 
-    let [StaticAbilityAst::GrantStaticAbility {
-        filter,
-        ability,
-        condition,
-    }] = routed.as_slice()
+    let [
+        StaticAbilityAst::GrantStaticAbility {
+            filter,
+            ability,
+            condition,
+        },
+    ] = routed.as_slice()
     else {
         panic!("expected one filtered static grant: {routed:#?}");
     };
@@ -4014,13 +3934,10 @@ fn conditioned_source_keyword_and_quoted_activation_are_sibling_grants() {
         crate::lexer::token_word_refs(&tokens[subject_start..candidates[0].has_token]),
         ["it"]
     );
-    let direct_tail = parse_heterogeneous_granted_tail(
-        &tail,
-        &crate::lexer::token_word_refs(&tokens),
-        false,
-    )
-    .expect("parse direct mixed-grant tail")
-    .expect("mixed-grant tail should match");
+    let direct_tail =
+        parse_heterogeneous_granted_tail(&tail, &crate::lexer::token_word_refs(&tokens), false)
+            .expect("parse direct mixed-grant tail")
+            .expect("mixed-grant tail should match");
     assert_eq!(direct_tail.granted_keyword_actions.len(), 1);
     assert_eq!(direct_tail.granted_object_abilities.len(), 1);
     let abilities = parse_filter_has_granted_ability_line(&tokens)
@@ -4034,10 +3951,9 @@ fn conditioned_source_keyword_and_quoted_activation_are_sibling_grants() {
         "{abilities:#?}"
     );
     assert!(
-        abilities.iter().any(|ability| matches!(
-            ability,
-            StaticAbilityAst::GrantObjectAbility { .. }
-        )),
+        abilities
+            .iter()
+            .any(|ability| matches!(ability, StaticAbilityAst::GrantObjectAbility { .. })),
         "{abilities:#?}"
     );
 }
@@ -4048,8 +3964,7 @@ fn type_addition_subjects_preserve_trailing_quoted_and_keyword_grants() {
         "Clues you control are Equipment in addition to their other types and have \"Equipped creature gets +2/+0\" and equip {2}.",
         "Treasures you control are Equipment in addition to their other types and have \"Equipped creature gets +2/+0,\" equip Pirate {1}, and equip {3}.",
     ] {
-        let tokens =
-            crate::lexer::lex_line(text, 0).expect("lex type-addition grant");
+        let tokens = crate::lexer::lex_line(text, 0).expect("lex type-addition grant");
         let abilities = parse_filter_has_granted_ability_line(&tokens)
             .expect("parse type-addition grant")
             .expect("type-addition grant should be recognized");
@@ -4198,11 +4113,8 @@ fn fixed_not_your_turn_prefix_conditions_source_type_identity() {
 
 #[test]
 fn generic_leading_if_conditions_source_spell_keyword() {
-    let tokens = crate::lexer::lex_line(
-        "If this spell was kicked, it has split second.",
-        0,
-    )
-    .expect("lex kicked static keyword");
+    let tokens = crate::lexer::lex_line("If this spell was kicked, it has split second.", 0)
+        .expect("lex kicked static keyword");
 
     let (routed, loss) =
         crate::parse_loss::capture(|| parse_static_ability_ast_line_lexed(&tokens));
@@ -4333,8 +4245,7 @@ fn generic_leading_as_long_as_preserves_specialized_condition_controls() {
             let routed = routed
                 .unwrap_or_else(|| panic!("leading condition should remain parseable: {text}"));
             assert!(
-                !routed.is_empty()
-                    && routed.iter().all(static_ability_ast_has_explicit_condition),
+                !routed.is_empty() && routed.iter().all(static_ability_ast_has_explicit_condition),
                 "the generic fallback must preserve the complete condition: {routed:#?}"
             );
         }
@@ -4388,8 +4299,7 @@ fn exact_one_control_condition_binds_that_creature_subject() {
             2,
         ),
     ] {
-        let tokens = crate::lexer::lex_line(text, 0)
-            .expect("lex exact-one conditional anthem");
+        let tokens = crate::lexer::lex_line(text, 0).expect("lex exact-one conditional anthem");
         let abilities = parse_anthem_and_keyword_line(&tokens)
             .expect("parse exact-one conditional anthem")
             .expect("exact-one conditional anthem should be recognized");
@@ -4434,8 +4344,7 @@ fn conditional_anthems_preserve_no_defender_attack_permission() {
         "As long as this creature is monstrous, it gets +2/+2 and can attack as though it didn't have defender.",
         "As long as you control three or more artifacts, this creature gets +2/+2 and can attack as though it didn't have defender.",
     ] {
-        let tokens =
-            crate::lexer::lex_line(text, 0).expect("lex no-defender anthem");
+        let tokens = crate::lexer::lex_line(text, 0).expect("lex no-defender anthem");
         let abilities = parse_anthem_and_no_defender_line(&tokens)
             .expect("parse no-defender anthem")
             .expect("no-defender anthem should be recognized");
@@ -4539,8 +4448,7 @@ fn attached_conditional_anthem_continuations_lower_typed_conditions() {
         "Equipped creature gets +1/+1. If it's a Warrior, it gets +2/+1 instead.",
         "Enchanted creature gets +3/+0 as long as it's attacking. Otherwise, it gets -2/-1.",
     ] {
-        let tokens =
-            crate::lexer::lex_line(text, 0).expect("lex conditional continuation");
+        let tokens = crate::lexer::lex_line(text, 0).expect("lex conditional continuation");
         let abilities = parse_conditional_anthem_replacement_line(&tokens)
             .expect("parse replacement continuation")
             .or_else(|| {
@@ -4640,8 +4548,7 @@ fn attachment_count_conditions_bind_typed_hosts_for_target_cards() {
 fn base_power_toughness_grants_accept_quoted_triggered_abilities() {
     {
         let text = "Enchanted creature has base power and toughness 8/8 and has \"Whenever this creature attacks, you may tap target creature with power 8 or less.\"";
-        let tokens = crate::lexer::lex_line(text, 0)
-            .expect("lex base characteristic grant");
+        let tokens = crate::lexer::lex_line(text, 0).expect("lex base characteristic grant");
         let abilities = parse_has_base_power_toughness_and_granted_keywords_static_line(&tokens)
             .expect("parse base characteristic grant")
             .unwrap_or_else(|| panic!("base characteristic grant should be recognized: {text}"));
@@ -4655,30 +4562,28 @@ fn base_power_toughness_grants_accept_quoted_triggered_abilities() {
 #[test]
 fn attached_combat_restrictions_preserve_quoted_ability_grants() {
     (|| {
-            let text = "Enchanted creature can't attack or block and has \"{7}: Hold for Ransom's controller sacrifices it and draws a card. Activate only as a sorcery.\"";
-            let tokens = crate::lexer::lex_line(text, 0)
-                .expect("lex restriction and grant");
-            let abilities = parse_static_ability_ast_line_lexed(&tokens)
-                .expect("route restriction and grant")
-                .expect("restriction and grant should be recognized");
-            assert_eq!(abilities.len(), 2);
-            let debug = format!("{abilities:#?}");
-            assert!(debug.contains("AttachedObjectAbilityGrant"), "{debug}");
-            assert!(
-                debug.contains("player: ItsController")
-                    && debug.contains("__it__")
-                    && debug.contains("Hold for Ransom"),
-                "{debug}"
-            );
-            assert!(debug.contains("SorcerySpeed"), "{debug}");
-        })();
+        let text = "Enchanted creature can't attack or block and has \"{7}: Hold for Ransom's controller sacrifices it and draws a card. Activate only as a sorcery.\"";
+        let tokens = crate::lexer::lex_line(text, 0).expect("lex restriction and grant");
+        let abilities = parse_static_ability_ast_line_lexed(&tokens)
+            .expect("route restriction and grant")
+            .expect("restriction and grant should be recognized");
+        assert_eq!(abilities.len(), 2);
+        let debug = format!("{abilities:#?}");
+        assert!(debug.contains("AttachedObjectAbilityGrant"), "{debug}");
+        assert!(
+            debug.contains("player: ItsController")
+                && debug.contains("__it__")
+                && debug.contains("Hold for Ransom"),
+            "{debug}"
+        );
+        assert!(debug.contains("SorcerySpeed"), "{debug}");
+    })();
 }
 
 #[test]
 fn conditional_color_assignments_preserve_quoted_ability_grants() {
     let text = "As long as there are seven or more cards in your graveyard, this creature is white and has \"{T}: Destroy target black creature.\"";
-    let tokens =
-        crate::lexer::lex_line(text, 0).expect("lex color assignment and grant");
+    let tokens = crate::lexer::lex_line(text, 0).expect("lex color assignment and grant");
     let abilities = parse_subject_color_and_granted_ability_line(&tokens)
         .expect("parse color assignment and grant")
         .expect("color assignment and grant should be recognized");
@@ -4687,11 +4592,8 @@ fn conditional_color_assignments_preserve_quoted_ability_grants() {
 
 #[test]
 fn static_turn_threshold_conditions_use_typed_anthem_grammar() {
-    let drawn = crate::lexer::lex_line(
-        "An opponent has drawn three or more cards this turn",
-        0,
-    )
-    .expect("draw threshold should lex");
+    let drawn = crate::lexer::lex_line("An opponent has drawn three or more cards this turn", 0)
+        .expect("draw threshold should lex");
     assert_eq!(
         parse_cards_drawn_this_turn_static_condition(&drawn),
         Some(PredicateAst::ValueComparison {
@@ -4701,9 +4603,8 @@ fn static_turn_threshold_conditions_use_typed_anthem_grammar() {
         })
     );
 
-    let rolled =
-        crate::lexer::lex_line("You have rolled two or more dice this turn", 0)
-            .expect("dice threshold should lex");
+    let rolled = crate::lexer::lex_line("You have rolled two or more dice this turn", 0)
+        .expect("dice threshold should lex");
     assert_eq!(
         parse_dice_rolled_this_turn_static_condition(&rolled),
         Some(PredicateAst::ValueComparison {
@@ -4730,9 +4631,8 @@ fn static_condition_family_consumes_typed_condition_shapes() {
         }
     ));
 
-    let conjoined =
-        crate::lexer::lex_line("It is your turn and you attacked this turn.", 0)
-            .expect("conjoined condition should lex");
+    let conjoined = crate::lexer::lex_line("It is your turn and you attacked this turn.", 0)
+        .expect("conjoined condition should lex");
     let PredicateAst::And(left, right) =
         parse_static_condition_clause(&conjoined).expect("conjoined condition should parse")
     else {
@@ -4812,11 +4712,8 @@ fn keyword_and_maximum_blocker_tail_share_the_attached_subject() {
 
 #[test]
 fn unblockable_and_keyword_tail_keeps_the_reverse_authored_order() {
-    let tokens = crate::lexer::lex_line(
-        "Enchanted creature can't be blocked and has shroud.",
-        0,
-    )
-    .expect("line should lex");
+    let tokens = crate::lexer::lex_line("Enchanted creature can't be blocked and has shroud.", 0)
+        .expect("line should lex");
     let parsed = parse_subject_cant_be_blocked_and_has_keywords_line(&tokens)
         .expect("parser should not error")
         .expect("line should parse");
@@ -4860,10 +4757,7 @@ fn granted_miracle_tail_captures_dynamic_cost_reduction() {
     .expect("line should lex");
     let parsed = parse_granted_miracle_cost_reduction_tail_clause(&tokens)
         .expect("miracle tail should parse");
-    let (cost, used) =
-        crate::util::leading_mana_cost_from_tokens(
-            parsed.reduction_cost_tokens,
-        )
+    let (cost, used) = crate::util::leading_mana_cost_from_tokens(parsed.reduction_cost_tokens)
         .expect("captured cost should parse");
 
     assert_eq!(cost.generic_mana_total(), 4);
@@ -4879,8 +4773,7 @@ fn cant_be_blocked_by_more_than_clause_captures_subject_and_threshold() {
     .expect("line should lex");
     let parsed = parse_cant_be_blocked_by_more_than_clause(&tokens)
         .expect("max-blockers clause should parse");
-    let subject_words =
-        crate::lexer::parser_token_word_refs(parsed.subject_tokens);
+    let subject_words = crate::lexer::parser_token_word_refs(parsed.subject_tokens);
     let (minimum_blockers, used) = parse_greater_than_or_equal_quantity_prefix(
         parsed.blocker_threshold_tokens,
         false,
@@ -4909,8 +4802,7 @@ fn can_block_additional_creature_clause_captures_subject_and_count() {
     .expect("line should lex");
     let parsed = parse_can_block_additional_creature_clause(&tokens)
         .expect("additional-blocker clause should parse");
-    let subject_words =
-        crate::lexer::parser_token_word_refs(parsed.subject_tokens);
+    let subject_words = crate::lexer::parser_token_word_refs(parsed.subject_tokens);
     let (count, used) = parse_number(parsed.additional_count_tokens)
         .expect("captured additional blocker count should parse");
 

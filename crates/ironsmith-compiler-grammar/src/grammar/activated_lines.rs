@@ -416,43 +416,58 @@ pub fn parse_cost_reduction_line_head_tokens(
     let head = LexStream::new(tokens);
 
     let mut this_cost = head.clone();
-    if primitives::phrase(&["this", "cost", "is", "reduced", "by"])
-        .parse_next(&mut this_cost)
-        .is_ok()
-        && words.len() > 6
-    {
-        let amount_tokens = trim_lexed_commas(&tokens[5..]);
-        return Some(CostReductionLineHead::ThisCost {
-            amount_tokens,
-            diagnostic_amount_word: words[5],
-            diagnostic_tail: words[6..].join(" "),
-        });
-    }
-
-    if let Ok(parsed) = parse_activated_abilities_cost_head.parse_next(&mut head.clone())
-        && !parsed_subject_is_empty(&parsed)
-    {
-        return Some(parsed);
-    }
-
     let mut this_ability = head.clone();
-    if primitives::phrase(&["this", "ability", "costs"])
-        .parse_next(&mut this_ability)
-        .is_ok()
-    {
-        return Some(CostReductionLineHead::ThisAbility {
-            amount_tokens: trim_lexed_commas(&tokens[3..]),
+    let mut this_spell = head.clone();
+    // One declared alternation: the alternatives are exclusive shapes, and the
+    // first that reads the input names it.
+    let alternation = None::<CostReductionLineHead<'_>>
+        .or_else(|| {
+            if primitives::phrase(&["this", "cost", "is", "reduced", "by"])
+                .parse_next(&mut this_cost)
+                .is_ok()
+                && words.len() > 6
+            {
+                let amount_tokens = trim_lexed_commas(&tokens[5..]);
+                return Some(CostReductionLineHead::ThisCost {
+                    amount_tokens,
+                    diagnostic_amount_word: words[5],
+                    diagnostic_tail: words[6..].join(" "),
+                });
+            }
+            None
+        })
+        .or_else(|| {
+            if let Ok(parsed) = parse_activated_abilities_cost_head.parse_next(&mut head.clone())
+                && !parsed_subject_is_empty(&parsed)
+            {
+                return Some(parsed);
+            }
+            None
+        })
+        .or_else(|| {
+            if primitives::phrase(&["this", "ability", "costs"])
+                .parse_next(&mut this_ability)
+                .is_ok()
+            {
+                return Some(CostReductionLineHead::ThisAbility {
+                    amount_tokens: trim_lexed_commas(&tokens[3..]),
+                });
+            }
+            None
+        })
+        .or_else(|| {
+            if primitives::phrase(&["this", "spell", "costs"])
+                .parse_next(&mut this_spell)
+                .is_ok()
+            {
+                return Some(CostReductionLineHead::ThisSpell {
+                    amount_tokens: &tokens[3..],
+                });
+            }
+            None
         });
-    }
-
-    let mut this_spell = head;
-    if primitives::phrase(&["this", "spell", "costs"])
-        .parse_next(&mut this_spell)
-        .is_ok()
-    {
-        return Some(CostReductionLineHead::ThisSpell {
-            amount_tokens: &tokens[3..],
-        });
+    if let Some(shape) = alternation {
+        return Some(shape);
     }
     None
 }

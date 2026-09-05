@@ -3533,7 +3533,7 @@ textarea,
   color: #fff0ca;
 }
 
-@media (max-width: 720px) and (orientation: landscape) {
+@media (max-width: 720px) and (orientation: landscape), (max-width: 1023px) and (max-height: 540px) and (orientation: landscape) {
   .add-card-sheet {
     max-height: 96vh !important;
   }
@@ -3832,14 +3832,8 @@ textarea,
 }
 
 .my-zone-board-shell {
+  position: relative;
   min-width: 0;
-}
-
-.my-zone-board-shell--with-actions {
-  display: grid;
-  grid-template-columns: minmax(104px, 124px) minmax(0, 1fr);
-  gap: 8px;
-  align-items: stretch;
 }
 
 .my-zone-board-shell--with-stack {
@@ -3849,12 +3843,11 @@ textarea,
   align-items: stretch;
 }
 
-.my-zone-board-shell--with-actions.my-zone-board-shell--with-stack {
-  grid-template-columns: minmax(104px, 124px) clamp(188px, 18vw, 260px) minmax(0, 1fr);
-}
-
 .my-zone-action-rail {
-  position: relative;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 132px;
   z-index: 4;
   display: flex;
   align-items: flex-start;
@@ -4421,7 +4414,7 @@ select::-ms-expand {
 }
 
 /* --- Tablet compact: 721px–1023px --- */
-@media (min-width: 721px) and (max-width: 1023px) {
+@media (min-width: 721px) and (max-width: 1023px) and (min-height: 541px) {
   .topbar-shell {
     display: grid;
     grid-template-columns: 1fr auto;

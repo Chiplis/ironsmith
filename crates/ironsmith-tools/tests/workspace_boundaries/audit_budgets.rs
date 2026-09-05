@@ -38,16 +38,20 @@ const REDUNDANT_PARSE_BUDGET: usize = 0;
 /// `if` statements that each try a recognizer and return on its match, so the
 /// order they are written in decides the language wherever two accept the same
 /// input. Item 4 tables each ladder as a registry that collects candidates.
-const FIRST_MATCH_LADDER_BUDGET: usize = 176;
+const FIRST_MATCH_LADDER_BUDGET: usize = 88;
 
 /// Registries that still resolve by registration order while their overlaps
 /// are being resolved. Each flips to strict ambiguity-aware resolution when its
 /// overlaps on the corpus reach zero.
-const RANKED_REGISTRY_BUDGET: usize = 6;
+const RANKED_REGISTRY_BUDGET: usize = 14;
 
 /// Inputs on which a ranked registry's order, not its grammar, chose the
 /// reading, over every 50th card.
-const REGISTRY_OVERLAP_BUDGET: usize = 34;
+/// Grammar sites that mint or compare string reference keys instead of
+/// binding a scoped symbol (item 6). Enforced by `audit_reference_keys`.
+const REFERENCE_KEY_BUDGET: usize = 270;
+
+const REGISTRY_OVERLAP_BUDGET: usize = 15;
 
 fn audit_output(binary: &str, arguments: &[&str]) -> String {
     let root = workspace_root();
@@ -157,5 +161,15 @@ pub(super) fn ranked_registry_audit_is_enforced() {
         "registry-overlap",
         reported_count(&report, "registry overlaps:"),
         REGISTRY_OVERLAP_BUDGET,
+    );
+}
+
+#[test]
+pub(super) fn reference_key_audit_is_enforced() {
+    let report = audit_output(env!("CARGO_BIN_EXE_audit_reference_keys"), &[]);
+    assert_within_budget(
+        "reference-key",
+        reported_count(&report, "reference key sites:"),
+        REFERENCE_KEY_BUDGET,
     );
 }

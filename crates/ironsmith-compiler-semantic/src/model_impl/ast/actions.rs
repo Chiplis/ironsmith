@@ -1,6 +1,9 @@
+use ironsmith_core::tag::TagKeyWalk;
+
 use super::*;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum SubjectVerbRoleAst {
     Actor,
     AffectedPlayer,
@@ -9,12 +12,14 @@ pub enum SubjectVerbRoleAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum DieNoun {
     Die,
     Dice,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum DieSurface {
     CompactNotation,
     Sided(DieNoun),
@@ -31,18 +36,21 @@ impl DieSurface {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum TokenCopySacrificeSubjectSurface {
     Token,
     Permanent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum TokenCopySacrificeEndStepSurface {
     The,
     Your,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub struct TokenCopySacrificeAbilitySurface {
     pub end_step: TokenCopySacrificeEndStepSurface,
     pub subject: TokenCopySacrificeSubjectSurface,
@@ -63,12 +71,14 @@ impl TokenCopySacrificeAbilitySurface {
 }
 
 #[derive(Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct SubjectVerbSubjectAst {
     pub role: SubjectVerbRoleAst,
     pub player: PlayerAst,
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct ReturnAsAuraAst {
     pub attachment_filter: ObjectFilter,
     pub remove_all_abilities: bool,
@@ -76,12 +86,14 @@ pub struct ReturnAsAuraAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct EmblemDescriptionAst {
     pub text: String,
     pub abilities: Vec<EmblemAbilityAst>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum EmblemAbilityAst {
     Static(Vec<StaticAbilityAst>),
     Activated(ParsedAbility),
@@ -93,6 +105,7 @@ pub enum EmblemAbilityAst {
 }
 
 #[derive(Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum SubjectVerbActionAst {
     Draw {
         count: Value,
@@ -1485,6 +1498,7 @@ pub enum SubjectVerbActionAst {
 }
 
 #[derive(Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct SubjectVerbEffectAst {
     pub subject: SubjectVerbSubjectAst,
     pub action: SubjectVerbActionAst,

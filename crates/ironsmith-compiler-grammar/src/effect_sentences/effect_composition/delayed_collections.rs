@@ -30,8 +30,8 @@ pub(super) fn parse_exile_collection_each_upkeep_return_bundle(
         return Ok(None);
     }
 
-    let exiled_tag = crate::tag::CompilerReferenceTag::SourceExiled.key();
-    let chosen_tag = crate::tag::CompilerReferenceTag::DelayedOwnedExiledChoice.key();
+    let exiled_tag = crate::tag::CompilerReferenceTag::SourceExiled.bind();
+    let chosen_tag = crate::tag::CompilerReferenceTag::DelayedOwnedExiledChoice.bind();
     let mut owned_exiled_filter = ObjectFilter::default();
     owned_exiled_filter.zone = Some(Zone::Exile);
     owned_exiled_filter.owner = Some(PlayerFilter::Active);

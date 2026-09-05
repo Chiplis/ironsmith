@@ -15,157 +15,126 @@ pub fn parse_companion_deck_condition_tokens(
     let end = crate::word_primitives::parse_sequence_start(&words, &["if", "this", "card"])
         .unwrap_or(words.len());
     let condition = words.get(start..end)?;
-
-    if crate::word_primitives::parse_sequence_complete(
-        condition,
-        &[
-            "your", "starting", "deck", "contains", "only", "cards", "with", "even", "mana",
-            "values",
-        ],
-    ) {
-        return Some(
-            ironsmith_core::CompanionDeckCondition::OnlyManaValueParity {
-                even: true,
-                lands_are_exempt: false,
-            },
-        );
-    }
-    if crate::word_primitives::parse_sequence_complete(
-        condition,
-        &[
-            "no", "card", "in", "your", "starting", "deck", "has", "more", "than", "one", "of",
-            "the", "same", "mana", "symbol", "in", "its", "mana", "cost",
-        ],
-    ) {
-        return Some(ironsmith_core::CompanionDeckCondition::NoRepeatedManaSymbols);
-    }
-    if crate::word_primitives::parse_sequence_complete(
-        condition,
-        &[
-            "each",
-            "creature",
-            "card",
-            "in",
-            "your",
-            "starting",
-            "deck",
-            "is",
-            "a",
-            "cat",
-            "elemental",
-            "nightmare",
-            "dinosaur",
-            "or",
-            "beast",
-            "card",
-        ],
-    ) {
-        return Some(ironsmith_core::CompanionDeckCondition::CreatureSubtypes(
-            vec![
-                Subtype::Cat,
-                Subtype::Elemental,
-                Subtype::Nightmare,
-                Subtype::Dinosaur,
-                Subtype::Beast,
-            ],
-        ));
-    }
-    if crate::word_primitives::parse_sequence_complete(
-        condition,
-        &[
-            "your", "starting", "deck", "contains", "only", "cards", "with", "mana", "value", "3",
-            "or", "greater", "and", "land", "cards",
-        ],
-    ) {
-        return Some(ironsmith_core::CompanionDeckCondition::NonlandManaValueAtLeast(3));
-    }
-    if crate::word_primitives::parse_sequence_complete(
-        condition,
-        &[
-            "each",
-            "permanent",
-            "card",
-            "in",
-            "your",
-            "starting",
-            "deck",
-            "has",
-            "mana",
-            "value",
-            "2",
-            "or",
-            "less",
-        ],
-    ) {
-        return Some(ironsmith_core::CompanionDeckCondition::PermanentManaValueAtMost(2));
-    }
-    if crate::word_primitives::parse_sequence_complete(
-        condition,
-        &[
-            "each",
-            "nonland",
-            "card",
-            "in",
-            "your",
-            "starting",
-            "deck",
-            "has",
-            "a",
-            "different",
-            "name",
-        ],
-    ) {
-        return Some(ironsmith_core::CompanionDeckCondition::UniqueNonlandNames);
-    }
-    if crate::word_primitives::parse_sequence_complete(
-        condition,
-        &[
-            "your", "starting", "deck", "contains", "only", "cards", "with", "odd", "mana",
-            "values", "and", "land", "cards",
-        ],
-    ) {
-        return Some(
-            ironsmith_core::CompanionDeckCondition::OnlyManaValueParity {
-                even: false,
-                lands_are_exempt: true,
-            },
-        );
-    }
-    if crate::word_primitives::parse_sequence_complete(
-        condition,
-        &[
-            "each", "nonland", "card", "in", "your", "starting", "deck", "shares", "a", "card",
-            "type",
-        ],
-    ) {
-        return Some(ironsmith_core::CompanionDeckCondition::SharedNonlandCardType);
-    }
-    if crate::word_primitives::parse_sequence_complete(
-        condition,
-        &[
-            "your", "starting", "deck", "contains", "at", "least", "twenty", "cards", "more",
-            "than", "the", "minimum", "deck", "size",
-        ],
-    ) {
-        return Some(ironsmith_core::CompanionDeckCondition::CardsAboveMinimumDeckSize(20));
-    }
-    if crate::word_primitives::parse_sequence_complete(
-        condition,
-        &[
-            "each",
-            "permanent",
-            "card",
-            "in",
-            "your",
-            "starting",
-            "deck",
-            "has",
-            "an",
-            "activated",
-            "ability",
-        ],
-    ) {
-        return Some(ironsmith_core::CompanionDeckCondition::PermanentsHaveActivatedAbility);
+    // The family is closed: exactly one authored sentence per constraint, so
+    // the sentence that matches completely names the constraint.
+    for (index, shape) in CONDITION_SHAPES.iter().enumerate() {
+        if crate::word_primitives::parse_sequence_complete(condition, shape) {
+            return Some(condition_for(index));
+        }
     }
     None
+}
+
+/// The authored condition sentences, one per typed deck constraint; the
+/// constraint for `CONDITION_SHAPES[k]` is the `k`th arm of `condition_for`.
+const CONDITION_SHAPES: &[&[&str]] = &[
+    &[
+        "your", "starting", "deck", "contains", "only", "cards", "with", "even", "mana", "values",
+    ],
+    &[
+        "no", "card", "in", "your", "starting", "deck", "has", "more", "than", "one", "of", "the",
+        "same", "mana", "symbol", "in", "its", "mana", "cost",
+    ],
+    &[
+        "each",
+        "creature",
+        "card",
+        "in",
+        "your",
+        "starting",
+        "deck",
+        "is",
+        "a",
+        "cat",
+        "elemental",
+        "nightmare",
+        "dinosaur",
+        "or",
+        "beast",
+        "card",
+    ],
+    &[
+        "your", "starting", "deck", "contains", "only", "cards", "with", "mana", "value", "3",
+        "or", "greater", "and", "land", "cards",
+    ],
+    &[
+        "each",
+        "permanent",
+        "card",
+        "in",
+        "your",
+        "starting",
+        "deck",
+        "has",
+        "mana",
+        "value",
+        "2",
+        "or",
+        "less",
+    ],
+    &[
+        "each",
+        "nonland",
+        "card",
+        "in",
+        "your",
+        "starting",
+        "deck",
+        "has",
+        "a",
+        "different",
+        "name",
+    ],
+    &[
+        "your", "starting", "deck", "contains", "only", "cards", "with", "odd", "mana", "values",
+        "and", "land", "cards",
+    ],
+    &[
+        "each", "nonland", "card", "in", "your", "starting", "deck", "shares", "a", "card", "type",
+    ],
+    &[
+        "your", "starting", "deck", "contains", "at", "least", "twenty", "cards", "more", "than",
+        "the", "minimum", "deck", "size",
+    ],
+    &[
+        "each",
+        "permanent",
+        "card",
+        "in",
+        "your",
+        "starting",
+        "deck",
+        "has",
+        "an",
+        "activated",
+        "ability",
+    ],
+];
+
+fn condition_for(index: usize) -> ironsmith_core::CompanionDeckCondition {
+    match index {
+        0 => ironsmith_core::CompanionDeckCondition::OnlyManaValueParity {
+            even: true,
+            lands_are_exempt: false,
+        },
+        1 => ironsmith_core::CompanionDeckCondition::NoRepeatedManaSymbols,
+        2 => ironsmith_core::CompanionDeckCondition::CreatureSubtypes(vec![
+            Subtype::Cat,
+            Subtype::Elemental,
+            Subtype::Nightmare,
+            Subtype::Dinosaur,
+            Subtype::Beast,
+        ]),
+        3 => ironsmith_core::CompanionDeckCondition::NonlandManaValueAtLeast(3),
+        4 => ironsmith_core::CompanionDeckCondition::PermanentManaValueAtMost(2),
+        5 => ironsmith_core::CompanionDeckCondition::UniqueNonlandNames,
+        6 => ironsmith_core::CompanionDeckCondition::OnlyManaValueParity {
+            even: false,
+            lands_are_exempt: true,
+        },
+        7 => ironsmith_core::CompanionDeckCondition::SharedNonlandCardType,
+        8 => ironsmith_core::CompanionDeckCondition::CardsAboveMinimumDeckSize(20),
+        9 => ironsmith_core::CompanionDeckCondition::PermanentsHaveActivatedAbility,
+        _ => unreachable!("every condition shape has a constraint"),
+    }
 }

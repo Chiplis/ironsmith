@@ -24,6 +24,10 @@ pub fn parse_static_line(
     )
 }
 
+use crate::recognition::ParseOutcome;
+#[path = "lines_ability/static_line_readings.rs"]
+mod static_line_readings;
+
 pub(super) fn parse_static_line_impl(
     line: &RewriteStaticLine,
     parse_tokens: &[OwnedLexToken],
@@ -235,165 +239,32 @@ pub(super) fn parse_static_line_impl(
             )]);
         return wrap_chosen_option_static_chunk(chunk, chosen_option);
     }
-    if let Some(ability) = parse_if_this_spell_costs_less_to_cast_line_lexed(lexed)? {
-        return wrap_chosen_option_static_chunk(
-            LineAst::StaticAbility(ability.into()),
-            chosen_option,
-        );
-    }
-    if let Some(ability) = parse_spell_additional_life_cost_per_target_line(lexed)? {
-        return wrap_chosen_option_static_chunk(
-            LineAst::StaticAbility(ability.into()),
-            chosen_option,
-        );
-    }
-    if let Some(ability) = parse_spell_cost_increase_per_target_beyond_first_line(lexed)? {
-        return wrap_chosen_option_static_chunk(
-            LineAst::StaticAbility(ability.into()),
-            chosen_option,
-        );
-    }
-    // A quoted cost modifier is the ability granted by the subject before
-    // the quote, not a cost modifier whose spell filter includes that outer
-    // subject. The static AST router binds the quoted ability to its grant
-    // before the broad cost parser scans the whole line for "spells ... cost".
-    // Keep that same precedence at the CST-to-semantic boundary: this is the
-    // document path used by ordinary card compilation.
+    let input = static_line_readings::StaticLine {
+        tokens: parse_tokens,
+        line,
+        broad_static: Default::default(),
+        read_by_cache: Default::default(),
+    };
+    // A quoted granted ability's static parse error is authoritative: the
+    // line is a grant whose quote the static grammar could not read, not a
+    // line for the split or keyword fallbacks to lower piecemeal.
     if lexed.iter().any(|token| token.kind == TokenKind::Quote)
-        && let Some(abilities) = parse_static_ability_ast_line_lexed(lexed)?
+        && let Err(error) = input.broad_static()
     {
-        return wrap_chosen_option_static_chunk(LineAst::StaticAbilities(abilities), chosen_option);
+        return Err(error);
     }
-    if let Some(abilities) = parse_spell_and_player_activated_ability_cost_modifier_line(lexed)? {
-        return wrap_chosen_option_static_chunk(
-            LineAst::StaticAbilities(abilities.into_iter().map(Into::into).collect()),
-            chosen_option,
-        );
-    }
-    // Keep a compound spell-cost line intact before the broad single cost
-    // modifier parser accepts its left clause and discards the terminal
-    // countering restriction. The specialized parser reuses one typed spell
-    // filter for both executable static abilities.
-    if let Some(abilities) =
-        crate::keyword_static::parse_spells_cost_reduction_and_cant_be_countered_line(lexed)?
-    {
-        return wrap_chosen_option_static_chunk(
-            LineAst::StaticAbilities(abilities.into_iter().map(Into::into).collect()),
-            chosen_option,
-        );
-    }
-    // Preserve a shared first-spell filter across the coordinated reduction
-    // and flash permission before the ordinary cost parser consumes only the
-    // left side of the sentence.
-    if let Some(abilities) =
-        crate::keyword_static::parse_first_spell_cost_reduction_and_flash_line(lexed)?
-    {
-        return wrap_chosen_option_static_chunk(LineAst::StaticAbilities(abilities), chosen_option);
-    }
-    if let Some(ability) = parse_spells_cost_modifier_line(lexed)? {
-        return wrap_chosen_option_static_chunk(
-            LineAst::StaticAbility(ability.into()),
-            chosen_option,
-        );
-    }
-    if let Some(chunk) = parse_compound_buff_and_unblockable_static_chunk(parse_tokens)? {
-        return wrap_chosen_option_static_chunk(chunk, chosen_option);
-    }
-    if semantic_grammar::parse_combined_spell_and_activation_tax_tokens(lexed).is_some()
-        && let Some(abilities) = parse_static_ability_ast_line_lexed(lexed)?
-    {
-        return wrap_chosen_option_static_chunk(LineAst::StaticAbilities(abilities), chosen_option);
-    }
-    if let Some(ability) = crate::keyword_static::parse_double_counters_replacement_line(lexed)? {
-        return wrap_chosen_option_static_chunk(
-            LineAst::StaticAbility(ability.into()),
-            chosen_option,
-        );
-    }
-    if has_standard_menace_reminder(&line.info.source_tokens)
-        && matches!(
-            parse_ability_line_lexed(lexed).as_deref(),
-            Some([KeywordAction::Menace])
-        )
-    {
-        return wrap_chosen_option_static_chunk(
-            LineAst::StaticAbility(
-                StaticAbility::menace()
-                    .with_text(STANDARD_MENACE_REMINDER)
-                    .into(),
-            ),
-            chosen_option,
-        );
-    }
-    if has_standard_flanking_reminder(&line.info.raw_line)
-        && matches!(
-            parse_ability_line_lexed(lexed).as_deref(),
-            Some([KeywordAction::Flanking])
-        )
-    {
-        return wrap_chosen_option_static_chunk(
-            LineAst::StaticAbility(
-                StaticAbility::flanking()
-                    .with_text(STANDARD_FLANKING_REMINDER)
-                    .into(),
-            ),
-            chosen_option,
-        );
-    }
-    if let Some(actions) = semantic_grammar::parse_source_keyword_tail_tokens(lexed)
-        .and_then(|tail| parse_ability_line_lexed(tail.ability_tokens))
-    {
-        return wrap_chosen_option_static_chunk(LineAst::Abilities(actions), chosen_option);
-    }
-    if let Some(abilities) = crate::keyword_static::parse_additional_land_play_line(lexed)? {
-        let abilities = abilities
-            .into_iter()
-            .map(crate::cards::builders::StaticAbilityAst::Static)
-            .collect();
-        return wrap_chosen_option_static_chunk(LineAst::StaticAbilities(abilities), chosen_option);
-    }
-    // A complete comma-separated keyword line is one authored ability line,
-    // even when an individual keyword (for example cascade) also has a
-    // specialized static-ability representation. Keep the group provenance
-    // before the broad static parser claims each member independently.
-    if let Some(actions) = parse_ability_line_lexed(lexed)
-        && actions.len() > 1
-    {
-        return wrap_chosen_option_static_chunk(LineAst::Abilities(actions), chosen_option);
-    }
-    match parse_static_ability_ast_line_lexed(lexed) {
-        Ok(Some(mut abilities)) => {
-            restore_copy_static_variant_source_display(&mut abilities, &line.info.raw_line);
-            restore_named_characteristic_subject_surface(&mut abilities, &line.info.source_tokens);
-            return wrap_chosen_option_static_chunk(
-                LineAst::StaticAbilities(abilities),
-                chosen_option,
-            );
+    match static_line_readings::read(&input) {
+        ParseOutcome::Match(matched) => {
+            return wrap_chosen_option_static_chunk(matched.value.value, chosen_option);
         }
-        Ok(None) => {}
-        Err(_)
-            if parse_tokens
-                .iter()
-                .any(|token| token.kind == TokenKind::Period) => {}
-        Err(err) => return Err(err),
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
-    if semantic_grammar::parse_skip_keyword_action_probe_tokens(parse_tokens).is_none()
-        && let Some(actions) = parse_ability_line_lexed(lexed)
-    {
-        return wrap_chosen_option_static_chunk(LineAst::Abilities(actions), chosen_option);
-    }
-    if let Some(chunk) = parse_split_static_chunk(line, parse_tokens)? {
+    // The ability-word marker keeps a keyword-shaped line no grammar reads.
+    if let Some(chunk) = static_line_readings::read_ability_word_marker_line(&input)? {
         return wrap_chosen_option_static_chunk(chunk, chosen_option);
     }
-    if semantic_grammar::parse_ability_word_marker_tokens(parse_tokens).is_some() {
-        return wrap_chosen_option_static_chunk(
-            LineAst::StaticAbility(
-                StaticAbility::keyword_marker(render_token_slice(parse_tokens).trim().to_string())
-                    .into(),
-            ),
-            chosen_option,
-        );
-    }
+
     Err(CardTextError::ParseError(format!(
         "rewrite static lowering could not reconstitute static line '{}'",
         line.info.raw_line
@@ -434,31 +305,25 @@ pub(super) fn standard_flanking_reminder_is_typed_without_broad_keyword_expansio
     ));
 }
 
+#[path = "lines_ability/keyword_special_case_readings.rs"]
+mod keyword_special_case_readings;
+
 pub fn parse_keyword_special_cases(
     line: &RewriteKeywordLine,
     parse_tokens: &[OwnedLexToken],
 ) -> Result<Option<LineAst>, CardTextError> {
-    if let Some(chunk) = try_lower_hideaway_keyword(parse_tokens)? {
-        return Ok(Some(chunk));
+    let input = keyword_special_case_readings::KeywordSpecialCase {
+        tokens: parse_tokens,
+        line,
+    };
+    match keyword_special_case_readings::read(&input) {
+        crate::recognition::ParseOutcome::Match(matched) => return Ok(Some(matched.value.value)),
+        crate::recognition::ParseOutcome::NoMatch => {}
+        crate::recognition::ParseOutcome::Error(diagnostic) => {
+            return Err(diagnostic.into_card_text_error());
+        }
     }
-    if let Some(chunk) = try_lower_partner_variant_keyword(line, parse_tokens) {
-        return Ok(Some(chunk));
-    }
-    if let Some(chunk) = try_lower_partner_with_tokens(parse_tokens)? {
-        return Ok(Some(chunk));
-    }
-    if let Some(chunk) = try_parse_optional_cost_with_cast_trigger(line, parse_tokens)? {
-        return Ok(Some(chunk));
-    }
-    if let Some(chunk) = try_parse_chosen_type_behold_two_additional_cost(line, parse_tokens) {
-        return Ok(Some(chunk));
-    }
-    if let Some(chunk) = try_parse_optional_behold_additional_cost(line, parse_tokens)? {
-        return Ok(Some(chunk));
-    }
-    if let Some(chunk) = try_parse_optional_waterbend_additional_cost(line, parse_tokens)? {
-        return Ok(Some(chunk));
-    }
+
     Ok(None)
 }
 

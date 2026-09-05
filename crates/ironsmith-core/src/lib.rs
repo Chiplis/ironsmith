@@ -6,6 +6,11 @@
 //! registry layers can share them without introducing forbidden dependency
 //! edges.
 
+// The derive macros name this crate by its package name from inside it too.
+extern crate self as ironsmith_core;
+
+use crate::tag::TagKeyWalk;
+
 pub mod ability_model;
 pub mod alternative_cast_model;
 pub mod anthem_model;
@@ -41,6 +46,7 @@ pub mod zone;
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub struct WorkspaceSplitMarker;
 
 pub use ability_model::{

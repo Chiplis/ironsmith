@@ -303,7 +303,7 @@ pub(super) fn reveal_selection_land_creature_split(
         tag: selected_tag.clone(),
         effects: vec![EffectAst::Conditional {
             predicate: PredicateAst::TaggedMatches(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 land_filter,
             ),
             if_true: vec![EffectAst::subject_verb_move_to_zone(

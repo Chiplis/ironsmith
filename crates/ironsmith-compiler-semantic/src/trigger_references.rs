@@ -85,10 +85,10 @@ pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<TagKey> 
         return None;
     }
     if this_blocks_or_becomes_blocked_other_filter(trigger).is_some() {
-        return Some(crate::tag::CompilerReferenceTag::Blocking.key());
+        return Some(crate::tag::CompilerReferenceTag::Blocking.bind());
     }
     if matches!(trigger, TriggerSpec::BlocksOrBecomesBlockedByObject { .. }) {
-        return Some(crate::tag::CompilerReferenceTag::Blocking.key());
+        return Some(crate::tag::CompilerReferenceTag::Blocking.bind());
     }
     if match trigger {
         TriggerSpec::ThisBecomesBlockedByObject(_)
@@ -102,20 +102,20 @@ pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<TagKey> 
         }
         _ => false,
     } {
-        return Some(crate::tag::CompilerReferenceTag::Blocking.key());
+        return Some(crate::tag::CompilerReferenceTag::Blocking.bind());
     }
     if matches!(
         trigger,
         TriggerSpec::ThisBlocksObject { .. } | TriggerSpec::BlocksObjectWithLesserPower { .. }
     ) {
-        return Some(crate::tag::CompilerReferenceTag::Blocked.key());
+        return Some(crate::tag::CompilerReferenceTag::Blocked.bind());
     }
     if matches!(
         trigger,
         TriggerSpec::KeywordActionTaggedObject { object_tag, .. }
             if object_tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     ) {
-        return Some(crate::tag::CompilerReferenceTag::It.key());
+        return Some(crate::tag::CompilerReferenceTag::It.bind());
     }
     if matches!(
         trigger,
@@ -124,7 +124,7 @@ pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<TagKey> 
             ..
         }
     ) {
-        return Some(crate::tag::CompilerReferenceTag::ManifestDreadGraveyard.key());
+        return Some(crate::tag::CompilerReferenceTag::ManifestDreadGraveyard.bind());
     }
     if matches!(
         trigger,
@@ -139,8 +139,8 @@ pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<TagKey> 
             | TriggerSpec::DealsExactDamageToObjectOrPlayer { .. }
             | TriggerSpec::DealsCombatDamageTo { .. }
     ) {
-        Some(crate::tag::CompilerReferenceTag::Damaged.key())
+        Some(crate::tag::CompilerReferenceTag::Damaged.bind())
     } else {
-        Some(crate::tag::CompilerReferenceTag::Triggering.key())
+        Some(crate::tag::CompilerReferenceTag::Triggering.bind())
     }
 }

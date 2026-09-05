@@ -1,3 +1,5 @@
+use ironsmith_core::tag::TagKeyWalk;
+
 use crate::effect::{Comparison, Value};
 use crate::model::provenance::{ProvenanceId, SemanticProvenance};
 use crate::model::symbols::{
@@ -8,6 +10,7 @@ use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum CompilerFilterAst {
     Object(ObjectFilter),
     Player(PlayerFilter),
@@ -27,6 +30,7 @@ impl CompilerFilterAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum ArithmeticOperatorAst {
     Add,
     Subtract,
@@ -37,6 +41,7 @@ pub enum ArithmeticOperatorAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum CompilerValueAst {
     Fixed(i32),
     X,
@@ -53,12 +58,14 @@ pub enum CompilerValueAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum SelectionKindAst {
     Target,
     Choose,
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum SelectionDomainAst {
     Source,
     AnyTarget,
@@ -89,6 +96,7 @@ impl SelectionDomainAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct SelectionCardinalityAst {
     pub min: CompilerValueAst,
     pub max: Option<CompilerValueAst>,
@@ -96,6 +104,7 @@ pub struct SelectionCardinalityAst {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub struct SelectionLegalityAst {
     pub targetable: bool,
     pub zones: Vec<Zone>,
@@ -106,12 +115,14 @@ pub struct SelectionLegalityAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct CompilerSelectionAst {
     pub kind: SelectionKindAst,
     pub domain: SelectionDomainAst,
     pub cardinality: SelectionCardinalityAst,
     pub legality: SelectionLegalityAst,
     pub binding: SymbolReference,
+    #[tag_walk(skip)]
     pub provenance: Option<SemanticProvenance>,
 }
 

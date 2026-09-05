@@ -55,7 +55,7 @@ pub fn parse_delayed_dies_exile_top_power_choose_play(
             EffectAst::subject_verb_look_at_top_cards(
                 PlayerAst::You,
                 Value::PowerOf(Box::new(ChooseSpec::Tagged(
-                    crate::tag::CompilerReferenceTag::It.key(),
+                    crate::tag::CompilerReferenceTag::It.bind(),
                 )))
                 .with_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo),
                 looked_tag.clone(),
@@ -232,7 +232,7 @@ pub(crate) fn parse_put_from_milled_cards_followup(
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
         let mut move_effect = EffectAst::subject_verb_move_to_zone_with_attack_target(
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
             zone,
             false,
             controller,
@@ -300,7 +300,7 @@ pub(crate) fn parse_put_from_milled_cards_followup(
         });
     }
     let mut move_effect = EffectAst::subject_verb_move_to_zone_with_attack_target(
-        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
         zone,
         false,
         controller,
@@ -358,7 +358,7 @@ pub fn parse_mill_then_may_put_from_among_into_hand_with_if_not_chosen(
         super::super::ordered_control_flow_programs::compose_choose_from_looked_cards_into_hand_rest_into_graveyard(
             chooser,
             filter,
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             chosen_tag,
             Zone::Graveyard,
             false,
@@ -457,7 +457,7 @@ pub(super) fn compose_reveal_top_put_matching_into_hand_rest_on_bottom(
         EffectAst::ForEachTagged {
             tag: matched_tag.clone(),
             effects: vec![EffectAst::subject_verb_move_to_zone(
-                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                 Zone::Hand,
                 false,
                 ReturnControllerAst::Preserve,
@@ -485,7 +485,7 @@ pub(super) fn compose_reveal_top_put_matching_into_hand_rest_into_graveyard(
 ) -> Vec<EffectAst> {
     let looked_tag = helper_tag_for_tokens(look_tokens, "revealed");
     filter.zone = None;
-    let iterated = || TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None);
+    let iterated = || TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None);
     vec![
         EffectAst::subject_verb_look_at_top_cards(PlayerAst::You, count, looked_tag.clone()),
         EffectAst::subject_verb_reveal_tagged(looked_tag.clone()),
@@ -493,7 +493,7 @@ pub(super) fn compose_reveal_top_put_matching_into_hand_rest_into_graveyard(
             tag: looked_tag,
             effects: vec![EffectAst::Conditional {
                 predicate: PredicateAst::TaggedMatches(
-                    crate::tag::CompilerReferenceTag::It.key(),
+                    crate::tag::CompilerReferenceTag::It.bind(),
                     filter,
                 ),
                 if_true: vec![EffectAst::subject_verb_move_to_zone(

@@ -1222,6 +1222,9 @@ pub fn lower_complete_simple_create_shape(
     ))
 }
 
+#[path = "creation_handlers/create_clause_readings.rs"]
+mod create_clause_readings;
+
 pub fn parse_create(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
@@ -1239,42 +1242,14 @@ pub fn parse_create(
         None
     };
     let tokens = creation_grammar::creation_body_tokens(tokens);
-    if let Some(choice) = parse_create_choice_of_options(tokens)? {
-        return Ok(choice);
+    let input = create_clause_readings::CreateClause { tokens, subject };
+    match create_clause_readings::read(&input) {
+        crate::recognition::ParseOutcome::Match(matched) => return Ok(matched.value.value),
+        crate::recognition::ParseOutcome::NoMatch => {}
+        crate::recognition::ParseOutcome::Error(diagnostic) => {
+            return Err(diagnostic.into_card_text_error());
+        }
     }
-    if let Some(alternative) = parse_direct_token_creation_alternative(tokens, subject) {
-        return Ok(alternative);
-    }
-    if let Some(conjunction) = parse_direct_token_creation_conjunction(tokens, subject) {
-        return Ok(conjunction);
-    }
-    let non_article_words = crate::util::non_article_token_word_refs(tokens);
-    if let Some(action) =
-        creation_grammar::parse_delayed_combat_token_action_words(&non_article_words)
-    {
-        let effect = match action {
-            creation_grammar::DelayedCombatTokenAction::Exile => EffectAst::subject_verb_exile(
-                TargetAst::Object(
-                    ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
-                    span_from_tokens(tokens),
-                    None,
-                ),
-                false,
-            ),
-            creation_grammar::DelayedCombatTokenAction::Sacrifice => {
-                EffectAst::subject_verb_sacrifice(
-                    PlayerAst::Implicit,
-                    ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
-                    1,
-                    None,
-                )
-            }
-        };
-        return Ok(EffectAst::DelayedUntilEndOfCombat {
-            effects: vec![effect],
-        });
-    }
-
     let mut player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
     let clause_words = token_word_refs(tokens);
     let head = creation_grammar::parse_create_head_tokens(tokens).ok_or_else(|| {
@@ -1592,7 +1567,7 @@ pub fn parse_create(
                 SubjectVerbRoleAst::Actor,
                 player,
                 SubjectVerbActionAst::CreateTokenCopy {
-                    object: ObjectRefAst::Tagged(crate::tag::CompilerReferenceTag::It.key()),
+                    object: ObjectRefAst::Tagged(crate::tag::CompilerReferenceTag::It.bind()),
                     count: resolve_create_count(references_iterated_object),
                     player,
                     enters_tapped,

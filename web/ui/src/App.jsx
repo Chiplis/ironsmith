@@ -5,7 +5,6 @@ import { CombatArrowProvider } from "@/context/CombatArrowContext";
 import { I18nProvider } from "@/i18n/I18nContext";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Shell from "@/components/layout/Shell";
-import MobileLandscapeGate from "@/components/layout/MobileLandscapeGate";
 
 export default function App() {
   return (
@@ -15,7 +14,6 @@ export default function App() {
           <DragProvider>
             <CombatArrowProvider>
               <TooltipProvider>
-                <MobileLandscapeGate />
                 <Shell />
               </TooltipProvider>
             </CombatArrowProvider>

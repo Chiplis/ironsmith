@@ -61,252 +61,24 @@ fn parse_effect_sentence_lexed_uncached(
     dispatch_effect_sentence_lexed_remaining(tokens)
 }
 
+#[path = "sentence_shape_predicates_core/remaining_readings.rs"]
+mod remaining_readings;
+
 #[inline(never)]
 fn dispatch_effect_sentence_lexed_remaining(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    if let Some(effects) =
-        super::super::chain_carry::parse_repeated_counter_placement_coordination(tokens)?
-    {
-        return Ok(effects);
+    let input = remaining_readings::RemainingSentence {
+        tokens,
+        read_by_cache: Default::default(),
+    };
+    match remaining_readings::read(&input) {
+        crate::recognition::ParseOutcome::Match(matched) => return Ok(matched.value.value),
+        crate::recognition::ParseOutcome::NoMatch => {}
+        crate::recognition::ParseOutcome::Error(diagnostic) => {
+            return Err(diagnostic.into_card_text_error());
+        }
     }
-    if super::super::chain_carry::is_atomic_put_counter_for_each_sentence(tokens) {
-        return Ok(vec![
-            super::super::zone_counter_helpers::parse_put_counters(tokens)?,
-        ]);
-    }
-    // A joint draw has two independent player subjects but one shared verb
-    // phrase. Claim the complete grammar shape before broad subject/verb
-    // parsing retains only the leading `you` actor.
-    if effect_grammar::subject_verb_registry_shapes::parse_joint_draw_shape(tokens).is_some()
-        && let Some(effects) =
-            super::super::subject_verb_primitives::parse_sentence_you_and_target_player_each_draw(
-                SubjectVerbPrimitiveClause::new(tokens),
-            )?
-    {
-        return Ok(effects);
-    }
-    // The shared target-player subject belongs to the coordinated resource
-    // program. Claim this grammar-proven shape before any whole-sentence
-    // target or modifier probe can commit to the leading `target` token.
-    if super::super::chain_carry::has_target_player_resource_coordination(tokens) {
-        return super::super::parse_effect_chain_inner_lexed(tokens);
-    }
-    // A joint create has two independent actors but one shared verb phrase.
-    // Claim the complete grammar shape before the broad imperative-create
-    // route can retain only the leading `you` actor.
-    if effect_grammar::subject_verb_registry_shapes::parse_joint_create_shape(tokens).is_some()
-        && let Some(effects) =
-            super::super::subject_verb_primitives::parse_sentence_you_and_player_each_create(
-                SubjectVerbPrimitiveClause::new(tokens),
-            )?
-    {
-        return Ok(effects);
-    }
-    // The complete delayed sentence owns both its trigger and its payload.
-    // Claim it before broad payload recognizers (notably quantified player
-    // fanout) inspect the outer sentence and try to parse only the trigger
-    // header as a recurring ability.
-    if effect_grammar::delayed_sentence_shapes::parse_delayed_this_turn_shape(tokens).is_some()
-        && let Some(effects) = parse_sentence_delayed_trigger_this_turn(tokens)?
-    {
-        return Ok(effects);
-    }
-    if let Some(effects) =
-        super::super::subject_verb_primitives::parse_sentence_delayed_next_step_unless_pays(
-            SubjectVerbPrimitiveClause::new(tokens),
-        )?
-    {
-        return Ok(effects);
-    }
-    // A trailing `unless` owns the complete action/payment choice. Claim it
-    // before broad tap, damage, exile, and other subject/verb recognizers can
-    // accept only the action prefix and silently discard the alternative.
-    // The unless parser recurses only on the proven prefix, so this route is
-    // terminating and leaves unsupported counter-specific forms to their
-    // dedicated grammar.
-    let contains_quantified_opponent =
-        effect_grammar::for_each_shapes::parse_quantified_opponent_presence(tokens);
-    if crate::lexer::split_lexed_sentences(tokens).len() == 1
-        && !contains_quantified_opponent
-        && !tokens.first().is_some_and(|token| token.is_word("if"))
-        && !effect_grammar::chain_splitting::has_authored_comma_then_surface_tokens(tokens)
-        && effect_grammar::choice_damage_shapes::parse_unless_sentence_shape(tokens).is_some()
-        && let Some(effects) = parse_sentence_unless_pays(SubjectVerbPrimitiveClause::new(tokens))?
-    {
-        return Ok(effects);
-    }
-    if let Some(effects) = super::super::subject_verb_primitives::
-        parse_sentence_damage_to_that_player_unless_enchanted_attacked(
-            SubjectVerbPrimitiveClause::new(tokens),
-        )?
-    {
-        return Ok(effects);
-    }
-    // Predicate-form trailing `unless` clauses (for example, "unless that
-    // creature attacked this turn") are control flow rather than a payment
-    // alternative. Route a grammar-proven control-flow plan before the broad
-    // damage and target primitives can accept only the leading action and
-    // silently discard its postcondition.
-    if tokens.iter().any(|token| token.is_word("unless"))
-        && !effect_grammar::chain_splitting::has_authored_comma_then_surface_tokens(tokens)
-        && matches!(
-            effect_grammar::control_flow::recognize_control_flow(tokens),
-            crate::recognition::ParseOutcome::Match(_)
-        )
-    {
-        return super::super::parse_effect_chain_inner_lexed(tokens);
-    }
-    if effect_grammar::sentence_predicate_shapes::parse_where_x_sentence_tokens(tokens).is_some_and(
-        |shape| shape.has_trailing_segment() && tokens.iter().any(OwnedLexToken::is_semicolon),
-    ) {
-        // This grammar-proven boundary must precede the broad target-gets
-        // fast path below; otherwise that path consumes the semicolon tail as
-        // part of the where-X value and never reaches inner dispatch.
-        return parse_effect_sentence_with_where_x_lexed(tokens);
-    }
-    if let Some(effects) = parse_sentence_each_player_return_with_additional_counter(
-        SubjectVerbPrimitiveClause::new(tokens),
-    )? {
-        crate::parse_trace::event(
-            "effect-route: subject-verb verb=Return subject=each-player recognizer=return-with-additional-counter",
-        );
-        return Ok(effects);
-    }
-    let head_words = crate::lexer::parser_token_word_refs(tokens);
-    // Commas between parallel target-state adjectives belong to the object
-    // filter (`target nonattacking, nonblocking creature`), not to effect
-    // coordination. Prove the complete gets-clause and lower it before a
-    // comma segment can reach typed-head diagnostics as a verbless object.
-    if head_words.first() == Some(&"target")
-        && head_words
-            .iter()
-            .any(|word| matches!(*word, "get" | "gets"))
-        && tokens.iter().any(OwnedLexToken::is_comma)
-        && let Some(shape) =
-            effect_grammar::clause_dispatch_shapes::parse_clause_subject_verb_shape(tokens)
-        && let Some(effect) = super::super::clause_dispatch::parse_get_pump_clause(
-            shape.subject_tokens,
-            shape.action_tokens,
-            tokens,
-        )?
-    {
-        return Ok(vec![effect]);
-    }
-    if crate::word_primitives::parse_any_sequence_prefix(
-        &head_words,
-        &[
-            &["each", "player", "return"],
-            &["each", "player", "returns"],
-        ],
-    ) {
-        // Destination-first returns often carry comma-separated card-type
-        // unions. Preserve the quantified actor and complete return operand
-        // before generic coordination sees those type-list commas.
-        let view = TokenWordView::new(tokens);
-        let return_start = view.token_index_after_words(3).unwrap_or(tokens.len());
-        let return_tokens = crate::util::trim_edge_punctuation_tokens(&tokens[return_start..]);
-        let mut effect = super::super::zone_handlers::parse_return(return_tokens)?;
-        super::super::chain_carry::bind_implicit_player_context(&mut effect, PlayerAst::That);
-        return Ok(vec![EffectAst::ForEachPlayer {
-            effects: vec![effect],
-        }]);
-    }
-    if tokens.first().is_some_and(|token| token.is_word("discard"))
-        && !tokens
-            .iter()
-            .any(|token| token.is_word("if") || token.is_word("unless"))
-        && !super::super::lex_chain_helpers::has_explicit_comma_then_boundary_lexed(tokens)
-    {
-        // A sentence-leading bare discard is an imperative controlled by the
-        // ability controller. Do not inherit an event participant (such as a
-        // damaged player) merely because the command follows a damage trigger.
-        let discard_body = crate::util::trim_edge_punctuation_tokens(&tokens[1..]);
-        let mut effect = super::super::zone_handlers::parse_discard(discard_body, None)?;
-        super::super::chain_carry::bind_implicit_player_context(&mut effect, PlayerAst::You);
-        return Ok(vec![effect]);
-    }
-    if let Some(effects) =
-        super::super::chain_carry::parse_conditional_inline_looked_card_partition(tokens)?
-    {
-        // The consequence owns one typed look/selection/remainder program.
-        // Prove that program before the general conditional registry asks a
-        // broad `look` verb handler to consume the internal `, then` tail.
-        return Ok(effects);
-    }
-    if tokens.first().is_some_and(|token| token.is_word("if"))
-        && let Some(comma) =
-            crate::slice_primitives::select_position(tokens, OwnedLexToken::is_comma)
-        && super::super::fanout_family::parse_compound_damage_fanout_sentence(
-            crate::util::trim_edge_punctuation_tokens(&tokens[comma + 1..]),
-        )?
-        .is_some()
-    {
-        // The legacy conditional dispatcher probes subject/verb primitives
-        // before its consequence callback. A repeated damage head must reach
-        // that callback intact or its second amount becomes an orphaned
-        // verbless clause. Prove the typed body first, then use the ordinary
-        // conditional predicate grammar with the dedicated fanout callback.
-        return effect_grammar::parse_conditional_sentence_with_grammar_entrypoint_lexed(
-            tokens,
-            parse_required_damage_fanout,
-        );
-    }
-    if effect_grammar::chain_carry::parse_tap_or_untap_all_choice_tokens(tokens) {
-        let action_tokens = crate::lexer::trim_lexed_commas(&tokens[1..]);
-        return Ok(vec![super::super::zone_handlers::parse_tap(action_tokens)?]);
-    }
-    if let Some(effects) =
-        super::super::clause_pattern_helpers::parse_choose_target_prelude_sentence(tokens)?
-    {
-        return Ok(effects);
-    }
-    if let Some(effects) =
-        super::super::fanout_family::parse_compound_damage_fanout_sentence(tokens)?
-    {
-        return Ok(effects);
-    }
-    // A token-copy exception is one creation action. Its comma-separated
-    // characteristic and ability clauses (`except they're 3/3 ... , and they
-    // have flying`) are copiable-value modifiers, not independent effects.
-    // Let the complete typed creation grammar prove the sentence before the
-    // generic chain splitter can expose the verbless `except` tail.
-    if head_words.first() == Some(&"create")
-        && crate::word_primitives::sequence_occurs(&head_words, &["except"])
-        && head_words
-            .iter()
-            .any(|word| matches!(*word, "token" | "tokens"))
-        && head_words
-            .iter()
-            .any(|word| matches!(*word, "copy" | "copies"))
-        && let Ok(
-            effect @ EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action:
-                    SubjectVerbActionAst::CreateTokenCopy { .. }
-                    | SubjectVerbActionAst::CreateTokenCopyFromSource { .. },
-                ..
-            }),
-        ) = super::super::parse_create(tokens, None)
-    {
-        return Ok(vec![effect]);
-    }
-    // Triggered, activated, and modal bodies can enter this single-sentence
-    // dispatcher without passing through the document-level sentence loop.
-    // A complete target declaration containing a relative history clause
-    // ("cards ... that were put there") must remain one typed target effect;
-    // otherwise the subject/verb planner can reinterpret the relative `put`
-    // as a zone-change action.
-    if let Some(shape) = effect_grammar::clause_dispatch_shapes::parse_choose_target_shape(tokens)
-        && parse_target_phrase(shape.target_tokens).is_ok()
-    {
-        return Ok(vec![super::super::parse_effect_clause_lexed(tokens)?]);
-    }
-    // Triggered and activated line parsers can enter this single-sentence
-    // dispatcher directly, bypassing the document-level pass that normally
-    // hides quoted token rules from outer effect-chain parsing. Keep those
-    // rule bodies inside the token blueprint: parse the create action from
-    // the stripped surface, then reattach every quoted ability under the
-    // token's own source identity.
     let stripped_tokens = strip_embedded_token_rules_text(tokens);
     let has_embedded_token_rules = stripped_tokens.len() != tokens.len();
     let parse_tokens = if has_embedded_token_rules {
@@ -398,9 +170,9 @@ pub(super) fn parse_effect_sentence_lexed_inner_unstacked(
             // Delegate to the lower-level chain parser; calling this dispatcher again
             // with the same tokens recurses forever for ordinary subject/verb clauses.
             // The sentence dispatcher has exhausted its specialized routes here.
-    // Delegate to the lower-level chain parser; calling this dispatcher again
-    // with the same tokens recurses forever for ordinary subject/verb clauses.
-    let mut effects = super::super::parse_effect_chain_inner_lexed(tokens)?;
+            // Delegate to the lower-level chain parser; calling this dispatcher again
+            // with the same tokens recurses forever for ordinary subject/verb clauses.
+            let mut effects = super::super::parse_effect_chain_inner_lexed(tokens)?;
             apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
             normalize_search_followup_shuffles(&mut effects);
             Ok(effects)
@@ -410,51 +182,51 @@ pub(super) fn parse_effect_sentence_lexed_inner_unstacked(
 }
 
 fn search_followup_shuffle_player(effect: &EffectAst) -> Option<PlayerAst> {
-        match effect {
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::SearchLibrary { player, .. },
-                ..
-            }) => Some(*player),
-            _ => None,
+    match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::SearchLibrary { player, .. },
+            ..
+        }) => Some(*player),
+        _ => None,
+    }
+}
+
+fn normalize_search_followup_shuffles(effects: &mut [EffectAst]) {
+    for idx in 0..effects.len() {
+        let is_default_shuffle = matches!(
+            effects.get(idx),
+            Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                subject,
+                action: SubjectVerbActionAst::ShuffleLibrary,
+            }))
+                if matches!(subject.player, PlayerAst::You | PlayerAst::Implicit)
+        );
+        if !is_default_shuffle {
+            continue;
+        }
+        let Some(search_player) = effects[..idx]
+            .iter()
+            .rev()
+            .find_map(search_followup_shuffle_player)
+        else {
+            continue;
+        };
+        if !matches!(search_player, PlayerAst::You | PlayerAst::Implicit)
+            && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                subject,
+                action: SubjectVerbActionAst::ShuffleLibrary,
+            }) = &mut effects[idx]
+        {
+            subject.player = search_player;
         }
     }
+}
 
-    fn normalize_search_followup_shuffles(effects: &mut [EffectAst]) {
-        for idx in 0..effects.len() {
-            let is_default_shuffle = matches!(
-                effects.get(idx),
-                Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    subject,
-                    action: SubjectVerbActionAst::ShuffleLibrary,
-                }))
-                    if matches!(subject.player, PlayerAst::You | PlayerAst::Implicit)
-            );
-            if !is_default_shuffle {
-                continue;
-            }
-            let Some(search_player) = effects[..idx]
-                .iter()
-                .rev()
-                .find_map(search_followup_shuffle_player)
-            else {
-                continue;
-            };
-            if !matches!(search_player, PlayerAst::You | PlayerAst::Implicit)
-                && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    subject,
-                    action: SubjectVerbActionAst::ShuffleLibrary,
-                }) = &mut effects[idx]
-            {
-                subject.player = search_player;
-            }
-        }
-    }
-
-    // A duration-scoped trigger may itself contain a damage action. Preserve
-    // the grammar-proven outer `Until ..., whenever ...` scope before the
-    // broad damage recognizers examine the whole sentence as a direct action.
-    // The trigger parser recursively dispatches only the smaller payload, so
-    // this route cannot claim an ordinary leading-duration continuous effect.
+// A duration-scoped trigger may itself contain a damage action. Preserve
+// the grammar-proven outer `Until ..., whenever ...` scope before the
+// broad damage recognizers examine the whole sentence as a direct action.
+// The trigger parser recursively dispatches only the smaller payload, so
+// this route cannot claim an ordinary leading-duration continuous effect.
 
 pub(super) fn parse_effect_sentence_with_where_x_lexed(
     tokens: &[OwnedLexToken],
@@ -907,7 +679,7 @@ pub(super) fn parse_effect_sentence_with_where_x_lexed(
                     if explicit_source_subject {
                         TargetAst::Source(None)
                     } else {
-                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None)
+                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None)
                     },
                     abilities
                         .into_iter()

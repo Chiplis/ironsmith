@@ -188,7 +188,7 @@ fn parse_relation_subject_word_slice(
             relation_phrase(&["its", "controllers"])
                 .map(|()| PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)),
             relation_phrase(&["enchanted", "player"]).map(|()| {
-                PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.key())
+                PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.bind())
             }),
             relation_phrase(&["their", "controller"])
                 .map(|()| PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)),
@@ -1622,7 +1622,7 @@ pub(super) fn try_apply_was_dealt_damage_this_turn_clause(
 
 pub(super) fn push_it_tagged_object_constraint(filter: &mut ObjectFilter) {
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: crate::tag::CompilerReferenceTag::It.key(),
+        tag: crate::tag::CompilerReferenceTag::It.bind(),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
 }
@@ -1695,7 +1695,7 @@ pub(super) fn try_apply_target_choice_attribution_reference(
         return false;
     }
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: tag.key(),
+        tag: tag.bind(),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
     all_words.truncate(all_words.len() - suffix.len());

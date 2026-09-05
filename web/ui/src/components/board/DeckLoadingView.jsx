@@ -111,7 +111,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
 
   return (
     <main
-      className="table-gradient flex h-full min-h-0 flex-col overflow-hidden border border-[rgba(154,126,82,0.46)] bg-[linear-gradient(180deg,rgba(55,49,39,0.98),rgba(20,18,15,0.98))] p-3"
+      className="setup-screen deck-loading-screen table-gradient flex h-full min-h-0 flex-col overflow-hidden border border-[rgba(154,126,82,0.46)] bg-[linear-gradient(180deg,rgba(55,49,39,0.98),rgba(20,18,15,0.98))] p-3"
     >
       <div className="mb-3 grid shrink-0 gap-3 border-b border-[rgba(154,126,82,0.34)] pb-3 xl:grid-cols-[minmax(180px,260px)_minmax(0,1fr)]">
         <div className="min-w-[220px]">
@@ -167,7 +167,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
         {players.map((player, i) => (
           <div
             key={player.id}
-            className="grid min-h-[260px] gap-2 border border-[rgba(154,126,82,0.42)] bg-[linear-gradient(180deg,rgba(17,17,15,0.94),rgba(8,9,9,0.96))] p-3"
+            className="setup-editor grid min-h-[260px] gap-2 border border-[rgba(154,126,82,0.42)] bg-[linear-gradient(180deg,rgba(17,17,15,0.94),rgba(8,9,9,0.96))] p-3"
             style={{ gridTemplateRows: "auto minmax(180px,1fr)" }}
           >
             <div className="flex items-baseline justify-between gap-3">
@@ -181,6 +181,8 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
               </div>
             </div>
             <textarea
+              aria-label={`${player.name} decklist`}
+              spellCheck={false}
               className="h-full min-h-0 w-full resize-none border border-[rgba(154,126,82,0.48)] bg-[#080b0d] p-2 font-mono text-[13px] leading-snug text-[#e7d9bc] outline-none transition-colors placeholder:text-[#8b806b] focus:border-[#d8bf7a]/75"
               placeholder={`Paste ${player.name}'s list...\n\nDeck\n4 Lightning Bolt\n2 Counterspell\n20 Island\n\nSideboard\n2 Pyroblast\n1 Tormod's Crypt`}
               value={texts[i] || ""}
@@ -195,6 +197,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
             Min similarity
           </span>
           <Slider
+            aria-label="Card fidelity threshold"
             className="w-28"
             min={0}
             max={100}
@@ -211,7 +214,8 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
             type="button"
             variant="ghost"
             size="sm"
-            className="h-9 border border-[#f2d9a3]/45 bg-[#211a10] px-4 text-[12px] font-bold uppercase tracking-wide text-[#f2d9a3] hover:bg-[#342817]"
+            className="ui-primary-action h-9 border border-[#f2d9a3]/45 bg-[#211a10] px-4 text-[12px] font-bold uppercase tracking-wide text-[#f2d9a3] hover:bg-[#342817]"
+            disabled={totalCards === 0}
             onClick={handleLoad}
           >
             Load{totalCards > 0 ? ` (${totalCards} main${totalSideboardCards > 0 ? `, ${totalSideboardCards} sideboard` : ""})` : ""}

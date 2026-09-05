@@ -174,7 +174,7 @@ pub fn resolve_registry_candidates<T>(
 /// the overlap is recorded. Each name leaves this list when its overlaps on
 /// the corpus reach zero and it resolves through
 /// [`resolve_registry_candidates`] instead. The count is a ratchet.
-pub const RANKED_REGISTRIES: &[&str] = &["sentence-composition-registry", "chain-reading-registry", "chain-composition-registry", "effect-bundle-registry", "predicate-registry", "clause-reading-registry"];
+pub const RANKED_REGISTRIES: &[&str] = &["sentence-composition-registry", "chain-composition-registry", "alternative-cast-registry", "single-static-line-registry", "document-remaining-registry", "object-filter-inner-registry", "object-filter-lexed-inner-registry", "exile-clause-registry", "put-clause-registry", "granted-object-segment-registry", "ward-cost-registry", "keyword-special-case-registry", "tagged-permission-registry", "payment-cost-registry"];
 
 /// Resolve like [`resolve_registry_candidates`], except that several
 /// non-equivalent matches keep the first registered and record the overlap in

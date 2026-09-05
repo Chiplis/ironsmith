@@ -50,16 +50,17 @@ function SheetContent({
   children,
   side = "right",
   showCloseButton = true,
+  onOpenAutoFocus,
+  onCloseAutoFocus,
   style,
   ...props
 }) {
+  const returnFocusRef = React.useRef(null);
   const centeredStyle = side === "center"
     ? {
       left: "50%",
       top: "50%",
-      width: "96vw",
-      maxWidth: "1120px",
-      maxHeight: "92vh",
+      maxHeight: "calc(100dvh - 32px)",
       transform: "translate3d(-50%, -50%, 0)",
     }
     : null;
@@ -69,8 +70,21 @@ function SheetContent({
       <SheetOverlay />
       <SheetPrimitive.Content
         data-slot="sheet-content"
+        data-side={side}
+        onOpenAutoFocus={(event) => {
+          returnFocusRef.current = document.activeElement;
+          onOpenAutoFocus?.(event);
+        }}
+        onCloseAutoFocus={(event) => {
+          onCloseAutoFocus?.(event);
+          const previous = returnFocusRef.current;
+          if (!event.defaultPrevented && previous?.isConnected && previous !== document.body) {
+            event.preventDefault();
+            previous.focus();
+          }
+        }}
         className={cn(
-          "fixed flex flex-col gap-4 bg-background shadow-lg",
+          "fixed flex min-h-0 flex-col gap-4 overflow-y-auto overscroll-contain bg-background shadow-lg",
           side === "right" &&
             "inset-y-0 right-0 h-full w-3/4 border-l sm:max-w-sm",
           side === "left" &&
@@ -80,7 +94,7 @@ function SheetContent({
           side === "bottom" &&
             "inset-x-0 bottom-0 h-auto border-t",
           side === "center" &&
-            "border",
+            "w-[calc(100vw-2rem)] max-w-[1120px] border",
           className
         )}
         style={centeredStyle ? { zIndex: 1001, ...centeredStyle, ...style } : { zIndex: 1001, ...style }}
@@ -89,7 +103,7 @@ function SheetContent({
         {showCloseButton && (
           <SheetPrimitive.Close
             data-slot="sheet-close-button"
-            className="absolute top-4 right-4 rounded-none opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-secondary">
+            className="absolute top-3 right-3 z-10 inline-flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none">
             <XIcon className="size-4" />
             <span className="sr-only">Close</span>
           </SheetPrimitive.Close>
@@ -106,7 +120,7 @@ function SheetHeader({
   return (
     <div
       data-slot="sheet-header"
-      className={cn("flex flex-col gap-1.5 p-4", className)}
+      className={cn("flex shrink-0 flex-col gap-1.5 p-4 pr-14", className)}
       {...props} />
   );
 }

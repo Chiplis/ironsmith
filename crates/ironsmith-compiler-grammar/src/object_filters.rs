@@ -950,57 +950,24 @@ fn apply_phyrexian_mana_cost_predicate(filter: &mut ObjectFilter, tokens: &[Owne
     }
 }
 
+#[path = "object_filters/filter_shape_readings.rs"]
+mod filter_shape_readings;
+
 fn parse_object_filter_inner(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
-    if let Some((base_tokens, source_tokens, minimum)) =
-        split_distinct_combat_damage_controller_tokens(tokens)
-    {
-        let mut filter = parse_object_filter(&base_tokens, other)?;
-        let sources = parse_object_filter(&source_tokens, false)?;
-        filter.controller = Some(
-            PlayerFilter::was_dealt_combat_damage_by_distinct_sources_this_turn(
-                PlayerFilter::Any,
-                sources,
-                minimum,
-            ),
-        );
-        return Ok(filter);
-    }
-    // The surrounding sentence owns an authored `where X is ...` binding.
-    // Keep that definition out of the object-domain grammar: characteristic
-    // words in the value expression (for example, `Shrines you control`) are
-    // not additional characteristics of the targeted object. The sentence
-    // binder subsequently replaces the comparison's typed `Value::X`.
-    if let Some(base_tokens) = split_trailing_where_x_filter_clause(tokens) {
-        return parse_object_filter(base_tokens, other);
-    }
-    if let Some(filter) = parse_explicit_card_filter_disjunction(tokens, other)? {
-        return Ok(filter);
-    }
-    if let Some(filter) = parse_subtype_or_colored_permanent_disjunction(tokens, other) {
-        return Ok(filter);
-    }
-    let has_shared_terminal_noun = has_shared_terminal_object_noun(tokens);
-    let repeats_card_noun = tokens
-        .iter()
-        .filter_map(OwnedLexToken::as_word)
-        .filter(|word| matches!(*word, "card" | "cards"))
-        .count()
-        >= 2;
-    if has_shared_terminal_noun
-        && let Some(filter) = parse_repeated_selector_domain_union_lexed(tokens, other)
-    {
-        return Ok(filter);
-    }
-    if (!has_shared_terminal_noun || has_requantified_comma_collection(tokens) || repeats_card_noun)
-        && let Some(filter) = parse_branch_scoped_object_filter_union_lexed(tokens, other)
-    {
-        return Ok(filter);
-    }
-    if let Some(filter) = parse_generic_card_tail_filter(tokens) {
-        return Ok(filter);
+    let input = filter_shape_readings::FilterPhrase {
+        tokens,
+        other,
+        read_by_cache: Default::default(),
+    };
+    match filter_shape_readings::read(&input) {
+        crate::recognition::ParseOutcome::Match(matched) => return Ok(matched.value.value),
+        crate::recognition::ParseOutcome::NoMatch => {}
+        crate::recognition::ParseOutcome::Error(diagnostic) => {
+            return Err(diagnostic.into_card_text_error());
+        }
     }
     let (entry_sacrifice_tokens, sacrificed_as_it_entered) =
         split_sacrificed_as_it_entered_tokens(tokens)
@@ -1126,64 +1093,26 @@ pub fn parse_object_filter_lexed(
     Ok(finalize_public_object_filter(filter, tokens))
 }
 
+#[path = "object_filters/lexed_filter_shape_readings.rs"]
+mod lexed_filter_shape_readings;
+
 fn parse_object_filter_lexed_inner(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
-    if super::grammar::filters::is_attack_destination_relation(tokens) {
-        return super::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(
-            tokens, other,
-        );
-    }
-    if let Some((base_tokens, source_tokens, minimum)) =
-        split_distinct_combat_damage_controller_tokens(tokens)
-    {
-        let mut filter = parse_object_filter_lexed(&base_tokens, other)?;
-        let sources = parse_object_filter_lexed(&source_tokens, false)?;
-        filter.controller = Some(
-            PlayerFilter::was_dealt_combat_damage_by_distinct_sources_this_turn(
-                PlayerFilter::Any,
-                sources,
-                minimum,
-            ),
-        );
-        return Ok(filter);
-    }
-    if let Some(base_tokens) = split_trailing_where_x_filter_clause(tokens) {
-        return parse_object_filter_lexed(base_tokens, other);
-    }
-    if let Some(mut filter) =
-        super::grammar::filters::parse_elided_shared_domain_union(tokens, other)
-    {
-        preserve_union_surface(&mut filter, tokens);
-        preserve_controller_qualifier_order(&mut filter, tokens);
-        preserve_filter_counter_constraint_surface_tokens(&mut filter, tokens);
-        return Ok(filter);
-    }
-    if let Some(filter) = parse_explicit_card_filter_disjunction(tokens, other)? {
-        return Ok(filter);
-    }
-    if let Some(filter) = parse_subtype_or_colored_permanent_disjunction(tokens, other) {
-        return Ok(filter);
+    let input = lexed_filter_shape_readings::FilterPhrase {
+        tokens,
+        other,
+        read_by_cache: Default::default(),
+    };
+    match lexed_filter_shape_readings::read(&input) {
+        crate::recognition::ParseOutcome::Match(matched) => return Ok(matched.value.value),
+        crate::recognition::ParseOutcome::NoMatch => {}
+        crate::recognition::ParseOutcome::Error(diagnostic) => {
+            return Err(diagnostic.into_card_text_error());
+        }
     }
     let has_shared_terminal_noun = has_shared_terminal_object_noun(tokens);
-    let repeats_card_noun = tokens
-        .iter()
-        .filter_map(OwnedLexToken::as_word)
-        .filter(|word| matches!(*word, "card" | "cards"))
-        .count()
-        >= 2;
-    if has_shared_terminal_noun
-        && let Some(filter) = parse_repeated_selector_domain_union_lexed(tokens, other)
-    {
-        return Ok(filter);
-    }
-    if (!has_shared_terminal_noun || has_requantified_comma_collection(tokens) || repeats_card_noun)
-        && let Some(filter) =
-            super::grammar::filters::parse_branch_scoped_object_filter_union_lexed(tokens, other)
-    {
-        return Ok(filter);
-    }
     let (original_printing_tokens, original_printing_set) =
         split_original_printing_set_tokens(tokens)
             .map(|(tokens, set_name)| (tokens, Some(set_name)))
@@ -2899,7 +2828,7 @@ mod tests {
             .tagged_constraints
             .iter()
             .filter(|constraint| {
-                constraint.tag == crate::tag::CompilerReferenceTag::Sacrificed0.key()
+                constraint.tag == crate::tag::CompilerReferenceTag::Sacrificed0.bind()
                     && constraint.relation == TaggedOpbjectRelation::SharesCardType
             })
             .count();

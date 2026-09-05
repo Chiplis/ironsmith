@@ -347,6 +347,9 @@ fn parse_source_and_target_exile_pair(
     }))
 }
 
+#[path = "exile_actions/exile_clause_readings.rs"]
+mod exile_clause_readings;
+
 pub fn parse_exile(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
@@ -396,119 +399,6 @@ pub fn parse_exile(
             clause_words.join(" ")
         )));
     }
-    if let Some(effect) = parse_same_name_exile_hand_and_graveyard_clause(
-        tokens,
-        subject,
-        until_source_leaves,
-        face_down,
-    )? {
-        return Ok(effect);
-    }
-    if !face_down
-        && !until_source_leaves
-        && let Some(effect) =
-            parse_exile_card_from_their_hand_or_permanent_they_control(tokens, subject)
-    {
-        return Ok(effect);
-    }
-    if let Some(shape) = effect_grammar::parse_exile_one_per_card_type_from_graveyard_shape(tokens)
-    {
-        let mut filter = ObjectFilter::default().in_zone(Zone::Graveyard);
-        filter.owner = controller_filter_for_token_player(shape.owner);
-        filter.one_per_card_type = true;
-        let target = TargetAst::WithCount(
-            Box::new(TargetAst::Object(filter, None, None)),
-            crate::effect::ChoiceCount::any_number(),
-        );
-        return Ok(if until_source_leaves {
-            EffectAst::subject_verb_exile_until_source_leaves(target, face_down)
-        } else {
-            EffectAst::subject_verb_exile(target, face_down)
-        });
-    }
-    if let Some(effect) =
-        parse_battlefield_graveyard_exile_all_pair(tokens, subject, until_source_leaves, face_down)?
-    {
-        return Ok(effect);
-    }
-    if let Some(filter_tokens) = effect_grammar::strip_exile_all_or_each_shape(tokens) {
-        if let Some(effect) = parse_except_then_additional_exile_all_filter(
-            filter_tokens,
-            subject,
-            until_source_leaves,
-            face_down,
-        )? {
-            return Ok(effect);
-        }
-        // A repeated `all` collection may give each arm its own domain, for
-        // example battlefield permanents followed by every card in hands and
-        // graveyards.  The ordinary shared-terminal path can otherwise lift
-        // the first arm's card types onto the outer filter and incorrectly
-        // constrain the card-only arms.  Prefer a proven branch-scoped union
-        // before the general filter parser for this exhaustive shape.
-        let scoped_union = crate::grammar::filters::parse_branch_scoped_object_filter_union_lexed(
-            filter_tokens,
-            false,
-        )
-        .or_else(|| {
-            crate::grammar::filters::parse_domain_union_object_filter_lexed(filter_tokens, false)
-        });
-        let mut filter = match scoped_union {
-            Some(filter) => filter,
-            None => parse_object_filter_lexed(filter_tokens, false)?,
-        };
-        filter = scope_types_away_from_requantified_bare_card_domains(filter_tokens, filter);
-        apply_exile_subject_owner_context(&mut filter, subject);
-        return Ok(if until_source_leaves {
-            EffectAst::subject_verb_exile_all_until_source_leaves(
-                TargetAst::Object(filter, None, None),
-                face_down,
-            )
-        } else {
-            EffectAst::subject_verb_exile_all(filter, face_down)
-        });
-    }
-    if let Some(filter) = parse_target_player_graveyard_filter(tokens) {
-        return Ok(if until_source_leaves {
-            EffectAst::subject_verb_exile_until_source_leaves(
-                TargetAst::Object(filter, None, None),
-                face_down,
-            )
-        } else {
-            EffectAst::subject_verb_exile_all(filter, face_down)
-        });
-    }
-    if let Some(effect) =
-        parse_mixed_target_and_all_exile_list(tokens, subject, until_source_leaves, face_down)?
-    {
-        return Ok(effect);
-    }
-    if !until_source_leaves
-        && let Some(effect) = parse_exile_bottom_library_clause(tokens, subject, face_down)
-    {
-        return Ok(effect);
-    }
-    if !until_source_leaves
-        && let Some(effect) =
-            parse_exile_dynamic_count_from_top_library_clause(tokens, subject, face_down)
-    {
-        return Ok(effect);
-    }
-    if !until_source_leaves
-        && let Some(effect) = parse_exile_top_library_clause(tokens, subject, face_down)
-    {
-        return Ok(effect);
-    }
-
-    if grammar::contains_word(tokens, "dealt")
-        && grammar::contains_word(tokens, "damage")
-        && grammar::contains_word(tokens, "turn")
-    {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported combat-history exile clause (clause: '{}')",
-            clause_words.join(" ")
-        )));
-    }
     let has_until_total_mana_value = grammar::contains_word(tokens, "until")
         && grammar::contains_word(tokens, "exiled")
         && grammar::contains_word(tokens, "total")
@@ -520,46 +410,21 @@ pub fn parse_exile(
             clause_words.join(" ")
         )));
     }
-    if let Some(effect) = parse_attached_object_exile_bundle(tokens, face_down)? {
-        return Ok(effect);
-    }
-    let has_same_name_token_bundle = grammar::contains_word(tokens, "and")
-        && grammar::contains_word(tokens, "tokens")
-        && grammar::contains_word(tokens, "same")
-        && grammar::contains_word(tokens, "name");
-    if has_same_name_token_bundle {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported same-name token exile bundle (clause: '{}')",
-            clause_words.join(" ")
-        )));
-    }
-    if let Some(effect) =
-        parse_source_and_target_exile_pair(tokens, subject.clone(), until_source_leaves, face_down)?
-    {
-        return Ok(effect);
-    }
-    if let Some(effect) =
-        parse_independent_exile_pair(tokens, subject, until_source_leaves, face_down)?
-    {
-        return Ok(effect);
-    }
-
-    if let Some((before_and, after_and)) =
-        crate::grammar::primitives::split_lexed_once_on_separator(tokens, || {
-            use winnow::Parser as _;
-            crate::grammar::primitives::kw("and").void()
-        })
-        && !before_and.is_empty()
-    {
-        let starts_multi_target = effect_grammar::starts_exile_multi_target_shape(after_and);
-        if starts_multi_target {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported multi-target exile clause (clause: '{}')",
-                clause_words.join(" ")
-            )));
+    let input = exile_clause_readings::ExileClause {
+        tokens,
+        subject,
+        until_source_leaves,
+        face_down,
+        clause_words: &clause_words,
+        read_by_cache: Default::default(),
+    };
+    match exile_clause_readings::read(&input) {
+        crate::recognition::ParseOutcome::Match(matched) => return Ok(matched.value.value),
+        crate::recognition::ParseOutcome::NoMatch => {}
+        crate::recognition::ParseOutcome::Error(diagnostic) => {
+            return Err(diagnostic.into_card_text_error());
         }
     }
-
     if let Some(spec) = split_trailing_if_clause_lexed(tokens) {
         let (target_tokens, source_top_only) = strip_source_top_only_prefix(spec.leading_tokens);
         if source_top_only && until_source_leaves {
@@ -666,7 +531,7 @@ pub fn parse_same_name_exile_hand_and_graveyard_clause(
     let mut filter = ObjectFilter::default();
     filter.owner = Some(owner);
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: crate::tag::CompilerReferenceTag::It.key(),
+        tag: crate::tag::CompilerReferenceTag::It.bind(),
         relation: TaggedOpbjectRelation::SameNameAsTagged,
     });
     filter.any_of = [Zone::Hand, Zone::Graveyard]
@@ -1105,7 +970,7 @@ pub fn parse_target_player_graveyard_filter(tokens: &[OwnedLexToken]) -> Option<
         PlayerAst::Target => Some(PlayerFilter::target_player()),
         PlayerAst::TargetOpponent => Some(PlayerFilter::Target(Box::new(PlayerFilter::Opponent))),
         PlayerAst::ItsController => Some(PlayerFilter::ControllerOf(
-            crate::filter::ObjectRef::tagged("triggering"),
+            crate::filter::ObjectRef::tagged(crate::tag::CompilerReferenceTag::Triggering.bind()),
         )),
         PlayerAst::ItsOwner => Some(PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(
             "triggering",

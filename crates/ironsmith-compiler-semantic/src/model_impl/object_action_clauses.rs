@@ -1,5 +1,7 @@
 //! Typed complements for movement, creation, copy, control, and attachment clauses.
 
+use ironsmith_core::tag::TagKeyWalk;
+
 use crate::color::ColorSet;
 use crate::model::CompilerGrantedAbilityAst;
 use crate::model::clauses::{ClauseActorAst, ClauseDestinationAst, ClauseDurationAst};
@@ -11,6 +13,7 @@ use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum CompilerObjectOperandAst {
     Source,
     Selection(CompilerSelectionAst),

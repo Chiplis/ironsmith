@@ -6,12 +6,15 @@
 //! ordered, which are alternatives, and which facts flow across a boundary
 //! without consulting source text again.
 
+use ironsmith_core::tag::TagKeyWalk;
+
 use crate::model::ast::EffectAst;
 use crate::model::clauses::{ClauseActionAst, ClauseObjectAst, ClauseSubjectAst};
 use crate::model::provenance::SemanticProvenance;
 use crate::model::symbols::SymbolReference;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum CoordinationKindAst {
     Sequence,
     Conjunction,
@@ -23,6 +26,7 @@ pub enum CoordinationKindAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum CoordinationOperatorAst {
     And,
     Or,
@@ -34,6 +38,7 @@ pub enum CoordinationOperatorAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum EffectOrderingAst {
     Ordered,
     Unordered,
@@ -41,6 +46,7 @@ pub enum EffectOrderingAst {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum EffectDependencyAst {
     Independent,
     DependsOnMembers(Vec<usize>),
@@ -57,6 +63,7 @@ pub enum CarryKindAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum CarriedFactAst {
     Actor,
     Subject(Option<ClauseSubjectAst>),
@@ -80,6 +87,7 @@ impl CarriedFactAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct CoordinationCarryAst {
     pub from_member: usize,
     pub to_member: usize,
@@ -87,19 +95,23 @@ pub struct CoordinationCarryAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct CoordinationBoundaryAst {
     pub operator: CoordinationOperatorAst,
     pub ordering: EffectOrderingAst,
     pub dependency: EffectDependencyAst,
     pub carries: Vec<CoordinationCarryAst>,
+    #[tag_walk(skip)]
     pub provenance: Option<SemanticProvenance>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct CoordinationMemberAst {
     pub effects: Vec<EffectAst>,
     pub imports: Vec<SymbolReference>,
     pub exports: Vec<SymbolReference>,
+    #[tag_walk(skip)]
     pub provenance: Option<SemanticProvenance>,
 }
 
@@ -140,10 +152,12 @@ pub enum CoordinationError {
 /// A compiler-owned effect program whose clause relationships have already
 /// been resolved by grammar recognition.
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct CoordinationAst {
     pub kind: CoordinationKindAst,
     pub members: Vec<CoordinationMemberAst>,
     pub boundaries: Vec<CoordinationBoundaryAst>,
+    #[tag_walk(skip)]
     pub provenance: Option<SemanticProvenance>,
 }
 

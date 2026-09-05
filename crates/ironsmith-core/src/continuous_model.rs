@@ -1,3 +1,5 @@
+use crate::tag::TagKeyWalk;
+
 use crate::{
     CardType, ChooseSpec, ColorSet, ObjectFilter, Subtype, SubtypeFamily, Supertype, Value,
 };
@@ -8,6 +10,7 @@ use crate::{
     clippy::large_enum_variant,
     reason = "continuous targets preserve the shared object-filter value model"
 )]
+#[derive(TagKeyWalk)]
 pub enum CompiledContinuousEffectTarget {
     Source,
     Filter(ObjectFilter),
@@ -25,6 +28,7 @@ impl From<ChooseSpec> for CompiledContinuousEffectTarget {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum CompiledPtSublayer {
     Setting,
 }
@@ -35,6 +39,7 @@ pub enum CompiledPtSublayer {
     clippy::large_enum_variant,
     reason = "compiled modifications are shared generic values whose payload sizes vary"
 )]
+#[derive(TagKeyWalk)]
 pub enum CompiledContinuousModification<StaticAbility, Ability> {
     AddAbility(StaticAbility),
     AddAbilityGeneric(Ability),

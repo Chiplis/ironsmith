@@ -1,3 +1,5 @@
+use crate::tag::TagKeyWalk;
+
 use crate::cost_model::OptionalCostRef;
 use crate::{
     ActivationTiming, AnthemCountExpression, Comparison, CounterType, EffectId, EventValueSpec,
@@ -18,6 +20,7 @@ use crate::{
     clippy::large_enum_variant,
     reason = "attachment conditions preserve typed object filters inline"
 )]
+#[derive(TagKeyWalk)]
 pub enum AttachmentConditionHost {
     /// Count attachments on the ability's source object.
     Source,
@@ -31,6 +34,7 @@ pub enum AttachmentConditionHost {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum EffectMetricSource {
     Outcome,
     ChosenObjects,
@@ -39,6 +43,7 @@ pub enum EffectMetricSource {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum EffectMetric {
     Count,
     ChosenCount,
@@ -75,6 +80,7 @@ pub enum EffectMetric {
 /// from guessing an action from a generated tag name.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum PriorEffectAction {
     Cast,
     Chosen,
@@ -108,6 +114,7 @@ pub enum PriorEffectAction {
 /// the filter and aggregate are applied.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct PriorEffectMetricQuery {
     pub source: EffectMetricSource,
     pub metric: EffectMetric,
@@ -155,6 +162,7 @@ impl PriorEffectMetricQuery {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum ValueSurfaceHint {
     /// Preserve an unbounded choice with a minimum of one, such as
     /// "discard one or more land cards." Effects that support optional
@@ -347,6 +355,7 @@ pub enum ValueSurfaceHint {
 /// current spell's recorded mana payment.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(TagKeyWalk)]
 pub enum ManaSpentCastReferenceSurface {
     It,
     #[default]
@@ -371,6 +380,7 @@ impl ManaSpentCastReferenceSurface {
 /// counted from its event snapshot rather than from the current zone state.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(TagKeyWalk)]
 pub enum DeathHistoryControllerSurface {
     /// Oracle placed the controller after the event:
     /// "creatures that died under your control this turn."
@@ -383,6 +393,7 @@ pub enum DeathHistoryControllerSurface {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum TurnHistoryCount {
     /// Objects matching the filter which moved from the battlefield to a
     /// graveyard this turn.
@@ -487,6 +498,7 @@ impl TurnHistoryCount {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum Value {
     SurfaceHinted {
         value: Box<Value>,
@@ -834,6 +846,7 @@ impl From<u32> for Value {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum Restriction {
     AdditionalLandPlays(PlayerFilter, u32),
     /// A lasting player rule that removes the cleanup-step hand-size limit.
@@ -917,6 +930,7 @@ pub enum Restriction {
 /// colorless, so it permits either conversion.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[derive(TagKeyWalk)]
 pub enum ManaSpendMode {
     #[default]
     Normal,
@@ -950,6 +964,7 @@ impl From<bool> for ManaSpendMode {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct ManaSpendPermission {
     pub player: PlayerFilter,
     pub scope: ManaSpendScope,
@@ -1069,6 +1084,7 @@ impl ManaSpendPermission {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum ManaSpendScope {
     AllCosts,
     ActivationCostsOf(ObjectFilter),
@@ -1323,6 +1339,7 @@ impl Restriction {
 /// reference.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(TagKeyWalk)]
 pub enum SourceCounterThresholdSurface {
     #[default]
     SourceHas,
@@ -1339,6 +1356,7 @@ pub enum SourceCounterThresholdSurface {
 /// whether Oracle used "left ... under your control" or "you controlled left".
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(TagKeyWalk)]
 pub enum PermanentLeftBattlefieldControlSurface {
     #[default]
     LeftUnderYourControl,
@@ -1356,6 +1374,7 @@ pub enum PermanentLeftBattlefieldControlSurface {
     clippy::large_enum_variant,
     reason = "turn-history conditions preserve typed object filters inline"
 )]
+#[derive(TagKeyWalk)]
 pub enum TurnHistoryCondition {
     SpellsCastLastTurnAtLeast(u32),
     SourceCrewedByAtLeast {
@@ -1427,6 +1446,7 @@ pub enum TurnHistoryCondition {
 /// zone.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(TagKeyWalk)]
 pub enum TaggedObjectMatchMode {
     #[default]
     CurrentOrLastKnown,
@@ -1449,6 +1469,7 @@ impl ConditionConjunction for Condition {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum Condition {
     YouControl(ObjectFilter),
     OpponentControls(ObjectFilter),

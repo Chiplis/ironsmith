@@ -156,8 +156,8 @@ pub fn parse_iterative_library_procedure_sequence(
         return Ok(None);
     }
 
-    let current_tag = crate::tag::CompilerReferenceTag::IterativeLibraryCurrent.key();
-    let exiled_tag = crate::tag::CompilerReferenceTag::IterativeLibraryExiled.key();
+    let current_tag = crate::tag::CompilerReferenceTag::IterativeLibraryCurrent.bind();
+    let exiled_tag = crate::tag::CompilerReferenceTag::IterativeLibraryExiled.bind();
     let all_exiled_filter = ObjectFilter::tagged(exiled_tag.clone()).in_zone(Zone::Exile);
     Ok(Some(vec![EffectAst::RepeatProcess {
         effects: vec![
@@ -219,11 +219,11 @@ pub fn parse_each_player_shuffle_reveal_then_put_revealed_types_bottom(
         return Ok(None);
     }
 
-    let revealed_tag = crate::tag::CompilerReferenceTag::EachPlayerRevealedThisWay.key();
+    let revealed_tag = crate::tag::CompilerReferenceTag::EachPlayerRevealedThisWay.bind();
     let mut shuffled_filter = ObjectFilter::permanent_card();
     shuffled_filter.zone = Some(Zone::Battlefield);
     shuffled_filter.owner = Some(PlayerFilter::IteratedPlayer);
-    let iterated = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None);
+    let iterated = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None);
 
     Ok(Some(vec![EffectAst::ForEachPlayer {
         effects: vec![

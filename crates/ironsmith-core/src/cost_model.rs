@@ -1,8 +1,11 @@
+use crate::tag::TagKeyWalk;
+
 use crate::types::CardType;
 use crate::{ColorSet, CounterType, ManaCost, ObjectFilter, Value};
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum DynamicManaDisplayHint {
     Default,
     ManaEqualTo,
@@ -16,6 +19,7 @@ impl Default for DynamicManaDisplayHint {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct DynamicManaCost {
     pub base: ManaCost,
     /// Resolve the base portion from the object whose spell or ability is
@@ -129,6 +133,7 @@ impl DynamicManaCost {
     clippy::large_enum_variant,
     reason = "costs retain typed object-filter and effect values inline across crate boundaries"
 )]
+#[derive(TagKeyWalk)]
 pub enum Cost<E> {
     Mana(ManaCost),
     DynamicMana(DynamicManaCost),
@@ -531,6 +536,7 @@ pub trait CoreCostComponent: CostComponent {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum TotalCostKind<C> {
     All(Vec<C>),
     OneOf(Vec<TotalCost<C>>),
@@ -538,6 +544,7 @@ pub enum TotalCostKind<C> {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct TotalCost<C> {
     kind: TotalCostKind<C>,
 }
@@ -792,6 +799,7 @@ mod tests {
 /// be used when describing a later "that cost was paid" condition.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum AlternativeCostReferenceSurface {
     ManaCost,
     NamedCost,
@@ -805,6 +813,7 @@ pub enum AlternativeCostReferenceSurface {
 /// callers cannot smuggle arbitrary oracle text into this executable key.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub struct AlternativeCostReference {
     method_name: String,
     mana_cost: Option<String>,
@@ -888,6 +897,7 @@ impl AlternativeCostReference {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum OptionalCostKind {
     Kicker,
     Multikicker,
@@ -1015,6 +1025,7 @@ impl OptionalCostKind {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub struct OptionalCostRef {
     pub kind: OptionalCostKind,
     pub discriminator: Option<String>,
@@ -1188,6 +1199,7 @@ impl PartialEq<str> for OptionalCostRef {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct OptionalCost<C> {
     pub kind: OptionalCostKind,
     pub reference: OptionalCostRef,
@@ -1279,6 +1291,7 @@ impl<C> OptionalCost<C> {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(TagKeyWalk)]
 pub struct OptionalCostsPaid {
     pub costs: Vec<(OptionalCostRef, u32)>,
     /// Cast-proposal provenance: this spell was announced while its controller

@@ -1284,7 +1284,7 @@ pub fn parse_attached_restrictions_with_ignore_special_action_line(
         _ => unreachable!("the complete grammar above owns the attached noun"),
     }
     .match_tagged(
-        crate::tag::CompilerReferenceTag::Enchanted.key(),
+        crate::tag::CompilerReferenceTag::Enchanted.bind(),
         crate::filter::TaggedOpbjectRelation::IsTaggedObject,
     );
     let combat_display = format!("{subject} can't attack or block");

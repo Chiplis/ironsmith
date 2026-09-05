@@ -304,7 +304,7 @@ pub fn parse_sentence_destroy_multi_target(
                         PlayerAst::Opponent,
                     ),
                     EffectAst::subject_verb_destroy(TargetAst::Tagged(
-                        crate::tag::CompilerReferenceTag::It.key(),
+                        crate::tag::CompilerReferenceTag::It.bind(),
                         segment_clause.span(),
                     )),
                 ],

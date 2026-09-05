@@ -281,7 +281,7 @@ fn parse_turn_history_intervening_predicate(
     }
     if surface::exact_words(&words, &["it", "has", "madness"]) {
         return Ok(Some(PredicateAst::TaggedMatches(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             ObjectFilter::default()
                 .with_alternative_cast(ironsmith_core::AlternativeCastKind::Madness),
         )));
@@ -385,7 +385,7 @@ fn parse_turn_history_intervening_predicate(
             left: Value::ManaSpentToCastTriggeringObject,
             operator: ValueComparisonOperator::LessThan,
             right: Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
-                crate::tag::CompilerReferenceTag::Triggering.key(),
+                crate::tag::CompilerReferenceTag::Triggering.bind(),
             ))),
         }));
     }
@@ -656,7 +656,7 @@ pub(super) fn player_filter_for_turn_value(player: PlayerAst) -> Option<PlayerFi
             Some(PlayerFilter::TargetPlayerOrControllerOfTarget)
         }
         PlayerAst::TriggeringSourceController => Some(PlayerFilter::ControllerOf(
-            crate::filter::ObjectRef::tagged("triggering_source"),
+            crate::filter::ObjectRef::tagged(crate::tag::CompilerReferenceTag::TriggeringSource.bind()),
         )),
         PlayerAst::ItsController | PlayerAst::ItsOwner | PlayerAst::Enchanted => None,
     }
@@ -2375,7 +2375,7 @@ pub(super) fn parse_tagged_was_cast_shape(tokens: &[OwnedLexToken]) -> Option<Pr
         return None;
     }
     Some(PredicateAst::TaggedWasCast(
-        crate::tag::CompilerReferenceTag::It.key(),
+        crate::tag::CompilerReferenceTag::It.bind(),
     ))
 }
 
@@ -2863,7 +2863,7 @@ pub(super) fn parse_this_permanent_attached_to_shape(
             filter.card_types.push(CardType::Creature);
         }
         return Some(PredicateAst::TaggedMatches(
-            crate::tag::CompilerReferenceTag::Enchanted.key(),
+            crate::tag::CompilerReferenceTag::Enchanted.bind(),
             filter,
         ));
     }
@@ -3010,7 +3010,7 @@ pub(super) fn parse_additional_cost_object_state_predicate(
         ironsmith_core::AdditionalCostObjectSurface::new(cost_action, subject_kind),
     ));
     Ok(Some(PredicateAst::TaggedMatches(
-        crate::tag::CompilerReferenceTag::AdditionalCostObject.key(),
+        crate::tag::CompilerReferenceTag::AdditionalCostObject.bind(),
         filter,
     )))
 }
@@ -3033,7 +3033,7 @@ pub(super) fn parse_tagged_exiled_predicate(tokens: &[OwnedLexToken]) -> Option<
         return None;
     }
     Some(PredicateAst::TaggedMatches(
-        crate::tag::CompilerReferenceTag::It.key(),
+        crate::tag::CompilerReferenceTag::It.bind(),
         ObjectFilter::default().in_zone(Zone::Exile),
     ))
 }
@@ -3115,7 +3115,7 @@ pub(super) fn parse_tagged_controlled_permanent_shape(
     ));
     Some(PredicateAst::PlayerTaggedObjectMatches {
         player: PlayerAst::You,
-        tag: crate::tag::CompilerReferenceTag::It.key(),
+        tag: crate::tag::CompilerReferenceTag::It.bind(),
         filter,
         mode: ironsmith_core::TaggedObjectMatchMode::LastKnown,
     })
@@ -3142,7 +3142,7 @@ pub(super) fn parse_tagged_entered_under_your_control_shape(
     }
     Some(PredicateAst::PlayerTaggedObjectEnteredBattlefieldThisTurn {
         player: PlayerAst::You,
-        tag: crate::tag::CompilerReferenceTag::It.key(),
+        tag: crate::tag::CompilerReferenceTag::It.bind(),
     })
 }
 
@@ -3167,7 +3167,7 @@ pub(super) fn parse_tagged_wasnt_blocking_shape(tokens: &[OwnedLexToken]) -> Opt
             continue;
         }
         return Some(PredicateAst::TaggedMatches(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             ObjectFilter {
                 nonblocking: true,
                 ..Default::default()
@@ -3389,7 +3389,7 @@ pub(super) fn parse_tagged_creature_filter_shape(tokens: &[OwnedLexToken]) -> Op
     if filter.card_types.is_empty() {
         filter.card_types.push(CardType::Creature);
     }
-    Some(PredicateAst::TaggedMatches(tag.key(), filter))
+    Some(PredicateAst::TaggedMatches(tag.bind(), filter))
 }
 
 pub(super) fn graveyard_possessive_matches_subject(
@@ -3983,7 +3983,7 @@ pub(super) fn parse_card_types_among_predicate(tokens: &[OwnedLexToken]) -> Opti
 
     let scope = matched.capture_clause_by_role(WinnowCaptureRole::Modifier, clause)?;
     let filter = if surface::exact_any(scope, SACRIFICED_PERMANENTS_SCOPE_PHRASES) {
-        ObjectFilter::tagged("sacrificed_0")
+        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::Sacrificed0.bind())
     } else {
         permanents_and_your_graveyard_scope(scope)?
     };
@@ -4128,7 +4128,7 @@ pub(super) fn parse_counted_source_exiled_objects_predicate(
     };
     filter.zone = Some(Zone::Exile);
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
+        tag: crate::tag::CompilerReferenceTag::SourceExiled.bind(),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
 
@@ -4647,11 +4647,11 @@ pub(super) fn parse_exploited_triggering_object_predicate(
     }
     Some(PredicateAst::And(
         Box::new(PredicateAst::TaggedMatches(
-            crate::tag::CompilerReferenceTag::Exploited.key(),
-            ObjectFilter::tagged("triggering"),
+            crate::tag::CompilerReferenceTag::Exploited.bind(),
+            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::Triggering.bind()),
         )),
         Box::new(PredicateAst::TaggedMatches(
-            crate::tag::CompilerReferenceTag::Exploiter.key(),
+            crate::tag::CompilerReferenceTag::Exploiter.bind(),
             ObjectFilter::source(),
         )),
     ))

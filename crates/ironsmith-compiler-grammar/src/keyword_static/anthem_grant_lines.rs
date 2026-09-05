@@ -821,10 +821,7 @@ pub fn parse_granted_keyword_static_line(
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let granted_line_words = crate::lexer::parser_token_word_refs(tokens);
     if (crate::word_primitives::parse_sequence_prefix(&granted_line_words, &["as", "long", "as"])
-        || crate::word_primitives::sequence_occurs(
-            &granted_line_words,
-            &["in", "addition", "to"],
-        ))
+        || crate::word_primitives::sequence_occurs(&granted_line_words, &["in", "addition", "to"]))
         && matches!(
             crate::keyword_static::parse_filter_has_granted_ability_line(tokens),
             Ok(Some(_))
@@ -2323,7 +2320,8 @@ pub fn parse_anthem_subject(tokens: &[OwnedLexToken]) -> Result<AnthemSubjectAst
     if is_source_reference_words(&subject_words) {
         return Ok(AnthemSubjectAst::Source);
     }
-    let generic_filter = crate::grammar::primitives::probe_shape(parse_object_filter(tokens, false));
+    let generic_filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter(tokens, false));
     if let Some(filter) = generic_filter.as_ref()
         && (filter.in_combat_with_source
             || filter.attached_to_object.is_some()
@@ -2412,7 +2410,7 @@ fn parse_enchanted_player_controls_subject(
     };
     let mut filter = parse_object_filter(prefix_tokens, false)?;
     filter.controller = Some(PlayerFilter::TaggedPlayer(
-        crate::tag::CompilerReferenceTag::Enchanted.key(),
+        crate::tag::CompilerReferenceTag::Enchanted.bind(),
     ));
     Ok(Some(filter))
 }
@@ -2446,7 +2444,7 @@ fn infer_attached_subject_filter_from_condition_expr(
         | Some(PredicateAst::EnchantedPermanentIsLand)
         | Some(PredicateAst::EnchantedPermanentIsEquipment)
         | Some(PredicateAst::EnchantedPermanentIsVehicle) => {
-            Some(ObjectFilter::tagged("enchanted"))
+            Some(ObjectFilter::tagged(crate::tag::CompilerReferenceTag::Enchanted.bind()))
         }
         Some(PredicateAst::AttachmentCount {
             host: ironsmith_core::AttachmentConditionHost::Matching(filter),
@@ -2541,9 +2539,7 @@ pub fn parse_permanent_card_count_filter(tokens: &[OwnedLexToken]) -> Option<Obj
     Some(filter)
 }
 
-fn parse_negated_subject_descriptor_condition(
-    tokens: &[OwnedLexToken],
-) -> Option<PredicateAst> {
+fn parse_negated_subject_descriptor_condition(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let positions = crate::lexer::parser_token_word_positions(tokens);
     let mut copula = None;
     for (word_idx, (token_idx, word)) in positions.iter().enumerate() {
@@ -2608,6 +2604,9 @@ fn static_condition_clause_bound(tokens: &[OwnedLexToken]) -> Option<crate::Cond
     bind_static_condition_predicate(parse_static_condition_clause(tokens).ok()?)
 }
 
+#[path = "anthem_grant_lines/static_condition_readings.rs"]
+mod static_condition_readings;
+
 pub fn parse_static_condition_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<PredicateAst, CardTextError> {
@@ -2620,7 +2619,6 @@ pub fn parse_static_condition_clause(
         ));
     }
     let display = clause_words.join(" ");
-    let fixed_kind = anthem_grant_grammar::parse_fixed_static_condition_kind(&tokens);
 
     // A condition on an affected attached object may quantify permanents
     // controlled by that object's controller. Reuse the ordinary control-
@@ -2662,239 +2660,17 @@ pub fn parse_static_condition_clause(
     // the grant lowering below. Keep that exact typed value available here;
     // otherwise the earlier broad grant rule errors before the per-spell
     // provenance transfer can run.
-    if let Ok(PredicateAst::ValueComparison {
-        left:
-            crate::effect::Value::ManaFromSourceSpentToCastThisSpell {
-                source_filter,
-                include_source_noun: false,
-                ..
-            },
-        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
-        right: crate::effect::Value::Fixed(1),
-    }) = crate::grammar::filters::parse_condition_predicate_lexed(&tokens)
-    {
-        return Ok(PredicateAst::ValueComparison {
-            left: crate::effect::Value::ManaFromSourceSpentToCastThisSpell {
-                source_filter,
-                include_source_noun: false,
-                reference: ironsmith_core::ManaSpentCastReferenceSurface::It,
-            },
-            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
-            right: crate::effect::Value::Fixed(1),
-        });
-    }
+    let input = static_condition_readings::ConditionClause {
+        tokens: &tokens,
+        display: &display,
 
-    if let Some(condition) = crate::grammar::conditions::parse_removed_from_draft_condition(&tokens)
-    {
-        return Ok(PredicateAst::PlayerRemovedDraftCardMatching {
-            player: condition.player,
-            filter: condition.filter,
-            with_cards_named: condition.with_cards_named,
-        });
+        read_by_cache: Default::default(),
+    };
+    match static_condition_readings::read(&input) {
+        ParseOutcome::Match(matched) => return Ok(matched.value.value),
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
-
-    if let Some(condition) = parse_negated_subject_descriptor_condition(&tokens) {
-        return Ok(condition);
-    }
-
-    if let Some(condition) = parse_cards_in_hand_static_condition(&tokens) {
-        return Ok(condition);
-    }
-    if let Some(condition) = parse_life_total_static_condition(&tokens) {
-        return Ok(condition);
-    }
-    // Attack history and source characteristics are disjoint condition
-    // domains. A complete `attacked a battle this turn` fact is temporal, so
-    // it never enters the source-characteristic filter grammar.
-    if !matches!(
-        fixed_kind,
-        Some(anthem_grant_grammar::FixedStaticConditionKind::SourceAttackedBattleThisTurn)
-    ) && let Some(filter) =
-        crate::grammar::filters::parse_source_keyword_condition_filter_lexed(&tokens)
-    {
-        return Ok(PredicateAst::SourceMatches(filter));
-    }
-
-    if let Some(kind) = fixed_kind {
-        use anthem_grant_grammar::FixedStaticConditionKind;
-        return match kind {
-            FixedStaticConditionKind::SourceEquipmentAttachedToCreature => Ok(
-                PredicateAst::AttachedToSourceMatches(ObjectFilter::creature()),
-            ),
-            FixedStaticConditionKind::SourceSpellWasKicked => {
-                Ok(PredicateAst::ThisSpellWasKicked)
-            }
-            FixedStaticConditionKind::OpponentLostLifeThisTurn => {
-                Ok(PredicateAst::OpponentLostLifeThisTurn)
-            }
-            FixedStaticConditionKind::YouDidNotCastSpellThisTurn => Ok(PredicateAst::Not(
-                Box::new(PredicateAst::PlayerCastSpellsThisTurnOrMore {
-                    player: PlayerAst::You,
-                    count: 1,
-                }),
-            )),
-            FixedStaticConditionKind::YouCastSpellThisTurn => {
-                Ok(PredicateAst::PlayerCastSpellsThisTurnOrMore {
-                    player: PlayerAst::You,
-                    count: 1,
-                })
-            }
-            FixedStaticConditionKind::NoCardsInYourLibrary => {
-                Ok(PredicateAst::CountComparison {
-                    count: AnthemCountExpression::MatchingFilter(
-                        ObjectFilter::default()
-                            .in_zone(Zone::Library)
-                            .owned_by(PlayerFilter::You),
-                    ),
-                    comparison: crate::effect::Comparison::Equal(0),
-                    display: Some("there are no cards in your library".to_string()),
-                })
-            }
-            FixedStaticConditionKind::SourceIsOnBattlefield => {
-                Ok(PredicateAst::SourceIsInZone(Zone::Battlefield))
-            }
-            FixedStaticConditionKind::SourceIsNotOnBattlefield => Ok(PredicateAst::Not(
-                Box::new(PredicateAst::SourceIsInZone(Zone::Battlefield)),
-            )),
-            FixedStaticConditionKind::SourceDevouredCreature => {
-                Ok(PredicateAst::SourceDevouredCreaturesOrMore(1))
-            }
-            FixedStaticConditionKind::SourceIsSoulbondPaired => {
-                Ok(PredicateAst::SourceIsSoulbondPaired)
-            }
-            FixedStaticConditionKind::SourceAttackedThisTurn => {
-                Ok(PredicateAst::SourceAttackedThisTurn)
-            }
-            FixedStaticConditionKind::SourceAttackedBattleThisTurn => {
-                Ok(PredicateAst::SourceAttackedBattleThisTurn)
-            }
-            FixedStaticConditionKind::YouAttackedThisTurn => {
-                Ok(PredicateAst::AttackedThisTurn)
-            }
-            FixedStaticConditionKind::SourceEnteredThisTurn => {
-                let mut filter = ObjectFilter::source();
-                filter.entered_battlefield_this_turn = true;
-                Ok(PredicateAst::CountComparison {
-                    count: AnthemCountExpression::MatchingFilter(filter),
-                    comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
-                    display: Some(display.clone()),
-                })
-            }
-            FixedStaticConditionKind::YourTurn => Ok(PredicateAst::YourTurn),
-            FixedStaticConditionKind::SourcePowerEven => Err(CardTextError::ParseError(
-                "unsupported source power parity condition (clause: 'this power is even')"
-                    .to_string(),
-            )),
-            FixedStaticConditionKind::SourcePowerOdd => Err(CardTextError::ParseError(
-                "unsupported source power parity condition (clause: 'this power is odd')"
-                    .to_string(),
-            )),
-            FixedStaticConditionKind::NotYourTurn => Ok(PredicateAst::Not(Box::new(
-                PredicateAst::YourTurn,
-            ))),
-            FixedStaticConditionKind::YourLifeAtMostHalfStarting => Ok(
-                PredicateAst::PlayerLifeAtMostHalfStartingLifeTotal {
-                    player: PlayerAst::You,
-                },
-            ),
-            FixedStaticConditionKind::YouCommittedCrimeThisTurn => {
-                Ok(PredicateAst::PlayerCommittedCrimeThisTurn {
-                    player: PlayerAst::You,
-                })
-            }
-        };
-    }
-
-    if let Some(life) = anthem_grant_grammar::parse_life_total_or_less_condition(&tokens) {
-        return Ok(PredicateAst::LifeTotalOrLess(life as i32));
-    }
-
-    if let Some(counter) = crate::grammar::conditions::parse_player_counter_condition(&tokens) {
-        let Some((operator, value)) =
-            crate::util::comparison_to_value_comparison_operator(counter.comparison)
-        else {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported player-counter comparison (clause: '{display}')"
-            )));
-        };
-        return Ok(PredicateAst::ValueComparison {
-            left: crate::effect::Value::PlayerCounters(counter.player, counter.counter_type),
-            operator,
-            right: crate::effect::Value::Fixed(value),
-        });
-    }
-
-    if let Some(attachment) =
-        crate::grammar::conditions::parse_object_attached_to_object_condition(&tokens)
-    {
-        return Ok(PredicateAst::AttachmentCount {
-            attachment: attachment.attachment_filter,
-            host: ironsmith_core::AttachmentConditionHost::Matching(attachment.attached_to_filter),
-            comparison: attachment.comparison,
-            display: attachment.display,
-        });
-    }
-
-    if let Some(condition) = parse_devotion_static_condition(&tokens)? {
-        return Ok(condition);
-    }
-
-    if let Some(condition) = crate::grammar::conditions::parse_subject_status_condition(&tokens)
-        .and_then(|condition| condition.condition_expr())
-    {
-        return Ok(condition);
-    }
-    if let Some(condition) = crate::grammar::conditions::parse_subject_descriptor_condition(&tokens)
-    {
-        return Ok(condition.condition_expr(display.clone()));
-    }
-    if let Some(condition) = crate::grammar::conditions::parse_player_status_condition(&tokens)
-        .and_then(|condition| condition.condition_expr())
-    {
-        return Ok(condition);
-    }
-    if let Some(count) = anthem_grant_grammar::parse_x_value_at_least_condition(&tokens) {
-        return Ok(PredicateAst::XValueAtLeast(count));
-    }
-    if let Some(condition) =
-        crate::grammar::conditions::parse_player_achievement_condition(&tokens)
-            .and_then(|condition| condition.condition_expr())
-    {
-        return Ok(condition);
-    }
-    if let Some(condition) = parse_cards_drawn_this_turn_static_condition(&tokens) {
-        return Ok(condition);
-    }
-    if let Some(shape) = anthem_grant_grammar::parse_blocking_source_condition(&tokens) {
-        return Ok(PredicateAst::CountComparison {
-            count: AnthemCountExpression::BlockingSource,
-            comparison: shape.comparison,
-            display: Some(display.clone()),
-        });
-    }
-    if let Some(condition) = parse_dice_rolled_this_turn_static_condition(&tokens) {
-        return Ok(condition);
-    }
-
-    if anthem_grant_grammar::parse_source_in_graveyard_condition(&tokens) {
-        let mut filter = ObjectFilter::source();
-        filter.zone = Some(Zone::Graveyard);
-        return Ok(PredicateAst::CountComparison {
-            count: AnthemCountExpression::MatchingFilter(filter),
-            comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
-            display: Some(display.clone()),
-        });
-    }
-
-    if let Some(condition) = parse_independently_articled_graveyard_cards_static_condition(&tokens)
-    {
-        return Ok(condition);
-    }
-
-    if let Some(conjoined) = parse_conjoined_static_condition_clause(&tokens) {
-        return Ok(conjoined);
-    }
-
     match anthem_grant_grammar::parse_existential_condition_shape(&tokens) {
         Err(()) => {
             return Err(CardTextError::ParseError(
@@ -3109,8 +2885,7 @@ fn parse_independently_articled_graveyard_cards_static_condition(
     fn is_owned_graveyard_card_requirement(
         predicate: &crate::cards::builders::PredicateAst,
     ) -> bool {
-        let PredicateAst::PlayerControls { player, filter } = predicate
-        else {
+        let PredicateAst::PlayerControls { player, filter } = predicate else {
             return false;
         };
         *player == crate::cards::builders::PlayerAst::You
@@ -3119,7 +2894,9 @@ fn parse_independently_articled_graveyard_cards_static_condition(
             && filter.card_types.len() == 1
     }
 
-    let predicate = crate::grammar::primitives::probe_shape(crate::grammar::filters::parse_condition_predicate_lexed(tokens))?;
+    let predicate = crate::grammar::primitives::probe_shape(
+        crate::grammar::filters::parse_condition_predicate_lexed(tokens),
+    )?;
     let PredicateAst::And(left, right) = &predicate else {
         return None;
     };
@@ -3192,15 +2969,16 @@ fn parse_devotion_static_condition(
     }))
 }
 
-fn parse_conjoined_static_condition_clause(
-    tokens: &[OwnedLexToken],
-) -> Option<PredicateAst> {
+fn parse_conjoined_static_condition_clause(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     for split in anthem_grant_grammar::parse_conjoined_condition_splits(tokens) {
         let Ok(left) = parse_static_condition_clause(split.left_tokens) else {
             continue;
         };
-        let right = parse_conjoined_static_condition_clause(split.right_tokens)
-            .or_else(|| crate::grammar::primitives::probe_shape(parse_static_condition_clause(split.right_tokens)));
+        let right = parse_conjoined_static_condition_clause(split.right_tokens).or_else(|| {
+            crate::grammar::primitives::probe_shape(parse_static_condition_clause(
+                split.right_tokens,
+            ))
+        });
         if let Some(right) = right {
             return Some(PredicateAst::And(Box::new(left), Box::new(right)));
         }
@@ -3208,9 +2986,7 @@ fn parse_conjoined_static_condition_clause(
     None
 }
 
-fn parse_cards_drawn_this_turn_static_condition(
-    tokens: &[OwnedLexToken],
-) -> Option<PredicateAst> {
+fn parse_cards_drawn_this_turn_static_condition(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let threshold = crate::grammar::anthem_grants::parse_cards_drawn_this_turn_threshold(tokens)?;
     let player = anthem_turn_threshold_player_filter(threshold.player);
 
@@ -3221,9 +2997,7 @@ fn parse_cards_drawn_this_turn_static_condition(
     })
 }
 
-fn parse_dice_rolled_this_turn_static_condition(
-    tokens: &[OwnedLexToken],
-) -> Option<PredicateAst> {
+fn parse_dice_rolled_this_turn_static_condition(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let threshold = crate::grammar::anthem_grants::parse_dice_rolled_this_turn_threshold(tokens)?;
     let player = anthem_turn_threshold_player_filter(threshold.player);
 
@@ -3246,13 +3020,11 @@ fn anthem_turn_threshold_player_filter(
 }
 
 fn parse_cards_in_hand_static_condition(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    crate::grammar::conditions::parse_player_cards_in_hand_condition(tokens)?
-        .condition_expr()
+    crate::grammar::conditions::parse_player_cards_in_hand_condition(tokens)?.condition_expr()
 }
 
 fn parse_life_total_static_condition(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    crate::grammar::conditions::parse_player_life_total_condition(tokens)?
-        .condition_expr()
+    crate::grammar::conditions::parse_player_life_total_condition(tokens)?.condition_expr()
 }
 
 fn explicit_source_counter_surface(
@@ -3348,6 +3120,9 @@ fn parse_sticker_count_expression(tokens: &[OwnedLexToken]) -> Option<AnthemCoun
     })
 }
 
+#[path = "anthem_grant_lines/anthem_for_each_readings.rs"]
+mod anthem_for_each_readings;
+
 pub fn parse_anthem_for_each_expression(
     tokens: &[OwnedLexToken],
 ) -> Result<AnthemCountExpression, CardTextError> {
@@ -3362,82 +3137,15 @@ pub fn parse_anthem_for_each_expression(
             "missing object phrase after 'for each'".to_string(),
         ));
     }
-
-    if let Some(shape) = anthem_grant_grammar::parse_for_each_special_shape(rest) {
-        match shape {
-            anthem_grant_grammar::ForEachSpecialShape::AffectedAttackedThisTurn => {
-                return Ok(AnthemCountExpression::AffectedAttackedThisTurn);
-            }
-            anthem_grant_grammar::ForEachSpecialShape::ColorsOfAffected => {
-                return Ok(AnthemCountExpression::ColorsOfAffected);
-            }
-            anthem_grant_grammar::ForEachSpecialShape::CreatureTypesOfAffected => {
-                return Ok(AnthemCountExpression::CreatureTypesAmong(
-                    ObjectFilter::source(),
-                ));
-            }
-            anthem_grant_grammar::ForEachSpecialShape::GraveyardsWithAtLeastCards {
-                minimum_cards,
-            } => {
-                return Ok(AnthemCountExpression::GraveyardsWithAtLeastCards { minimum_cards });
-            }
-            anthem_grant_grammar::ForEachSpecialShape::BlockingSource => {
-                return Ok(AnthemCountExpression::BlockingSource);
-            }
-            anthem_grant_grammar::ForEachSpecialShape::AttachedToSource { filter_tokens } => {
-                let filter = parse_object_filter(filter_tokens, false).map_err(|_| {
-                    CardTextError::ParseError(format!(
-                        "unsupported attached-object filter in anthem scaling clause (clause: '{}')",
-                        crate::lexer::token_word_refs(&tokens).join(" ")
-                    ))
-                })?;
-                return Ok(AnthemCountExpression::AttachedToSource(filter));
-            }
-            anthem_grant_grammar::ForEachSpecialShape::UnspentGreenManaYouHave => {
-                return Ok(AnthemCountExpression::UnspentMana {
-                    player: PlayerFilter::You,
-                    symbol: crate::mana::ManaSymbol::Green,
-                });
-            }
-        }
+    let input = anthem_for_each_readings::ForEachPhrase {
+        tokens: &tokens,
+        rest,
+    };
+    match anthem_for_each_readings::read(&input) {
+        ParseOutcome::Match(matched) => return Ok(matched.value.value),
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
-
-    if let Some(aggregate_value) = parse_aggregate_scope_value_lexed(rest) {
-        match aggregate_value {
-            Value::BasicLandTypesAmong(filter) => {
-                return Ok(AnthemCountExpression::BasicLandTypesAmong(filter));
-            }
-            Value::CreatureTypesAmong(filter) => {
-                return Ok(AnthemCountExpression::CreatureTypesAmong(filter));
-            }
-            _ => {}
-        }
-    }
-
-    if let Some(player) = parse_commander_cast_count_player(rest) {
-        return Ok(AnthemCountExpression::CommanderCastCount(player));
-    }
-
-    if let Some(sticker_count) = parse_sticker_count_expression(rest) {
-        return Ok(sticker_count);
-    }
-
-    if let Some(filter) = parse_compound_anthem_count_filter(rest) {
-        return Ok(AnthemCountExpression::MatchingFilter(filter));
-    }
-
-    if let Some(counter_clause) =
-        crate::grammar::anthem_grants::parse_source_counter_count_clause(rest)
-        && let Some(counter_type) = parse_counter_type_word(counter_clause.counter_type_word)
-    {
-        let source_words = crate::lexer::token_word_refs(counter_clause.source_tokens);
-        if counter_clause.starts_with_source_pronoun
-            || explicit_source_counter_surface(&source_words).is_some()
-        {
-            return Ok(source_counter_count_expression(counter_type, &source_words));
-        }
-    }
-
     let filter = parse_object_filter(rest, false).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported 'for each' filter in anthem clause (clause: '{}')",
@@ -3455,7 +3163,9 @@ fn parse_compound_anthem_count_filter(tokens: &[OwnedLexToken]) -> Option<Object
         if segment.is_empty() {
             return None;
         }
-        branches.push(crate::grammar::primitives::probe_shape(parse_object_filter(&segment, false))?);
+        branches.push(crate::grammar::primitives::probe_shape(
+            parse_object_filter(&segment, false),
+        )?);
     }
 
     if branches.len() < 2 {
@@ -3508,9 +3218,7 @@ pub fn parse_anthem_prefix_condition(
             .or_else(|| find_source_reference_start(&tokens[..get_idx]))
             .unwrap_or(shape.prefix_end);
         return Ok((
-            Some(PredicateAst::Not(Box::new(
-                PredicateAst::YourTurn,
-            ))),
+            Some(PredicateAst::Not(Box::new(PredicateAst::YourTurn))),
             subject_start,
         ));
     }
@@ -3596,7 +3304,10 @@ fn bind_unique_count_condition_anthem_subject(
         return;
     }
 
-    ironsmith_compiler_semantic::condition_antecedent::bind_condition_filter_antecedent(subject_filter, antecedent);
+    ironsmith_compiler_semantic::condition_antecedent::bind_condition_filter_antecedent(
+        subject_filter,
+        antecedent,
+    );
 }
 
 pub fn parse_anthem_clause(
@@ -3928,7 +3639,8 @@ fn parse_dynamic_xy_anthem_values(
     modifier_token: &str,
     tail_tokens: &[OwnedLexToken],
 ) -> Option<(AnthemValue, AnthemValue)> {
-    let (power_raw, toughness_raw) = crate::grammar::primitives::probe_shape(split_pt_modifier_components(modifier_token))?;
+    let (power_raw, toughness_raw) =
+        crate::grammar::primitives::probe_shape(split_pt_modifier_components(modifier_token))?;
     let power_var = pt_modifier_variable(power_raw)?;
     let toughness_var = pt_modifier_variable(toughness_raw)?;
     let bindings = parse_where_x_y_bindings(tail_tokens)?;
@@ -5127,12 +4839,9 @@ mod dynamic_anthem_tests {
     fn source_attack_history_is_not_a_source_characteristic_condition() {
         let tokens = lex_line("This creature attacked a battle this turn.", 0)
             .expect("attack-history condition should lex");
-        let condition = parse_static_condition_clause(&tokens)
-            .expect("attack-history condition should parse");
+        let condition =
+            parse_static_condition_clause(&tokens).expect("attack-history condition should parse");
 
-        assert_eq!(
-            condition,
-            PredicateAst::SourceAttackedBattleThisTurn
-        );
+        assert_eq!(condition, PredicateAst::SourceAttackedBattleThisTurn);
     }
 }

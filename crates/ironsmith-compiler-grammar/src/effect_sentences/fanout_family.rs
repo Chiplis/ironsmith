@@ -185,16 +185,16 @@ pub fn parse_same_name_fanout_filter(
         ))
     })?;
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: crate::tag::CompilerReferenceTag::It.key(),
+        tag: crate::tag::CompilerReferenceTag::It.bind(),
         relation: TaggedOpbjectRelation::SameNameAsTagged,
     });
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: crate::tag::CompilerReferenceTag::It.key(),
+        tag: crate::tag::CompilerReferenceTag::It.bind(),
         relation: TaggedOpbjectRelation::IsNotTaggedObject,
     });
     if controller_shape.same_controller {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.key(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
             relation: TaggedOpbjectRelation::SameControllerAsTagged,
         });
     }
@@ -317,11 +317,11 @@ pub fn parse_shared_color_fanout_filter(
         ))
     })?;
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: crate::tag::CompilerReferenceTag::It.key(),
+        tag: crate::tag::CompilerReferenceTag::It.bind(),
         relation: TaggedOpbjectRelation::SharesColorWithTagged,
     });
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: crate::tag::CompilerReferenceTag::It.key(),
+        tag: crate::tag::CompilerReferenceTag::It.bind(),
         relation: TaggedOpbjectRelation::IsNotTaggedObject,
     });
     Ok(Some(filter))
@@ -738,11 +738,11 @@ fn parse_damage_part(
                 )
             }
             fanout_grammar::DamageBackReferenceShape::ThatObject => {
-                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None)
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None)
             }
             fanout_grammar::DamageBackReferenceShape::ThatObjectController => TargetAst::Player(
                 PlayerFilter::ControllerOf(crate::target::ObjectRef::tagged(
-                    crate::tag::CompilerReferenceTag::It.key(),
+                    crate::tag::CompilerReferenceTag::It.bind(),
                 )),
                 None,
             ),

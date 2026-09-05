@@ -155,10 +155,7 @@ pub fn parse_enters_with_counters_line(
     );
     let _action_tokens = captured.action_tokens;
     if captured.escaped {
-        condition = Some((
-            PredicateAst::ThisSpellEscaped,
-            "it escaped".to_string(),
-        ));
+        condition = Some((PredicateAst::ThisSpellEscaped, "it escaped".to_string()));
     }
 
     let mut added_abilities: Vec<Ability> = Vec::new();
@@ -594,7 +591,8 @@ fn parse_mana_from_source_spent_to_cast_value(tokens: &[OwnedLexToken]) -> Optio
     if source_tokens.is_empty() {
         return None;
     }
-    let source_filter = crate::grammar::primitives::probe_shape(parse_object_filter(&source_tokens, false))?;
+    let source_filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter(&source_tokens, false))?;
     Some(Value::ManaFromSourceSpentToCastThisSpell {
         source_filter,
         include_source_noun,
@@ -655,8 +653,9 @@ fn parse_enters_with_counter_colors_mana_spent_condition_tokens(
         return None;
     };
 
-    let (comparison, used) =
-        crate::grammar::primitives::probe_shape(parse_quantity_comparison_prefix(amount_tokens, false, false, "enters-with condition"))?;
+    let (comparison, used) = crate::grammar::primitives::probe_shape(
+        parse_quantity_comparison_prefix(amount_tokens, false, false, "enters-with condition"),
+    )?;
     if used != amount_tokens.len() {
         return None;
     }
@@ -672,8 +671,9 @@ fn parse_enters_with_counter_you_cast_spells_this_turn_condition_tokens(
         return None;
     };
 
-    let (comparison, used) =
-        crate::grammar::primitives::probe_shape(parse_quantity_comparison_prefix(amount_tokens, false, false, "enters-with condition"))?;
+    let (comparison, used) = crate::grammar::primitives::probe_shape(
+        parse_quantity_comparison_prefix(amount_tokens, false, false, "enters-with condition"),
+    )?;
     if used != amount_tokens.len() {
         return None;
     }
@@ -688,8 +688,9 @@ fn parse_enters_with_counter_x_value_threshold_condition_tokens(
     else {
         return None;
     };
-    let (comparison, used) =
-        crate::grammar::primitives::probe_shape(parse_quantity_comparison_prefix(amount_tokens, false, false, "enters-with condition"))?;
+    let (comparison, used) = crate::grammar::primitives::probe_shape(
+        parse_quantity_comparison_prefix(amount_tokens, false, false, "enters-with condition"),
+    )?;
     if used != amount_tokens.len() {
         return None;
     }
@@ -705,97 +706,30 @@ fn parse_unless_enters_with_counter_condition_display(tokens: &[OwnedLexToken]) 
     None
 }
 
-fn parse_enters_with_counter_condition_clause(
-    tokens: &[OwnedLexToken],
-) -> Option<PredicateAst> {
+#[path = "etb_static_lines/enters_with_counter_condition_readings.rs"]
+mod enters_with_counter_condition_readings;
+
+fn parse_enters_with_counter_condition_clause(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let condition_tokens = trim_edge_punctuation(tokens);
     if condition_tokens.is_empty() {
         return None;
     }
-
-    if let Some(shape) =
-        etb_grammar::parse_enters_with_counter_condition_shape_tokens(&condition_tokens)
-    {
-        match shape {
-            EntersWithCounterConditionShape::AttackedThisTurn => {
-                return Some(PredicateAst::AttackedThisTurn);
-            }
-            EntersWithCounterConditionShape::SourceWasCast => {
-                return Some(PredicateAst::SourceWasCast);
-            }
-            EntersWithCounterConditionShape::ThisSpellWasKicked => {
-                return Some(PredicateAst::ThisSpellWasKicked);
-            }
-            EntersWithCounterConditionShape::ThisSpellEscaped => {
-                return Some(PredicateAst::ThisSpellEscaped);
-            }
-            EntersWithCounterConditionShape::CreatureDiedThisTurn => {
-                return Some(PredicateAst::CreatureDiedThisTurn);
-            }
-            EntersWithCounterConditionShape::OpponentLostLifeThisTurn => {
-                return Some(PredicateAst::OpponentLostLifeThisTurn);
-            }
-            EntersWithCounterConditionShape::PermanentLeftUnderYourControl => {
-                return Some(
-                    PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn {
-                        surface:
-                            crate::PermanentLeftBattlefieldControlSurface::LeftUnderYourControl,
-                    },
-                );
-            }
-            EntersWithCounterConditionShape::NotCastOrNoManaSpent => {
-                return Some(PredicateAst::Or(
-                    Box::new(PredicateAst::Not(Box::new(
-                        PredicateAst::SourceWasCast,
-                    ))),
-                    Box::new(PredicateAst::Not(Box::new(
-                        PredicateAst::ManaSpentToCastThisSpellAtLeast {
-                            amount: 1,
-                            symbol: None,
-                        },
-                    ))),
-                ));
-            }
-            EntersWithCounterConditionShape::XValueAtLeast(_)
-            | EntersWithCounterConditionShape::YouCastSpellsThisTurn(_)
-            | EntersWithCounterConditionShape::ColorsOfManaSpent(_) => {}
-        }
+    let input = enters_with_counter_condition_readings::CounterCondition {
+        tokens: &condition_tokens,
+    };
+    match enters_with_counter_condition_readings::read(&input) {
+        crate::recognition::ParseOutcome::Match(matched) => return Some(matched.value.value),
+        crate::recognition::ParseOutcome::NoMatch => {}
+        crate::recognition::ParseOutcome::Error(_) => return None,
     }
-
-    if let Some(amount) =
-        parse_enters_with_counter_x_value_threshold_condition_tokens(&condition_tokens)
-    {
-        return Some(PredicateAst::XValueAtLeast(amount));
-    }
-
-    if let Some(amount) =
-        parse_enters_with_counter_you_cast_spells_this_turn_condition_tokens(&condition_tokens)
-    {
-        return Some(PredicateAst::PlayerCastSpellsThisTurnOrMore {
-            player: PlayerAst::You,
-            count: amount,
-        });
-    }
-
-    if let Some(amount) =
-        parse_enters_with_counter_colors_mana_spent_condition_tokens(&condition_tokens)
-    {
-        return Some(PredicateAst::ColorsOfManaSpentToCastThisSpellOrMore(amount));
-    }
-
-    if let Some(amount) =
-        crate::grammar::filters::parse_same_color_mana_spent_to_cast_predicate(&condition_tokens)
-    {
-        return Some(PredicateAst::SameColorManaSpentToCastThisSpellAtLeast(amount));
-    }
-
     crate::grammar::primitives::probe_shape(parse_static_condition_clause(&condition_tokens))
 }
 
 fn parse_enters_with_counter_object_filter_tokens(
     subject_tokens: &[OwnedLexToken],
 ) -> Option<ObjectFilter> {
-    let mut filter = crate::grammar::primitives::probe_shape(parse_object_filter(subject_tokens, false))?;
+    let mut filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter(subject_tokens, false))?;
     let plural_noun = subject_tokens
         .iter()
         .filter_map(OwnedLexToken::as_word)
@@ -890,6 +824,9 @@ fn parse_equal_to_greatest_cards_drawn_this_turn_value(tokens: &[OwnedLexToken])
     }
 }
 
+#[path = "etb_static_lines/where_x_binding_readings.rs"]
+mod where_x_binding_readings;
+
 pub fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
     if !etb_grammar::parse_where_x_prefix_tokens(tokens) {
         return None;
@@ -897,231 +834,19 @@ pub fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
     let clause = LexedClause::new(tokens);
     let word_view = crate::grammar::primitives::TokenWordView::new(tokens);
     let words = word_view.word_refs();
-
-    if let Some(value) = parse_where_x_source_stat_value(tokens) {
-        return Some(value);
+    let input = where_x_binding_readings::BindingClause {
+        tokens,
+        clause: &clause,
+        words: &words,
+        read_by_cache: Default::default(),
+    };
+    match where_x_binding_readings::read(&input) {
+        ParseOutcome::Match(matched) => return Some(matched.value.value),
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(_) => return None,
     }
-
-    if let Some(value) =
-        crate::grammar::values::parse_players_who_control_more_than_you_value_lexed(tokens)
-    {
-        return Some(value);
-    }
-
-    if let Some(value) = parse_where_x_life_gained_this_turn_value(tokens) {
-        return Some(value);
-    }
-
-    if let Some(value) = parse_where_x_life_lost_this_turn_value(tokens) {
-        return Some(value);
-    }
-
-    if let Some(value) = parse_where_x_opponents_dealt_combat_damage_this_turn_value(tokens) {
-        return Some(value);
-    }
-
-    if let Some(value) = parse_where_x_noncombat_damage_to_opponents_value(tokens) {
-        return Some(value);
-    }
-
-    if let Some(value) = etb_grammar::parse_where_x_known_value_tokens(tokens) {
-        return Some(match value {
-            WhereXKnownValue::ThisAbilityResolvedThisTurnCount => {
-                Value::ThisAbilityResolvedThisTurnCount
-            }
-            WhereXKnownValue::YourLifeTotal => Value::LifeTotal(PlayerFilter::You),
-            WhereXKnownValue::HalfYourLifeTotalRoundedUp => {
-                Value::HalfLifeTotalRoundedUp(PlayerFilter::You)
-            }
-            WhereXKnownValue::HalfYourLifeTotalRoundedDown => {
-                Value::HalfLifeTotalRoundedDown(PlayerFilter::You)
-            }
-            WhereXKnownValue::YourSpeed => Value::Speed(PlayerFilter::You),
-            WhereXKnownValue::EventDamageAmount => Value::EventValue(EventValueSpec::Amount),
-            WhereXKnownValue::OpponentCount => Value::CountPlayers(PlayerFilter::Opponent),
-            WhereXKnownValue::PlayersBeingAttacked => Value::PlayersBeingAttacked,
-            WhereXKnownValue::TargetPlayerLifeTotal | WhereXKnownValue::ThatPlayerLifeTotal => {
-                Value::LifeTotal(PlayerFilter::target_player())
-            }
-            WhereXKnownValue::TargetPlayersLifeTotalDifference => {
-                Value::LifeTotalDifference(PlayerFilter::target_player())
-            }
-            WhereXKnownValue::ThatPlayerSpeed => Value::Speed(PlayerFilter::target_player()),
-            WhereXKnownValue::DiscardedCardManaValue => Value::ManaValueOf(Box::new(
-                ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::DiscardedCost.key()),
-            )),
-            WhereXKnownValue::RevealedCardsTotalManaValue => Value::TotalManaValue(
-                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::PublicRevealed.key()),
-            ),
-            WhereXKnownValue::DraftNotedHighestNumber { card_name_tokens } => {
-                Value::DraftNotedHighestNumber {
-                    card_name: parser_token_word_refs(card_name_tokens).join(" "),
-                }
-                .with_surface_hint(ValueSurfaceHint::WhereXIs)
-            }
-        });
-    }
-
-    // A complete arithmetic value expression owns relationship-aware zone
-    // scopes such as `7 minus the number of cards in that creature's
-    // controller's hand`. Parse that exact typed difference before the broad
-    // where-X object-count families can reinterpret `that creature` as a
-    // characteristic of the cards being counted.
-    if let Some(tail) = words.get(3..)
-        && let Some((value, used)) = parse_value_expr_words(tail)
-        && used == tail.len()
-        && value.has_surface_hint(ValueSurfaceHint::Difference)
-    {
-        return Some(value);
-    }
-
-    if let Some(value) = parse_where_x_is_aggregate_filter_value(tokens) {
-        return Some(value);
-    }
-
-    // A qualified participant count can contain both "players" and "cards in
-    // hand", but it counts the players satisfying the hand-size predicate.
-    // Recognize that typed shape before the broad all-players-hand heuristic
-    // below can collapse it into a count of cards.
-    if let Some(captured) = etb_grammar::parse_where_x_number_of_filter_tokens(tokens)
-        && let Some((players, minimum)) =
-            crate::grammar::shared_util::value_semantics::parse_players_with_cards_in_hand_at_least(
-                captured.filter_tokens,
-            )
-    {
-        return Some(scale_where_x_number_value(
-            Value::CountPlayersWithCardsInHandAtLeast(players, minimum),
-            captured.multiplier,
-        ));
-    }
-
-    // where X is your devotion to black
-    if etb_grammar::etb_tokens_have_devotion_value_marker(tokens)
-        && let Ok(Some(value)) = parse_devotion_value_from_add_clause(tokens)
-    {
-        return Some(value);
-    }
-
-    // where X is the total number of cards in all players' hands
-    if etb_grammar::etb_tokens_have_all_players_hand_count_value(tokens) {
-        let mut filter = ObjectFilter::default();
-        filter.zone = Some(Zone::Hand);
-        return Some(Value::Count(filter));
-    }
-
-    if clause.after_words(3).is_some_and(|tail| {
-        etb_grammar::parse_same_name_as_triggering_spell_graveyard_value_tokens(tail.tokens())
-    }) {
-        return Some(Value::Count(
-            ObjectFilter::default()
-                .in_zone(Zone::Graveyard)
-                .match_tagged(
-                    crate::tag::CompilerReferenceTag::Triggering.key(),
-                    crate::filter::TaggedOpbjectRelation::SameNameAsTagged,
-                ),
-        ));
-    }
-
-    // where X is N plus the number of <objects>
-    if let Some(value) = parse_where_x_is_fixed_plus_number_of_filter_value(tokens) {
-        return Some(value);
-    }
-
-    // where X is the number of <objects> plus the number of <other objects>
-    if let Some(value) = parse_where_x_is_sum_of_number_of_filter_values(tokens) {
-        return Some(value);
-    }
-
-    // where X is N plus the sacrificed creature's mana value / power / toughness
-    if let Some(value) = parse_where_x_is_fixed_plus_reference_value(tokens) {
-        return Some(value);
-    }
-
-    // where X is the number of <objects> plus/minus N
-    if let Some(value) = parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(tokens) {
-        return Some(value);
-    }
-
-    if let Some(reference) = clause
-        .after_words(3)
-        .and_then(|tail| etb_grammar::parse_tagged_mana_value_reference_tokens(tail.tokens()))
-    {
-        let tag = match reference {
-            EtbTaggedManaValueReference::ExiledCard | EtbTaggedManaValueReference::ThatCard => {
-                crate::tag::CompilerReferenceTag::It
-            }
-            EtbTaggedManaValueReference::TriggeringSpell => {
-                crate::tag::CompilerReferenceTag::Triggering
-            }
-        };
-        return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(tag.key()))));
-    }
-
-    // where X is the number of cards in your hand
-    if etb_grammar::etb_tokens_have_your_hand_count_value(tokens) {
-        return Some(Value::CardsInHand(PlayerFilter::You));
-    }
-
-    // where X is the number of creatures in your party
-    if etb_grammar::etb_tokens_have_your_party_size_value(tokens) {
-        return Some(Value::PartySize(PlayerFilter::You));
-    }
-
-    // where X is the number of differently named <objects>
-    if let Some(value) = parse_where_x_is_number_of_differently_named_filter_value(tokens) {
-        return Some(value);
-    }
-
-    // where X is the number of different powers among <objects>
-    if let Some(value) = parse_where_x_is_number_of_different_powers_filter_value(tokens) {
-        return Some(value);
-    }
-
-    // where X is the greatest number of <objects> <player> controls
-    if let Some(value) = parse_where_x_is_greatest_number_of_filter_value(tokens) {
-        return Some(value);
-    }
-
-    // where X is the number of counters on that creature
-    if let Some(tail) = clause.after_words(3) {
-        let mut equal_prefixed = Vec::with_capacity(tail.tokens().len() + 2);
-        equal_prefixed.push(OwnedLexToken::word(
-            "equal".to_string(),
-            TextSpan::synthetic(),
-        ));
-        equal_prefixed.push(OwnedLexToken::word("to".to_string(), TextSpan::synthetic()));
-        equal_prefixed.extend(tail.tokens().iter().cloned());
-        if let Some(value) = parse_equal_to_number_of_counters_on_reference_value(&equal_prefixed) {
-            return Some(value);
-        }
-    }
-
-    // Parse mana-symbol aggregates before the generic "number of <objects>" form.
-    // Otherwise the leading color adjective can be mistaken for an object filter.
-    if let Some(value) = parse_where_x_is_colored_mana_symbols_value(tokens) {
-        return Some(value);
-    }
-
-    // Preserve turn-history quantities before the broad number-of-object
-    // fallback. For example, "Attractions you've visited this turn" is not a
-    // battlefield Attraction filter; Attractions that have left still count.
-    if let Some(tail) = words.get(3..)
-        && let Some((value, used)) = parse_value_expr_words(tail)
-        && used == tail.len()
-        && matches!(value.unhinted(), Value::AttractionsVisitedThisTurn(_))
-    {
-        return Some(value);
-    }
-
-    // where X is the number of <objects>
-    if let Some(value) = parse_where_x_is_number_of_filter_value(tokens) {
-        return Some(value);
-    }
-
-    if let Some(tail) = words.get(3..)
-        && let Some((value, used)) = parse_value_expr_words(tail)
-        && used == tail.len()
-    {
+    // The value-expression grammar is the fallback for what no typed binding reads.
+    if let Some(value) = where_x_binding_readings::read_value_expression(&input) {
         return Some(value);
     }
 
@@ -1166,7 +891,7 @@ pub fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Option<Value
             }
             (EtbSourceStatFallback::TaggedObject, kind) => {
                 let tagged = Box::new(ChooseSpec::Tagged(
-                    crate::tag::CompilerReferenceTag::It.key(),
+                    crate::tag::CompilerReferenceTag::It.bind(),
                 ));
                 match kind {
                     EtbSourceStatKind::Power => Value::PowerOf(tagged),
@@ -1176,7 +901,7 @@ pub fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Option<Value
             }
             (EtbSourceStatFallback::TriggeringSpell, EtbSourceStatKind::ManaValue) => {
                 Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
-                    crate::tag::CompilerReferenceTag::Triggering.key(),
+                    crate::tag::CompilerReferenceTag::Triggering.bind(),
                 )))
             }
             (EtbSourceStatFallback::TriggeringSpell, _) => return None,
@@ -1231,7 +956,7 @@ pub fn parse_where_x_is_fixed_plus_reference_value(tokens: &[OwnedLexToken]) -> 
     }
 
     let reference_value = {
-        let it = || ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key());
+        let it = || ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.bind());
         let value = match captured.reference_kind {
             EtbReferenceValueKind::SacrificedCreaturePower => Value::PowerOf(Box::new(it())),
             EtbReferenceValueKind::SacrificedCreatureToughness => {
@@ -1373,7 +1098,9 @@ pub fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Opti
                     if trimmed.is_empty() {
                         return None;
                     }
-                    branches.push(crate::grammar::primitives::probe_shape(parse_object_filter_lexed(&trimmed, false))?);
+                    branches.push(crate::grammar::primitives::probe_shape(
+                        parse_object_filter_lexed(&trimmed, false),
+                    )?);
                 }
                 if branches.len() < 2 {
                     return None;
@@ -1385,7 +1112,9 @@ pub fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Opti
                 None
             }
         })
-        .or_else(|| crate::grammar::primitives::probe_shape(parse_object_filter_lexed(filter_tokens, false)))?;
+        .or_else(|| {
+            crate::grammar::primitives::probe_shape(parse_object_filter_lexed(filter_tokens, false))
+        })?;
 
     if etb_grammar::etb_tokens_have_sacrificed_marker(filter_tokens) {
         if matches!(filter.zone, Some(Zone::Battlefield)) {
@@ -1401,7 +1130,7 @@ pub fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Opti
             filter
                 .tagged_constraints
                 .push(crate::filter::TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::It.key(),
+                    tag: crate::tag::CompilerReferenceTag::It.bind(),
                     relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
                 });
         }
@@ -1450,7 +1179,8 @@ fn parse_cast_time_controlled_objects_filter(tokens: &[OwnedLexToken]) -> Option
         return None;
     }
 
-    let mut filter = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(&filter_tokens, false))?;
+    let mut filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter_lexed(&filter_tokens, false))?;
     if filter.zone.is_none() {
         filter.zone = Some(Zone::Battlefield);
     }
@@ -1466,7 +1196,7 @@ fn parse_cast_time_controlled_objects_filter(tokens: &[OwnedLexToken]) -> Option
     filter
         .tagged_constraints
         .push(crate::filter::TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::CastControlledObjects.key(),
+            tag: crate::tag::CompilerReferenceTag::CastControlledObjects.bind(),
             relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
         });
     Some(filter)
@@ -1539,7 +1269,8 @@ pub fn parse_where_x_is_number_of_differently_named_filter_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
     let filter_tokens = etb_grammar::parse_where_x_differently_named_filter_tokens(tokens)?;
-    let filter = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(filter_tokens, false))?;
+    let filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter_lexed(filter_tokens, false))?;
     Some(Value::DistinctNames(filter))
 }
 
@@ -1547,7 +1278,8 @@ pub fn parse_where_x_is_number_of_different_powers_filter_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
     let filter_tokens = etb_grammar::parse_where_x_different_powers_filter_tokens(tokens)?;
-    let filter = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(filter_tokens, false))?;
+    let filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter_lexed(filter_tokens, false))?;
     Some(Value::DistinctPowers(filter))
 }
 
@@ -1564,7 +1296,8 @@ pub fn parse_where_x_is_greatest_number_of_filter_value(tokens: &[OwnedLexToken]
     } else {
         (filter_tokens, false)
     };
-    let filter = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(filter_tokens, false))?;
+    let filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter_lexed(filter_tokens, false))?;
     filter.controller.as_ref()?;
     Some(if shared_creature_type {
         Value::GreatestSharedCreatureTypeCount(filter)
@@ -1614,7 +1347,8 @@ fn parse_shared_domain_relative_selector_filter(
         return None;
     }
 
-    let mut shared = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(&base_tokens, false))?;
+    let mut shared =
+        crate::grammar::primitives::probe_shape(parse_object_filter_lexed(&base_tokens, false))?;
     if !shared.any_of.is_empty()
         || !shared.card_types.is_empty()
         || !shared.subtypes.is_empty()
@@ -1624,7 +1358,8 @@ fn parse_shared_domain_relative_selector_filter(
         return None;
     }
 
-    let parsed = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(filter_tokens, false))?;
+    let parsed =
+        crate::grammar::primitives::probe_shape(parse_object_filter_lexed(filter_tokens, false))?;
     if parsed.any_of.len() < 2 {
         return None;
     }
@@ -1677,6 +1412,9 @@ fn parse_shared_domain_relative_selector_filter(
     shared.set_union_connective(connective);
     Some(shared)
 }
+
+#[path = "etb_static_lines/where_x_count_readings.rs"]
+mod where_x_count_readings;
 
 pub fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let words = crate::lexer::token_word_refs(tokens);
@@ -1773,85 +1511,15 @@ pub fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Opti
             multiplier,
         ));
     }
-    if let Some(player) =
-        crate::grammar::shared_util::value_helper_shapes::parse_party_size_player(&filter_words)
-    {
-        return Some(scale_where_x_number_value(
-            Value::PartySize(player),
-            multiplier,
-        ));
-    }
-    if let Some((players, minimum)) =
-        crate::grammar::shared_util::value_semantics::parse_players_with_cards_in_hand_at_least(
-            filter_tokens,
-        )
-    {
-        return Some(scale_where_x_number_value(
-            Value::CountPlayersWithCardsInHandAtLeast(players, minimum),
-            multiplier,
-        ));
-    }
-    if let Some(value) = etb_grammar::parse_number_of_counters_on_source_value_tokens(filter_tokens)
-    {
-        return Some(value);
-    }
-    if let Some(value) = parse_static_abilities_among_scope_value(filter_tokens) {
-        return Some(scale_where_x_number_value(value, multiplier));
-    }
-    if let Some(value) = parse_among_types_scope_value(filter_tokens) {
-        return Some(scale_where_x_number_value(value, multiplier));
-    }
-    if let Some(among) = etb_grammar::parse_etb_among_scope_tokens(filter_tokens) {
-        let card_types = match among.metric {
-            EtbAmongMetric::CardTypesAmongCards
-                if etb_grammar::etb_tokens_have_graveyard_marker(among.scope_tokens) =>
-            {
-                let mut filter = ObjectFilter::default().in_zone(Zone::Graveyard);
-                filter.owner =
-                    match etb_grammar::parse_etb_graveyard_owner_tokens(among.scope_tokens) {
-                        Some(EtbGraveyardOwner::Opponent) => Some(PlayerFilter::Opponent),
-                        Some(EtbGraveyardOwner::You) => Some(PlayerFilter::You),
-                        None => None,
-                    };
-                Some(Value::CardTypesAmong(filter))
-            }
-            EtbAmongMetric::CardTypesAmong => {
-                let filter = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(among.scope_tokens, false))?;
-                Some(Value::CardTypesAmong(filter))
-            }
-            _ => None,
-        };
-        if let Some(card_types) = card_types {
-            return Some(scale_where_x_number_value(card_types, multiplier));
-        }
-    }
-    if let Some(value) = parse_aggregate_scope_value_lexed(filter_tokens) {
-        return Some(scale_where_x_number_value(value, multiplier));
-    }
-    // Normalize a selector list with one authored object domain before the
-    // broad for-each count grammar can split that domain across union arms.
-    if let Some(filter) = parse_shared_domain_relative_selector_filter(filter_tokens) {
-        return Some(scale_where_x_number_value(Value::Count(filter), multiplier));
-    }
-    // Preserve semantic participant references before the broad for-each
-    // count parser gets a chance to accept only the leading object noun. In
-    // particular, `creatures those players control` is a count over the
-    // spell's selected player set, not every creature on the battlefield.
-    if let Some(kind) = etb_grammar::parse_where_x_special_number_filter_tokens(filter_tokens) {
-        let value = match kind {
-            etb_grammar::WhereXSpecialNumberFilterKind::CreaturesDiedThisTurn => {
-                Value::CreaturesDiedThisTurn
-            }
-            etb_grammar::WhereXSpecialNumberFilterKind::CommanderCastCount => {
-                Value::CommanderCastCount(PlayerFilter::You)
-            }
-            etb_grammar::WhereXSpecialNumberFilterKind::CreaturesControlledByThosePlayers => {
-                let mut filter = ObjectFilter::creature();
-                filter.controller = Some(PlayerFilter::target_player());
-                Value::Count(filter)
-            }
-        };
-        return Some(scale_where_x_number_value(value, multiplier));
+    let input = where_x_count_readings::CountedFilter {
+        tokens: filter_tokens,
+        filter_words: &filter_words,
+        multiplier,
+    };
+    match where_x_count_readings::read(&input) {
+        ParseOutcome::Match(matched) => return Some(matched.value.value),
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(_) => return None,
     }
     let mut for_each_words = vec!["for", "each"];
     for_each_words.extend(filter_words.iter().copied());
@@ -1861,7 +1529,8 @@ pub fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Opti
     {
         return Some(scale_where_x_number_value(value, multiplier));
     }
-    let filter = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(filter_tokens, false))?;
+    let filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter_lexed(filter_tokens, false))?;
     Some(scale_where_x_number_value(Value::Count(filter), multiplier))
 }
 
@@ -1869,7 +1538,10 @@ pub fn parse_static_abilities_among_scope_value(filter_tokens: &[OwnedLexToken])
     let parsed = etb_grammar::parse_etb_static_abilities_among_scope_tokens(filter_tokens)?;
     let ability_ids = etb_grammar::parse_etb_static_ability_ids_tokens(parsed.ability_tokens)?;
 
-    let filter = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(parsed.scope_tokens, false))?;
+    let filter = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(
+        parsed.scope_tokens,
+        false,
+    ))?;
     Some(Value::StaticAbilitiesAmong {
         filter,
         abilities: ability_ids,
@@ -1878,7 +1550,10 @@ pub fn parse_static_abilities_among_scope_value(filter_tokens: &[OwnedLexToken])
 
 fn parse_among_types_scope_value(filter_tokens: &[OwnedLexToken]) -> Option<Value> {
     let parsed = etb_grammar::parse_etb_among_scope_tokens(filter_tokens)?;
-    let filter = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(parsed.scope_tokens, false))?;
+    let filter = crate::grammar::primitives::probe_shape(parse_object_filter_lexed(
+        parsed.scope_tokens,
+        false,
+    ))?;
     match parsed.metric {
         EtbAmongMetric::BasicLandTypesAmong => Some(Value::BasicLandTypesAmong(filter)),
         EtbAmongMetric::CreatureTypesAmong => Some(Value::CreatureTypesAmong(filter)),
@@ -1930,7 +1605,8 @@ pub fn parse_where_x_is_fixed_plus_number_of_filter_value(
             Box::new(value),
         ));
     }
-    let filter = crate::grammar::primitives::probe_shape(parse_object_filter(filter_tokens, false))?;
+    let filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter(filter_tokens, false))?;
     Some(Value::Add(
         Box::new(Value::Fixed(fixed_value as i32)),
         Box::new(Value::Count(filter)),
@@ -1972,7 +1648,8 @@ pub fn parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(
     } else if etb_grammar::etb_tokens_have_your_hand_count_value(&filter_tokens) {
         Value::CardsInHand(PlayerFilter::You)
     } else {
-        let filter = crate::grammar::primitives::probe_shape(parse_object_filter(&filter_tokens, false))?;
+        let filter =
+            crate::grammar::primitives::probe_shape(parse_object_filter(&filter_tokens, false))?;
         Value::Count(filter)
     };
 
@@ -2138,9 +1815,9 @@ pub fn parse_x_at_most_enters_tapped_line(
     else {
         return Ok(None);
     };
-    let Some((comparison, used)) =
-        crate::grammar::primitives::probe_shape(parse_quantity_comparison_prefix(amount_tokens, false, false, "conditional tapped entry"))
-    else {
+    let Some((comparison, used)) = crate::grammar::primitives::probe_shape(
+        parse_quantity_comparison_prefix(amount_tokens, false, false, "conditional tapped entry"),
+    ) else {
         return Ok(None);
     };
     if used != amount_tokens.len() {
@@ -2295,7 +1972,8 @@ fn parse_revealed_this_way_or_control_condition(
     if reveal_filter_tokens.is_empty() {
         return None;
     }
-    let mut reveal_filter = crate::grammar::primitives::probe_shape(parse_object_filter(&reveal_filter_tokens, false))?;
+    let mut reveal_filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter(&reveal_filter_tokens, false))?;
     reveal_filter.zone = None;
 
     let control_tokens = trim_edge_punctuation(parsed.control_condition_tokens);
@@ -2319,9 +1997,7 @@ fn parse_revealed_this_way_or_control_condition(
     }
 
     Some(PredicateAst::Or(
-        Box::new(PredicateAst::YouHaveCardInHandMatching(
-            reveal_filter,
-        )),
+        Box::new(PredicateAst::YouHaveCardInHandMatching(reveal_filter)),
         Box::new(PredicateAst::YouControl(control_condition.filter)),
     ))
 }
@@ -2954,6 +2630,9 @@ fn parse_enters_tapped_unless_two_or_more_opponents_condition(
     if count == 2 { Some(()) } else { None }
 }
 
+#[path = "etb_static_lines/enters_tapped_unless_readings.rs"]
+mod enters_tapped_unless_readings;
+
 pub fn parse_conditional_enters_tapped_unless_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -2972,57 +2651,15 @@ pub fn parse_conditional_enters_tapped_unless_line(
         return Ok(None);
     };
     let condition_tokens = trim_edge_punctuation(condition_clause);
-    if let Some(condition) = parse_revealed_this_way_or_control_condition(&condition_tokens) {
-        return Ok(Some(StaticAbility::enters_tapped_unless_condition(
-            condition,
-            clause_words.join(" "),
-        )));
+    let input = enters_tapped_unless_readings::UnlessCondition {
+        tokens: &condition_tokens,
+        clause_words: &clause_words,
+    };
+    match enters_tapped_unless_readings::read(&input) {
+        ParseOutcome::Match(matched) => return Ok(Some(matched.value.value)),
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
-    if let Some(ability) = parse_enters_tapped_unless_control_quantity_static_ability(
-        &condition_tokens,
-        clause_words.join(" "),
-    ) {
-        return Ok(Some(ability));
-    }
-    if parse_enters_tapped_unless_a_player_has_13_or_less_life_condition(&condition_tokens)
-        .is_some()
-    {
-        return Ok(Some(
-            StaticAbility::enters_tapped_unless_a_player_has_13_or_less_life(),
-        ));
-    }
-    if parse_enters_tapped_unless_two_or_more_opponents_condition(&condition_tokens).is_some() {
-        return Ok(Some(
-            StaticAbility::enters_tapped_unless_two_or_more_opponents(),
-        ));
-    }
-    if etb_grammar::parse_first_three_turns_prefix_tokens(&condition_tokens).is_some() {
-        return Ok(Some(StaticAbility::enters_tapped_unless_condition(
-            PredicateAst::YourFirstTurnsOfTheGameOrFewer(3),
-            clause_words.join(" "),
-        )));
-    }
-
-    // Generic: "unless you control <object filter>" (covers Mount/Vehicle, etc.).
-    if let Some(control_condition) = crate::grammar::conditions::parse_control_condition(
-        &condition_tokens,
-        crate::grammar::conditions::ControlConditionOptions {
-            allow_that_player: false,
-            allow_opponent_players: false,
-            allow_defending_player: false,
-            bind_filter_controller_to_subject: false,
-            allow_different_powers_tail: false,
-            default_filter_zone: None,
-        },
-    ) && !control_condition.has_explicit_quantity()
-    {
-        let condition = PredicateAst::YouControl(control_condition.filter);
-        return Ok(Some(StaticAbility::enters_tapped_unless_condition(
-            condition,
-            clause_words.join(" "),
-        )));
-    }
-
     Err(CardTextError::ParseError(format!(
         "unsupported enters tapped unless condition (clause: '{}')",
         clause_words.join(" ")

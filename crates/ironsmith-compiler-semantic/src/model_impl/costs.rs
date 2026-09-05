@@ -1,3 +1,5 @@
+use ironsmith_core::tag::TagKeyWalk;
+
 use crate::color::ColorSet;
 use crate::effect::{ChoiceCount, Value};
 use crate::mana::ManaCost;
@@ -8,6 +10,7 @@ use crate::target::{ObjectFilter, SourceReferenceSurface};
 use crate::types::{CardType, Subtype, Supertype};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum CostRelationship {
     Ordinary,
     Additional,
@@ -17,11 +20,13 @@ pub enum CostRelationship {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct CompilerTotalCost {
     pub branches: Vec<Vec<CompilerCost>>,
     pub relationship: CostRelationship,
     pub repeatable: bool,
     pub is_loyalty_shorthand: bool,
+    #[tag_walk(skip)]
     pub provenance: Option<SemanticProvenance>,
 }
 
@@ -216,6 +221,7 @@ impl ironsmith_core::CoreCostComponent for CompilerCost {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum CompilerCost {
     Mana(ManaCost),
     DynamicMana(ironsmith_core::DynamicManaCost),

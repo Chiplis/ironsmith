@@ -125,7 +125,7 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     {
         forced_library_owner = Some(iterated_filter.controller.clone().unwrap_or_else(|| {
             PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
             ))
         }));
     }
@@ -176,7 +176,7 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             .map(|(_, rest)| rest.len())
     {
         prefix_count_value.get_or_insert(Value::Count(ObjectFilter::tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
         )));
         count = if search_mode == SearchSelectionMode::Optional {
             ChoiceCount::up_to_dynamic_x()
@@ -243,7 +243,7 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         .as_ref()
         .map(|reference| match reference {
             SearchLibrarySameNameReference::Tagged(tag) => tag.clone(),
-            SearchLibrarySameNameReference::Target(_) => crate::tag::CompilerReferenceTag::It.key(),
+            SearchLibrarySameNameReference::Target(_) => crate::tag::CompilerReferenceTag::It.bind(),
             SearchLibrarySameNameReference::Choose { tag, .. } => tag.clone(),
         })
     {
@@ -320,7 +320,7 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             slots,
             destination,
             reveal,
-            crate::tag::CompilerReferenceTag::SearchLibrarySlotsProgress.key(),
+            crate::tag::CompilerReferenceTag::SearchLibrarySlotsProgress.bind(),
         )]
     } else if !effect_routing.battlefield_entry_counters.is_empty() {
         vec![
@@ -356,7 +356,7 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         && !split_battlefield_and_hand
         && !(destination == Zone::Exile && face_down_exile)
     {
-        let searched_tag: TagKey = "searched".into();
+        let searched_tag: TagKey = crate::tag::CompilerReferenceTag::Searched.bind();
         let search_zones = search_zones_override.unwrap_or_else(|| vec![Zone::Library]);
         let battlefield_tapped =
             destination == Zone::Battlefield && effect_routing.has_tapped_modifier;
@@ -421,7 +421,7 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         }
         sequence
     } else if let Some(named_filters) = named_filters {
-        let searched_tag: TagKey = "searched_named".into();
+        let searched_tag: TagKey = crate::tag::declared_key("searched_named");
         let zones = search_zones_override.unwrap_or_else(|| vec![Zone::Library]);
         let mut sequence = Vec::new();
         for mut named_filter in named_filters {
@@ -464,7 +464,7 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         }
         sequence
     } else if !has_explicit_destination {
-        let chosen_tag: TagKey = "searched".into();
+        let chosen_tag: TagKey = crate::tag::CompilerReferenceTag::Searched.bind();
         let search_zones = search_zones_override.unwrap_or_else(|| vec![Zone::Library]);
         let mut sequence = vec![EffectAst::ChooseObjectsAcrossZones {
             filter,
@@ -493,7 +493,7 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         .clone()
         .or_else(|| attachment_target.as_ref().map(|_| vec![Zone::Library]))
     {
-        let chosen_tag: TagKey = "searched_multi_zone".into();
+        let chosen_tag: TagKey = crate::tag::CompilerReferenceTag::SearchedMultiZone.bind();
         let battlefield_tapped =
             destination == Zone::Battlefield && effect_routing.has_tapped_modifier;
         // Use the search subject `player` (e.g. Implicit/You) rather than
@@ -597,7 +597,7 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
                 tag: battlefield_tag.clone(),
                 effects: vec![EffectAst::subject_verb_put_onto_battlefield(
                     chooser,
-                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                     battlefield_tapped,
                     battlefield_controller,
                 )],
@@ -622,7 +622,7 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         }
         sequence
     } else if destination == Zone::Exile && face_down_exile {
-        let searched_tag: TagKey = "searched_face_down".into();
+        let searched_tag: TagKey = crate::tag::declared_key("searched_face_down");
         let mut sequence = vec![
             EffectAst::ChooseObjectsAcrossZones {
                 filter,

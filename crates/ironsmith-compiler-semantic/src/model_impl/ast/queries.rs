@@ -30,7 +30,7 @@ pub fn target_ast_to_object_filter(target: TargetAst) -> Option<ObjectFilter> {
         TargetAst::Spell(_) => Some(ObjectFilter::spell()),
         TargetAst::Tagged(tag, _) => Some(ObjectFilter::tagged(tag)),
         TargetAst::AnyOtherTarget(_) => {
-            Some(ObjectFilter::default().not_tagged(CompilerReferenceTag::It.key()))
+            Some(ObjectFilter::default().not_tagged(CompilerReferenceTag::It.bind()))
         }
         TargetAst::WithCount(inner, _) => target_ast_to_object_filter(*inner),
         _ => None,
@@ -159,7 +159,7 @@ pub fn apply_cant_be_regenerated_to_last_target_effect(effects: &mut Vec<EffectA
         .any(|constraint| constraint.tag.as_str() == CompilerReferenceTag::It.as_str())
     {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: CompilerReferenceTag::It.key(),
+            tag: CompilerReferenceTag::It.bind(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
     }

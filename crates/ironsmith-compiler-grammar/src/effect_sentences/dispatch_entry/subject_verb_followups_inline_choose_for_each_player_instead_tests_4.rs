@@ -49,7 +49,7 @@ fn chooser_rewrite_rejects_a_non_complement_procedure() {
             count: ChoiceCount::exactly(1),
             count_value: None,
             player: PlayerAst::That,
-            tag: crate::tag::CompilerReferenceTag::Chosen.key(),
+            tag: crate::tag::CompilerReferenceTag::Chosen.bind(),
         }],
     };
     assert!(!rewrite_each_player_choice_complement_chooser(&mut effect));

@@ -1711,168 +1711,19 @@ fn parse_source_characteristics_of_last_exiled_creature_card_line(
     )
 }
 
+mod early_line_readings;
+
 fn parse_static_ability_ast_line_early_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    if let Some(ability) = parse_companion_ability(tokens) {
-        return Ok(Some(vec![ability.into()]));
-    }
-
-    let marker_text = render_token_slice(tokens);
-    if supported_keyword_marker_tokens(tokens) || is_ticket_sticker_marker_tokens(tokens) {
-        return Ok(Some(vec![keyword_static_marker(tokens).into()]));
-    }
-    if document_grammar::parse_static_effect_continues_until_end_of_turn_surface(tokens).is_some() {
-        return Ok(Some(vec![
-            StaticAbility::keyword_marker(marker_text).into(),
-        ]));
-    }
-
-    if let Some(ability) = parse_source_characteristics_of_last_exiled_creature_card_line(tokens) {
-        return Ok(Some(vec![ability.into()]));
-    }
-
-    if let Some(ability) = parse_enter_as_copy_as_enters_line(tokens)? {
-        return Ok(Some(vec![ability.into()]));
-    }
-
-    if let Some(marker) = keyword_static_lines::parse_early_static_marker_tokens(tokens) {
-        let ability = match marker {
-            keyword_static_lines::EarlyStaticMarkerKind::XMaximumPlayerCount => {
-                StaticAbility::this_spell_x_maximum(
-                    Value::CountPlayers(PlayerFilter::Any),
-                    "X can't be greater than the number of players in the game.",
-                )
-            }
-            keyword_static_lines::EarlyStaticMarkerKind::XMinimumOne => {
-                StaticAbility::this_spell_x_minimum(Value::Fixed(1), "X can't be 0.")
-            }
-            keyword_static_lines::EarlyStaticMarkerKind::ExhaustAsUnactivated => {
-                StaticAbility::exhaust_abilities_as_though_unactivated_this_turn()
-            }
-            keyword_static_lines::EarlyStaticMarkerKind::CantAttackWithoutCreatureSpell => {
-                StaticAbility::cant_attack_unless_controller_cast_creature_spell_this_turn()
-            }
-            keyword_static_lines::EarlyStaticMarkerKind::CantAttackWithoutNoncreatureSpell => {
-                StaticAbility::cant_attack_unless_controller_cast_noncreature_spell_this_turn()
-            }
-            keyword_static_lines::EarlyStaticMarkerKind::DayNightStartsDay => {
-                StaticAbility::day_night_starts_day_as_enters()
-            }
-            keyword_static_lines::EarlyStaticMarkerKind::LivingMetal => {
-                StaticAbility::living_metal()
-            }
-            keyword_static_lines::EarlyStaticMarkerKind::VehicleRulesMarker => {
-                keyword_static_marker(tokens)
-            }
-        };
-        return Ok(Some(vec![ability.into()]));
-    }
-
-    if let Some(spec) = parse_reveal_first_card_you_draw_each_turn_spec_lexed(tokens) {
-        return Ok(Some(vec![
-            StaticAbility::reveal_first_card_you_draw_each_turn(
-                spec.optional,
-                spec.your_turns_only,
-            )
-            .into(),
-        ]));
-    }
-
-    if let Some(ability) = parse_can_block_additional_creature_each_combat_line(tokens)? {
-        return Ok(Some(vec![ability.into()]));
-    }
-
-    if let Some(ability) = parse_count_as_card_named_for_spell_effect_line(tokens) {
-        return Ok(Some(vec![ability.into()]));
-    }
-    // Route compound ability-removal shapes before the indexed registry can
-    // accept their leading "lose all abilities" clause as a complete,
-    // narrower removal effect and discard the remaining characteristic
-    // changes.
-    if let Some(abilities) = parse_lose_all_abilities_and_doesnt_untap_line(tokens)? {
-        return Ok(Some(
-            abilities.into_iter().map(StaticAbilityAst::from).collect(),
-        ));
-    }
-    if let Some(abilities) = parse_lose_all_abilities_and_transform_base_pt_line(tokens)? {
-        return Ok(Some(
-            abilities.into_iter().map(StaticAbilityAst::from).collect(),
-        ));
-    }
-    if let Some(abilities) = parse_lose_all_abilities_and_base_pt_line(tokens)? {
-        return Ok(Some(
-            abilities.into_iter().map(StaticAbilityAst::from).collect(),
-        ));
-    }
-    if is_minimum_spell_total_mana_three_line_lexed(tokens) {
-        return Ok(Some(vec![
-            StaticAbility::minimum_spell_total_mana(3).into(),
-        ]));
-    }
-    if is_players_cant_pay_life_or_sacrifice_line_lexed(tokens) {
-        return Ok(Some(vec![
-            StaticAbility::cant_pay_life_or_sacrifice_nonland_for_cast_or_activate().into(),
-        ]));
-    }
-    if is_krrik_black_mana_life_payment_line_lexed(tokens) {
-        return Ok(Some(vec![
-            StaticAbility::krrik_black_mana_may_be_paid_with_life().into(),
-        ]));
-    }
-    if let Some(ability) = parse_cycling_cost_alternative_line(tokens)? {
-        return Ok(Some(vec![ability.into()]));
-    }
-    // A quoted ability belongs to the filtered subject before the quote. The
-    // broad spell/activated-cost parser deliberately scans for a nested
-    // "Spells ... cost" clause, so let the typed grant route bind that inner
-    // static ability to its affected objects first.
-    if contains_token_kind(tokens, TokenKind::Quote) {
-        // A compound animation owns both the leading P/T/type descriptor and
-        // its quoted granted trigger. The broad quoted-grant parser treats
-        // everything before `has` as a filter; on Bello-style text that
-        // misreads `is a 4/4 ... creature` as an unsupported descriptor.
-        if let Some(abilities) = parse_filter_is_pt_creature_in_addition_and_has_line(tokens)? {
-            return Ok(Some(abilities));
-        }
-        // Attached combat restrictions can precede the quoted grant. Route
-        // that coordinated shape before the broad `has "<ability>"` parser
-        // treats the restriction prefix as an anthem subject.
-        if let Some(abilities) = parse_attached_restriction_and_granted_ability_line(tokens)? {
-            return Ok(Some(abilities));
-        }
-        if let Some(abilities) = parse_filter_has_granted_ability_line(tokens)? {
-            return Ok(Some(abilities));
-        }
-    }
-    if let Some(abilities) = parse_spell_and_player_activated_ability_cost_modifier_line(tokens)? {
-        return Ok(Some(
-            abilities.into_iter().map(StaticAbilityAst::from).collect(),
-        ));
-    }
-
-    if let Some(spec) = split_untap_each_other_players_untap_step_line_lexed(tokens) {
-        let subject_tokens = trim_commas(spec.subject_tokens);
-        let filter = parse_object_filter(&subject_tokens, false)?;
-        let subject_text = crate::lexer::token_word_refs(&subject_tokens).join(" ");
-        let display = if spec.untap_all {
-            format!("Untap all {subject_text} during each other player's untap step")
-        } else {
-            format!("Untap {subject_text} during each other player's untap step")
-        };
-        return Ok(Some(vec![
-            StaticAbility::untap_during_each_other_players_untap_step(filter, display).into(),
-        ]));
-    }
-
-    if let Some(ability) = parse_activated_abilities_cant_be_activated_line_lexed(tokens)? {
-        return Ok(Some(vec![ability.into()]));
-    }
-    if let Some(ability) = parse_if_this_spell_costs_less_to_cast_line_lexed(tokens)? {
-        return Ok(Some(vec![ability.into()]));
-    }
-    if let Some(ability) = parse_legend_rule_doesnt_apply_line(tokens)? {
-        return Ok(Some(vec![ability.into()]));
+    let input = early_line_readings::EarlyLine {
+        tokens,
+        read_by_cache: Default::default(),
+    };
+    match early_line_readings::read(&input) {
+        ParseOutcome::Match(matched) => return Ok(Some(matched.value.value)),
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
 
     Ok(None)
@@ -1951,6 +1802,7 @@ pub fn parse_static_ability_ast_line_lexed(
     parse_static_ability_ast_line_lexed_unstacked(tokens)
 }
 
+mod compound_line_readings;
 fn parse_static_ability_ast_line_lexed_unstacked(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
@@ -2001,188 +1853,17 @@ fn parse_static_ability_ast_line_lexed_unstacked(
             return parse_static_ability_ast_line_lexed_unstacked(&visible);
         }
     }
-
-    if let Some(ability) = parse_once_each_turn_paid_die_reroll_line(tokens) {
-        return Ok(Some(vec![ability]));
+    let input = compound_line_readings::StaticLine { tokens };
+    match compound_line_readings::read(&input) {
+        ParseOutcome::Match(matched) => return Ok(Some(matched.value.value)),
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
-
-    if let Some(abilities) = parse_attached_anthem_reach_shadow_permission_line(tokens) {
-        return Ok(Some(abilities));
-    }
-
-    // Bolster and adapt are executable keyword actions, including when they
-    // appear after a trigger comma, activation colon, or sentence boundary.
-    // Letting the broad keyword-line grammar claim them produces a static AST
-    // that cannot be lowered and prevents the effect parser from seeing them.
-    let mut inside_quote = false;
-    let starts_executable_keyword_clause = tokens.iter().enumerate().any(|(index, token)| {
-        if token.kind == TokenKind::Quote {
-            inside_quote = !inside_quote;
-            return false;
-        }
-        let pieces = token.parser_word_pieces();
-        !inside_quote
-            && pieces.len() == 1
-            && pieces
-                .first()
-                .is_some_and(|piece| matches!(piece.text.as_str(), "bolster" | "adapt"))
-            && (index == 0
-                || tokens.get(index - 1).is_some_and(|previous| {
-                    matches!(
-                        previous.kind,
-                        TokenKind::Comma | TokenKind::Colon | TokenKind::Period
-                    ) || previous.is_word("then")
-                }))
-    });
-    if starts_executable_keyword_clause {
+    // The declines the ladder made before its fallback still gate the fallback.
+    if compound_line_readings::declines(&input) {
         return Ok(None);
     }
-
-    // Pay-life ETB replacements span two sentences. Parse the complete
-    // compound before the generic sentence splitter can reinterpret the
-    // "if you don't, it enters tapped" suffix as a standalone static line.
-    if let Some(ability) = parse_pay_life_or_enter_tapped_line(tokens)? {
-        return Ok(Some(vec![StaticAbilityAst::Static(ability)]));
-    }
-    if let Some(abilities) = parse_first_spell_cost_reduction_and_flash_line(tokens)? {
-        return Ok(Some(abilities));
-    }
-    if let Some(abilities) = parse_source_graveyard_dynamic_surcharge_line(tokens)? {
-        return Ok(Some(abilities));
-    }
-    if let Some(ability) = parse_pregame_reveal_from_opening_hand_line(tokens)? {
-        return Ok(Some(vec![ability]));
-    }
-    // Compound "as this enters ... if you do ..." replacement text is one
-    // semantic unit even though it contains a sentence boundary.
-    if let Some(ability) = parse_enter_as_copy_as_enters_line(tokens)? {
-        return Ok(Some(vec![ability.into()]));
-    }
-    if let Some(ability) =
-        parse_draw_replacement_reveal_top_matching_to_hand_rest_bottom_line(tokens)?
-    {
-        return Ok(Some(vec![StaticAbilityAst::from(ability)]));
-    }
-    // Borrow preprocessing expands "The same is true" into one independent
-    // leading `If` sentence per keyword. Keep that complete typed chain ahead
-    // of broad compound anthem/grant families, which can otherwise consume
-    // the condition words as part of an affected-object filter.
-    if let Some(abilities) = parse_removed_draft_leading_conditional_static_sentence_chain(tokens)?
-    {
-        return Ok(Some(abilities));
-    }
-    if let Some(abilities) =
-        leading_conditional_sentence_chain::parse_independent_leading_conditional_static_sentence_chain(
-            tokens,
-        )
-    {
-        return Ok(Some(abilities));
-    }
-    if let Some(abilities) = parse_attached_conditional_keyword_otherwise_line(tokens)? {
-        return Ok(Some(abilities));
-    }
-    if let Some(abilities) =
-        parse_attached_conditional_anthem_otherwise_base_and_restriction_line(tokens)?
-    {
-        return Ok(Some(abilities));
-    }
-    // Keep attachment-relative conditions attached to their affected object.
-    // The broad `red creatures lose all abilities` family otherwise drops the
-    // Aura/Equipment relationship and turns the rule into a global effect.
-    if let Some(abilities) = parse_attached_conditional_loses_all_abilities_line(tokens)? {
-        return Ok(Some(abilities));
-    }
-    if let Some(abilities) = parse_conditional_anthem_replacement_line(tokens)? {
-        return Ok(Some(abilities));
-    }
-    if let Some(abilities) = parse_conditional_anthem_otherwise_line(tokens)? {
-        return Ok(Some(abilities));
-    }
-    if let Some(abilities) = parse_carried_conditional_anthem_grant_line(tokens)? {
-        return Ok(Some(abilities));
-    }
-    if let Some(abilities) = parse_carried_subject_type_addition_line(tokens)? {
-        return Ok(Some(abilities));
-    }
-    if let Some(abilities) = parse_carried_attached_subject_line(tokens)? {
-        return Ok(Some(abilities));
-    }
-    // "Any player may pay ... to ignore this effect" grants a priority
-    // special action; it is not a one-shot spell effect. Keep both sentences
-    // together so the permission remains linked to the source restriction.
-    if let Some(abilities) = parse_players_cant_search_with_any_player_ignore_line(tokens)? {
-        return Ok(Some(abilities));
-    }
-    // The attached object's controller receives a turn-scoped special action,
-    // not a one-shot choice as this Aura resolves. Keep the complete
-    // two-sentence rule together before ordinary sentence splitting can lower
-    // the restriction and sacrifice permission as spell effects.
-    if let Some(abilities) = parse_attached_restrictions_with_ignore_special_action_line(tokens)? {
-        return Ok(Some(abilities));
-    }
-
-    // Protection's attachment exception is authored as a second sentence on
-    // the same static ability line. Keep the complete line together so the
-    // exception reaches the typed AttachedAbilityGrant payload.
     let sentences = split_lexed_sentences(tokens);
-    let words = parser_token_word_refs(tokens);
-    if sentences.len() == 2
-        && crate::word_primitives::any_sequence_occurs(
-            &words,
-            &[
-                &[
-                    "this",
-                    "effect",
-                    "doesn't",
-                    "remove",
-                    "auras",
-                    "and",
-                    "equipment",
-                    "you",
-                    "control",
-                    "that",
-                    "are",
-                    "already",
-                    "attached",
-                    "to",
-                    "it",
-                ],
-                &[
-                    "this",
-                    "effect",
-                    "doesnt",
-                    "remove",
-                    "auras",
-                    "and",
-                    "equipment",
-                    "you",
-                    "control",
-                    "that",
-                    "are",
-                    "already",
-                    "attached",
-                    "to",
-                    "it",
-                ],
-            ],
-        )
-        && let Some(mut abilities) = parse_enchanted_creature_has_line(sentences[0])?
-    {
-        for ability in &mut abilities {
-            if let StaticAbilityAst::AttachedKeywordActionGrant {
-                action: KeywordAction::ProtectionFromChosenColor,
-                display,
-                protection_does_not_remove_controlled_attachments,
-                ..
-            } = ability
-            {
-                *protection_does_not_remove_controlled_attachments = true;
-                display.push_str(". This effect doesn't remove Auras and Equipment you control that are already attached to it");
-            }
-        }
-        return Ok(Some(abilities));
-    }
-
     if sentences.len() > 1 {
         let mut combined = Vec::new();
         for sentence in sentences {
@@ -2289,89 +1970,21 @@ fn parse_players_cant_search_with_any_player_ignore_line(
     ]))
 }
 
+mod single_line_readings;
+
 fn parse_static_ability_ast_line_lexed_single(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    if crate::word_primitives::parse_sequence_complete(
-        &parser_token_word_refs(tokens),
-        &[
-            "as",
-            "long",
-            "as",
-            "this",
-            "enchantment",
-            "has",
-            "six",
-            "or",
-            "more",
-            "quest",
-            "counters",
-            "on",
-            "it",
-            "if",
-            "you",
-            "would",
-            "draw",
-            "a",
-            "card",
-            "you",
-            "may",
-            "instead",
-            "search",
-            "your",
-            "library",
-            "for",
-            "a",
-            "card",
-            "put",
-            "that",
-            "card",
-            "into",
-            "your",
-            "hand",
-            "then",
-            "shuffle",
-        ],
-    ) {
-        let mut card = ObjectFilter::default();
-        card.set_explicit_card_noun(true);
-        let ability = StaticAbility::conditional_draw_replacement_with_optional(
-            PredicateAst::ValueComparison {
-                left: Value::Fixed(1),
-                operator: crate::effect::ValueComparisonOperator::Equal,
-                right: Value::Fixed(1),
-            },
-            vec![EffectAst::subject_verb_search_library(
-                card,
-                Zone::Hand,
-                PlayerAst::You,
-                PlayerAst::You,
-                crate::effect::SearchSelectionMode::Exact,
-                false,
-                None,
-                true,
-                ChoiceCount::exactly(1),
-                None,
-                None,
-                crate::effect::SearchResultReferenceSurface::ThatCard,
-                false,
-                false,
-                false,
-            )],
-            true,
-            render_token_slice(tokens),
-        );
-        return Ok(Some(vec![
-            StaticAbilityAst::LabeledConditionalStaticAbility {
-                ability: Box::new(StaticAbilityAst::Static(ability)),
-                condition: PredicateAst::SourceHasCounterAtLeast {
-                    counter_type: CounterType::Quest,
-                    count: 6,
-                    surface: crate::SourceCounterThresholdSurface::SourceHas,
-                },
-                label: render_token_slice(tokens),
-            },
-        ]));
+    let input = single_line_readings::SingleStaticLine {
+        tokens,
+        read_by_cache: Default::default(),
+    };
+    match single_line_readings::read(&input) {
+        crate::recognition::ParseOutcome::Match(matched) => return Ok(Some(matched.value.value)),
+        crate::recognition::ParseOutcome::NoMatch => {}
+        crate::recognition::ParseOutcome::Error(diagnostic) => {
+            return Err(diagnostic.into_card_text_error());
+        }
     }
     let condition_prefix_tokens =
         crate::grammar::effects::labeled_dispatch::parse_leading_effect_label_tokens(tokens)
@@ -2380,122 +1993,6 @@ fn parse_static_ability_ast_line_lexed_single(
                 == crate::grammar::effects::labeled_dispatch::LeadingEffectLabelKind::Conditional
             })
             .map_or(tokens, |shape| shape.body_tokens);
-
-    if let Some((_, rest)) = crate::grammar::primitives::parse_prefix(
-        tokens,
-        crate::grammar::primitives::phrase(&["during", "your", "end", "step"]),
-    ) {
-        let remainder = trim_lexed_commas(rest);
-        if remainder.len() < rest.len()
-            && !remainder.is_empty()
-            && let Some(abilities) =
-                parse_static_ability_ast_line_lexed_single_without_leading_condition(remainder)?
-            && !abilities.is_empty()
-        {
-            let mut conditioned = Vec::with_capacity(abilities.len());
-            for ability in abilities {
-                conditioned.push(add_static_ability_ast_condition(
-                    ability,
-                    PredicateAst::SourceControllersEndStep,
-                )?);
-            }
-            return Ok(Some(conditioned));
-        }
-    }
-
-    if let Some(spec) = split_as_long_as_condition_prefix_lexed(condition_prefix_tokens)
-        && crate::word_primitives::parse_sequence_complete(
-            &crate::lexer::parser_token_word_refs(spec.remainder_tokens),
-            &["it", "must", "be", "blocked", "if", "able"],
-        )
-    {
-        let condition_words = crate::lexer::parser_token_word_refs(spec.condition_tokens);
-        let condition =
-            if crate::word_primitives::parse_sequence_suffix(&condition_words, &["is", "equipped"])
-            {
-                PredicateAst::SourceIsEquipped
-            } else if crate::word_primitives::parse_sequence_suffix(
-                &condition_words,
-                &["is", "enchanted"],
-            ) {
-                PredicateAst::SourceIsEnchanted
-            } else {
-                parse_static_condition_clause(spec.condition_tokens)?
-            };
-        if matches!(
-            condition,
-            PredicateAst::SourceIsEquipped
-                | PredicateAst::SourceIsEnchanted
-                | PredicateAst::SourceIsMonstrous
-        ) {
-            return Ok(Some(vec![StaticAbilityAst::ConditionalStaticAbility {
-                ability: Box::new(StaticAbilityAst::Static(StaticAbility::restriction(
-                    crate::effect::Restriction::must_be_blocked(ObjectFilter::source()),
-                    "this creature must be blocked if able".to_string(),
-                ))),
-                condition,
-            }]));
-        }
-    }
-    // Conditional self-entry counters may carry an additional quoted ability.
-    // The self-ETB grammar owns both pieces as one replacement payload; give
-    // it the intact condition before the generic conditional wrapper strips
-    // the prefix and leaves an apparently unconditional ability grant.
-    if tokens.first().is_some_and(|token| token.is_word("if"))
-        && tokens.iter().any(|token| token.is_word("enters"))
-        && let Some(abilities) = parse_enters_with_counters_line(tokens)?
-    {
-        return Ok(Some(
-            abilities.into_iter().map(StaticAbilityAst::from).collect(),
-        ));
-    }
-    if let Some(spec) = crate::grammar::static_line_support::parse_leading_if_clause(tokens)
-        && let Ok(condition) = parse_static_condition_clause(spec.condition_tokens)
-        && let Some(abilities) =
-            parse_static_ability_ast_line_lexed_single_without_leading_condition(
-                spec.remainder_tokens,
-            )?
-        && !abilities.is_empty()
-    {
-        if cast_this_spell_as_though_flash_tokens(spec.remainder_tokens) && abilities.len() == 1 {
-            let ability = abilities.into_iter().next().expect("length checked");
-            return Ok(Some(vec![
-                StaticAbilityAst::LabeledConditionalStaticAbility {
-                    ability: Box::new(ability),
-                    condition,
-                    label: render_token_slice(&trim_edge_punctuation(tokens)),
-                },
-            ]));
-        }
-        let mut conditioned = Vec::with_capacity(abilities.len());
-        for ability in abilities {
-            conditioned.push(add_static_ability_ast_condition(
-                ability,
-                condition.clone(),
-            )?);
-        }
-        return Ok(Some(conditioned));
-    }
-
-    if let Some(spec) = anthem_grant_grammar::parse_fixed_prefix_condition_shape(tokens)
-        && spec.kind == anthem_grant_grammar::AnthemPrefixConditionKind::DuringTurnsOtherThanYours
-        && let Some(abilities) =
-            parse_static_ability_ast_line_lexed_single_without_leading_condition(
-                spec.subject_tokens,
-            )?
-        && !abilities.is_empty()
-    {
-        let condition = PredicateAst::Not(Box::new(PredicateAst::YourTurn));
-        let mut conditioned = Vec::with_capacity(abilities.len());
-        for ability in abilities {
-            conditioned.push(add_static_ability_ast_condition(
-                ability,
-                condition.clone(),
-            )?);
-        }
-        return Ok(Some(conditioned));
-    }
-
     let existing = parse_static_ability_ast_line_lexed_single_without_leading_condition(tokens)?;
     let Some(spec) = split_as_long_as_condition_prefix_lexed(condition_prefix_tokens) else {
         return Ok(existing);
@@ -3284,6 +2781,8 @@ pub fn parse_skulk_rules_text_line(
     ))
 }
 
+mod ward_cost_readings;
+
 pub fn parse_ward_static_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -3311,27 +2810,16 @@ pub fn parse_ward_static_ability_line(
             "ward keyword missing cost".to_string(),
         ));
     }
-
-    if let Some(mana) = parse_leaf_fixed_mana_cost_prefix_tokens(&cost_tokens)
-        && trim_edge_punctuation_tokens(&cost_tokens[mana.consumed..]).is_empty()
-    {
-        return Ok(Some(StaticAbility::ward(ironsmith_core::TotalCost::<
-            crate::model::CompilerCost,
-        >::mana(mana.cost))));
+    let input = ward_cost_readings::WardCost {
+        tokens: &cost_tokens,
+    };
+    match ward_cost_readings::read(&input) {
+        crate::recognition::ParseOutcome::Match(matched) => return Ok(Some(matched.value.value)),
+        crate::recognition::ParseOutcome::NoMatch => {}
+        crate::recognition::ParseOutcome::Error(diagnostic) => {
+            return Err(diagnostic.into_card_text_error());
+        }
     }
-
-    if let Some(cost) = parse_compact_sacrifice_ward_cost(&cost_tokens)? {
-        return Ok(Some(StaticAbility::ward(cost)));
-    }
-
-    if let Some(cost) = parse_ward_discard_card_type_cost(&cost_tokens) {
-        return Ok(Some(StaticAbility::ward(cost)));
-    }
-
-    if let Some(cost) = parse_payment_clause_as_total_cost(&cost_tokens)? {
-        return Ok(Some(StaticAbility::ward(cost)));
-    }
-
     Err(CardTextError::ParseError(format!(
         "unsupported ward cost clause (clause: '{}')",
         render_token_slice(tokens)
@@ -3609,7 +3097,7 @@ pub fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<StaticA
             keyword_static_lines::StaticTextMarkerKind::DoubleDamageToEnchantedPlayer => {
                 StaticAbility::double_damage_amount_replacement(
                     ObjectFilter::default(),
-                    Some(PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.key())),
+                    Some(PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.bind())),
                     None,
                     "If a source would deal damage to enchanted player, it deals double that damage to that player instead.".to_string(),
                 )
@@ -4686,7 +4174,7 @@ fn parse_damage_amount_replacement_target_filters(
         DamageReplacementTargetKind::AnyPlayer => Ok((Some(PlayerFilter::Any), None)),
         DamageReplacementTargetKind::EnchantedPlayer => Ok((
             Some(PlayerFilter::TaggedPlayer(
-                crate::tag::CompilerReferenceTag::Enchanted.key(),
+                crate::tag::CompilerReferenceTag::Enchanted.bind(),
             )),
             None,
         )),
@@ -5889,6 +5377,8 @@ fn parse_target_whose_controller_has_cards_in_graveyard_cost_condition(
     )
 }
 
+mod spell_cost_condition_readings;
+
 pub fn parse_this_spell_cost_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::static_abilities::ThisSpellCostCondition> {
@@ -5899,154 +5389,19 @@ pub fn parse_this_spell_cost_condition(
     if words.is_empty() {
         return None;
     }
-
-    if let Some(condition) = parse_life_total_or_less_spell_cost_condition(tokens) {
+    let input = spell_cost_condition_readings::SpellCostCondition {
+        tokens,
+        words: &words,
+        read_by_cache: Default::default(),
+    };
+    match spell_cost_condition_readings::read(&input) {
+        crate::recognition::ParseOutcome::Match(matched) => return Some(matched.value.value),
+        crate::recognition::ParseOutcome::NoMatch => {}
+        crate::recognition::ParseOutcome::Error(_) => return None,
+    }
+    // The bound static condition clause is the fallback for what no typed spell-cost condition reads.
+    if let Some(condition) = spell_cost_condition_readings::read_bound_static_condition(&input) {
         return Some(condition);
-    }
-    if let Some(condition) = parse_player_life_change_this_turn_condition(tokens)
-        .and_then(this_spell_cost_condition_from_life_change_this_turn)
-    {
-        return Some(condition);
-    }
-    if let Some(condition) =
-        parse_target_whose_controller_has_cards_in_graveyard_cost_condition(tokens)
-    {
-        return Some(condition);
-    }
-
-    if let Some(fact) = static_mid_facts::parse_known_spell_cost_condition(tokens) {
-        let condition = match fact {
-            Fact::LifeTotalLessThanStarting => ThisSpellCostCondition::LifeTotalLessThanStarting,
-            Fact::AttackedThisTurn => ThisSpellCostCondition::ConditionExpr {
-                condition: crate::ConditionExpr::AttackedThisTurn,
-                display: words.join(" "),
-            },
-            Fact::CreatureDiedThisTurn => ThisSpellCostCondition::ConditionExpr {
-                condition: crate::ConditionExpr::CreatureDiedThisTurn,
-                display: words.join(" "),
-            },
-            Fact::Night => ThisSpellCostCondition::IsNight,
-            Fact::Bargained => ThisSpellCostCondition::ConditionExpr {
-                condition: crate::ConditionExpr::ThisSpellPaidLabel("Bargain".into()),
-                display: words.join(" "),
-            },
-            Fact::SacrificedArtifactThisTurn => {
-                ThisSpellCostCondition::YouSacrificedArtifactThisTurn
-            }
-            Fact::CommittedCrimeThisTurn => ThisSpellCostCondition::YouCommittedCrimeThisTurn,
-            Fact::CreatureLeftBattlefieldUnderYourControlThisTurn => {
-                ThisSpellCostCondition::CreatureLeftBattlefieldUnderYourControlThisTurn
-            }
-            Fact::CastThisTurn { card_types, .. } => {
-                ThisSpellCostCondition::YouCastSpellsThisTurnOrMore {
-                    count: 1,
-                    card_types,
-                }
-            }
-            Fact::NotStartingPlayer => ThisSpellCostCondition::NotStartingPlayer,
-            Fact::CreatureIsAttackingYou => ThisSpellCostCondition::CreatureIsAttackingYou,
-            Fact::CreatureCardPutIntoYourGraveyardThisTurn => {
-                ThisSpellCostCondition::CreatureCardPutIntoYourGraveyardThisTurn
-            }
-            Fact::DistinctCardTypesInYourGraveyardOrMore(count) => {
-                ThisSpellCostCondition::DistinctCardTypesInYourGraveyardOrMore(count)
-            }
-            Fact::CardsInYourGraveyardOrMore { count, card_types } => {
-                if card_types.is_empty() {
-                    ThisSpellCostCondition::YouHaveCardsInYourGraveyardOrMore(count)
-                } else {
-                    ThisSpellCostCondition::YouHaveCardsOfTypesInYourGraveyardOrMore {
-                        count,
-                        card_types,
-                    }
-                }
-            }
-            Fact::OpponentHasPoisonCountersOrMore(count) => {
-                ThisSpellCostCondition::OpponentHasPoisonCountersOrMore(count)
-            }
-            Fact::OpponentHasCardsInGraveyardOrMore(count) => {
-                ThisSpellCostCondition::OpponentHasCardsInGraveyardOrMore(count)
-            }
-            Fact::NoCardsInHandMatching(filter) => ThisSpellCostCondition::NoCardsInHandMatching {
-                filter,
-                display: words.join(" "),
-            },
-            Fact::OnlyCreatureCardsInHandNamed(name) => {
-                ThisSpellCostCondition::OnlyCreatureCardsInHandNamed(name)
-            }
-            Fact::CardInYourGraveyardMatching(filter) => {
-                ThisSpellCostCondition::CardInYourGraveyardMatching {
-                    filter,
-                    display: words.join(" "),
-                }
-            }
-            Fact::TargetsLargeControlledCreature => {
-                let mut protected = ObjectFilter::creature().you_control();
-                protected.power = Some(crate::filter::Comparison::GreaterThanOrEqual(7));
-                let mut stack_target = ObjectFilter::default();
-                stack_target.zone = Some(Zone::Stack);
-                stack_target.stack_kind = Some(crate::filter::StackObjectKind::SpellOrAbility);
-                stack_target.targets_object = Some(Box::new(protected));
-                ThisSpellCostCondition::TargetsObject(stack_target)
-            }
-            Fact::Target(target) => match target {
-                static_mid_facts::CostTargetFact::You => {
-                    ThisSpellCostCondition::TargetsPlayer(PlayerFilter::You)
-                }
-                static_mid_facts::CostTargetFact::Opponent => {
-                    ThisSpellCostCondition::TargetsPlayer(PlayerFilter::Opponent)
-                }
-                static_mid_facts::CostTargetFact::AnyPlayer => {
-                    ThisSpellCostCondition::TargetsPlayer(PlayerFilter::Any)
-                }
-                static_mid_facts::CostTargetFact::Object(filter) => {
-                    ThisSpellCostCondition::TargetsObject(filter)
-                }
-            },
-            Fact::OpponentHasNoCardsInHand => ThisSpellCostCondition::OpponentHasNoCardsInHand,
-            Fact::OpponentControlsLandsOrMore(count) => {
-                ThisSpellCostCondition::OpponentControlsLandsOrMore(count)
-            }
-            Fact::OpponentControlsMoreCreaturesThanYou(count) => {
-                ThisSpellCostCondition::OpponentControlsAtLeastNMoreCreaturesThanYou(count)
-            }
-            Fact::TotalCreatureCardsInAllGraveyardsOrMore(count) => {
-                ThisSpellCostCondition::TotalCreatureCardsInAllGraveyardsOrMore(count)
-            }
-            Fact::OpponentCastSpellsThisTurnOrMore(count) => {
-                ThisSpellCostCondition::OpponentCastSpellsThisTurnOrMore(count)
-            }
-            Fact::OpponentDrewCardsThisTurnOrMore(count) => {
-                ThisSpellCostCondition::OpponentDrewCardsThisTurnOrMore(count)
-            }
-            Fact::YouWereDealtDamageByCreaturesThisTurnOrMore(count) => {
-                ThisSpellCostCondition::YouWereDealtDamageByCreaturesThisTurnOrMore(count)
-            }
-            Fact::AssassinOrCommanderDealtCombatDamage => {
-                ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeOrCommanderThisTurn(
-                    Subtype::Assassin,
-                )
-            }
-        };
-        return Some(condition);
-    }
-
-    // The spell-cost model states its conditions bound, so a recognized
-    // predicate is bound here at that boundary.
-    if let Some(condition_expr) =
-        parse_conjoined_this_spell_cost_condition(tokens).and_then(bind_static_condition_predicate)
-    {
-        return Some(ThisSpellCostCondition::ConditionExpr {
-            condition: condition_expr,
-            display: words.join(" "),
-        });
-    }
-
-    if let Some(condition_expr) = static_condition_clause_bound(tokens) {
-        return Some(ThisSpellCostCondition::ConditionExpr {
-            condition: condition_expr,
-            display: words.join(" "),
-        });
     }
 
     None

@@ -872,8 +872,8 @@ pub(super) fn try_apply_attached_exclusion_phrases(
         }
 
         let Some(tag) = (match all_words.get(idx + 2).copied() {
-            Some("enchanted") => Some(crate::tag::CompilerReferenceTag::Enchanted.key()),
-            Some("equipped") => Some(crate::tag::CompilerReferenceTag::Equipped.key()),
+            Some("enchanted") => Some(crate::tag::CompilerReferenceTag::Enchanted.bind()),
+            Some("equipped") => Some(crate::tag::CompilerReferenceTag::Equipped.bind()),
             _ => None,
         }) else {
             idx += 1;
@@ -1126,7 +1126,7 @@ fn apply_spell_filter_tagged_relations(filter: &mut ObjectFilter, words: &[&str]
 
     if shares_card_type && references_exiled_card {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
+            tag: crate::tag::CompilerReferenceTag::SourceExiled.bind(),
             relation: shared_type_relation(words),
         });
     }
@@ -1137,55 +1137,25 @@ pub(super) fn parse_with_no_abilities_words(words: &[&str]) -> Option<usize> {
         .then_some(2)
 }
 
+/// The "with ..." constraints a filter tail can carry, each applied by one
+/// reader that reports the words it consumed. The tail is one constraint,
+/// so the table is a lookup over exclusive shapes, not a ranking.
+const WITH_CLAUSE_APPLIERS: &[fn(&mut ObjectFilter, &[&str]) -> Option<usize>] = &[
+    apply_with_sticker,
+    apply_with_no_abilities,
+    apply_with_without_counter,
+    apply_with_alternative_cast,
+    apply_with_with_counter,
+    apply_with_keyword_constraint,
+];
+
 pub(super) fn try_apply_with_clause_tail(
     filter: &mut ObjectFilter,
     words: &[&str],
 ) -> Option<usize> {
-    if let Some((sticker, consumed)) = parse_sticker_filter_words(words) {
-        filter.sticker = Some(sticker);
-        return Some(consumed);
-    }
-
-    if let Some(consumed) = parse_with_no_abilities_words(words) {
-        filter.no_abilities = true;
-        return Some(consumed);
-    }
-
-    if words.first().is_some_and(|word| *word == NO_WORD)
-        && let Some((counter_constraint, consumed)) =
-            parse_filter_counter_constraint_words(&words[1..])
-    {
-        filter.without_counter = Some(counter_constraint);
-        return Some(1 + consumed);
-    }
-
-    if let Some((kind, consumed)) = parse_alternative_cast_words(words) {
-        filter.alternative_cast = Some(kind);
-        return Some(consumed);
-    }
-    if let Some((counter_constraint, consumed)) = parse_filter_counter_constraint_words(words) {
-        filter.with_counter = Some(counter_constraint);
-        return Some(consumed);
-    }
-
-    if let Some((constraint, consumed)) = parse_filter_keyword_constraint_words(words) {
-        if words.get(consumed).is_some_and(|word| *word == OR_WORD)
-            && let Some((rhs_constraint, rhs_consumed)) =
-                parse_filter_keyword_constraint_words(&words[consumed + 1..])
-        {
-            let mut left = ObjectFilter::default();
-            apply_filter_keyword_constraint(&mut left, constraint, false);
-            let mut right = ObjectFilter::default();
-            apply_filter_keyword_constraint(&mut right, rhs_constraint, false);
-            filter.any_of = vec![left, right];
-            return Some(consumed + 1 + rhs_consumed);
-        }
-
-        apply_filter_keyword_constraint(filter, constraint, false);
-        return Some(consumed);
-    }
-
-    None
+    WITH_CLAUSE_APPLIERS
+        .iter()
+        .find_map(|apply| apply(filter, words))
 }
 
 pub(super) fn try_apply_without_clause_tail(
@@ -1401,3 +1371,66 @@ fn drain_source_reference_prefix_tokens(
 #[path = "naming_and_reference/naming_and_reference_reference.rs"]
 mod naming_and_reference_reference_programs;
 pub(super) use naming_and_reference_reference_programs::apply_reference_and_tag_stage;
+
+fn apply_with_sticker(filter: &mut ObjectFilter, words: &[&str]) -> Option<usize> {
+    if let Some((sticker, consumed)) = parse_sticker_filter_words(words) {
+        filter.sticker = Some(sticker);
+        return Some(consumed);
+    }
+    None
+}
+
+fn apply_with_no_abilities(filter: &mut ObjectFilter, words: &[&str]) -> Option<usize> {
+    if let Some(consumed) = parse_with_no_abilities_words(words) {
+        filter.no_abilities = true;
+        return Some(consumed);
+    }
+    None
+}
+
+fn apply_with_without_counter(filter: &mut ObjectFilter, words: &[&str]) -> Option<usize> {
+    if words.first().is_some_and(|word| *word == NO_WORD)
+        && let Some((counter_constraint, consumed)) =
+            parse_filter_counter_constraint_words(&words[1..])
+    {
+        filter.without_counter = Some(counter_constraint);
+        return Some(1 + consumed);
+    }
+    None
+}
+
+fn apply_with_alternative_cast(filter: &mut ObjectFilter, words: &[&str]) -> Option<usize> {
+    if let Some((kind, consumed)) = parse_alternative_cast_words(words) {
+        filter.alternative_cast = Some(kind);
+        return Some(consumed);
+    }
+    None
+}
+
+fn apply_with_with_counter(filter: &mut ObjectFilter, words: &[&str]) -> Option<usize> {
+    if let Some((counter_constraint, consumed)) = parse_filter_counter_constraint_words(words) {
+        filter.with_counter = Some(counter_constraint);
+        return Some(consumed);
+    }
+    None
+}
+
+fn apply_with_keyword_constraint(filter: &mut ObjectFilter, words: &[&str]) -> Option<usize> {
+    if let Some((constraint, consumed)) = parse_filter_keyword_constraint_words(words) {
+        if words.get(consumed).is_some_and(|word| *word == OR_WORD)
+            && let Some((rhs_constraint, rhs_consumed)) =
+                parse_filter_keyword_constraint_words(&words[consumed + 1..])
+        {
+            let mut left = ObjectFilter::default();
+            apply_filter_keyword_constraint(&mut left, constraint, false);
+            let mut right = ObjectFilter::default();
+            apply_filter_keyword_constraint(&mut right, rhs_constraint, false);
+            filter.any_of = vec![left, right];
+            return Some(consumed + 1 + rhs_consumed);
+        }
+
+        apply_filter_keyword_constraint(filter, constraint, false);
+        return Some(consumed);
+    }
+    None
+}

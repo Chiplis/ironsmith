@@ -7,33 +7,20 @@ use ironsmith_core::TurnHistoryCount;
 const POWER_ABOVE_BASE_SUFFIX: &[&str] =
     &["with", "power", "greater", "than", "its", "base", "power"];
 
+use crate::recognition::ParseOutcome;
+#[path = "phase_step_gates/gate_readings.rs"]
+mod gate_readings;
+
 pub(super) fn parse_phase_step_gate_predicate(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    if let Some(predicate) = parse_existing_value_gate(tokens) {
-        return Ok(Some(predicate));
+    let input = gate_readings::Gate { tokens };
+    match gate_readings::read(&input) {
+        ParseOutcome::Match(matched) => return Ok(Some(matched.value.value)),
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
-    if let Some(predicate) = parse_control_gate(tokens)? {
-        return Ok(Some(predicate));
-    }
-    if let Some(predicate) = parse_attachment_gate(tokens)? {
-        return Ok(Some(predicate));
-    }
-    if let Some(predicate) = parse_empty_battlefield_gate(tokens)? {
-        return Ok(Some(predicate));
-    }
-    if let Some(predicate) = parse_source_state_gate(tokens) {
-        return Ok(Some(predicate));
-    }
-    if let Some(predicate) = parse_existing_zone_history_gate(tokens) {
-        return Ok(Some(predicate));
-    }
-    if let Some(predicate) = parse_player_counter_gate(tokens) {
-        return Ok(Some(predicate));
-    }
-    if let Some(predicate) = parse_world_status_gate(tokens) {
-        return Ok(Some(predicate));
-    }
+
     Ok(None)
 }
 
@@ -684,7 +671,7 @@ fn parse_source_exiled_card_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAs
     if !is_source_reference_clause(source) {
         return None;
     }
-    let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.key());
+    let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind());
     filter.zone = Some(Zone::Exile);
     let source_words = source.word_refs();
     filter.source_surface = source_reference_surface_for_words(&source_words)

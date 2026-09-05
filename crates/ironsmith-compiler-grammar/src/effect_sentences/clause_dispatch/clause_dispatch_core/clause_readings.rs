@@ -6,7 +6,7 @@
 use super::*;
 use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId, RuleMatch};
 use crate::registry::{
-    HeadDiscriminator, RegistryCandidate, RegistryRuleMetadata, resolve_ranked_candidates,
+    HeadDiscriminator, RegistryCandidate, RegistryRuleMetadata, resolve_registry_candidates,
 };
 
 /// One effect clause, with its leading "instead" and "then" already stripped.
@@ -194,6 +194,9 @@ const CLAUSE_READINGS: &[Reading] = &[
             !input.read_by("cast-or-play-tagged")
                 && !input.read_by("may-cast-it")
                 && !input.read_by("trailing-if-clause")
+                // Readings ranked above this one that read the input read it.
+                && !input.read_by("any-player-may-sacrifice")
+                && !input.read_by("any-player-or-opponent-may")
         },
         read: |input| input.outcome(part_2::read_leading_may_additional_land_plays(input)),
     },
@@ -317,6 +320,8 @@ const CLAUSE_READINGS: &[Reading] = &[
                 // Readings ranked above this one that read the input read it.
                 && !input.read_by("conditional-return-then-turn-face-up")
                 && !input.read_by("trailing-if-clause")
+                // Readings ranked above this one that read the input read it.
+                && !input.read_by("may-cast-it")
         },
         read: |input| input.outcome(part_2::read_clause_primitives(input)),
     },
@@ -730,9 +735,7 @@ pub(super) fn read_clause(input: &Clause<'_>) -> ParseOutcome<RuleMatch<EffectAs
                 .join(", ")
         ));
     }
-    let outcome = resolve_ranked_candidates(CLAUSE_REGISTRY, distinct, diagnostics, || {
-        crate::lexer::parser_token_word_refs(input.tokens).join(" ")
-    });
+    let outcome = resolve_registry_candidates(CLAUSE_REGISTRY, distinct, diagnostics);
     match &outcome {
         ParseOutcome::Match(matched) => {
             crate::parse_trace::event(format!(

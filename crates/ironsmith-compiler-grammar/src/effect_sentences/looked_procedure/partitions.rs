@@ -758,7 +758,7 @@ fn reveal_top_matching(
                 tag: group.tag.clone(),
                 effects: vec![EffectAst::Conditional {
                     predicate: PredicateAst::TaggedMatches(
-                        crate::tag::CompilerReferenceTag::It.key(),
+                        crate::tag::CompilerReferenceTag::It.bind(),
                         filter,
                     ),
                     if_true: vec![EffectAst::subject_verb_move_to_zone(

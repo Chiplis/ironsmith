@@ -622,7 +622,7 @@ pub(super) fn tag_latest_prior_exile(effects: &mut [EffectAst]) -> bool {
     let prior = effects[exile_idx].clone();
     effects[exile_idx] = EffectAst::TagAffected {
         effect: Box::new(prior),
-        tag: crate::tag::CompilerReferenceTag::PriorExiledCard.key(),
+        tag: crate::tag::CompilerReferenceTag::PriorExiledCard.bind(),
     };
     for effect in &mut effects[exile_idx + 1..] {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {

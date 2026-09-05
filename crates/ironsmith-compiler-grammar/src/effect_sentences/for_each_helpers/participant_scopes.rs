@@ -26,7 +26,7 @@ pub(super) fn player_filter(scope: ForEachParticipantScope) -> Option<PlayerFilt
         ForEachParticipantScope::PlayerExceptItsController => Some(PlayerFilter::excluding(
             PlayerFilter::Any,
             PlayerFilter::ControllerOf(ObjectRef::tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
             )),
         )),
         ForEachParticipantScope::PlayerOnYourTeam => Some(PlayerFilter::excluding(
@@ -53,7 +53,7 @@ pub(super) fn reanchor_other_player_copy_filter(
     }
     PlayerFilter::excluding(
         PlayerFilter::Any,
-        PlayerFilter::AliasedControllerOf(ObjectRef::tagged("triggering")),
+        PlayerFilter::AliasedControllerOf(ObjectRef::tagged(crate::tag::CompilerReferenceTag::Triggering.bind())),
     )
 }
 
@@ -124,6 +124,10 @@ pub fn parse_for_each_target_players_clause(
     }))
 }
 
+use crate::recognition::ParseOutcome;
+#[path = "participant_scopes/for_each_player_readings.rs"]
+mod for_each_player_readings;
+
 pub fn parse_for_each_player_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -139,131 +143,18 @@ pub fn parse_for_each_player_clause(
     } else {
         PlayerAst::You
     };
-    if let Some(effects) =
-        super::super::parse_for_each_type_slot_choice_clause(outer.inner_tokens, slot_chooser)?
-    {
-        return Ok(Some(wrap_players(&iteration_filter, effects)));
+    let input = for_each_player_readings::ParticipantClause {
+        tokens,
+        outer: &outer,
+        iteration_filter: iteration_filter.clone(),
+        clause_text: &clause_text,
+        slot_chooser,
+    };
+    match for_each_player_readings::read(&input) {
+        ParseOutcome::Match(matched) => return Ok(Some(matched.value.value)),
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
-    if let Some(effects) = parse_participant_creature_type_choice(outer.inner_tokens, slot_chooser)?
-    {
-        return Ok(Some(wrap_players(&iteration_filter, effects)));
-    }
-    if iteration_filter == PlayerFilter::Any
-        && let Some(effect) = parse_for_each_doesnt_control_lose_game(tokens, false)?
-    {
-        return Ok(Some(effect));
-    }
-
-    if let Some(relative) = for_each_shapes::parse_relative_control_clause_shape(outer.inner_tokens)
-    {
-        let conditional =
-            parse_relative_control_conditional(relative, outer.participant_is_actor, &clause_text)?;
-        return Ok(Some(wrap_players(&iteration_filter, vec![conditional])));
-    }
-
-    if iteration_filter == PlayerFilter::Any
-        && let Some(source_attacked) =
-            for_each_shapes::parse_source_attacked_player_clause_shape(outer.inner_tokens)
-    {
-        let normalized = prepend_that_player_subject(source_attacked.effect_tokens);
-        let effects = parse_maybe_effects(&normalized, false, true)?;
-        return Ok(Some(EffectAst::ForEachPlayersFiltered {
-            filter: PlayerFilter::AttackedBySourceThisTurn,
-            effects,
-        }));
-    }
-
-    if let Some(effect) =
-        parse_combat_damage_history_participant(outer.inner_tokens, iteration_filter.clone())?
-    {
-        return Ok(Some(effect));
-    }
-
-    if let Some(who) = for_each_shapes::parse_who_clause_shape(outer.inner_tokens) {
-        match who {
-            WhoClauseShape::TappedLandForMana { effect_tokens } => {
-                if effect_tokens.is_empty() {
-                    return Err(CardTextError::ParseError(format!(
-                        "missing effect after 'each player who tapped a land for mana this turn' (clause: '{}')",
-                        clause_text
-                    )));
-                }
-                let branch_effects = parse_maybe_effects(effect_tokens, true, false)?;
-                return Ok(Some(wrap_players(
-                    &iteration_filter,
-                    vec![EffectAst::Conditional {
-                        predicate: PredicateAst::PlayerTappedLandForManaThisTurn {
-                            player: PlayerAst::That,
-                        },
-                        if_true: branch_effects,
-                        if_false: Vec::new(),
-                    }],
-                )));
-            }
-            WhoClauseShape::Negated {
-                effect_tokens,
-                tagged_filter_tokens,
-                implicit_player_is_iterated,
-            } => {
-                if effect_tokens.is_empty() {
-                    return Err(CardTextError::ParseError(format!(
-                        "missing effect in for each player who doesn't clause (clause: '{}')",
-                        clause_text
-                    )));
-                }
-                let scoped_effect_tokens =
-                    implicit_player_is_iterated.then(|| prepend_that_player_subject(effect_tokens));
-                return Ok(Some(EffectAst::ForEachPlayerDoesNot {
-                    effects: parse_effect_chain_inner(
-                        scoped_effect_tokens.as_deref().unwrap_or(effect_tokens),
-                    )?,
-                    predicate: tagged_predicate(tagged_filter_tokens),
-                }));
-            }
-            WhoClauseShape::DidThisWay {
-                effect_tokens,
-                tagged_filter_tokens,
-            } => {
-                if effect_tokens.is_empty() {
-                    return Err(CardTextError::ParseError(format!(
-                        "missing effect after 'each player who ... this way' (clause: '{}')",
-                        clause_text
-                    )));
-                }
-                return Ok(Some(EffectAst::ForEachPlayerDid {
-                    effects: parse_effect_chain_inner(effect_tokens)?,
-                    predicate: tagged_predicate(tagged_filter_tokens),
-                    result_predicate: IfResultPredicate::Did,
-                }));
-            }
-            WhoClauseShape::DidAction {
-                effect_tokens,
-                implicit_player_is_you,
-            } => {
-                if effect_tokens.is_empty() {
-                    return Err(CardTextError::ParseError(format!(
-                        "missing effect after 'each player who does' (clause: '{}')",
-                        clause_text
-                    )));
-                }
-                let mut effects = parse_effect_chain_inner(effect_tokens)?;
-                let player = if implicit_player_is_you {
-                    PlayerAst::You
-                } else {
-                    PlayerAst::That
-                };
-                for effect in &mut effects {
-                    bind_implicit_player_context(effect, player);
-                }
-                return Ok(Some(EffectAst::ForEachPlayerDid {
-                    effects,
-                    predicate: None,
-                    result_predicate: IfResultPredicate::AcceptedChoice,
-                }));
-            }
-        }
-    }
-
     let participant_may = outer.participant_is_actor
         && outer
             .inner_tokens

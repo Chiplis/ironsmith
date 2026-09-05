@@ -192,7 +192,7 @@ pub(super) fn parse_spell_this_way_pay_life_rule_lexed(
 ) -> ParseOutcome<Vec<EffectAst>> {
     if shapes::parses_spell_this_way_pay_life(view.tokens) {
         return ParseOutcome::matched(vec![
-            EffectAst::subject_verb_grant_tagged_spell_alternative_cost_pay_life_by_mana_value_until_end_of_turn(crate::tag::CompilerReferenceTag::It.key(), PlayerAst::You),
+            EffectAst::subject_verb_grant_tagged_spell_alternative_cost_pay_life_by_mana_value_until_end_of_turn(crate::tag::CompilerReferenceTag::It.bind(), PlayerAst::You),
         ], lex_clause_span(view));
     }
     ParseOutcome::NoMatch
@@ -239,7 +239,7 @@ pub(super) fn parse_sacrifice_any_number_then_draw_that_many_rule_lexed(
             }
         }
     };
-    let tag = crate::tag::CompilerReferenceTag::Sacrificed0.key();
+    let tag = crate::tag::CompilerReferenceTag::Sacrificed0.bind();
 
     ParseOutcome::matched(
         vec![

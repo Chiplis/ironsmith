@@ -559,42 +559,46 @@ function OpponentSlot({
             data-turn-priority={isPriorityPlayer ? "true" : "false"}
           >
             <span
-              className={cn(
-                "battlefield-life text-[23px] font-bold leading-none text-[#f5d08b] tabular-nums px-1 py-0.5 rounded-none",
-                isPlayerLegalTarget
-                  && "text-[#d7ebff] shadow-[0_0_10px_rgba(100,169,255,0.5)] ring-1 ring-[#64a9ff]/55"
-              )}
+              className={cn("player-identity-box inline-flex min-w-0 items-center gap-2", isPlayerLegalTarget && canPickTargetFromBoard && "player-target-box")}
               data-player-target={player.index ?? player.id}
-              onPointerDown={handlePlayerTargetPointerDown}
-              onClick={handlePlayerTargetClick}
-              style={{ cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined }}
+              onPointerDown={(event) => { if (event.target === event.currentTarget) handlePlayerTargetPointerDown(event); }}
+              onClick={(event) => { if (event.target === event.currentTarget) handlePlayerTargetClick(event); }}
             >
-              {player.life}
-            </span>
-            <span
-              className={cn(
-                "battlefield-name min-w-0 text-[16px] uppercase tracking-wider font-bold",
-                isPlayerLegalTarget && "drop-shadow-[0_0_7px_rgba(100,169,255,0.7)]"
-              )}
-              data-player-target={player.index ?? player.id}
-              data-player-target-name={player.index ?? player.id}
-              role={playerHeaderInteractive ? "button" : undefined}
-              tabIndex={playerHeaderInteractive ? 0 : undefined}
-              aria-label={playerHeaderInteractive
-                ? `${zoneIsAttackHoverTarget ? "Attack" : "Target"} ${playerDisplayName(state?.players || [], player)}`
-                : undefined}
-              onKeyDown={handlePlayerHeaderKeyDown}
-              onPointerDown={handlePlayerTargetPointerDown}
-              onClick={handlePlayerTargetClick}
-              style={{
-                color: playerAccent?.hex,
-                cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined,
-              }}
-            >
-              <span className={cn(isActivePlayer && "battlefield-name-text--active")}>
-                {playerDisplayName(state?.players || [], player)}
+              <span
+                className={cn(
+                  "battlefield-life text-[23px] font-bold leading-none text-[#f5d08b] tabular-nums px-1 py-0.5 rounded-none"
+                )}
+                data-player-target={player.index ?? player.id}
+                onPointerDown={handlePlayerTargetPointerDown}
+                onClick={handlePlayerTargetClick}
+                style={{ cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined }}
+              >
+                {player.life}
               </span>
-              {zoneName && <span className="text-muted-foreground">{zoneName}</span>}
+              <span
+                className={cn(
+                  "battlefield-name min-w-0 text-[16px] uppercase tracking-wider font-bold"
+                )}
+                data-player-target={player.index ?? player.id}
+                data-player-target-name={player.index ?? player.id}
+                role={playerHeaderInteractive ? "button" : undefined}
+                tabIndex={playerHeaderInteractive ? 0 : undefined}
+                aria-label={playerHeaderInteractive
+                  ? `${zoneIsAttackHoverTarget ? "Attack" : "Target"} ${playerDisplayName(state?.players || [], player)}`
+                  : undefined}
+                onKeyDown={handlePlayerHeaderKeyDown}
+                onPointerDown={handlePlayerTargetPointerDown}
+                onClick={handlePlayerTargetClick}
+                style={{
+                  color: playerAccent?.hex,
+                  cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined,
+                }}
+              >
+                <span className={cn(isActivePlayer && "battlefield-name-text--active")}>
+                  {playerDisplayName(state?.players || [], player)}
+                </span>
+                {zoneName && <span className="text-muted-foreground">{zoneName}</span>}
+              </span>
             </span>
             <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
               <ZoneCountInline player={player} onOpenDecklist={onOpenDecklist} />

@@ -22,7 +22,7 @@ pub fn parse_each_prior_affected_object_controller_mana_value_life(
         return Ok(None);
     }
 
-    let it = crate::tag::CompilerReferenceTag::It.key();
+    let it = crate::tag::CompilerReferenceTag::It.bind();
     Ok(Some(EffectAst::ForEachTagged {
         tag: it.clone(),
         effects: vec![EffectAst::subject_verb(

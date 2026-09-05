@@ -14,7 +14,7 @@ fn parse_source_exiled_owner_library_bottom_subject_verb(
     let source_surface = crate::util::source_reference_surface_for_words(&source_words)
         .or_else(|| crate::util::this_source_surface_for_words(&source_words))?;
     let target = TargetAst::Object(
-        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.key())
+        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind())
             .in_zone(Zone::Exile),
         None,
         None,
@@ -81,7 +81,7 @@ fn parse_triggering_object_had_counters_create_tokens(
     else {
         return Ok(None);
     };
-    let triggering = ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::Triggering.key());
+    let triggering = ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind());
     *count = Value::CountersOn(Box::new(triggering.clone()), None).with_surface_hints([
         ironsmith_core::ValueSurfaceHint::WhereXIs,
         ironsmith_core::ValueSurfaceHint::TriggeringObjectCountersItHad,
@@ -138,7 +138,8 @@ fn parse_source_exiled_counted_return_remainder_to_owners_libraries(
         .first()
         .is_some_and(|token| token.is_word("return"))
         .then_some(&prefix[1..])?;
-    let return_effect = crate::grammar::primitives::probe_shape(super::zone_handlers::parse_return(return_tokens))?;
+    let return_effect =
+        crate::grammar::primitives::probe_shape(super::zone_handlers::parse_return(return_tokens))?;
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
             SubjectVerbActionAst::MoveToZone {
@@ -177,8 +178,8 @@ fn parse_source_exiled_counted_return_remainder_to_owners_libraries(
         SubjectVerbRoleAst::Actor,
         PlayerAst::Implicit,
         SubjectVerbActionAst::PutTaggedRemainderInZone {
-            tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
-            keep_tagged: crate::tag::CompilerReferenceTag::ReturnedSourceExiled.key(),
+            tag: crate::tag::CompilerReferenceTag::SourceExiled.bind(),
+            keep_tagged: crate::tag::CompilerReferenceTag::ReturnedSourceExiled.bind(),
             zone: Zone::Library,
             surface: ironsmith_core::LibraryRemainderSurface::Rest,
         },
@@ -186,7 +187,7 @@ fn parse_source_exiled_counted_return_remainder_to_owners_libraries(
     Some(vec![
         EffectAst::TagAffected {
             effect: Box::new(return_effect),
-            tag: crate::tag::CompilerReferenceTag::ReturnedSourceExiled.key(),
+            tag: crate::tag::CompilerReferenceTag::ReturnedSourceExiled.bind(),
         },
         remainder,
     ])
@@ -1312,12 +1313,16 @@ fn parse_branch_scoped_collection_subject_verb(
     let (route, effect) = if clause.first().is_some_and(|token| token.is_word("return")) {
         (
             "subject-verb verb=Return subject=implicit recognizer=branch-scoped-collection",
-            crate::grammar::primitives::probe_shape(super::zone_handlers::parse_return(&clause[1..]))?,
+            crate::grammar::primitives::probe_shape(super::zone_handlers::parse_return(
+                &clause[1..],
+            ))?,
         )
     } else if clause.first().is_some_and(|token| token.is_word("destroy")) {
         (
             "subject-verb verb=Destroy subject=implicit recognizer=branch-scoped-collection",
-            crate::grammar::primitives::probe_shape(super::zone_handlers::parse_destroy(&clause[1..]))?,
+            crate::grammar::primitives::probe_shape(super::zone_handlers::parse_destroy(
+                &clause[1..],
+            ))?,
         )
     } else {
         return None;
@@ -1339,8 +1344,7 @@ pub fn parse_top_level_subject_verb_recognition(
         ParseOutcome::NoMatch => {}
         ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
-    let program =
-    if let Some(effect) = parse_generic_meld_subject_verb(tokens)? {
+    let program = if let Some(effect) = parse_generic_meld_subject_verb(tokens)? {
         Some(GenericTopLevelProgram::Meld { effect })
     } else if let Some(effect) = parse_generic_control_combat_choices_subject_verb(tokens)? {
         Some(GenericTopLevelProgram::ControlCombatChoices { effect })
@@ -1384,8 +1388,7 @@ pub fn parse_top_level_subject_verb_recognition(
         Some(GenericTopLevelProgram::ValueBinding { effects })
     } else {
         None
-    }
-    ;
+    };
     Ok(program.map(|program| {
         let route = program.route();
         (route, program.lower())
@@ -1485,7 +1488,7 @@ fn parse_generic_play_exiled_cards_for_as_long_as_exiled(
     );
     matches.then(|| {
         EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             PlayerAst::You,
             true,
             false,
@@ -1517,7 +1520,7 @@ fn parse_generic_mana_any_type_cast_tagged_this_way(tokens: &[OwnedLexToken]) ->
     );
     matches.then(|| {
         EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             PlayerAst::You,
             false,
             false,
@@ -1630,8 +1633,8 @@ fn parse_destroy_attached_object_then_source_damage_to_controller(
 
     let filter = parse_object_filter(&destroy_tokens[1..], false)?;
     let attachment_tag = match *attachment_word {
-        "enchanted" => crate::tag::CompilerReferenceTag::Enchanted.key(),
-        "equipped" => crate::tag::CompilerReferenceTag::Equipped.key(),
+        "enchanted" => crate::tag::CompilerReferenceTag::Enchanted.bind(),
+        "equipped" => crate::tag::CompilerReferenceTag::Equipped.bind(),
         _ => unreachable!("attachment word was lexically constrained"),
     };
     if !filter.tagged_constraints.iter().any(|constraint| {
@@ -1697,7 +1700,7 @@ pub fn parse_target_gets_unblockable_subject_verb(
                 constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             }) {
                 blocked_filter = blocked_filter.match_tagged(
-                    crate::tag::CompilerReferenceTag::It.key(),
+                    crate::tag::CompilerReferenceTag::It.bind(),
                     TaggedOpbjectRelation::IsTaggedObject,
                 );
             }
@@ -1745,7 +1748,7 @@ pub fn parse_target_gets_unblockable_subject_verb(
         .any(|constraint| constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
     {
         blocked_filter = blocked_filter.match_tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             TaggedOpbjectRelation::IsTaggedObject,
         );
     }
@@ -1783,7 +1786,7 @@ fn parse_cant_blocked_then_base_pt_subject_verb(
         .any(|constraint| constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
     {
         blocked_filter = blocked_filter.match_tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             TaggedOpbjectRelation::IsTaggedObject,
         );
     }
@@ -2163,7 +2166,9 @@ fn parse_pt_modifier_capture(clause: LexedClause<'_>) -> Option<(Value, Value)> 
         .tokens()
         .first()
         .and_then(OwnedLexToken::as_word)?;
-    crate::grammar::primitives::probe_shape(crate::keyword_static::parse_pt_modifier_values(modifier_word))
+    crate::grammar::primitives::probe_shape(crate::keyword_static::parse_pt_modifier_values(
+        modifier_word,
+    ))
 }
 
 fn target_controlled_pump_controller(controller_clause: LexedClause<'_>) -> Option<PlayerFilter> {
@@ -2609,7 +2614,7 @@ fn parse_generic_each_player_exile_top_then_cast_any_number_subject_verb(
             filter: cast_filter,
             effects: vec![EffectAst::May {
                 effects: vec![EffectAst::subject_verb_cast_tagged(
-                    crate::tag::CompilerReferenceTag::It.key(),
+                    crate::tag::CompilerReferenceTag::It.bind(),
                     PlayerAst::You,
                     false,
                     false,
@@ -2775,7 +2780,7 @@ fn apply_lesser_mana_value_consult_constraint(tokens: &[OwnedLexToken], effects:
                 constraint.relation,
                 TaggedOpbjectRelation::ManaValueLtTagged
             ) {
-                constraint.tag = crate::tag::CompilerReferenceTag::Sacrificed0.key();
+                constraint.tag = crate::tag::CompilerReferenceTag::Sacrificed0.bind();
                 had_lesser_constraint = true;
             }
         }
@@ -2783,7 +2788,7 @@ fn apply_lesser_mana_value_consult_constraint(tokens: &[OwnedLexToken], effects:
             continue;
         }
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::Sacrificed0.key(),
+            tag: crate::tag::CompilerReferenceTag::Sacrificed0.bind(),
             relation: TaggedOpbjectRelation::ManaValueLtTagged,
         });
     }
@@ -2904,7 +2909,7 @@ pub fn parse_choice_complement_subject_verb(
             GenericChoiceComplementProgram {
                 chooser_scope: shape.chooser,
                 base_filter: shape.filter,
-                keep_tag: crate::tag::CompilerReferenceTag::Keep.key(),
+                keep_tag: crate::tag::CompilerReferenceTag::Keep.bind(),
                 keep_filters: shape.slot_filters,
                 keep_count: shape.count_per_slot,
                 aggregate_constraint: None,
@@ -2917,7 +2922,7 @@ pub fn parse_choice_complement_subject_verb(
             GenericChoiceComplementProgram {
                 chooser_scope: shape.chooser,
                 base_filter: shape.filter,
-                keep_tag: crate::tag::CompilerReferenceTag::Keep.key(),
+                keep_tag: crate::tag::CompilerReferenceTag::Keep.bind(),
                 keep_filters: Vec::new(),
                 keep_count: shape.count,
                 aggregate_constraint: Some(shape.constraint),
@@ -2973,7 +2978,7 @@ pub fn parse_choice_complement_subject_verb(
                 GenericChoiceComplementProgram {
                     chooser_scope,
                     base_filter,
-                    keep_tag: crate::tag::CompilerReferenceTag::Keep.key(),
+                    keep_tag: crate::tag::CompilerReferenceTag::Keep.bind(),
                     keep_filters: vec![ObjectFilter::default()],
                     keep_count,
                     aggregate_constraint: None,
@@ -3053,7 +3058,7 @@ pub fn parse_choice_complement_subject_verb(
         GenericChoiceComplementProgram {
             chooser_scope,
             base_filter,
-            keep_tag: crate::tag::CompilerReferenceTag::Keep.key(),
+            keep_tag: crate::tag::CompilerReferenceTag::Keep.bind(),
             keep_filters,
             keep_count: ChoiceCount::exactly(1),
             aggregate_constraint: None,
@@ -3112,7 +3117,7 @@ pub fn parse_for_each_type_slot_choice_clause(
     if base_filter.controller.is_none() {
         base_filter.controller = Some(PlayerFilter::IteratedPlayer);
     }
-    let keep_tag = crate::tag::CompilerReferenceTag::ChosenForEachPlayer.key();
+    let keep_tag = crate::tag::CompilerReferenceTag::ChosenForEachPlayer.bind();
     let mut choices = Vec::new();
     for segment in split_choose_list(&list_tokens) {
         let segment = strip_leading_articles(&segment);
@@ -3149,7 +3154,7 @@ pub fn parse_triggered_spell_opponent_damage_subject_verb(
         return Ok(None);
     };
     let triggering_spell =
-        TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), None);
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None);
     Ok(Some(EffectAst::ForEachOpponent {
         effects: vec![EffectAst::subject_verb_damage_with_source(
             triggering_spell,
@@ -3172,54 +3177,26 @@ pub fn parse_vote_affinity_subject_verb(
         let effect_tokens = trim_commas(shape.effect_tokens);
         let effects = parse_effect_chain_lexed(&effect_tokens)?;
         return Ok(Some(vec![EffectAst::ForEachTaggedPlayer {
-            tag: crate::tag::CompilerReferenceTag::VotedAgainstYou.key(),
+            tag: crate::tag::CompilerReferenceTag::VotedAgainstYou.bind(),
             effects,
         }]));
     }
     parse_you_and_each_opponent_voted_with_you_sentence(tokens)
 }
 
+#[path = "generic_subject_verb/vote_readings.rs"]
+mod vote_readings;
+
 pub fn parse_vote_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    if let Some(effect) = parse_secret_number_choice_vote_start(tokens)? {
-        return Ok(Some(effect));
+    let input = vote_readings::VoteSentence { tokens };
+    match vote_readings::read(&input) {
+        ParseOutcome::Match(matched) => return Ok(Some(matched.value.value)),
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
-    if let Some(effect) = parse_vote_reveal_sentence(tokens) {
-        return Ok(Some(effect));
-    }
-    if let Some(effect) = parse_generic_vote_start(tokens)? {
-        if let EffectAst::VoteStart {
-            options,
-            secret,
-            starting_with_controller,
-        } = effect
-        {
-            return Ok(Some(
-                GenericVoteProgram::Start {
-                    options,
-                    secret,
-                    starting_with_controller,
-                }
-                .lower(),
-            ));
-        }
-        return Ok(Some(effect));
-    }
-    if let Some(effect) = parse_generic_vote_option_effects(tokens)? {
-        if let EffectAst::VoteOption { option, effects } = effect {
-            return Ok(Some(
-                GenericVoteProgram::OptionEffects { option, effects }.lower(),
-            ));
-        }
-        return Ok(Some(effect));
-    }
-    if let Some(effect) = parse_generic_extra_vote(tokens) {
-        if let EffectAst::VoteExtra { count, optional } = effect {
-            return Ok(Some(GenericVoteProgram::Extra { count, optional }.lower()));
-        }
-        return Ok(Some(effect));
-    }
+
     Ok(None)
 }
 

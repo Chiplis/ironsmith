@@ -48,57 +48,36 @@ fn is_secret_choice_conditional_with_otherwise_program(tokens: &[OwnedLexToken])
     )) && otherwise_words.first() == Some(&"otherwise")
 }
 
+use crate::recognition::ParseOutcome;
+#[path = "activated_permission/activated_effects_readings.rs"]
+mod activated_effects_readings;
+
 pub(super) fn parse_activated_effects_lexed(
     _effect_text: &str,
     tokens: &[OwnedLexToken],
     _line_index: usize,
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    if let Some(effect) = parse_choose_color_of_matching_object_mana_effect(tokens)? {
-        return Ok(vec![effect]);
-    }
-    if activated_effect_is_for_each_color_among_add_mana_lexed(tokens) {
-        return Ok(vec![crate::activation_helpers::parse_add_mana(
-            tokens, None,
-        )?]);
-    }
-    if let Some(effects) = parse_each_player_and_their_creatures_damage_sentence(tokens) {
-        return Ok(effects);
-    }
-    if let Some(effects) = parse_hidden_look_partition_activated(tokens)? {
-        return Ok(effects);
-    }
-    if let Some(effects) = parse_named_source_leading_gain_activated(tokens)? {
-        return Ok(effects);
-    }
-    // Keep the P/T modification and evasion restriction as one activated
-    // program. The broad restriction-oriented source-boundary parser can
-    // otherwise claim only the trailing `can't be blocked` arm.
-    if let Some(effects) =
-        crate::effect_sentences::parse_source_gets_unblockable_subject_verb(tokens)?
-    {
-        return Ok(effects);
-    }
-    let words = token_word_refs(tokens);
-    if (crate::grammar::effects::gain_ability_shapes::parse_leading_gain_duration_shape(&words)
-        .is_some()
-        || crate::grammar::effects::gain_ability_shapes::parse_get_then_ability_shape(tokens)
-            .is_some())
-        && let Some(effects) = crate::effect_sentences::parse_gain_ability_sentence(tokens)?
-    {
-        // Activated bodies such as "Until end of turn, this creature gets
-        // +1/+1 ... and gains menace", or the same shape with a trailing
-        // duration, are one coordinated modifier. The generic
-        // source-boundary path can otherwise claim only the leading `gets`.
-        if contains_compound_pump_and_grant(&effects) {
-            return Ok(effects);
+    let input = activated_effects_readings::ActivatedBody { tokens };
+    // A typed program's committed error stands only when the source-boundary
+    // sentence grammar, the fallback for what no typed program reads, has no
+    // reading of the body either.
+    let typed_error = match activated_effects_readings::read(&input) {
+        crate::recognition::ParseOutcome::Match(matched) => return Ok(matched.value.value),
+        crate::recognition::ParseOutcome::NoMatch => None,
+        crate::recognition::ParseOutcome::Error(diagnostic) => Some(diagnostic),
+    };
+    match activated_effects_readings::read_source_boundary_sentences(&input) {
+        Ok(Some(effects)) => return Ok(effects),
+        Ok(None) => {}
+        Err(error) => {
+            return Err(typed_error
+                .map(|d| d.into_card_text_error())
+                .unwrap_or(error));
         }
     }
-    if !is_secret_choice_conditional_with_otherwise_program(tokens)
-        && let Ok(effects) = parse_effect_sentences_preserving_source_boundaries(tokens)
-    {
-        return Ok(effects);
+    if let Some(diagnostic) = typed_error {
+        return Err(diagnostic.into_card_text_error());
     }
-
     let sentence_chunks = split_lexed_sentences(tokens)
         .into_iter()
         .filter(|sentence| !sentence.is_empty())

@@ -19,6 +19,7 @@ import LobbyOverlay from "./LobbyOverlay";
 import AddCardBar from "./AddCardBar";
 import TableActionControls from "./TableActionControls";
 import Workspace from "./Workspace";
+import MobileLandscapeGate from "./MobileLandscapeGate";
 import LogDrawer from "@/components/overlays/LogDrawer";
 
 export default function Shell() {
@@ -529,6 +530,7 @@ export default function Shell() {
       data-borderless-preview={borderlessPreview ? "true" : "false"}
       data-mobile-overlay-shell={landscapeMobileViewport ? "true" : "false"}
     >
+      {!deckLoadingMode && !puzzleSetupMode && multiplayer?.rematch?.phase !== "sideboarding" && <MobileLandscapeGate />}
       {!dockToolbarsInTable ? topbarElement : null}
       {renderTopLevelAddCardBar ? addCardBarElement : null}
       <Workspace

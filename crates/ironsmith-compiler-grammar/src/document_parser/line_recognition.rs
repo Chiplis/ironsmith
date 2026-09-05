@@ -492,6 +492,90 @@ fn recognize_triggered_line_inner(
     }
 }
 
+/// One way a line proves itself a static ability line. Every recognizer yields
+/// the same classification, so the table is a disjunction: the line is static
+/// when any recognizer accepts it, whatever the order.
+struct StaticLineRecognizer {
+    recognize: fn(&[OwnedLexToken]) -> Result<bool, CardTextError>,
+    /// The broad static grammar's error is reported only when no other
+    /// recognizer accepts the line.
+    defers_error: bool,
+}
+
+const STATIC_LINE_RECOGNIZERS: &[StaticLineRecognizer] = &[
+    StaticLineRecognizer {
+        recognize: |lexed| {
+            Ok(
+                grammar::parse_prefix(lexed, grammar::phrase(&["level", "up"])).is_some()
+                    && parse_level_up_line_lexed(lexed)?.is_some(),
+            )
+        },
+        defers_error: false,
+    },
+    StaticLineRecognizer {
+        recognize: |lexed| Ok(is_doesnt_untap_during_your_untap_step_line_lexed(lexed)),
+        defers_error: false,
+    },
+    StaticLineRecognizer {
+        recognize: |lexed| {
+            Ok(matches!(
+            super::super::grammar::structure::classify_static_line_family_lexed(lexed),
+            Some(super::super::grammar::structure::StaticLineFamily::UntapAllDuringEachOtherPlayersUntapStep)
+        ))
+        },
+        defers_error: false,
+    },
+    StaticLineRecognizer {
+        recognize: |lexed| Ok(parse_if_this_spell_costs_less_to_cast_line_lexed(lexed)?.is_some()),
+        defers_error: false,
+    },
+    StaticLineRecognizer {
+        recognize: |lexed| Ok(parse_spell_additional_life_cost_per_target_line(lexed)?.is_some()),
+        defers_error: false,
+    },
+    StaticLineRecognizer {
+        recognize: |lexed| {
+            Ok(parse_spell_cost_increase_per_target_beyond_first_line(lexed)?.is_some())
+        },
+        defers_error: false,
+    },
+    StaticLineRecognizer {
+        recognize: |lexed| {
+            Ok(parse_spell_and_player_activated_ability_cost_modifier_line(lexed)?.is_some())
+        },
+        defers_error: false,
+    },
+    StaticLineRecognizer {
+        recognize: |lexed| Ok(parse_spells_cost_modifier_line(lexed)?.is_some()),
+        defers_error: false,
+    },
+    StaticLineRecognizer {
+        recognize: |lexed| Ok(is_activate_only_once_each_turn_line_lexed(lexed)),
+        defers_error: false,
+    },
+    StaticLineRecognizer {
+        recognize: |lexed| {
+            Ok(effect_grammar::parse_compound_buff_unblockable_tokens(lexed).is_some())
+        },
+        defers_error: false,
+    },
+    StaticLineRecognizer {
+        recognize: |lexed| Ok(parse_static_ability_ast_line_lexed(lexed)?.is_some()),
+        defers_error: true,
+    },
+    StaticLineRecognizer {
+        recognize: |lexed| {
+            Ok(!should_skip_keyword_action_static_probe(lexed)
+                && parse_ability_line_lexed(lexed).is_some())
+        },
+        defers_error: false,
+    },
+    StaticLineRecognizer {
+        recognize: |lexed| Ok(parse_split_static_item_count(lexed)?.is_some()),
+        defers_error: false,
+    },
+];
+
 pub(super) fn recognize_static_line(
     line: &PreprocessedLine,
 ) -> Result<Option<RecognizedStaticLine>, CardTextError> {
@@ -555,60 +639,13 @@ pub(super) fn recognize_static_line(
     }
 
     let mut deferred_error = None;
-
-    if grammar::parse_prefix(lexed, grammar::phrase(&["level", "up"])).is_some()
-        && parse_level_up_line_lexed(lexed)?.is_some()
-    {
-        return Ok(Some(make_static(None)));
-    }
-    if is_doesnt_untap_during_your_untap_step_line_lexed(lexed) {
-        return Ok(Some(make_static(None)));
-    }
-    if matches!(
-        super::super::grammar::structure::classify_static_line_family_lexed(lexed),
-        Some(super::super::grammar::structure::StaticLineFamily::UntapAllDuringEachOtherPlayersUntapStep)
-    ) {
-        return Ok(Some(make_static(None)));
-    }
-
-    if parse_if_this_spell_costs_less_to_cast_line_lexed(lexed)?.is_some() {
-        return Ok(Some(make_static(None)));
-    }
-    if parse_spell_additional_life_cost_per_target_line(lexed)?.is_some() {
-        return Ok(Some(make_static(None)));
-    }
-    if parse_spell_cost_increase_per_target_beyond_first_line(lexed)?.is_some() {
-        return Ok(Some(make_static(None)));
-    }
-    if parse_spell_and_player_activated_ability_cost_modifier_line(lexed)?.is_some() {
-        return Ok(Some(make_static(None)));
-    }
-    if parse_spells_cost_modifier_line(lexed)?.is_some() {
-        return Ok(Some(make_static(None)));
-    }
-
-    if is_activate_only_once_each_turn_line_lexed(lexed) {
-        return Ok(Some(make_static(None)));
-    }
-
-    if effect_grammar::parse_compound_buff_unblockable_tokens(lexed).is_some() {
-        return Ok(Some(make_static(None)));
-    }
-
-    match parse_static_ability_ast_line_lexed(lexed) {
-        Ok(Some(_)) => return Ok(Some(make_static(None))),
-        Ok(None) => {}
-        Err(err) => deferred_error = Some(err),
-    }
-
-    if !should_skip_keyword_action_static_probe(lexed)
-        && let Some(_actions) = parse_ability_line_lexed(lexed)
-    {
-        return Ok(Some(make_static(None)));
-    }
-
-    if parse_split_static_item_count(lexed)?.is_some() {
-        return Ok(Some(make_static(None)));
+    for recognizer in STATIC_LINE_RECOGNIZERS {
+        match (recognizer.recognize)(lexed) {
+            Ok(true) => return Ok(Some(make_static(None))),
+            Ok(false) => {}
+            Err(err) if recognizer.defers_error => deferred_error = Some(err),
+            Err(err) => return Err(err),
+        }
     }
 
     if let Some(err) = deferred_error {

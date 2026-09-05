@@ -123,7 +123,7 @@ pub fn parse_for_each_tagged_copy_then_copy_targets_it(
         return Ok(None);
     };
     let for_each = EffectAst::ForEachTagged {
-        tag: crate::tag::CompilerReferenceTag::It.key(),
+        tag: crate::tag::CompilerReferenceTag::It.bind(),
         effects: vec![copy_effect, retarget.clone()],
     };
 

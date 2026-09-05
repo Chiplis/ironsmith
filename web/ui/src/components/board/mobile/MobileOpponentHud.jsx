@@ -84,7 +84,7 @@ export default function MobileOpponentHud({
         type="button"
         className={cn(
           "mobile-mtga-opponent-hud-body",
-          targetable && "mobile-mtga-opponent-hud-body--targetable"
+          targetable && "mobile-mtga-opponent-hud-body--targetable player-target-box"
         )}
         data-player-target={opponent.index ?? opponent.id}
         data-player-target-name={opponent.id ?? opponent.index}

@@ -102,6 +102,9 @@ export function dropTargetCandidateFromElement(element) {
   }
 
   const player = element.closest("[data-player-target], [data-player-drop-target]");
+  // Self-targeting requires the explicit player box, never our battlefield.
+  if (player?.getAttribute?.("data-player-target") == null
+      && player?.hasAttribute?.("data-my-zone")) return null;
   const playerId = finiteNumber(
     player?.getAttribute?.("data-player-target")
       ?? player?.getAttribute?.("data-player-drop-target")

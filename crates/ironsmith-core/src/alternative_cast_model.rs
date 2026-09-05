@@ -1,7 +1,10 @@
+use crate::tag::TagKeyWalk;
+
 use crate::{CostComponent, ManaCost, PowerToughness, TotalCost, Zone};
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum TrapCondition {
     OpponentCastSpells { count: u32 },
     OpponentSearchedLibrary,
@@ -11,6 +14,7 @@ pub enum TrapCondition {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub struct AlternativeCastRequirements {
     pub exile_from_graveyard: u32,
     pub discard_from_hand: u32,
@@ -31,6 +35,7 @@ fn compose_total_cost<C: CostComponent>(
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum AlternativeCastingMethod<E, C, Cond> {
     Dash {
         cost: ManaCost,

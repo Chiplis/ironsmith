@@ -54,7 +54,7 @@ pub fn parse_become_clause(
         ] {
             effects.push(EffectAst::Conditional {
                 predicate: PredicateAst::TaggedMatches(
-                    crate::tag::CompilerReferenceTag::Triggering.key(),
+                    crate::tag::CompilerReferenceTag::Triggering.bind(),
                     ObjectFilter::default().with_colors(colors),
                 ),
                 if_true: vec![EffectAst::subject_verb_grant_abilities_to_target(
@@ -158,7 +158,7 @@ pub fn parse_become_clause(
             TargetAst::Object(inferred_filter, None, None)
         }
         become_grammar::BecomeTargetSubjectShape::Tagged => TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             span_from_tokens(subject_tokens),
         ),
         become_grammar::BecomeTargetSubjectShape::FilteredMany(filter_tokens) => {

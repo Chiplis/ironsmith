@@ -1,3 +1,5 @@
+use ironsmith_core::tag::TagKeyWalk;
+
 use crate::PowerToughness;
 use crate::ability::ActivationTiming;
 use crate::color::ColorSet;
@@ -8,6 +10,7 @@ use crate::static_abilities::LandwalkKind;
 use crate::types::{CardType, Subtype};
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum KeywordAction {
     Flying,
     Menace,
@@ -561,6 +564,7 @@ fn describe_protection_mana_value_scope(filter: &ObjectFilter) -> String {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum IfResultPredicate {
     Did,
     /// The preceding clash was won by the controller of the resolving spell

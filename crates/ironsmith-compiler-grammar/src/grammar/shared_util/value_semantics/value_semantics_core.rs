@@ -59,84 +59,100 @@ pub fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value>
         ));
     }
 
-    if crate::word_primitives::parse_choice_sequence_complete(
-        &words,
-        &[
-            &["attraction", "attractions"],
-            &["youve", "you've"],
-            &["visited"],
-            &["this"],
-            &["turn"],
-        ],
-    ) {
-        return Some(Value::AttractionsVisitedThisTurn(PlayerFilter::You));
+    // One declared alternation: the alternatives are exclusive shapes, and the
+    // first that reads the input names it.
+    let alternation = None::<Value>
+        .or_else(|| {
+            if crate::word_primitives::parse_choice_sequence_complete(
+                &words,
+                &[
+                    &["attraction", "attractions"],
+                    &["youve", "you've"],
+                    &["visited"],
+                    &["this"],
+                    &["turn"],
+                ],
+            ) {
+                return Some(Value::AttractionsVisitedThisTurn(PlayerFilter::You));
+            }
+            None
+        })
+        .or_else(|| {
+            if crate::word_primitives::parse_choice_sequence_complete(
+                &words,
+                &[
+                    &["time", "times"],
+                    &["you"],
+                    &["descended"],
+                    &["this"],
+                    &["turn"],
+                ],
+            ) {
+                return Some(Value::TurnHistoryCount(TurnHistoryCount::Descended(
+                    PlayerFilter::You,
+                )));
+            }
+            None
+        })
+        .or_else(|| {
+            // Keep the exact, unqualified creature-death wording on the dedicated
+            // value variant. Richer historical filters still use TurnHistoryCount.
+            if let Some(value) = parse_creatures_died_this_turn_count_value(&tokens) {
+                return Some(value);
+            }
+            None
+        })
+        .or_else(|| {
+            // This composite value ends with the same `spells you've cast this turn`
+            // suffix as an ordinary spell-history count. Recognize the whole phrase
+            // first so the generic suffix parser does not reinterpret
+            // `colors among permanents you control and spells` as an object filter.
+            if crate::word_primitives::parse_any_sequence_complete(
+                &words,
+                &[
+                    &[
+                        "colors",
+                        "among",
+                        "permanents",
+                        "you",
+                        "control",
+                        "and",
+                        "spells",
+                        "youve",
+                        "cast",
+                        "this",
+                        "turn",
+                    ],
+                    &[
+                        "colors",
+                        "among",
+                        "permanents",
+                        "you",
+                        "control",
+                        "and",
+                        "spells",
+                        "you've",
+                        "cast",
+                        "this",
+                        "turn",
+                    ],
+                ],
+            ) {
+                return Some(Value::TurnHistoryCount(
+                    TurnHistoryCount::ColorsAmongPermanentsAndSpellsCast(PlayerFilter::You),
+                ));
+            }
+            None
+        })
+        .or_else(|| {
+            if let Some(value) = parse_spell_cast_history_count(&tokens, &word_view, &words) {
+                return Some(value);
+            }
+            None
+        });
+    if let Some(shape) = alternation {
+        return Some(shape);
     }
-
-    if crate::word_primitives::parse_choice_sequence_complete(
-        &words,
-        &[
-            &["time", "times"],
-            &["you"],
-            &["descended"],
-            &["this"],
-            &["turn"],
-        ],
-    ) {
-        return Some(Value::TurnHistoryCount(TurnHistoryCount::Descended(
-            PlayerFilter::You,
-        )));
-    }
-
-    // Keep the exact, unqualified creature-death wording on the dedicated
-    // value variant. Richer historical filters still use TurnHistoryCount.
-    if let Some(value) = parse_creatures_died_this_turn_count_value(&tokens) {
-        return Some(value);
-    }
-
-    // This composite value ends with the same `spells you've cast this turn`
-    // suffix as an ordinary spell-history count. Recognize the whole phrase
-    // first so the generic suffix parser does not reinterpret
-    // `colors among permanents you control and spells` as an object filter.
-    if crate::word_primitives::parse_any_sequence_complete(
-        &words,
-        &[
-            &[
-                "colors",
-                "among",
-                "permanents",
-                "you",
-                "control",
-                "and",
-                "spells",
-                "youve",
-                "cast",
-                "this",
-                "turn",
-            ],
-            &[
-                "colors",
-                "among",
-                "permanents",
-                "you",
-                "control",
-                "and",
-                "spells",
-                "you've",
-                "cast",
-                "this",
-                "turn",
-            ],
-        ],
-    ) {
-        return Some(Value::TurnHistoryCount(
-            TurnHistoryCount::ColorsAmongPermanentsAndSpellsCast(PlayerFilter::You),
-        ));
-    }
-
-    if let Some(value) = parse_spell_cast_history_count(&tokens, &word_view, &words) {
-        return Some(value);
-    }
-
     for (suffix, controller, default_surface) in [
         (
             &["that", "died", "this", "turn"][..],

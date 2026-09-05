@@ -42,8 +42,8 @@ pub(super) fn test_line_info(raw_line: &str) -> LineInfo {
 }
 
 pub(super) fn hideaway_line_ast(count: i32) -> LineAst {
-    let looked_tag = crate::tag::CompilerReferenceTag::HideawayLooked.key();
-    let chosen_tag = crate::tag::CompilerReferenceTag::HideawayExiled.key();
+    let looked_tag = crate::tag::CompilerReferenceTag::HideawayLooked.bind();
+    let chosen_tag = crate::tag::CompilerReferenceTag::HideawayExiled.bind();
     let mut choose_filter = ObjectFilter::tagged(looked_tag.clone());
     choose_filter.zone = Some(Zone::Library);
 

@@ -2896,6 +2896,7 @@ function PriorityBar({
                           className="pass-priority-btn decision-main-button action-strip-advance-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
                           style={decisionButtonStyle}
                           data-local-action={localDecisionButton ? "true" : "false"}
+                          disabled={!canAct}
                           aria-disabled={peerWaitLocked || !canAct}
                           aria-label={peerWaiting ? "Waiting for peers" : passCurrentLabel}
                           onPointerDown={peerWaiting ? undefined : triggerPassActionFromPointer}
@@ -3163,6 +3164,7 @@ function PriorityBar({
                         className="pass-priority-btn decision-main-button action-strip-advance-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
                         style={decisionButtonStyle}
                         data-local-action={localDecisionButton ? "true" : "false"}
+                        disabled={!canAct}
                         aria-disabled={peerWaitLocked || !canAct}
                         aria-label={peerWaiting ? "Waiting for peers" : passCurrentLabel}
                         onPointerDown={peerWaiting ? undefined : triggerPassActionFromPointer}

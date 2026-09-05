@@ -132,7 +132,7 @@ pub(super) fn parse_additional_cost(
         return Ok(ast(parsed));
     }
     if let Some(shape) = parse_behold_and_exile_additional_cost_tokens(tokens) {
-        let tag = crate::tag::CompilerReferenceTag::BeheldCost0.key();
+        let tag = crate::tag::CompilerReferenceTag::BeheldCost0.bind();
         let effects = vec![
             EffectAst::TagAffected {
                 effect: Box::new(EffectAst::subject_verb_behold(shape.subtype, 1)),
@@ -171,6 +171,9 @@ pub(super) fn parse_additional_cost(
     Ok(ast(LineAst::AdditionalCost { effects }))
 }
 
+#[path = "keyword_payloads/alternative_cast_readings.rs"]
+mod alternative_cast_readings;
+
 pub(super) fn parse_alternative_cast(
     line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
@@ -180,149 +183,20 @@ pub(super) fn parse_alternative_cast(
     {
         return Ok(None);
     }
-    if token_slice_first_is(tokens, "aftermath") {
-        let mut ability = crate::model::CompilerStaticAbilityCore::grants(
-            crate::model::CompilerGrantSpecCore::new(
-                crate::model::CompilerGrantableCore::graveyard_cast_from_cards_mana_cost(
-                    Vec::<crate::model::CompilerCost>::new(),
-                    true,
-                ),
-                crate::target::ObjectFilter::source(),
-                crate::zone::Zone::Graveyard,
-            ),
-        );
-        ability.label = "Aftermath".to_string();
-        return Ok(ast(LineAst::StaticAbility(ability.into())));
-    }
-    if token_slice_first_is(tokens, "encore") {
-        let (cost, _) = leading_mana_cost_from_tokens(tokens.get(1..).unwrap_or_default())
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "encore keyword missing mana cost '{}'",
-                    line.info.raw_line
-                ))
-            })?;
-        return Ok(ast(LineAst::StaticAbility(
-            crate::model::CompilerStaticAbilityCore::keyword_marker(format!(
-                "Encore {}",
-                cost.to_oracle()
-            ))
-            .into(),
-        )));
-    }
-    if let Some(raw_tokens) =
-        keyword_tokens_for_shape(tokens, full_tokens, KeywordPrefixShape::Surge)
-    {
-        let (cost, _) = leading_mana_cost_from_tokens(raw_tokens.get(1..).unwrap_or_default())
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "surge keyword missing cost '{}'",
-                    line.info.raw_line
-                ))
-            })?;
-        // A spell-cost condition is evaluated against the game, not recognized
-        // structure, so it holds the bound form.
-        let condition = crate::static_abilities::ThisSpellCostCondition::ConditionExpr {
-            condition: crate::ConditionExpr::Or(
-                Box::new(crate::ConditionExpr::PlayerCastSpellsThisTurnOrMore {
-                    player: crate::cards::builders::PlayerFilter::You,
-                    count: 1,
-                }),
-                Box::new(crate::ConditionExpr::PlayerCastSpellsThisTurnOrMore {
-                    player: crate::cards::builders::PlayerFilter::Teammate,
-                    count: 1,
-                }),
-            ),
-            display: "you or a teammate has cast another spell this turn".to_string(),
-        };
-        return Ok(ast(LineAst::AlternativeCastingMethod(
-            crate::model::CompilerAlternativeCastingMethod::alternative_cost_with_condition(
-                "Surge",
-                Some(cost),
-                Vec::new(),
-                condition,
-            ),
-        )));
-    }
-    if let Some(keyword_tokens) =
-        keyword_tokens_for_shape(tokens, full_tokens, KeywordPrefixShape::Freerunning)
-    {
-        let (cost, _) = leading_mana_cost_from_tokens(keyword_tokens.get(1..).unwrap_or_default())
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "freerunning keyword missing cost '{}'",
-                    line.info.raw_line
-                ))
-            })?;
-        return Ok(ast(LineAst::AlternativeCastingMethod(
-            crate::model::CompilerAlternativeCastingMethod::alternative_cost_with_condition(
-                "Freerunning",
-                Some(cost),
-                Vec::new(),
-                crate::static_abilities::ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeOrCommanderThisTurn(
-                    crate::types::Subtype::Assassin,
-                ),
-            ),
-        )));
-    }
-    if let Some(keyword_tokens) =
-        keyword_tokens_for_shape(tokens, full_tokens, KeywordPrefixShape::Sneak)
-    {
-        let support_tokens = if full_tokens.is_empty() {
-            keyword_tokens
-        } else {
-            full_tokens
-        };
-        if !is_supported_sneak_line(support_tokens) {
-            return Err(CardTextError::ParseError(format!(
-                "sneak keyword form is not yet supported: '{}'",
-                line.info.raw_line
-            )));
+    let input = alternative_cast_readings::AlternativeCastLine {
+        tokens,
+        line,
+        full_tokens,
+        read_by_cache: Default::default(),
+    };
+    match alternative_cast_readings::read(&input) {
+        crate::recognition::ParseOutcome::Match(matched) => return Ok(Some(matched.value.value)),
+        crate::recognition::ParseOutcome::NoMatch => {}
+        crate::recognition::ParseOutcome::Error(diagnostic) => {
+            return Err(diagnostic.into_card_text_error());
         }
-        let (cost, _) = leading_mana_cost_from_tokens(keyword_tokens.get(1..).unwrap_or_default())
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "sneak keyword missing cost '{}'",
-                    line.info.raw_line
-                ))
-            })?;
-        return Ok(ast(LineAst::AlternativeCastingMethod(
-            crate::model::CompilerAlternativeCastingMethod::alternative_cost(
-                "Sneak",
-                Some(cost),
-                vec![crate::model::CompilerCost::Sneak],
-            ),
-        )));
     }
-    if parse_keyword_special_form_shape_tokens(tokens)
-        == Some(KeywordSpecialFormShape::BlitzFromGraveyard)
-    {
-        return Ok(ast(LineAst::Abilities(vec![
-            crate::cards::builders::KeywordAction::BlitzFromGraveyard,
-        ])));
-    }
-    if let Some(method) = parse_self_free_cast_alternative_cost_line_lexed(tokens) {
-        return Ok(ast(LineAst::AlternativeCastingMethod(method)));
-    }
-    if let Some(method) = parse_flash_with_additional_cost_line_lexed(tokens) {
-        return Ok(ast(LineAst::AlternativeCastingMethod(method)));
-    }
-    if let Some(method) = parse_jump_start_line_lexed(tokens)? {
-        return Ok(ast(LineAst::AlternativeCastingMethod(method)));
-    }
-    let surface = line.info.normalized.normalized.as_str();
-    if let Some(method) = parse_you_may_rather_than_spell_cost_line_lexed(tokens, surface)? {
-        return Ok(ast(LineAst::AlternativeCastingMethod(method)));
-    }
-    if let Some(method) = parse_if_conditional_alternative_cost_line_lexed(tokens, &line.tokens)? {
-        return Ok(ast(LineAst::AlternativeCastingMethod(method)));
-    }
-    if let Some(method) = parse_prowl_line_lexed(tokens)? {
-        return Ok(ast(LineAst::AlternativeCastingMethod(method)));
-    }
-    if let Some(ability) = parse_if_this_spell_costs_less_to_cast_line_lexed(tokens)? {
-        return Ok(ast(LineAst::StaticAbility(ability.into())));
-    }
+
     Ok(None)
 }
 

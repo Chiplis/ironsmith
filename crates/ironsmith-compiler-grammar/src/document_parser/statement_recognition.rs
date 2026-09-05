@@ -274,6 +274,74 @@ fn box_recognized_statement_line(
     })
 }
 
+/// The lines that are one complete typed statement as authored (villainous
+/// choices with or without a player qualifier, the fixed each-opponent
+/// sacrifice-and-return sentence), each with the text the statement keeps.
+/// Every recognizer yields the same whole-line statement, so the table is a
+/// disjunction.
+type WholeLineText = fn(&PreprocessedLine, &str) -> String;
+const WHOLE_LINE_STATEMENT_RECOGNIZERS: &[(
+    fn(&PreprocessedLine, &[&str]) -> bool,
+    WholeLineText,
+)] = &[
+    (
+        |line, _authored_words| {
+            crate::grammar::semantic_lowering::parse_villainous_choice_statement_tokens(
+                &line.info.source_tokens,
+            )
+            .is_some()
+        },
+        |line, _| line.info.raw_line.clone(),
+    ),
+    (
+        |line, _authored_words| {
+            crate::lexer::split_lexed_sentences(&line.info.source_tokens) .iter() .any(|sentence| { crate::grammar::semantic_lowering::parse_villainous_choice_player_statement_tokens( sentence, ) .is_some() })
+        },
+        |line, _| line.info.raw_line.clone(),
+    ),
+    (
+        |_line, authored_words| {
+            crate::word_primitives::parse_sequence_complete(
+                &authored_words,
+                &[
+                    "each",
+                    "opponent",
+                    "sacrifices",
+                    "a",
+                    "creature",
+                    "or",
+                    "planeswalker",
+                    "of",
+                    "their",
+                    "choice",
+                    "then",
+                    "discards",
+                    "a",
+                    "card",
+                    "you",
+                    "return",
+                    "a",
+                    "creature",
+                    "or",
+                    "planeswalker",
+                    "card",
+                    "from",
+                    "your",
+                    "graveyard",
+                    "to",
+                    "your",
+                    "hand",
+                    "then",
+                    "draw",
+                    "a",
+                    "card",
+                ],
+            )
+        },
+        |_, normalized| normalized.to_string(),
+    ),
+];
+
 fn recognize_statement_line_general(
     line: &PreprocessedLine,
 ) -> Result<Option<RecognizedStatementLine>, CardTextError> {
@@ -283,86 +351,16 @@ fn recognize_statement_line_general(
     // back to the controller; probing either sentence as a standalone line
     // loses that participant scope before semantic lowering can bind it.
     let authored_words = crate::lexer::parser_token_word_refs(&line.info.source_tokens);
-    if crate::grammar::semantic_lowering::parse_villainous_choice_statement_tokens(
-        &line.info.source_tokens,
-    )
-    .is_some()
-    {
-        // The declaration and its per-target choice are one typed statement.
-        // Generic recognized form probes can otherwise enter the final copy mode at
-        // `copy of it` and attempt to parse that suffix as a fresh target.
-        return Ok(Some(RecognizedStatementLine {
-            info: line.info.clone(),
-            text: line.info.raw_line.clone(),
-            parse_tokens: line.info.source_tokens.clone(),
-            parse_groups: vec![line.info.source_tokens.clone()],
-            parsed_effects: None,
-        }));
-    }
-    if crate::lexer::split_lexed_sentences(&line.info.source_tokens)
-        .iter()
-        .any(|sentence| {
-            crate::grammar::semantic_lowering::parse_villainous_choice_player_statement_tokens(
-                sentence,
-            )
-            .is_some()
-        })
-    {
-        // The player qualifier, optional authored `Then`, and both modes are
-        // one typed choice statement. Keep the source tokens for the semantic
-        // player-choice compositor instead of caching the generic modal parse
-        // produced by the early statement probe.
-        return Ok(Some(RecognizedStatementLine {
-            info: line.info.clone(),
-            text: line.info.raw_line.clone(),
-            parse_tokens: line.info.source_tokens.clone(),
-            parse_groups: vec![line.info.source_tokens.clone()],
-            parsed_effects: None,
-        }));
-    }
-    if crate::word_primitives::parse_sequence_complete(
-        &authored_words,
-        &[
-            "each",
-            "opponent",
-            "sacrifices",
-            "a",
-            "creature",
-            "or",
-            "planeswalker",
-            "of",
-            "their",
-            "choice",
-            "then",
-            "discards",
-            "a",
-            "card",
-            "you",
-            "return",
-            "a",
-            "creature",
-            "or",
-            "planeswalker",
-            "card",
-            "from",
-            "your",
-            "graveyard",
-            "to",
-            "your",
-            "hand",
-            "then",
-            "draw",
-            "a",
-            "card",
-        ],
-    ) {
-        return Ok(Some(RecognizedStatementLine {
-            info: line.info.clone(),
-            text: normalized.to_string(),
-            parse_tokens: line.info.source_tokens.clone(),
-            parse_groups: vec![line.info.source_tokens.clone()],
-            parsed_effects: None,
-        }));
+    for (recognizes, text) in WHOLE_LINE_STATEMENT_RECOGNIZERS {
+        if recognizes(line, &authored_words) {
+            return Ok(Some(RecognizedStatementLine {
+                info: line.info.clone(),
+                text: text(line, normalized),
+                parse_tokens: line.info.source_tokens.clone(),
+                parse_groups: vec![line.info.source_tokens.clone()],
+                parsed_effects: None,
+            }));
+        }
     }
     // The complete target declaration contains an embedded `put ... there`
     // relative clause. recognized form probing individual syntactic clauses would treat

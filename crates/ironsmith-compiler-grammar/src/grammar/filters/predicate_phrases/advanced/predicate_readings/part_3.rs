@@ -571,6 +571,8 @@ pub(super) const READINGS: &[Reading] = &[
                     .as_word()
                     .is_some_and(|_| !is_article(token.parser_text()))
             }))
+                // Readings ranked above this one that read the input read it.
+                && !input.read_by("graveyard-threshold-predicate")
         },
         read: |input| input.outcome(read_player_cards_in_graveyard_predicate_3(input)),
     },

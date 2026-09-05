@@ -204,7 +204,7 @@ pub fn parse_exile_top_then_put_from_among_tokens(
         tag: chosen_tag,
         effects: vec![EffectAst::subject_verb_put_onto_battlefield(
             chooser,
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
             tapped,
             controller,
         )],

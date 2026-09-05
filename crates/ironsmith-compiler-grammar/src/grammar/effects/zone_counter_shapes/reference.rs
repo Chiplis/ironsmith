@@ -66,7 +66,7 @@ pub fn parse_transform_target_shape(tokens: &[OwnedLexToken]) -> TransformTarget
 pub fn source_spec_for_reference(source: CounterReferenceSource) -> crate::ChooseSpec {
     match source {
         CounterReferenceSource::TaggedIt => {
-            crate::ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())
+            crate::ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.bind())
         }
         CounterReferenceSource::Source => crate::ChooseSpec::Source,
     }
@@ -96,7 +96,7 @@ pub fn player_filter_for_half_reference(player: PlayerAst) -> Option<PlayerFilte
         | PlayerAst::ItsOwner
         | PlayerAst::Enchanted => None,
         PlayerAst::TriggeringSourceController => Some(PlayerFilter::ControllerOf(
-            crate::filter::ObjectRef::tagged("triggering_source"),
+            crate::filter::ObjectRef::tagged(crate::tag::CompilerReferenceTag::TriggeringSource.bind()),
         )),
     }
 }

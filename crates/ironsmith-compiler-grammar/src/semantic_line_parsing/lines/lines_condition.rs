@@ -14,7 +14,7 @@ pub fn parse_gift_keyword_line(line: &RewriteKeywordLine) -> Result<LineAst, Car
             EffectAst::subject_verb_choose_player(
                 PlayerAst::You,
                 PlayerFilter::Opponent,
-                crate::tag::CompilerReferenceTag::GiftedPlayer.key(),
+                crate::tag::CompilerReferenceTag::GiftedPlayer.bind(),
                 false,
                 0,
             ),

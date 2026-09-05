@@ -378,7 +378,18 @@ export default function Topbar({
               ) : priorityPlayer ? (
                 <>
                   <span className="topbar-phase-status-dot" aria-hidden="true">•</span>
-                  <span>{t("game.priorityPlayer", { player: playerDisplayName(players, priorityPlayer) })}</span>
+                  <span>
+                    {t("game.priorityPlayer").split("{player}").map((part, index) => (
+                      <span key={index}>
+                        {index > 0 ? (
+                          <span style={{ color: getPlayerAccent(players, priorityPlayer.id, state?.perspective, playerAccentOverrides)?.hex }}>
+                            {playerDisplayName(players, priorityPlayer)}
+                          </span>
+                        ) : null}
+                        {part}
+                      </span>
+                    ))}
+                  </span>
                 </>
               ) : null}
               {players.length > 0 ? (

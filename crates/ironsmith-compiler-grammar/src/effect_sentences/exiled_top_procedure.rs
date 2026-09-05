@@ -91,7 +91,7 @@ fn cast_collection(
             EffectAst::ForEachTagged {
                 tag: chosen_tag.clone(),
                 effects: vec![EffectAst::subject_verb_cast_tagged(
-                    crate::tag::CompilerReferenceTag::It.key(),
+                    crate::tag::CompilerReferenceTag::It.bind(),
                     PlayerAst::You,
                     false,
                     false,

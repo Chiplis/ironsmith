@@ -493,7 +493,7 @@ pub(super) fn bind_cast_tag_to_prior_exiled_card(effect: &mut EffectAst) {
     }) = effect
         && tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     {
-        *tag = crate::tag::CompilerReferenceTag::PriorExiledCard.key();
+        *tag = crate::tag::CompilerReferenceTag::PriorExiledCard.bind();
         return;
     }
     for_each_nested_effects_mut(effect, true, |nested| {
@@ -526,13 +526,13 @@ pub(super) fn bind_prior_exiled_card_to_source_link(effect: &mut EffectAst) {
         // explicit "a card exiled with this artifact" wording.
         *effect = EffectAst::ChooseObjectsAcrossZones {
             filter: ObjectFilter::default().in_zone(Zone::Exile).match_tagged(
-                crate::tag::CompilerReferenceTag::SourceExiled.key(),
+                crate::tag::CompilerReferenceTag::SourceExiled.bind(),
                 crate::target::TaggedOpbjectRelation::IsTaggedObject,
             ),
             count: crate::ChoiceCount::exactly(1),
             count_value: None,
             player: PlayerAst::You,
-            tag: crate::tag::CompilerReferenceTag::It.key(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
             zones: vec![Zone::Exile],
             search_mode: None,
         };

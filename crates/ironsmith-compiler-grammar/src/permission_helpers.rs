@@ -366,7 +366,7 @@ fn parse_filtered_spells_from_among_tagged_tokens(
     mark_generic_spell_filter_nonland(&mut filter, fact.subject_tokens);
     Ok(Some((
         TaggedPermissionTarget {
-            tag: crate::tag::CompilerReferenceTag::It.key(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
             as_copy: false,
             max_plays: None,
             surface: tagged_permission_object_surface(fact.surface),
@@ -395,7 +395,7 @@ fn parse_spell_from_among_source_exiled_tokens(
     };
     Some((
         TaggedPermissionTarget {
-            tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
+            tag: crate::tag::CompilerReferenceTag::SourceExiled.bind(),
             as_copy: false,
             max_plays: None,
             surface: Some(
@@ -563,13 +563,13 @@ fn parse_tagged_cast_or_play_target_tokens(
     let fact = permission_tagged_facts::parse_tagged_permission_target_tokens(tokens)?;
     let tag = match fact.reference {
         permission_tagged_facts::TaggedPermissionReference::LastTagged => {
-            crate::tag::CompilerReferenceTag::It.key()
+            crate::tag::CompilerReferenceTag::It.bind()
         }
         permission_tagged_facts::TaggedPermissionReference::SourceExiled => {
-            crate::tag::CompilerReferenceTag::SourceExiled.key()
+            crate::tag::CompilerReferenceTag::SourceExiled.bind()
         }
         permission_tagged_facts::TaggedPermissionReference::LastRevealed => {
-            crate::tag::CompilerReferenceTag::LastRevealed.key()
+            crate::tag::CompilerReferenceTag::LastRevealed.bind()
         }
     };
     Some((
@@ -594,13 +594,13 @@ fn parse_until_source_exiles_another_permission(tokens: &[OwnedLexToken]) -> Opt
     };
     let tag = match fact.reference {
         permission_tagged_facts::TaggedPermissionReference::LastTagged => {
-            crate::tag::CompilerReferenceTag::It.key()
+            crate::tag::CompilerReferenceTag::It.bind()
         }
         permission_tagged_facts::TaggedPermissionReference::SourceExiled => {
-            crate::tag::CompilerReferenceTag::SourceExiled.key()
+            crate::tag::CompilerReferenceTag::SourceExiled.bind()
         }
         permission_tagged_facts::TaggedPermissionReference::LastRevealed => {
-            crate::tag::CompilerReferenceTag::LastRevealed.key()
+            crate::tag::CompilerReferenceTag::LastRevealed.bind()
         }
     };
     let object_surface = tagged_permission_object_surface(fact.target_surface)?;
@@ -676,7 +676,7 @@ fn parse_revealed_top_library_permission_clause(
             ..
         }) if matches!(player, PlayerAst::You | PlayerAst::Implicit) => {
             if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
-                tag = crate::tag::CompilerReferenceTag::LastRevealed.key();
+                tag = crate::tag::CompilerReferenceTag::LastRevealed.bind();
             }
             EffectAst::subject_verb_grant_play_tagged_until_end_of_turn_while_on_top_of_library(
                 tag,
@@ -705,7 +705,7 @@ fn parse_revealed_top_library_permission_clause(
                 ))],
                 crate::effect::Until::EndOfTurn,
                 PredicateAst::TaggedObjectIsTopOfLibrary {
-                    tag: crate::tag::CompilerReferenceTag::LastRevealed.key(),
+                    tag: crate::tag::CompilerReferenceTag::LastRevealed.bind(),
                     player: crate::cards::builders::PlayerAst::You,
                 },
             ),
@@ -969,7 +969,7 @@ fn parse_once_each_turn_top_library_cast_shares_source_exiled_type_permission(
 
     let mut filter = ObjectFilter::nonland();
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
+        tag: crate::tag::CompilerReferenceTag::SourceExiled.bind(),
         relation: TaggedOpbjectRelation::SharesCardType,
     });
 
@@ -1036,7 +1036,7 @@ pub fn parse_permission_clause_spec_lexed(
             filter.owner = Some(PlayerFilter::You);
         }
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
+            tag: crate::tag::CompilerReferenceTag::SourceExiled.bind(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
         let spec = crate::model::CompilerGrantSpecCore::new(
@@ -1678,7 +1678,7 @@ fn parse_any_number_free_cast_from_hand_clause(
         filter,
         effects: vec![EffectAst::May {
             effects: vec![EffectAst::subject_verb_cast_tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 lead.player,
                 false,
                 false,
@@ -1861,7 +1861,7 @@ fn parse_cast_with_tagged_mana_value_limit_clause_impl(
         let mut filter = ObjectFilter::nonland()
             .owned_by(crate::target::PlayerFilter::You)
             .match_tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 crate::filter::TaggedOpbjectRelation::ManaValueLteTagged,
             );
         filter.union_surface = filter.union_surface.with_equal_or_lesser_mana_value(true);
@@ -1965,7 +1965,7 @@ fn parse_cast_with_tagged_mana_value_limit_clause_impl(
         filter
             .tagged_constraints
             .push(crate::filter::TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::It.key(),
+                tag: crate::tag::CompilerReferenceTag::It.bind(),
                 relation: crate::filter::TaggedOpbjectRelation::ManaValueLteTagged,
             });
     } else if let (ValueComparisonOperator::Equal, Value::CountersOnSource(counter_type)) =
@@ -1989,50 +1989,22 @@ fn parse_cast_with_tagged_mana_value_limit_clause_impl(
     ))
 }
 
+#[path = "permission_helpers/tagged_permission_readings.rs"]
+mod tagged_permission_readings;
+
 pub fn parse_cast_or_play_tagged_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let trimmed_tokens = trim_commas(tokens);
     let mut trimmed = strip_leading_token_words_any(&trimmed_tokens, &["then", "and"]).to_vec();
-
-    if let Some(effect) = parse_until_source_exiles_another_permission(&trimmed) {
-        return Ok(Some(effect));
+    let input = tagged_permission_readings::TaggedPermission { tokens: &trimmed };
+    match tagged_permission_readings::read(&input) {
+        crate::recognition::ParseOutcome::Match(matched) => return Ok(Some(matched.value.value)),
+        crate::recognition::ParseOutcome::NoMatch => {}
+        crate::recognition::ParseOutcome::Error(diagnostic) => {
+            return Err(diagnostic.into_card_text_error());
+        }
     }
-
-    if let Some(shape) = super::grammar::effects::clause_dispatch_shapes::parse_cast_target_from_your_graveyard_this_turn_shape(&trimmed)
-    {
-        let target = parse_target_phrase(shape.target_tokens)?;
-        return Ok(Some(EffectAst::Sequence {
-            effects: vec![
-                EffectAst::subject_verb_target_only(target),
-                EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-                    crate::tag::CompilerReferenceTag::It.key(),
-                    PlayerAst::You,
-                    false,
-                    false,
-                    false,
-                ),
-            ],
-        }));
-    }
-
-    if let Some(effect) = parse_revealed_top_library_permission_clause(&trimmed)? {
-        return Ok(Some(effect));
-    }
-
-    if let Some(permission_tokens) = strip_for_as_long_as_look_at_tagged_prefix_tokens(&trimmed)
-        && let Some(permission) = parse_cast_or_play_tagged_clause(&permission_tokens)?
-    {
-        let mut look_filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
-        look_filter.zone = Some(Zone::Exile);
-        return Ok(Some(EffectAst::Sequence {
-            effects: vec![
-                EffectAst::subject_verb_look_at_objects(PlayerAst::You, look_filter),
-                permission,
-            ],
-        }));
-    }
-
     let (mana_spend_mode, mana_reference) = if let Some((body_len, mode, reference)) =
         strip_allow_any_color_for_cast_suffix_tokens(&trimmed).map(|parsed| {
             (
@@ -2349,7 +2321,7 @@ mod source_exile_duration_tests {
         assert_eq!(filter.tagged_constraints.len(), 1, "{filter:#?}");
         assert!(filter.union_surface.equal_or_lesser_mana_value());
         let constraint = &filter.tagged_constraints[0];
-        assert_eq!(constraint.tag, crate::tag::CompilerReferenceTag::It.key());
+        assert_eq!(constraint.tag, crate::tag::CompilerReferenceTag::It.bind());
         assert_eq!(
             constraint.relation,
             crate::filter::TaggedOpbjectRelation::ManaValueLteTagged

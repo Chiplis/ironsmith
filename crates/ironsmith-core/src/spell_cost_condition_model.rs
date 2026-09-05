@@ -1,7 +1,10 @@
+use crate::tag::TagKeyWalk;
+
 use crate::{CardType, Condition, ObjectFilter, PlayerFilter, Subtype};
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum ThisSpellCostCondition {
     Always,
     YourTurn,

@@ -1,4 +1,5 @@
 pub use ironsmith_core::TagKey;
+use ironsmith_compiler_ast::symbols::{Cardinality, ObjectDomain, ReferenceRole};
 
 const SENTENCE_HELPER_ROOT: &str = "__sentence_helper_";
 
@@ -50,6 +51,24 @@ pub enum CompilerCostObjectTag {
     Blight,
 }
 
+/// Mints a key outside the `CompilerReferenceTag` vocabulary and declares it in
+/// the active reference scope. Prefer a vocabulary tag's `bind()`.
+pub fn declared_key(key: impl Into<TagKey>) -> TagKey {
+    declared(key.into())
+}
+
+/// A key the grammar mints for an object it will refer back to: declared in
+/// the active reference scope (see `ironsmith_compiler_ast::reference_ledger`).
+fn declared(key: TagKey) -> TagKey {
+    ironsmith_compiler_ast::reference_ledger::note_minted(
+        key.clone(),
+        ReferenceRole::Affected,
+        ObjectDomain::Object,
+        Cardinality::Any,
+    );
+    key
+}
+
 impl CompilerCostObjectTag {
     const fn stem(self) -> &'static str {
         match self {
@@ -64,7 +83,7 @@ impl CompilerCostObjectTag {
     }
 
     pub fn key(self, ordinal: usize) -> TagKey {
-        TagKey::new(format!("{}_{ordinal}", self.stem()))
+        declared(TagKey::new(format!("{}_{ordinal}", self.stem())))
     }
 
     pub fn matches(self, tag: &TagKey) -> bool {
@@ -98,7 +117,7 @@ impl CompilerDerivedTag {
     }
 
     pub fn key(self, source: &TagKey) -> TagKey {
-        TagKey::new(format!("{}{}", source.as_str(), self.serialized_suffix()))
+        declared(TagKey::new(format!("{}{}", source.as_str(), self.serialized_suffix())))
     }
 }
 
@@ -127,15 +146,15 @@ impl CompilerIndexedTag {
     }
 
     pub fn key(self, ordinal: impl std::fmt::Display) -> TagKey {
-        TagKey::new(format!("{}_{ordinal}", self.stem()))
+        declared(TagKey::new(format!("{}_{ordinal}", self.stem())))
     }
 
     pub fn key_in_scope(self, scope: impl std::fmt::Display) -> TagKey {
-        match self {
+        declared(match self {
             Self::DrawReplacementAll => TagKey::new(format!("draw_replacement_{scope}_all")),
             Self::DrawReplacementMatch => TagKey::new(format!("draw_replacement_{scope}_match")),
             _ => self.key(scope),
-        }
+        })
     }
 }
 
@@ -156,11 +175,13 @@ pub enum CompilerProvenanceTag {
 
 impl CompilerProvenanceTag {
     pub fn key(self) -> TagKey {
+        declared({
         match self {
             Self::ParticipantChoice { line, start } => {
                 TagKey::new(format!("participant_choice_l{line}_s{start}"))
             }
         }
+        })
     }
 }
 
@@ -440,5 +461,91 @@ impl CompilerReferenceTag {
 
     pub fn matches(self, tag: &TagKey) -> bool {
         tag.as_str() == self.as_str()
+    }
+
+    /// The symbol role and domain this reference tag stands for.
+    pub fn symbol_role(self) -> (ReferenceRole, ObjectDomain) {
+        use ObjectDomain as D;
+        use ReferenceRole as R;
+        match self {
+            Self::Triggering
+            | Self::TriggeringSource
+            | Self::TriggeringPermanentSpell
+            | Self::ModularTriggeringObject => (R::Triggering, D::Object),
+            Self::Targeted0 | Self::Targeted1 | Self::AbilityControllerTargetChoice => {
+                (R::Target, D::Object)
+            }
+            Self::Chosen
+            | Self::ChosenObjects
+            | Self::DivvyChosen
+            | Self::DivvyPile
+            | Self::MultiZoneSearchChosen
+            | Self::ChosenHandSpellToCast
+            | Self::ChosenCastFromGraveyard
+            | Self::ChosenCastFromAmong
+            | Self::ChosenCounteredExileSpell
+            | Self::EachGraveyardChosen
+            | Self::DelayedOwnedExiledChoice
+            | Self::PhaseOutSelection
+            | Self::OutsideGameOrExileSelected
+            | Self::BeheldChosenType => (R::Chosen, D::Object),
+            Self::ChosenName | Self::WhereXCommanderManaValue => (R::Chosen, D::Value),
+            Self::ChosenForEachPlayer
+            | Self::ChosenDiscardingOpponent
+            | Self::DivvyOpponent
+            | Self::DemonstrateOpponent
+            | Self::GiftedPlayer
+            | Self::InitiativeHolder
+            | Self::DelegatedLibraryChooser
+            | Self::VotedWithYou
+            | Self::VotedAgainstYou
+            | Self::ExchangePlayerOne
+            | Self::ExchangePlayerTwo => (R::Chosen, D::Player),
+            Self::Sacrificed0 | Self::ThisWaySacrificed | Self::SacrificeCost0 | Self::JointDiscardOrSacrifice => {
+                (R::Sacrificed, D::Object)
+            }
+            Self::DiscardedThisWay | Self::DiscardedCost => (R::Discarded, D::Card),
+            Self::RevealedThisWay
+            | Self::LastRevealed
+            | Self::PublicRevealed
+            | Self::RevealedLibrary
+            | Self::OathRevealed
+            | Self::RevealUntilLandRevealed
+            | Self::RevealUntilLandMatched
+            | Self::EachPlayerRevealedThisWay
+            | Self::EachPlayerConsultRevealed
+            | Self::EachPlayerConsultMatched
+            | Self::ControllerConsultRevealed
+            | Self::ControllerConsultMatched
+            | Self::DrawnRevealedCard
+            | Self::HideawayLooked => (R::Revealed, D::Card),
+            Self::Searched | Self::SearchedOutsideGame | Self::SearchedMultiZone | Self::SearchLibrarySlotsProgress => {
+                (R::Searched, D::Card)
+            }
+            Self::PriorExiledCard
+            | Self::SourceExiled
+            | Self::HideawayExiled
+            | Self::JunkExiledCard
+            | Self::IterativeLibraryExiled
+            | Self::CostExiledTop
+            | Self::ManifestDreadGraveyard => (R::Exiled, D::Card),
+            Self::LivingWeaponCreated | Self::ForMirrodinCreated => (R::Created, D::Object),
+            Self::CopiedStackObject => (R::Copied, D::Spell),
+            Self::PreviousIteratedObjects | Self::IterativeLibraryCurrent => (R::Iteration, D::Object),
+            Self::ManaPaidObject | Self::TapCost0 | Self::ConvokedThisSpell | Self::AdditionalCostObject | Self::BeheldCost0 => {
+                (R::CostPaid, D::Object)
+            }
+            Self::SourceObject => (R::Source, D::Object),
+            _ => (R::Affected, D::Object),
+        }
+    }
+
+    /// Mint this tag's key and declare the symbol it stands for in the
+    /// enclosing reference scope (see `ironsmith_compiler_ast::reference_ledger`).
+    pub fn bind(self) -> TagKey {
+        let key = self.key();
+        let (role, domain) = self.symbol_role();
+        ironsmith_compiler_ast::reference_ledger::note_minted(key.clone(), role, domain, Cardinality::Any);
+        key
     }
 }

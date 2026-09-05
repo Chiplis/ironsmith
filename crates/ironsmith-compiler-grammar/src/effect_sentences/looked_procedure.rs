@@ -99,7 +99,7 @@ fn remainder_owner(owner: PlayerAst) -> PlayerAst {
 }
 
 fn it() -> TargetAst {
-    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None)
+    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None)
 }
 
 /// Whether the sentence after a view continues the procedure. A view claims

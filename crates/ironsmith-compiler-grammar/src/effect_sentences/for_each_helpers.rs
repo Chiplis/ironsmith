@@ -438,7 +438,7 @@ fn tagged_predicate(filter_tokens: Option<&[OwnedLexToken]>) -> Option<Predicate
         crate::grammar::primitives::probe_shape(parse_object_filter(filter_tokens?, false))?;
     Some(PredicateAst::PlayerTaggedObjectMatches {
         player: PlayerAst::That,
-        tag: crate::tag::CompilerReferenceTag::It.key(),
+        tag: crate::tag::CompilerReferenceTag::It.bind(),
         filter,
         mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
     })

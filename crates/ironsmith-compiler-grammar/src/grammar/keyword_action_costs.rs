@@ -289,29 +289,44 @@ pub fn parse_keyword_dynamic_payment_tokens(
 }
 
 pub fn parse_keyword_dynamic_mana_tail_tokens(tokens: &[OwnedLexToken]) -> KeywordDynamicManaTail {
-    if let Some(value) = parse_keyword_dynamic_life_tail_tokens(tokens) {
-        return KeywordDynamicManaTail::Life { value: Some(value) };
+    // One declared alternation: the alternatives are exclusive shapes, and the
+    // first that reads the input names it.
+    let alternation = None::<KeywordDynamicManaTail>
+        .or_else(|| {
+            if let Some(value) = parse_keyword_dynamic_life_tail_tokens(tokens) {
+                return Some(KeywordDynamicManaTail::Life { value: Some(value) });
+            }
+            None
+        })
+        .or_else(|| {
+            if primitives::parse_prefix(tokens, primitives::kw("and")).is_some() {
+                return Some(KeywordDynamicManaTail::Life { value: None });
+            }
+            None
+        })
+        .or_else(|| {
+            if primitives::parse_prefix(tokens, parse_where_x_prefix_lexed).is_some() {
+                let (same_name, graveyard) = primitives::parse_all(
+                    tokens,
+                    parse_where_x_reference_facts_lexed,
+                    "keyword-where-x-reference",
+                )
+                .unwrap_or((false, false));
+                return Some(KeywordDynamicManaTail::WhereX {
+                    same_name_in_graveyard: same_name && graveyard,
+                });
+            }
+            None
+        })
+        .or_else(|| {
+            if primitives::parse_prefix(tokens, parse_for_each_prefix_lexed).is_some() {
+                return Some(KeywordDynamicManaTail::ForEach);
+            }
+            None
+        });
+    if let Some(shape) = alternation {
+        return shape;
     }
-    if primitives::parse_prefix(tokens, primitives::kw("and")).is_some() {
-        return KeywordDynamicManaTail::Life { value: None };
-    }
-
-    if primitives::parse_prefix(tokens, parse_where_x_prefix_lexed).is_some() {
-        let (same_name, graveyard) = primitives::parse_all(
-            tokens,
-            parse_where_x_reference_facts_lexed,
-            "keyword-where-x-reference",
-        )
-        .unwrap_or((false, false));
-        return KeywordDynamicManaTail::WhereX {
-            same_name_in_graveyard: same_name && graveyard,
-        };
-    }
-
-    if primitives::parse_prefix(tokens, parse_for_each_prefix_lexed).is_some() {
-        return KeywordDynamicManaTail::ForEach;
-    }
-
     KeywordDynamicManaTail::Modifier
 }
 

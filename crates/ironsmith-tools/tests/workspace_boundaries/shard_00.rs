@@ -2102,10 +2102,10 @@ pub(super) fn keyword_static_cost_target_specs_use_clause_shapes() {
     let root = workspace_root();
     let relative = "crates/ironsmith-compiler-grammar/src/keyword_static/mod.rs";
     let content = read_repo_file(&root, relative);
-    let parser = function_source(
-        &content,
-        "pub(crate) fn parse_this_spell_cost_condition",
-        "fn parse_conjoined_this_spell_cost_condition",
+    // The condition's readings live in the registry module beside the parser.
+    let parser = read_repo_file(
+        &root,
+        "crates/ironsmith-compiler-grammar/src/keyword_static/spell_cost_condition_readings.rs",
     );
 
     for required in [
@@ -2142,10 +2142,10 @@ pub(super) fn keyword_static_this_spell_cost_condition_quantity_tails_use_clause
     let root = workspace_root();
     let relative = "crates/ironsmith-compiler-grammar/src/keyword_static/mod.rs";
     let content = read_repo_file(&root, relative);
-    let parser = function_source(
-        &content,
-        "pub(crate) fn parse_this_spell_cost_condition",
-        "fn parse_conjoined_this_spell_cost_condition",
+    // The condition's readings live in the registry module beside the parser.
+    let parser = read_repo_file(
+        &root,
+        "crates/ironsmith-compiler-grammar/src/keyword_static/spell_cost_condition_readings.rs",
     );
 
     for required in [

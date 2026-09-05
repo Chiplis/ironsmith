@@ -7,7 +7,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
 ) -> ReferenceTagStageResult {
     if all_words.first().is_some_and(|word| *word == EQUIPPED_WORD) {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::Equipped.key(),
+            tag: crate::tag::CompilerReferenceTag::Equipped.bind(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
         all_words.remove(0);
@@ -16,7 +16,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         .is_some_and(|word| *word == ENCHANTED_WORD)
     {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::Enchanted.key(),
+            tag: crate::tag::CompilerReferenceTag::Enchanted.bind(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
         all_words.remove(0);
@@ -56,7 +56,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
             };
             all_words.truncate(trim_start);
             filter.attached_to_player = Some(PlayerFilter::TaggedPlayer(
-                crate::tag::CompilerReferenceTag::Enchanted.key(),
+                crate::tag::CompilerReferenceTag::Enchanted.bind(),
             ));
             return ReferenceTagStageResult {
                 source_linked_exile_reference: false,
@@ -110,7 +110,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
             }
             all_words.truncate(trim_start);
             filter.tagged_constraints.push(TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::It.as_str().into(),
+                tag: crate::tag::CompilerReferenceTag::It.bind(),
                 relation,
             });
         }
@@ -135,7 +135,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
     ] {
         if let Some(idx) = crate::word_primitives::parse_sequence_start(all_words, &phrase) {
             filter.tagged_constraints.push(TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::ThisWaySacrificed.key(),
+                tag: crate::tag::CompilerReferenceTag::ThisWaySacrificed.bind(),
                 relation: TaggedOpbjectRelation::IsNotTaggedObject,
             });
             all_words.drain(idx..idx + 6);
@@ -191,7 +191,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         if !source_exiled_is_same_name_antecedent {
             filter.zone = Some(Zone::Exile);
             filter.tagged_constraints.push(TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
+                tag: crate::tag::CompilerReferenceTag::SourceExiled.bind(),
                 relation: TaggedOpbjectRelation::IsTaggedObject,
             });
         }
@@ -281,7 +281,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         .is_some_and(|word| word_is_any(word, IT_OR_THEM_WORDS))
     {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.as_str().into(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
         if all_words.len() == 1 {
@@ -295,7 +295,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
 
     if words_start_with_any_phrase(all_words, REVEALED_CARD_PREFIXES).is_some() {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.as_str().into(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
         all_words.drain(..2);
@@ -347,9 +347,9 @@ pub(in super::super) fn apply_reference_and_tag_stage(
 
     if has_share_card_type {
         let tag = if references_additional_cost_object {
-            crate::tag::CompilerReferenceTag::AdditionalCostObject.key()
+            crate::tag::CompilerReferenceTag::AdditionalCostObject.bind()
         } else {
-            crate::tag::CompilerReferenceTag::It.as_str().into()
+            crate::tag::CompilerReferenceTag::It.bind()
         };
         let constraint = TaggedObjectConstraint {
             tag,
@@ -366,9 +366,9 @@ pub(in super::super) fn apply_reference_and_tag_stage(
     if has_share_color {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: if references_additional_cost_object {
-                crate::tag::CompilerReferenceTag::AdditionalCostObject.key()
+                crate::tag::CompilerReferenceTag::AdditionalCostObject.bind()
             } else {
-                crate::tag::CompilerReferenceTag::It.as_str().into()
+                crate::tag::CompilerReferenceTag::It.bind()
             },
             relation: TaggedOpbjectRelation::SharesColorWithTagged,
         });
@@ -376,9 +376,9 @@ pub(in super::super) fn apply_reference_and_tag_stage(
     if has_share_creature_type {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: if references_additional_cost_object {
-                crate::tag::CompilerReferenceTag::AdditionalCostObject.key()
+                crate::tag::CompilerReferenceTag::AdditionalCostObject.bind()
             } else {
-                crate::tag::CompilerReferenceTag::It.as_str().into()
+                crate::tag::CompilerReferenceTag::It.bind()
             },
             relation: if references_each_tapped_cost_object {
                 TaggedOpbjectRelation::SharesSubtypeWithEachTagged
@@ -400,12 +400,12 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         && (references_additional_cost_object || references_sacrificed_cost_object)
     {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::AdditionalCostObject.key(),
+            tag: crate::tag::CompilerReferenceTag::AdditionalCostObject.bind(),
             relation: TaggedOpbjectRelation::SameManaValueAsTagged,
         });
     } else if has_same_mana_value && references_it_for_mana_value {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.as_str().into(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
             relation: TaggedOpbjectRelation::SameManaValueAsTagged,
         });
     }
@@ -413,9 +413,9 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         && (references_it_for_mana_value || has_equal_or_lesser_mana_value)
     {
         let tag = if has_lte_mana_value_than_that_spell {
-            crate::tag::CompilerReferenceTag::Triggering.key()
+            crate::tag::CompilerReferenceTag::Triggering.bind()
         } else {
-            crate::tag::CompilerReferenceTag::It.as_str().into()
+            crate::tag::CompilerReferenceTag::It.bind()
         };
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag,
@@ -424,7 +424,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
     }
     if has_lt_mana_value_as_tagged {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.as_str().into(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
             relation: TaggedOpbjectRelation::ManaValueLtTagged,
         });
     }
@@ -432,11 +432,11 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         filter.set_same_name_antecedent_surface(same_name_antecedent_surface(all_words));
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: if source_exiled_is_same_name_antecedent {
-                crate::tag::CompilerReferenceTag::SourceExiled.key()
+                crate::tag::CompilerReferenceTag::SourceExiled.bind()
             } else if same_name_references_source_object {
-                crate::tag::CompilerReferenceTag::SourceObject.key()
+                crate::tag::CompilerReferenceTag::SourceObject.bind()
             } else {
-                crate::tag::CompilerReferenceTag::It.as_str().into()
+                crate::tag::CompilerReferenceTag::It.bind()
             },
             relation: TaggedOpbjectRelation::SameNameAsTagged,
         });
@@ -444,25 +444,25 @@ pub(in super::super) fn apply_reference_and_tag_stage(
 
     if find_any_phrase_start(all_words, CONVOKED_THIS_SPELL_TAG_PHRASES).is_some() {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::ConvokedThisSpell.key(),
+            tag: crate::tag::CompilerReferenceTag::ConvokedThisSpell.bind(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
     }
     if find_phrase_start(all_words, CREWED_IT_THIS_TURN_TAG_PHRASE).is_some() {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::CrewedItThisTurn.key(),
+            tag: crate::tag::CompilerReferenceTag::CrewedItThisTurn.bind(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
     }
     if find_phrase_start(all_words, SADDLED_IT_THIS_TURN_TAG_PHRASE).is_some() {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::SaddledItThisTurn.key(),
+            tag: crate::tag::CompilerReferenceTag::SaddledItThisTurn.bind(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
     }
     if find_any_phrase_start(all_words, AMASSED_ARMY_TAG_PHRASES).is_some() {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.as_str().into(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
     }
@@ -478,7 +478,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         ],
     ) {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.as_str().into(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
         all_words.truncate(became_creature_idx);
@@ -526,7 +526,7 @@ pub(in super::super) fn apply_reference_and_tag_stage(
             TaggedOpbjectRelation::IsTaggedObject
         };
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.as_str().into(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
             relation,
         });
     }

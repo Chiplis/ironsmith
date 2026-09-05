@@ -172,7 +172,7 @@ pub(super) fn bind_source_exiled_effect(effect: EffectAst, bind: bool) -> Effect
     if bind {
         EffectAst::TagAffected {
             effect: Box::new(effect),
-            tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
+            tag: crate::tag::CompilerReferenceTag::SourceExiled.bind(),
         }
     } else {
         effect
@@ -191,12 +191,12 @@ pub fn parse_may_have_any_number_tagged_phase_out_lexed(
         return None;
     }
 
-    let chosen_tag = crate::tag::CompilerReferenceTag::PhaseOutSelection.key();
+    let chosen_tag = crate::tag::CompilerReferenceTag::PhaseOutSelection.bind();
     let mut available = ObjectFilter::default().in_zone(Zone::Battlefield);
     available
         .tagged_constraints
         .push(crate::filter::TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.key(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
     let mut phase_out_filter = ObjectFilter::default().in_zone(Zone::Battlefield);

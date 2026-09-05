@@ -82,6 +82,7 @@ function SourceConstraintButtons({ sourceId, required, excluded, preserved, onCh
         disabled={disabled}
         className={cn("mana-plan-constraint", required && "is-required")}
         onClick={() => onChange(sourceId, "required")}
+        aria-pressed={required}
         title="Require this source"
       >
         <Check size={13} />
@@ -91,6 +92,7 @@ function SourceConstraintButtons({ sourceId, required, excluded, preserved, onCh
         disabled={disabled}
         className={cn("mana-plan-constraint", preserved && "is-preserved")}
         onClick={() => onChange(sourceId, "preserved")}
+        aria-pressed={preserved}
         title="Prefer to preserve this source"
       >
         <Shield size={13} />
@@ -100,6 +102,7 @@ function SourceConstraintButtons({ sourceId, required, excluded, preserved, onCh
         disabled={disabled}
         className={cn("mana-plan-constraint", excluded && "is-excluded")}
         onClick={() => onChange(sourceId, "excluded")}
+        aria-pressed={excluded}
         title="Exclude this source"
       >
         <X size={13} />
@@ -524,6 +527,12 @@ export default function ManaPaymentDecision({
         </label>
       ) : null}
 
+    </div>
+  );
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <ScrollArea className="min-h-0 flex-1">{content}</ScrollArea>
       <div className="mana-plan-actions">
         <Button type="button" variant="ghost" size="sm" disabled={!canAct} onClick={cancel}>
           Cancel
@@ -552,6 +561,4 @@ export default function ManaPaymentDecision({
       </div>
     </div>
   );
-
-  return <ScrollArea className="h-full min-h-0">{content}</ScrollArea>;
 }

@@ -1,3 +1,5 @@
+use ironsmith_core::tag::TagKeyWalk;
+
 use crate::ability::ActivationTiming;
 use crate::model::provenance::{ProvenanceStore, SemanticProvenance, SourceUnitId};
 use crate::model::symbols::SymbolTable;
@@ -6,15 +8,20 @@ use crate::zone::Zone;
 /// Canonical compiler document. Runtime builders and materialized abilities
 /// are deliberately absent: lowering consumes this tree and produces them.
 #[derive(Debug, Clone)]
+#[derive(TagKeyWalk)]
 pub struct CompilerDocument<Item> {
+    #[tag_walk(skip)]
     pub source: SourceUnitId,
     pub items: Vec<Item>,
+    #[tag_walk(skip)]
     pub provenance: ProvenanceStore,
+    #[tag_walk(skip)]
     pub symbols: SymbolTable,
     pub allow_unsupported: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum CompilerDocumentItem<Line, Ability, Modal, Level> {
     Line(Line),
     Ability(Ability),
@@ -26,13 +33,16 @@ pub enum CompilerDocumentItem<Line, Ability, Modal, Level> {
 /// with the canonical cost, trigger, static, and effect nodes without changing
 /// document ownership again.
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct CompilerAbility<Static, Triggered, Activated> {
     pub kind: CompilerAbilityKind<Static, Triggered, Activated>,
     pub functional_zones: Vec<Zone>,
+    #[tag_walk(skip)]
     pub provenance: Option<SemanticProvenance>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum CompilerAbilityKind<Static, Triggered, Activated> {
     Static(Static),
     Triggered(Triggered),
@@ -40,6 +50,7 @@ pub enum CompilerAbilityKind<Static, Triggered, Activated> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct CompilerTriggeredAbility<Trigger, Effect, Choice, Condition, Presentation> {
     pub trigger: Trigger,
     pub effects: Vec<Effect>,
@@ -49,6 +60,7 @@ pub struct CompilerTriggeredAbility<Trigger, Effect, Choice, Condition, Presenta
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct CompilerActivatedAbility<Cost, Effect, Choice, Condition, Mana, ManaRestriction> {
     pub cost: Cost,
     pub effects: Vec<Effect>,
@@ -65,6 +77,7 @@ pub struct CompilerActivatedAbility<Cost, Effect, Choice, Condition, Mana, ManaR
 /// enums in PR-09 through PR-12. The wrapped type is generic and cannot be
 /// accessed by front-end code; materialization owns extraction.
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct CompilerAbilityPayload<LegacyAbility, Effect, ReferenceImports, Trigger> {
     legacy: LegacyAbility,
     pub effects: Option<Vec<Effect>>,

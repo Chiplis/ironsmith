@@ -268,46 +268,35 @@ fn parse_target_fact(
     Some(CostTargetFact::Object(filter))
 }
 
-pub fn parse_known_spell_cost_condition(
-    tokens: &[OwnedLexToken],
-) -> Option<KnownSpellCostConditionFact> {
-    let view = TokenWordView::new(tokens);
-    let words = view.word_refs();
-    if words.is_empty() {
-        return None;
-    }
-
-    if exact(
-        &words,
-        &[
+/// The fixed spell-cost condition phrases, each phrase group naming one fact;
+/// the group that matches the clause completely names the fact, so the table
+/// is a lookup over exclusive phrases.
+const KNOWN_CONDITION_PHRASES: &[(&[&[&str]], KnownSpellCostConditionFact)] = &[
+    (
+        &[&[
             "your", "life", "total", "is", "less", "than", "your", "starting", "life", "total",
-        ],
-    ) {
-        return Some(KnownSpellCostConditionFact::LifeTotalLessThanStarting);
-    }
-    if exact_any(
-        &words,
+        ]],
+        KnownSpellCostConditionFact::LifeTotalLessThanStarting,
+    ),
+    (
         &[
             &["you", "attacked", "this", "turn"],
             &["youve", "attacked", "this", "turn"],
         ],
-    ) {
-        return Some(KnownSpellCostConditionFact::AttackedThisTurn);
-    }
-    if exact_any(
-        &words,
+        KnownSpellCostConditionFact::AttackedThisTurn,
+    ),
+    (
         &[
             &["a", "creature", "died", "this", "turn"],
             &["creature", "died", "this", "turn"],
         ],
-    ) {
-        return Some(KnownSpellCostConditionFact::CreatureDiedThisTurn);
-    }
-    if exact_any(&words, &[&["its", "night"], &["it", "is", "night"]]) {
-        return Some(KnownSpellCostConditionFact::Night);
-    }
-    if exact_any(
-        &words,
+        KnownSpellCostConditionFact::CreatureDiedThisTurn,
+    ),
+    (
+        &[&["its", "night"], &["it", "is", "night"]],
+        KnownSpellCostConditionFact::Night,
+    ),
+    (
         &[
             &["its", "bargained"],
             &["it's", "bargained"],
@@ -315,30 +304,24 @@ pub fn parse_known_spell_cost_condition(
             &["this", "spell", "is", "bargained"],
             &["this", "spell", "was", "bargained"],
         ],
-    ) {
-        return Some(KnownSpellCostConditionFact::Bargained);
-    }
-    if exact_any(
-        &words,
+        KnownSpellCostConditionFact::Bargained,
+    ),
+    (
         &[
             &["youve", "sacrificed", "an", "artifact", "this", "turn"],
             &["you", "sacrificed", "an", "artifact", "this", "turn"],
         ],
-    ) {
-        return Some(KnownSpellCostConditionFact::SacrificedArtifactThisTurn);
-    }
-    if exact_any(
-        &words,
+        KnownSpellCostConditionFact::SacrificedArtifactThisTurn,
+    ),
+    (
         &[
             &["youve", "committed", "a", "crime", "this", "turn"],
             &["you", "committed", "a", "crime", "this", "turn"],
         ],
-    ) {
-        return Some(KnownSpellCostConditionFact::CommittedCrimeThisTurn);
-    }
-    if exact(
-        &words,
-        &[
+        KnownSpellCostConditionFact::CommittedCrimeThisTurn,
+    ),
+    (
+        &[&[
             "a",
             "creature",
             "left",
@@ -349,11 +332,25 @@ pub fn parse_known_spell_cost_condition(
             "control",
             "this",
             "turn",
-        ],
-    ) {
-        return Some(KnownSpellCostConditionFact::CreatureLeftBattlefieldUnderYourControlThisTurn);
+        ]],
+        KnownSpellCostConditionFact::CreatureLeftBattlefieldUnderYourControlThisTurn,
+    ),
+];
+
+pub fn parse_known_spell_cost_condition(
+    tokens: &[OwnedLexToken],
+) -> Option<KnownSpellCostConditionFact> {
+    let view = TokenWordView::new(tokens);
+    let words = view.word_refs();
+    if words.is_empty() {
+        return None;
     }
 
+    for (phrases, fact) in KNOWN_CONDITION_PHRASES {
+        if exact_any(&words, phrases) {
+            return Some(fact.clone());
+        }
+    }
     if has_suffix(&words, &["this", "turn"]) {
         if starts_with_any(
             &words,

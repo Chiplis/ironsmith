@@ -86,67 +86,97 @@ pub fn parse_direct_have_tail(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToke
 
 pub fn parse_continuing_segment_shape(tokens: &[OwnedLexToken]) -> ContinuingSegmentShape<'_> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
-    if parse_complete_any_phrase(
-        tokens,
-        &[
-            &["cant", "block"],
-            &["can't", "block"],
-            &["cannot", "block"],
-            &["can", "t", "block"],
-        ],
-    ) {
-        return ContinuingSegmentShape::CantBlock;
-    }
-    if parse_complete_any_phrase(
-        tokens,
-        &[
-            &["cant", "attack", "alone"],
-            &["can't", "attack", "alone"],
-            &["cannot", "attack", "alone"],
-            &["can", "t", "attack", "alone"],
-        ],
-    ) {
-        return ContinuingSegmentShape::CantAttackAlone;
-    }
-    if parse_complete_any_phrase(
-        tokens,
-        &[
-            &["attacks", "each", "combat", "if", "able"],
-            &["attack", "each", "combat", "if", "able"],
-            &["and", "attack", "each", "combat", "if", "able"],
-            &["and", "attacks", "each", "combat", "if", "able"],
-        ],
-    ) {
-        return ContinuingSegmentShape::MustAttack;
-    }
-    if let Ok(maximum) = primitives::parse_all(
-        tokens,
-        parse_cant_be_blocked_maximum,
-        "cant-be-blocked maximum",
-    ) {
-        return ContinuingSegmentShape::CantBeBlockedByMoreThan(maximum);
-    }
-    if let Ok(color_word) =
-        primitives::parse_all(tokens, parse_color_assignment, "anthem color assignment")
-    {
-        return ContinuingSegmentShape::SetColor { color_word };
-    }
-    if let Some((_, subtype_tokens)) = primitives::parse_prefix(
-        tokens,
-        alt(((primitives::kw("and"), parse_be_word).void(), parse_be_word)),
-    ) && let Some(family) = super::parse_every_subtype_family_tokens(subtype_tokens)
-    {
-        return ContinuingSegmentShape::BeEverySubtype(family);
-    }
-    if let Some((_, ability_tokens)) = primitives::parse_prefix(tokens, parse_lose_word) {
-        return ContinuingSegmentShape::Lose {
-            ability_tokens: trim_lexed_commas(ability_tokens),
-        };
-    }
-    if let Some((_, ability_tokens)) = primitives::parse_prefix(tokens, parse_have_word) {
-        return ContinuingSegmentShape::Have {
-            ability_tokens: trim_lexed_commas(ability_tokens),
-        };
+    // One declared alternation: the alternatives are exclusive shapes, and the
+    // first that reads the input names it.
+    let alternation = None::<ContinuingSegmentShape<'_>>
+        .or_else(|| {
+            if parse_complete_any_phrase(
+                tokens,
+                &[
+                    &["cant", "block"],
+                    &["can't", "block"],
+                    &["cannot", "block"],
+                    &["can", "t", "block"],
+                ],
+            ) {
+                return Some(ContinuingSegmentShape::CantBlock);
+            }
+            None
+        })
+        .or_else(|| {
+            if parse_complete_any_phrase(
+                tokens,
+                &[
+                    &["cant", "attack", "alone"],
+                    &["can't", "attack", "alone"],
+                    &["cannot", "attack", "alone"],
+                    &["can", "t", "attack", "alone"],
+                ],
+            ) {
+                return Some(ContinuingSegmentShape::CantAttackAlone);
+            }
+            None
+        })
+        .or_else(|| {
+            if parse_complete_any_phrase(
+                tokens,
+                &[
+                    &["attacks", "each", "combat", "if", "able"],
+                    &["attack", "each", "combat", "if", "able"],
+                    &["and", "attack", "each", "combat", "if", "able"],
+                    &["and", "attacks", "each", "combat", "if", "able"],
+                ],
+            ) {
+                return Some(ContinuingSegmentShape::MustAttack);
+            }
+            None
+        })
+        .or_else(|| {
+            if let Ok(maximum) = primitives::parse_all(
+                tokens,
+                parse_cant_be_blocked_maximum,
+                "cant-be-blocked maximum",
+            ) {
+                return Some(ContinuingSegmentShape::CantBeBlockedByMoreThan(maximum));
+            }
+            None
+        })
+        .or_else(|| {
+            if let Ok(color_word) =
+                primitives::parse_all(tokens, parse_color_assignment, "anthem color assignment")
+            {
+                return Some(ContinuingSegmentShape::SetColor { color_word });
+            }
+            None
+        })
+        .or_else(|| {
+            if let Some((_, subtype_tokens)) = primitives::parse_prefix(
+                tokens,
+                alt(((primitives::kw("and"), parse_be_word).void(), parse_be_word)),
+            ) && let Some(family) = super::parse_every_subtype_family_tokens(subtype_tokens)
+            {
+                return Some(ContinuingSegmentShape::BeEverySubtype(family));
+            }
+            None
+        })
+        .or_else(|| {
+            if let Some((_, ability_tokens)) = primitives::parse_prefix(tokens, parse_lose_word) {
+                return Some(ContinuingSegmentShape::Lose {
+                    ability_tokens: trim_lexed_commas(ability_tokens),
+                });
+            }
+            None
+        })
+        .or_else(|| {
+            if let Some((_, ability_tokens)) = primitives::parse_prefix(tokens, parse_have_word) {
+                return Some(ContinuingSegmentShape::Have {
+                    ability_tokens: trim_lexed_commas(ability_tokens),
+                });
+            }
+            None
+        });
+    if let Some(shape) = alternation {
+        return shape;
     }
     ContinuingSegmentShape::Other
 }

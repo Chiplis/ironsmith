@@ -1,3 +1,5 @@
+use crate::tag::TagKeyWalk;
+
 use crate::ConditionConjunction;
 use std::any::Any;
 
@@ -24,6 +26,7 @@ type GrantSpecModel<T, E, C, Cond, ICond = Condition> =
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum ConditionalSpellKeywordKind {
     Flash,
     Cascade,
@@ -31,6 +34,7 @@ pub enum ConditionalSpellKeywordKind {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(TagKeyWalk)]
 pub enum StaticDamageSourceRelation {
     #[default]
     Any,
@@ -40,6 +44,7 @@ pub enum StaticDamageSourceRelation {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct PreventAllDamageToSelfFromSourcesMatchingSpec {
     pub source_filter: ObjectFilter,
     pub combat_only: bool,
@@ -51,6 +56,7 @@ pub struct PreventAllDamageToSelfFromSourcesMatchingSpec {
 /// The permission changes targeting legality; it does not remove the ability.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct TargetingAsThoughNoAbilitySpec {
     pub objects: Option<ObjectFilter>,
     pub players: Option<PlayerFilter>,
@@ -62,6 +68,7 @@ pub struct TargetingAsThoughNoAbilitySpec {
 /// The quality of spell onto which a card's splice ability may be applied.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum SpliceQuality {
     Arcane,
     InstantOrSorcery,
@@ -79,6 +86,7 @@ impl SpliceQuality {
 /// Typed CR 702.47 splice ability payload.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct SpliceSpec<C> {
     pub quality: SpliceQuality,
     pub cost: TotalCost<C>,
@@ -92,6 +100,7 @@ pub struct SpliceSpec<C> {
 /// Typed CR 702.120 escalate ability payload.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct EscalateSpec<C> {
     /// The additional cost paid once for each mode chosen beyond the first.
     pub cost: TotalCost<C>,
@@ -101,6 +110,7 @@ pub struct EscalateSpec<C> {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum GraveyardCountMetric {
     CardTypes,
     ManaValues,
@@ -108,6 +118,7 @@ pub enum GraveyardCountMetric {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub struct ConditionalSpellKeywordSpec {
     pub keyword: ConditionalSpellKeywordKind,
     pub metric: GraveyardCountMetric,
@@ -117,6 +128,7 @@ pub struct ConditionalSpellKeywordSpec {
 /// A linked action performed after a damage-prevention replacement removes counters.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum CounterRemovalFollowUp {
     /// Give every player counters for each counter the replacement actually removed.
     EachPlayerGetsCounters {
@@ -130,6 +142,7 @@ pub enum CounterRemovalFollowUp {
 /// identical for both surfaces.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(TagKeyWalk)]
 pub enum CounterRemovalPreventionSurface {
     #[default]
     Conjoined,
@@ -138,12 +151,14 @@ pub enum CounterRemovalPreventionSurface {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum AdditionalTokenKind {
     Treasure,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum PregameActionKind {
     BeginOnBattlefield(PregameBeginOnBattlefieldSpec),
     MulliganExileHandDrawSameCount,
@@ -153,6 +168,7 @@ pub enum PregameActionKind {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub struct PregameBeginOnBattlefieldSpec {
     pub require_not_starting_player: bool,
     pub counters: Vec<(CounterType, u32)>,
@@ -161,6 +177,7 @@ pub struct PregameBeginOnBattlefieldSpec {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(TagKeyWalk)]
 pub struct PregameRevealFromOpeningHandSpec {
     /// Oracle places the consequence before its timing clause (for example,
     /// "scry 3 at the beginning of your first upkeep").
@@ -173,6 +190,7 @@ pub struct PregameRevealFromOpeningHandSpec {
 /// companion cards, so setup validation is independent of a card's identity.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum CompanionDeckCondition {
     OnlyManaValueParity { even: bool, lands_are_exempt: bool },
     NoRepeatedManaSymbols,
@@ -188,6 +206,7 @@ pub enum CompanionDeckCondition {
 /// Immutable facts used to validate a companion against one starting-deck card.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub struct CompanionDeckCardFacts {
     pub name: String,
     pub mana_cost: Option<ManaCost>,
@@ -281,6 +300,7 @@ impl CompanionDeckCondition {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct ThisSpellCastRestrictionKind {
     pub label: String,
 }
@@ -384,6 +404,7 @@ impl ThisSpellCastRestrictionKind {
 /// `ICond` is the intervening-if condition of any triggered ability this
 /// payload links; see [`TriggeredAbility`]. It defaults to the resolved
 /// [`Condition`] so the runtime spells this the way it always has.
+#[derive(TagKeyWalk)]
 pub struct StaticAbility<T, E, C, Cond, ICond = Condition> {
     pub id: Option<StaticAbilityId>,
     pub label: String,
@@ -416,6 +437,7 @@ pub const AS_LONG_AS_ITS_YOUR_TURN_STATIC_LABEL_PREFIX: &str =
 /// the removed ability while the effect applies.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(TagKeyWalk)]
 pub enum AbilityLossMode {
     #[default]
     Lose,
@@ -431,6 +453,7 @@ impl AbilityLossMode {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct PowerToughnessChoiceOption<T, E, C, Cond, ICond = Condition> {
     pub power: i32,
     pub toughness: i32,
@@ -461,6 +484,7 @@ impl<T, E, C, Cond, ICond> PowerToughnessChoiceOption<T, E, C, Cond, ICond> {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default)]
+#[derive(TagKeyWalk)]
 pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     #[default]
     None,
@@ -1040,6 +1064,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct DieRollResultAdjustment {
     pub player: PlayerFilter,
     pub life_cost: u32,

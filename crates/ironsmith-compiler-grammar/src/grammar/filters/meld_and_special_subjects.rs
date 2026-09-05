@@ -641,7 +641,7 @@ mod tests {
         assert_eq!(
             filter.tagged_constraints,
             vec![TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::It.key(),
+                tag: crate::tag::CompilerReferenceTag::It.bind(),
                 relation: TaggedOpbjectRelation::IsTaggedObject,
             }]
         );
@@ -753,7 +753,7 @@ mod tests {
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             *constraint
                 == TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::Enchanted.key(),
+                    tag: crate::tag::CompilerReferenceTag::Enchanted.bind(),
                     relation: TaggedOpbjectRelation::IsNotTaggedObject,
                 }
         }));
@@ -768,7 +768,7 @@ mod tests {
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             *constraint
                 == TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::It.key(),
+                    tag: crate::tag::CompilerReferenceTag::It.bind(),
                     relation: TaggedOpbjectRelation::IsTaggedObject,
                 }
         }));
@@ -827,7 +827,7 @@ mod tests {
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             *constraint
                 == TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::It.key(),
+                    tag: crate::tag::CompilerReferenceTag::It.bind(),
                     relation: TaggedOpbjectRelation::AttachedToTaggedObject,
                 }
         }));
@@ -844,11 +844,11 @@ mod tests {
 
         assert!(past_filter.tagged_constraints.iter().any(|constraint| {
             constraint.relation == TaggedOpbjectRelation::WasAttachedToTaggedObject
-                && constraint.tag == crate::tag::CompilerReferenceTag::It.key()
+                && constraint.tag == crate::tag::CompilerReferenceTag::It.bind()
         }));
         assert!(current_filter.tagged_constraints.iter().any(|constraint| {
             constraint.relation == TaggedOpbjectRelation::AttachedToTaggedObject
-                && constraint.tag == crate::tag::CompilerReferenceTag::It.key()
+                && constraint.tag == crate::tag::CompilerReferenceTag::It.bind()
         }));
         assert!(!current_filter.tagged_constraints.iter().any(|constraint| {
             constraint.relation == TaggedOpbjectRelation::WasAttachedToTaggedObject
@@ -935,7 +935,7 @@ mod tests {
         assert_eq!(
             filter.attached_to_player,
             Some(PlayerFilter::TaggedPlayer(
-                crate::tag::CompilerReferenceTag::Enchanted.key()
+                crate::tag::CompilerReferenceTag::Enchanted.bind()
             ))
         );
     }
@@ -957,7 +957,7 @@ mod tests {
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             *constraint
                 == TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::It.key(),
+                    tag: crate::tag::CompilerReferenceTag::It.bind(),
                     relation: TaggedOpbjectRelation::AttachedToTaggedObject,
                 }
         }));
@@ -972,7 +972,7 @@ mod tests {
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             *constraint
                 == TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
+                    tag: crate::tag::CompilerReferenceTag::SourceExiled.bind(),
                     relation: TaggedOpbjectRelation::IsTaggedObject,
                 }
         }));
@@ -991,7 +991,7 @@ mod tests {
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             *constraint
                 == TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
+                    tag: crate::tag::CompilerReferenceTag::SourceExiled.bind(),
                     relation: TaggedOpbjectRelation::SameNameAsTagged,
                 }
         }));
@@ -1009,7 +1009,7 @@ mod tests {
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             *constraint
                 == TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::It.key(),
+                    tag: crate::tag::CompilerReferenceTag::It.bind(),
                     relation: TaggedOpbjectRelation::IsTaggedObject,
                 }
         }));
@@ -1028,7 +1028,7 @@ mod tests {
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             *constraint
                 == TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::AdditionalCostObject.key(),
+                    tag: crate::tag::CompilerReferenceTag::AdditionalCostObject.bind(),
                     relation: TaggedOpbjectRelation::SameManaValueAsTagged,
                 }
         }));
@@ -1047,7 +1047,7 @@ mod tests {
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             *constraint
                 == TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::It.key(),
+                    tag: crate::tag::CompilerReferenceTag::It.bind(),
                     relation: TaggedOpbjectRelation::SameNameAsTagged,
                 }
         }));
@@ -1066,7 +1066,7 @@ mod tests {
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             *constraint
                 == TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::SourceObject.key(),
+                    tag: crate::tag::CompilerReferenceTag::SourceObject.bind(),
                     relation: TaggedOpbjectRelation::SameNameAsTagged,
                 }
         }));
@@ -1196,7 +1196,7 @@ mod tests {
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             *constraint
                 == TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::ConvokedThisSpell.key(),
+                    tag: crate::tag::CompilerReferenceTag::ConvokedThisSpell.bind(),
                     relation: TaggedOpbjectRelation::IsTaggedObject,
                 }
         }));

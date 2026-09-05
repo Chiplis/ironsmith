@@ -93,7 +93,7 @@ fn choose_from_it_or_graveyard(sentence: &SentenceInput) -> Option<EffectAst> {
     hand.zone = Some(Zone::Hand);
     hand.excluded_card_types = vec![CardType::Land];
     hand.tagged_constraints.push(TaggedObjectConstraint {
-        tag: crate::tag::CompilerReferenceTag::It.key(),
+        tag: crate::tag::CompilerReferenceTag::It.bind(),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
     let mut graveyard = ObjectFilter::default();
@@ -106,7 +106,7 @@ fn choose_from_it_or_graveyard(sentence: &SentenceInput) -> Option<EffectAst> {
         count: ChoiceCount::exactly(1),
         count_value: None,
         player: PlayerAst::You,
-        tag: crate::tag::CompilerReferenceTag::It.key(),
+        tag: crate::tag::CompilerReferenceTag::It.bind(),
     })
 }
 
@@ -126,7 +126,7 @@ fn may_cast_instant_or_sorcery_from_among(sentence: &SentenceInput) -> Option<Ef
         return None;
     }
     let chosen_tag = helper_tag_for_tokens(sentence.lowered(), "chosen_revealed_spell");
-    let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::RevealedThisWay.key());
+    let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::RevealedThisWay.bind());
     filter.zone = Some(Zone::Hand);
     filter.owner = Some(PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Opponent)));
     filter.card_types = vec![CardType::Instant, CardType::Sorcery];

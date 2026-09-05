@@ -901,7 +901,7 @@ pub fn parse_sentence_choose_player_to_effect(
     let mut effects = vec![EffectAst::subject_verb_choose_player(
         chooser,
         filter,
-        crate::tag::CompilerReferenceTag::It.key(),
+        crate::tag::CompilerReferenceTag::It.bind(),
         random,
         exclude_previous_choices,
     )];
@@ -923,7 +923,7 @@ pub fn parse_sentence_return_half_the_creatures_they_control_to_their_owners_han
         Box::new(Value::Count(filter.clone())),
         Box::new(Value::Fixed(1)),
     )));
-    let chosen_tag = crate::tag::CompilerReferenceTag::Chosen.key();
+    let chosen_tag = crate::tag::CompilerReferenceTag::Chosen.bind();
     Ok(Some(vec![
         EffectAst::ChooseObjects {
             filter,
@@ -953,11 +953,11 @@ pub fn parse_sentence_damage_to_that_player_half_damage_of_those_spells(
             PlayerAst::You,
             PlayerAst::That,
             ObjectFilter::default().with_type(card_type),
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
         ),
         EffectAst::subject_verb_damage(
             Value::HalfRoundedDown(Box::new(Value::DamageDealtThisTurnByTaggedSpellCast(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
             ))),
             TargetAst::Player(PlayerFilter::target_player(), None),
         ),
@@ -989,7 +989,7 @@ pub fn parse_draw_for_each_card_exiled_from_hand_this_way_sentence(
     }
     effects.push(EffectAst::subject_verb_draw_for_each_tagged_matching(
         player,
-        crate::tag::CompilerReferenceTag::It.key(),
+        crate::tag::CompilerReferenceTag::It.bind(),
         filter,
     ));
     Ok(Some(effects))
@@ -1134,7 +1134,7 @@ pub fn parse_sentence_sacrifice_it_next_end_step(
         return Ok(None);
     }
     let filter = if registry_shapes::is_tagged_delayed_object(shape.object_tokens) {
-        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key())
+        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind())
     } else {
         parse_object_filter(shape.object_tokens, false)?
     };
@@ -1185,7 +1185,7 @@ pub fn parse_sentence_exile_it_next_end_step(
     } else {
         let target = if registry_shapes::is_tagged_delayed_object(shape.object_tokens) {
             TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 object_clause.span(),
             )
         } else {
@@ -1196,7 +1196,7 @@ pub fn parse_sentence_exile_it_next_end_step(
                         && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
                 }) {
                     filter.tagged_constraints.push(TaggedObjectConstraint {
-                        tag: crate::tag::CompilerReferenceTag::It.key(),
+                        tag: crate::tag::CompilerReferenceTag::It.bind(),
                         relation: TaggedOpbjectRelation::IsTaggedObject,
                     });
                 }

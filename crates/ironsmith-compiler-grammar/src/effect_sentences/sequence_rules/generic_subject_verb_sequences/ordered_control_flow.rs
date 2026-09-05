@@ -289,7 +289,7 @@ pub fn parse_search_then_player_names_card_conditional_put_then_shuffle(
     ) else {
         return Ok(None);
     };
-    let searched_tag = crate::tag::CompilerReferenceTag::Searched.key();
+    let searched_tag = crate::tag::CompilerReferenceTag::Searched.bind();
     let mut search_filter = ObjectFilter::default();
     search_filter.owner = Some(PlayerFilter::DamagedPlayer);
     search_filter.zone = Some(Zone::Library);
@@ -302,7 +302,7 @@ pub fn parse_search_then_player_names_card_conditional_put_then_shuffle(
         zones: vec![Zone::Library],
         search_mode: Some(crate::effect::SearchSelectionMode::Exact),
     }];
-    let chosen_name_tag = crate::tag::CompilerReferenceTag::ChosenName.key();
+    let chosen_name_tag = crate::tag::CompilerReferenceTag::ChosenName.bind();
 
     let mut creature_filter = ObjectFilter::default();
     creature_filter.card_types.push(CardType::Creature);
@@ -398,11 +398,11 @@ pub fn parse_choose_name_reveal_top_matching_hand_rest_graveyard(
             tag: looked_tag,
             effects: vec![EffectAst::Conditional {
                 predicate: PredicateAst::TaggedMatches(
-                    crate::tag::CompilerReferenceTag::It.key(),
+                    crate::tag::CompilerReferenceTag::It.bind(),
                     name_match_filter,
                 ),
                 if_true: vec![EffectAst::subject_verb_move_to_zone(
-                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                     Zone::Hand,
                     false,
                     ReturnControllerAst::Preserve,
@@ -410,7 +410,7 @@ pub fn parse_choose_name_reveal_top_matching_hand_rest_graveyard(
                     None,
                 )],
                 if_false: vec![EffectAst::subject_verb_move_to_zone(
-                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                     Zone::Graveyard,
                     false,
                     ReturnControllerAst::Preserve,
@@ -483,7 +483,7 @@ pub fn compose_choose_from_looked_cards_into_hand_rest_into_graveyard(
     let move_to_hand = EffectAst::ForEachTagged {
         tag: chosen_tag.clone(),
         effects: vec![EffectAst::subject_verb_move_to_zone(
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
             Zone::Hand,
             false,
             ReturnControllerAst::Preserve,
@@ -509,7 +509,7 @@ pub fn compose_choose_from_looked_cards_into_hand_rest_into_graveyard(
         in_chosen_filter
             .tagged_constraints
             .push(TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::It.key(),
+                tag: crate::tag::CompilerReferenceTag::It.bind(),
                 relation: TaggedOpbjectRelation::SameStableId,
             });
         effects.push(EffectAst::ForEachTagged {
@@ -518,7 +518,7 @@ pub fn compose_choose_from_looked_cards_into_hand_rest_into_graveyard(
                 predicate: PredicateAst::TaggedMatches(chosen_tag, in_chosen_filter),
                 if_true: Vec::new(),
                 if_false: vec![EffectAst::subject_verb_move_to_zone(
-                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                     Zone::Graveyard,
                     false,
                     ReturnControllerAst::Preserve,
@@ -600,7 +600,7 @@ pub fn parse_reveal_top_one_hand_gain_mana_value_rest_graveyard(
         EffectAst::ForEachTagged {
             tag: chosen_tag.clone(),
             effects: vec![EffectAst::subject_verb_move_to_zone(
-                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                 Zone::Hand,
                 false,
                 ReturnControllerAst::Preserve,
@@ -1027,7 +1027,7 @@ pub fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
         });
     }
     let mut chosen_effects = vec![EffectAst::subject_verb_move_to_zone_with_attack_target(
-        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
         zone,
         false,
         controller,
@@ -1044,7 +1044,7 @@ pub fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
         chosen_effects.push(EffectAst::subject_verb_put_counters(
             counter_type,
             Value::Fixed(amount as i32),
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
             None,
             false,
         ));
@@ -1419,7 +1419,7 @@ pub fn parse_look_at_top_may_put_with_counter_then_rest_bottom(
             tag: looked_tag.clone(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
-    let iterated = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None);
+    let iterated = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None);
     Ok(Some(vec![
         EffectAst::subject_verb_look_at_top_cards(player, count, looked_tag.clone()),
         EffectAst::May {

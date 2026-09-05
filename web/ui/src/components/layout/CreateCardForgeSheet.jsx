@@ -143,6 +143,7 @@ function LayoutPicker({ value, onChange }) {
           <button
             key={option.value}
             type="button"
+            aria-pressed={active}
             className={cn("card-forge-choice", active && "is-active")}
             onClick={() => onChange(option.value)}
           >
@@ -164,6 +165,7 @@ function ToggleChipGroup({ values, options, onToggle }) {
         <button
           key={option}
           type="button"
+          aria-pressed={values.includes(option)}
           className={cn("card-forge-chip", values.includes(option) && "is-active")}
           onClick={() => onToggle(option)}
         >
@@ -181,6 +183,7 @@ function ColorToggleGroup({ values, onToggle }) {
         <button
           key={color}
           type="button"
+          aria-pressed={values.includes(color)}
           className={cn("card-forge-color", values.includes(color) && "is-active")}
           onClick={() => onToggle(color)}
         >

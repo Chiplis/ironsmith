@@ -1,3 +1,5 @@
+use ironsmith_core::tag::TagKeyWalk;
+
 use crate::color::ColorSet;
 use crate::mana::ManaSymbol;
 use crate::model::CompilerManaUsageRestriction as ManaUsageRestriction;
@@ -10,6 +12,7 @@ use crate::types::{CardType, Subtype};
 /// (for example, the last exiled card) without letting an intervening token
 /// creation steal the reference.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum BuiltinTokenShape {
     Treasure,
     Clue,
@@ -34,6 +37,7 @@ pub enum BuiltinTokenShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum TokenKeywordShape {
     Flying,
     WardGeneric(u32),
@@ -61,6 +65,7 @@ pub enum TokenKeywordShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum TokenCombatRestrictionShape {
     CantAttackOrBlockAlone,
     CantAttackOrBlock,
@@ -72,12 +77,14 @@ pub enum TokenCombatRestrictionShape {
 /// Specialized token rules whose authored order cannot be recovered from the
 /// otherwise independent semantic fields on `CreatureTokenRulesShape`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum CreatureTokenInlineRuleKind {
     CombatRestriction,
     LeavesReturnNamedToHand,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub struct CreatureTokenInlineRulePresentation {
     pub kind: CreatureTokenInlineRuleKind,
     pub self_surface: Option<SourceReferenceSurface>,
@@ -89,6 +96,7 @@ pub struct TokenCrewShape {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub struct TokenEquipShape {
     pub amount: u32,
 }
@@ -99,12 +107,14 @@ pub struct TokenPowerAsThoughGreaterShape {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub struct TokenTapManaAbilityShape {
     pub mana: Vec<ManaSymbol>,
     pub restrictions: Vec<ManaUsageRestriction>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub struct TokenTapSacrificeManaLifeShape {
     pub mana_options: Vec<ManaSymbol>,
     pub life: u32,
@@ -116,6 +126,7 @@ pub struct InlineNoncreatureSpellDamageShape {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub struct TokenSacrificeReturnShape {
     pub card_name: String,
     pub mana_symbols: Vec<ManaSymbol>,
@@ -123,6 +134,7 @@ pub struct TokenSacrificeReturnShape {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum TokenEmbeddedRuleShape {
     CantBlockOrBeBlockedByNonSubtypeCreatures {
         subtype: Subtype,
@@ -156,17 +168,20 @@ pub enum TokenEmbeddedRuleShape {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub struct TokenRulesSurfaces {
     pub embedded_rules: Vec<TokenEmbeddedRuleShape>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub struct EquipmentRulesShape {
     pub text: String,
     pub lines: Vec<EquipmentRuleLineShape>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub struct EquipmentDamageGrantShape {
     pub generic_amount: Option<u32>,
     pub tap_cost: bool,
@@ -175,11 +190,13 @@ pub struct EquipmentDamageGrantShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum EquipmentGrantCountShape {
     CountersAmongPermanentsYouControl(CounterType),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub struct EquipmentScaledPowerToughnessShape {
     pub power: i32,
     pub toughness: i32,
@@ -187,6 +204,7 @@ pub struct EquipmentScaledPowerToughnessShape {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum EquipmentRuleLineShape {
     GrantedDamage {
         display_text: String,
@@ -202,6 +220,7 @@ pub enum EquipmentRuleLineShape {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub struct VehicleTokenShape {
     pub name: String,
     pub power_toughness: Option<(i32, i32)>,
@@ -211,6 +230,7 @@ pub struct VehicleTokenShape {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub struct ArtifactTokenShape {
     pub name: String,
     pub subtypes: Vec<Subtype>,
@@ -223,16 +243,19 @@ pub struct ArtifactTokenShape {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub struct ShapeshifterTokenShape {
     pub changeling: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub struct AstartesWarriorTokenShape {
     pub vigilance: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub struct CreatureTokenRulesShape {
     pub token_rules: TokenRulesSurfaces,
     pub authored_inline_rules: Vec<CreatureTokenInlineRulePresentation>,
@@ -272,6 +295,7 @@ pub struct CreatureTokenRulesShape {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub struct CreatureTokenShape {
     pub name: String,
     pub card_types: Vec<CardType>,
@@ -286,12 +310,14 @@ pub struct CreatureTokenShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum ConstructArtifactScalingShape {
     CharacteristicDefining,
     GetsPlusOnePerArtifact,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub struct ConstructTokenShape {
     pub power_toughness: (i32, i32),
     pub artifact_scaling: Option<ConstructArtifactScalingShape>,
@@ -299,6 +325,7 @@ pub struct ConstructTokenShape {
 
 /// Parser-owned semantic token definition carried through preparation into lowering.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum TokenDefinitionSpec {
     PriorCreated,
     Builtin(BuiltinTokenShape),

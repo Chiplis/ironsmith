@@ -432,6 +432,7 @@ export default function AttackersDecision({
                   )}
                   style={decisionOptionAccentVars(creatureAccent)}
                   disabled={!canAct}
+                  aria-pressed={isSelected}
                   onClick={() => toggleAttacker(opt)}
                 >
                   <span className="block min-w-0 truncate">
@@ -472,6 +473,7 @@ export default function AttackersDecision({
                             )}
                             style={decisionOptionAccentVars(targetAccent)}
                             disabled={!canAct}
+                            aria-pressed={isDeclaredTarget}
                             onClick={() => selectTarget(creatureId, target)}
                           >
                             <span className="min-w-0 truncate">

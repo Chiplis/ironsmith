@@ -368,7 +368,7 @@ pub fn parse_sacrifice(
         // keeping the filter tied to the exact preceding result set.
         parse_object_filter_lexed(filter_tokens, other)?
     } else if let Some(tagged_reference) = object_shape.tagged_reference {
-        let mut tagged_filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
+        let mut tagged_filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
         tagged_filter.zone = Some(Zone::Battlefield);
         if tagged_reference == sacrifice_discard_grammar::SacrificeTaggedReferenceKind::Token {
             tagged_filter.token = true;

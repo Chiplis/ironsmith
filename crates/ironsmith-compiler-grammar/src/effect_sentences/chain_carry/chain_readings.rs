@@ -8,6 +8,7 @@ use super::*;
 use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId, RuleMatch};
 use crate::registry::{
     HeadDiscriminator, RegistryCandidate, RegistryRuleMetadata, resolve_ranked_candidates,
+    resolve_registry_candidates,
 };
 
 /// One effect chain, read as a whole, with the composition readings that claim
@@ -480,9 +481,16 @@ fn collect(
                 .join(", ")
         ));
     }
-    let outcome = resolve_ranked_candidates(registry, distinct, diagnostics, || {
-        crate::lexer::parser_token_word_refs(input.tokens).join(" ")
-    });
+    // The specific readings are strict: two different readings of one chain
+    // are an ambiguity error. The composition tier is ranked while its
+    // overlaps are measured.
+    let outcome = if registry == CHAIN_REGISTRY {
+        resolve_registry_candidates(registry, distinct, diagnostics)
+    } else {
+        resolve_ranked_candidates(registry, distinct, diagnostics, || {
+            crate::lexer::parser_token_word_refs(input.tokens).join(" ")
+        })
+    };
     match &outcome {
         ParseOutcome::Match(matched) => {
             crate::parse_trace::event(format!("{registry}: {} read the input", matched.value.rule));

@@ -104,7 +104,7 @@ pub(super) fn parse_divided_damage_target(
         .is_some_and(|token| token.as_word() == Some("them"))
     {
         TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             span_from_tokens(shape.target_tokens),
         )
     } else if shape
@@ -117,7 +117,7 @@ pub(super) fn parse_divided_damage_target(
             filter.zone = Some(Zone::Battlefield);
         }
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.key(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
         TargetAst::Object(filter, None, span_from_tokens(shape.target_tokens))

@@ -14,9 +14,9 @@ use crate::zone::Zone;
 
 fn membership_predicate_for_iterated_object(tag: crate::tag::CompilerReferenceTag) -> PredicateAst {
     PredicateAst::TaggedMatches(
-        tag.key(),
+        tag.bind(),
         ObjectFilter::default()
-            .same_stable_id_as_tagged(crate::tag::CompilerReferenceTag::It.key()),
+            .same_stable_id_as_tagged(crate::tag::CompilerReferenceTag::It.bind()),
     )
 }
 
@@ -45,7 +45,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
     };
 
     if shape == DivvySequenceShape::SearchLibraryGraveyardExileRemainderToTop {
-        let chosen_tag = crate::tag::CompilerReferenceTag::MultiZoneSearchChosen.key();
+        let chosen_tag = crate::tag::CompilerReferenceTag::MultiZoneSearchChosen.bind();
         let mut search_filter = ObjectFilter::default();
         search_filter.owner = Some(PlayerFilter::You);
 
@@ -103,28 +103,28 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         let mut effects = parse_effect_sentence_sequence(first_effect_tokens)?;
         effects.extend(vec![
             EffectAst::subject_verb_tag_matching_objects(
-                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
+                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
                 vec![Zone::Library, Zone::Graveyard],
-                crate::tag::CompilerReferenceTag::DivvySource.key(),
+                crate::tag::CompilerReferenceTag::DivvySource.bind(),
             ),
             EffectAst::ChooseObjectsAcrossZones {
-                filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.key()),
+                filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
                 count: ChoiceCount::exactly(2),
                 count_value: None,
                 player: PlayerAst::Opponent,
-                tag: crate::tag::CompilerReferenceTag::DivvyChosen.key(),
+                tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
                 zones: vec![Zone::Library, Zone::Graveyard],
                 search_mode: None,
             },
             EffectAst::ForEachTagged {
-                tag: crate::tag::CompilerReferenceTag::DivvySource.key(),
+                tag: crate::tag::CompilerReferenceTag::DivvySource.bind(),
                 effects: vec![EffectAst::Conditional {
                     predicate: membership_predicate_for_iterated_object(
                         crate::tag::CompilerReferenceTag::DivvyChosen,
                     ),
                     if_true: Vec::new(),
                     if_false: vec![EffectAst::subject_verb_move_to_zone(
-                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                         Zone::Battlefield,
                         false,
                         ReturnControllerAst::Preserve,
@@ -134,9 +134,9 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 }],
             },
             EffectAst::ForEachTagged {
-                tag: crate::tag::CompilerReferenceTag::DivvyChosen.key(),
+                tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
                 effects: vec![EffectAst::subject_verb_move_to_zone(
-                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                     Zone::Library,
                     false,
                     ReturnControllerAst::Preserve,
@@ -155,10 +155,10 @@ pub(super) fn try_parse_divvy_sentence_sequence(
     }
 
     if shape == DivvySequenceShape::ExchangeCreatureControl {
-        let first_player_tag = crate::tag::CompilerReferenceTag::ExchangePlayerOne.key();
-        let second_player_tag = crate::tag::CompilerReferenceTag::ExchangePlayerTwo.key();
-        let first_creatures_tag = crate::tag::CompilerReferenceTag::ExchangeCreaturesOne.key();
-        let second_creatures_tag = crate::tag::CompilerReferenceTag::ExchangeCreaturesTwo.key();
+        let first_player_tag = crate::tag::CompilerReferenceTag::ExchangePlayerOne.bind();
+        let second_player_tag = crate::tag::CompilerReferenceTag::ExchangePlayerTwo.bind();
+        let first_creatures_tag = crate::tag::CompilerReferenceTag::ExchangeCreaturesOne.bind();
+        let second_creatures_tag = crate::tag::CompilerReferenceTag::ExchangeCreaturesTwo.bind();
 
         return Ok(Some(vec![
             EffectAst::subject_verb_target_only(TargetAst::WithCount(
@@ -226,10 +226,10 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 count: ChoiceCount::any_number(),
                 count_value: None,
                 player: PlayerAst::Target,
-                tag: crate::tag::CompilerReferenceTag::DivvyChosen.key(),
+                tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
             },
             EffectAst::subject_verb_destroy_no_regeneration(TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::DivvyChosen.key(),
+                crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
                 None,
             )),
         ]));
@@ -241,17 +241,17 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         graveyard_creatures.owner = Some(PlayerFilter::You);
         let rest_filter = graveyard_creatures
             .clone()
-            .not_tagged(crate::tag::CompilerReferenceTag::DivvyChosen.key());
+            .not_tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind());
         return Ok(Some(vec![
             EffectAst::ChooseObjects {
                 filter: graveyard_creatures,
                 count: ChoiceCount::any_number(),
                 count_value: None,
                 player: PlayerAst::Opponent,
-                tag: crate::tag::CompilerReferenceTag::DivvyChosen.key(),
+                tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
             },
             EffectAst::subject_verb_exile(
-                TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyChosen.key(), None),
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind(), None),
                 false,
             ),
             EffectAst::subject_verb_return_all_to_battlefield(
@@ -267,12 +267,12 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         let chosen_pile_filter = ObjectFilter::creature()
             .controlled_by(PlayerFilter::IteratedPlayer)
             .match_tagged(
-                crate::tag::CompilerReferenceTag::DivvyPile.key(),
+                crate::tag::CompilerReferenceTag::DivvyPile.bind(),
                 TaggedOpbjectRelation::IsTaggedObject,
             );
         let other_pile_filter = ObjectFilter::creature()
             .controlled_by(PlayerFilter::IteratedPlayer)
-            .not_tagged(crate::tag::CompilerReferenceTag::DivvyPile.key());
+            .not_tagged(crate::tag::CompilerReferenceTag::DivvyPile.bind());
 
         return Ok(Some(vec![
             EffectAst::ForEachPlayersFiltered {
@@ -282,7 +282,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                     count: ChoiceCount::any_number(),
                     count_value: None,
                     player: PlayerAst::That,
-                    tag: crate::tag::CompilerReferenceTag::DivvyPile.key(),
+                    tag: crate::tag::CompilerReferenceTag::DivvyPile.bind(),
                 }],
             },
             EffectAst::ForEachPlayersFiltered {
@@ -309,11 +309,11 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 count: ChoiceCount::any_number(),
                 count_value: None,
                 player: PlayerAst::Target,
-                tag: crate::tag::CompilerReferenceTag::DivvyChosen.key(),
+                tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
             },
             EffectAst::subject_verb_sacrifice_all(
                 PlayerAst::Target,
-                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvyChosen.key()),
+                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind()),
             ),
         ]));
     }
@@ -327,13 +327,13 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                     count: ChoiceCount::any_number(),
                     count_value: None,
                     player: PlayerAst::That,
-                    tag: crate::tag::CompilerReferenceTag::DivvyChosen.key(),
+                    tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
                 },
                 EffectAst::subject_verb_cant(
                     crate::effect::Restriction::block(
                         ObjectFilter::creature()
                             .controlled_by(PlayerFilter::IteratedPlayer)
-                            .not_tagged(crate::tag::CompilerReferenceTag::DivvyChosen.key()),
+                            .not_tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind()),
                     ),
                     Until::EndOfTurn,
                     None,
@@ -349,13 +349,13 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 count: ChoiceCount::any_number(),
                 count_value: None,
                 player: PlayerAst::That,
-                tag: crate::tag::CompilerReferenceTag::DivvyChosen.key(),
+                tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
             },
             EffectAst::subject_verb_cant(
                 crate::effect::Restriction::attack(
                     ObjectFilter::creature()
                         .controlled_by(PlayerFilter::IteratedPlayer)
-                        .not_tagged(crate::tag::CompilerReferenceTag::DivvyChosen.key()),
+                        .not_tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind()),
                 ),
                 Until::EndOfTurn,
                 None,
@@ -369,7 +369,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 EffectAst::subject_verb_choose_player(
                     PlayerAst::Implicit,
                     PlayerFilter::Opponent,
-                    crate::tag::CompilerReferenceTag::DivvyOpponent.key(),
+                    crate::tag::CompilerReferenceTag::DivvyOpponent.bind(),
                     false,
                     0,
                 ),
@@ -380,17 +380,17 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                     count: ChoiceCount::any_number(),
                     count_value: None,
                     player: PlayerAst::That,
-                    tag: crate::tag::CompilerReferenceTag::DivvyChosen.key(),
+                    tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
                 },
                 EffectAst::subject_verb_destroy(TargetAst::Tagged(
-                    crate::tag::CompilerReferenceTag::DivvyChosen.key(),
+                    crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
                     None,
                 )),
                 EffectAst::subject_verb_tap_all(
                     ObjectFilter::land()
                         .nontoken()
                         .controlled_by(PlayerFilter::IteratedPlayer)
-                        .not_tagged(crate::tag::CompilerReferenceTag::DivvyChosen.key()),
+                        .not_tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind()),
                 ),
             ],
         }]));
@@ -411,16 +411,16 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         let mut effects = parse_effect_sentence_sequence(first_effect_tokens)?;
         effects.extend(vec![
             EffectAst::subject_verb_tag_matching_objects(
-                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
+                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
                 vec![Zone::Exile],
-                crate::tag::CompilerReferenceTag::DivvySource.key(),
+                crate::tag::CompilerReferenceTag::DivvySource.bind(),
             ),
             EffectAst::ChooseObjectsAcrossZones {
-                filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.key()),
+                filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
                 count: ChoiceCount::any_number(),
                 count_value: None,
                 player: PlayerAst::You,
-                tag: crate::tag::CompilerReferenceTag::DivvyPile.key(),
+                tag: crate::tag::CompilerReferenceTag::DivvyPile.bind(),
                 zones: vec![Zone::Exile],
                 search_mode: None,
             },
@@ -428,7 +428,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 player: PlayerAst::Opponent,
                 effects: vec![
                     EffectAst::subject_verb_move_to_zone(
-                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyPile.key(), None),
+                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyPile.bind(), None),
                         Zone::Graveyard,
                         false,
                         ReturnControllerAst::Preserve,
@@ -436,14 +436,14 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                         None,
                     ),
                     EffectAst::ForEachTagged {
-                        tag: crate::tag::CompilerReferenceTag::DivvySource.key(),
+                        tag: crate::tag::CompilerReferenceTag::DivvySource.bind(),
                         effects: vec![EffectAst::Conditional {
                             predicate: membership_predicate_for_iterated_object(
                                 crate::tag::CompilerReferenceTag::DivvyPile,
                             ),
                             if_true: Vec::new(),
                             if_false: vec![EffectAst::subject_verb_move_to_zone(
-                                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                                 Zone::Hand,
                                 false,
                                 ReturnControllerAst::Preserve,
@@ -455,18 +455,18 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 ],
                 alternative: vec![
                     EffectAst::subject_verb_return_to_hand(
-                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyPile.key(), None),
+                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyPile.bind(), None),
                         false,
                     ),
                     EffectAst::ForEachTagged {
-                        tag: crate::tag::CompilerReferenceTag::DivvySource.key(),
+                        tag: crate::tag::CompilerReferenceTag::DivvySource.bind(),
                         effects: vec![EffectAst::Conditional {
                             predicate: membership_predicate_for_iterated_object(
                                 crate::tag::CompilerReferenceTag::DivvyPile,
                             ),
                             if_true: Vec::new(),
                             if_false: vec![EffectAst::subject_verb_move_to_zone(
-                                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                                 Zone::Graveyard,
                                 false,
                                 ReturnControllerAst::Preserve,
@@ -485,16 +485,16 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         let mut effects = parse_effect_sentence_sequence(sentences[0].lowered())?;
         effects.extend(vec![
             EffectAst::subject_verb_tag_matching_objects(
-                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
+                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
                 vec![Zone::Library],
-                crate::tag::CompilerReferenceTag::DivvySource.key(),
+                crate::tag::CompilerReferenceTag::DivvySource.bind(),
             ),
             EffectAst::ChooseObjectsAcrossZones {
-                filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.key()),
+                filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
                 count: ChoiceCount::any_number(),
                 count_value: None,
                 player: PlayerAst::Opponent,
-                tag: crate::tag::CompilerReferenceTag::DivvyPile.key(),
+                tag: crate::tag::CompilerReferenceTag::DivvyPile.bind(),
                 zones: vec![Zone::Library],
                 search_mode: None,
             },
@@ -502,7 +502,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 player: PlayerAst::You,
                 effects: vec![
                     EffectAst::subject_verb_move_to_zone(
-                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyPile.key(), None),
+                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyPile.bind(), None),
                         Zone::Hand,
                         false,
                         ReturnControllerAst::Preserve,
@@ -510,14 +510,14 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                         None,
                     ),
                     EffectAst::ForEachTagged {
-                        tag: crate::tag::CompilerReferenceTag::DivvySource.key(),
+                        tag: crate::tag::CompilerReferenceTag::DivvySource.bind(),
                         effects: vec![EffectAst::Conditional {
                             predicate: membership_predicate_for_iterated_object(
                                 crate::tag::CompilerReferenceTag::DivvyPile,
                             ),
                             if_true: Vec::new(),
                             if_false: vec![EffectAst::subject_verb_move_to_zone(
-                                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                                 Zone::Graveyard,
                                 false,
                                 ReturnControllerAst::Preserve,
@@ -529,7 +529,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 ],
                 alternative: vec![
                     EffectAst::subject_verb_move_to_zone(
-                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyPile.key(), None),
+                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyPile.bind(), None),
                         Zone::Graveyard,
                         false,
                         ReturnControllerAst::Preserve,
@@ -537,14 +537,14 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                         None,
                     ),
                     EffectAst::ForEachTagged {
-                        tag: crate::tag::CompilerReferenceTag::DivvySource.key(),
+                        tag: crate::tag::CompilerReferenceTag::DivvySource.bind(),
                         effects: vec![EffectAst::Conditional {
                             predicate: membership_predicate_for_iterated_object(
                                 crate::tag::CompilerReferenceTag::DivvyPile,
                             ),
                             if_true: Vec::new(),
                             if_false: vec![EffectAst::subject_verb_move_to_zone(
-                                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                                 Zone::Hand,
                                 false,
                                 ReturnControllerAst::Preserve,
@@ -567,21 +567,21 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         let mut effects = parse_effect_sentence_sequence(first_effect_tokens)?;
         effects.extend(vec![
             EffectAst::subject_verb_tag_matching_objects(
-                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
+                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
                 vec![Zone::Exile],
-                crate::tag::CompilerReferenceTag::DivvySource.key(),
+                crate::tag::CompilerReferenceTag::DivvySource.bind(),
             ),
             EffectAst::ChooseObjectsAcrossZones {
-                filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.key()),
+                filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
                 count: ChoiceCount::any_number(),
                 count_value: None,
                 player: PlayerAst::Opponent,
-                tag: crate::tag::CompilerReferenceTag::DivvyChosen.key(),
+                tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
                 zones: vec![Zone::Exile],
                 search_mode: None,
             },
             EffectAst::subject_verb_move_to_zone(
-                TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyChosen.key(), None),
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind(), None),
                 Zone::Battlefield,
                 false,
                 ReturnControllerAst::You,
@@ -589,14 +589,14 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 None,
             ),
             EffectAst::ForEachTagged {
-                tag: crate::tag::CompilerReferenceTag::DivvySource.key(),
+                tag: crate::tag::CompilerReferenceTag::DivvySource.bind(),
                 effects: vec![EffectAst::Conditional {
                     predicate: membership_predicate_for_iterated_object(
                         crate::tag::CompilerReferenceTag::DivvyChosen,
                     ),
                     if_true: Vec::new(),
                     if_false: vec![EffectAst::subject_verb_move_to_zone(
-                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                         Zone::Graveyard,
                         false,
                         ReturnControllerAst::Preserve,
@@ -615,21 +615,21 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         prefix.extend(parse_effect_sentence_lexed(sentences[1].lowered())?);
         let mut effects = prefix;
         effects.push(EffectAst::subject_verb_tag_matching_objects(
-            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
+            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
             vec![Zone::Library],
-            crate::tag::CompilerReferenceTag::DivvySource.key(),
+            crate::tag::CompilerReferenceTag::DivvySource.bind(),
         ));
         effects.push(EffectAst::ChooseObjectsAcrossZones {
-            filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.key()),
+            filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
             count: ChoiceCount::exactly(1),
             count_value: None,
             player: PlayerAst::Opponent,
-            tag: crate::tag::CompilerReferenceTag::DivvyChosen.key(),
+            tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
             zones: vec![Zone::Library],
             search_mode: None,
         });
         effects.push(EffectAst::subject_verb_move_to_zone(
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyChosen.key(), None),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind(), None),
             Zone::Hand,
             false,
             ReturnControllerAst::Preserve,
@@ -637,14 +637,14 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             None,
         ));
         effects.push(EffectAst::ForEachTagged {
-            tag: crate::tag::CompilerReferenceTag::DivvySource.key(),
+            tag: crate::tag::CompilerReferenceTag::DivvySource.bind(),
             effects: vec![EffectAst::Conditional {
                 predicate: membership_predicate_for_iterated_object(
                     crate::tag::CompilerReferenceTag::DivvyChosen,
                 ),
                 if_true: Vec::new(),
                 if_false: vec![EffectAst::subject_verb_move_to_zone(
-                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                     Zone::Graveyard,
                     false,
                     ReturnControllerAst::Preserve,
@@ -673,21 +673,21 @@ pub(super) fn try_parse_divvy_sentence_sequence(
 
         let mut effects = parse_effect_sentence_lexed(sentences[0].lowered())?;
         effects.push(EffectAst::subject_verb_tag_matching_objects(
-            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
+            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
             vec![Zone::Library],
-            crate::tag::CompilerReferenceTag::DivvySource.key(),
+            crate::tag::CompilerReferenceTag::DivvySource.bind(),
         ));
         effects.push(EffectAst::ChooseObjectsAcrossZones {
-            filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.key()),
+            filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
             count: ChoiceCount::exactly(2),
             count_value: None,
             player: choose_player,
-            tag: crate::tag::CompilerReferenceTag::DivvyChosen.key(),
+            tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
             zones: vec![Zone::Library],
             search_mode: None,
         });
         effects.push(EffectAst::subject_verb_move_to_zone(
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyChosen.key(), None),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind(), None),
             Zone::Graveyard,
             false,
             ReturnControllerAst::Preserve,
@@ -695,14 +695,14 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             None,
         ));
         effects.push(EffectAst::ForEachTagged {
-            tag: crate::tag::CompilerReferenceTag::DivvySource.key(),
+            tag: crate::tag::CompilerReferenceTag::DivvySource.bind(),
             effects: vec![EffectAst::Conditional {
                 predicate: membership_predicate_for_iterated_object(
                     crate::tag::CompilerReferenceTag::DivvyChosen,
                 ),
                 if_true: Vec::new(),
                 if_false: vec![EffectAst::subject_verb_move_to_zone(
-                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                     rest_zone,
                     false,
                     ReturnControllerAst::Preserve,
@@ -720,8 +720,8 @@ pub(super) fn try_parse_divvy_sentence_sequence(
     }
 
     if shape == DivvySequenceShape::SearchFourDifferentPowers {
-        let source_tag = crate::tag::CompilerReferenceTag::Searched.key();
-        let chosen_tag = crate::tag::CompilerReferenceTag::DivvyChosen.key();
+        let source_tag = crate::tag::CompilerReferenceTag::Searched.bind();
+        let chosen_tag = crate::tag::CompilerReferenceTag::DivvyChosen.bind();
         let mut effects = parse_effect_sentence_lexed(sentences[0].lowered())?;
         effects.push(EffectAst::ChooseObjectsAcrossZones {
             filter: ObjectFilter::tagged(source_tag.clone()),
@@ -761,21 +761,21 @@ pub(super) fn try_parse_divvy_sentence_sequence(
     if shape == DivvySequenceShape::TargetOpponentChoosesOne {
         let mut effects = parse_effect_sentence_lexed(sentences[0].lowered())?;
         effects.push(EffectAst::subject_verb_tag_matching_objects(
-            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
+            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
             vec![Zone::Library],
-            crate::tag::CompilerReferenceTag::DivvySource.key(),
+            crate::tag::CompilerReferenceTag::DivvySource.bind(),
         ));
         effects.push(EffectAst::ChooseObjectsAcrossZones {
-            filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.key()),
+            filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
             count: ChoiceCount::exactly(1),
             count_value: None,
             player: PlayerAst::TargetOpponent,
-            tag: crate::tag::CompilerReferenceTag::DivvyChosen.key(),
+            tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
             zones: vec![Zone::Library],
             search_mode: None,
         });
         effects.push(EffectAst::subject_verb_move_to_zone(
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyChosen.key(), None),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind(), None),
             Zone::Hand,
             false,
             ReturnControllerAst::Preserve,
@@ -783,14 +783,14 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             None,
         ));
         effects.push(EffectAst::ForEachTagged {
-            tag: crate::tag::CompilerReferenceTag::DivvySource.key(),
+            tag: crate::tag::CompilerReferenceTag::DivvySource.bind(),
             effects: vec![EffectAst::Conditional {
                 predicate: membership_predicate_for_iterated_object(
                     crate::tag::CompilerReferenceTag::DivvyChosen,
                 ),
                 if_true: Vec::new(),
                 if_false: vec![EffectAst::subject_verb_move_to_zone(
-                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                     Zone::Graveyard,
                     false,
                     ReturnControllerAst::Preserve,

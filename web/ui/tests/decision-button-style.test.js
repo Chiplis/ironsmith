@@ -10,7 +10,7 @@ const players = [
   { id: 1, name: "Bob" },
 ];
 
-test("decision button color is driven by the decision player before priority state", () => {
+test("decision button identifies the decision owner while keeping a fixed yellow color", () => {
   const state = {
     players,
     perspective: 0,
@@ -20,10 +20,10 @@ test("decision button color is driven by the decision player before priority sta
   const decision = { kind: "priority", player: 0 };
 
   assert.equal(decisionButtonPlayerId(state, decision), 0);
-  assert.equal(decisionButtonAccentVars(state, decision)["--decision-main-accent"], "#b79cff");
+  assert.equal(decisionButtonAccentVars(state, decision)["--decision-main-accent"], "#ffe083");
 });
 
-test("decision button color does not fall back to active player during phase transitions", () => {
+test("decision button keeps its yellow color during phase transitions", () => {
   const state = {
     players,
     perspective: 0,
@@ -32,5 +32,14 @@ test("decision button color does not fall back to active player during phase tra
   };
 
   assert.equal(decisionButtonPlayerId(state, null), 0);
-  assert.equal(decisionButtonAccentVars(state, null)["--decision-main-accent"], "#b79cff");
+  assert.equal(decisionButtonAccentVars(state, null)["--decision-main-accent"], "#ffe083");
+});
+
+
+test("decision button color ignores player identity and custom seat colors", () => {
+  const state = { players, perspective: 0, priority_player: 0 };
+  assert.deepEqual(
+    decisionButtonAccentVars(state, { player: 0 }, { "0": "#ff0000" }),
+    decisionButtonAccentVars({ ...state, perspective: 1 }, { player: 1 }, { "1": "#00ff00" })
+  );
 });

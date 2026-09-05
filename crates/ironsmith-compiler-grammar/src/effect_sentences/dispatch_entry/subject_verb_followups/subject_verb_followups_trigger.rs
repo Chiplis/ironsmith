@@ -10,7 +10,7 @@ pub(super) fn bind_demonstrative_land_match_to_triggering_object(
             if filter.demonstrative_antecedent_surface()
                 == Some(ironsmith_core::DemonstrativeAntecedentSurface::Land) =>
         {
-            PredicateAst::TaggedMatches(crate::tag::CompilerReferenceTag::Triggering.key(), filter)
+            PredicateAst::TaggedMatches(crate::tag::CompilerReferenceTag::Triggering.bind(), filter)
         }
         PredicateAst::Not(inner) => PredicateAst::Not(Box::new(
             bind_demonstrative_land_match_to_triggering_object(*inner),

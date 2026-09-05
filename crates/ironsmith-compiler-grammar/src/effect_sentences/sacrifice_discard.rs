@@ -61,7 +61,7 @@ fn triggering_same_mana_value_filter() -> ObjectFilter {
     filter
         .tagged_constraints
         .push(crate::target::TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::Triggering.key(),
+            tag: crate::tag::CompilerReferenceTag::Triggering.bind(),
             relation: crate::target::TaggedOpbjectRelation::SameManaValueAsTagged,
         });
     filter

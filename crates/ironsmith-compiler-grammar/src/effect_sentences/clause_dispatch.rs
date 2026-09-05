@@ -129,7 +129,7 @@ fn parse_participant_choice_then_return_chosen_set(
     else {
         return Ok(None);
     };
-    let chosen_tag = crate::tag::CompilerReferenceTag::It.key();
+    let chosen_tag = crate::tag::CompilerReferenceTag::It.bind();
     Ok(Some(EffectAst::Sequence {
         effects: vec![
             EffectAst::ChooseObjects {
@@ -252,7 +252,7 @@ fn parse_explicit_target_object_damage_source(
         source
     } else {
         TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             span_from_tokens(subject_tokens),
         )
     };
@@ -325,7 +325,7 @@ fn target_choice_excluded_controller(
         clause_grammar::ChooseTargetChooserShape::ItsController
         | clause_grammar::ChooseTargetChooserShape::ThatOpponent => {
             Some(PlayerFilter::ControllerOf(
-                crate::filter::ObjectRef::Tagged(crate::tag::CompilerReferenceTag::It.key()),
+                crate::filter::ObjectRef::Tagged(crate::tag::CompilerReferenceTag::It.bind()),
             ))
         }
         clause_grammar::ChooseTargetChooserShape::Unresolved => None,
@@ -368,7 +368,7 @@ fn explicit_target_choice(
     };
     EffectAst::TagAffected {
         effect: Box::new(choice),
-        tag: alias.key(),
+        tag: alias.bind(),
     }
 }
 
@@ -635,7 +635,7 @@ fn parse_play_exiled_cards_for_as_long_as_exiled_clause(
         == Some(clause_grammar::TaggedPermissionShape::PlayExiledForAsLongAsExiled))
     .then(|| {
         EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             PlayerAst::You,
             true,
             false,
@@ -650,7 +650,7 @@ fn parse_mana_any_type_cast_tagged_this_way_clause(tokens: &[OwnedLexToken]) -> 
         == Some(clause_grammar::TaggedPermissionShape::ManaAnyTypeCastsTaggedThisWay))
     .then(|| {
         EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             PlayerAst::You,
             false,
             false,
@@ -721,7 +721,7 @@ fn parse_cast_any_number_from_among_tagged_clause(tokens: &[OwnedLexToken]) -> O
     let shape = clause_grammar::parse_cast_any_tagged_shape(tokens)?;
 
     let mut filter = ObjectFilter::nonland().in_zone(Zone::Exile).match_tagged(
-        crate::tag::CompilerReferenceTag::It.key(),
+        crate::tag::CompilerReferenceTag::It.bind(),
         crate::target::TaggedOpbjectRelation::IsTaggedObject,
     );
 
@@ -731,7 +731,7 @@ fn parse_cast_any_number_from_among_tagged_clause(tokens: &[OwnedLexToken]) -> O
         filter,
         effects: vec![EffectAst::May {
             effects: vec![EffectAst::subject_verb_cast_tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 PlayerAst::You,
                 false,
                 false,
@@ -773,7 +773,7 @@ fn parse_passive_sacrifice_by_controller_clause(
         filter,
         effects: vec![EffectAst::subject_verb_sacrifice(
             PlayerAst::ItsController,
-            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
+            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
             1,
             None,
         )],
@@ -953,12 +953,12 @@ pub(crate) fn parse_get_pump_clause(
                 .any(|word| word == "those")
         {
             return Ok(Some(EffectAst::ForEachTagged {
-                tag: crate::tag::CompilerReferenceTag::It.key(),
+                tag: crate::tag::CompilerReferenceTag::It.bind(),
                 effects: vec![EffectAst::subject_verb_pump_for_each(
                     power_per,
                     toughness_per,
                     TargetAst::Tagged(
-                        crate::tag::CompilerReferenceTag::It.key(),
+                        crate::tag::CompilerReferenceTag::It.bind(),
                         span_from_tokens(subject_shape.subject_tokens),
                     ),
                     count,
@@ -977,7 +977,7 @@ pub(crate) fn parse_get_pump_clause(
                 power_per,
                 toughness_per,
                 TargetAst::Tagged(
-                    crate::tag::CompilerReferenceTag::It.key(),
+                    crate::tag::CompilerReferenceTag::It.bind(),
                     span_from_tokens(subject_shape.subject_tokens),
                 ),
                 count,
@@ -1042,7 +1042,7 @@ pub(crate) fn parse_get_pump_clause(
                 power_per,
                 toughness_per,
                 TargetAst::Tagged(
-                    crate::tag::CompilerReferenceTag::Equipped.key(),
+                    crate::tag::CompilerReferenceTag::Equipped.bind(),
                     span_from_tokens(subject_shape.subject_tokens),
                 ),
                 count,
@@ -1052,7 +1052,7 @@ pub(crate) fn parse_get_pump_clause(
                 power_per,
                 toughness_per,
                 TargetAst::Tagged(
-                    crate::tag::CompilerReferenceTag::Enchanted.key(),
+                    crate::tag::CompilerReferenceTag::Enchanted.bind(),
                     span_from_tokens(subject_shape.subject_tokens),
                 ),
                 count,
@@ -1077,7 +1077,7 @@ pub(crate) fn parse_get_pump_clause(
                         power_per,
                         toughness_per,
                         TargetAst::Tagged(
-                            crate::tag::CompilerReferenceTag::It.key(),
+                            crate::tag::CompilerReferenceTag::It.bind(),
                             span_from_tokens(subject_shape.subject_tokens),
                         ),
                         count,
@@ -1155,7 +1155,7 @@ pub(crate) fn parse_get_pump_clause(
             power,
             toughness,
             TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 span_from_tokens(subject_shape.subject_tokens),
             ),
             duration,
@@ -1209,7 +1209,7 @@ pub(crate) fn parse_get_pump_clause(
             power,
             toughness,
             TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::Equipped.key(),
+                crate::tag::CompilerReferenceTag::Equipped.bind(),
                 span_from_tokens(subject_shape.subject_tokens),
             ),
             duration,
@@ -1219,7 +1219,7 @@ pub(crate) fn parse_get_pump_clause(
             power,
             toughness,
             TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::Enchanted.key(),
+                crate::tag::CompilerReferenceTag::Enchanted.bind(),
                 span_from_tokens(subject_shape.subject_tokens),
             ),
             duration,
@@ -1312,13 +1312,13 @@ fn lower_direct_clause_shape(
         clause_grammar::DirectClauseShape::CopySourceExiledCard => {
             EffectAst::ChooseObjectsAcrossZones {
                 filter: ObjectFilter::default().in_zone(Zone::Exile).match_tagged(
-                    crate::tag::CompilerReferenceTag::SourceExiled.key(),
+                    crate::tag::CompilerReferenceTag::SourceExiled.bind(),
                     crate::target::TaggedOpbjectRelation::IsTaggedObject,
                 ),
                 count: ChoiceCount::exactly(1),
                 count_value: None,
                 player: PlayerAst::You,
-                tag: crate::tag::CompilerReferenceTag::It.key(),
+                tag: crate::tag::CompilerReferenceTag::It.bind(),
                 zones: vec![Zone::Exile],
                 search_mode: None,
             }
@@ -1328,7 +1328,7 @@ fn lower_direct_clause_shape(
                 CounterType::PlusOnePlusOne,
                 Value::Fixed(1),
                 TargetAst::Tagged(
-                    crate::tag::CompilerReferenceTag::It.key(),
+                    crate::tag::CompilerReferenceTag::It.bind(),
                     span_from_tokens(tokens),
                 ),
                 None,
@@ -1352,7 +1352,7 @@ fn lower_direct_clause_shape(
             PlayerAst::You,
             SubjectVerbActionAst::TurnFaceUp {
                 target: TargetAst::Tagged(
-                    crate::tag::CompilerReferenceTag::SourceExiled.key(),
+                    crate::tag::CompilerReferenceTag::SourceExiled.bind(),
                     span_from_tokens(tokens),
                 ),
             },
@@ -1362,7 +1362,7 @@ fn lower_direct_clause_shape(
             PlayerAst::You,
             SubjectVerbActionAst::TurnFaceUp {
                 target: TargetAst::Tagged(
-                    crate::tag::CompilerReferenceTag::It.key(),
+                    crate::tag::CompilerReferenceTag::It.bind(),
                     span_from_tokens(tokens),
                 ),
             },
@@ -1393,35 +1393,35 @@ fn lower_direct_clause_shape(
         }
         clause_grammar::DirectClauseShape::DoubleX => EffectAst::subject_verb_scale_x_value(
             TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::Triggering.key(),
+                crate::tag::CompilerReferenceTag::Triggering.bind(),
                 span_from_tokens(tokens),
             ),
             2,
         ),
         clause_grammar::DirectClauseShape::OnlyChosenCanAttack => EffectAst::subject_verb_cant(
             crate::effect::Restriction::attack(
-                ObjectFilter::creature().not_tagged(crate::tag::CompilerReferenceTag::It.key()),
+                ObjectFilter::creature().not_tagged(crate::tag::CompilerReferenceTag::It.bind()),
             ),
             Until::EndOfCombat,
             None,
         ),
         clause_grammar::DirectClauseShape::OnlyChosenCanBlock => EffectAst::subject_verb_cant(
             crate::effect::Restriction::block(
-                ObjectFilter::creature().not_tagged(crate::tag::CompilerReferenceTag::It.key()),
+                ObjectFilter::creature().not_tagged(crate::tag::CompilerReferenceTag::It.bind()),
             ),
             Until::EndOfCombat,
             None,
         ),
         clause_grammar::DirectClauseShape::CastNonlandTaggedThisWay => {
             let filter = ObjectFilter::nonland().in_zone(Zone::Exile).match_tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 crate::target::TaggedOpbjectRelation::IsTaggedObject,
             );
             EffectAst::ForEachObject {
                 filter,
                 effects: vec![EffectAst::May {
                     effects: vec![EffectAst::subject_verb_cast_tagged(
-                        crate::tag::CompilerReferenceTag::It.key(),
+                        crate::tag::CompilerReferenceTag::It.bind(),
                         PlayerAst::You,
                         false,
                         false,

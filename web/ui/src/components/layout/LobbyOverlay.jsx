@@ -341,7 +341,7 @@ export default function LobbyOverlay({
             Multiplayer
           </div>
           <SheetTitle className="text-[24px] uppercase tracking-[0.16em] text-foreground">
-            Create Lobby
+            {lobbyActive ? "Multiplayer Lobby" : mode === "join" ? "Join Lobby" : "Create Lobby"}
           </SheetTitle>
           <SheetDescription className="max-w-[46ch] text-[13px] leading-5">
             Host or join a multiplayer table, submit decks, and manage invite links from one place.
@@ -357,6 +357,7 @@ export default function LobbyOverlay({
                   className={`${modeTabClass} ${
                     mode === "create" ? "brightness-125" : "opacity-70"
                   }`}
+                  aria-pressed={mode === "create"}
                   onClick={() => setMode("create")}
                 >
                   Create
@@ -366,6 +367,7 @@ export default function LobbyOverlay({
                   className={`${modeTabClass} ${
                     mode === "join" ? "brightness-125" : "opacity-70"
                   }`}
+                  aria-pressed={mode === "join"}
                   onClick={() => setMode("join")}
                 >
                   Join
@@ -517,7 +519,7 @@ export default function LobbyOverlay({
                     </div>
                     <Button
                       variant="secondary"
-                      className={pill}
+                      className={`${pill} ui-primary-action`}
                       onClick={handleCreate}
                     >
                       Create Lobby
@@ -580,7 +582,8 @@ export default function LobbyOverlay({
                     </div>
                     <Button
                       variant="secondary"
-                      className={pill}
+                      className={`${pill} ui-primary-action`}
+                      disabled={!joinCode.trim()}
                       onClick={handleJoin}
                     >
                       Join Lobby

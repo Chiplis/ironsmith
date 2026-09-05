@@ -357,7 +357,7 @@ fn search_put_attachment_target(
         && crate::word_primitives::sequence_occurs(&search_words, &["enchanted", "player"])
     {
         return Ok(Some(TargetAst::Player(
-            PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.key()),
+            PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.bind()),
             span_from_tokens(&target_tokens),
         )));
     }
@@ -1278,12 +1278,12 @@ fn prevent_damage_effect_with_optional_condition(
             || {
                 PredicateAst::TargetMatches(
                     ObjectFilter::default()
-                        .shares_color_with_tagged(crate::tag::CompilerReferenceTag::It.key()),
+                        .shares_color_with_tagged(crate::tag::CompilerReferenceTag::It.bind()),
                 )
             },
             |filter| {
                 PredicateAst::TargetMatches(
-                    filter.shares_color_with_tagged(crate::tag::CompilerReferenceTag::It.key()),
+                    filter.shares_color_with_tagged(crate::tag::CompilerReferenceTag::It.bind()),
                 )
             },
         );
@@ -1505,7 +1505,7 @@ pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
     ) {
         return Ok(Some(vec![EffectAst::subject_verb_cant(
             crate::effect::Restriction::Untap(ObjectFilter::tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
             )),
             crate::effect::Until::ControllersNextUntapStep,
             None,

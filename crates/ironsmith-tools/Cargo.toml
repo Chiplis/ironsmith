@@ -126,6 +126,15 @@ path = "src/bin/audit_parser_module_sizes.rs"
 test = false
 
 [[bin]]
+name = "audit_unbound_reference_keys"
+path = "src/bin/audit_unbound_reference_keys.rs"
+
+[[bin]]
+name = "audit_reference_keys"
+path = "src/bin/audit_reference_keys.rs"
+test = false
+
+[[bin]]
 name = "audit_first_match_ladders"
 path = "src/bin/audit_first_match_ladders.rs"
 test = true

@@ -110,7 +110,7 @@ fn parse_direct_controller_sacrifice_draw_program(
     }
     let sacrifice = EffectAst::subject_verb_sacrifice(
         PlayerAst::ItsController,
-        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
+        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
         1,
         None,
     );

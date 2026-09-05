@@ -758,8 +758,9 @@ export default function GameCard({
   card,
   compact = false,
   isPlayable = false,
+  hasAvailableAction = isPlayable,
   isInspected = false,
-  glowKind = null,
+  glowKind: requestedGlowKind = null,
   isHovered = false,
   isDragging = false,
   isNew = false,
@@ -784,7 +785,14 @@ export default function GameCard({
   suppressTooltip = false,
   battlefieldVisualMode = "classic",
 }) {
-  const { game, inspectorDebug } = useGame();
+  const { game, inspectorDebug, state } = useGame();
+  const targetingMode = state?.decision?.kind === "targets";
+  const targetIds = [card.id, ...(card.member_ids || [])].map(Number);
+  const isLegalTarget = targetingMode && (state.decision.requirements || []).some((requirement) =>
+    (requirement.legal_targets || []).some((target) => target.kind === "object" && targetIds.includes(Number(target.object)))
+  );
+  const glowKind = targetingMode ? (isLegalTarget ? "target-legal" : null) : requestedGlowKind;
+  const showActionBorder = hasAvailableAction && !targetingMode;
   const name = card.name || "";
   // English name stays the lookup key everywhere (art, mana parsing, DOM
   // attributes); only user-facing labels use the localized name.
@@ -836,8 +844,8 @@ export default function GameCard({
       : "opacity-72";
   const showBattlefieldCircuit = battlefieldCircuitActive;
   const showHandCircuit = variant === "hand" && (Boolean(glowKind) || isPlayable || isInspected);
-  const showCircuitAnimation = showBattlefieldCircuit || showHandCircuit;
-  const replaceGlowWithCircuit = (
+  const showCircuitAnimation = !targetingMode && !hasAvailableAction && (showBattlefieldCircuit || showHandCircuit);
+  const replaceGlowWithCircuit = !targetingMode && !hasAvailableAction && (
     (variant === "hand" && showHandCircuit)
     || (variant === "battlefield" && battlefieldCircuitActive)
   );
@@ -1326,6 +1334,8 @@ export default function GameCard({
       ref={rootRef}
       className={cn(
         "game-card grid content-start",
+        showActionBorder && "card-action-available",
+        targetingMode && "card-targeting-mode",
         useTokenBattlefield ? "p-0.5" : "p-1.5",
         variant === "battlefield" && "field-card",
         usePortraitBattlefield && "battlefield-portrait-card",
@@ -1336,7 +1346,7 @@ export default function GameCard({
         !compact && variant !== "hand" && "w-[124px] min-w-[124px] min-h-[172px]",
         battlefieldStackDepth > 0 && "battlefield-grouped-card",
         card.tapped && "tapped",
-        isPlayable && !glowKind && "playable",
+        isPlayable && !targetingMode && !glowKind && "playable",
         glowKind === "land" && "glow-land",
         glowKind === "spell" && "glow-spell",
         glowKind === "ability" && "glow-ability",
@@ -1432,6 +1442,9 @@ export default function GameCard({
         </>
       )}
       <div className="game-card-surface">
+        {(showActionBorder || isLegalTarget) && !useTokenBattlefield && (
+          <span className="card-action-border" aria-hidden="true" />
+        )}
         {artUrl && (variant !== "battlefield" || !useTokenBattlefield) && (
           <img
             className={cn(

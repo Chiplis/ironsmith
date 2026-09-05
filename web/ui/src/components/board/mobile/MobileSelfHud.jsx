@@ -60,7 +60,7 @@ export default function MobileSelfHud({
         type="button"
         className={cn(
           "mobile-mtga-self-hud-body",
-          targetable && "mobile-mtga-self-hud-body--targetable"
+          targetable && "mobile-mtga-self-hud-body--targetable player-target-box"
         )}
         data-player-target={me.index ?? me.id}
         data-player-target-name={me.id ?? me.index}

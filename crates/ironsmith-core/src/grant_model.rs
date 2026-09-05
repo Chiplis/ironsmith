@@ -1,3 +1,5 @@
+use crate::tag::TagKeyWalk;
+
 use crate::{
     AlternativeCastingMethod, CardType, CostComponent, ManaCost, ObjectFilter, PlayerFilter,
     SourceReferenceSurface, ThisSpellCostCondition, Zone,
@@ -16,6 +18,7 @@ pub trait GrantStaticAbility: Clone + PartialEq {
     clippy::large_enum_variant,
     reason = "derived casting grants preserve typed conditions and costs inline"
 )]
+#[derive(TagKeyWalk)]
 pub enum DerivedAlternativeCast<C> {
     /// Flashback using the card's mana cost plus optional extra cost components.
     FlashbackFromCardManaCost { additional_costs: Vec<C> },
@@ -123,6 +126,7 @@ impl<C> DerivedAlternativeCast<C> {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum GrantUsageLimit {
     OnceEachTurn,
     OnceDuringEachOfYourTurns,
@@ -134,6 +138,7 @@ pub enum GrantUsageLimit {
 /// wording.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub struct SourceExiledGrantSurface {
     pub source: SourceReferenceSurface,
     pub plural_spell_subject: bool,
@@ -226,6 +231,7 @@ impl<C: CostComponent> DerivedAlternativeCast<C> {
 /// Duration for one-shot grant effects.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum GrantDuration {
     /// Permanent (for effects that say "gains X" without duration).
     Forever,
@@ -242,6 +248,7 @@ pub enum GrantDuration {
     clippy::large_enum_variant,
     reason = "grant payloads preserve shared static-ability values inline"
 )]
+#[derive(TagKeyWalk)]
 pub enum Grantable<SA, E, C, Cond> {
     /// Grant a static ability (flash, flying, hexproof, etc.)
     Ability(SA),
@@ -414,6 +421,7 @@ where
 /// A grant specification describing what to grant and to whom.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct GrantSpec<SA, E, C, Cond> {
     /// What to grant (ability or alternative casting method).
     pub grantable: Grantable<SA, E, C, Cond>,

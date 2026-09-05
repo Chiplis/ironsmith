@@ -5,7 +5,7 @@ pub(super) fn parse_proliferate_choose_phase_out_bundle(
 ) -> Option<Vec<EffectAst>> {
     let shape = bundle_grammar::parse_proliferate_choose_phase_out_tokens(tokens)?;
     let proliferated_tag = helper_tag_for_tokens(tokens, "proliferated_this_way");
-    let chosen_tag = crate::tag::CompilerReferenceTag::It.key();
+    let chosen_tag = crate::tag::CompilerReferenceTag::It.bind();
     let selection_filter = shape.filter.match_tagged(
         proliferated_tag.clone(),
         TaggedOpbjectRelation::IsTaggedObject,

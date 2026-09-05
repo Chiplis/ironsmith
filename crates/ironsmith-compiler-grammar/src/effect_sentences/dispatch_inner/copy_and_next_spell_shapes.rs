@@ -107,7 +107,7 @@ fn retarget_source_copy_spell_to_delayed_triggering_object(effects: &mut [Effect
             && let SubjectVerbActionAst::CopySpell { target, .. } = &mut subject_verb.action
             && matches!(target, TargetAst::Source(_))
         {
-            *target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), None);
+            *target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None);
         }
 
         crate::model::visit::for_each_nested_effects_mut(
@@ -158,7 +158,7 @@ fn delayed_tagged_dealt_damage_trigger_from_core(
         delayed_shapes::DelayedObjectKind::Creature => ObjectFilter::creature(),
         delayed_shapes::DelayedObjectKind::Permanent => ObjectFilter::permanent(),
     };
-    filter = filter.match_tagged(crate::tag::CompilerReferenceTag::It.key(), TaggedOpbjectRelation::IsTaggedObject);
+    filter = filter.match_tagged(crate::tag::CompilerReferenceTag::It.bind(), TaggedOpbjectRelation::IsTaggedObject);
 
     if shape.combat {
         Some(TriggerSpec::IsDealtCombatDamage(filter))
@@ -175,7 +175,7 @@ fn delayed_that_deals_combat_damage_to_player_trigger_from_core(
         delayed_shapes::DelayedObjectKind::Creature => ObjectFilter::creature(),
         delayed_shapes::DelayedObjectKind::Permanent => ObjectFilter::permanent(),
     };
-    filter = filter.match_tagged(crate::tag::CompilerReferenceTag::It.key(), TaggedOpbjectRelation::IsTaggedObject);
+    filter = filter.match_tagged(crate::tag::CompilerReferenceTag::It.bind(), TaggedOpbjectRelation::IsTaggedObject);
     Some(TriggerSpec::DealsCombatDamageToPlayer {
         source: filter,
         player: PlayerFilter::Any,
@@ -235,7 +235,7 @@ fn parse_copy_that_spell_or_ability_twice_tail(
     let shape = delayed_shapes::parse_copy_twice_shape(effect_tokens)?;
 
     Some(vec![EffectAst::subject_verb_copy_spell(
-        TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), None),
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None),
         Value::Fixed(2),
         PlayerAst::Implicit,
         shape.may_choose_new_targets,
@@ -377,12 +377,12 @@ fn parse_next_cast_single_opponent_or_permanent_copy_loop(
     let chosen_destination = TargetAst::ObjectOrPlayer(
         ObjectFilter::permanent()
             .controlled_by(PlayerFilter::IteratedPlayer)
-            .match_tagged(crate::tag::CompilerReferenceTag::It.key(), TaggedOpbjectRelation::IsTaggedObject),
+            .match_tagged(crate::tag::CompilerReferenceTag::It.bind(), TaggedOpbjectRelation::IsTaggedObject),
         PlayerFilter::IteratedPlayer,
         None,
     );
     let copy = EffectAst::subject_verb_copy_spell(
-        TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), None),
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None),
         Value::Fixed(1),
         PlayerAst::You,
         false,
@@ -391,7 +391,7 @@ fn parse_next_cast_single_opponent_or_permanent_copy_loop(
     );
     let retarget = EffectAst::subject_verb_retarget_stack_object(
         PlayerAst::You,
-        TargetAst::Tagged(crate::tag::CompilerReferenceTag::CopiedStackObject.key(), None),
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::CopiedStackObject.bind(), None),
         crate::cards::builders::RetargetModeAst::OneToFixed {
             target: chosen_destination,
         },
@@ -459,7 +459,7 @@ pub fn parse_sentence_delayed_trigger_this_turn(
             trigger_filter
                 .tagged_constraints
                 .push(TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::It.key(),
+                    tag: crate::tag::CompilerReferenceTag::It.bind(),
                     relation: TaggedOpbjectRelation::IsTaggedObject,
                 });
             return Ok(Some(vec![
@@ -468,7 +468,7 @@ pub fn parse_sentence_delayed_trigger_this_turn(
                     count: ChoiceCount::exactly(1),
                     count_value: None,
                     player: PlayerAst::You,
-                    tag: crate::tag::CompilerReferenceTag::It.key(),
+                    tag: crate::tag::CompilerReferenceTag::It.bind(),
                 },
                 EffectAst::DelayedTriggerThisTurn {
                     trigger: TriggerSpec::AttacksAndIsntBlocked(trigger_filter),
@@ -607,7 +607,7 @@ pub fn parse_sentence_delayed_trigger_this_turn(
             )));
         }
         return Ok(Some(vec![EffectAst::DelayedTriggerThisTurn {
-            trigger: TriggerSpec::PutIntoGraveyard(ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key())),
+            trigger: TriggerSpec::PutIntoGraveyard(ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind())),
             effects: delayed_effects,
             one_shot: true,
             until_end_of_combat: false,
@@ -749,7 +749,7 @@ pub fn parse_delayed_when_that_dies_this_turn_sentence(
         let mut graveyard = ObjectFilter::default();
         graveyard.zone = Some(Zone::Graveyard);
         graveyard.owner = Some(PlayerFilter::ControllerOf(
-            crate::filter::ObjectRef::Tagged(crate::tag::CompilerReferenceTag::It.key()),
+            crate::filter::ObjectRef::Tagged(crate::tag::CompilerReferenceTag::It.bind()),
         ));
         vec![EffectAst::subject_verb_exile_all(graveyard, false)]
     } else {

@@ -95,7 +95,7 @@ fn rebind_one_of_those_cards_target(target: &mut TargetAst, looked_tag: &TagKey)
             true
         }
         TargetAst::Object(filter, _, reference_span)
-            if *filter == ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()) =>
+            if *filter == ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()) =>
         {
             *target = TargetAst::Tagged(looked_tag.clone(), *reference_span);
             true

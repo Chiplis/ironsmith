@@ -653,7 +653,7 @@ fn pre_rule_optional_source_exile_and_collect_evidence(
         .in_zone(Zone::Graveyard)
         .owned_by(PlayerFilter::You)
         .match_tagged(
-            crate::tag::CompilerReferenceTag::Triggering.key(),
+            crate::tag::CompilerReferenceTag::Triggering.bind(),
             crate::filter::TaggedOpbjectRelation::IsNotTaggedObject,
         );
     let choose_evidence = EffectAst::ChooseObjectsWithAggregateConstraint {
@@ -665,7 +665,7 @@ fn pre_rule_optional_source_exile_and_collect_evidence(
     };
     let exile_source = EffectAst::TagAffected {
         effect: Box::new(EffectAst::subject_verb_exile(
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), None),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None),
             false,
         )),
         tag: source_exiled_tag.clone(),
@@ -726,7 +726,7 @@ fn pre_rule_return_source_exiled_cards_if_source_sacrificed(
     state.effects.push(EffectAst::IfResult {
         predicate: IfResultPredicate::Did,
         effects: vec![EffectAst::subject_verb_return_all_to_battlefield(
-            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.key())
+            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind())
                 .in_zone(Zone::Exile),
             false,
             false,
@@ -811,7 +811,7 @@ fn pre_rule_damage_this_way_player_followup(
     {
         Some(followup_shapes::DamagedPlayerFollowupShape::CantCastNoncreatureSpellsThisTurn) => {
             vec![EffectAst::ForEachTaggedPlayer {
-                tag: crate::tag::CompilerReferenceTag::Damaged0.key(),
+                tag: crate::tag::CompilerReferenceTag::Damaged0.bind(),
                 effects: vec![EffectAst::subject_verb_cant(
                     crate::effect::Restriction::cast_spells_matching(
                         PlayerFilter::IteratedPlayer,
@@ -856,7 +856,7 @@ fn pre_rule_tap_damage_this_way_followup(
         tokens: sentence_tokens.to_vec(),
         wrap_if_result: None,
         direct_effects: Some(vec![EffectAst::subject_verb_tap(TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::Damaged0.key(),
+            crate::tag::CompilerReferenceTag::Damaged0.bind(),
             None,
         ))]),
         consumed_sentences: 1,

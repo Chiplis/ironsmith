@@ -120,7 +120,7 @@ pub(super) struct ConsultedGroup {
 }
 
 fn it() -> TargetAst {
-    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None)
+    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None)
 }
 
 fn traversal(parts: &ConsultSentenceParts) -> Option<(LibraryConsultModeAst, bool)> {
@@ -320,7 +320,7 @@ fn reveal_pump(next: &SentenceInput) -> Option<EffectAst> {
     if !definite_creature_subject {
         return None;
     }
-    *target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), None);
+    *target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None);
     effects.pop()
 }
 
@@ -719,7 +719,7 @@ pub(super) fn continue_with(
                 tag: all_tag,
                 effects: vec![EffectAst::Conditional {
                     predicate: PredicateAst::TaggedMatches(
-                        crate::tag::CompilerReferenceTag::It.key(),
+                        crate::tag::CompilerReferenceTag::It.bind(),
                         ObjectFilter::tagged(match_tag),
                     ),
                     if_true: Vec::new(),
@@ -826,7 +826,7 @@ fn others_into_graveyard(all_tag: TagKey, match_tag: TagKey) -> EffectAst {
         tag: all_tag,
         effects: vec![EffectAst::Conditional {
             predicate: PredicateAst::TaggedMatches(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 ObjectFilter::tagged(match_tag),
             ),
             if_true: Vec::new(),

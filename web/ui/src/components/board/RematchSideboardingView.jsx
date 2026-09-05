@@ -29,7 +29,7 @@ function moveCard(cards, name, direction) {
 function CardColumn({ title, cards, emptyText, actionLabel, onMove, disabled = false }) {
   const countedCards = useMemo(() => countCards(cards), [cards]);
   return (
-    <section className="flex min-h-0 flex-1 flex-col border border-[rgba(128,107,78,0.42)] bg-[rgba(11,13,15,0.74)]">
+    <section className="setup-editor flex min-h-0 flex-1 flex-col border border-[rgba(128,107,78,0.42)] bg-[rgba(11,13,15,0.74)]">
       <div className="flex shrink-0 items-center justify-between border-b border-[rgba(128,107,78,0.28)] px-3 py-2">
         <h2 className="text-[12px] font-bold uppercase tracking-wider text-[#f2d9a3]">
           {title}
@@ -49,20 +49,21 @@ function CardColumn({ title, cards, emptyText, actionLabel, onMove, disabled = f
               <button
                 key={entry.name}
                 type="button"
-                className="group flex min-h-9 w-full items-center gap-2 border border-transparent bg-[rgba(255,255,255,0.035)] px-2 py-1.5 text-left transition-colors hover:border-[#8ec4ff]/45 hover:bg-[#132235]"
+                className="group flex min-h-9 w-full items-center gap-2 border border-transparent bg-[rgba(255,255,255,0.035)] px-2 py-1.5 text-left transition-colors hover:border-primary/45 hover:bg-secondary"
                 onClick={() => {
                   if (!disabled) onMove(entry.name);
                 }}
                 disabled={disabled}
                 title={actionLabel}
+                aria-label={`${entry.name}: ${actionLabel}`}
               >
-                <span className="w-8 shrink-0 text-[12px] font-bold text-[#8ec4ff]">
+                <span className="w-8 shrink-0 text-[12px] font-bold text-primary">
                   {entry.count}x
                 </span>
-                <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[#e8edf5]">
+                <span className="min-w-0 flex-1 break-words text-[13px] font-semibold text-foreground">
                   {entry.name}
                 </span>
-                <ArrowLeftRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-[#8ec4ff]" />
+                <ArrowLeftRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" />
               </button>
             ))}
           </div>
@@ -92,7 +93,7 @@ export default function RematchSideboardingView() {
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-[linear-gradient(180deg,rgba(17,16,14,0.98),rgba(8,10,12,0.98))] px-3 py-3">
+    <div className="setup-screen sideboarding-screen flex h-full min-h-0 w-full flex-col overflow-hidden bg-[linear-gradient(180deg,rgba(17,16,14,0.98),rgba(8,10,12,0.98))] px-3 py-3">
       <div className="mb-3 flex shrink-0 items-end justify-between gap-3">
         <div>
           <h1 className="text-[18px] font-bold uppercase tracking-wide text-[#f2d9a3]">

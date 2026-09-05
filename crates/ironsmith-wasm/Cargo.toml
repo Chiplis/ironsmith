@@ -5,7 +5,9 @@ edition = "2024"
 build = "build.rs"
 
 [dependencies]
-ironsmith-web-session = { path = "../ironsmith-web-session", default-features = false }
+# Browser sessions must support custom-card preview and creation even when the
+# build uses --no-default-features (as the lean rebuild does).
+ironsmith-web-session = { path = "../ironsmith-web-session", default-features = false, features = ["dynamic-compile"] }
 
 [lib]
 path = "src/binding.rs"

@@ -85,7 +85,7 @@ pub fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) -> Opti
             }
             if is_tagged_that_object_mana_value() {
                 return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
-                    crate::tag::CompilerReferenceTag::It.key(),
+                    crate::tag::CompilerReferenceTag::It.bind(),
                 ))));
             }
             None
@@ -137,7 +137,7 @@ pub fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) -> Opti
                 && crate::word_primitives::parse_sequence_suffix(segment, &["mana", "value"])
             {
                 return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
-                    crate::tag::CompilerReferenceTag::Triggering.key(),
+                    crate::tag::CompilerReferenceTag::Triggering.bind(),
                 ))));
             }
             if segment.first().copied() == Some("that")
@@ -152,7 +152,7 @@ pub fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) -> Opti
                 }
                 let surface = reference_words.join(" ");
                 return Some(Value::ManaValueOf(Box::new(
-                    ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())
+                    ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.bind())
                         .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(
                             crate::target::SourceReferenceSurface::ThisPermanentType(surface),
                         )),

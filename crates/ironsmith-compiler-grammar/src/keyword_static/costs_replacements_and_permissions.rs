@@ -1595,7 +1595,7 @@ pub fn parse_dynamic_cost_modifier_value(
             }
         },
         DynamicCostValueShape::RevealedPublic => Value::Count(ObjectFilter::tagged(
-            crate::tag::CompilerReferenceTag::PublicRevealed.key(),
+            crate::tag::CompilerReferenceTag::PublicRevealed.bind(),
         )),
         DynamicCostValueShape::RevealedOther => {
             let words = parser_token_word_refs(tokens);
@@ -1616,7 +1616,7 @@ pub fn parse_dynamic_cost_modifier_value(
                 },
                 CounterReferenceKind::Tagged => Value::CountersOn(
                     Box::new(ChooseSpec::Tagged(
-                        crate::tag::CompilerReferenceTag::It.key(),
+                        crate::tag::CompilerReferenceTag::It.bind(),
                     )),
                     counter_type,
                 ),
@@ -3133,7 +3133,7 @@ pub fn parse_you_may_cast_exile_counter_cards_with_mana_permission_line(
         base_filter
             .tagged_constraints
             .push(crate::target::TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
+                tag: crate::tag::CompilerReferenceTag::SourceExiled.bind(),
                 relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
             });
     }
@@ -3266,7 +3266,7 @@ pub fn parse_you_may_static_grant_line(
         filter
             .tagged_constraints
             .push(crate::target::TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
+                tag: crate::tag::CompilerReferenceTag::SourceExiled.bind(),
                 relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
             });
         let grant = StaticAbility::grants(
@@ -4117,11 +4117,11 @@ pub fn parse_keyword_action_replacement_line(
                 ObjectFilter::creature().controlled_by(PlayerFilter::You),
                 vec![
                     EffectAst::subject_verb_explore(TargetAst::Tagged(
-                        crate::tag::CompilerReferenceTag::It.key(),
+                        crate::tag::CompilerReferenceTag::It.bind(),
                         None,
                     )),
                     EffectAst::subject_verb_explore(TargetAst::Tagged(
-                        crate::tag::CompilerReferenceTag::It.key(),
+                        crate::tag::CompilerReferenceTag::It.bind(),
                         None,
                     )),
                 ],
@@ -4152,7 +4152,7 @@ pub fn parse_keyword_action_replacement_line(
                         SubjectVerbActionAst::Scry { count },
                     ),
                     EffectAst::subject_verb_explore(TargetAst::Tagged(
-                        crate::tag::CompilerReferenceTag::It.key(),
+                        crate::tag::CompilerReferenceTag::It.bind(),
                         None,
                     )),
                 ],

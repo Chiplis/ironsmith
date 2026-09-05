@@ -1,3 +1,5 @@
+use crate::tag::TagKeyWalk;
+
 use crate::{ChooseSpec, ObjectFilter, PlayerFilter};
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -6,6 +8,7 @@ use crate::{ChooseSpec, ObjectFilter, PlayerFilter};
     clippy::large_enum_variant,
     reason = "attachment filters preserve the shared object-filter value model"
 )]
+#[derive(TagKeyWalk)]
 pub enum AuraAttachmentFilter {
     Object(ObjectFilter),
     Player(PlayerFilter),

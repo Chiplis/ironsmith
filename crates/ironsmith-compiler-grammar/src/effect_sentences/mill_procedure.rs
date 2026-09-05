@@ -259,7 +259,7 @@ pub(super) fn continue_with(
             compose_choose_from_looked_cards_into_hand_rest_into_graveyard(
                 chooser,
                 filter,
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 chosen_tag,
                 Zone::Graveyard,
                 false,
@@ -323,7 +323,7 @@ pub(super) fn continue_with(
             effects: compose_choose_from_looked_cards_into_hand_rest_into_graveyard(
                 chooser,
                 filter,
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 chosen_tag,
                 Zone::Graveyard,
                 false,
@@ -395,7 +395,7 @@ pub(super) fn finish(mut group: MilledGroup) -> Vec<EffectAst> {
             compose_choose_from_looked_cards_into_hand_rest_into_graveyard(
                 chooser,
                 filter,
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 chosen_tag,
                 Zone::Graveyard,
                 false,

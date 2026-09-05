@@ -690,12 +690,12 @@ pub(super) fn attach_compiler_trigger_facts(
                     context,
                     &triggered.trigger_parse_tokens,
                 )?;
-                let revealed_tag = crate::tag::CompilerReferenceTag::OathRevealed.key();
-                let creature_tag = crate::tag::CompilerReferenceTag::OathCreature.key();
+                let revealed_tag = crate::tag::CompilerReferenceTag::OathRevealed.bind();
+                let creature_tag = crate::tag::CompilerReferenceTag::OathCreature.bind();
                 let mut creature_card_filter = crate::ObjectFilter::creature();
                 creature_card_filter.zone = None;
                 let membership_filter = crate::ObjectFilter::default()
-                    .same_stable_id_as_tagged(crate::tag::CompilerReferenceTag::It.key());
+                    .same_stable_id_as_tagged(crate::tag::CompilerReferenceTag::It.bind());
                 Some((
                     trigger,
                     vec![
@@ -739,7 +739,7 @@ pub(super) fn attach_compiler_trigger_facts(
                                         if_false: vec![
                                             crate::host::EffectAst::subject_verb_move_to_zone(
                                                 crate::TargetAst::Tagged(
-                                                    crate::tag::CompilerReferenceTag::It.key(),
+                                                    crate::tag::CompilerReferenceTag::It.bind(),
                                                     None,
                                                 ),
                                                 crate::Zone::Graveyard,

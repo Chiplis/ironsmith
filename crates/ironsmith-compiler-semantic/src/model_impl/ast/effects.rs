@@ -1,15 +1,19 @@
+use ironsmith_core::tag::TagKeyWalk;
+
 use super::*;
 use crate::model::document_program::CompilerDocumentProgramAst;
 
 /// One mode of an `EffectAst::ChooseOneOf` modal choice: a label shown to the
 /// player and the effects that resolve when that mode is chosen.
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct ChooseOneModeAst {
     pub description: String,
     pub effects: Vec<EffectAst>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum EffectAst {
     /// A grammar-resolved effect program with explicit conjunction,
     /// disjunction, ordering, dependency, and carry semantics.
@@ -559,7 +563,7 @@ impl EffectAst {
             Self::ForEachTagged {
                 tag: chosen_tag.clone(),
                 effects: vec![Self::subject_verb_move_to_zone(
-                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                     Zone::Library,
                     true,
                     ReturnControllerAst::Preserve,

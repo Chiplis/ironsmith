@@ -6,7 +6,7 @@
 use super::*;
 use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId, RuleMatch};
 use crate::registry::{
-    HeadDiscriminator, RegistryCandidate, RegistryRuleMetadata, resolve_ranked_candidates,
+    HeadDiscriminator, RegistryCandidate, RegistryRuleMetadata, resolve_registry_candidates,
 };
 
 #[path = "predicate_readings/part_1.rs"]
@@ -123,9 +123,7 @@ pub(super) fn read(input: &Predicate<'_>) -> ParseOutcome<RuleMatch<PredicateAst
                 .join(", ")
         ));
     }
-    let outcome = resolve_ranked_candidates(REGISTRY, distinct, diagnostics, || {
-        crate::lexer::parser_token_word_refs(input.tokens).join(" ")
-    });
+    let outcome = resolve_registry_candidates(REGISTRY, distinct, diagnostics);
     match &outcome {
         ParseOutcome::Match(matched) => {
             crate::parse_trace::event(format!("{REGISTRY}: {} read the input", matched.value.rule));

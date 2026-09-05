@@ -11,7 +11,7 @@ pub fn parse_if_enters_with_additional_counter_sentence(
         Value::Fixed(shape.descriptor.count as i32)
             .with_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
             .with_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter),
-        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), clause.span()),
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), clause.span()),
         None,
         false,
     );
@@ -40,7 +40,7 @@ pub fn parse_tagged_enters_with_additional_counter_sentence(
             .with_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
             .with_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter)
             .with_surface_hint(ironsmith_core::ValueSurfaceHint::CounterFollowupSeparateSentence),
-        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), clause.span()),
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), clause.span()),
         None,
         false,
     )]))
@@ -69,7 +69,7 @@ pub fn parse_tagged_conditional_entry_counters_sentence(
                     .with_surface_hint(
                         ironsmith_core::ValueSurfaceHint::CounterFollowupSeparateSentence,
                     ),
-                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), clause.span()),
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), clause.span()),
                 None,
                 false,
             );
@@ -122,7 +122,7 @@ pub(super) fn lower_put_with_additional_counter(
         shape.descriptor.counter_type,
         Value::Fixed(shape.descriptor.count as i32)
             .with_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter),
-        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), span),
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span),
         None,
         false,
     ));
@@ -186,7 +186,7 @@ pub fn parse_each_player_return_with_additional_counter_sentence(
     per_player_effects.push(EffectAst::subject_verb_put_counters(
         shape.descriptor.counter_type,
         Value::Fixed(shape.descriptor.count as i32),
-        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), clause.span()),
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), clause.span()),
         None,
         false,
     ));

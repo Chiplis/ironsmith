@@ -563,7 +563,7 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
         append_shared_subject_pump_to_target(&mut effects, &target, &pump_effect);
         let grant_target = if has_preceding_target_effect || declares_shared_target {
             TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 span_from_tokens(real_subject_tokens),
             )
         } else {
@@ -602,7 +602,7 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
         );
         let following_pump_target = if has_preceding_target_effect || declares_shared_target {
             TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 span_from_tokens(real_subject_tokens),
             )
         } else {
@@ -626,7 +626,7 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
     let is_pronoun_subject = real_subject_shape.pronoun;
     if is_pronoun_subject {
         let span = span_from_tokens(real_subject_tokens);
-        let target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), span);
+        let target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span);
         if let Some(become_effect) = &leading_become_effect {
             effects.push(become_effect.clone());
         }
@@ -708,7 +708,7 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
     let is_demonstrative_subject = real_subject_shape.demonstrative_object;
     if is_demonstrative_subject {
         let target = TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             span_from_tokens(real_subject_tokens),
         );
         if let Some(become_effect) = &leading_become_effect {

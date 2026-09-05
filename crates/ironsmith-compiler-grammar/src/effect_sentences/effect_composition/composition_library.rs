@@ -225,10 +225,10 @@ pub(super) fn parse_each_player_shuffle_then_consult_bundle(
     let mut tagged_library_filter = ObjectFilter::default();
     tagged_library_filter.zone = Some(Zone::Library);
 
-    let shuffled_tag = crate::tag::CompilerReferenceTag::EachPlayerShuffled.key();
-    let qualifying_tag = crate::tag::CompilerReferenceTag::EachPlayerQualifyingShuffled.key();
-    let revealed_tag = crate::tag::CompilerReferenceTag::EachPlayerConsultRevealed.key();
-    let matched_tag = crate::tag::CompilerReferenceTag::EachPlayerConsultMatched.key();
+    let shuffled_tag = crate::tag::CompilerReferenceTag::EachPlayerShuffled.bind();
+    let qualifying_tag = crate::tag::CompilerReferenceTag::EachPlayerQualifyingShuffled.bind();
+    let revealed_tag = crate::tag::CompilerReferenceTag::EachPlayerConsultRevealed.bind();
+    let matched_tag = crate::tag::CompilerReferenceTag::EachPlayerConsultMatched.bind();
     Some(vec![EffectAst::ForEachPlayer {
         effects: vec![
             EffectAst::subject_verb_tag_matching_objects(

@@ -91,6 +91,8 @@ export default function TextInputDecision({
       <div className="flex items-center gap-2">
         <Input
           type="text"
+          aria-label={decision.description || decision.placeholder || "Enter text"}
+          aria-invalid={requiresKnownValue && validationStatus === "unknown"}
           className={cn(
             "decision-inline-input h-8 bg-transparent",
             stripLayout ? "w-[220px] text-[14px]" : "w-full text-[16px]"
@@ -111,7 +113,7 @@ export default function TextInputDecision({
         />
       </div>
       {requiresKnownValue && trimmedValue ? (
-        <div className="px-1 text-[11px] text-[#bfae8e]">
+        <div role="status" className="px-1 text-[12px] text-muted-foreground">
           {validationStatus === "checking"
             ? "Checking card name..."
             : validationStatus === "unknown"

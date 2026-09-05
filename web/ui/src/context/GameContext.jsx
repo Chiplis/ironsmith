@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useRef, useMemo, useEffect } from "react";
+import { useContext, useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { useWasmGame } from "@/hooks/useWasmGame";
 import { usePeerLobby } from "@/hooks/usePeerLobby";
 import {
@@ -34,7 +34,7 @@ import { DEFAULT_UI_FONT, uiFontStack } from "@/lib/ui-fonts";
 import { hexToRgbString } from "@/lib/player-colors";
 import { samePlayerId } from "@/lib/player-display";
 
-const GameContext = createContext(null);
+import { GameContext } from "./GameContext.shared";
 const TARGET_SUBMIT_CANCEL_DEBOUNCE_MS = 250;
 const AUDIT_REPLAY_GATE_WAIT_ATTEMPTS = 8;
 const UI_FONT_STORAGE_KEY = "ironsmith.uiFont";

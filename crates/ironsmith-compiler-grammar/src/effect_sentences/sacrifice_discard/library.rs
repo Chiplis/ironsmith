@@ -55,7 +55,7 @@ pub fn parse_discard(
         }
         sacrifice_discard_grammar::DiscardClauseShape::TaggedOne => {
             let mut tagged_filter =
-                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
+                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
             tagged_filter.zone = Some(Zone::Hand);
             return Ok(EffectAst::subject_verb_discard(
                 player,
@@ -68,7 +68,7 @@ pub fn parse_discard(
         }
         sacrifice_discard_grammar::DiscardClauseShape::TaggedAll => {
             let mut tagged_filter =
-                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
+                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
             tagged_filter.zone = Some(Zone::Hand);
             return Ok(EffectAst::subject_verb_discard(
                 player,
@@ -169,7 +169,7 @@ pub fn parse_discard(
             sacrifice_discard_grammar::parse_additional_cost_object_colors_surface(trailing_tokens);
         let trailing_filter = if let Some(surface) = additional_cost_colors {
             let mut filter = ObjectFilter::default().match_tagged(
-                crate::tag::CompilerReferenceTag::AdditionalCostObject.key(),
+                crate::tag::CompilerReferenceTag::AdditionalCostObject.bind(),
                 TaggedOpbjectRelation::SharesColorWithTagged,
             );
             filter.set_additional_cost_object_surface(Some(surface));

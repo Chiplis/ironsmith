@@ -4,6 +4,8 @@
 //! coordination, permission, and control-flow models; they are vocabulary,
 //! not a second top-level effect representation.
 
+use ironsmith_core::tag::TagKeyWalk;
+
 use crate::effect::ValueComparisonOperator;
 use crate::model::costs::CompilerTotalCost;
 use crate::model::selections::{CompilerFilterAst, CompilerSelectionAst, CompilerValueAst};
@@ -11,6 +13,7 @@ use crate::model::symbols::SymbolReference;
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum ClauseVerbAst {
     Add,
     Attach,
@@ -51,18 +54,21 @@ pub enum ClauseVerbAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum ClausePolarityAst {
     Positive,
     Negative,
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct ClauseActionAst {
     pub verb: ClauseVerbAst,
     pub polarity: ClausePolarityAst,
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum ClauseActorAst {
     SourceController,
     ActivePlayer,
@@ -74,6 +80,7 @@ pub enum ClauseActorAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum CompilerPlayerAst {
     Any,
     Chosen,
@@ -91,6 +98,7 @@ pub enum CompilerPlayerAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum ClauseSubjectAst {
     Source,
     Actor(ClauseActorAst),
@@ -100,6 +108,7 @@ pub enum ClauseSubjectAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum ClauseObjectAst {
     Subject(ClauseSubjectAst),
     Selection(CompilerSelectionAst),
@@ -164,6 +173,7 @@ pub struct ClauseDestinationAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum ClausePredicateAst {
     Constant(bool),
     Matches {
@@ -182,6 +192,7 @@ pub enum ClausePredicateAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum ClauseConditionKindAst {
     If,
     Unless,
@@ -190,12 +201,14 @@ pub enum ClauseConditionKindAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct ClauseConditionAst {
     pub kind: ClauseConditionKindAst,
     pub predicate: ClausePredicateAst,
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum ClauseDurationAst {
     Permanent,
     ThisTurn,

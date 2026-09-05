@@ -1,3 +1,5 @@
+use crate::tag::TagKeyWalk;
+
 use crate::{
     CardType, ChoiceAggregateConstraint, ChoiceCount, ChooseSpec, Color, ColorSet, CounterType,
     EffectMetric, KeywordActionKind, ManaCost, ManaSymbol, ObjectId, PlayerId, PriorEffectAction,
@@ -156,6 +158,7 @@ fn describe_conjunctive_filter_list(mut parts: Vec<String>) -> String {
 /// A reference to an object for use in filters and effects.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+#[derive(TagKeyWalk)]
 pub enum ObjectRef {
     #[default]
     Target,
@@ -177,6 +180,7 @@ impl ObjectRef {
 /// referenced stack object.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub struct TargetabilityConstraint {
     pub stack_object: ObjectRef,
 }
@@ -194,6 +198,7 @@ impl TargetabilityConstraint {
 /// changing which objects match the filter.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(TagKeyWalk)]
 pub enum ObjectFilterUnionConnective {
     #[default]
     Or,
@@ -208,6 +213,7 @@ pub enum ObjectFilterUnionConnective {
 /// ambiguous pronoun "it".
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum SameNameAntecedentSurface {
     Card,
     Spell,
@@ -256,6 +262,7 @@ impl SameNameAntecedentSurface {
 /// equality-transparent value only preserves which source noun Oracle used.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum ChosenNameSourceSurface {
     Artifact,
     Card,
@@ -297,6 +304,7 @@ impl ChosenNameSourceSurface {
 /// filter so compiled text does not collapse an explicit antecedent to "it."
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum DemonstrativeAntecedentSurface {
     Artifact,
     Card,
@@ -349,6 +357,7 @@ impl DemonstrativeAntecedentSurface {
 /// exiled.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum AdditionalCostObjectAction {
     Sacrificed,
     Exiled,
@@ -367,6 +376,7 @@ impl AdditionalCostObjectAction {
 /// reference such as "the sacrificed creature" or "the exiled permanent."
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub struct AdditionalCostObjectSurface {
     pub action: AdditionalCostObjectAction,
     pub kind: crate::target_model::SacrificedObjectKind,
@@ -388,6 +398,7 @@ impl AdditionalCostObjectSurface {
 /// Authored opponent quantifier in a "played by ..." entry restriction.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum PlayedByOpponentSurface {
     YourOpponents,
     AnOpponent,
@@ -411,6 +422,7 @@ impl PlayedByOpponentSurface {
 /// "put there this turn" from an explicitly authored "from anywhere" clause.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum GraveyardEntryHistorySurface {
     PutThereThisTurn,
     PutThereFromAnywhereThisTurn,
@@ -423,6 +435,7 @@ pub enum GraveyardEntryHistorySurface {
 /// jointly cover that global set.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum GlobalCharacteristicDomainSurface {
     CardsOutsideBattlefieldSpellsAndPermanents,
 }
@@ -435,6 +448,7 @@ pub enum GlobalCharacteristicDomainSurface {
 /// same runtime filter rendered with a canonical surface.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default)]
+#[derive(TagKeyWalk)]
 pub struct ObjectFilterUnionSurface {
     connective: ObjectFilterUnionConnective,
     /// Oracle placed subtype arms before card-type arms in a mixed
@@ -1085,6 +1099,7 @@ impl Eq for ObjectFilterUnionSurface {}
 /// Which power/toughness reference a filter should use.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(TagKeyWalk)]
 pub enum PtReference {
     #[default]
     Effective,
@@ -1094,6 +1109,7 @@ pub enum PtReference {
 /// Relationship between a candidate object's own power and toughness.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum PowerToughnessRelation {
     PowerGreaterThanToughness,
     ToughnessGreaterThanPower,
@@ -1103,6 +1119,7 @@ pub enum PowerToughnessRelation {
 /// Relationship an object may have with a tagged object set.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum TaggedOpbjectRelation {
     IsTaggedObject,
     /// Identity membership retained from an entry-time sacrifice choice. This
@@ -1144,6 +1161,7 @@ pub enum TaggedOpbjectRelation {
 /// separately filtered set of objects.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum ObjectCharacteristic {
     CardType,
     /// Runtime-equivalent to `CardType`, while preserving Oracle's
@@ -1170,6 +1188,7 @@ impl ObjectCharacteristic {
 /// comparison set, or share none of them.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum ObjectCharacteristicRelationKind {
     SharesAny,
     SharesNone,
@@ -1182,6 +1201,7 @@ pub enum ObjectCharacteristicRelationKind {
 /// such as "shares a color or mana value with the exiled card."
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct ObjectCharacteristicRelation {
     pub kind: ObjectCharacteristicRelationKind,
     pub characteristics: Vec<ObjectCharacteristic>,
@@ -1232,6 +1252,7 @@ impl ObjectCharacteristicRelation {
 /// Alternative casting capability qualifier for card filters.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum AlternativeCastKind {
     Blitz,
     Dash,
@@ -1246,6 +1267,7 @@ pub enum AlternativeCastKind {
 /// Counter-state qualifier for object filters.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum CounterConstraint {
     Any,
     Typed(CounterType),
@@ -1258,6 +1280,7 @@ pub enum CounterConstraint {
 /// A parity requirement for numeric object properties.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum ParityRequirement {
     Odd,
     Even,
@@ -1286,6 +1309,7 @@ impl ParityRequirement {
 /// Power relationship against the source object in filter context.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum SourcePowerRelation {
     LessThanSource,
 }
@@ -1293,6 +1317,7 @@ pub enum SourcePowerRelation {
 /// Stack object kind constraint for stack-targeting filters.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum StackObjectKind {
     Spell,
     Ability,
@@ -1304,6 +1329,7 @@ pub enum StackObjectKind {
 /// A tagged-object constraint used by object filters.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub struct TaggedObjectConstraint {
     pub tag: TagKey,
     pub relation: TaggedOpbjectRelation,
@@ -1312,6 +1338,7 @@ pub struct TaggedObjectConstraint {
 /// Filter for selecting players.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default)]
+#[derive(TagKeyWalk)]
 pub enum PlayerFilter {
     #[default]
     Any,
@@ -1667,6 +1694,7 @@ impl PlayerFilter {
 /// A numeric comparison for filtering.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum Comparison {
     Equal(i32),
     OneOf(Vec<i32>),
@@ -1711,6 +1739,7 @@ impl Comparison {
 /// counter-placement event for this exact object during the current turn.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct CountersPutOnThisTurnConstraint {
     /// `None` matches counters of any type.
     pub counter_type: Option<CounterType>,
@@ -1742,6 +1771,7 @@ impl CountersPutOnThisTurnConstraint {
 /// affect lowering, deduplication, or runtime behavior.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Default)]
+#[derive(TagKeyWalk)]
 pub struct ExcludedNameSurface(Option<String>);
 
 impl ExcludedNameSurface {
@@ -1763,6 +1793,7 @@ impl PartialEq for ExcludedNameSurface {
 /// Filter for selecting objects (permanents, spells, cards).
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default)]
+#[derive(TagKeyWalk)]
 pub struct ObjectFilter {
     pub zone: Option<Zone>,
     pub controller: Option<PlayerFilter>,

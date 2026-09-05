@@ -320,7 +320,7 @@ pub(in super::super) fn parse_object_filter_inner(
         if start < end {
             let chosen_kind = exclusion.phrase.last().copied().unwrap_or("object");
             filter.tagged_constraints.push(TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::ChosenObjects.key(),
+                tag: crate::tag::CompilerReferenceTag::ChosenObjects.bind(),
                 relation: TaggedOpbjectRelation::IsNotTaggedObject,
             });
             // For a direct `other than the chosen ...` exclusion this inert
@@ -571,7 +571,7 @@ pub(in super::super) fn parse_object_filter_inner(
     )
     .is_some()
     {
-        return Ok(ObjectFilter::tagged("rest"));
+        return Ok(ObjectFilter::tagged(crate::tag::CompilerReferenceTag::Rest.bind()));
     }
     if let Some(filter) = parse_permanent_or_suspended_card_disjunction(&base_tokens) {
         return Ok(filter);
@@ -701,7 +701,7 @@ pub(in super::super) fn parse_object_filter_inner(
     {
         filter.blocked = true;
         filter.blocked_by = Some(crate::filter::ObjectRef::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
         ));
     }
 
@@ -1630,7 +1630,7 @@ pub(in super::super) fn parse_object_filter_inner(
             // find that regression before re-adding the guard.
             "equipped" if !is_negated_word => {
                 filter.tagged_constraints.push(TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::Equipped.key(),
+                    tag: crate::tag::CompilerReferenceTag::Equipped.bind(),
                     relation: TaggedOpbjectRelation::IsTaggedObject,
                 });
             }
@@ -2489,7 +2489,7 @@ pub(in super::super) fn parse_object_filter_inner(
 
     if vote_winners_only {
         filter = filter.match_tagged(
-            crate::tag::CompilerReferenceTag::VoteWinners.key(),
+            crate::tag::CompilerReferenceTag::VoteWinners.bind(),
             TaggedOpbjectRelation::IsTaggedObject,
         );
     }
@@ -2598,7 +2598,7 @@ pub(super) fn try_apply_could_be_targeted_by_that_spell_clause(
         };
         let idx = fact.span.start;
         filter.could_be_targeted_by = Some(TargetabilityConstraint::by_stack_object(
-            ObjectRef::tagged(crate::tag::CompilerReferenceTag::It.key()),
+            ObjectRef::tagged(crate::tag::CompilerReferenceTag::It.bind()),
         ));
         all_words.drain(idx..idx + phrase.len());
         return true;

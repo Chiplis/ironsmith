@@ -45,6 +45,11 @@ pub(super) fn keyword_static_count_as_card_named_uses_token_clause_shapes() {
         "fn parse_static_ability_ast_line_early_lexed",
         "pub(crate) fn parse_static_ability_ast_line_lexed",
     );
+    // The early line's readings live in the registry module beside it.
+    let early_readings = read_repo_file(
+        &root,
+        "crates/ironsmith-compiler-grammar/src/keyword_static/early_line_readings.rs",
+    );
 
     for required in [
         "fn parse_count_as_card_named_for_spell_effect_line(tokens: &[OwnedLexToken])",
@@ -55,7 +60,9 @@ pub(super) fn keyword_static_count_as_card_named_uses_token_clause_shapes() {
         "parse_count_as_card_named_for_spell_effect_line(tokens)",
     ] {
         assert!(
-            helper.contains(required) || early_parser.contains(required),
+            helper.contains(required)
+                || early_parser.contains(required)
+                || early_readings.contains(required),
             "{relative} should parse count-as-card-named static lines through token clause shapes: missing `{required}`"
         );
     }
@@ -97,10 +104,25 @@ pub(super) fn keyword_static_ward_wrapper_uses_token_shapes() {
 
     let family_relative = "crates/ironsmith-compiler-grammar/src/keyword_static/mod.rs";
     let family = read_repo_file(&root, family_relative);
-    let consumer = function_source(
-        &family,
-        "pub(crate) fn parse_ward_static_ability_line",
-        "pub(crate) fn parse_ward_discard_card_type_cost",
+    // The ward cost's readings live in the registry module beside the parser;
+    // only its reader functions are ward logic (the registry boilerplate before
+    // them is shared infrastructure).
+    let readings = read_repo_file(
+        &root,
+        "crates/ironsmith-compiler-grammar/src/keyword_static/ward_cost_readings.rs",
+    );
+    let readers = readings
+        .find("\nfn read_")
+        .map(|start| &readings[start..])
+        .unwrap_or_default();
+    let consumer = format!(
+        "{}{}",
+        function_source(
+            &family,
+            "pub(crate) fn parse_ward_static_ability_line",
+            "pub(crate) fn parse_ward_discard_card_type_cost",
+        ),
+        readers
     );
 
     for required in [
@@ -1101,10 +1123,10 @@ pub(super) fn subject_status_conditions_use_shared_capture_parser() {
     let static_relative =
         "crates/ironsmith-compiler-grammar/src/keyword_static/anthem_grant_lines.rs";
     let static_content = read_repo_file(&root, static_relative);
-    let static_parser = function_source(
-        &static_content,
-        "pub(crate) fn parse_static_condition_clause",
-        "fn parse_devotion_static_condition",
+    // The condition clause's readings live in the registry module beside it.
+    let static_parser = read_repo_file(
+        &root,
+        "crates/ironsmith-compiler-grammar/src/keyword_static/anthem_grant_lines/static_condition_readings.rs",
     );
     assert!(
         static_parser.contains("grammar::conditions::parse_subject_status_condition")
@@ -1397,10 +1419,10 @@ pub(super) fn this_spell_cost_conditions_use_clause_shapes_and_life_change_captu
     let root = workspace_root();
     let relative = "crates/ironsmith-compiler-grammar/src/keyword_static/mod.rs";
     let content = read_repo_file(&root, relative);
-    let parser = function_source(
-        &content,
-        "pub(crate) fn parse_this_spell_cost_condition",
-        "fn parse_conjoined_this_spell_cost_condition",
+    // The condition's readings live in the registry module beside the parser.
+    let parser = read_repo_file(
+        &root,
+        "crates/ironsmith-compiler-grammar/src/keyword_static/spell_cost_condition_readings.rs",
     );
 
     for required in [

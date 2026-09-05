@@ -79,7 +79,7 @@ pub fn parse_for_each_sacrificed_this_way_sentence(
     }
 
     Ok(Some(vec![EffectAst::ForEachTagged {
-        tag: crate::tag::CompilerReferenceTag::It.as_str().into(),
+        tag: crate::tag::CompilerReferenceTag::It.bind(),
         effects: vec![EffectAst::Conditional {
             predicate: PredicateAst::ItMatchedLastKnown(filter),
             if_true: effects,

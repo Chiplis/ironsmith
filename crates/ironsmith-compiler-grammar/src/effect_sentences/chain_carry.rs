@@ -161,7 +161,7 @@ fn parse_choose_land_of_each_basic_land_type_segment(
                     count: ChoiceCount::exactly(1),
                     count_value: None,
                     player: PlayerAst::Implicit,
-                    tag: crate::tag::CompilerReferenceTag::It.key(),
+                    tag: crate::tag::CompilerReferenceTag::It.bind(),
                 }
             })
             .collect(),
@@ -326,7 +326,7 @@ pub fn parse_reveal_source_exiled_permanents_sentence_lexed(
         SourceLinkedExileReferenceKind::CardType(_) => return None,
     };
     let mut source_exiled =
-        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.key())
+        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind())
             .in_zone(Zone::Exile);
     source_exiled.owner = Some(PlayerFilter::IteratedPlayer);
     source_exiled.source_surface = Some(SourceReferenceSurface::ThisPermanentType(
@@ -486,7 +486,7 @@ pub(crate) fn parse_simple_that_creature_owner_library_placement(
         return None;
     }
 
-    let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
+    let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
     filter.card_types.push(CardType::Creature);
     filter.set_explicit_card_type_noun(Some(CardType::Creature));
     Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -563,268 +563,21 @@ fn parse_independent_explicit_may_coordination(
     }]))
 }
 
+#[path = "chain_carry/chain_entry_readings.rs"]
+mod chain_entry_readings;
+
 fn parse_effect_chain_lexed_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    if let Some(stripped) = grammar::strip_lexed_prefix_phrase(tokens, &["you", "may"]) {
-        let player = PlayerAst::You;
-        let stripped = crate::util::trim_edge_punctuation_tokens(stripped);
-        let placement_tokens =
-            grammar::strip_lexed_suffix_phrase(stripped, &["instead"]).unwrap_or(stripped);
-        if let Some(effect) = parse_simple_that_creature_owner_library_placement(placement_tokens) {
-            return Ok(vec![EffectAst::MayByPlayer {
-                player,
-                effects: vec![effect],
-            }]);
-        }
+    let input = chain_entry_readings::ChainEntry {
+        tokens,
+        read_by_cache: Default::default(),
+    };
+    match chain_entry_readings::read(&input) {
+        ParseOutcome::Match(matched) => return Ok(matched.value.value),
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
-
-    // Action-first delayed-step sentences expose an ordinary resource verb
-    // before their schedule. Claim the complete typed schedule/payment shape
-    // before broad resource dispatch tries to consume the timing suffix as
-    // part of the life-loss operand.
-    if let Some(effects) =
-        super::subject_verb_primitives::parse_sentence_delayed_next_step_unless_pays(
-            SubjectVerbPrimitiveClause::new(tokens),
-        )?
-    {
-        return Ok(effects);
-    }
-    if parse_leading_player_may_lexed(tokens).is_none()
-        && let Some(effects) =
-            super::subject_verb_primitives::parse_sentence_shuffle_object_into_library(
-                SubjectVerbPrimitiveClause::new(tokens),
-            )?
-    {
-        return Ok(effects);
-    }
-
-    // A joint object subject owns every conjunction in its shared action
-    // tail (`this creature and that creature each get ... and gain ...`).
-    // Claim the grammar-proven subject before generic chain splitting can
-    // mistake the subject's first `and` for an effect boundary.
-    if let Some(effects) =
-        super::subject_verb_primitives::parse_source_and_tagged_object_each_actions_sentence(
-            SubjectVerbPrimitiveClause::new(tokens),
-        )?
-    {
-        return Ok(effects);
-    }
-
-    if let Some(effects) = parse_repeated_counter_placement_coordination(tokens)? {
-        return Ok(effects);
-    }
-
-    // A dynamic counter amount can itself be a coordinated object domain:
-    // `for each suspended card ... and each other permanent ...`. Once the
-    // count grammar consumes that entire suffix, its conjunction is data,
-    // not an effect boundary. Materialize the one typed counter action before
-    // generic sentence coordination can expose either count arm as a target.
-    if is_atomic_put_counter_for_each_sentence(tokens) {
-        return Ok(vec![super::zone_counter_helpers::parse_put_counters(
-            tokens,
-        )?]);
-    }
-
-    // A copy-token exception is part of one creation action even when its
-    // characteristic bundle contains `and` (`except it's 1/1 and it's a
-    // Nightmare ...`). Let the typed creation grammar prove and materialize
-    // the complete shape before effect coordination can expose a modifier as
-    // a second create clause.
-    if let Some(effect) = parse_atomic_token_copy_exception(tokens)? {
-        return Ok(vec![effect]);
-    }
-
-    // A target-player subject can govern several coordinated resource
-    // actions (`loses life, gets a poison counter, then mills`). The typed
-    // coordination recognizer proves the multi-member shape; route it to the
-    // chain materializer before whole-sentence primitive registries can treat
-    // the leading `target` as an object-selection verb and try to parse the
-    // remaining player action as an object filter.
-    if has_target_player_resource_coordination(tokens) {
-        return parse_effect_chain_inner_lexed(tokens);
-    }
-
-    // A conditional entry-counter list is one atomic subject/verb sentence:
-    // every `and an additional ... if it's ...` arm is a sibling action on
-    // the same returned set. Claim it before generic conjunction splitting,
-    // which otherwise treats the second counter descriptor as a continuation
-    // of the first condition and nests the two predicates.
-    if let Some(effects) =
-        super::subject_verb_primitives::parse_tagged_conditional_entry_counters_sentence(
-            SubjectVerbPrimitiveClause::new(tokens),
-        )?
-    {
-        return Ok(effects);
-    }
-    // A distributed-target range may contain authored commas of its own
-    // (`among one, two, or three target creatures`).  Claim the complete
-    // typed sentence before generic comma-chain splitting can mistake those
-    // list separators for executable boundaries and truncate the target
-    // phrase at `one`.
-    if let Some(effects) = super::subject_verb_primitives::parse_sentence_distribute_counters(
-        SubjectVerbPrimitiveClause::new(tokens),
-    )? {
-        return Ok(effects);
-    }
-    let venture_view = TokenWordView::new(tokens);
-    if let Some(venture_word) =
-        venture_view.parse_phrase_start(&["and", "venture", "into", "the", "dungeon"])
-        && let Some(venture_start) = venture_view.map_word_to_token_start(venture_word)
-        && let Some(venture_end) = venture_view.token_index_after_words(venture_word + 5)
-        && tokens[venture_end..]
-            .iter()
-            .all(|token| token.as_word().is_none())
-    {
-        let mut effects = parse_effect_chain_lexed(&tokens[..venture_start])?;
-        effects.push(EffectAst::subject_verb_venture_into_dungeon(
-            PlayerAst::You,
-            false,
-        ));
-        let coordination = crate::grammar::effects::coordination::coordination_from_effects(
-            crate::model::CoordinationKindAst::Conjunction,
-            crate::model::CoordinationOperatorAst::And,
-            crate::model::EffectOrderingAst::Unordered,
-            effects,
-        )
-        .expect("venture conjunction contains at least two effects");
-        return Ok(vec![EffectAst::Coordination(coordination)]);
-    }
-    if let Some(effect) = parse_each_prior_affected_object_controller_mana_value_life(tokens)? {
-        return Ok(vec![effect]);
-    }
-    if let Some((leading_tokens, where_value)) = parse_terminal_where_x_binding(tokens) {
-        let mut effects = parse_effect_chain_lexed(leading_tokens)?;
-        replace_unbound_x_in_effects_anywhere(
-            &mut effects,
-            &where_value,
-            &token_word_refs(tokens).join(" "),
-        )?;
-        ensure_explicit_target_player_subject_declarations(&mut effects, leading_tokens);
-        dedupe_shared_target_player_draw_lose_x(&mut effects, tokens);
-        preserve_independent_target_player_coordination(&mut effects, leading_tokens);
-        return Ok(effects);
-    }
-    if let Some(effect) = super::clause_primitives::parse_until_duration_triggered_clause(tokens)? {
-        // `Until ..., whenever ...` is one delayed-trigger clause. Keep that
-        // typed outer scope intact before general conjunction/duration chain
-        // recognition can expose words in the trigger event as direct effect
-        // heads (for example, `deals combat damage` or `becomes tapped`).
-        return Ok(vec![effect]);
-    }
-    if super::verb_handlers::damage_clause_has_terminal_unpreventable_rider(tokens) {
-        // The final prevention rider belongs to the damage action. Preserve
-        // object-or-player recipient unions before generic coordination can
-        // split their `or` arm into a standalone restriction clause.
-        let damage_tokens =
-            super::lex_chain_helpers::strip_leading_instead_prefix_lexed(tokens).unwrap_or(tokens);
-        return Ok(vec![parse_effect_clause_lexed(damage_tokens)?]);
-    }
-    // A spell-copy characteristic exception is one typed action even though
-    // its authored comma resembles a coordination boundary. Claim only a
-    // leading copy clause with a grammar-proven `except` tail so delayed
-    // trigger bodies such as "copy it, except the copy isn't legendary"
-    // cannot strand the exception as a verb-less second action.
-    let copy_shape =
-        super::super::grammar::effects::clause_pattern_shapes::parse_copy_clause_shape_tokens(
-            tokens,
-        );
-    if copy_shape.is_some_and(|shape| shape.copy_word == 0 && shape.tail.exception_split.is_some())
-        && let Some(copy) = super::clause_pattern_helpers::parse_copy_spell_clause(tokens)?
-    {
-        return Ok(vec![copy]);
-    }
-    // A hand/graveyard-into-library shuffle owns its complete clause. The
-    // chain splitter would otherwise sever the coordinated zone list ("their
-    // hand and graveyard into their library") and hand the shuffle verb a
-    // bare "their hand" fragment.
-    if let Some(effects) =
-        super::search_library::parse_shuffle_graveyard_into_library_sentence(tokens)?
-    {
-        return Ok(effects);
-    }
-    // A tagged cast/play permission owns its complete sentence, including a
-    // coordinated "and you may spend mana as though ..." payment suffix. The
-    // chain splitter would otherwise sever that suffix into a verb-less arm
-    // that no clause grammar accepts.
-    {
-        let words = crate::lexer::parser_token_word_refs(tokens);
-        if crate::word_primitives::sequence_occurs(&words, &["for", "as", "long", "as"])
-            && crate::word_primitives::sequence_occurs(
-                &words,
-                &["may", "spend", "mana", "as", "though"],
-            )
-            && let Some(permission) =
-                crate::permission_helpers::parse_cast_or_play_tagged_clause(tokens)?
-        {
-            return Ok(vec![permission]);
-        }
-    }
-    // A paid-label condition owns the complete consequence, including every
-    // authored conjunction inside it. A consequence such as "phase out, and
-    // until ..., can't change and gain protection" contains several
-    // independently executable heads, but the typed leading condition makes
-    // them members of one conditional consequence rather than top-level
-    // coordination.
-    if leading_condition_is_paid_label(tokens) {
-        let Some(mut effects) =
-            parse_conditional_sentence_family_lexed(tokens, parse_effect_chain_lexed)?
-        else {
-            return Err(CardTextError::ParseError(
-                "paid-label condition did not parse as a conditional sentence".to_string(),
-            ));
-        };
-        preserve_leading_result_coordination_lexed(tokens, &mut effects);
-        return Ok(effects);
-    }
-
-    let leading_duration_shape = chain_grammar::parse_carry_duration_prefix_tokens(tokens);
-    let pair_tokens = leading_duration_shape
-        .as_ref()
-        .map_or(tokens, |shape| shape.rest);
-    if let Some(mut effect) = super::clause_dispatch::parse_conditional_become_pair(pair_tokens)? {
-        if let Some(shape) = leading_duration_shape {
-            super::dispatch_entry::apply_leading_duration_to_become_effect(
-                &mut effect,
-                &shape.duration,
-            );
-        }
-        return Ok(vec![effect]);
-    }
-    // Conditional consequence parsing can call the chain entrypoint directly
-    // before the ordinary uncoordinated dispatcher gets a chance to inspect
-    // the complete `for each ..., effect` shape. Keep that grammar atomic at
-    // this boundary so the iterator's subject is not sent to the generic
-    // subject/verb parser as an orphaned clause.
-    if let Some(effects) = parse_for_each_object_effect_chain_shape(tokens)? {
-        return Ok(effects);
-    }
-    if let Some(effects) = parse_independent_explicit_may_coordination(tokens)? {
-        return Ok(effects);
-    }
-    if let Some(effects) = super::fanout_family::parse_compound_damage_fanout_sentence(tokens)? {
-        // Conditional consequence parsing enters through the chain boundary.
-        // Preserve a repeated damage head as one typed fanout before the
-        // generic conjunction splitter leaves the second amount without its
-        // shared source/verb.
-        return Ok(effects);
-    }
-    if let Some(effects) =
-        super::fanout_family::parse_remove_counters_then_shared_damage_fanout(tokens)?
-    {
-        return Ok(vec![EffectAst::Coordinated {
-            effects,
-            leading_duration: false,
-            result_conjunction: false,
-        }]);
-    }
-    if let Some(effect) = parse_leading_action_then_shared_damage_fanout(tokens)? {
-        return Ok(vec![effect]);
-    }
-    // In `A, then B unless C`, the payment gates only the final authored
-    // action. A complete trailing-unless primitive is also a valid parse of
-    // the unsplit token stream, so establish the ordered sentence boundary
-    // before that broad primitive can wrap both A and B.
     let comma_then_segments = split_segments_on_comma_then_lexed(vec![tokens]);
     if comma_then_segments.len() > 1
         && comma_then_segments
@@ -1499,6 +1252,9 @@ pub fn parse_effect_chain_inner_lexed(
     parse_effect_chain_inner_lexed_unstacked(tokens, true)
 }
 
+#[path = "chain_carry/inner_chain_readings.rs"]
+mod inner_chain_readings;
+
 fn parse_effect_chain_inner_lexed_unstacked(
     tokens: &[OwnedLexToken],
     recognize_control_flow: bool,
@@ -1513,226 +1269,17 @@ fn parse_effect_chain_inner_lexed_unstacked(
             return parse_effect_chain_inner_lexed_unstacked(tokens, false);
         }
     }
-    if (!recognize_control_flow || split_trailing_if_clause_lexed(tokens).is_none())
-        && let Some(effects) =
-            super::subject_verb_primitives::parse_sentence_sacrifice_it_next_end_step(
-                SubjectVerbPrimitiveClause::new(tokens),
-            )?
-    {
-        return Ok(effects);
-    }
-    // Nested consequence parsing enters this inner materializer directly.
-    // Preserve the same typed copy-token exception ownership as the public
-    // chain entrypoint before coordination exposes an `and` inside the
-    // characteristic bundle as another create clause.
-    if let Some(effect) = parse_atomic_token_copy_exception(tokens)? {
-        return Ok(vec![effect]);
-    }
-    if let Some(effects) = parse_inline_looked_card_partition_chain(tokens) {
-        return Ok(effects);
-    }
-    // A hand/graveyard-into-library shuffle owns its complete clause even
-    // when a participant loop already stripped the subject; coordination
-    // would otherwise sever the zone list from the shuffle verb. An optional
-    // shuffle keeps its `may` scope through the may-aware routes.
-    if parse_leading_player_may_lexed(tokens).is_none()
-        && !chain_grammar::starts_with_may_tokens(tokens)
-        && super::super::grammar::effects::parse_shuffle_graveyard_shape_lexed(tokens)
-            .is_some_and(|shape| shape.has_hand_clause)
-        && let Some(effects) =
-            super::search_library::parse_shuffle_graveyard_into_library_sentence(tokens)?
-    {
-        return Ok(effects);
-    }
-    // A gain/get compound carries one shared target and can also carry a
-    // leading duration. Its typed parser must see the intact sentence before
-    // generic duration/control-flow wrapping splits the coordinated actions;
-    // otherwise a per-card modifier is reduced to a generic dynamic pump.
-    if recognize_control_flow
-        && super::super::grammar::effects::gain_ability_shapes::parse_gain_then_get_shape(tokens)
-            .is_some()
-        && let Some(effects) = super::gain_ability::parse_gain_ability_sentence(tokens)?
-    {
-        return Ok(effects);
-    }
-    if recognize_control_flow {
-        match super::super::grammar::effects::control_flow::recognize_control_flow(tokens) {
-            crate::recognition::ParseOutcome::Match(matched) => {
-                let plan = matched.value;
-                let mut effects = if plan.parse_original_with_legacy {
-                    parse_effect_chain_inner_lexed_unstacked(tokens, false)?
-                } else {
-                    parse_effect_chain_inner_lexed(plan.body_tokens)?
-                };
-                let body_words = crate::lexer::token_word_refs(plan.body_tokens);
-                if crate::word_primitives::parse_any_sequence_prefix(
-                    &body_words,
-                    &[&["discard"], &["then", "discard"]],
-                ) {
-                    for effect in &mut effects {
-                        bind_implicit_player_context(effect, PlayerAst::You);
-                    }
-                }
-                if let Some(control) = plan.into_ast(effects.clone()) {
-                    return Ok(vec![EffectAst::ControlFlow(Box::new(control))]);
-                }
-                return Ok(effects);
-            }
-            crate::recognition::ParseOutcome::NoMatch => {}
-            crate::recognition::ParseOutcome::Error(diagnostic) => {
-                return Err(diagnostic.into_card_text_error());
-            }
-        }
-    }
-    // `Venture into the dungeon` is a complete subjectless mechanic action.
-    // When it leads a coordinated clause, the general subject/verb splitter
-    // can treat it as context for the later explicit-player arm and retain
-    // only that arm. Prove the exact mechanic phrase and conjunction before
-    // lowering both executable actions.
-    if tokens.len() > 5
-        && tokens[0].is_word("venture")
-        && tokens[1].is_word("into")
-        && tokens[2].is_word("the")
-        && tokens[3].is_word("dungeon")
-        && tokens[4].is_word("and")
-    {
-        let mut effects = vec![EffectAst::subject_verb_venture_into_dungeon(
-            PlayerAst::You,
-            false,
-        )];
-        effects.extend(parse_effect_chain_inner_lexed(&tokens[5..])?);
-        let coordination = crate::grammar::effects::coordination::coordination_from_effects(
-            crate::model::CoordinationKindAst::Conjunction,
-            crate::model::CoordinationOperatorAst::And,
-            crate::model::EffectOrderingAst::Unordered,
-            effects,
-        )
-        .expect("leading venture conjunction contains at least two effects");
-        return Ok(vec![EffectAst::Coordination(coordination)]);
-    }
-    // A keyword mechanic at the end of a coordinated chain must not consume
-    // the earlier action as part of its target phrase (for example, "you
-    // lose 1 life and this creature endures 1"). Let the semantic chain
-    // splitter isolate those arms before probing the bare-keyword parser.
-    if split_effect_chain_on_and_lexed(tokens).len() <= 1
-        && !has_explicit_comma_then_boundary_lexed(tokens)
-        && let Some(effect) = parse_keyword_mechanic_without_terminal_punctuation(tokens)?
-    {
-        return Ok(vec![effect]);
-    }
-    // Preserve coordinated conditional animations before the generic `and`
-    // splitter turns the second branch into an orphaned follow-up clause.
-    let leading_duration_shape = chain_grammar::parse_carry_duration_prefix_tokens(tokens);
-    let pair_tokens = leading_duration_shape
-        .as_ref()
-        .map_or(tokens, |shape| shape.rest);
-    if let Some(mut effect) = super::clause_dispatch::parse_conditional_become_pair(pair_tokens)? {
-        if let Some(shape) = leading_duration_shape {
-            super::dispatch_entry::apply_leading_duration_to_become_effect(
-                &mut effect,
-                &shape.duration,
-            );
-        }
-        return Ok(vec![effect]);
-    }
-
-    // Keep the duration attached while recognizing a base-P/T clause. The
-    // ordinary chain path carries a leading duration separately, but doing so
-    // before verb dispatch leaves `creatures ... have base power ...` without
-    // the temporal evidence that distinguishes a temporary effect from a
-    // static characteristic-setting sentence. A surrounding where-X sentence
-    // may also have already removed its binding tail; its typed binding pass
-    // will replace the X values after this clause has been lowered.
-    if let Some(effect) = super::for_each_helpers::parse_has_base_power_toughness_clause(tokens)? {
-        return Ok(vec![effect]);
-    }
-
-    // This mechanic is a single authored process even though the generic
-    // conjunction splitter sees `lose ... and draw ...` and would otherwise
-    // send the draw/clash tail through the ordinary draw parser. Claim the
-    // complete shape before splitting coordinated verbs.
-    if let Some(effects) =
-        super::subject_verb_primitives::parse_sentence_lose_draw_clash_repeat_process(
-            SubjectVerbPrimitiveClause::new(tokens),
-        )?
-    {
-        return Ok(effects);
-    }
-
-    if chain_grammar::starts_with_unless_tokens(tokens)
-        && let Some(effects) = parse_sentence_unless_pays(SubjectVerbPrimitiveClause::new(tokens))?
-    {
-        return Ok(effects);
-    }
-
-    if let Some(effects) =
-        super::dispatch_inner::parse_generic_consult_reveal_until_battlefield_bottom_subject_verb(
-            tokens,
-        )?
-    {
-        return Ok(effects);
-    }
-
-    if let Some(effects) =
-        super::consult_family::parse_consult_traversal_with_inline_followup(tokens)?
-    {
-        return Ok(effects);
-    }
-
-    if let Some(parts) = super::consult_family::parse_consult_traversal_sentence(tokens)? {
-        return Ok(parts.effects);
-    }
-
-    if let Some(effects) = parse_search_library_sentence_lexed(tokens)? {
-        return Ok(effects);
-    }
-    let source_exiled_bottom_random = {
-        let words = TokenWordView::new(trim_lexed_commas(tokens)).word_refs();
-        crate::word_primitives::sequence_occurs(&words, &["exiled", "with", "this"])
-            && crate::word_primitives::sequence_occurs(&words, &["on", "the", "bottom"])
-            && crate::word_primitives::sequence_occurs(&words, &["in", "a", "random"])
+    let input = inner_chain_readings::InnerChain {
+        tokens,
+        recognize_control_flow,
+        read_by_cache: Default::default(),
     };
-    if source_exiled_bottom_random {
-        let action_tokens = if tokens.first().is_some_and(|token| token.is_word("then")) {
-            &tokens[1..]
-        } else {
-            tokens
-        };
-        if let Some(surface) =
-            super::verb_handlers::parse_exiled_with_source_move_surface(action_tokens)
-        {
-            let verb_index = crate::slice_primitives::select_position(action_tokens, |token| {
-                token.is_word("put") || token.is_word("puts")
-            })
-            .unwrap_or(0);
-            let effect =
-                super::verb_handlers::parse_put_into_hand(&action_tokens[verb_index..], None)?
-                    .with_exiled_with_source_surface(Some(surface));
-            return Ok(vec![effect]);
-        }
+    match inner_chain_readings::read(&input) {
+        ParseOutcome::Match(matched) => return Ok(matched.value.value),
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
-    if let Some(effects) = parse_player_chooses_source_excluded_permanent_then_exiles(tokens) {
-        return Ok(effects);
-    }
-    if let Some(effects) = parse_tap_those_then_unattach_equipment_lexed(tokens)? {
-        return Ok(effects);
-    }
-    if let Some(effects) = parse_return_it_then_loses_all_abilities_lexed(tokens)? {
-        return Ok(effects);
-    }
-    if let Some(clauses) =
-        super::player_subject_sequences::split_explicit_player_subject_clauses(tokens)
-    {
-        let mut effects = Vec::new();
-        for clause in clauses {
-            effects.extend(parse_effect_chain_inner_lexed(clause)?);
-        }
-        return Ok(effects);
-    }
-    if let Some(effect) = parse_quantified_participant_subject_effect(tokens)? {
-        return Ok(vec![effect]);
-    }
-
+    let leading_duration_shape = chain_grammar::parse_carry_duration_prefix_tokens(tokens);
     let choose_then_exile_reference = parse_choose_then_exile_reference_shape(tokens).is_some();
     let (effect_chain_tokens, leading_duration) = match leading_duration_shape.as_ref() {
         Some(shape) => (shape.rest, Some(shape.duration.clone())),
@@ -2512,7 +2059,7 @@ fn bind_each_prior_affected_object_controller_life_gain(
             }),
             Value::ManaValueOf(spec) if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag == prior_tag) => {
                 Some(Value::ManaValueOf(Box::new(
-                    ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())
+                    ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.bind())
                         .with_surface_hints(spec.surface_hints().iter().cloned()),
                 )))
             }
@@ -2932,7 +2479,7 @@ pub fn bind_prevention_followup(effects: &mut Vec<EffectAst>, sentence: &[OwnedL
                         )
                         .with_action(ironsmith_core::PriorEffectAction::Prevented),
                     ),
-                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::Targeted0.key(), None),
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::Targeted0.bind(), None),
                     None,
                     false,
                 );
@@ -3074,7 +2621,7 @@ pub fn bind_destroy_typed_subset(effects: &mut Vec<EffectAst>, sentence: &[Owned
         _ => return false,
     };
     let expected_it_constraint = crate::target::TaggedObjectConstraint {
-        tag: crate::tag::CompilerReferenceTag::It.key(),
+        tag: crate::tag::CompilerReferenceTag::It.bind(),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     };
     if !matches!(restriction_filter.tagged_constraints.as_slice(), [constraint] if *constraint == expected_it_constraint)

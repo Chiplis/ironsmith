@@ -380,7 +380,7 @@ function OptionButton({
   canAct,
   onClick,
   isHighlighted,
-  isSelected = false,
+  isSelected,
   onMouseEnter,
   onMouseLeave,
   horizontal = false,
@@ -401,12 +401,13 @@ function OptionButton({
           : "decision-option-row decision-option-row--panel h-auto min-h-8 w-full min-w-0 justify-start overflow-hidden px-2.5 py-1.5 text-left text-[13px] whitespace-normal",
         horizontal && isSelected && STRIP_ITEM_ACTIVE_CLASS,
         !horizontal && isSelected && "is-selected",
-        horizontal && !isSelected && isHighlighted && STRIP_ITEM_ACTIVE_CLASS,
+        horizontal && !isSelected && isHighlighted && "is-highlighted",
         !horizontal && !isSelected && isHighlighted && "is-highlighted",
         disabled && (horizontal ? STRIP_ITEM_DISABLED_CLASS : "is-disabled"),
         className,
       )}
       style={decisionOptionAccentVars(accent)}
+      aria-pressed={isSelected}
       disabled={disabled}
       onPointerDown={(e) => {
         if (disabled || !registerPointerDown(e)) return;

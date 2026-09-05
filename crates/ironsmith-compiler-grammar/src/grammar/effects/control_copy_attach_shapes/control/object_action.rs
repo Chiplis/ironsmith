@@ -21,7 +21,7 @@ pub(super) fn parse_predicate_control_duration(tokens: &[OwnedLexToken]) -> Opti
     }
     if has_all_words(tokens, &["aura", "attached", "to"]) {
         return Some(Until::ForAsLongAs(Predicate::ObjectAttachedTo {
-            attachment: ObjectRef::Tagged(crate::tag::CompilerReferenceTag::Triggering.key()),
+            attachment: ObjectRef::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind()),
             attached_to: ObjectRef::AffectedObject,
         }));
     }

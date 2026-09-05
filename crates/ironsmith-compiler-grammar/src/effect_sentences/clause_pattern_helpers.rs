@@ -304,19 +304,19 @@ pub fn parse_copy_spell_clause(
         match shape {
             clause_shapes::CopyTargetShape::Source => Some(TargetAst::Source(None)),
             clause_shapes::CopyTargetShape::Triggering => Some(TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::Triggering.key(),
+                crate::tag::CompilerReferenceTag::Triggering.bind(),
                 None,
             )),
             clause_shapes::CopyTargetShape::TriggeringSource => Some(TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::TriggeringSource.key(),
+                crate::tag::CompilerReferenceTag::TriggeringSource.bind(),
                 None,
             )),
             clause_shapes::CopyTargetShape::TaggedIt => Some(TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 None,
             )),
             clause_shapes::CopyTargetShape::PriorExiledCard => Some(TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::PriorExiledCard.key(),
+                crate::tag::CompilerReferenceTag::PriorExiledCard.bind(),
                 None,
             )),
             clause_shapes::CopyTargetShape::Explicit(_) => None,
@@ -1301,7 +1301,7 @@ pub fn parse_can_attack_as_though_no_defender_clause(
         || crate::word_primitives::parse_sequence_complete(&subject_words, &["it"])
     {
         TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             Some(TextSpan::synthetic()),
         )
     } else if let Ok(target) = parse_target_phrase(subject_tokens) {
@@ -1375,7 +1375,7 @@ pub fn parse_prevent_next_time_damage_sentence(
             card_type,
             source_tokens,
         } => {
-            let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
+            let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
             if let Some(card_type) = card_type {
                 filter.card_types.push(card_type);
             }
@@ -1494,7 +1494,7 @@ pub fn parse_redirect_next_damage_sentence(
                     source_tokens,
                 } => {
                     let mut filter =
-                        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
+                        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
                     if let Some(card_type) = card_type {
                         filter.card_types.push(card_type);
                     }
@@ -1611,7 +1611,7 @@ pub fn parse_can_block_additional_creature_this_turn_clause(
     };
     let target = if shape.subject_tokens.is_empty() {
         TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             Some(TextSpan::synthetic()),
         )
     } else {
@@ -1756,7 +1756,7 @@ pub fn parse_choose_target_prelude_sentence(
                 .into_iter()
                 .map(|target| EffectAst::TagAffected {
                     effect: Box::new(EffectAst::subject_verb_explicit_target_only(target)),
-                    tag: crate::tag::CompilerReferenceTag::ChosenObjects.key(),
+                    tag: crate::tag::CompilerReferenceTag::ChosenObjects.bind(),
                 })
                 .collect(),
         ));
@@ -2145,7 +2145,7 @@ pub fn parse_connive_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst
     let target_tokens = match shape.subject {
         clause_shapes::ConniveSubjectShape::ConvokedThisSpell => {
             return Ok(Some(EffectAst::ForEachTagged {
-                tag: crate::tag::CompilerReferenceTag::ConvokedThisSpell.key(),
+                tag: crate::tag::CompilerReferenceTag::ConvokedThisSpell.bind(),
                 effects: vec![EffectAst::subject_verb_connive_iterated()],
             }));
         }

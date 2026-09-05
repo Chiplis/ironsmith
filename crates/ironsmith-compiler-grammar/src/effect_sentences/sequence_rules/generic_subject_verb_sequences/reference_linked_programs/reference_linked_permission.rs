@@ -73,12 +73,12 @@ pub fn parse_consult_match_into_hand_exile_others(
         tag: parts.all_tag,
         effects: vec![EffectAst::Conditional {
             predicate: PredicateAst::TaggedMatches(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 ObjectFilter::tagged(parts.match_tag),
             ),
             if_true: Vec::new(),
             if_false: vec![EffectAst::subject_verb_exile(
-                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                 false,
             )],
         }],

@@ -156,7 +156,7 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
             if is_tagged_counter_reference(reference) {
                 let value = Value::CountersOn(
                     Box::new(ChooseSpec::Tagged(
-                        crate::tag::CompilerReferenceTag::It.key(),
+                        crate::tag::CompilerReferenceTag::It.bind(),
                     )),
                     parsed_counter_type,
                 );
@@ -332,7 +332,7 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
                 }
                 return Some((
                     Value::Count(filter.match_tagged(
-                        crate::tag::CompilerReferenceTag::It.key(),
+                        crate::tag::CompilerReferenceTag::It.bind(),
                         TaggedOpbjectRelation::IsTaggedObject,
                     )),
                     filter_end,
@@ -430,7 +430,7 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
                     return Some((
                         Value::CountersOn(
                             Box::new(ChooseSpec::Tagged(
-                                crate::tag::CompilerReferenceTag::It.key(),
+                                crate::tag::CompilerReferenceTag::It.bind(),
                             )),
                             Some(counter_type),
                         ),
@@ -506,7 +506,7 @@ pub(super) fn parse_exact_dynamic_count_basis(
         ],
     ) {
         Value::Count(crate::target::ObjectFilter::tagged(
-            crate::tag::CompilerReferenceTag::CastModifiedCreatures.key(),
+            crate::tag::CompilerReferenceTag::CastModifiedCreatures.bind(),
         ))
     } else if exact_one_of(
         words,
@@ -516,7 +516,7 @@ pub(super) fn parse_exact_dynamic_count_basis(
         ],
     ) {
         Value::Count(crate::target::ObjectFilter::tagged(
-            crate::tag::CompilerReferenceTag::PreviousIteratedObjects.key(),
+            crate::tag::CompilerReferenceTag::PreviousIteratedObjects.bind(),
         ))
         .with_surface_hint(ironsmith_core::ValueSurfaceHint::CreaturesChosenBeforeIt)
     } else if exact_one_of(

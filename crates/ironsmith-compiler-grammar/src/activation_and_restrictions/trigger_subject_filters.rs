@@ -12,7 +12,7 @@ fn trigger_controller_player_filter(
         TriggerControllerReference::NotYou => PlayerFilter::NotYou,
         TriggerControllerReference::ChosenPlayer => PlayerFilter::ChosenPlayer,
         TriggerControllerReference::EnchantedPlayer => {
-            PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.key())
+            PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.bind())
         }
         TriggerControllerReference::EffectController => PlayerFilter::EffectController,
         TriggerControllerReference::AnyPlayer => PlayerFilter::Any,
@@ -151,15 +151,15 @@ pub fn parse_possessive_clause_player_filter(words: &[&str]) -> PlayerFilter {
 
     match crate::grammar::trigger_subjects::parse_possessive_player_reference(words) {
         PossessivePlayerReference::EnchantedPlayer => {
-            PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.key())
+            PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.bind())
         }
         PossessivePlayerReference::AttachedController(subject) => {
             let tag = match subject {
                 AttachedControllerSubject::Enchanted => {
-                    crate::tag::CompilerReferenceTag::Enchanted.key()
+                    crate::tag::CompilerReferenceTag::Enchanted.bind()
                 }
                 AttachedControllerSubject::Equipped => {
-                    crate::tag::CompilerReferenceTag::Equipped.key()
+                    crate::tag::CompilerReferenceTag::Equipped.bind()
                 }
             };
             PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(tag))
@@ -176,7 +176,7 @@ pub fn parse_subject_clause_player_filter(words: &[&str]) -> PlayerFilter {
     if facts.on_your_team || facts.contains_you {
         PlayerFilter::You
     } else if facts.contains_enchanted_player {
-        PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.key())
+        PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.bind())
     } else if facts.contains_chosen_player {
         PlayerFilter::ChosenPlayer
     } else if facts.contains_opponent {
@@ -392,8 +392,8 @@ pub fn parse_trigger_subject_filter_lexed(
             .and_then(|prev| subject_words.get(prev))
             .is_some_and(|copula| matches!(*copula, "is" | "are" | "that's" | "thats"))
             .then(|| match *word {
-                "enchanted" => crate::tag::CompilerReferenceTag::Enchanted.key(),
-                "equipped" => crate::tag::CompilerReferenceTag::Equipped.key(),
+                "enchanted" => crate::tag::CompilerReferenceTag::Enchanted.bind(),
+                "equipped" => crate::tag::CompilerReferenceTag::Equipped.bind(),
                 _ => unreachable!("attachment state was lexically constrained"),
             })
     });
@@ -872,7 +872,7 @@ pub fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<MayCastTag
         MayCastSurfaceSubject::You => (PlayerAst::Implicit, None),
         MayCastSurfaceSubject::ExiledCardsOwner => (
             PlayerAst::ItsOwner,
-            Some(crate::tag::CompilerReferenceTag::SourceExiled.key()),
+            Some(crate::tag::CompilerReferenceTag::SourceExiled.bind()),
         ),
     };
     let verb = match facts.verb {
@@ -880,18 +880,18 @@ pub fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<MayCastTag
         MayCastSurfaceVerb::Play => MayCastItVerb::Play,
     };
     let (tag, as_copy) = match facts.reference {
-        MayCastSurfaceReference::It => (crate::tag::CompilerReferenceTag::It.key(), false),
+        MayCastSurfaceReference::It => (crate::tag::CompilerReferenceTag::It.bind(), false),
         MayCastSurfaceReference::ThatCard => (
-            subject_tag.unwrap_or_else(|| crate::tag::CompilerReferenceTag::It.key()),
+            subject_tag.unwrap_or_else(|| crate::tag::CompilerReferenceTag::It.bind()),
             false,
         ),
         MayCastSurfaceReference::ExiledCard => {
-            (crate::tag::CompilerReferenceTag::SourceExiled.key(), false)
+            (crate::tag::CompilerReferenceTag::SourceExiled.bind(), false)
         }
         MayCastSurfaceReference::RevealedCard => {
-            (crate::tag::CompilerReferenceTag::LastRevealed.key(), false)
+            (crate::tag::CompilerReferenceTag::LastRevealed.bind(), false)
         }
-        MayCastSurfaceReference::Copy => (crate::tag::CompilerReferenceTag::It.key(), true),
+        MayCastSurfaceReference::Copy => (crate::tag::CompilerReferenceTag::It.bind(), true),
     };
     let (without_paying_mana_cost, predicate) = match facts.tail {
         MayCastTailSurface::None => (false, None),
@@ -1115,7 +1115,7 @@ pub fn controller_filter_for_token_player(player: PlayerAst) -> Option<PlayerFil
         PlayerAst::That => Some(PlayerFilter::IteratedPlayer),
         PlayerAst::Defending => Some(PlayerFilter::Defending),
         PlayerAst::TriggeringSourceController => Some(PlayerFilter::ControllerOf(
-            crate::filter::ObjectRef::tagged("triggering_source"),
+            crate::filter::ObjectRef::tagged(crate::tag::CompilerReferenceTag::TriggeringSource.bind()),
         )),
         _ => None,
     }
@@ -1136,7 +1136,7 @@ pub fn parse_sentence_exile_that_token_when_source_leaves(
 
     Some(EffectAst::subject_verb_exile_when_source_leaves(
         TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             span_from_tokens(tokens),
         ),
     ))
@@ -1157,7 +1157,7 @@ pub fn parse_sentence_sacrifice_source_when_that_token_leaves(
 
     Some(EffectAst::subject_verb_sacrifice_source_when_leaves(
         TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             span_from_tokens(tokens),
         ),
     ))
@@ -1857,7 +1857,7 @@ mod typed_trigger_subject_migration_tests {
         assert_eq!(
             filter.tagged_constraints[0],
             crate::filter::TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::ChosenObjects.key(),
+                tag: crate::tag::CompilerReferenceTag::ChosenObjects.bind(),
                 relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
             }
         );

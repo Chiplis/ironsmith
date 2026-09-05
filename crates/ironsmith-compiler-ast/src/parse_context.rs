@@ -272,6 +272,18 @@ impl<'a> ParseContextView<'a> {
         self.symbol_scope
     }
 
+    /// Enter this view's symbol scope as the reference scope: keys the
+    /// grammar mints while the guard lives bind here when it drops.
+    pub fn reference_scope(self) -> crate::reference_ledger::ReferenceScopeGuard<'a> {
+        crate::reference_ledger::ReferenceScopeGuard::enter(self.symbols, self.symbol_scope)
+    }
+
+    /// Binds the keys minted while the guard lives in `scope` (a scope this
+    /// context created earlier, such as a line's, re-entered by a later phase).
+    pub fn reference_scope_at(self, scope: SymbolScopeId) -> crate::reference_ledger::ReferenceScopeGuard<'a> {
+        crate::reference_ledger::ReferenceScopeGuard::enter(self.symbols, scope)
+    }
+
     pub fn symbols(self) -> Ref<'a, SymbolTable> {
         self.symbols.borrow()
     }
@@ -314,7 +326,7 @@ impl<'a> ParseContextView<'a> {
         let symbol_scope_kind = match scope_kind {
             ParseScopeKind::Root => SymbolScopeKind::Root,
             ParseScopeKind::Document => SymbolScopeKind::Document,
-            ParseScopeKind::Line { .. } => SymbolScopeKind::Line,
+            ParseScopeKind::Line { source_line } => SymbolScopeKind::Line { source_line },
             ParseScopeKind::NestedAbility => SymbolScopeKind::NestedAbility,
             ParseScopeKind::ModalMode { .. } => SymbolScopeKind::ModalMode,
             ParseScopeKind::TokenDefinition => SymbolScopeKind::TokenDefinition,

@@ -584,11 +584,11 @@ pub fn parse_player_restriction_subject(
         crate::cards::builders::SubjectAst::Player(PlayerAst::Defending) => PlayerFilter::Defending,
         crate::cards::builders::SubjectAst::Player(PlayerAst::ItsController) => {
             PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
             ))
         }
         crate::cards::builders::SubjectAst::Player(PlayerAst::ItsOwner) => PlayerFilter::OwnerOf(
-            crate::filter::ObjectRef::tagged(crate::tag::CompilerReferenceTag::It.key()),
+            crate::filter::ObjectRef::tagged(crate::tag::CompilerReferenceTag::It.bind()),
         ),
         crate::cards::builders::SubjectAst::Player(PlayerAst::Chosen) => PlayerFilter::ChosenPlayer,
         crate::cards::builders::SubjectAst::Player(PlayerAst::Attacking) => PlayerFilter::Attacking,
@@ -907,11 +907,11 @@ pub fn parse_negated_object_restriction_clause(
         } else if subject_tokens.is_empty() {
             // Supports carried clauses like "... and can't be blocked this turn."
             let target = TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 span_from_tokens(tokens),
             );
             (
-                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
+                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
                 Some(target),
                 None,
             )
@@ -931,13 +931,13 @@ pub fn parse_negated_object_restriction_clause(
             // every creature. target=None keeps it on the plain
             // cant-restriction path (no spurious "choose it").
             (
-                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
+                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
                 None,
                 None,
             )
         } else if bare_other_choice {
             (
-                ObjectFilter::creature().not_tagged(crate::tag::CompilerReferenceTag::It.key()),
+                ObjectFilter::creature().not_tagged(crate::tag::CompilerReferenceTag::It.bind()),
                 None,
                 None,
             )
@@ -969,7 +969,7 @@ pub fn parse_negated_object_restriction_clause(
         })
     {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::DamagedThisWay.key(),
+            tag: crate::tag::CompilerReferenceTag::DamagedThisWay.bind(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
     }
@@ -1212,9 +1212,9 @@ pub fn parse_activated_ability_subject(
     let owner_words = crate::lexer::token_word_refs(&normalized_owner_tokens);
     if restriction_grammar::parse_it_owner_reference_words(&owner_words).is_some() {
         return Ok(Some(ParsedActivatedAbilitySubject {
-            filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
+            filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
             target: Some(TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 span_from_tokens(tokens),
             )),
             scope,
@@ -1263,7 +1263,7 @@ pub fn ensure_it_tagged_constraint(filter: &mut ObjectFilter) {
         .any(|constraint| constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
     {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.key(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
     }
@@ -1288,6 +1288,10 @@ pub fn find_negation_span(tokens: &[OwnedLexToken]) -> Option<(usize, usize)> {
         .map(|span| (span.first, span.end))
 }
 
+use crate::recognition::ParseOutcome;
+#[path = "activation_restriction_clauses/restriction_subject_readings.rs"]
+mod restriction_subject_readings;
+
 pub fn parse_subject_object_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
@@ -1309,7 +1313,7 @@ pub fn parse_subject_object_filter(
         }
         Some(restriction_grammar::RestrictionSubjectSurface::TaggedObjectPronoun) => {
             return Ok(Some(ObjectFilter::tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
             )));
         }
         Some(restriction_grammar::RestrictionSubjectSurface::Player) | None => {}
@@ -1334,24 +1338,16 @@ pub fn parse_subject_object_filter(
             words_all.join(" ")
         )));
     }
-
-    if let Some(filter) = parse_distributive_compound_subject_filter(tokens)? {
+    let input = restriction_subject_readings::RestrictionSubject { tokens };
+    match restriction_subject_readings::read(&input) {
+        ParseOutcome::Match(matched) => return Ok(Some(matched.value.value)),
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
+    }
+    // A plain object filter is the fallback for what no typed subject reads.
+    if let Some(filter) = restriction_subject_readings::read_object_filter(&input)? {
         return Ok(Some(filter));
     }
-
-    if let Some(filter) = parse_type_adjective_conjunction_filter(tokens)? {
-        return Ok(Some(filter));
-    }
-
-    if let Ok(mut filter) = parse_object_filter(tokens, false)
-        && filter != ObjectFilter::default()
-    {
-        if crate::grammar::filters::reference_tag_stage::has_plural_object_head_surface(tokens) {
-            filter.set_plural_object_noun_surface(true);
-        }
-        return Ok(Some(filter));
-    }
-
     let target = parse_target_phrase(tokens).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported subject target phrase (clause: '{}')",

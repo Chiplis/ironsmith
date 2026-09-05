@@ -1,8 +1,11 @@
+use crate::tag::TagKeyWalk;
+
 use crate::color::Color;
 
 /// Atomic mana payment options.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum ManaSymbol {
     /// White mana {W}
     White,
@@ -68,6 +71,7 @@ impl ManaSymbol {
 /// - `{W/P}` (phyrexian) = `[[White, Life(2)]]`
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(TagKeyWalk)]
 pub struct ManaCost {
     pips: Vec<Vec<ManaSymbol>>,
 }

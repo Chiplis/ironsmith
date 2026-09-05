@@ -36,46 +36,44 @@ pub fn parse_token_copy_modifier_sentence_lexed(
     )
 }
 
-fn token_copy_reference_surface_at(
-    words: &[&str],
-    start: usize,
-) -> Option<crate::effect::TokenCopyReferenceSurface> {
-    use crate::effect::TokenCopyReferenceSurface as Surface;
+use crate::effect::TokenCopyReferenceSurface as Surface;
 
-    let words = words.get(start..)?;
-    if crate::word_primitives::parse_any_sequence_prefix(
-        words,
+/// The authored token references, longest phrase first so that a longer
+/// reference ("the token created this way") is never read as its prefix
+/// ("the token"); each phrase group names one surface.
+const TOKEN_REFERENCE_SURFACES: &[(&[&[&str]], Surface)] = &[
+    (
         &[
             &["the", "token", "created", "this", "way"],
             &["token", "created", "this", "way"],
         ],
-    ) {
-        return Some(Surface::TokenCreatedThisWay);
-    }
-    if crate::word_primitives::parse_any_sequence_prefix(
-        words,
+        Surface::TokenCreatedThisWay,
+    ),
+    (
         &[
             &["the", "tokens", "created", "this", "way"],
             &["tokens", "created", "this", "way"],
         ],
-    ) {
-        return Some(Surface::TokensCreatedThisWay);
-    }
-    if crate::word_primitives::parse_sequence_prefix(words, &["that", "token"]) {
-        return Some(Surface::ThatToken);
-    }
-    if crate::word_primitives::parse_any_sequence_prefix(
-        words,
+        Surface::TokensCreatedThisWay,
+    ),
+    (&[&["that", "token"]], Surface::ThatToken),
+    (
         &[&["those", "tokens"], &["those", "token"]],
-    ) {
-        return Some(Surface::ThoseTokens);
-    }
-    if crate::word_primitives::parse_any_sequence_prefix(words, &[&["the", "token"], &["token"]]) {
-        return Some(Surface::TheToken);
-    }
-    if crate::word_primitives::parse_any_sequence_prefix(words, &[&["the", "tokens"], &["tokens"]])
-    {
-        return Some(Surface::TheTokens);
+        Surface::ThoseTokens,
+    ),
+    (&[&["the", "token"], &["token"]], Surface::TheToken),
+    (&[&["the", "tokens"], &["tokens"]], Surface::TheTokens),
+];
+
+fn token_copy_reference_surface_at(
+    words: &[&str],
+    start: usize,
+) -> Option<crate::effect::TokenCopyReferenceSurface> {
+    let words = words.get(start..)?;
+    for (phrases, surface) in TOKEN_REFERENCE_SURFACES {
+        if crate::word_primitives::parse_any_sequence_prefix(words, phrases) {
+            return Some(*surface);
+        }
     }
     match words.first().copied()? {
         "it" => Some(Surface::It),

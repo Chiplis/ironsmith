@@ -775,7 +775,7 @@ fn read_exile_cast_permission(
     if crate::word_primitives::parse_sequence_prefix(&source_words, EXILE_CAST_PREFIX)
         && (ordinary_exile_cast || dream_exile_cast)
     {
-        let tag = crate::tag::CompilerReferenceTag::ChosenCounteredExileSpell.key();
+        let tag = crate::tag::CompilerReferenceTag::ChosenCounteredExileSpell.bind();
         let mut filter = ObjectFilter::default()
             .owned_by(PlayerFilter::You)
             .in_zone(Zone::Exile);

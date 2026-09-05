@@ -1,0 +1,15 @@
+html, body, #root {height:auto; min-height:100%; overflow:auto;}
+.audit-page {max-width:1200px; margin:auto; min-height:100vh; font-family:system-ui,sans-serif;}
+.audit-page header {margin-bottom:28px; max-width:760px;}
+.audit-page header p {color:var(--ui-text-secondary); line-height:1.6;}
+.audit-eyebrow {font-size:11px; letter-spacing:.15em; text-transform:uppercase;}
+.audit-section {margin-block:20px; padding:24px; border:1px solid var(--ui-border-subtle); border-radius:10px; background:var(--ui-surface-raised);}
+.audit-section h2 {font-size:18px; margin-bottom:16px; color:var(--ui-text-primary);}
+.audit-controls {display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-block:20px;}
+.audit-controls label {display:grid; gap:8px; font-size:13px;}
+.audit-controls label.audit-check {display:flex;align-items:center;}
+.audit-controls select {padding:8px 12px;}
+.audit-decision {height:320px; min-width:0; padding:16px; border:1px solid var(--ui-border-subtle); background:var(--ui-surface-table);}
+.audit-decision.table-action-bar {height:160px;}
+.audit-output {display:block; margin-top:16px; padding:12px; overflow-wrap:anywhere; color:var(--ui-selected); font:12px/1.6 ui-monospace,monospace;}
+@media(max-width:600px){.audit-section{padding:16px}.audit-controls{gap:12px}}

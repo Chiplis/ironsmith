@@ -39,7 +39,7 @@ pub fn lift_total_mana_value_choice_constraint(
             .filter(|word| !word.is_empty())
             .unwrap_or("permanent");
         maximum = Value::ManaValueOf(Box::new(
-            ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::SacrificeCost0.key())
+            ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::SacrificeCost0.bind())
                 .with_surface_hint(crate::target::ChooseSpecSurfaceHint::SourceReference(
                     SourceReferenceSurface::ThisPermanentType(format!(
                         "the sacrificed {object_kind}"

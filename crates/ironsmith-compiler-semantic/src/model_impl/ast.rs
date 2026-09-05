@@ -1,3 +1,5 @@
+use ironsmith_core::tag::TagKeyWalk;
+
 use crate::color::ColorSet;
 use crate::cost::OptionalCostRef;
 use crate::effect::{ChoiceAggregateMetric, ChoiceCount, EffectId, Until, Value};
@@ -45,6 +47,7 @@ mod nodes;
 pub use nodes::*;
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum StaticAbilityAst {
     Static(crate::model::CompilerStaticAbilityCore),
     KeywordAction(KeywordAction),
@@ -143,6 +146,7 @@ impl From<crate::model::CompilerStaticAbilityCore> for StaticAbilityAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub enum TriggerIntroSurfaceAst {
     When,
     Whenever,
@@ -150,6 +154,7 @@ pub enum TriggerIntroSurfaceAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum TriggerSpec {
     WithIntro {
         intro: TriggerIntroSurfaceAst,

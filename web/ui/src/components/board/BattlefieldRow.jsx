@@ -40,7 +40,7 @@ const MAX_BATTLEFIELD_CARD_ZONE_WIDTH_RATIO = 0.155;
 const DESKTOP_PORTRAIT_CARD_ASPECT = 63 / 88;
 const DESKTOP_PORTRAIT_MAX_WIDTH_PX = 72;
 const DESKTOP_PORTRAIT_MAX_ZONE_WIDTH_RATIO = 0.1;
-const BATTLEFIELD_GRID_GAP_PX = 4;
+const BATTLEFIELD_GRID_GAP_PX = 10;
 const COMPACT_SCROLL_COLUMN_MAX_WIDTH = 200;
 const ABSOLUTE_MIN_CARD_WIDTH = 10;
 const ABSOLUTE_MIN_CARD_HEIGHT = 14;
@@ -702,10 +702,6 @@ function playBattlefieldLayoutSettleAnimation(row, previousPositions, motionStor
   }
 }
 
-function computeMobileBottomOverlapPx(cardWidth) {
-  return Math.min(20, Math.max(12, Math.floor(cardWidth * 0.24)));
-}
-
 function computePaperVisualGridWidth(cols, cardWidth, gap, overlapPx = 0) {
   if (!Number.isFinite(cols) || cols <= 0) return 0;
   if (!Number.isFinite(cardWidth) || cardWidth <= 0) return 0;
@@ -911,7 +907,7 @@ export default function BattlefieldRow({
     const rows = Math.max(1, Math.floor(Number(layoutOverride.rows) || 1));
     const cardWidth = Math.max(ABSOLUTE_MIN_CARD_WIDTH, Math.floor(Number(layoutOverride.cardWidth) || 0));
     const cardHeight = Math.max(ABSOLUTE_MIN_CARD_HEIGHT, Math.floor(Number(layoutOverride.cardHeight) || 0));
-    const overlapPx = Math.max(0, Math.floor(Number(layoutOverride.overlapPx) || 0));
+    const overlapPx = 0;
     if (cardWidth <= 0 || cardHeight <= 0) return null;
     return {
       rows,
@@ -1550,15 +1546,7 @@ export default function BattlefieldRow({
     row.style.setProperty("--bf-rows", String(best.rows));
     row.style.setProperty("--bf-card-width", `${best.cardWidth}px`);
     row.style.setProperty("--bf-card-height", `${best.cardHeight}px`);
-    const overlapPx = isPaperBattlefieldLayout
-      ? (
-        isMobileBattleTopLayout
-          ? Math.min(28, Math.max(18, Math.floor(best.cardWidth * 0.26)))
-          : isMobileBattleBottomLayout
-            ? computeMobileBottomOverlapPx(best.cardWidth)
-            : 0
-      )
-      : Math.min(14, Math.max(8, Math.floor(best.cardWidth * 0.11)));
+    const overlapPx = 0;
     row.style.setProperty("--bf-card-overlap", `${overlapPx}px`);
     if (isMobileBattleBottomLayout) {
       const visualWidth = computePaperVisualGridWidth(best.cols, best.cardWidth, gap, overlapPx);
@@ -2485,6 +2473,7 @@ export default function BattlefieldRow({
             ].filter(Boolean).join(" ")}
             isInspected={selectedObjectId != null && cardObjectIds.some((id) => String(id) === String(selectedObjectId))}
             isPlayable={isInteractable}
+            hasAvailableAction={isActivatable || isCombatCandidate}
             glowKind={appliedGlowKind}
             isHovered={isCombatHoverTarget || isActionLinkedHover}
             isNew={isNew}

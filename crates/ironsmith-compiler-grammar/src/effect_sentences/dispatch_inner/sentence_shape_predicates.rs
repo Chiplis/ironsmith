@@ -94,7 +94,7 @@ fn parse_target_deals_power_damage_to_other_and_self_where_x(
 
     let source = parse_target_phrase(&source_tokens)?;
     let first_target = parse_target_phrase(&first_target_tokens)?;
-    let source_ref = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None);
+    let source_ref = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None);
     Ok(Some(vec![
         EffectAst::subject_verb_target_only(source.clone()),
         EffectAst::subject_verb_damage_equal_to_power(source_ref.clone(), first_target),
@@ -154,7 +154,7 @@ fn parse_conjoined_must_be_blocked_sentence(
     }
 
     let restriction_filter = if starts_with_target_indicator(&shared_subject_tokens) {
-        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key())
+        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind())
     } else {
         let target = parse_target_phrase(&shared_subject_tokens)?;
         target_ast_to_object_filter(target).ok_or_else(|| {
@@ -385,7 +385,7 @@ pub fn lower_where_x_shape(
             let mut filter = ObjectFilter::default();
             filter.is_commander = true;
             filter.owner = Some(PlayerFilter::You);
-            let tag = crate::tag::CompilerReferenceTag::WhereXCommanderManaValue.key();
+            let tag = crate::tag::CompilerReferenceTag::WhereXCommanderManaValue.bind();
             let choice = EffectAst::ChooseObjectsAcrossZones {
                 filter,
                 count: ChoiceCount::exactly(1),
@@ -404,7 +404,7 @@ pub fn lower_where_x_shape(
             let object_tokens = crate::lexer::synthetic_word_tokens([object_kind.as_str()]);
             let mut filter = parse_object_filter(&object_tokens, false).ok()?;
             filter = filter.match_tagged(
-                crate::tag::CompilerReferenceTag::ChosenObjects.key(),
+                crate::tag::CompilerReferenceTag::ChosenObjects.bind(),
                 TaggedOpbjectRelation::IsTaggedObject,
             );
             (
@@ -423,7 +423,7 @@ pub fn lower_where_x_shape(
                     crate::target::ChooseSpec::Object(ObjectFilter::default()),
                 ),
                 Reference::TaggedIt => {
-                    crate::target::ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())
+                    crate::target::ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.bind())
                 }
             };
             let value = match (reference, metric) {
@@ -438,7 +438,7 @@ pub fn lower_where_x_shape(
         sentence_shapes::WhereXValueShape::TapCostPower => (
             None,
             Value::PowerOf(Box::new(crate::target::ChooseSpec::Tagged(
-                crate::tag::CompilerReferenceTag::TapCost0.key(),
+                crate::tag::CompilerReferenceTag::TapCost0.bind(),
             )))
             .with_surface_hint(
                 ironsmith_core::ValueSurfaceHint::CharacteristicOfObjectThisWay {
@@ -464,7 +464,7 @@ pub fn lower_where_x_shape(
                 None,
                 Value::ManaValueOf(Box::new(
                     crate::target::ChooseSpec::Tagged(
-                        crate::tag::CompilerReferenceTag::SacrificeCost0.key(),
+                        crate::tag::CompilerReferenceTag::SacrificeCost0.bind(),
                     )
                     .with_surface_hint(
                         crate::target::ChooseSpecSurfaceHint::SourceReference(
@@ -481,7 +481,7 @@ pub fn lower_where_x_shape(
             let object_tokens = crate::lexer::synthetic_word_tokens([object_kind]);
             let mut filter = parse_object_filter(&object_tokens, false).ok()?;
             filter = filter.match_tagged(
-                crate::tag::CompilerReferenceTag::Sacrificed0.key(),
+                crate::tag::CompilerReferenceTag::Sacrificed0.bind(),
                 TaggedOpbjectRelation::IsTaggedObject,
             );
             (None, Value::ColorsAmong(filter))
@@ -491,14 +491,14 @@ pub fn lower_where_x_shape(
             Value::Add(
                 Box::new(Value::Fixed(2)),
                 Box::new(Value::ManaValueOf(Box::new(
-                    crate::target::ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key()),
+                    crate::target::ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.bind()),
                 ))),
             ),
         ),
         sentence_shapes::WhereXValueShape::SourceExiledManaValue => (
             None,
             Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
-                crate::tag::CompilerReferenceTag::SourceExiled.key(),
+                crate::tag::CompilerReferenceTag::SourceExiled.bind(),
             ))),
         ),
         sentence_shapes::WhereXValueShape::PriorEffectMetric(query) => {
@@ -525,7 +525,7 @@ pub fn lower_where_x_shape(
                 ),
                 (Reference::TaggedIt, counter_type) => Value::CountersOn(
                     Box::new(ChooseSpec::Tagged(
-                        crate::tag::CompilerReferenceTag::It.key(),
+                        crate::tag::CompilerReferenceTag::It.bind(),
                     )),
                     counter_type,
                 ),
@@ -877,7 +877,7 @@ fn parse_it_is_aura_enchantment_sentence_lexed(
     }
     let mut effects = vec![EffectAst::subject_verb_become_aura_enchantment_with_grants(
         TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             Some(TextSpan::synthetic()),
         ),
         attachment_filter,

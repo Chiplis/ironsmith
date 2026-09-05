@@ -381,7 +381,7 @@ pub fn parse_gain_control(
             ..
         } = &mut subject_verb.action
     {
-        *controller_reference = Some(crate::target::ObjectRef::tagged("triggering_source"));
+        *controller_reference = Some(crate::target::ObjectRef::tagged(crate::tag::CompilerReferenceTag::TriggeringSource.bind()));
     }
 
     if opponent_choice.is_some()

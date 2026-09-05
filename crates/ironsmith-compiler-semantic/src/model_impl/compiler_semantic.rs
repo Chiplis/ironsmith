@@ -1,3 +1,5 @@
+use ironsmith_core::tag::TagKeyWalk;
+
 use crate::ability::ActivationTiming;
 use crate::effect::{EffectPredicate, Value};
 use crate::zone::Zone;
@@ -40,13 +42,13 @@ pub type CompilerActivatedAbilityCore = ironsmith_core::ActivatedAbility<
 >;
 pub type CompilerManaUsageRestriction = ironsmith_core::ManaUsageRestriction<EffectAst>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum GiftTimingAst {
     SpellResolution,
     PermanentEtb,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum LineAst {
     Multiple(Vec<LineAst>),
     Abilities(Vec<KeywordAction>),
@@ -80,16 +82,18 @@ pub enum LineAst {
     AlternativeCastingMethod(ParsedAlternativeCastingMethodAst),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AdditionalCostChoiceOptionAst<Effect = EffectAst> {
     pub description: String,
     pub effects: Vec<Effect>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct ParsedAbility {
     pub ability: Box<CompilerAbilityCore>,
     pub effects_ast: Option<Vec<EffectAst>>,
+    #[tag_walk(skip)]
     pub reference_imports: ReferenceImports,
     pub trigger_spec: Option<Box<TriggerSpec>>,
 }

@@ -1,7 +1,10 @@
+use crate::tag::TagKeyWalk;
+
 use crate::{ObjectFilter, ObjectId, PlayerId};
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(TagKeyWalk)]
 pub enum CauseType {
     Cost,
     Effect,
@@ -20,6 +23,7 @@ impl CauseType {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct EventCause {
     pub cause_type: CauseType,
     pub source: Option<ObjectId>,
@@ -102,6 +106,7 @@ impl EventCause {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub struct CauseFilter {
     pub cause_type: Option<CauseTypeFilter>,
     pub source_filter: Option<ObjectFilter>,
@@ -110,6 +115,7 @@ pub struct CauseFilter {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum CauseTypeFilter {
     Exact(CauseType),
     Not(CauseType),
@@ -132,6 +138,7 @@ impl CauseTypeFilter {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
 pub enum ControllerFilter {
     Player(PlayerId),
     You,

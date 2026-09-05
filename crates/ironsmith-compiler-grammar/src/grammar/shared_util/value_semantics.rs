@@ -157,7 +157,7 @@ fn counter_reference_shape_value(shape: value_helper_shapes::CounterReferenceVal
         }
         value_helper_shapes::CounterValueReference::Tagged => Value::CountersOn(
             Box::new(ChooseSpec::Tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
             )),
             shape.counter_type,
         ),
@@ -340,7 +340,7 @@ fn aggregate_filter_value(
 fn source_linked_exiled_mana_value(object_words: &[&str]) -> Option<Value> {
     if words_match_any_phrase(object_words, SOURCE_LINKED_EXILED_CARD_PHRASES) {
         return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
-            crate::tag::CompilerReferenceTag::SourceExiled.key(),
+            crate::tag::CompilerReferenceTag::SourceExiled.bind(),
         ))));
     }
     None

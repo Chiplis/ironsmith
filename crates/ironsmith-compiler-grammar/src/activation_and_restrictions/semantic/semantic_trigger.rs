@@ -2617,7 +2617,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     action: crate::events::KeywordActionKind::Saddle,
                     player: PlayerFilter::Any,
                     source_filter: source_filter.clone(),
-                    object_tag: crate::tag::CompilerReferenceTag::It.key(),
+                    object_tag: crate::tag::CompilerReferenceTag::It.bind(),
                     object_filter: ObjectFilter::default()
                         .in_zone(Zone::Battlefield)
                         .with_subtype(Subtype::Mount),
@@ -2627,7 +2627,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     action: crate::events::KeywordActionKind::Crew,
                     player: PlayerFilter::Any,
                     source_filter,
-                    object_tag: crate::tag::CompilerReferenceTag::It.key(),
+                    object_tag: crate::tag::CompilerReferenceTag::It.bind(),
                     object_filter: ObjectFilter::default()
                         .in_zone(Zone::Battlefield)
                         .with_subtype(Subtype::Vehicle),
@@ -2677,7 +2677,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 action: crate::events::KeywordActionKind::Crew,
                 player: PlayerFilter::Any,
                 source_filter,
-                object_tag: crate::tag::CompilerReferenceTag::It.key(),
+                object_tag: crate::tag::CompilerReferenceTag::It.bind(),
                 object_filter,
                 during_your_main_phase: false,
             });
@@ -2704,7 +2704,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     action: crate::events::KeywordActionKind::Explore,
                     player: PlayerFilter::Any,
                     source_filter: filter,
-                    object_tag: crate::tag::CompilerReferenceTag::PublicRevealed.key(),
+                    object_tag: crate::tag::CompilerReferenceTag::PublicRevealed.bind(),
                     object_filter,
                     during_your_main_phase: false,
                 },
@@ -3672,7 +3672,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                         action: crate::events::KeywordActionKind::Exploit,
                         player: PlayerFilter::Any,
                         source_filter: filter,
-                        object_tag: crate::tag::CompilerReferenceTag::Exploited.key(),
+                        object_tag: crate::tag::CompilerReferenceTag::Exploited.bind(),
                         object_filter,
                         during_your_main_phase: false,
                     },
@@ -3988,7 +3988,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 (
                     &words[..=attacks_word_idx],
                     Some(PlayerFilter::TaggedPlayer(
-                        crate::tag::CompilerReferenceTag::Enchanted.key(),
+                        crate::tag::CompilerReferenceTag::Enchanted.bind(),
                     )),
                     true,
                 )
@@ -3999,7 +3999,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 (
                     &words[..=attacks_word_idx],
                     Some(PlayerFilter::TaggedPlayer(
-                        crate::tag::CompilerReferenceTag::InitiativeHolder.key(),
+                        crate::tag::CompilerReferenceTag::InitiativeHolder.bind(),
                     )),
                     true,
                 )
@@ -4018,7 +4018,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 (
                     &words[..=attacks_word_idx],
                     Some(PlayerFilter::TaggedPlayer(
-                        crate::tag::CompilerReferenceTag::Enchanted.key(),
+                        crate::tag::CompilerReferenceTag::Enchanted.bind(),
                     )),
                     false,
                 )

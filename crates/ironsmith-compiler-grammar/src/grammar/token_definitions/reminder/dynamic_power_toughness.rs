@@ -61,7 +61,7 @@ fn parse_possessive_stat_rhs(words: &[&str], is_power: bool) -> Option<Value> {
         }
     };
     let tagged_value = |tag: crate::tag::CompilerReferenceTag| {
-        let spec = Box::new(ChooseSpec::Tagged(tag.key()));
+        let spec = Box::new(ChooseSpec::Tagged(tag.bind()));
         if is_power {
             Value::PowerOf(spec)
         } else {

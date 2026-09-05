@@ -37,7 +37,7 @@ pub(super) fn try_apply_no_shared_creature_type_with_chosen_creature_clause(
         filter
             .no_shared_creature_types_with
             .push(ObjectFilter::tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
             ));
         all_words.drain(fact.span.start..fact.span.start + phrase.len());
         return true;

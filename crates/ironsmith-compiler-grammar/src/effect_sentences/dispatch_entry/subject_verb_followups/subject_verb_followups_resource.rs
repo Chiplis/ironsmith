@@ -202,7 +202,7 @@ pub(super) fn bind_prior_exiled_mana_value(value: &mut Value) {
         Value::SurfaceHinted { value, .. } => bind_prior_exiled_mana_value(value),
         Value::ManaValueOf(spec) if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()) =>
         {
-            **spec = ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::PriorExiledCard.key());
+            **spec = ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::PriorExiledCard.bind());
         }
         _ => {}
     }

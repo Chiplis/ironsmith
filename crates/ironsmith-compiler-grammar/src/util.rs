@@ -504,7 +504,14 @@ pub fn helper_tag_for_tokens(tokens: &[OwnedLexToken], prefix: &str) -> TagKey {
         end: 0,
     });
 
-    crate::tag::sentence_helper_tag(prefix, span.line, span.start, span.end)
+    let key = crate::tag::sentence_helper_tag(prefix, span.line, span.start, span.end);
+    ironsmith_compiler_ast::reference_ledger::note_minted(
+        key.clone(),
+        ironsmith_compiler_ast::symbols::ReferenceRole::Affected,
+        ironsmith_compiler_ast::symbols::ObjectDomain::Object,
+        ironsmith_compiler_ast::symbols::Cardinality::Any,
+    );
+    key
 }
 
 pub fn is_sentence_helper_tag(tag: &TagKey, prefix: &str) -> bool {
@@ -571,7 +578,7 @@ fn compiler_activation_cost_component_reference(
                 Some(CompilerActivationCostObjectReference::Tagged(tag))
             } else {
                 Some(CompilerActivationCostObjectReference::Tagged(
-                    crate::tag::CompilerReferenceTag::DiscardedCost.key(),
+                    crate::tag::CompilerReferenceTag::DiscardedCost.bind(),
                 ))
             }
         }
@@ -656,7 +663,7 @@ pub fn compiler_activation_cost_reference_imports(
             let mut imports = ReferenceImports::with_last_object_tag(tag.clone());
             if crate::tag::CompilerCostObjectTag::Sacrifice.matches(&tag) {
                 imports.snapshot_tag_aliases.push((
-                    crate::tag::CompilerReferenceTag::AdditionalCostObject.key(),
+                    crate::tag::CompilerReferenceTag::AdditionalCostObject.bind(),
                     tag,
                 ));
             }

@@ -35,7 +35,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         let _ = kind;
         let span = token_slice_span(tokens);
         return Ok(TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             span,
         ));
     }
@@ -50,7 +50,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         &["any", "target", "other", "than", "that", "permanent"],
     ) {
         let filter =
-            ObjectFilter::permanent().not_tagged(crate::tag::CompilerReferenceTag::Damaged.key());
+            ObjectFilter::permanent().not_tagged(crate::tag::CompilerReferenceTag::Damaged.bind());
         return Ok(TargetAst::ObjectOrPlayer(
             filter,
             PlayerFilter::Any,
@@ -114,7 +114,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     let authored_words = crate::lexer::token_word_refs(tokens);
     if matches_surface(&authored_words, REST_TARGET_PATTERN) {
         return Ok(TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::Rest.key(),
+            crate::tag::CompilerReferenceTag::Rest.bind(),
             token_slice_span(tokens),
         ));
     }
@@ -178,7 +178,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     if let Some(reference) = parse_referenced_target_prefix(tokens) {
         let mut filter = parse_object_filter(reference.object_tokens, reference.other)?;
         filter = filter.match_tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             TaggedOpbjectRelation::IsTaggedObject,
         );
         let mut count = ChoiceCount::exactly(reference.count as usize);
@@ -195,7 +195,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
             parse_filter_counter_constraint_words(&all_words[2..])
         && consumed == all_words.len().saturating_sub(2)
     {
-        let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
+        let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
         filter.with_counter = Some(counter_constraint);
         return Ok(wrap_target_count(
             TargetAst::Object(filter, None, span),
@@ -203,9 +203,9 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         ));
     }
     if matches_surface(&all_words, ALL_REFERENCED_WITH_THAT_NAME_PATTERN) {
-        let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
+        let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
         filter = filter.match_tagged(
-            crate::tag::CompilerReferenceTag::ChosenName.key(),
+            crate::tag::CompilerReferenceTag::ChosenName.bind(),
             TaggedOpbjectRelation::SameNameAsTagged,
         );
         return Ok(wrap_target_count(
@@ -215,13 +215,13 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     }
     if matches_surface(&all_words, TAGGED_OBJECT_TARGET_PATTERN) {
         return Ok(wrap_target_count(
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), span),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span),
             target_count,
         ));
     }
     if matches_surface(&all_words, REST_TARGET_PATTERN) {
         return Ok(wrap_target_count(
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::Rest.key(), span),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::Rest.bind(), span),
             target_count,
         ));
     }
@@ -240,7 +240,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
             parse_object_filter(filter_tokens, false)?
         };
         filter = filter.match_tagged(
-            crate::tag::CompilerReferenceTag::ChosenObjects.key(),
+            crate::tag::CompilerReferenceTag::ChosenObjects.bind(),
             TaggedOpbjectRelation::IsTaggedObject,
         );
         return Ok(wrap_target_count(
@@ -250,14 +250,14 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     }
     if matches_surface(&remaining_words, EQUIPPED_OBJECT_TARGET_PATTERN) {
         return Ok(wrap_target_count(
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::Equipped.key(), span),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::Equipped.bind(), span),
             target_count,
         ));
     }
     if let Some(enchanted) = parse_enchanted_object_target_kind(&remaining_words) {
         if enchanted == EnchantedObjectTargetKind::Creature {
             let mut filter =
-                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::Enchanted.key());
+                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::Enchanted.bind());
             filter.card_types.push(CardType::Creature);
             return Ok(wrap_target_count(
                 TargetAst::Object(filter, None, span),
@@ -265,7 +265,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
             ));
         }
         return Ok(wrap_target_count(
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::Enchanted.key(), span),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::Enchanted.bind(), span),
             target_count,
         ));
     }
@@ -274,7 +274,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         CREATURE_TAPPED_FOR_THIS_SPELL_COST_PATTERN,
     ) {
         return Ok(wrap_target_count(
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::TapCost0.key(), span),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::TapCost0.bind(), span),
             target_count,
         ));
     }
@@ -396,7 +396,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     if matches_surface(&remaining_words, ENCHANTED_PLAYER_TARGET_PATTERN) {
         return Ok(wrap_target_count(
             TargetAst::Player(
-                PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.key()),
+                PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.bind()),
                 target_span,
             ),
             target_count,
@@ -461,7 +461,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         return Ok(wrap_target_count(
             TargetAst::Player(
                 PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(
-                    crate::tag::CompilerReferenceTag::It.key(),
+                    crate::tag::CompilerReferenceTag::It.bind(),
                 )),
                 None,
             ),
@@ -507,7 +507,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         return Ok(wrap_target_count(
             TargetAst::Player(
                 PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(
-                    crate::tag::CompilerReferenceTag::It.key(),
+                    crate::tag::CompilerReferenceTag::It.bind(),
                 )),
                 None,
             ),
@@ -558,14 +558,14 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     }
     if matches_surface(&remaining_words, TRIGGERING_SPELL_TARGET_PATTERN) {
         return Ok(wrap_target_count(
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), span),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), span),
             target_count,
         ));
     }
     if matches_surface(&remaining_words, TRIGGERING_SPELL_OR_ABILITY_TARGET_PATTERN) {
         return Ok(wrap_target_count(
             TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::TriggeringSource.key(),
+                crate::tag::CompilerReferenceTag::TriggeringSource.bind(),
                 span,
             ),
             target_count,
@@ -577,7 +577,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
             parse_filter_counter_constraint_words(&remaining_words[2..])
         && consumed == remaining_words.len().saturating_sub(2)
     {
-        let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
+        let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
         filter.with_counter = Some(counter_constraint);
         return Ok(wrap_target_count(
             TargetAst::Object(filter, target_span, span),
@@ -637,13 +637,13 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
             .all(|word| matches_surface_word(word, INSTEAD_THIS_WAY_WORD_PATTERN))
     {
         return Ok(wrap_target_count(
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), span),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span),
             target_count,
         ));
     }
     if matches_surface(&remaining_words, TOKEN_CREATED_THIS_WAY_TARGET_PATTERN) {
         return Ok(wrap_target_count(
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), span),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span),
             target_count,
         ));
     }
@@ -655,7 +655,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     }
     if matches_surface(&remaining_words, THEM_TARGET_PATTERN) {
         return Ok(wrap_target_count(
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), span),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span),
             target_count,
         ));
     }
@@ -894,14 +894,14 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         && filter.blocking
     {
         filter = filter.match_tagged(
-            crate::tag::CompilerReferenceTag::Blocking.key(),
+            crate::tag::CompilerReferenceTag::Blocking.bind(),
             TaggedOpbjectRelation::IsTaggedObject,
         );
     } else if crate::word_primitives::parse_sequence_prefix(&token_words, &["the", "attacking"])
         && filter.attacking
     {
         filter = filter.match_tagged(
-            crate::tag::CompilerReferenceTag::Blocked.key(),
+            crate::tag::CompilerReferenceTag::Blocked.bind(),
             TaggedOpbjectRelation::IsTaggedObject,
         );
     }
@@ -929,7 +929,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     let reference_span =
         if let Some(surface) = typed_demonstrative_reference_surface(remaining) {
             filter = filter.match_tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 TaggedOpbjectRelation::IsTaggedObject,
             );
             filter.source_surface = Some(surface);

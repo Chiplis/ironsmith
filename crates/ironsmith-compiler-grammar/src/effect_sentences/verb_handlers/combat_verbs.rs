@@ -27,7 +27,7 @@ fn attach_tagged_filter(
     }
     filter.zone = Some(Zone::Battlefield);
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: crate::tag::CompilerReferenceTag::It.key(),
+        tag: crate::tag::CompilerReferenceTag::It.bind(),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
     Some(filter)
@@ -95,7 +95,7 @@ fn combat_simple_damage_target_ast(
         }
         combat_grammar::CombatSimpleDamageTargetShape::CreatureController => TargetAst::Player(
             PlayerFilter::ControllerOf(crate::target::ObjectRef::tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
             )),
             span_from_tokens(tokens),
         ),
@@ -127,7 +127,7 @@ fn damage_to_embedded_target_controller(
         };
     let recipient = TargetAst::Player(
         PlayerFilter::ControllerOf(crate::target::ObjectRef::tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
         )),
         None,
     );
@@ -153,7 +153,7 @@ pub fn parse_attach_object_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst,
                 Ok(TargetAst::Object(tagged_filter, None, None))
             } else {
                 Ok(TargetAst::Tagged(
-                    crate::tag::CompilerReferenceTag::It.key(),
+                    crate::tag::CompilerReferenceTag::It.bind(),
                     object_span,
                 ))
             }
@@ -212,7 +212,7 @@ pub fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
             object_tokens,
         } => {
             let target = TargetAst::Tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 span_from_tokens(tagged_tokens),
             );
             let object = parse_attach_object_phrase(object_tokens)?;
@@ -227,11 +227,11 @@ pub fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
             if triggering_object_to_token {
                 return Ok(EffectAst::subject_verb_attach(
                     TargetAst::Tagged(
-                        crate::tag::CompilerReferenceTag::Triggering.key(),
+                        crate::tag::CompilerReferenceTag::Triggering.bind(),
                         span_from_tokens(object_tokens),
                     ),
                     TargetAst::Tagged(
-                        crate::tag::CompilerReferenceTag::It.key(),
+                        crate::tag::CompilerReferenceTag::It.bind(),
                         span_from_tokens(target_tokens),
                     ),
                 ));
@@ -251,7 +251,7 @@ pub fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                     let mut aura_filter = ObjectFilter::permanent().in_zone(Zone::Battlefield);
                     aura_filter.subtypes.push(Subtype::Aura);
                     aura_filter.tagged_constraints.push(TaggedObjectConstraint {
-                        tag: crate::tag::CompilerReferenceTag::It.key(),
+                        tag: crate::tag::CompilerReferenceTag::It.bind(),
                         relation: TaggedOpbjectRelation::AttachedToTaggedObject,
                     });
 
@@ -261,7 +261,7 @@ pub fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                         TaggedOpbjectRelation::IsNotTaggedObject,
                     ] {
                         destination.tagged_constraints.push(TaggedObjectConstraint {
-                            tag: crate::tag::CompilerReferenceTag::It.key(),
+                            tag: crate::tag::CompilerReferenceTag::It.bind(),
                             relation,
                         });
                     }
@@ -280,7 +280,7 @@ pub fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
             let object = parse_attach_object_phrase(object_tokens)?;
             let mut target = if target_is_tagged {
                 TargetAst::Tagged(
-                    crate::tag::CompilerReferenceTag::It.key(),
+                    crate::tag::CompilerReferenceTag::It.bind(),
                     span_from_tokens(target_tokens),
                 )
             } else {
@@ -301,10 +301,10 @@ fn parse_attached_object_reference(tokens: &[OwnedLexToken]) -> Option<TargetAst
     let shape = combat_grammar::parse_attached_object_reference_tokens(tokens)?;
     let tag = match shape.tag {
         combat_grammar::AttachedObjectReferenceTag::Enchanted => {
-            crate::tag::CompilerReferenceTag::Enchanted.key()
+            crate::tag::CompilerReferenceTag::Enchanted.bind()
         }
         combat_grammar::AttachedObjectReferenceTag::Equipped => {
-            crate::tag::CompilerReferenceTag::Equipped.key()
+            crate::tag::CompilerReferenceTag::Equipped.bind()
         }
     };
     let mut filter = match shape.kind {
@@ -358,7 +358,7 @@ pub fn parse_unattach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErr
         equipment_filter
             .tagged_constraints
             .push(TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::It.key(),
+                tag: crate::tag::CompilerReferenceTag::It.bind(),
                 relation: TaggedOpbjectRelation::AttachedToTaggedObject,
             });
 

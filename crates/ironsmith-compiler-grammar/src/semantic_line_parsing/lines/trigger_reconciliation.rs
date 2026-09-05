@@ -264,13 +264,13 @@ pub fn end_of_combat_destroy_then_next_end_step_counter_program(
         ironsmith_core::PriorEffectResultQuantifier::One,
     );
     let destroy_other = EffectAst::subject_verb_destroy(TargetAst::Tagged(
-        crate::tag::CompilerReferenceTag::Blocking.key(),
+        crate::tag::CompilerReferenceTag::Blocking.bind(),
         None,
     ));
     let counter_first = EffectAst::subject_verb_put_counters(
         crate::object::CounterType::PlusOnePlusOne,
         Value::Fixed(1),
-        TargetAst::Tagged(crate::tag::CompilerReferenceTag::Enchanted.key(), None),
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::Enchanted.bind(), None),
         None,
         false,
     );

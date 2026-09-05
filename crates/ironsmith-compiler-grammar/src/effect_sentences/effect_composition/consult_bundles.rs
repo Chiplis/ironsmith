@@ -23,8 +23,8 @@ pub(super) fn parse_reveal_until_land_put_all_graveyard_bundle(
         bundle_grammar::RevealUntilLandPlayer::DefendingPlayer => (PlayerAst::Defending, None),
     };
 
-    let revealed_tag = crate::tag::CompilerReferenceTag::RevealUntilLandRevealed.key();
-    let matched_tag = crate::tag::CompilerReferenceTag::RevealUntilLandMatched.key();
+    let revealed_tag = crate::tag::CompilerReferenceTag::RevealUntilLandRevealed.bind();
+    let matched_tag = crate::tag::CompilerReferenceTag::RevealUntilLandMatched.bind();
     let mut land_card = ObjectFilter::default();
     land_card.card_types.push(CardType::Land);
     land_card.zone = None;
@@ -104,7 +104,7 @@ fn move_consult_tagged_group(tag: TagKey, zone: Zone, controller_you: bool) -> E
     EffectAst::ForEachTagged {
         tag,
         effects: vec![EffectAst::subject_verb_move_to_zone(
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
             zone,
             false,
             if controller_you {

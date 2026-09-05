@@ -407,61 +407,24 @@ pub fn parse_draw_card_prefixed_count_value(
     Ok(None)
 }
 
+#[path = "zone_move_verbs/draw_for_each_readings.rs"]
+mod draw_for_each_readings;
+
 fn parse_draw_for_each_object_filter_value(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
     let Some(filter_tokens) = zone_move_grammar::strip_draw_for_each_prefix(tokens) else {
         return Ok(None);
     };
-
-    if let Some(history_value) = crate::grammar::shared_util::value_semantics::parse_turn_history_count_value(filter_tokens)
-    {
-        return Ok(Some(history_value.with_surface_hint(
-            ironsmith_core::ValueSurfaceHint::ForEach,
-        )));
+    let input = draw_for_each_readings::CountedFilter {
+        tokens: filter_tokens,
+        read_by_cache: Default::default(),
+    };
+    match draw_for_each_readings::read(&input) {
+        ParseOutcome::Match(matched) => return Ok(Some(matched.value.value)),
+        ParseOutcome::NoMatch => {}
+        ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
-
-    if let Some(known_value) = parse_draw_for_each_known_count_value(filter_tokens)? {
-        return Ok(Some(
-            known_value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
-        ));
-    }
-
-    if let Some(cast_this_turn_value) =
-        crate::grammar::shared_util::value_semantics::parse_spells_cast_this_turn_matching_count_value_lexed(filter_tokens)
-    {
-        return Ok(Some(cast_this_turn_value.with_surface_hint(
-            ironsmith_core::ValueSurfaceHint::ForEach,
-        )));
-    }
-
-    if let Some(this_way_value) = parse_draw_for_each_this_way_metric_value(filter_tokens) {
-        return Ok(Some(
-            this_way_value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
-        ));
-    }
-
-    if let Some(counter_value) = parse_draw_for_each_counter_reference_value(filter_tokens) {
-        return Ok(Some(
-            counter_value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
-        ));
-    }
-
-    let filter_words = crate::lexer::token_word_refs(filter_tokens);
-    if let Some(aggregate_value) = crate::grammar::shared_util::value_helper_shapes::parse_aggregate_scope_value_words(&filter_words)
-    {
-        return Ok(Some(aggregate_value.with_surface_hint(
-            ironsmith_core::ValueSurfaceHint::ForEach,
-        )));
-    }
-    if let Some(player) = crate::grammar::shared_util::value_helper_shapes::parse_party_size_player(&filter_words)
-    {
-        return Ok(Some(
-            Value::PartySize(player)
-                .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
-        ));
-    }
-
     Ok(Some(
         Value::Count(parse_object_filter(filter_tokens, false)?)
             .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
@@ -496,9 +459,7 @@ fn parse_draw_for_each_counter_reference_value(tokens: &[OwnedLexToken]) -> Opti
     zone_move_grammar::parse_draw_counter_reference_shape(tokens)
 }
 
-pub fn parse_draw_equal_to_value(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Value>, CardTextError> {
+pub fn parse_draw_equal_to_value(tokens: &[OwnedLexToken]) -> Result<Option<Value>, CardTextError> {
     let Some(shape) = zone_move_grammar::parse_draw_equal_shape(tokens) else {
         return Ok(None);
     };
@@ -528,8 +489,7 @@ pub fn parse_draw_equal_to_value(
     } = &shape
         && let Ok(target) = parse_target_phrase(target_tokens)
     {
-        let spec =
-            crate::model::ast::choose_spec_for_target(&target);
+        let spec = crate::model::ast::choose_spec_for_target(&target);
         let value = match stat {
             zone_move_grammar::DrawEqualStat::Power => Value::PowerOf(Box::new(spec)),
             zone_move_grammar::DrawEqualStat::Toughness => Value::ToughnessOf(Box::new(spec)),
@@ -664,32 +624,34 @@ pub fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
     let target = parse_counter_target_phrase(unless_shape.target_tokens)?;
     let payment_clause_tokens = &unless_shape.normalized_payment_tokens;
     let has_dynamic_payment_tail = unless_shape.has_dynamic_payment_tail;
-    match crate::activation_and_restrictions::parse_payment_clause_as_total_cost(payment_clause_tokens) {
-            Ok(Some(cost)) => {
-                let should_keep_subject_verb_dynamic_path = has_dynamic_payment_tail
-                    && cost.as_one_of().is_none()
-                    && cost.dynamic_mana_cost().is_none();
-                if !should_keep_subject_verb_dynamic_path {
-                    return Ok(EffectAst::subject_verb_counter_unless_pays(target, cost));
-                }
-            }
-            Ok(None) => {
-                if !has_dynamic_payment_tail {
-                    return Err(CardTextError::ParseError(format!(
-                        "unsupported counter-unless payment cost (clause: '{}')",
-                        crate::lexer::token_word_refs(tokens).join(" ")
-                    )));
-                }
-            }
-            Err(err) => {
-                if !has_dynamic_payment_tail {
-                    return Err(CardTextError::ParseError(format!(
-                        "unsupported counter-unless payment cost (clause: '{}'): {err}",
-                        crate::lexer::token_word_refs(tokens).join(" ")
-                    )));
-                }
+    match crate::activation_and_restrictions::parse_payment_clause_as_total_cost(
+        payment_clause_tokens,
+    ) {
+        Ok(Some(cost)) => {
+            let should_keep_subject_verb_dynamic_path = has_dynamic_payment_tail
+                && cost.as_one_of().is_none()
+                && cost.dynamic_mana_cost().is_none();
+            if !should_keep_subject_verb_dynamic_path {
+                return Ok(EffectAst::subject_verb_counter_unless_pays(target, cost));
             }
         }
+        Ok(None) => {
+            if !has_dynamic_payment_tail {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported counter-unless payment cost (clause: '{}')",
+                    crate::lexer::token_word_refs(tokens).join(" ")
+                )));
+            }
+        }
+        Err(err) => {
+            if !has_dynamic_payment_tail {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported counter-unless payment cost (clause: '{}'): {err}",
+                    crate::lexer::token_word_refs(tokens).join(" ")
+                )));
+            }
+        }
+    }
 
     let mut mana = unless_shape.mana.clone();
     let mut life = None;
@@ -832,10 +794,7 @@ fn parse_counter_unless_source_damage(
         return Ok(None);
     };
     let controller_words = controller_clause.trimmed_word_refs();
-    if !crate::word_primitives::parse_sequence_complete(
-        &controller_words,
-        &["its", "controller"],
-    ) {
+    if !crate::word_primitives::parse_sequence_complete(&controller_words, &["its", "controller"]) {
         return Ok(None);
     }
 

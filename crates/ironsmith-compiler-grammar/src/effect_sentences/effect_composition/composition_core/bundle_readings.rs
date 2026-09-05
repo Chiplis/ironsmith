@@ -6,7 +6,7 @@
 use super::*;
 use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId, RuleMatch};
 use crate::registry::{
-    HeadDiscriminator, RegistryCandidate, RegistryRuleMetadata, resolve_ranked_candidates,
+    HeadDiscriminator, RegistryCandidate, RegistryRuleMetadata, resolve_registry_candidates,
 };
 
 /// The input the readings read.
@@ -392,9 +392,7 @@ pub(super) fn read(input: &Bundle<'_>) -> ParseOutcome<RuleMatch<Vec<EffectAst>>
                 .join(", ")
         ));
     }
-    let outcome = resolve_ranked_candidates(REGISTRY, distinct, diagnostics, || {
-        crate::lexer::parser_token_word_refs(input.tokens).join(" ")
-    });
+    let outcome = resolve_registry_candidates(REGISTRY, distinct, diagnostics);
     match &outcome {
         ParseOutcome::Match(matched) => {
             crate::parse_trace::event(format!("{REGISTRY}: {} read the input", matched.value.rule));
@@ -437,7 +435,7 @@ fn read_resolving_card_exile_then_return_next_end_step(
     {
         return Ok(Some(vec![
             EffectAst::subject_verb_register_zone_replacement_with_linked_exile_follow_up(
-                TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), None),
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None),
                 Some(Zone::Stack),
                 Some(Zone::Graveyard),
                 Zone::Exile,
