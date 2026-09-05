@@ -1,3 +1,5 @@
+import PriorityHoldControl from "@/components/decisions/PriorityHoldControl";
+import { useCastPlayerHovered } from "@/context/DragContext";
 import { useCallback } from "react";
 import { useGame } from "@/context/GameContext";
 import { getPlayerAccent } from "@/lib/player-colors";
@@ -32,6 +34,7 @@ export default function MobileSelfHud({
   className,
 }) {
   const { state, playerAccentOverrides } = useGame();
+  const castPlayerHovered = useCastPlayerHovered(me?.index ?? me?.id);
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const accent = getPlayerAccent(state?.players || [], me?.id, state?.perspective, playerAccentOverrides);
   const isActiveTurn = me?.id === state?.active_player;
@@ -62,6 +65,7 @@ export default function MobileSelfHud({
           "mobile-mtga-self-hud-body",
           targetable && "mobile-mtga-self-hud-body--targetable player-target-box"
         )}
+        data-cast-hovered={targetable && castPlayerHovered ? "true" : undefined}
         data-player-target={me.index ?? me.id}
         data-player-target-name={me.id ?? me.index}
         style={accent ? { "--player-accent": accent.hex } : undefined}
@@ -83,6 +87,8 @@ export default function MobileSelfHud({
           </span>
         </span>
       </button>
+
+      <PriorityHoldControl />
 
       {manaPool ? (
         <div className="mobile-mtga-hud-mana">

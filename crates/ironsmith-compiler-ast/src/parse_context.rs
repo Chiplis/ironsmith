@@ -278,6 +278,21 @@ impl<'a> ParseContextView<'a> {
         crate::reference_ledger::ReferenceScopeGuard::enter(self.symbols, self.symbol_scope)
     }
 
+    /// Binds every well-known card-global key (`ironsmith_core::tag::WELL_KNOWN_TAGS`)
+    /// in this view's symbol scope, so references to them resolve from any line.
+    pub fn bind_well_known_keys(self) {
+        let mut symbols = self.symbols.borrow_mut();
+        for key in ironsmith_core::tag::WELL_KNOWN_TAGS {
+            let _ = symbols.bind_keyed(
+                self.symbol_scope,
+                ironsmith_core::TagKey::new(*key),
+                ReferenceRole::Affected,
+                Cardinality::Any,
+                ObjectDomain::Object,
+            );
+        }
+    }
+
     /// Binds the keys minted while the guard lives in `scope` (a scope this
     /// context created earlier, such as a line's, re-entered by a later phase).
     pub fn reference_scope_at(self, scope: SymbolScopeId) -> crate::reference_ledger::ReferenceScopeGuard<'a> {

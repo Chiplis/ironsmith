@@ -1,4 +1,6 @@
-import initWasm, { WasmGame } from "../../../wasm_demo/pkg/ironsmith.js";
+import initPreviewEngine, { WasmGame as PreviewGame } from "../../../wasm_demo/pkg/engine.js?target-preview";
+import { previewCastTargetDecision } from "../lib/cast-target-preview.js";
+import initWasm, { WasmGame, compileAndRegisterCardSources } from "../../../wasm_demo/pkg/ironsmith.js";
 import engineWasmUrl from "../../../wasm_demo/pkg/engine_bg.wasm?url";
 import compilerWasmUrl from "../../../wasm_demo/pkg/compiler_bg.wasm?url";
 import verifierWasmUrl from "../../../wasm_demo/pkg/verifier_bg.wasm?url";
@@ -34,6 +36,9 @@ let lastRegistryTotal = -1;
 let cardAssetsBaseUrl = null;
 let cardIndexPromise = null;
 const registeredCardRoutes = new Set();
+const previewCardSources = new Map();
+let previewEnginePromise = null;
+let engineModule = null;
 const missingCardRoutes = new Set();
 const knownRuntimeCardNames = new Set();
 const STABLE_CARD_ASSET_FETCH_OPTIONS = { cache: "no-cache" };
@@ -63,6 +68,7 @@ const DISPATCH_TRACE_METHODS = new Set([
 const RUNTIME_EVALUATION_METHODS = new Set([
   "dispatch",
   "previewCryptoRequirements",
+  "previewCastTargets",
   "snapshot",
   "uiState",
 ]);
@@ -404,6 +410,7 @@ async function fetchCardSource(name) {
     missingCardRoutes.add(route);
     return null;
   }
+  previewCardSources.set(route, payload);
   registeredCardRoutes.add(route);
   const sourceNames = [
     payload?.canonicalName,
@@ -682,6 +689,7 @@ async function handleInit(msg = {}) {
     cardIndexPromise = null;
     knownRuntimeCardNames.clear();
     registeredCardRoutes.clear();
+    previewCardSources.clear();
     missingCardRoutes.clear();
     const assetBaseUrl = String(msg.assetBaseUrl || "").trim();
     cardAssetsBaseUrl = assetBaseUrl ? new URL("cards/", assetBaseUrl).href : null;
@@ -696,8 +704,9 @@ async function handleInit(msg = {}) {
 
     await downloadDone;
     postProgress("init", 1);
+    engineModule = await WebAssembly.compile(await wasmResponse.arrayBuffer());
     await initWasm({
-      engine: wasmResponse,
+      engine: engineModule,
       compiler: `${compilerWasmUrl}?${bust}`,
       verifier: `${verifierWasmUrl}?${bust}`,
     });
@@ -760,6 +769,17 @@ function handleCall(msg) {
       const names = compactCardNameList(args?.[0]);
       return {
         result: names.filter(cardNameAlreadyKnown),
+        registryStatus: readRegistryStatus(),
+      };
+    }
+    if (method === "previewCastTargets") {
+      // A distinct JS module owns distinct WASM memory and ID counters.
+      previewEnginePromise ||= initPreviewEngine({ module_or_path: engineModule })
+        .catch((error) => { previewEnginePromise = null; throw error; });
+      await previewEnginePromise;
+      return {
+        result: previewCastTargetDecision(PreviewGame, game.exportSyncCheckpoint(), args[1], args[0],
+          (preview) => compileAndRegisterCardSources(preview, [...previewCardSources.values()])),
         registryStatus: readRegistryStatus(),
       };
     }

@@ -147,7 +147,7 @@ fn collect_effect_produced_tags(effect: &EffectAst, tags: &mut Vec<TagKey>) {
             SubjectVerbActionAst::CopySpell { .. }
             | SubjectVerbActionAst::CopySpellForEachTarget { .. } => push_unique_tag(
                 tags,
-                &crate::tag::CompilerReferenceTag::CopiedStackObject.key(),
+                &crate::tag::CompilerReferenceTag::CopiedStackObject.bind(),
             ),
             _ => {}
         },
@@ -1898,7 +1898,7 @@ pub fn collect_tag_spans_from_target(
         annotations.record_tag_span(crate::tag::CompilerReferenceTag::It.as_str(), mapped);
         #[cfg(feature = "serialization")]
         {
-            let it_tag = crate::tag::CompilerReferenceTag::It.key();
+            let it_tag = crate::tag::CompilerReferenceTag::It.bind();
             annotations.record_tag_span(&it_tag, mapped);
         }
     }

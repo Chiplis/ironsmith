@@ -1,3 +1,6 @@
+import PriorityHoldControl from "@/components/decisions/PriorityHoldControl";
+import RollingPanel from "./RollingPanel";
+import { useCastPlayerHovered } from "@/context/DragContext";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import BattlefieldRow from "./BattlefieldRow";
@@ -259,6 +262,7 @@ export default function MyZone({
   embeddedActionBar = null,
   headerActionBar = null,
   zoneActionControls = null,
+  zoneActionControlsOpen = false,
   zoneActionRailOffset = 0,
   dockStackRail = false,
   hideHeader = false,
@@ -336,6 +340,7 @@ export default function MyZone({
   const showZoneHeaders = visibleZones.size > 1;
   const isActivePlayer = Number(state?.active_player) === Number(player?.id);
   const isPriorityPlayer = Number(state?.priority_player) === Number(player?.id);
+  const castPlayerHovered = useCastPlayerHovered(player?.id);
   const isPlayerLegalTarget =
     legalTargetPlayerIds.has(Number(player.id)) || legalTargetPlayerIds.has(Number(player.index));
   const canPickTargetFromBoard = state?.decision?.kind === "targets"
@@ -656,7 +661,7 @@ export default function MyZone({
       data-my-zone
       data-player-drop-target={player.id}
       data-header-hidden={showHeader ? "false" : "true"}
-      data-tools-expanded={zoneActionControls ? "true" : "false"}
+      data-tools-expanded={zoneActionControls && zoneActionControlsOpen ? "true" : "false"}
     >
       {showHeader ? (
         <div className="relative min-h-0 overflow-visible">
@@ -679,7 +684,8 @@ export default function MyZone({
                 data-my-zone-header-content
               >
                 <span
-                  className={cn("player-identity-box inline-flex min-w-0 items-center gap-2", isPlayerLegalTarget && canPickTargetFromBoard && "player-target-box")}
+                  className={cn("player-identity-box inline-flex min-w-0 items-center gap-2", isPlayerLegalTarget && "player-target-box")}
+                  data-cast-hovered={isPlayerLegalTarget && castPlayerHovered ? "true" : undefined}
                   data-player-target={player.id}
                   onPointerDown={(event) => { if (event.target === event.currentTarget) handlePlayerTargetPointerDown(event); }}
                   onClick={(event) => { if (event.target === event.currentTarget) handlePlayerTargetClick(event); }}
@@ -713,6 +719,7 @@ export default function MyZone({
                     {zoneName && <span className="text-muted-foreground">{zoneName}</span>}
                   </span>
                 </span>
+                <PriorityHoldControl />
                 {!mergedMobileHeader && (
                   <ManaPool
                     pool={player.mana_pool}
@@ -840,21 +847,23 @@ export default function MyZone({
             mobileHandRailVisible
               ? "my-zone-mobile-board-shell min-h-0 h-full"
               : "my-zone-board-shell min-h-0 h-full",
-            zoneActionControls && "my-zone-board-shell--with-actions",
+            zoneActionControls && zoneActionControlsOpen && "my-zone-board-shell--with-actions",
             showBodyStackRail && "my-zone-board-shell--with-stack"
           )}
+          style={{ "--my-zone-battlefield-top-inset": `${Math.max(0, Number(battlefieldTopInset) || 0)}px` }}
           data-mobile-hand-drop-target={mobileHandRailVisible ? "board" : undefined}
         >
         {zoneActionControls ? (
-          <aside
+          <RollingPanel
+            open={zoneActionControlsOpen}
             id="table-utility-actions"
             className="my-zone-action-rail min-h-0"
             style={{ transform: `translateY(-${Math.max(0, Number(zoneActionRailOffset) || 0)}px)` }}
           >
             {zoneActionControls}
-          </aside>
+          </RollingPanel>
         ) : null}
-        {showBodyStackRail ? (
+        {!mergedMobileHeader && dockStackRail ? (
           <aside className="my-zone-stack-rail min-h-0">
             <StackTimelineRail
               selectedObjectId={selectedObjectId}

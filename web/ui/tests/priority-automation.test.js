@@ -93,6 +93,28 @@ test("multiplayer smart auto-pass skips empty off-turn priority", () => {
   assert.equal(result.holdReason, null);
 });
 
+test("persistent hold stops multiplayer auto-pass after your own spell and on an empty opponent turn", () => {
+  for (const stackSize of [0, 1]) {
+    const result = buildMultiplayerSmartAutoPass({
+      autoPassEnabled: true,
+      holdRule: "always",
+      decision: {
+        kind: "priority",
+        player: 1,
+        actions: [{ index: 0, kind: "pass_priority", label: "Pass priority" }],
+      },
+      currentState: {
+        perspective: 1,
+        active_player: 2,
+        stack_size: stackSize,
+        stack_objects: stackSize ? [{ id: 100, controller: 1 }] : [],
+      },
+    });
+    assert.equal(result.command, null);
+    assert.equal(result.holdReason, "always hold");
+  }
+});
+
 test("multiplayer smart auto-pass holds own empty-stack priority", () => {
   const result = buildMultiplayerSmartAutoPass({
     autoPassEnabled: true,

@@ -1221,7 +1221,7 @@ pub fn compile_effects_in_iterated_player_context(
     if tagged_object.is_some() {
         // A tagged-object loop establishes `__it__`, but it does not replace
         // an outer player antecedent with an artificial iterated player.
-        iterated_frame.last_object_tag = Some(crate::tag::CompilerReferenceTag::It.key());
+        iterated_frame.last_object_tag = Some(crate::tag::CompilerReferenceTag::It.bind());
         iterated_frame.last_it_choice_is_set = false;
         iterated_frame.iterated_object = true;
     } else {
@@ -1264,7 +1264,7 @@ pub fn compile_effects_in_iterated_object_context(
     {
         iterated_frame.last_effect_id = None;
     }
-    iterated_frame.last_object_tag = Some(crate::tag::CompilerReferenceTag::It.key());
+    iterated_frame.last_object_tag = Some(crate::tag::CompilerReferenceTag::It.bind());
     iterated_frame.last_it_choice_is_set = false;
     iterated_frame.iterated_object = true;
 

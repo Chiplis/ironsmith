@@ -116,6 +116,32 @@ pub const CAST_MODIFIED_CREATURES_TAG: &str = "__cast_modified_creatures__";
 /// greatest power among creatures you controlled as you cast this spell".
 pub const CAST_CONTROLLED_OBJECTS_TAG: &str = "__cast_controlled_objects__";
 
+/// The card-global reference keys the compiler and runtime agree on by name.
+/// A parse binds each of them once, in the document's symbol scope.
+pub const WELL_KNOWN_TAGS: &[&str] = &[
+    SOURCE_EXILED_TAG,
+    ZONE_REPLACEMENT_OBJECT_TAG,
+    PRIOR_EXILED_CARD_TAG,
+    REVEALED_THIS_WAY_TAG,
+    SOURCE_OBJECT_TAG,
+    DELAYED_TARGET_PLAYERS_TAG,
+    CHOSEN_OBJECTS_TAG,
+    MANA_SOURCES_SPENT_TO_CAST_TAG,
+    MANA_PAID_OBJECT_TAG,
+    MOST_COMMON_PERMANENT_COLOR_TAG,
+    EXPLOITED_TAG,
+    EXPLOITER_TAG,
+    SURVEILLED_THIS_TURN_TAG,
+    MANIFEST_DREAD_GRAVEYARD_TAG,
+    ATTACKING_GROUP_TAG,
+    COMBAT_DAMAGE_GROUP_TAG,
+    ZONE_CHANGE_GROUP_TAG,
+    INITIATIVE_HOLDER_TAG,
+    PREVIOUS_ITERATED_OBJECTS_TAG,
+    CAST_MODIFIED_CREATURES_TAG,
+    CAST_CONTROLLED_OBJECTS_TAG,
+];
+
 /// Dynamic tag key used by the tagging system.
 ///
 /// Using an owned key instead of `&'static str` enables tags built at runtime

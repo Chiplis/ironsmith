@@ -6,7 +6,6 @@ import { getPlayerAccent } from "@/lib/player-colors";
 import { getVisibleStackObjects } from "@/lib/stack-targets";
 import { cn } from "@/lib/utils";
 import { animate, cancelMotion, uiSpring } from "@/lib/motion/anime";
-import { uiFontStack } from "@/lib/ui-fonts";
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Copy } from "lucide-react";
 import { useI18n } from "@/i18n/I18nContext";
 import { loadTranslatedCardView } from "@/i18n/cardTranslations";
@@ -705,7 +704,7 @@ export default function HoverArtOverlay({
   interactiveActions = [],
   onInteractiveAction = null,
 }) {
-  const { state, game, uiFont, playerAccentOverrides } = useGame();
+  const { state, game, playerAccentOverrides } = useGame();
   const { locale, t } = useI18n();
   const debugInspector = inspectorVariant === "debug";
   const compactTopbarLayout = compact && compactLayout === "topbar";
@@ -767,7 +766,7 @@ export default function HoverArtOverlay({
   const [fontMeasureVersion, setFontMeasureVersion] = useState(0);
   const [renderedRulesWidth, setRenderedRulesWidth] = useState(null);
   const [translatedCardText, setTranslatedCardText] = useState(null);
-  const inspectorMeasureFont = useMemo(() => uiFontStack(uiFont), [uiFont]);
+  const inspectorMeasureFont = '"MPlantin", Georgia, serif';
   const detailsObjectIdNum = useMemo(
     () => resolveObjectDetailsId(state, objectIdNum),
     [objectIdNum, state]
@@ -2363,13 +2362,27 @@ export default function HoverArtOverlay({
 
   if (isCardFrameMode) {
     const frameTone = inspectorCardFrameTone(displayManaCost, displayTypeLine);
+    const useArtFrame = showImageBackdrop
+      && ["colorless", "land", "artifact"].includes(frameTone);
     return (
       <div
         className="interactive-card-frame-stage absolute inset-0 z-30 pointer-events-auto"
         data-card-frame-tone={frameTone}
+        data-card-frame-art={useArtFrame ? "true" : undefined}
         data-zone-transition-token={transientPreview?.token || undefined}
       >
         <article className="interactive-card-frame" aria-label={displayObjectName || "Card details"}>
+          {useArtFrame && (
+            <img
+              className="interactive-card-frame__backdrop"
+              src={imageUrl}
+              alt=""
+              aria-hidden="true"
+              decoding="async"
+              referrerPolicy="no-referrer"
+              onError={() => setFailedImageUrl(imageUrl)}
+            />
+          )}
           <div className="interactive-card-frame__inner">
             <header className="interactive-card-frame__title-row">
               <div className="interactive-card-frame__title-wrap">

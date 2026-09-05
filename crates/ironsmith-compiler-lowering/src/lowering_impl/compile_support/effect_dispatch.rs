@@ -2495,7 +2495,7 @@ mod nested_result_value_link_tests {
     #[test]
     fn sacrifice_keeps_the_result_id_used_by_following_scaled_mana() {
         let result_id = EffectId(9);
-        let tag = TagKey::from("chosen_lands");
+        let tag = ironsmith_compiler_semantic::tag::declared_key("chosen_lands");
         let chosen = ObjectFilter::tagged(tag);
         let mut effects = vec![
             Effect::new(crate::effects::SacrificePlayerEffect::new(
@@ -2570,7 +2570,7 @@ mod nested_result_value_link_tests {
         );
         let ast = EffectAst::TagAffected {
             effect: Box::new(EffectAst::subject_verb_destroy(target)),
-            tag: TagKey::from("linked_primary"),
+            tag: ironsmith_compiler_semantic::tag::declared_key("linked_primary"),
         };
         let mut ctx = EffectLoweringContext::new();
         ctx.auto_tag_object_targets = true;
@@ -2595,7 +2595,7 @@ mod nested_result_value_link_tests {
         );
         let ast = EffectAst::TagAffected {
             effect: Box::new(EffectAst::subject_verb_explicit_target_only(target)),
-            tag: crate::tag::CompilerReferenceTag::ChosenObjects.key(),
+            tag: crate::tag::CompilerReferenceTag::ChosenObjects.bind(),
         };
         let mut ctx = EffectLoweringContext::new();
         ctx.auto_tag_object_targets = true;

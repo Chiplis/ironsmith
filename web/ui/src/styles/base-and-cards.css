@@ -163,7 +163,7 @@
   display: inline-flex;
   align-items: baseline;
   max-width: 100%;
-  padding-right: 0.5em;
+  padding-right: 0;
   color: inherit;
   line-height: inherit;
   text-decoration-line: underline;
@@ -181,32 +181,6 @@
 
 .mtg-keyword-helper__text {
   min-width: 0;
-}
-
-.mtg-keyword-helper__icon {
-  position: absolute;
-  top: -0.48em;
-  right: -0.05em;
-  display: inline-grid;
-  width: 0.82em;
-  height: 0.82em;
-  place-items: center;
-  border: 1px solid rgba(245, 208, 139, 0.72);
-  border-radius: 0;
-  background: rgba(7, 12, 18, 0.94);
-  color: #f5d08b;
-  font-family: var(--ironsmith-ui-font);
-  font-size: 0.62em;
-  font-weight: 900;
-  line-height: 1;
-  pointer-events: none;
-  box-shadow: 0 0 0 1px rgba(7, 12, 18, 0.86), 0 2px 7px rgba(0, 0, 0, 0.36);
-}
-
-.mtg-keyword-helper:hover .mtg-keyword-helper__icon,
-.mtg-keyword-helper:focus-visible .mtg-keyword-helper__icon {
-  border-color: rgba(255, 232, 179, 0.96);
-  color: #ffe8b3;
 }
 
 .decision-phase-help-button {

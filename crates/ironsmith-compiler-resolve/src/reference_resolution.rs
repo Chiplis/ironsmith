@@ -188,7 +188,7 @@ fn next_reference_tag(id_gen: &mut IdGenContext, prefix: &str) -> TagKey {
         format!("{prefix}_{}", id_gen.next_tag_id)
     };
     id_gen.next_tag_id += 1;
-    TagKey::new(tag)
+    ironsmith_compiler_semantic::tag::declared_key(tag)
 }
 
 fn remember_chosen_object_alias(frame: &mut ReferenceFrame, tag: &TagKey) {
@@ -196,7 +196,7 @@ fn remember_chosen_object_alias(frame: &mut ReferenceFrame, tag: &TagKey) {
         .snapshot_tag_aliases
         .retain(|(alias, _)| alias != &crate::tag::CompilerReferenceTag::ChosenObjects.key());
     frame.snapshot_tag_aliases.push((
-        crate::tag::CompilerReferenceTag::ChosenObjects.key(),
+        crate::tag::CompilerReferenceTag::ChosenObjects.bind(),
         tag.clone(),
     ));
 }
@@ -214,7 +214,7 @@ fn remember_local_sacrifice_alias_if_unbound(frame: &mut ReferenceFrame, tag: &T
         return;
     }
     frame.snapshot_tag_aliases.push((
-        crate::tag::CompilerReferenceTag::AdditionalCostObject.key(),
+        crate::tag::CompilerReferenceTag::AdditionalCostObject.bind(),
         tag.clone(),
     ));
 }
@@ -225,7 +225,7 @@ fn remember_public_revealed_alias(frame: &mut ReferenceFrame, tag: Option<&TagKe
         .retain(|(alias, _)| alias != &crate::tag::CompilerReferenceTag::PublicRevealed.key());
     if let Some(tag) = tag {
         frame.snapshot_tag_aliases.push((
-            crate::tag::CompilerReferenceTag::PublicRevealed.key(),
+            crate::tag::CompilerReferenceTag::PublicRevealed.bind(),
             tag.clone(),
         ));
     }
@@ -1034,7 +1034,7 @@ fn advance_reference_frame_for_effect(
                                 // relationship, so a non-target exile keeps the
                                 // canonical source-exiled identity.
                                 frame.last_object_tag =
-                                    Some(crate::tag::CompilerReferenceTag::SourceExiled.key());
+                                    Some(crate::tag::CompilerReferenceTag::SourceExiled.bind());
                             }
                         }
                     track_target_player(target, frame);
@@ -1398,7 +1398,7 @@ fn advance_reference_frame_for_effect(
                     // Preserve that producer across sentence/conditional
                     // boundaries so "choose ... from it" cannot widen into an
                     // owner-only hand filter.
-                    let tag = crate::tag::CompilerReferenceTag::RevealedThisWay.key();
+                    let tag = crate::tag::CompilerReferenceTag::RevealedThisWay.bind();
                     frame.last_object_tag = Some(tag.clone());
                     remember_public_revealed_alias(frame, Some(&tag));
                 }
@@ -1900,7 +1900,7 @@ fn advance_reference_frame_for_effect(
             {
                 nested.last_effect_id = None;
             }
-            nested.last_object_tag = Some(crate::tag::CompilerReferenceTag::It.key());
+            nested.last_object_tag = Some(crate::tag::CompilerReferenceTag::It.bind());
             nested.iterated_object = true;
             advance_reference_frames(effects, id_gen, &mut nested)?;
             if saved.last_object_tag != nested.last_object_tag {
@@ -1976,7 +1976,7 @@ fn advance_reference_frame_for_effect(
                     alias != &crate::tag::CompilerReferenceTag::ChosenObjects.key()
                 });
                 frame.snapshot_tag_aliases.push((
-                    crate::tag::CompilerReferenceTag::ChosenObjects.key(),
+                    crate::tag::CompilerReferenceTag::ChosenObjects.bind(),
                     chosen_tag.clone(),
                 ));
             }
@@ -3316,7 +3316,7 @@ fn resolve_effect_references_in_effect(
         // through the ordinary result path above.
         *effect = EffectAst::Conditional {
             predicate: PredicateAst::TaggedMatches(
-                TagKey::new(format!("sacrifice_cost_{tag_index}")),
+                ironsmith_compiler_semantic::tag::declared_key(format!("sacrifice_cost_{tag_index}")),
                 surface.filter.clone(),
             ),
             if_true: effects.clone(),
@@ -4367,7 +4367,7 @@ fn resolve_sacrifice_cost_tagged_metric(
         return None;
     }
     let filter = query.filter.clone().unwrap_or_default().match_tagged(
-        TagKey::new(format!("sacrifice_cost_{tag_index}")),
+        ironsmith_compiler_semantic::tag::declared_key(format!("sacrifice_cost_{tag_index}")),
         TaggedOpbjectRelation::IsTaggedObject,
     );
     match query.metric {
@@ -4400,7 +4400,7 @@ fn resolve_exile_cost_tagged_metric(
         return None;
     }
     let filter = query.filter.clone().unwrap_or_default().match_tagged(
-        TagKey::new(format!("exile_cost_{tag_index}")),
+        ironsmith_compiler_semantic::tag::declared_key(format!("exile_cost_{tag_index}")),
         TaggedOpbjectRelation::IsTaggedObject,
     );
     match query.metric {
@@ -4426,7 +4426,7 @@ pub fn bind_unresolved_it_references_with_imports(
 ) -> BoundEffectsAst {
     let seed_tag = seed_last_object_tag
         .map(TagKey::from)
-        .unwrap_or_else(|| crate::tag::CompilerReferenceTag::It.key());
+        .unwrap_or_else(|| crate::tag::CompilerReferenceTag::It.bind());
     let unresolved_it_before = count_unresolved_it_occurrences(effects);
     let mut resolved = effects.to_vec();
     for effect in &mut resolved {
@@ -4447,7 +4447,7 @@ pub fn bind_unresolved_it_references_with_imports(
 #[cfg(test)]
 fn count_unresolved_it_occurrences(effects: &[EffectAst]) -> usize {
     let mut cloned = effects.to_vec();
-    let sentinel = TagKey::from("__count_unresolved_it__");
+    let sentinel = ironsmith_compiler_semantic::tag::declared_key("__count_unresolved_it__");
     cloned
         .iter_mut()
         .map(|effect| bind_unresolved_it_in_effect(effect, &sentinel))
@@ -4458,7 +4458,7 @@ fn count_unresolved_it_occurrences(effects: &[EffectAst]) -> usize {
 fn bind_unresolved_it_in_effect(effect: &mut EffectAst, seed_tag: &TagKey) -> usize {
     let mut replacements = bind_unresolved_it_in_effect_fields(effect, seed_tag);
     let nested_seed = match effect {
-        EffectAst::ForEachObject { .. } => crate::tag::CompilerReferenceTag::It.key(),
+        EffectAst::ForEachObject { .. } => crate::tag::CompilerReferenceTag::It.bind(),
         _ => seed_tag.clone(),
     };
     for_each_nested_effects_mut(effect, true, |nested| {
@@ -5626,13 +5626,13 @@ mod tests {
 
     #[test]
     fn conditional_exiled_card_predicate_overrides_intervening_object_memory() {
-        let concrete = TagKey::from("__sentence_helper_exiled_probe");
+        let concrete = ironsmith_compiler_semantic::tag::declared_key("__sentence_helper_exiled_probe");
         let effects = vec![
             EffectAst::Conditional {
                 predicate: PredicateAst::ItMatches(ObjectFilter::spell()),
                 if_true: vec![EffectAst::May {
                     effects: vec![EffectAst::subject_verb_cast_tagged(
-                        crate::tag::CompilerReferenceTag::SourceExiled.key(),
+                        crate::tag::CompilerReferenceTag::SourceExiled.bind(),
                         PlayerAst::You,
                         false,
                         false,
@@ -5643,7 +5643,7 @@ mod tests {
                 if_false: Vec::new(),
             },
             EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 PlayerAst::You,
                 false,
                 false,
@@ -5653,7 +5653,7 @@ mod tests {
         let annotated = annotate_effect_sequence(
             &effects,
             &ModelReferenceImports {
-                last_object_tag: Some(TagKey::from("created_treasure")),
+                last_object_tag: Some(ironsmith_compiler_semantic::tag::declared_key("created_treasure")),
                 snapshot_tag_aliases: vec![(
                     crate::tag::CompilerReferenceTag::SourceExiled
                         .as_str()
@@ -5699,13 +5699,13 @@ mod tests {
         ));
         let mut predicate = PredicateAst::PlayerTaggedObjectMatches {
             player: PlayerAst::You,
-            tag: crate::tag::CompilerReferenceTag::It.key(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
             filter,
             mode: ironsmith_core::TaggedObjectMatchMode::LastKnown,
         };
 
         assert_eq!(
-            bind_unresolved_it_in_predicate(&mut predicate, &TagKey::from("returned_0")),
+            bind_unresolved_it_in_predicate(&mut predicate, &ironsmith_compiler_semantic::tag::declared_key("returned_0")),
             1
         );
         let PredicateAst::PlayerTaggedObjectMatches {
@@ -5726,13 +5726,13 @@ mod tests {
     fn binding_reports_typed_unresolved_it_counts() {
         let mut filter = ObjectFilter::default();
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.key(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
 
         let effects = vec![EffectAst::subject_verb_damage(
             Value::Count(filter),
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
         )];
 
         let bound = bind_unresolved_it_references_with_imports(&effects, Some("bound_target"));
@@ -5952,8 +5952,8 @@ mod tests {
 
     #[test]
     fn typed_reveal_result_skips_intervening_cleanup_for_its_condition_id() {
-        let all_tag = TagKey::from("__revealed");
-        let match_tag = TagKey::from("__matched");
+        let all_tag = ironsmith_compiler_semantic::tag::declared_key("__revealed");
+        let match_tag = ironsmith_compiler_semantic::tag::declared_key("__matched");
         let reveal = EffectAst::subject_verb_consult_top_of_library(
             PlayerAst::You,
             LibraryConsultModeAst::Reveal,
@@ -6015,11 +6015,11 @@ mod tests {
 
     #[test]
     fn typed_battlefield_result_accepts_nested_generic_zone_move() {
-        let chosen_tag = TagKey::from("__chosen");
+        let chosen_tag = ironsmith_compiler_semantic::tag::declared_key("__chosen");
         let producer = EffectAst::ForEachTagged {
             tag: chosen_tag,
             effects: vec![EffectAst::subject_verb_move_to_zone(
-                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                 Zone::Battlefield,
                 false,
                 ReturnControllerAst::Preserve,
@@ -6091,7 +6091,7 @@ mod tests {
     fn annotate_effect_sequence_tracks_player_from_same_controller_filter() {
         let mut filter = ObjectFilter::creature();
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.key(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
             relation: TaggedOpbjectRelation::SameControllerAsTagged,
         });
 
@@ -6301,7 +6301,7 @@ mod tests {
             EffectAst::MayByPlayer {
                 player: PlayerAst::You,
                 effects: vec![EffectAst::MoveTaggedGroupToZone {
-                    tag: crate::tag::CompilerReferenceTag::Chosen.key(),
+                    tag: crate::tag::CompilerReferenceTag::Chosen.bind(),
                     zone: Zone::Battlefield,
                 }],
             },
@@ -6340,7 +6340,7 @@ mod tests {
                 None,
             )),
             EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 PlayerAst::You,
                 false,
                 false,
@@ -6358,13 +6358,13 @@ mod tests {
 
         assert_eq!(
             annotated.effects[1].in_env.last_object_tag,
-            ModelRefState::Known(TagKey::from("destroyed_0"))
+            ModelRefState::Known(ironsmith_compiler_semantic::tag::declared_key("destroyed_0"))
         );
     }
 
     #[test]
     fn reveal_hand_exports_its_typed_result_set_to_a_from_it_choice() {
-        let mut revealed_nonland = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
+        let mut revealed_nonland = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
         revealed_nonland.zone = Some(Zone::Hand);
         revealed_nonland.excluded_card_types.push(CardType::Land);
         let effects = vec![
@@ -6374,7 +6374,7 @@ mod tests {
                 count: ChoiceCount::exactly(1),
                 count_value: None,
                 player: PlayerAst::You,
-                tag: crate::tag::CompilerReferenceTag::It.key(),
+                tag: crate::tag::CompilerReferenceTag::It.bind(),
             },
         ];
 
@@ -6388,7 +6388,7 @@ mod tests {
 
         assert_eq!(
             annotated.effects[1].in_env.last_object_tag,
-            ModelRefState::Known(crate::tag::CompilerReferenceTag::RevealedThisWay.key())
+            ModelRefState::Known(crate::tag::CompilerReferenceTag::RevealedThisWay.bind())
         );
         let EffectAst::ChooseObjects { filter, .. } = &annotated.effects[1].effect else {
             panic!(
@@ -6411,7 +6411,7 @@ mod tests {
         let effects = vec![
             EffectAst::subject_verb_sacrifice(PlayerAst::You, ObjectFilter::source(), 1, None),
             EffectAst::subject_verb_damage_with_source(
-                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                 Value::Fixed(6),
                 TargetAst::Player(PlayerFilter::You, None),
             ),
@@ -6459,7 +6459,7 @@ mod tests {
                 None,
             )),
             EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 PlayerAst::You,
                 false,
                 false,
@@ -6477,7 +6477,7 @@ mod tests {
 
         assert_eq!(
             annotated.effects[1].in_env.last_object_tag,
-            ModelRefState::Known(TagKey::from("destroyed_0"))
+            ModelRefState::Known(ironsmith_compiler_semantic::tag::declared_key("destroyed_0"))
         );
     }
 
@@ -6485,7 +6485,7 @@ mod tests {
     fn return_to_battlefield_followup_uses_the_new_zone_change_object() {
         let effects = vec![
             EffectAst::subject_verb_return_to_battlefield(
-                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                 false,
                 false,
                 false,
@@ -6496,7 +6496,7 @@ mod tests {
                 SubjectVerbRoleAst::Actor,
                 PlayerAst::Implicit,
                 SubjectVerbActionAst::SetCardTypes {
-                    target: TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                    target: TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                     card_types: vec![CardType::Enchantment],
                     duration: Until::Forever,
                 },
@@ -6513,11 +6513,11 @@ mod tests {
 
         assert_eq!(
             annotated.effects[0].out_env.last_object_tag,
-            ModelRefState::Known(TagKey::from("returned_0"))
+            ModelRefState::Known(ironsmith_compiler_semantic::tag::declared_key("returned_0"))
         );
         assert_eq!(
             annotated.effects[1].in_env.last_object_tag,
-            ModelRefState::Known(TagKey::from("returned_0"))
+            ModelRefState::Known(ironsmith_compiler_semantic::tag::declared_key("returned_0"))
         );
     }
 
@@ -6539,7 +6539,7 @@ mod tests {
                 SubjectVerbRoleAst::Actor,
                 PlayerAst::Implicit,
                 SubjectVerbActionAst::SetCardTypes {
-                    target: TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                    target: TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                     card_types: vec![CardType::Enchantment],
                     duration: Until::EndOfTurn,
                 },
@@ -6547,7 +6547,7 @@ mod tests {
             EffectAst::DelayedUntilNextEndStep {
                 player: PlayerFilter::Any,
                 effects: vec![EffectAst::subject_verb_exile(
-                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                     false,
                 )],
             },
@@ -6563,7 +6563,7 @@ mod tests {
 
         assert_eq!(
             annotated.effects[0].out_env.last_object_tag,
-            ModelRefState::Known(TagKey::from("returned_0"))
+            ModelRefState::Known(ironsmith_compiler_semantic::tag::declared_key("returned_0"))
         );
 
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -6635,7 +6635,7 @@ mod tests {
                     )
                     .expect("test Thopter token definition should parse"),
                     count: Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
-                        crate::tag::CompilerReferenceTag::It.key(),
+                        crate::tag::CompilerReferenceTag::It.bind(),
                     ))),
                     dynamic_power_toughness: None,
                     player: PlayerAst::Implicit,
@@ -6665,7 +6665,7 @@ mod tests {
 
         assert_eq!(
             annotated.effects[1].in_env.last_object_tag,
-            ModelRefState::Known(TagKey::from("countered_0"))
+            ModelRefState::Known(ironsmith_compiler_semantic::tag::declared_key("countered_0"))
         );
     }
 
@@ -6675,7 +6675,7 @@ mod tests {
         tapped_filter
             .tagged_constraints
             .push(TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::It.key(),
+                tag: crate::tag::CompilerReferenceTag::It.bind(),
                 relation: TaggedOpbjectRelation::IsTaggedObject,
             });
         let effects = vec![
@@ -6690,7 +6690,7 @@ mod tests {
         let annotated = annotate_effect_sequence(
             &effects,
             &ModelReferenceImports {
-                last_object_tag: Some(crate::tag::CompilerReferenceTag::Triggering.key()),
+                last_object_tag: Some(crate::tag::CompilerReferenceTag::Triggering.bind()),
                 source_object_antecedent: true,
                 ..Default::default()
             },
@@ -6701,11 +6701,11 @@ mod tests {
 
         assert_eq!(
             annotated.effects[1].in_env.last_object_tag,
-            ModelRefState::Known(crate::tag::CompilerReferenceTag::Damaged0.key())
+            ModelRefState::Known(crate::tag::CompilerReferenceTag::Damaged0.bind())
         );
         assert_eq!(
             annotated.final_env.last_object_tag,
-            ModelRefState::Known(crate::tag::CompilerReferenceTag::Damaged0.key())
+            ModelRefState::Known(crate::tag::CompilerReferenceTag::Damaged0.bind())
         );
     }
 
@@ -6715,7 +6715,7 @@ mod tests {
             EffectAst::subject_verb_damage_each(Value::Fixed(1), ObjectFilter::creature()),
             EffectAst::subject_verb_damage_each(
                 Value::PowerOf(Box::new(ChooseSpec::Tagged(
-                    crate::tag::CompilerReferenceTag::It.key(),
+                    crate::tag::CompilerReferenceTag::It.bind(),
                 ))),
                 ObjectFilter::planeswalker(),
             ),
@@ -6735,11 +6735,11 @@ mod tests {
         assert!(!annotated.effects[0].auto_tag_object_targets);
         assert_eq!(
             annotated.effects[0].out_env.last_object_tag,
-            ModelRefState::Known(crate::tag::CompilerReferenceTag::Sacrificed0.key())
+            ModelRefState::Known(crate::tag::CompilerReferenceTag::Sacrificed0.bind())
         );
         assert_eq!(
             annotated.effects[1].in_env.last_object_tag,
-            ModelRefState::Known(crate::tag::CompilerReferenceTag::Sacrificed0.key())
+            ModelRefState::Known(crate::tag::CompilerReferenceTag::Sacrificed0.bind())
         );
     }
 
@@ -6748,7 +6748,7 @@ mod tests {
         let effects = vec![
             EffectAst::subject_verb_amass(Some(Subtype::Orc), Value::Fixed(2)),
             EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 PlayerAst::You,
                 false,
                 false,
@@ -6766,7 +6766,7 @@ mod tests {
 
         assert_eq!(
             annotated.effects[1].in_env.last_object_tag,
-            ModelRefState::Known(TagKey::from("amassed_0"))
+            ModelRefState::Known(ironsmith_compiler_semantic::tag::declared_key("amassed_0"))
         );
     }
 
@@ -6809,7 +6809,7 @@ mod tests {
             count: ChoiceCount::up_to_dynamic_x(),
             count_value: Some(Value::EventValue(EventValueSpec::Amount)),
             player: PlayerAst::You,
-            tag: TagKey::from("searched_0"),
+            tag: ironsmith_compiler_semantic::tag::declared_key("searched_0"),
             zones: vec![Zone::Library],
             search_mode: Some(crate::effect::SearchSelectionMode::Optional),
         }
@@ -6824,7 +6824,7 @@ mod tests {
                 count: ChoiceCount::up_to(1),
                 count_value: None,
                 player: PlayerAst::You,
-                tag: TagKey::from("searched_0"),
+                tag: ironsmith_compiler_semantic::tag::declared_key("searched_0"),
                 zones: vec![Zone::Library, Zone::Graveyard],
                 search_mode: Some(crate::effect::SearchSelectionMode::Optional),
             }],
@@ -7494,7 +7494,7 @@ mod tests {
     #[test]
     fn annotate_effect_sequence_binds_pending_metric_after_move_to_zone() {
         assert_prior_effect_binds_pending_count(EffectAst::subject_verb_move_all_to_zone(
-            TargetAst::Tagged(TagKey::from("exiled_0"), None),
+            TargetAst::Tagged(ironsmith_compiler_semantic::tag::declared_key("exiled_0"), None),
             Zone::Graveyard,
             false,
             ReturnControllerAst::Owner,
@@ -7603,7 +7603,7 @@ mod tests {
         let annotated = annotate_effect_sequence(
             &effects,
             &ModelReferenceImports {
-                last_object_tag: Some(TagKey::from("seeded")),
+                last_object_tag: Some(ironsmith_compiler_semantic::tag::declared_key("seeded")),
                 ..Default::default()
             },
             EffectReferenceResolutionConfig::default(),
@@ -7613,7 +7613,7 @@ mod tests {
 
         assert_eq!(
             annotated.final_env.last_object_tag,
-            ModelRefState::Known(TagKey::from("seeded"))
+            ModelRefState::Known(ironsmith_compiler_semantic::tag::declared_key("seeded"))
         );
     }
 
@@ -7632,8 +7632,8 @@ mod tests {
             &effects,
             &ModelReferenceImports {
                 recent_object_target_bindings: std::sync::Arc::new(vec![
-                    ObjectTargetBinding::new(TagKey::from("targeted_0"), &controlled),
-                    ObjectTargetBinding::new(TagKey::from("targeted_1"), &opposing),
+                    ObjectTargetBinding::new(ironsmith_compiler_semantic::tag::declared_key("targeted_0"), &controlled),
+                    ObjectTargetBinding::new(ironsmith_compiler_semantic::tag::declared_key("targeted_1"), &opposing),
                 ]),
                 ..Default::default()
             },
@@ -7664,7 +7664,7 @@ mod tests {
                     None,
                 )),
                 EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-                    crate::tag::CompilerReferenceTag::It.key(),
+                    crate::tag::CompilerReferenceTag::It.bind(),
                     PlayerAst::You,
                     false,
                     false,
@@ -7677,7 +7677,7 @@ mod tests {
                     false,
                 ),
                 EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-                    crate::tag::CompilerReferenceTag::It.key(),
+                    crate::tag::CompilerReferenceTag::It.bind(),
                     PlayerAst::You,
                     false,
                     false,
@@ -7703,7 +7703,7 @@ mod tests {
     #[test]
     fn conjoined_damage_preserves_anaphoric_source_pronoun() {
         let source_it = TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             Some(TextSpan::synthetic()),
         );
         let first = EffectAst::subject_verb_damage_with_source(

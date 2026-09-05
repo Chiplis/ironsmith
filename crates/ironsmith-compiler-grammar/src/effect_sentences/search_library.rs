@@ -572,7 +572,7 @@ pub fn parse_for_each_exiled_this_way_sentence(
         .transpose()?;
     if shape.permanent_card_type_consult {
         let filter = ObjectFilter::permanent()
-            .shares_card_type_with_tagged(crate::tag::CompilerReferenceTag::It.as_str());
+            .shares_card_type_with_tagged(crate::tag::CompilerReferenceTag::It.bind());
         let revealed_tag = helper_tag_for_tokens(tokens, "revealed");
         let matched_tag = helper_tag_for_tokens(tokens, "chosen");
 

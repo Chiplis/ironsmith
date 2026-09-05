@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   dropTargetCandidateFromElements,
+  castIntentSourcePoint,
+  castHoverTargetAtPoint,
   handCardSourcePoint,
   legalTargetForDropCandidate,
   legalTargetForDropCandidates,
@@ -146,4 +148,45 @@ test("targeted casts require an explicit self player box but allow opponent dead
   assert.deepEqual(dropTargetCandidateFromElements([surface({ id: 1 })]), {
     kind: "player", playerIds: [1],
   });
+});
+
+
+test("target-cast arrows prefer the grabbed card over stale collapsed fan coordinates", () => {
+  assert.deepEqual(castIntentSourcePoint({
+    sourceRect: { left: 700, right: 800, top: 500, bottom: 640, width: 100, height: 140 },
+    hiddenSourcePoint: { x: 400, y: 650 },
+    startX: 740, startY: 520, currentX: 200, currentY: 100,
+  }), { x: 750, y: 500 });
+});
+
+
+test("cast hover follows pointer coordinates even when the hand captures pointer events", () => {
+  const card = {
+    getAttribute(name) {
+      if (name === "data-object-id") return "42";
+      if (name === "data-member-object-ids") return "42,43";
+      return null;
+    },
+    closest(selector) { return selector === ".game-card[data-object-id]" ? this : null; },
+  };
+  const root = {
+    elementsFromPoint(x, y) {
+      assert.equal(x, 300);
+      assert.equal(y, 200);
+      return [card];
+    },
+  };
+  assert.deepEqual(castHoverTargetAtPoint(300, 200, root), {
+    kind: "object", objectIds: [42, 43],
+  });
+  assert.equal(castHoverTargetAtPoint(0, 0, { elementsFromPoint: () => [] }), null);
+});
+
+
+test("empty board space has no target instead of implicitly targeting player zero", () => {
+  const deadZone = { closest: () => null };
+  assert.equal(dropTargetCandidateFromElements([deadZone]), null);
+  assert.equal(castHoverTargetAtPoint(300, 200, {
+    elementsFromPoint: () => [deadZone],
+  }), null);
 });

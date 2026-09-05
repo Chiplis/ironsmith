@@ -642,10 +642,13 @@ fn resolve_item(
             for item in &level.items {
                 if let ParsedLevelAbilityItemAst::ActivatedAbility(activated) = item {
                     let mut resolver = CanonicalReferenceResolver::new(symbols);
+                    let line_scope = symbols
+                        .line_scope(activated.info.display_line_index)
+                        .unwrap_or(symbols.root_scope());
                     resolve_line_chunk(
                         &activated.chunk,
                         &mut resolver,
-                        LexicalReferenceEnv::at_scope(symbols, symbols.root_scope()),
+                        LexicalReferenceEnv::at_scope(symbols, line_scope),
                     );
                     report.append(resolver.report);
                 }

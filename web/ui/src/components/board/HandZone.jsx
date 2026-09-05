@@ -8,8 +8,7 @@ import useManabrewHandScale, {
   MANABREW_HAND_FAN_PARAMS,
 } from "@/hooks/useManabrewHandScale";
 import GameCard from "@/components/cards/GameCard";
-import { stagger } from "@/lib/motion/anime";
-import useLayoutReflow from "@/lib/motion/useLayoutReflow";
+import useHandReflow from "@/hooks/useHandReflow";
 import { samePlayerId } from "@/lib/player-display";
 import { handCardSourcePoint, plainRect } from "@/lib/hand-drag-intent";
 
@@ -587,15 +586,20 @@ export default function HandZone({
     drawRevealTimersRef.current.clear();
     tuckHideTimersRef.current.clear();
   }, []);
-  const handCards = useMemo(
-    () => hiddenDrawCardIds.size === 0
+  // Reserve an invisible slot during the card flight so revealing it does not
+  // change the fan geometry. Track visible cards separately for their entrance.
+  const reserveDrawSlots = layout !== "vertical-rail";
+  const handCards = useMemo(() => {
+    const excludedIds = reserveDrawSlots ? departingTuckCardIds : hiddenDrawCardIds;
+    return excludedIds.size === 0
       ? rawHandCards
-      : rawHandCards.filter((card) => !hiddenDrawCardIds.has(String(card.id))),
-    [hiddenDrawCardIds, rawHandCards]
-  );
+      : rawHandCards.filter((card) => !excludedIds.has(String(card.id)));
+  }, [departingTuckCardIds, hiddenDrawCardIds, rawHandCards, reserveDrawSlots]);
   const previousExpandedRef = useRef(isExpanded);
-  const handCardIds = handCards.map((c) => c.id);
-  const { newIds, bumpedIds } = useNewCards(handCardIds);
+  const visibleHandCardIds = handCards
+    .filter((card) => !hiddenDrawCardIds.has(String(card.id)))
+    .map((card) => card.id);
+  const { newIds, bumpedIds } = useNewCards(visibleHandCardIds);
 
   const isMe = player?.id === state?.perspective;
 
@@ -636,10 +640,12 @@ export default function HandZone({
   }, [extraPlayable]);
   const hoverableHandObjectIds = useMemo(() => {
     const ids = new Set();
-    for (const card of handCards) ids.add(String(card.id));
+    for (const card of handCards) {
+      if (!hiddenDrawCardIds.has(String(card.id))) ids.add(String(card.id));
+    }
     for (const extra of extraCards) ids.add(String(extra.id));
     return ids;
-  }, [extraCards, handCards]);
+  }, [extraCards, handCards, hiddenDrawCardIds]);
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const handleHandActionHover = (event) => {
@@ -732,14 +738,7 @@ export default function HandZone({
     return entries;
   }, [extraCards, handCards, hasExtra]);
 
-  useLayoutReflow(handListRef, handLayoutSignature, {
-    children: ".hand-layout-item",
-    disabled: isRoulette || isMobileFan,
-    delay: stagger(24),
-    duration: 360,
-    bounce: 0.14,
-    leaveTo: { opacity: 0, x: -20, scale: 0.94 },
-  });
+  useHandReflow(handListRef, handLayoutSignature, isRoulette || isVerticalRail);
 
   useLayoutEffect(() => {
     // Preserve each card's settled position in the collapsed fan. Pointerdown
@@ -973,9 +972,11 @@ export default function HandZone({
     if (!scrollEl || !centerCycleEl) return;
 
     const cycleSpan = centerCycleEl.offsetWidth + HAND_ROULETTE_WRAP_GAP;
+    const previousSpan = rouletteCycleSpanRef.current;
+    const offsetWithinCycle = previousSpan > 0 ? scrollEl.scrollLeft - previousSpan : 0;
     rouletteCycleSpanRef.current = cycleSpan;
     rouletteRecenteringRef.current = true;
-    scrollEl.scrollLeft = cycleSpan;
+    scrollEl.scrollLeft = cycleSpan + offsetWithinCycle;
     requestAnimationFrame(() => {
       rouletteRecenteringRef.current = false;
     });
@@ -991,7 +992,7 @@ export default function HandZone({
       scrollEl.scrollLeft = 0;
     });
     return () => cancelAnimationFrame(frameId);
-  }, [handLayoutSignature, isRoulette]);
+  }, [isRoulette]);
 
   const handleRouletteWheel = useCallback((event) => {
     if (!isRoulette) return;
@@ -1309,13 +1310,8 @@ export default function HandZone({
           (selectedObjectIdKey != null && cardObjectId === selectedObjectIdKey)
           || isMenuActionPreview
         );
-        const isNew = isPrimaryCycle && newIds.has(card.id);
-        const isBumped = isPrimaryCycle && bumpedIds.has(card.id);
-        let bumpDir = 0;
-        if (isBumped) {
-          if (visualIndex > 0 && newIds.has(handCards[visualIndex - 1].id)) bumpDir = 1;
-          else if (visualIndex < handCards.length - 1 && newIds.has(handCards[visualIndex + 1].id)) bumpDir = -1;
-        }
+        const isDrawInFlight = reserveDrawSlots && hiddenDrawCardIds.has(cardObjectId);
+        const isNew = isPrimaryCycle && !isDrawInFlight && newIds.has(card.id);
         const { wrapperStyle: baseWrapperStyle, cardStyle } = splitHandCardRowStyle(
           buildHandCardRowStyle(visualIndex, renderedHandCardCount, {
             dims: handDimensions,
@@ -1329,7 +1325,10 @@ export default function HandZone({
             key={`${cycleIndex}-${entry.key}`}
             className={`hand-layout-item shrink-0 overflow-visible${isInspected ? " hand-layout-item--selected" : ""}${isHovered && !isInspected ? " hand-layout-item--hovered" : ""}`}
             data-hand-object-id={cardObjectId}
-            style={wrapperStyle}
+            data-hand-draw-pending={isDrawInFlight ? "true" : undefined}
+            aria-hidden={isDrawInFlight ? true : undefined}
+            inert={isDrawInFlight ? true : undefined}
+            style={isDrawInFlight ? { ...wrapperStyle, visibility: "hidden", pointerEvents: "none" } : wrapperStyle}
           >
             <GameCard
               card={card}
@@ -1337,8 +1336,6 @@ export default function HandZone({
               isPlayable={isPlayable}
               glowKind={glowKind}
               isNew={isNew}
-              isBumped={isBumped}
-              bumpDirection={bumpDir}
               handCircuitMode={isExpanded ? "full" : "top"}
               suppressTooltip={isMobileFan}
               isHovered={isHovered}

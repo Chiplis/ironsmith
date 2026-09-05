@@ -395,7 +395,7 @@ pub(super) fn compile_subject_verb_early(
                 PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
                 _ => player_filter.clone(),
             });
-            let revealed_tag = crate::tag::CompilerReferenceTag::RevealedThisWay.key();
+            let revealed_tag = crate::tag::CompilerReferenceTag::RevealedThisWay.bind();
             ctx.last_object_tag = Some(revealed_tag.clone());
             ctx.last_revealed_tag = Some(revealed_tag.clone());
             ctx.last_revealed_zone = Some(Zone::Hand);
@@ -404,7 +404,7 @@ pub(super) fn compile_subject_verb_early(
                 alias != &crate::tag::CompilerReferenceTag::PublicRevealed.key()
             });
             ctx.snapshot_tag_aliases.push((
-                crate::tag::CompilerReferenceTag::PublicRevealed.key(),
+                crate::tag::CompilerReferenceTag::PublicRevealed.bind(),
                 revealed_tag,
             ));
             let effect = Effect::new(crate::effects::LookAtHandEffect::reveal(spec));
@@ -745,11 +745,11 @@ pub(super) fn compile_subject_verb_early(
             membership_filter
                 .tagged_constraints
                 .push(TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::It.key(),
+                    tag: crate::tag::CompilerReferenceTag::It.bind(),
                     relation: TaggedOpbjectRelation::SameStableId,
                 });
             let in_it = Condition::TaggedObjectMatches(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 membership_filter,
             );
             let move_rest = Effect::for_each_tagged(

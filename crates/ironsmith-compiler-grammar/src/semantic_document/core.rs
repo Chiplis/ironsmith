@@ -59,7 +59,13 @@ fn rewrite_item_display_line(item: &RewriteSemanticItem) -> Option<usize> {
         RewriteSemanticItem::Unsupported(line) => Some(line.info.display_line_index),
         RewriteSemanticItem::SagaChapter(saga) => Some(saga.info.display_line_index),
         RewriteSemanticItem::Modal(modal) => Some(modal.header.display_line_index),
-        RewriteSemanticItem::Metadata | RewriteSemanticItem::LevelHeader(_) => None,
+        RewriteSemanticItem::LevelHeader(level) => level.items.iter().find_map(|item| match &item.parsed {
+            crate::model::ParsedLevelAbilityItemAst::ActivatedAbility(activated) => {
+                Some(activated.info.display_line_index)
+            }
+            _ => None,
+        }),
+        RewriteSemanticItem::Metadata => None,
     }
 }
 

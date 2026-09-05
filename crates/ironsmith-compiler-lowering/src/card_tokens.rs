@@ -24,7 +24,7 @@ fn role_token(name: &str) -> CardDefinition {
 fn enchanted_creature_filter() -> ObjectFilter {
     let mut filter = ObjectFilter::creature();
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: crate::tag::CompilerReferenceTag::Enchanted.key(),
+        tag: crate::tag::CompilerReferenceTag::Enchanted.bind(),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
     filter
@@ -164,7 +164,7 @@ pub fn lander_token_definition() -> CardDefinition {
         .build()
 }
 pub fn junk_token_definition() -> CardDefinition {
-    let exile_tag = crate::tag::CompilerReferenceTag::JunkExiledCard.key();
+    let exile_tag = crate::tag::CompilerReferenceTag::JunkExiledCard.bind();
     let impulse_draw_ability = crate::ability::Ability {
         kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
             mana_cost: TotalCost::from_costs(vec![Cost::tap(), Cost::sacrifice_self()]),

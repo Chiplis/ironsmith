@@ -1,3 +1,4 @@
+import RollingPanel from "@/components/board/RollingPanel";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useGame } from "@/context/GameContext";
@@ -274,9 +275,8 @@ export default function StackTimelineRail({
   }
 
   if (inlineFlow) {
-    if (!shouldShowRail) return null;
-
     return (
+      <RollingPanel open={shouldShowRail} className="stack-flow-reveal">
       <aside
         ref={flowRailRef}
         className={cn(
@@ -298,6 +298,7 @@ export default function StackTimelineRail({
           compact
         />
       </aside>
+      </RollingPanel>
     );
   }
 

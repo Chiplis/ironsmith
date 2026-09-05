@@ -114,7 +114,7 @@ fn parse_dynamic_rhs(words: &[&str]) -> Option<Value> {
             ..Default::default()
         }
         .match_tagged(
-            crate::tag::CompilerReferenceTag::ZoneChangeGroup.as_str(),
+            crate::tag::CompilerReferenceTag::ZoneChangeGroup.bind(),
             TaggedOpbjectRelation::IsTaggedObject,
         );
         return Some(Value::TotalPower(filter));

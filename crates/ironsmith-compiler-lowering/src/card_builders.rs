@@ -490,7 +490,7 @@ impl CardDefinitionBuilder {
     }
 
     pub fn exalted(self) -> Self {
-        let attacker_tag = crate::tag::CompilerReferenceTag::ExaltedAttacker.key();
+        let attacker_tag = crate::tag::CompilerReferenceTag::ExaltedAttacker.bind();
         self.with_ability(crate::ability::Ability::triggered(
             crate::triggers::Trigger::attacks_alone(
                 crate::target::ObjectFilter::creature().you_control(),
@@ -648,7 +648,7 @@ impl CardDefinitionBuilder {
             vec![crate::effect::Effect::exile_top_of_library_player(
                 1,
                 crate::target::PlayerFilter::DamagedPlayer,
-                "ingested",
+                ironsmith_compiler_semantic::tag::declared_key("ingested"),
                 None,
             )],
         ))
@@ -704,8 +704,7 @@ impl CardDefinitionBuilder {
                     crate::target::ChooseSpec::Source,
                     1,
                     0,
-                    crate::effect::Value::PowerOf(Box::new(crate::target::ChooseSpec::Tagged(
-                        "enlisted_creature".into(),
+                    crate::effect::Value::PowerOf(Box::new(crate::target::ChooseSpec::Tagged(ironsmith_compiler_semantic::tag::declared_key("enlisted_creature"),
                     ))),
                     crate::effect::Until::EndOfTurn,
                 ),
@@ -1367,7 +1366,7 @@ impl CardDefinitionBuilder {
     }
 
     pub fn demonstrate(self) -> Self {
-        let opponent_tag = crate::tag::CompilerReferenceTag::DemonstrateOpponent.key();
+        let opponent_tag = crate::tag::CompilerReferenceTag::DemonstrateOpponent.bind();
         let opponent = crate::target::PlayerFilter::TaggedPlayer(opponent_tag.clone());
         self.with_ability(
             crate::ability::Ability::triggered(
@@ -1702,7 +1701,7 @@ impl CardDefinitionBuilder {
     }
 
     pub fn for_mirrodin(self) -> Self {
-        let created_tag = crate::tag::CompilerReferenceTag::ForMirrodinCreated.key();
+        let created_tag = crate::tag::CompilerReferenceTag::ForMirrodinCreated.bind();
         self.with_ability(crate::ability::Ability::triggered(
             crate::triggers::Trigger::this_enters_battlefield(),
             vec![
@@ -1714,7 +1713,7 @@ impl CardDefinitionBuilder {
     }
 
     pub fn living_weapon(self) -> Self {
-        let created_tag = crate::tag::CompilerReferenceTag::LivingWeaponCreated.key();
+        let created_tag = crate::tag::CompilerReferenceTag::LivingWeaponCreated.bind();
         self.with_ability(crate::ability::Ability::triggered(
             crate::triggers::Trigger::this_enters_battlefield(),
             vec![
@@ -1838,7 +1837,7 @@ impl CardDefinitionBuilder {
                 .with_all_type(CardType::Artifact)
                 .with_all_type(CardType::Creature),
         ));
-        let trigger_tag = crate::tag::CompilerReferenceTag::ModularTriggeringObject.key();
+        let trigger_tag = crate::tag::CompilerReferenceTag::ModularTriggeringObject.bind();
         let dead_source_filter = crate::target::ObjectFilter::default()
             .in_zone(crate::zone::Zone::Graveyard)
             .same_stable_id_as_tagged(trigger_tag.clone());
@@ -1878,7 +1877,7 @@ impl CardDefinitionBuilder {
                 .with_all_type(CardType::Artifact)
                 .with_all_type(CardType::Creature),
         ));
-        let trigger_tag = crate::tag::CompilerReferenceTag::ModularTriggeringObject.key();
+        let trigger_tag = crate::tag::CompilerReferenceTag::ModularTriggeringObject.bind();
         let dead_source_filter = crate::target::ObjectFilter::default()
             .in_zone(crate::zone::Zone::Graveyard)
             .same_stable_id_as_tagged(trigger_tag.clone());
@@ -1913,7 +1912,7 @@ impl CardDefinitionBuilder {
     }
 
     pub fn graft(self, amount: u32) -> Self {
-        let entered_tag = crate::tag::CompilerReferenceTag::GraftEnteredCreature.key();
+        let entered_tag = crate::tag::CompilerReferenceTag::GraftEnteredCreature.bind();
 
         self.with_ability(crate::ability::Ability::static_ability(
             crate::static_abilities::StaticAbility::enters_with_counters_value(
@@ -2077,7 +2076,7 @@ impl CardDefinitionBuilder {
 
         let filter = crate::target::ObjectFilter::default()
             .in_zone(crate::zone::Zone::Graveyard)
-            .same_stable_id_as_tagged(trigger_tag);
+            .same_stable_id_as_tagged(ironsmith_compiler_semantic::tag::declared_key(trigger_tag));
 
         self.with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
@@ -2089,7 +2088,7 @@ impl CardDefinitionBuilder {
                     )),
                     crate::effect::Effect::new(
                         crate::effects::MoveToZoneEffect::new(
-                            crate::target::ChooseSpec::Tagged(return_tag.into()),
+                            crate::target::ChooseSpec::Tagged(ironsmith_compiler_semantic::tag::declared_key(return_tag)),
                             crate::zone::Zone::Battlefield,
                             true,
                         )
@@ -2126,7 +2125,7 @@ impl CardDefinitionBuilder {
 
         let filter = crate::target::ObjectFilter::default()
             .in_zone(crate::zone::Zone::Graveyard)
-            .same_stable_id_as_tagged(trigger_tag);
+            .same_stable_id_as_tagged(ironsmith_compiler_semantic::tag::declared_key(trigger_tag));
 
         self.with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
@@ -2138,7 +2137,7 @@ impl CardDefinitionBuilder {
                     )),
                     crate::effect::Effect::new(
                         crate::effects::MoveToZoneEffect::new(
-                            crate::target::ChooseSpec::Tagged(return_tag.into()),
+                            crate::target::ChooseSpec::Tagged(ironsmith_compiler_semantic::tag::declared_key(return_tag)),
                             crate::zone::Zone::Battlefield,
                             true,
                         )

@@ -1,8 +1,10 @@
+import { useCastTargeting, useCastTargetHover } from "@/context/DragContext";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { animate, cancelMotion, createTimeline, uiSpring } from "@/lib/motion/anime";
 import { debounceClick, debouncePointerDown } from "@/lib/interactionDebounce";
 import { cn } from "@/lib/utils";
+import { getPlayerAccent } from "@/lib/player-colors";
 import { fetchScryfallCardMeta } from "@/lib/scryfall";
 import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
 import { useTranslatedCardName } from "@/i18n/useTranslatedCardName";
@@ -784,22 +786,30 @@ export default function GameCard({
   hideDebugBadge = false,
   suppressTooltip = false,
   battlefieldVisualMode = "classic",
+  sourceImageUrl = null,
 }) {
-  const { game, inspectorDebug, state } = useGame();
-  const targetingMode = state?.decision?.kind === "targets";
+  const { game, inspectorDebug, state, playerAccentOverrides } = useGame();
+  const sourceAccent = getPlayerAccent(state?.players || [], card.owner ?? card.controller, state?.perspective, playerAccentOverrides);
+  const castIntent = useCastTargeting();
+  const castHover = useCastTargetHover();
+  const targetDecision = state?.decision?.kind === "targets" ? state.decision : castIntent?.targetDecision;
+  const targetingMode = Boolean(castIntent) || state?.decision?.kind === "targets";
   const targetIds = [card.id, ...(card.member_ids || [])].map(Number);
-  const isLegalTarget = targetingMode && (state.decision.requirements || []).some((requirement) =>
+  const isLegalTarget = targetingMode && (targetDecision?.requirements || []).some((requirement) =>
     (requirement.legal_targets || []).some((target) => target.kind === "object" && targetIds.includes(Number(target.object)))
   );
+  const isCastTargetHovered = isLegalTarget && castHover?.kind === "object"
+    && castHover.objectIds.some(id => targetIds.includes(Number(id)));
   const glowKind = targetingMode ? (isLegalTarget ? "target-legal" : null) : requestedGlowKind;
-  const showActionBorder = hasAvailableAction && !targetingMode;
+  const showActionBorder = (hasAvailableAction || glowKind === "action-link") && !targetingMode;
   const name = card.name || "";
   // English name stays the lookup key everywhere (art, mana parsing, DOM
   // attributes); only user-facing labels use the localized name.
   const displayName = useTranslatedCardName(name, card.oracle_id || card.oracleId || null);
   const usePortraitBattlefield = variant === "battlefield" && battlefieldVisualMode === "portrait";
   const artVersion = variant === "hand" || usePortraitBattlefield ? "normal" : "art_crop";
-  const artUrl = useScryfallImageUrl(name, artVersion);
+  const resolvedArtUrl = useScryfallImageUrl(sourceImageUrl ? "" : name, artVersion);
+  const artUrl = sourceImageUrl || resolvedArtUrl;
   const imageLoading = variant === "hand" ? "eager" : "lazy";
   const imageFetchPriority = variant === "hand" ? "high" : "auto";
   const useTokenBattlefield = variant === "battlefield" && battlefieldVisualMode === "mobile-token";
@@ -844,8 +854,8 @@ export default function GameCard({
       : "opacity-72";
   const showBattlefieldCircuit = battlefieldCircuitActive;
   const showHandCircuit = variant === "hand" && (Boolean(glowKind) || isPlayable || isInspected);
-  const showCircuitAnimation = !targetingMode && !hasAvailableAction && (showBattlefieldCircuit || showHandCircuit);
-  const replaceGlowWithCircuit = !targetingMode && !hasAvailableAction && (
+  const showCircuitAnimation = !targetingMode && !showActionBorder && (showBattlefieldCircuit || showHandCircuit);
+  const replaceGlowWithCircuit = !targetingMode && !showActionBorder && (
     (variant === "hand" && showHandCircuit)
     || (variant === "battlefield" && battlefieldCircuitActive)
   );
@@ -1028,39 +1038,53 @@ export default function GameCard({
   useLayoutEffect(() => {
     const node = rootRef.current;
     if (!node || !isNew) return undefined;
+    if (variant === "hand" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return undefined;
 
     cancelMotion(entryMotionRef.current);
     node.style.removeProperty("transform");
+    // Apply the starting pose before paint; the timeline starts on its next tick.
+    if (variant === "hand") {
+      node.style.opacity = "0";
+      node.style.setProperty("--card-jolt-scale", "0.96");
+      node.style.setProperty("--card-jolt-y", "-80px");
+    }
     entryMotionRef.current = createTimeline({ autoplay: true }).add(node, {
       keyframes: [
         {
           opacity: 0,
-          "--card-jolt-scale": 0.74,
-          "--card-jolt-rotate": `${rotationSign * -6}deg`,
+          "--card-jolt-scale": variant === "hand" ? 0.96 : 0.74,
+          "--card-jolt-y": variant === "hand" ? "-80px" : "0px",
+          "--card-jolt-rotate": variant === "hand" ? "0deg" : `${rotationSign * -6}deg`,
           duration: 0,
         },
         {
           opacity: 1,
           "--card-jolt-scale": 1,
+          "--card-jolt-y": "0px",
           "--card-jolt-rotate": "0deg",
           duration: 420,
         },
       ],
-      ease: uiSpring({ duration: 420, bounce: 0.28 }),
+      ease: variant === "hand" ? "outCubic" : uiSpring({ duration: 420, bounce: 0.28 }),
       onComplete: () => {
         node.style.removeProperty("opacity");
         node.style.removeProperty("--card-jolt-scale");
+        node.style.removeProperty("--card-jolt-y");
         node.style.removeProperty("--card-jolt-rotate");
       },
     });
+    // A subsequent game snapshot clears isNew; let the hand entrance finish.
+    // The unmount cleanup below still cancels animations when the card leaves.
+    if (variant === "hand") return undefined;
     return () => {
       cancelMotion(entryMotionRef.current);
       entryMotionRef.current = null;
       node.style.removeProperty("opacity");
       node.style.removeProperty("--card-jolt-scale");
+        node.style.removeProperty("--card-jolt-y");
       node.style.removeProperty("--card-jolt-rotate");
     };
-  }, [isNew, rotationSign]);
+  }, [isNew, rotationSign, variant]);
 
   useLayoutEffect(() => {
     const node = rootRef.current;
@@ -1367,7 +1391,7 @@ export default function GameCard({
         glowKind === "blocker-candidate" && "blocker-candidate",
         showCircuitAnimation && "card-circuit-active",
         replaceGlowWithCircuit && "card-circuit-replaces-glow",
-        isHovered && "hovered",
+        (isHovered || isCastTargetHovered) && "hovered",
         isDragging && "dragging",
         isInspected && "inspected",
         className,
@@ -1398,6 +1422,7 @@ export default function GameCard({
       onMouseLeave={onMouseLeave}
       style={{
         ...style,
+        "--inspected-object-rgb": sourceAccent?.rgb || "255, 224, 131",
         "--aura-delay-1": auraDelay1,
         "--aura-delay-2": auraDelay2,
         "--aura-rot-1-pos": auraRot1Pos,
@@ -1441,6 +1466,7 @@ export default function GameCard({
           <span className="token-materialize-sheen" aria-hidden="true" />
         </>
       )}
+      {variant !== "stack" && <span className="card-inspector-source-glow" aria-hidden="true" />}
       <div className="game-card-surface">
         {(showActionBorder || isLegalTarget) && !useTokenBattlefield && (
           <span className="card-action-border" aria-hidden="true" />

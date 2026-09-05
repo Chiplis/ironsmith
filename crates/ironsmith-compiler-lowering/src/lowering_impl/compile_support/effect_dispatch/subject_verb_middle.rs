@@ -778,7 +778,7 @@ pub(super) fn compile_subject_verb_middle(
                 lowered_copy = lowered_copy.with_count_surface(*surface);
             }
             let copy_effect = Effect::with_id(id.0, Effect::new(lowered_copy))
-                .tag(crate::tag::CompilerReferenceTag::CopiedStackObject.key());
+                .tag(crate::tag::CompilerReferenceTag::CopiedStackObject.bind());
             let choose_new_targets_effect = if *may_choose_new_targets {
                 let retarget = crate::effects::ChooseNewTargetsEffect::may_for_player(
                     id,
@@ -828,7 +828,7 @@ pub(super) fn compile_subject_verb_middle(
             let id = ctx.next_effect_id();
             ctx.last_effect_id = Some(id);
             let effect = Effect::with_id(id.0, Effect::new(copy_effect))
-                .tag(crate::tag::CompilerReferenceTag::CopiedStackObject.key());
+                .tag(crate::tag::CompilerReferenceTag::CopiedStackObject.bind());
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::PutTaggedRemainderInZone {
@@ -850,7 +850,7 @@ pub(super) fn compile_subject_verb_middle(
                     relation: TaggedOpbjectRelation::SameStableId,
                 });
             let in_keep = Condition::TaggedObjectMatches(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 membership_filter,
             );
             let move_rest = Effect::for_each_tagged(
@@ -961,7 +961,7 @@ pub(super) fn compile_subject_verb_middle(
                 })?
             } else if tag.as_str() == "__source_exiled__" {
                 ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
-                    TagKey::new(format!(
+                    ironsmith_compiler_semantic::tag::declared_key(format!(
                         "__sentence_helper_exiled_l0_s0_e{}",
                         ctx.id_gen_context().next_tag_id.saturating_sub(1)
                     ))
@@ -1022,7 +1022,7 @@ pub(super) fn compile_subject_verb_middle(
                 })?
             } else if tag.as_str() == "__source_exiled__" {
                 ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
-                    TagKey::new(format!(
+                    ironsmith_compiler_semantic::tag::declared_key(format!(
                         "__sentence_helper_exiled_l0_s0_e{}",
                         ctx.id_gen_context().next_tag_id.saturating_sub(1)
                     ))
@@ -1093,7 +1093,7 @@ pub(super) fn compile_subject_verb_middle(
                 })?
             } else if tag.as_str() == "__source_exiled__" {
                 ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
-                    TagKey::new(format!(
+                    ironsmith_compiler_semantic::tag::declared_key(format!(
                         "__sentence_helper_exiled_l0_s0_e{}",
                         ctx.id_gen_context().next_tag_id.saturating_sub(1)
                     ))
@@ -1129,7 +1129,7 @@ pub(super) fn compile_subject_verb_middle(
                 })?
             } else if tag.as_str() == "__source_exiled__" {
                 ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
-                    TagKey::new(format!(
+                    ironsmith_compiler_semantic::tag::declared_key(format!(
                         "__sentence_helper_exiled_l0_s0_e{}",
                         ctx.id_gen_context().next_tag_id.saturating_sub(1)
                     ))
@@ -1177,7 +1177,7 @@ pub(super) fn compile_subject_verb_middle(
                 })?
             } else if tag.as_str() == "__source_exiled__" {
                 ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
-                    TagKey::new(format!(
+                    ironsmith_compiler_semantic::tag::declared_key(format!(
                         "__sentence_helper_exiled_l0_s0_e{}",
                         ctx.id_gen_context().next_tag_id.saturating_sub(1)
                     ))
@@ -1236,7 +1236,7 @@ pub(super) fn compile_subject_verb_middle(
                 })?
             } else if tag.as_str() == "__source_exiled__" {
                 ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
-                    TagKey::new(format!(
+                    ironsmith_compiler_semantic::tag::declared_key(format!(
                         "__sentence_helper_exiled_l0_s0_e{}",
                         ctx.id_gen_context().next_tag_id.saturating_sub(1)
                     ))
@@ -1389,7 +1389,7 @@ pub(super) fn compile_subject_verb_middle(
                 && *controller == ReturnControllerAst::Owner
                 && matches!(resolved_spec.base(), ChooseSpec::Iterated)
             {
-                ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())
+                ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.bind())
             } else {
                 resolved_spec
             };
@@ -1439,7 +1439,7 @@ pub(super) fn compile_subject_verb_middle(
                 if let Some(as_aura) = as_aura {
                     let mut attachment_filter = as_aura.attachment_filter.clone();
                     if !as_aura.granted_abilities.is_empty() {
-                        let attachment_tag = crate::tag::CompilerReferenceTag::Enchanted.key();
+                        let attachment_tag = crate::tag::CompilerReferenceTag::Enchanted.bind();
                         effects.push(Effect::choose_objects(
                             as_aura.attachment_filter.clone(),
                             1usize,
@@ -1665,7 +1665,7 @@ pub(super) fn compile_subject_verb_middle(
                             == crate::cards::builders::ReturnControllerAst::Owner))
                 && matches!(spec.base(), ChooseSpec::Iterated)
             {
-                spec = ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key());
+                spec = ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.bind());
             }
             let resolved_attach_spec = if let Some(attach_target) = attached_to {
                 if *zone != Zone::Battlefield {
@@ -1779,7 +1779,7 @@ pub(super) fn compile_subject_verb_middle(
                     (ctx.last_object_tag.as_ref()
                         == Some(&crate::tag::CompilerReferenceTag::SourceExiled.key()))
                     .then(|| {
-                        TagKey::new(format!(
+                        ironsmith_compiler_semantic::tag::declared_key(format!(
                             "__sentence_helper_exiled_l0_s0_e{}",
                             ctx.id_gen_context().next_tag_id.saturating_sub(1)
                         ))
@@ -1802,7 +1802,7 @@ pub(super) fn compile_subject_verb_middle(
                 return Ok(Some((
                     vec![Effect::put_tagged_remainder_on_library_bottom(
                         remainder_tag.clone(),
-                        Some(crate::tag::CompilerReferenceTag::SourceExiled.key()),
+                        Some(crate::tag::CompilerReferenceTag::SourceExiled.bind()),
                         crate::effects::consult_helpers::LibraryBottomOrder::Random,
                         library_owner,
                     )],
@@ -1841,7 +1841,7 @@ pub(super) fn compile_subject_verb_middle(
                     ChooseSpec::Tagged(tag)
                 } else {
                     ChooseSpec::All(
-                        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.key())
+                        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind())
                             .in_zone(Zone::Exile),
                     )
                 };
@@ -3272,7 +3272,7 @@ pub(super) fn compile_subject_verb_middle(
                         .is_some_and(|tag| tag.as_str() == "triggering")
                     {
                         (
-                            ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::Triggering.key()),
+                            ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind()),
                             Vec::new(),
                         )
                     } else {

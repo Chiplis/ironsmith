@@ -1010,7 +1010,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                     let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
                     let watched_tag = watch_tag_from_filter(&resolved_filter).or_else(|| {
                         filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
-                            .then(|| crate::tag::CompilerReferenceTag::Targeted0.key())
+                            .then(|| crate::tag::CompilerReferenceTag::Targeted0.bind())
                     });
                     if let Some(watched_tag) = watched_tag {
                         let lowered = compile_trigger_effects_with_imports(
@@ -1219,7 +1219,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                 )
             })?;
             let previous_last = ctx.last_object_tag.clone();
-            ctx.last_object_tag = Some(crate::tag::CompilerReferenceTag::Triggering.key());
+            ctx.last_object_tag = Some(crate::tag::CompilerReferenceTag::Triggering.bind());
             let compiled = compile_effects_preserving_last_effect(effects, ctx);
             ctx.last_object_tag = previous_last;
             let (delayed_effects, choices) = compiled?;
@@ -1247,7 +1247,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                 )
             })?;
             let previous_last = ctx.last_object_tag.clone();
-            ctx.last_object_tag = Some(crate::tag::CompilerReferenceTag::Triggering.key());
+            ctx.last_object_tag = Some(crate::tag::CompilerReferenceTag::Triggering.bind());
             let compiled = compile_effects_preserving_last_effect(effects, ctx);
             ctx.last_object_tag = previous_last;
             let (delayed_effects, choices) = compiled?;

@@ -263,15 +263,44 @@ impl SymbolTable {
     }
 
     /// The symbol bound under `key` in `scope` or an enclosing scope.
-    /// The scope of the physical line with this display index, if one was opened.
+    /// The scope of the physical line with this display index. A line no scope
+    /// was opened for was consumed by the block a preceding line opened (a
+    /// level-up body, a modal mode): it shares that block's scope.
     pub fn line_scope(&self, source_line: usize) -> Option<SymbolScopeId> {
-        self.scopes
-            .iter()
-            .find(|scope| scope.kind == SymbolScopeKind::Line { source_line })
-            .map(|scope| scope.id)
+        let mut nearest: Option<(usize, SymbolScopeId)> = None;
+        for scope in &self.scopes {
+            let SymbolScopeKind::Line { source_line: opened } = scope.kind else {
+                continue;
+            };
+            if opened == source_line {
+                return Some(scope.id);
+            }
+            if opened < source_line && nearest.is_none_or(|(best, _)| opened > best) {
+                nearest = Some((opened, scope.id));
+            }
+        }
+        nearest.map(|(_, id)| id)
     }
 
+    /// The symbol `key` was bound to, looking from `scope` outward through its
+    /// ancestors. A physical line parsed more than once opens one `Line` scope
+    /// per parse; those siblings are one namespace, so a key bound in any of
+    /// them resolves from any other.
     pub fn symbol_for_key(&self, scope: SymbolScopeId, key: &TagKey) -> Option<SymbolId> {
+        if let Some(symbol) = self.symbol_for_key_in_chain(scope, key) {
+            return Some(symbol);
+        }
+        let kind = self.scope(scope)?.kind;
+        if !matches!(kind, SymbolScopeKind::Line { .. }) {
+            return None;
+        }
+        self.scopes
+            .iter()
+            .filter(|sibling| sibling.kind == kind && sibling.id != scope)
+            .find_map(|sibling| self.symbol_for_key_in_chain(sibling.id, key))
+    }
+
+    fn symbol_for_key_in_chain(&self, scope: SymbolScopeId, key: &TagKey) -> Option<SymbolId> {
         let mut current = Some(scope);
         while let Some(scope) = current {
             if let Some(found) = self.by_scope.get(&scope).and_then(|ids| {

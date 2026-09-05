@@ -33,6 +33,7 @@ const WORKER_METHODS = [
   "loadDemoDecks",
   "objectDetails",
   "previewCustomCard",
+  "previewCastTargets",
   "previewCryptoRequirements",
   "registrySize",
   "reset",

@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 import { useGame } from "@/context/GameContext";
 import { useHover } from "@/context/HoverContext";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import DecisionRouter from "@/components/decisions/DecisionRouter";
 import DecisionSummary from "@/components/decisions/DecisionSummary";
 import PeerWaitPopover, { PeerWaitButtonContent } from "@/components/decisions/PeerWaitPopover";
@@ -2217,8 +2216,6 @@ function MobileBattleDecisionLayer({
 
 function PriorityControlStack({
   actionCount = 0,
-  holdEnabled = false,
-  onHoldChange,
   advanceControlLabel = "",
   showActionCount = true,
   className = "",
@@ -2226,8 +2223,6 @@ function PriorityControlStack({
   const compactLandscapeViewport = typeof window !== "undefined"
     && window.matchMedia("(max-width: 720px) and (orientation: landscape)").matches;
   const advanceLabelText = safeInlineLabel(advanceControlLabel);
-  const checkboxLabelClass =
-    "priority-control-toggle action-strip-toggle flex items-center gap-1.5 text-[11px] uppercase tracking-wider cursor-pointer transition-colors";
 
   return (
     <div className={cn("priority-control-stack flex shrink-0 flex-col items-start justify-center py-1.5", className)}>
@@ -2245,14 +2240,6 @@ function PriorityControlStack({
             {advanceLabelText}
           </span>
         ) : null}
-        <label className={checkboxLabelClass}>
-          <span title="Hold">{compactLandscapeViewport ? "H" : "Hold"}</span>
-          <Checkbox
-            checked={holdEnabled}
-            onCheckedChange={(value) => onHoldChange?.(Boolean(value))}
-            className="h-3 w-3"
-          />
-        </label>
       </div>
     </div>
   );
@@ -2359,8 +2346,6 @@ function PriorityBar({
   const {
     state,
     dispatch,
-    holdRule,
-    setHoldRule,
     cancelDecision,
     triggerOrderingState,
     multiplayer,
@@ -2646,6 +2631,26 @@ function PriorityBar({
     && typeof document !== "undefined"
     ? document.querySelector('[data-topbar-main-decision-host="true"]')
     : null;
+  const renderCancelControl = (ported = false) => (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className={cn("decision-neon-button decision-neon-button--danger decision-cancel-button h-full min-w-[82px] shrink-0 self-stretch rounded-none px-2 text-[clamp(10px,0.82vw,13px)] font-bold uppercase tracking-wide", ported && "topbar-ported-decision-button")}
+      disabled={!canCancelDecision}
+      onPointerDown={(event) => {
+        if (!canCancelDecision || event.button !== 0) return;
+        event.preventDefault();
+        cancelDecision();
+      }}
+      onClick={(event) => {
+        if (!canCancelDecision || event.detail !== 0) return;
+        cancelDecision();
+      }}
+    >
+      Cancel
+    </Button>
+  );
   const renderExpandedPrimaryControl = (ported = false) => (
     (peerWaiting || showViewedCardsStep || effectiveSubmitAction) ? (
       <PeerWaitPopover peerWait={peerWait}>
@@ -2794,11 +2799,12 @@ function PriorityBar({
                 style={decisionButtonStyle}
               >
                 <div
-                  className="action-strip-main-region h-full w-full"
+                  className="action-strip-main-region decision-primary-controls h-full w-full"
                   style={decisionButtonStyle}
                   data-local-action={localDecisionButton ? "true" : "false"}
                 >
                   {renderExpandedPrimaryControl(true)}
+                  {renderCancelControl(true)}
                 </div>
               </div>,
               topbarMainDecisionHost
@@ -2921,8 +2927,6 @@ function PriorityBar({
                           >
                             <PriorityControlStack
                               actionCount={priorityActionCount}
-                              holdEnabled={holdRule === "always"}
-                              onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
                               advanceControlLabel={passControlAdvanceLabel}
                               showActionCount={false}
                             />
@@ -2938,6 +2942,36 @@ function PriorityBar({
             <div className="action-strip-decision-stack flex min-h-0 min-w-0 flex-1 flex-col gap-1.5 py-1">
               <div className="action-strip-decision-toolbar flex min-w-0 items-stretch gap-2">
                 <div className="flex min-w-0 flex-1 items-stretch gap-2">
+                  <div className={cn(
+                    "decision-primary-controls flex min-w-0 shrink-0 items-stretch gap-2",
+                    manaPayment ? "max-w-[360px]" : "max-w-[320px]"
+                  )}>
+                    {!topbarMainDecisionHost ? renderExpandedPrimaryControl(false) : null}
+                    {manaPayment && secondarySubmitAction ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className={cn(
+                          "decision-neon-button decision-plan-button h-full min-w-[82px] flex-[0.75_1_0] self-stretch rounded-none px-2 text-[clamp(10px,0.82vw,13px)] font-bold uppercase tracking-wide",
+                          secondarySubmitAction.active && "is-active"
+                        )}
+                        disabled={!canSubmitSecondary}
+                        onPointerDown={(event) => {
+                          if (!canSubmitSecondary || event.button !== 0) return;
+                          event.preventDefault();
+                          secondarySubmitAction.onSubmit();
+                        }}
+                        onClick={(event) => {
+                          if (!canSubmitSecondary || event.detail !== 0) return;
+                          secondarySubmitAction.onSubmit();
+                        }}
+                      >
+                        {secondarySubmitAction.label || "Plan"}
+                      </Button>
+                    ) : null}
+                    {!topbarMainDecisionHost ? renderCancelControl() : null}
+                  </div>
                   {manaPayment ? (
                     <ManaPaymentToolbarMeta
                       payment={manaPayment}
@@ -2973,53 +3007,7 @@ function PriorityBar({
                     ref={setDecisionToolbarSearchTarget}
                     className="action-strip-decision-toolbar-search min-w-0"
                   />
-                  <div className={cn(
-                    "flex min-w-0 shrink-0 items-stretch gap-2",
-                    manaPayment ? "max-w-[360px]" : "max-w-[320px]"
-                  )}>
-                    {!topbarMainDecisionHost ? renderExpandedPrimaryControl(false) : null}
-                    {manaPayment && secondarySubmitAction ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className={cn(
-                          "decision-neon-button decision-plan-button h-full min-w-[82px] flex-[0.75_1_0] self-stretch rounded-none px-2 text-[clamp(10px,0.82vw,13px)] font-bold uppercase tracking-wide",
-                          secondarySubmitAction.active && "is-active"
-                        )}
-                        disabled={!canSubmitSecondary}
-                        onPointerDown={(event) => {
-                          if (!canSubmitSecondary || event.button !== 0) return;
-                          event.preventDefault();
-                          secondarySubmitAction.onSubmit();
-                        }}
-                        onClick={(event) => {
-                          if (!canSubmitSecondary || event.detail !== 0) return;
-                          secondarySubmitAction.onSubmit();
-                        }}
-                      >
-                        {secondarySubmitAction.label || "Plan"}
-                      </Button>
-                    ) : null}
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="decision-neon-button decision-neon-button--danger decision-cancel-button h-full min-w-[82px] flex-[0.75_1_0] self-stretch rounded-none px-2 text-[clamp(10px,0.82vw,13px)] font-bold uppercase tracking-wide"
-                      disabled={!canCancelDecision}
-                      onPointerDown={(event) => {
-                        if (!canCancelDecision || event.button !== 0) return;
-                        event.preventDefault();
-                        cancelDecision();
-                      }}
-                      onClick={(event) => {
-                        if (!canCancelDecision || event.detail !== 0) return;
-                        cancelDecision();
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
+
                 </div>
               </div>
               <div className="action-strip-decision-content min-w-0 flex-1 overflow-hidden">
@@ -3189,8 +3177,6 @@ function PriorityBar({
                         >
                           <PriorityControlStack
                             actionCount={priorityActionCount}
-                            holdEnabled={holdRule === "always"}
-                            onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
                             advanceControlLabel={passControlAdvanceLabel}
                             showActionCount={false}
                           />
@@ -3205,34 +3191,8 @@ function PriorityBar({
             <>
               <div className="action-strip-decision-stack flex min-w-0 w-full flex-col gap-y-1">
                 <div className="action-strip-decision-toolbar flex min-h-[46px] items-stretch gap-2">
-                  {manaPayment ? (
-                    <ManaPaymentToolbarMeta
-                      payment={manaPayment}
-                      sourceObjectId={decision?.source_id}
-                      onInspectObject={handleActionCardInspect}
-                    />
-                  ) : !triggerOrderingDecision && (
-                    <div className="action-strip-decision-meta flex min-w-0 flex-1 flex-col justify-center py-1.5">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className="decision-stage-chip">{decisionStageLabel(decision)}</span>
-                        <div className="action-strip-decision-title truncate text-[11px] font-bold uppercase tracking-[0.14em]">
-                          {resolveDecisionTitle(decision)}
-                        </div>
-                      </div>
-                      {decision?.source_name && (
-                        <div className="action-strip-decision-source mt-0.5 truncate text-[11px]">
-                          <DecisionCardNameTrigger
-                            objectId={decision?.source_id}
-                            onInspect={handleActionCardInspect}
-                          >
-                            {normalizeDecisionText(decision.source_name)}
-                          </DecisionCardNameTrigger>
-                        </div>
-                      )}
-                    </div>
-                  )}
                   <div className={cn(
-                    "flex min-w-0 shrink-0 items-stretch gap-2",
+                    "decision-primary-controls flex min-w-0 shrink-0 items-stretch gap-2",
                     manaPayment ? "max-w-[360px]" : "max-w-[320px]"
                   )}>
                     {(peerWaiting || showViewedCardsStep || effectiveSubmitAction) ? (
@@ -3304,29 +3264,37 @@ function PriorityBar({
                         {secondarySubmitAction.label || "Plan"}
                       </Button>
                     ) : null}
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="decision-neon-button decision-neon-button--danger decision-cancel-button h-full min-w-[82px] flex-[0.75_1_0] self-stretch rounded-none px-2 text-[clamp(10px,0.82vw,13px)] font-bold uppercase tracking-wide"
-                      disabled={!canCancelDecision}
-                      onPointerDown={(event) => {
-                        if (!canCancelDecision || event.button !== 0) return;
-                        event.preventDefault();
-                        cancelDecision();
-                      }}
-                      onClick={(event) => {
-                        if (!canCancelDecision || event.detail !== 0) return;
-                        cancelDecision();
-                      }}
-                    >
-                      Cancel
-                    </Button>
+                    {renderCancelControl()}
                   </div>
+                  {manaPayment ? (
+                    <ManaPaymentToolbarMeta
+                      payment={manaPayment}
+                      sourceObjectId={decision?.source_id}
+                      onInspectObject={handleActionCardInspect}
+                    />
+                  ) : !triggerOrderingDecision && (
+                    <div className="action-strip-decision-meta flex min-w-0 flex-1 flex-col justify-center py-1.5">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="decision-stage-chip">{decisionStageLabel(decision)}</span>
+                        <div className="action-strip-decision-title truncate text-[11px] font-bold uppercase tracking-[0.14em]">
+                          {resolveDecisionTitle(decision)}
+                        </div>
+                      </div>
+                      {decision?.source_name && (
+                        <div className="action-strip-decision-source mt-0.5 truncate text-[11px]">
+                          <DecisionCardNameTrigger
+                            objectId={decision?.source_id}
+                            onInspect={handleActionCardInspect}
+                          >
+                            {normalizeDecisionText(decision.source_name)}
+                          </DecisionCardNameTrigger>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {!manaPayment ? (
                     <PriorityControlStack
-                      holdEnabled={holdRule === "always"}
-                      onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
                       showActionCount={false}
                       className="ml-auto min-w-[104px]"
                     />
@@ -3375,8 +3343,6 @@ function PriorityBar({
               />
               <PriorityControlStack
                 actionCount={priorityActionCount}
-                holdEnabled={holdRule === "always"}
-                onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
                 className="ml-auto min-w-[104px]"
               />
             </div>
@@ -3451,14 +3417,15 @@ function PriorityBar({
   );
 }
 
-function CombatBar({ anchor = null, inline = false, decision, canAct }) {
+function CombatBar({ anchor = null, inline = false, replaceMiddleControls = false, decision, canAct }) {
   const {
     state,
-    holdRule,
-    setHoldRule,
     cancelDecision,
     multiplayer,
+    playerAccentOverrides,
   } = useGame();
+  const { style: decisionButtonStyle, isLocal: localDecisionButton } =
+    useDecisionButtonAccent(state, decision, playerAccentOverrides);
   const decisionIdentity = [
     decision?.kind || "",
     decision?.player ?? "",
@@ -3484,8 +3451,6 @@ function CombatBar({ anchor = null, inline = false, decision, canAct }) {
   if (!decision || (decision.kind !== "attackers" && decision.kind !== "blockers")) return null;
 
   const anchoredStyle = inline ? null : priorityAnchorStyle(anchor);
-  const compactPortraitViewport = typeof window !== "undefined"
-    && window.matchMedia("(max-width: 720px) and (orientation: portrait)").matches;
   const combatAction = combatActionState.key === decisionIdentity ? combatActionState.action : null;
   const canCancelDecision = canAct && !!state?.cancelable;
   const canSubmitCombat = canAct
@@ -3493,84 +3458,50 @@ function CombatBar({ anchor = null, inline = false, decision, canAct }) {
     && !combatAction.disabled
     && !attackButtonTransition.locked
     && typeof combatAction.onSubmit === "function";
-  const combatPrimaryDisabled = !combatAction
-    || combatAction.disabled
-    || attackButtonTransition.locked;
-  const panelClass = inline
-    ? "pointer-events-none absolute inset-0 z-[120] flex items-center px-2"
-    : "pointer-events-none fixed left-2 bottom-[148px] z-[120] w-[min(96vw,740px)]";
-
-  const innerClass = cn(
-    "priority-inline-panel pointer-events-auto flex w-full items-stretch gap-2 px-2 py-0",
-    compactPortraitViewport && "flex-col items-stretch",
-    !inline && anchoredStyle ? "fixed" : ""
+  const primaryDisabled = peerWaitLocked || !canSubmitCombat;
+  const topbarHost = inline && !replaceMiddleControls && typeof document !== "undefined"
+    ? document.querySelector('[data-topbar-main-decision-host="true"]') : null;
+  const primaryControl = (
+    <PeerWaitPopover peerWait={peerWait}>
+      <Button variant="ghost" size="sm"
+        className="decision-neon-button decision-main-button combat-submit-button rounded-none px-3 text-[11px] font-bold uppercase"
+        style={decisionButtonStyle}
+        data-local-action={localDecisionButton ? "true" : "false"}
+        disabled={primaryDisabled} aria-disabled={primaryDisabled}
+        onClick={() => { if (!primaryDisabled) combatAction?.onSubmit?.(); }}>
+        {peerWaiting ? <PeerWaitButtonContent /> : (
+          combatAction?.label || (decision.kind === "attackers" ? "Declare no attackers" : "Confirm Blockers (0)")
+        )}
+      </Button>
+    </PeerWaitPopover>
   );
-
   return (
-    <div className={panelClass}>
-      <div className={innerClass} style={anchoredStyle || undefined}>
-        <div className={cn("min-w-0 flex-1", compactPortraitViewport && "w-full")}>
-          <div className={cn("action-strip-layout flex min-h-[46px] items-stretch justify-end gap-2", compactPortraitViewport && "flex-col")}>
-            <PeerWaitPopover peerWait={peerWait}>
-              <Button
-                variant="ghost"
-                size="sm"
-                className={cn(
-                  "decision-option-row decision-option-row--strip combat-confirm-option h-9 w-[224px] min-w-[224px] max-w-[360px] shrink-0 justify-center self-center px-3 text-center text-[12px] font-semibold",
-                  decision.kind === "attackers"
-                    ? "combat-confirm-option--attackers"
-                    : "combat-confirm-option--blockers",
-                  inline ? "combat-inline-primary my-auto" : "h-full self-stretch",
-                  compactPortraitViewport && "w-full min-w-0"
-                )}
-                data-transitioning={attackButtonTransition.transitioning ? "true" : "false"}
-                aria-disabled={peerWaitLocked || !canSubmitCombat}
-                disabled={peerWaiting ? false : combatPrimaryDisabled}
-                onClick={() => {
-                  if (peerWaitLocked || !canSubmitCombat) return;
-                  combatAction?.onSubmit?.();
-                }}
-              >
-                {peerWaiting ? (
-                  <PeerWaitButtonContent />
-                ) : (
-                  combatAction?.label || (
-                    decision.kind === "attackers" ? "Confirm Attackers (0)" : "Confirm Blockers (0)"
-                  )
-                )}
-              </Button>
-            </PeerWaitPopover>
-            {canCancelDecision ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="decision-neon-button decision-neon-button--danger decision-cancel-button h-full min-w-[96px] flex-[0.75_1_0] self-stretch rounded-none px-2 text-[clamp(10px,0.82vw,13px)] font-bold uppercase tracking-wide"
-                disabled={!canCancelDecision}
-                onClick={() => cancelDecision()}
-              >
-                Cancel
-              </Button>
-            ) : null}
+    <>
+      {topbarHost ? createPortal(primaryControl, topbarHost) : null}
+      <div className={inline
+        ? "pointer-events-none absolute inset-0 z-[120] flex items-stretch"
+        : "pointer-events-none fixed left-2 bottom-[148px] z-[120] w-[min(96vw,740px)]"}>
+        <div className="priority-inline-panel combat-decision-panel pointer-events-auto"
+          data-replaces-middle-controls={replaceMiddleControls ? "true" : "false"}
+          style={anchoredStyle || undefined}>
+          <div className="action-strip-decision-toolbar combat-decision-toolbar">
+            {!topbarHost ? primaryControl : null}
+            <div className="combat-decision-meta">
+              <span className="decision-stage-chip">{decision.kind === "attackers" ? "Attack" : "Block"}</span>
+              <span className="action-strip-decision-title">{decision.kind === "attackers" ? "Choose attackers" : "Choose blockers"}</span>
+              <span className="action-strip-decision-inline-summary">{!canAct ? "Waiting for opponent." : decision.kind === "attackers"
+                ? "Select a creature, then its defender; or drag between them."
+                : "Select a blocker, then an attacker; or drag between them."}</span>
+            </div>
+            {canCancelDecision ? <Button type="button" variant="ghost" size="sm"
+              className="decision-neon-button decision-neon-button--danger decision-cancel-button h-10 shrink-0 rounded-none px-3 font-bold uppercase"
+              onClick={() => cancelDecision()}>Cancel</Button> : null}
           </div>
-          <DecisionRouter
-            decision={decision}
-            canAct={canAct}
-            combatInline
-            onCombatActionChange={handleCombatActionChange}
-          />
+          <DecisionRouter decision={decision} canAct={canAct} combatInline
+            onCombatActionChange={handleCombatActionChange} />
         </div>
-        <PriorityControlStack
-          holdEnabled={holdRule === "always"}
-          onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
-          showActionCount={false}
-          className={cn(
-            "min-w-[104px]",
-            compactPortraitViewport && "min-w-0 w-full"
-          )}
-        />
       </div>
-    </div>
+    </>
   );
 }
 
@@ -3611,7 +3542,7 @@ export default function DecisionPopupLayer({
       />
     );
   } else if (decision?.kind === "attackers" || decision?.kind === "blockers") {
-    content = <CombatBar anchor={anchor} inline={priorityInline} decision={decision} canAct={canAct} />;
+    content = <CombatBar anchor={anchor} inline={priorityInline} replaceMiddleControls={replaceMiddleControls} decision={decision} canAct={canAct} />;
   } else {
     content = (
       <PriorityBar

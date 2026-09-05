@@ -109,7 +109,7 @@ pub fn resolve_non_target_player_filter(
         PlayerAst::Opponent => Ok(PlayerFilter::Opponent),
         PlayerAst::PlayerToYourLeft => Ok(PlayerFilter::PlayerToYourLeft),
         PlayerAst::PlayerToYourRight => Ok(PlayerFilter::PlayerToYourRight),
-        PlayerAst::Enchanted => Ok(PlayerFilter::TaggedPlayer(TagKey::new("enchanted"))),
+        PlayerAst::Enchanted => Ok(PlayerFilter::TaggedPlayer(ironsmith_compiler_semantic::tag::declared_key("enchanted"))),
         PlayerAst::Teammate => Ok(PlayerFilter::Teammate),
         PlayerAst::NotYou => {
             if let Some(excluded) = refs.known_last_player_filter()
@@ -321,7 +321,7 @@ fn resolve_object_ref(reference: &ObjectRef, refs: &ReferenceEnv) -> ObjectRef {
             if let Some(tag) = refs.known_last_object_tag() {
                 ObjectRef::tagged(tag.clone())
             } else if refs.has_source_object_antecedent() {
-                ObjectRef::tagged(crate::tag::CompilerReferenceTag::SourceObject.key())
+                ObjectRef::tagged(crate::tag::CompilerReferenceTag::SourceObject.bind())
             } else {
                 ObjectRef::Target
             }
@@ -1112,11 +1112,11 @@ pub fn resolve_choose_spec_it_tag(
                 return Ok(if refs.iterated_object {
                     ChooseSpec::Iterated
                 } else {
-                    ChooseSpec::Tagged(TagKey::new(crate::tag::CompilerReferenceTag::It.as_str()))
+                    ChooseSpec::Tagged(ironsmith_compiler_semantic::tag::declared_key(crate::tag::CompilerReferenceTag::It.as_str()))
                 });
             }
             if let Some(resolved) = refs.known_last_object_tag() {
-                return Ok(ChooseSpec::Tagged(TagKey::new(resolved.as_str())));
+                return Ok(ChooseSpec::Tagged(ironsmith_compiler_semantic::tag::declared_key(resolved.as_str())));
             }
             if refs.has_source_object_antecedent() {
                 return Ok(ChooseSpec::Source);
@@ -1631,7 +1631,7 @@ pub fn resolve_target_spec_with_choices(
         let tag = refs
             .known_last_object_tag()
             .cloned()
-            .unwrap_or_else(|| TagKey::new(crate::tag::CompilerReferenceTag::It.as_str()));
+            .unwrap_or_else(|| ironsmith_compiler_semantic::tag::declared_key(crate::tag::CompilerReferenceTag::It.as_str()));
         spec = ChooseSpec::Tagged(tag);
     }
     if let TargetAst::Player(filter, explicit_target_span) = target
@@ -1778,7 +1778,7 @@ mod tests {
         };
 
         let value = Value::PowerOf(Box::new(ChooseSpec::target(ChooseSpec::Object(
-            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
+            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
         ))));
 
         let resolved = resolve_value_it_tag(&value, &refs).expect("resolve implicit it value");
@@ -1793,11 +1793,11 @@ mod tests {
     #[test]
     fn public_revealed_count_binds_to_current_reveal_result_tag() {
         let refs = ReferenceEnv {
-            last_object_tag: RefState::Known(TagKey::from("__sentence_helper_revealed_l0_s0_e7")),
+            last_object_tag: RefState::Known(ironsmith_compiler_semantic::tag::declared_key("__sentence_helper_revealed_l0_s0_e7")),
             ..ReferenceEnv::default()
         };
         let value = Value::Count(ObjectFilter::tagged(
-            crate::tag::CompilerReferenceTag::PublicRevealed.key(),
+            crate::tag::CompilerReferenceTag::PublicRevealed.bind(),
         ));
         let resolved = resolve_value_it_tag(&value, &refs).expect("resolve reveal count");
         let Value::Count(filter) = resolved else {
@@ -1812,16 +1812,16 @@ mod tests {
     #[test]
     fn typed_revealed_it_count_uses_snapshot_collection_not_last_match() {
         let refs = ReferenceEnv {
-            last_object_tag: RefState::Known(TagKey::from(
+            last_object_tag: RefState::Known(ironsmith_compiler_semantic::tag::declared_key(
                 "__sentence_helper_consult_match_l0_s0_e7",
             )),
             snapshot_tag_aliases: vec![(
-                TagKey::from("__public_revealed"),
-                TagKey::from("__sentence_helper_revealed_l0_s0_e7"),
+                ironsmith_compiler_semantic::tag::declared_key("__public_revealed"),
+                ironsmith_compiler_semantic::tag::declared_key("__sentence_helper_revealed_l0_s0_e7"),
             )],
             ..ReferenceEnv::default()
         };
-        let mut revealed = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
+        let mut revealed = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
         revealed.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Revealed));
 
         let resolved = resolve_it_tag(&revealed, &refs).expect("resolve typed revealed count");
@@ -1831,7 +1831,7 @@ mod tests {
         );
 
         let ordinary = resolve_it_tag(
-            &ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
+            &ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
             &refs,
         )
         .expect("resolve ordinary singular result");
@@ -1844,12 +1844,12 @@ mod tests {
     #[test]
     fn source_exiled_set_can_exclude_the_current_exile_result() {
         let refs = ReferenceEnv {
-            last_object_tag: RefState::Known(TagKey::from("exiled_7")),
+            last_object_tag: RefState::Known(ironsmith_compiler_semantic::tag::declared_key("exiled_7")),
             ..ReferenceEnv::default()
         };
-        let filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.key())
+        let filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind())
             .in_zone(Zone::Exile)
-            .not_tagged(crate::tag::CompilerReferenceTag::It.key());
+            .not_tagged(crate::tag::CompilerReferenceTag::It.bind());
 
         let resolved = resolve_it_tag(&filter, &refs)
             .expect("resolve the current-result exclusion without rebinding the source set");
@@ -1867,7 +1867,7 @@ mod tests {
                 && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
         }));
 
-        let ordinary = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.key())
+        let ordinary = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind())
             .in_zone(Zone::Exile);
         let ordinary = resolve_it_tag(&ordinary, &refs)
             .expect("an ordinary latest-exile collection should still rebind");
@@ -1880,7 +1880,7 @@ mod tests {
     #[test]
     fn unresolved_it_relational_constraint_survives_for_runtime_trigger_binding() {
         let filter = ObjectFilter::default().match_tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             TaggedOpbjectRelation::ManaValueLtTagged,
         );
 
@@ -1893,7 +1893,7 @@ mod tests {
     #[test]
     fn unresolved_immediate_attachment_relation_does_not_leak_into_target_filter() {
         let filter = ObjectFilter::creature().match_tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             TaggedOpbjectRelation::AttachedToTaggedObject,
         );
 
@@ -1909,10 +1909,10 @@ mod tests {
         let mut filter = ObjectFilter::creature();
         filter.blocked = true;
         filter.blocked_by = Some(ObjectRef::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
         ));
         let refs = ReferenceEnv {
-            last_object_tag: RefState::Known(crate::tag::CompilerReferenceTag::Targeted0.key()),
+            last_object_tag: RefState::Known(crate::tag::CompilerReferenceTag::Targeted0.bind()),
             ..ReferenceEnv::default()
         };
 
@@ -1928,10 +1928,10 @@ mod tests {
     fn in_combat_with_that_creature_resolves_the_nested_object_reference() {
         let mut filter = ObjectFilter::creature();
         filter.in_combat_with = Some(ObjectRef::Tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
         ));
         let refs = ReferenceEnv {
-            last_object_tag: RefState::Known(crate::tag::CompilerReferenceTag::Targeted0.key()),
+            last_object_tag: RefState::Known(crate::tag::CompilerReferenceTag::Targeted0.bind()),
             ..ReferenceEnv::default()
         };
 
@@ -1946,12 +1946,12 @@ mod tests {
     #[test]
     fn exact_combat_event_tag_does_not_require_live_combat_role() {
         let mut filter = ObjectFilter::creature().match_tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             TaggedOpbjectRelation::IsTaggedObject,
         );
         filter.blocking = true;
         let refs = ReferenceEnv {
-            last_object_tag: RefState::Known(crate::tag::CompilerReferenceTag::Blocking.key()),
+            last_object_tag: RefState::Known(crate::tag::CompilerReferenceTag::Blocking.bind()),
             ..ReferenceEnv::default()
         };
 
@@ -1966,9 +1966,9 @@ mod tests {
 
     #[test]
     fn source_exiled_reference_does_not_bind_to_unrelated_sacrifice() {
-        let filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.key());
+        let filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind());
         let refs = ReferenceEnv {
-            last_object_tag: RefState::Known(crate::tag::CompilerReferenceTag::Sacrificed0.key()),
+            last_object_tag: RefState::Known(crate::tag::CompilerReferenceTag::Sacrificed0.bind()),
             ..ReferenceEnv::default()
         };
 
@@ -1982,9 +1982,9 @@ mod tests {
 
     #[test]
     fn source_exiled_reference_can_bind_to_local_exile_collection() {
-        let filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.key());
+        let filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind());
         let refs = ReferenceEnv {
-            last_object_tag: RefState::Known(TagKey::from("exiled_0")),
+            last_object_tag: RefState::Known(ironsmith_compiler_semantic::tag::declared_key("exiled_0")),
             ..ReferenceEnv::default()
         };
 
@@ -1996,14 +1996,14 @@ mod tests {
     #[test]
     fn additional_cost_alias_prefers_snapshot_over_newer_ordinary_antecedent() {
         let filter = ObjectFilter::default().match_tagged(
-            crate::tag::CompilerReferenceTag::AdditionalCostObject.key(),
+            crate::tag::CompilerReferenceTag::AdditionalCostObject.bind(),
             TaggedOpbjectRelation::SharesSubtypeWithTagged,
         );
         let refs = ReferenceEnv {
-            last_object_tag: RefState::Known(TagKey::from("destroyed_1")),
+            last_object_tag: RefState::Known(ironsmith_compiler_semantic::tag::declared_key("destroyed_1")),
             snapshot_tag_aliases: vec![(
-                crate::tag::CompilerReferenceTag::AdditionalCostObject.key(),
-                TagKey::from("sacrifice_cost_0"),
+                crate::tag::CompilerReferenceTag::AdditionalCostObject.bind(),
+                ironsmith_compiler_semantic::tag::declared_key("sacrifice_cost_0"),
             )],
             ..ReferenceEnv::default()
         };
@@ -2018,10 +2018,10 @@ mod tests {
     #[test]
     fn additional_cost_alias_survives_nested_reference_import_round_trip() {
         let frame = ReferenceFrame {
-            last_object_tag: Some(TagKey::from("damaged_0")),
+            last_object_tag: Some(ironsmith_compiler_semantic::tag::declared_key("damaged_0")),
             snapshot_tag_aliases: vec![(
-                crate::tag::CompilerReferenceTag::AdditionalCostObject.key(),
-                TagKey::from("sacrifice_cost_0"),
+                crate::tag::CompilerReferenceTag::AdditionalCostObject.bind(),
+                ironsmith_compiler_semantic::tag::declared_key("sacrifice_cost_0"),
             )],
             ..ReferenceFrame::default()
         }
@@ -2031,7 +2031,7 @@ mod tests {
 
         assert_eq!(
             resolve_it_tag_key(
-                &crate::tag::CompilerReferenceTag::AdditionalCostObject.key(),
+                &crate::tag::CompilerReferenceTag::AdditionalCostObject.bind(),
                 &nested_refs
             )
             .expect("resolve imported cost snapshot")
@@ -2043,13 +2043,13 @@ mod tests {
     #[test]
     fn additional_cost_alias_falls_back_to_local_object_without_snapshot() {
         let refs = ReferenceEnv {
-            last_object_tag: RefState::Known(TagKey::from("exiled_0")),
+            last_object_tag: RefState::Known(ironsmith_compiler_semantic::tag::declared_key("exiled_0")),
             ..ReferenceEnv::default()
         };
 
         assert_eq!(
             resolve_it_tag_key(
-                &crate::tag::CompilerReferenceTag::AdditionalCostObject.key(),
+                &crate::tag::CompilerReferenceTag::AdditionalCostObject.bind(),
                 &refs
             )
             .expect("resolve local explicit exiled object")
@@ -2066,14 +2066,14 @@ mod tests {
         filter
             .tagged_constraints
             .push(crate::filter::TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::It.key(),
+                tag: crate::tag::CompilerReferenceTag::It.bind(),
                 relation: TaggedOpbjectRelation::IsTaggedObject,
             });
         let refs = ReferenceEnv {
-            last_object_tag: RefState::Known(crate::tag::CompilerReferenceTag::SourceExiled.key()),
+            last_object_tag: RefState::Known(crate::tag::CompilerReferenceTag::SourceExiled.bind()),
             snapshot_tag_aliases: vec![(
-                crate::tag::CompilerReferenceTag::AdditionalCostObject.key(),
-                TagKey::from("sacrifice_cost_0"),
+                crate::tag::CompilerReferenceTag::AdditionalCostObject.bind(),
+                ironsmith_compiler_semantic::tag::declared_key("sacrifice_cost_0"),
             )],
             ..ReferenceEnv::default()
         };

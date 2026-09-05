@@ -102,6 +102,36 @@
   }
 }
 
+.player-priority-hold {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.player-priority-hold:hover,
+.player-priority-hold:focus-visible {
+  background: var(--ui-surface-control);
+  color: var(--ui-text-primary);
+}
+
+.player-priority-hold[aria-pressed="true"] {
+  border-color: var(--ui-border-strong);
+  background: #383021;
+  color: #ffe3a3;
+}
+
 .interactive-card-frame-stage {
   container-type: size;
   color: #151412;
@@ -187,6 +217,8 @@
 }
 
 .interactive-card-frame {
+  position: relative;
+  isolation: isolate;
   height: 100%;
   width: 100%;
   box-sizing: border-box;
@@ -209,7 +241,15 @@
     0 28px 52px rgba(0, 0, 0, 0.7);
 }
 
+/* Keep rounding only on the card's outer frame. */
+.interactive-card-frame *,
+.interactive-card-frame *::before,
+.interactive-card-frame *::after {
+  border-radius: 0 !important;
+}
+
 .interactive-card-frame__inner {
+  position: relative;
   display: flex;
   height: 100%;
   min-height: 0;
@@ -520,6 +560,39 @@
   white-space: nowrap;
 }
 
+/* Use the same art as the window to color the frame, without sampling pixels.
+ * The existing mana palette remains the fallback for missing or failed art. */
+.interactive-card-frame__backdrop {
+  position: absolute;
+  z-index: -1;
+  inset: -12%;
+  width: 124%;
+  height: 124%;
+  max-width: none;
+  object-fit: cover;
+  filter: blur(22px) saturate(1.35) brightness(0.8);
+  pointer-events: none;
+  user-select: none;
+}
+
+.interactive-card-frame-stage[data-card-frame-art="true"] .interactive-card-frame__inner {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.24));
+}
+
+.interactive-card-frame-stage[data-card-frame-art="true"] :is(
+  .interactive-card-frame__title-row,
+  .interactive-card-frame__type-row,
+  .interactive-card-frame__art-stats
+) {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(240, 240, 236, 0.72));
+}
+
+.interactive-card-frame-stage[data-card-frame-art="true"] .interactive-card-frame__rules {
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.018) 0 1px, transparent 1px 4px),
+    linear-gradient(150deg, rgba(255, 255, 250, 0.9), rgba(240, 240, 232, 0.8));
+}
+
 .battlefield-row[data-bf-side="bottom"]::before {
   background:
     linear-gradient(90deg, rgba(212, 164, 74, 0.1) 1px, transparent 1px),
@@ -658,10 +731,6 @@
 .interactive-card-frame .interactive-card-frame__ability:disabled .inspector-oracle-line-action__label {
   border-color: rgba(43, 42, 38, 0.24);
   color: rgba(43, 42, 38, 0.52);
-}
-
-.interactive-card-frame .mtg-keyword-helper__icon {
-  display: none;
 }
 
 .decision-card-name-trigger {
@@ -2069,7 +2138,7 @@ select.stone-select.topbar-phase-perspective-select:disabled {
     height: auto !important;
     min-height: 54px !important;
     flex-shrink: 0;
-    padding: 5px 14px 5px 174px !important;
+    padding: 5px 14px !important;
   }
 
   .table-action-bar[data-expanded="true"]
@@ -2081,9 +2150,9 @@ select.stone-select.topbar-phase-perspective-select:disabled {
 
   .priority-inline-panel[data-replaces-middle-controls="true"]
     .decision-main-button--middle-replacement {
-    position: absolute !important;
-    top: 5px;
-    left: 12px;
+    position: relative !important;
+    top: auto;
+    left: auto;
     z-index: 4;
     width: 148px !important;
     height: 44px !important;
@@ -2728,8 +2797,13 @@ button:disabled,
   background: var(--ui-surface-raised) !important;
 }
 
+/* Both hover tooltips and clickable rules helpers sit above inspectors/modals.
+   Their body portals keep this layer outside local stacking contexts. */
+[data-ui-layer="tooltip"] {
+  z-index: 31000 !important;
+}
+
 [data-slot="tooltip-content"] {
-  z-index: 31000;
   max-width: min(340px, calc(100vw - 24px));
   padding: 8px 11px;
   font-size: 12px;
@@ -3018,18 +3092,464 @@ button:disabled,
   filter: drop-shadow(0 0 4px var(--target-highlight));
 }
 
+.player-identity-box {
+  border: 1px solid transparent;
+  padding: 2px 4px;
+}
+
 [data-player-target].player-target-box {
-  outline: 1px solid #fff !important;
-  outline-offset: 3px;
-  box-shadow: 0 0 8px rgba(255, 255, 255, 0.7) !important;
+  border: 1px solid var(--player-accent, #b79cff) !important;
+  outline: none !important;
+  box-shadow: 0 0 8px var(--player-accent, #b79cff) !important;
   filter: none !important;
 }
 
-[data-player-target].player-target-box:is(:hover, :focus-visible) {
-  outline-color: #ffe083 !important;
+[data-player-target].player-target-box:is(:hover, :focus-visible, [data-cast-hovered="true"]) {
+  border-color: #ffe083 !important;
   box-shadow: 0 0 9px #ffe083 !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .game-card.card-targeting-mode.target-legal { transition: none; }
+}
+
+
+@font-face {
+  font-family: "MPlantin";
+  src: url("../assets/fonts/MPlantin.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+.ironsmith-inspector-shell,
+.hover-art-stage,
+.interactive-card-frame-stage {
+  --ironsmith-ui-font: "MPlantin", Georgia, serif;
+  --font-heading: "MPlantin", Georgia, serif;
+}
+
+:is(.ironsmith-inspector-shell, .hover-art-stage, .interactive-card-frame-stage),
+:is(.ironsmith-inspector-shell, .hover-art-stage, .interactive-card-frame-stage) :not(svg):not(svg *) {
+  font-family: "MPlantin", Georgia, serif !important;
+}
+
+/* Remove stacked decorative rules around the battlefield decision area. */
+.table-shell,
+.battlefield-subpanel,
+.board-zone-bg,
+.table-action-bar,
+.table-action-bar .priority-inline-panel {
+  border: 0 !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.table-action-bar::before,
+.table-action-bar::after,
+.table-action-bar .priority-inline-panel::before,
+.table-action-bar .priority-inline-panel::after,
+.table-action-bar .action-strip-layout::before,
+.board-zone-bg::before,
+.board-zone-bg::after {
+  content: none !important;
+  display: none !important;
+}
+
+
+/* Keep Cancel with the primary action, including controls portaled to the topbar. */
+.topbar-main-decision-host .decision-primary-controls {
+  display: grid !important;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+
+.topbar-main-decision-host .decision-primary-controls .decision-cancel-button {
+  color: #d99791 !important;
+}
+
+.decision-primary-controls:empty {
+  display: none;
+}
+
+/* Decision strips use spacing instead of decorative brown rules. */
+.table-shared-control-band[data-expanded-decision="true"] .table-shared-action-slot,
+.table-shared-action-slot > .table-action-bar[data-expanded="true"],
+.table-action-bar[data-expanded="true"],
+.table-action-bar[data-expanded="true"] .priority-inline-panel,
+.table-action-bar[data-expanded="true"] .action-strip-decision-toolbar,
+.table-decision-overlay-slot .action-strip-decision-toolbar,
+.table-decision-overlay-slot .decision-cancel-button,
+.table-decision-overlay-slot .decision-cancel-button:hover:not(:disabled) {
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.table-action-bar[data-expanded="true"]::before,
+.table-action-bar[data-expanded="true"]::after,
+.table-action-bar[data-expanded="true"] .priority-inline-panel::before,
+.table-action-bar[data-expanded="true"] .priority-inline-panel::after {
+  display: none !important;
+}
+
+.game-card.field-card.action-link.hovered {
+  --card-translate-y: -8px;
+  --card-scale: 1.055;
+  --glow-rgb: 255, 224, 131;
+  z-index: 12;
+}
+
+/* Shared roll-open motion for battlefield tools and the Stack. */
+.battlefield-rolling-panel {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+  transition: grid-template-rows 280ms ease, opacity 220ms ease, visibility 280ms;
+}
+.battlefield-rolling-panel[data-open="false"] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.battlefield-rolling-panel-clip { min-height: 0; overflow: hidden; }
+@starting-style {
+  .battlefield-rolling-panel[data-open="true"] { grid-template-rows: 0fr; opacity: 0; }
+}
+.my-zone-action-rail.battlefield-rolling-panel {
+  display: grid;
+  left: 0;
+  right: 0;
+  width: 100%;
+  padding: 0 !important;
+  border: 0;
+  background: transparent;
+  max-height: 100%;
+  z-index: 60 !important;
+  box-shadow: none;
+}
+.my-zone-action-rail .table-zone-action-controls {
+  padding: 10px 14px;
+  gap: 6px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  border: 0;
+  outline: none;
+  background: linear-gradient(180deg, rgba(13, 14, 15, 0.98), rgba(7, 9, 11, 0.985));
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.32);
+}
+[data-my-zone][data-tools-expanded="true"] { z-index: auto !important; }
+.my-zone-board-shell > .my-zone-stack-rail {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: clamp(188px, 18vw, 260px);
+  padding-top: 12px;
+}
+@media (min-width: 1024px) and (min-height: 700px) {
+  .my-zone-board-shell > .my-zone-stack-rail {
+    padding-top: 6px;
+  }
+  .table-shell[data-decision-strip-removed="true"]
+    [data-my-zone][data-header-hidden="true"]
+    .my-zone-board-shell > .my-zone-stack-rail {
+    padding-top: calc(var(--my-zone-battlefield-top-inset, 0px) + 6px);
+  }
+}
+.my-zone-board-shell--with-stack { display: block; }
+.stack-flow-reveal { width: 100%; max-height: 100%; }
+@media (prefers-reduced-motion: reduce) {
+  .battlefield-rolling-panel { transition: none; }
+}
+
+
+/* Player tools use the same quiet surfaces and accent hover as decision choices. */
+.my-zone-action-rail .table-zone-action-button {
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 0 !important;
+  border-radius: var(--ui-radius-control) !important;
+  clip-path: none !important;
+  color: var(--ui-text-secondary) !important;
+  background: rgba(255, 255, 255, 0.025) !important;
+  box-shadow: none !important;
+  font-size: 13px;
+  line-height: 1.45;
+  letter-spacing: 0;
+  text-shadow: none !important;
+  filter: none !important;
+  transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+.my-zone-action-rail .table-zone-action-button:is(:hover, :focus-visible):not(:disabled) {
+  background: linear-gradient(90deg,
+    rgba(var(--player-accent-rgb, 183, 156, 255), 0.26),
+    rgba(var(--player-accent-rgb, 183, 156, 255), 0.08) 76%,
+    rgba(255, 255, 255, 0.02)) !important;
+  box-shadow: inset 3px 0 var(--player-accent, #b79cff) !important;
+  outline: none;
+}
+.my-zone-action-rail .table-zone-action-button::before,
+.my-zone-action-rail .table-zone-action-button::after {
+  display: none !important;
+}
+
+/* Combat uses the same left-to-right toolbar as other decision steps. */
+.table-action-bar .priority-inline-panel.combat-decision-panel {
+  display: block !important;
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+.priority-inline-panel.combat-decision-panel .combat-decision-toolbar {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  justify-content: flex-start !important;
+  align-items: center !important;
+  gap: 16px !important;
+  width: 100%;
+  height: 54px !important;
+  min-height: 54px !important;
+  margin: 0 !important;
+  padding: 5px 14px 5px 12px !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 0 !important;
+  box-shadow: none !important;
+  scrollbar-width: thin;
+}
+.combat-submit-button {
+  position: relative !important;
+  inset: auto !important;
+  flex: 0 0 148px !important;
+  width: 148px !important;
+  min-width: 148px !important;
+  height: 44px !important;
+  margin: 0 !important;
+  white-space: normal;
+  line-height: 1.15;
+}
+.combat-decision-meta {
+  display: flex;
+  flex: 1 0 auto;
+  align-items: baseline;
+  gap: 8px;
+  white-space: nowrap;
+}
+.combat-hold-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+/* The shared controls use spacing and text color, not decorative borders. */
+.table-shell :is(
+  .table-shared-control-band, .table-shared-control-stack,
+  .table-shared-toolbar-slot, .table-shared-player-slot,
+  .table-middle-toolbars, .table-middle-toolbar-stack,
+  .table-toolbar, .topbar-phase-shell, .topbar-side-cluster,
+  .phase-track, .phase-track-brand, .topbar-brand,
+  .battlefield-panel-header, .table-shared-player-header,
+  .battlefield-name, .battlefield-life, .player-identity-box,
+  .opponent-battlefield-mana-row, .mana-pool-chip,
+  .battlefield-count-item, .table-tools-toggle,
+  .topbar-phase-perspective-select
+) {
+  border: 0 !important;
+  box-shadow: none !important;
+}
+.table-shell :is(
+  .table-shared-control-band, .table-shared-control-stack,
+  .table-shared-toolbar-slot, .table-shared-player-slot,
+  .table-middle-toolbars, .table-middle-toolbar-stack,
+  .table-toolbar, .topbar-phase-shell, .topbar-side-cluster,
+  .phase-track, .phase-track-brand, .topbar-brand,
+  .battlefield-panel-header, .table-shared-player-header,
+  .battlefield-name, .battlefield-life,
+  .opponent-battlefield-mana-row, .mana-pool-chip
+)::before,
+.table-shell :is(
+  .table-shared-control-band, .table-shared-control-stack,
+  .table-shared-toolbar-slot, .table-shared-player-slot,
+  .table-middle-toolbars, .table-middle-toolbar-stack,
+  .table-toolbar, .topbar-phase-shell, .topbar-side-cluster,
+  .phase-track, .phase-track-brand, .topbar-brand,
+  .battlefield-panel-header, .table-shared-player-header,
+  .battlefield-name, .battlefield-life,
+  .opponent-battlefield-mana-row, .mana-pool-chip
+)::after,
+.table-shell .phase-track-indicator {
+  display: none !important;
+}
+.table-shell .topbar-shell .stone-pill {
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* One continuous table surface behind the fields and shared controls. */
+.table-shell {
+  background: #090c0e !important;
+  clip-path: none !important;
+}
+.table-shell :is(
+  .board-zone-bg, .battlefield-panel, .battlefield-subpanel,
+  .battlefield-zones-shell, .battlefield-zone-strip, .battlefield-zone-entry, .battlefield-row,
+  .battlefield-panel-header, .my-zone-header-row, .my-zone-board-shell,
+  .opponent-battlefield-mana-row,
+  .table-shared-control-band, .table-shared-control-stack,
+  .table-shared-toolbar-slot, .table-shared-player-slot, .table-shared-player-header,
+  .table-middle-toolbars, .table-middle-toolbar-stack,
+  .table-toolbar, .topbar-phase-shell, .table-action-bar, .priority-inline-panel
+) {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  clip-path: none !important;
+}
+.table-shell::before,
+.table-shell::after,
+.table-shell :is(
+  .board-zone-bg, .battlefield-panel, .battlefield-subpanel,
+  .battlefield-zones-shell, .battlefield-zone-strip, .battlefield-zone-entry, .battlefield-row,
+  .battlefield-panel-header, .my-zone-header-row, .my-zone-board-shell,
+  .opponent-battlefield-mana-row,
+  .table-shared-control-band, .table-shared-control-stack,
+  .table-shared-toolbar-slot, .table-shared-player-slot, .table-shared-player-header,
+  .table-middle-toolbars, .table-middle-toolbar-stack,
+  .table-toolbar, .topbar-phase-shell, .table-action-bar, .priority-inline-panel
+)::before,
+.table-shell :is(
+  .board-zone-bg, .battlefield-panel, .battlefield-subpanel,
+  .battlefield-zones-shell, .battlefield-zone-strip, .battlefield-zone-entry, .battlefield-row,
+  .battlefield-panel-header, .my-zone-header-row, .my-zone-board-shell,
+  .opponent-battlefield-mana-row,
+  .table-shared-control-band, .table-shared-control-stack,
+  .table-shared-toolbar-slot, .table-shared-player-slot, .table-shared-player-header,
+  .table-middle-toolbars, .table-middle-toolbar-stack,
+  .table-toolbar, .topbar-phase-shell, .table-action-bar, .priority-inline-panel
+)::after {
+  display: none !important;
+}
+/* Replacement decisions cover the controls without needing an opaque panel. */
+.table-shared-control-band[data-expanded-decision="true"] > .table-shared-control-stack {
+  visibility: hidden;
+}
+
+.table-shell .mana-pool-chip { background: transparent !important; }
+
+/* Opponent identity color fades into the shared table instead of framing it. */
+.table-shell .battlefield-panel--opponents .battlefield-subpanel {
+  background: radial-gradient(
+    ellipse at 50% 35%,
+    rgba(var(--player-accent-rgb, 216, 191, 106), 0.13) 0%,
+    rgba(var(--player-accent-rgb, 216, 191, 106), 0.055) 42%,
+    transparent 72%
+  ) !important;
+}
+
+/* Keep the local player's color visible on the same continuous surface. */
+.table-shell .battlefield-panel--self {
+  background: radial-gradient(
+    ellipse at 50% 55%,
+    rgba(var(--player-accent-rgb, 183, 156, 255), 0.13) 0%,
+    rgba(var(--player-accent-rgb, 183, 156, 255), 0.055) 42%,
+    transparent 72%
+  ) !important;
+}
+
+/* A single identity accent beside opponent names, without a header frame. */
+.table-shell .battlefield-panel--opponents .battlefield-panel-header .battlefield-name {
+  border-left: 2px solid rgba(var(--player-accent-rgb, 216, 191, 106), 0.82) !important;
+}
+
+@media (min-width: 1024px) and (min-height: 700px) {
+  .table-shell .table-middle-toolbars,
+  .table-shell .table-middle-toolbar-stack {
+    gap: 0 !important;
+  }
+  .table-shell .table-shared-control-band .topbar-shell {
+    height: 48px !important;
+    min-height: 48px !important;
+    padding-block: 4px !important;
+  }
+  .table-shell .table-shared-player-slot {
+    margin: 0 !important;
+  }
+  .table-shell .table-shared-player-header {
+    height: 32px !important;
+    min-height: 32px !important;
+    padding-block: 0 !important;
+  }
+  .table-shell .opponent-battlefield-mana-row {
+    min-height: 20px;
+    padding-block: 0;
+    margin: 0;
+  }
+  /* Fit tools inside the existing battlefield inset, leaving room for lift/glow.
+     Keeping that inset stable also prevents toggling tools from moving cards. */
+  .table-shell .my-zone-action-rail .table-zone-action-controls {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 6px;
+    height: 40px;
+    padding: 3px 12px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.25);
+  }
+  .table-shell .my-zone-action-rail .table-zone-action-button {
+    flex: 1 0 140px;
+    width: auto;
+    height: 34px;
+    min-height: 34px;
+    padding: 4px 10px;
+    white-space: nowrap;
+  }
+}
+
+/* Zone headings share the battlefield/stack top edge, below the tools overlay.
+   The shelf's own six-pixel item padding supplies the final card-row inset. */
+[data-my-zone] .my-zone-board-shell .battlefield-zone-shelf {
+  padding-top: 6px;
+}
+@media (min-width: 1024px) and (min-height: 700px) {
+  [data-my-zone] .my-zone-board-shell .battlefield-zone-shelf {
+    padding-top: 0;
+  }
+  .table-shell[data-decision-strip-removed="true"]
+    [data-my-zone][data-header-hidden="true"]
+    .my-zone-board-shell .battlefield-zone-shelf {
+    padding-top: var(--my-zone-battlefield-top-inset, 0px);
+  }
+}
+
+/* Inspector color belongs to its source object; stack previews keep their frame. */
+.floating-card-preview:not([data-stack-preview="true"]) .interactive-card-frame,
+.floating-card-preview[data-locked="true"]:not([data-stack-preview="true"]) .interactive-card-frame {
+  box-shadow: 0 26px 48px rgba(0, 0, 0, 0.64);
+}
+.card-inspector-source-glow {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0;
+  box-shadow: 0 0 0 1px rgba(var(--inspected-object-rgb), 0.7),
+    0 0 9px 2px rgba(var(--inspected-object-rgb), 0.55),
+    0 0 20px rgba(var(--inspected-object-rgb), 0.25);
+  transition: opacity 140ms ease;
+}
+.game-card:is(:hover, .hovered, .inspected) > .card-inspector-source-glow {
+  opacity: 1;
+}
+.game-card.battlefield-token-card > .card-inspector-source-glow {
+  border-radius: 50%;
 }

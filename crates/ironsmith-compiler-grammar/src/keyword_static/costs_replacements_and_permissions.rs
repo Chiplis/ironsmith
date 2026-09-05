@@ -1588,7 +1588,7 @@ pub fn parse_dynamic_cost_modifier_value(
                     .unwrap_or_default();
                 filter.zone = Some(Zone::Exile);
                 filter = filter.match_tagged(
-                    crate::tag::CompilerReferenceTag::SourceExiled.as_str(),
+                    crate::tag::CompilerReferenceTag::SourceExiled.bind(),
                     crate::filter::TaggedOpbjectRelation::IsTaggedObject,
                 );
                 Value::Count(filter)

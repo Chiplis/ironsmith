@@ -1,3 +1,5 @@
+import PriorityHoldControl from "@/components/decisions/PriorityHoldControl";
+import { useCastPlayerHovered } from "@/context/DragContext";
 import { useCallback, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import useViewportLayout from "@/hooks/useViewportLayout";
@@ -67,7 +69,7 @@ export default function TableCore({
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const tableRef = useRef(null);
   const [openDecklist, setOpenDecklist] = useState(null);
-  const [tableToolsExpanded, setTableToolsExpanded] = useState(false);
+  const [tableToolsExpanded, setTableToolsExpanded] = useState(true);
   const {
     portraitCompactViewport,
     landscapeMobileViewport,
@@ -89,8 +91,6 @@ export default function TableCore({
   const expandedActionBar = Boolean(
     decision
     && decision.kind !== "priority"
-    && decision.kind !== "attackers"
-    && decision.kind !== "blockers"
   );
   const compactPriorityBarHeight = portraitCompactViewport
     ? 188
@@ -111,6 +111,7 @@ export default function TableCore({
   const sharedMiddleControls = !mergeActionBarIntoMyZone && Boolean(middleTopbar || middleAddCardBar);
   const isActivePlayer = Number(state?.active_player) === Number(me?.id);
   const isPriorityPlayer = Number(state?.priority_player) === Number(me?.id);
+  const castPlayerHovered = useCastPlayerHovered(me?.id);
   const isPlayerLegalTarget =
     legalTargetPlayerIds.has(Number(me?.id)) || legalTargetPlayerIds.has(Number(me?.index));
   const canPickTargetFromBoard = state?.decision?.kind === "targets"
@@ -203,7 +204,9 @@ export default function TableCore({
     >
       <div className="flex min-w-0 items-center gap-2" data-my-zone-header-content>
         <span
-          className={cn("player-identity-box inline-flex min-w-0 items-center gap-2", isPlayerLegalTarget && canPickTargetFromBoard && "player-target-box")}
+          className={cn("player-identity-box inline-flex min-w-0 items-center gap-2", isPlayerLegalTarget && "player-target-box")}
+          data-cast-hovered={isPlayerLegalTarget && castPlayerHovered ? "true" : undefined}
+          style={playerAccentStyle(playerAccent)}
           data-player-target={me.id}
           onPointerDown={(event) => { if (event.target === event.currentTarget) handlePlayerTargetPointerDown(event); }}
           onClick={(event) => { if (event.target === event.currentTarget) handlePlayerTargetClick(event); }}
@@ -247,6 +250,7 @@ export default function TableCore({
             </span>
           </span>
         </span>
+        <PriorityHoldControl />
         {zoneActionControls ? (
           <button
             type="button"
@@ -417,7 +421,8 @@ export default function TableCore({
         headerInspectorDock={!mergeActionBarIntoMyZone && !sharedMiddleElement ? middleInspectorDock : null}
         headerActionBar={!mergeActionBarIntoMyZone && !sharedMiddleElement ? actionBarElement : null}
         embeddedActionBar={mergeActionBarIntoMyZone ? actionBarElement : null}
-        zoneActionControls={!mergeActionBarIntoMyZone ? activeZoneActionControls : null}
+        zoneActionControls={!mergeActionBarIntoMyZone ? zoneActionControls : null}
+        zoneActionControlsOpen={tableToolsExpanded}
         zoneActionRailOffset={!mergeActionBarIntoMyZone && !sharedMiddleElement && activeZoneActionControls ? actionBarHeight : 0}
         dockStackRail={dockStackRailInBoard}
         hideHeader={Boolean(sharedMiddleElement)}

@@ -965,7 +965,7 @@ mod tests {
     fn source_linked_battlefield_move() -> Effect {
         let mut filter = ObjectFilter::creature().in_zone(Zone::Exile);
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
+            tag: crate::tag::CompilerReferenceTag::SourceExiled.bind(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
         Effect::new(crate::effects::MoveToZoneEffect::new(
@@ -1033,7 +1033,7 @@ mod tests {
 
     #[test]
     fn conditional_entry_counter_fuses_through_may_and_tagged_iteration() {
-        let tag = TagKey::from("chosen_card");
+        let tag = ironsmith_compiler_semantic::tag::declared_key("chosen_card");
         let move_effect = Effect::new(crate::effects::MoveToZoneEffect::new(
             ChooseSpec::Iterated,
             Zone::Battlefield,

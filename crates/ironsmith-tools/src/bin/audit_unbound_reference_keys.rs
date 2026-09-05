@@ -27,11 +27,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut top_keys = 40usize;
     let mut card: Option<String> = None;
     let mut dump = false;
+    let mut runtime = false;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--card" => card = Some(args.next().expect("--card takes a value")),
             "--dump" => dump = true,
+            "--runtime" => runtime = true,
             "--db-path" => db_path = args.next().expect("--db-path takes a value"),
             "--cards" => top_cards = args.next().expect("--cards takes a value").parse()?,
             "--keys" => top_keys = args.next().expect("--keys takes a value").parse()?,
@@ -48,14 +50,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .iter()
             .find(|payload| payload.name == name)
             .ok_or_else(|| format!("no card named {name}"))?;
-        explain_card(payload, dump);
+        if runtime {
+            explain_runtime_card(payload);
+        } else {
+            explain_card(payload, dump);
+        }
         return Ok(());
     }
     let by_key: Mutex<BTreeMap<String, usize>> = Mutex::new(BTreeMap::new());
     let by_card: Mutex<Vec<(String, usize)>> = Mutex::new(Vec::new());
     let totals: Mutex<(usize, usize, usize, usize)> = Mutex::new((0, 0, 0, 0));
     payloads.par_iter().for_each(|payload| {
-        let Some(keyed) = keyed_references(payload) else {
+        let keyed = if runtime {
+            runtime_keyed_references(payload)
+        } else {
+            keyed_references(payload)
+        };
+        let Some(keyed) = keyed else {
             totals.lock().unwrap().3 += 1;
             return;
         };
@@ -156,5 +167,55 @@ fn explain_card(payload: &CardPayload, dump: bool) {
             keyed.use_scope,
             keyed.symbol
         );
+    }
+}
+
+/// Every reference key the lowered runtime definition carries as
+/// `(key, bound)`, bound meaning the lowered document's symbol table has a
+/// binding for the key; `None` when the card does not compile.
+fn runtime_keyed_references(payload: &CardPayload) -> Option<Vec<(String, bool)>> {
+    let parse_name = payload.parse_name.as_deref().unwrap_or(&payload.name);
+    let builder = CardDefinitionBuilder::new(CardId::from_raw(1), parse_name);
+    let text = payload.parse_input.clone();
+    let result = panic::catch_unwind(AssertUnwindSafe(|| {
+        let mut context =
+            ironsmith_compiler::parse_context_for_builder(&builder.card_builder, &text, false);
+        ironsmith_compiler::compiler_pipeline::parse_text_with_annotations_lowered_with_facts_context(
+            &mut context,
+            builder,
+            text,
+        )
+    }));
+    let lowered = result.ok()?.ok()?;
+    let bound_keys: std::collections::HashSet<String> = lowered
+        .symbols
+        .bindings()
+        .iter()
+        .filter_map(|binding| binding.key.as_ref().map(|key| key.as_str().to_string()))
+        .collect();
+    let mut seen = std::collections::HashSet::new();
+    Some(
+        ironsmith_tools::serde_tag_keys::tag_keys_of_serializable(&lowered.definition)
+            .into_iter()
+            .filter(|key| seen.insert(key.clone()))
+            .map(|key| {
+                let bound = bound_keys.contains(key.as_str());
+                (key, bound)
+            })
+            .collect(),
+    )
+}
+
+/// Prints one card's runtime keys with their binding state.
+fn explain_runtime_card(payload: &CardPayload) {
+    println!("{}", payload.parse_input);
+    match runtime_keyed_references(payload) {
+        None => println!("card does not compile"),
+        Some(keyed) => {
+            println!("--- runtime keys");
+            for (key, bound) in keyed {
+                println!("{key} bound={bound}");
+            }
+        }
     }
 }

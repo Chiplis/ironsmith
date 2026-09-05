@@ -404,7 +404,7 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if permission_shapes::prefix_words(words, &["their", "total", "power"]) {
         return Some((
             Value::TotalPower(crate::target::ObjectFilter::tagged(
-                crate::tag::CompilerReferenceTag::AttackingGroup.as_str(),
+                crate::tag::CompilerReferenceTag::AttackingGroup.bind(),
             )),
             3,
         ));

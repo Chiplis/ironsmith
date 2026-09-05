@@ -22,7 +22,7 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
         | TriggerSpec::EntersBattlefieldFromZone { .. }
         | TriggerSpec::EntersBattlefieldTapped { .. }
         | TriggerSpec::EntersBattlefieldUntapped { .. } => Some(PlayerFilter::AliasedControllerOf(
-            ObjectRef::tagged(crate::tag::CompilerReferenceTag::Triggering.key()),
+            ObjectRef::tagged(crate::tag::CompilerReferenceTag::Triggering.bind()),
         )),
         TriggerSpec::SpellCast { caster, .. } => {
             if *caster == PlayerFilter::Any {
@@ -31,7 +31,7 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
                 Some(PlayerFilter::You)
             } else {
                 Some(PlayerFilter::AliasedControllerOf(ObjectRef::tagged(
-                    crate::tag::CompilerReferenceTag::Triggering.key(),
+                    crate::tag::CompilerReferenceTag::Triggering.bind(),
                 )))
             }
         }
@@ -123,7 +123,7 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
             // attacking creature, so retain its aliased controller instead of
             // binding the defending planeswalker's controller.
             Some(PlayerFilter::AliasedControllerOf(ObjectRef::tagged(
-                crate::tag::CompilerReferenceTag::Triggering.key(),
+                crate::tag::CompilerReferenceTag::Triggering.bind(),
             )))
         }
         TriggerSpec::BeginningOfUpkeep(player)

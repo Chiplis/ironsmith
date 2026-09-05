@@ -940,7 +940,7 @@ fn normalize_cross_segment_correlated_created_result_fights(
             idx += 1;
             continue;
         };
-        let it_tag = crate::tag::CompilerReferenceTag::It.key();
+        let it_tag = crate::tag::CompilerReferenceTag::It.bind();
         if !matches!(fight.creature1.base(), ChooseSpec::Iterated)
             || source_reference.zone != Some(crate::zone::Zone::Battlefield)
             || !matches!(
@@ -1379,7 +1379,7 @@ fn normalize_controller_grouped_exile_search(compiled: Vec<Effect>) -> Vec<Effec
         )
         || search.chooser
             != PlayerFilter::ControllerOf(ObjectRef::tagged(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
             ))
     {
         return compiled;
@@ -1645,7 +1645,7 @@ fn bind_shared_counter_target_to_it(effects: &mut [EffectAst], shared_target: &T
             if let Some(target) = counter_target
                 && target == shared_target
             {
-                *target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None);
+                *target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None);
             }
         }
         for_each_nested_effects_mut(effect, true, |nested| {
@@ -3025,7 +3025,7 @@ mod plural_result_reference_tests {
     fn plural_followup(tag: &str) -> Effect {
         Effect::new(
             crate::effects::ApplyContinuousEffect::with_spec(
-                ChooseSpec::Tagged(TagKey::from(tag)),
+                ChooseSpec::Tagged(ironsmith_compiler_semantic::tag::declared_key(tag)),
                 crate::continuous::Modification::AddCardTypes(vec![
                     crate::types::CardType::Creature,
                 ]),
@@ -3116,7 +3116,7 @@ mod counter_rewrite_mode_tests {
     fn counter_then_replacement(
         mode: crate::effects::ReplacementApplyMode,
     ) -> Vec<crate::resolution::ResolutionSegment> {
-        let tag = TagKey::from("countered");
+        let tag = ironsmith_compiler_semantic::tag::declared_key("countered");
         let mut spell = ObjectFilter::default().in_zone(crate::zone::Zone::Stack);
         spell.stack_kind = Some(crate::filter::StackObjectKind::Spell);
         let target = ChooseSpec::target(ChooseSpec::Object(spell));

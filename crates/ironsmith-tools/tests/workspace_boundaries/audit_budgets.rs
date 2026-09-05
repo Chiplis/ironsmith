@@ -49,7 +49,7 @@ const RANKED_REGISTRY_BUDGET: usize = 14;
 /// reading, over every 50th card.
 /// Grammar sites that mint or compare string reference keys instead of
 /// binding a scoped symbol (item 6). Enforced by `audit_reference_keys`.
-const REFERENCE_KEY_BUDGET: usize = 270;
+const REFERENCE_KEY_BUDGET: usize = 232;
 
 const REGISTRY_OVERLAP_BUDGET: usize = 15;
 

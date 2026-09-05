@@ -115,3 +115,54 @@ export function partitionBattlefieldCards(cards = []) {
     backCount: backCards.length,
   };
 }
+
+/** Keep surviving objects in their cells; only arrivals consume vacant cells. */
+export function retainBattlefieldSlots(cards, previousLayout, { columns = 6, singleRow = false } = {}) {
+  const maxCols = Math.max(1, Math.floor(columns));
+  const gridPositionById = new Map();
+  const occupied = new Set();
+  const centerColumns = Array.from({ length: maxCols }, (_, index) => index + 1)
+    .sort((a, b) => Math.abs(a - (maxCols + 1) / 2) - Math.abs(b - (maxCols + 1) / 2) || a - b);
+  const key = (position) => `${position.row}:${position.column}`;
+  const groupFor = (card) => singleRow ? "main"
+    : PAPER_FRONT_LANES.includes(normalizeBattlefieldLane(card.lane)) ? "front" : "back";
+  const previousByIdentity = new Map();
+  const identities = (card) => (card.member_stable_ids?.length
+    ? card.member_stable_ids : [card.stable_id ?? card.id]).map(String);
+  for (const card of previousLayout?.orderedCards || []) {
+    const position = previousLayout.gridPositionById.get(String(card.id));
+    if (position) for (const id of identities(card)) previousByIdentity.set(id, position);
+  }
+  for (const card of cards) {
+    const position = identities(card).map((id) => previousByIdentity.get(id)).find(Boolean);
+    if (!position || occupied.has(key(position))) continue;
+    gridPositionById.set(String(card.id), { ...position });
+    occupied.add(key(position));
+  }
+  for (const card of cards) {
+    if (gridPositionById.has(String(card.id))) continue;
+    const groupId = groupFor(card);
+    let row = groupId === "back" ? 2 : 1;
+    let column = centerColumns.find((candidate) => !occupied.has(`${row}:${candidate}`));
+    while (column == null) {
+      if (singleRow) {
+        column = maxCols + 1;
+        while (occupied.has(`${row}:${column}`)) column += 1;
+      } else {
+        row += 2;
+        column = centerColumns.find((candidate) => !occupied.has(`${row}:${candidate}`));
+      }
+    }
+    const position = { row, column, groupId };
+    gridPositionById.set(String(card.id), position);
+    occupied.add(key(position));
+  }
+  const positions = [...gridPositionById.values()];
+  return {
+    orderedCards: cards,
+    gridPositionById,
+    rowCount: Math.max(singleRow ? 1 : 2, previousLayout?.rowCount || 0, ...positions.map((p) => p.row)),
+    maxCols: Math.max(maxCols, previousLayout?.maxCols || 0, ...positions.map((p) => p.column)),
+    signature: positions.map((p) => key(p)).join("|"),
+  };
+}

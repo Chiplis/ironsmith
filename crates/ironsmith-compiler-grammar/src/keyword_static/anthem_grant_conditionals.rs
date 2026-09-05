@@ -1834,7 +1834,7 @@ pub fn parse_attached_anthem_reach_shadow_permission_line(
     let filter = ObjectFilter::creature()
         .in_zone(Zone::Battlefield)
         .match_tagged(
-            "enchanted",
+            crate::tag::CompilerReferenceTag::Enchanted.bind(),
             crate::filter::TaggedOpbjectRelation::IsTaggedObject,
         );
     Some(vec![

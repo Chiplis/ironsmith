@@ -224,7 +224,7 @@ fn normalize_line_chunk(
                     .iter()
                     .any(|effect| effect_references_tag(effect, &alias))
                 {
-                    let alias = TagKey::new(alias);
+                    let alias = ironsmith_compiler_semantic::tag::declared_key(alias);
                     // A later effect in this statement may advance the ordinary
                     // last-object reference before the cost-linked reference is
                     // lowered. Snapshot the explicit additional-cost alias now.
@@ -255,7 +255,7 @@ fn normalize_line_chunk(
                     alias != &crate::tag::CompilerReferenceTag::AdditionalCostObject.key()
                 });
                 imports.snapshot_tag_aliases.push((
-                    crate::tag::CompilerReferenceTag::AdditionalCostObject.key(),
+                    crate::tag::CompilerReferenceTag::AdditionalCostObject.bind(),
                     cost_tag.clone(),
                 ));
             }
@@ -459,6 +459,20 @@ pub fn normalize_parsed_card_ast_for_lowering(
             "canonical reference resolution failed before lowering: {diagnostic:?}"
         )));
     }
+    // Normalization rewrites references (cost aliases, pronoun antecedents):
+    // the keys it mints bind in the document's scope.
+    let symbols = std::cell::RefCell::new(symbols);
+    let document_scope = {
+        let table = symbols.borrow();
+        table
+            .scopes()
+            .iter()
+            .find(|scope| scope.kind == crate::model::symbols::SymbolScopeKind::Document)
+            .map(|scope| scope.id)
+            .unwrap_or(table.root_scope())
+    };
+    let document_references =
+        ironsmith_compiler_ast::reference_ledger::ReferenceScopeGuard::enter(&symbols, document_scope);
     let overload_branch = if let Some(branch) = overload_branch {
         let mut state = RewriteNormalizationState::default();
         let mut items = Vec::new();
@@ -485,11 +499,12 @@ pub fn normalize_parsed_card_ast_for_lowering(
         normalized_items.push(normalized_item_from_parsed_item(item, &mut state)?);
     }
 
+    drop(document_references);
     Ok(NormalizedCardAst {
         builder: seed.with_face(card),
         annotations,
         provenance,
-        symbols,
+        symbols: symbols.into_inner(),
         items: normalized_items,
         overload_branch,
         cleave_branch,

@@ -133,7 +133,7 @@ pub(super) fn normalize_selected_sacrifice_tags(mut effects: Vec<EffectAst>) -> 
         _ => return effects,
     };
 
-    let sacrificed_tag = crate::tag::CompilerReferenceTag::Sacrificed0.key();
+    let sacrificed_tag = crate::tag::CompilerReferenceTag::Sacrificed0.bind();
     let mut replaced = false;
     for effect in rest {
         match effect {
@@ -749,7 +749,7 @@ fn bind_graveyard_cast_trigger_to_triggering_permanent_entry(ability: &mut Abili
         return;
     }
 
-    let triggering_tag = crate::tag::CompilerReferenceTag::TriggeringPermanentSpell.key();
+    let triggering_tag = crate::tag::CompilerReferenceTag::TriggeringPermanentSpell.bind();
     let register = crate::effects::RegisterNextBatchEnterWithCountersEffect::new(
         ObjectFilter::planeswalker(),
         crate::object::CounterType::Loyalty,
@@ -1106,7 +1106,7 @@ mod chosen_type_search_destination_tests {
         ))
         .tag("searched");
         let move_card = crate::effect::Effect::move_to_zone(
-            ChooseSpec::Tagged(TagKey::from(move_tag)),
+            ChooseSpec::Tagged(ironsmith_compiler_semantic::tag::declared_key(move_tag)),
             Zone::Battlefield,
             false,
         )

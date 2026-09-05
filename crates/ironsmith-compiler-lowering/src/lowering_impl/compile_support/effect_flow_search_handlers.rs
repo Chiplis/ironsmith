@@ -1099,7 +1099,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             } else if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                 ctx.last_object_tag
                     .clone()
-                    .unwrap_or_else(|| crate::tag::CompilerReferenceTag::It.key())
+                    .unwrap_or_else(|| crate::tag::CompilerReferenceTag::It.bind())
             } else {
                 tag.clone()
             };

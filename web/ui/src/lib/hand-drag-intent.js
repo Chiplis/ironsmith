@@ -105,6 +105,7 @@ export function dropTargetCandidateFromElement(element) {
   // Self-targeting requires the explicit player box, never our battlefield.
   if (player?.getAttribute?.("data-player-target") == null
       && player?.hasAttribute?.("data-my-zone")) return null;
+  if (!player) return null;
   const playerId = finiteNumber(
     player?.getAttribute?.("data-player-target")
       ?? player?.getAttribute?.("data-player-drop-target")
@@ -167,4 +168,18 @@ export function targetDropCompletesDecision(decision, target) {
       ? Number(candidate.player) === Number(target.player)
       : Number(candidate.object) === Number(target.object))
   ));
+}
+
+
+/** Target arrows start at the card that was grabbed, not an older fan layout. */
+export function castIntentSourcePoint(drag) {
+  return handCardSourcePoint(drag.sourceRect) || drag.hiddenSourcePoint || rectBoundaryPointToward(
+    drag.sourceContainerRect, drag.startX, drag.startY, drag.currentX, drag.currentY,
+  );
+}
+
+
+/** Pointer capture keeps :hover on the dragged hand card; hit-test the board instead. */
+export function castHoverTargetAtPoint(x, y, root = globalThis.document) {
+  return dropTargetCandidateFromElements(root?.elementsFromPoint?.(x, y) || []);
 }

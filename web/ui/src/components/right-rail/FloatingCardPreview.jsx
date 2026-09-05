@@ -10,6 +10,7 @@ import HoverArtOverlay from "./HoverArtOverlay";
 import { playerAccentVars } from "@/lib/player-colors";
 import { samePlayerId } from "@/lib/player-display";
 import { getVisibleStackObjects } from "@/lib/stack-targets";
+import { canHoverInspectorObject, objectExistsInState } from "@/lib/inspector-selection";
 
 const PREVIEW_OPEN_DELAY_MS = 500;
 const PREVIEW_CLOSE_DELAY_MS = 240;
@@ -230,24 +231,25 @@ export default function FloatingCardPreview({
     && !dragState
     && !(typeof document !== "undefined" && document.querySelector(".priority-inline-panel:hover"))
     && hoveredObjectId != null
+    && canHoverInspectorObject(state, hoveredObjectId)
     && !excludedIds.has(String(hoveredObjectId))
   ) ? String(hoveredObjectId) : null;
   // Anchored previews are explicit card-name clicks, so they may inspect a
   // spell on the stack or a card in another zone even though passive hand
   // hovers remain excluded from this surface.
-  const anchoredObjectId = !disabled && !dragState && anchoredCardPreview?.objectId != null
+  const anchoredObjectId = !disabled && !dragState && objectExistsInState(state, anchoredCardPreview?.objectId)
     ? String(anchoredCardPreview.objectId)
     : null;
   // Explicit selections bypass passive-hover exclusions. Hand cards stay
   // excluded from hover previews, but clicking one opens this composed,
   // interactive inspector instead of enlarging the card art in place.
-  const pinnedPreviewObjectId = !disabled && !dragState && pinnedObjectId != null
+  const pinnedPreviewObjectId = !disabled && !dragState && objectExistsInState(state, pinnedObjectId)
     ? String(pinnedObjectId)
     : null;
   const lockedObjectId = anchoredObjectId || pinnedPreviewObjectId;
   const requestedObjectId = lockedObjectId
     || directlyRequestedObjectId
-    || (previewHovered && renderedObjectId != null ? renderedObjectId : null);
+    || (previewHovered && canHoverInspectorObject(state, renderedObjectId) ? renderedObjectId : null);
   const interactiveActions = useMemo(() => {
     if (renderedObjectId == null) return [];
     const decision = state?.decision;
@@ -348,6 +350,9 @@ export default function FloatingCardPreview({
     onRequestClose?.();
   };
 
+  const stackPreview = renderedObjectId != null && getVisibleStackObjects(state).some((entry) =>
+    [entry.id, entry.inspect_object_id].some((id) => id != null && String(id) === String(renderedObjectId))
+  );
   const visible = requestedObjectId != null && renderedObjectId === requestedObjectId;
   const positionStyle = useMemo(
     () => (
@@ -369,6 +374,7 @@ export default function FloatingCardPreview({
       ref={shellRef}
       className="floating-card-preview"
       data-card-hover-preview="true"
+      data-stack-preview={stackPreview ? "true" : "false"}
       data-preview-object-id={renderedObjectId || undefined}
       data-visible={visible ? "true" : "false"}
       data-locked={lockedObjectId != null ? "true" : "false"}

@@ -9,17 +9,18 @@ export default function useLayoutReflow(rootRef, signature, options = {}) {
     bounce = 0.14,
     delay,
     enterFrom,
+    swapAt,
     leaveTo,
   } = options;
   const layoutRef = useRef(null);
   const motionRef = useRef(null);
   const hasRecordedRef = useRef(false);
   const settleFrameRef = useRef(0);
-  const paramsRef = useRef({ delay, enterFrom, leaveTo });
+  const paramsRef = useRef({ delay, enterFrom, swapAt, leaveTo });
 
   useLayoutEffect(() => {
-    paramsRef.current = { delay, enterFrom, leaveTo };
-  }, [delay, enterFrom, leaveTo]);
+    paramsRef.current = { delay, enterFrom, swapAt, leaveTo };
+  }, [delay, enterFrom, swapAt, leaveTo]);
 
   useLayoutEffect(() => {
     const root = rootRef.current;
@@ -52,6 +53,7 @@ export default function useLayoutReflow(rootRef, signature, options = {}) {
       duration,
       ease: uiSpring({ duration, bounce }),
       enterFrom: params.enterFrom,
+      swapAt: params.swapAt,
       leaveTo: params.leaveTo,
     });
 

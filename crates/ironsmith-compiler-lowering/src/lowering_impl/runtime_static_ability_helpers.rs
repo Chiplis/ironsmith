@@ -366,7 +366,7 @@ pub fn decayed_object_abilities() -> Vec<Ability> {
 }
 
 pub fn exalted_triggered_ability() -> Ability {
-    let attacker_tag = crate::tag::CompilerReferenceTag::ExaltedAttacker.key();
+    let attacker_tag = crate::tag::CompilerReferenceTag::ExaltedAttacker.bind();
     Ability::triggered(
         Trigger::attacks_alone(ObjectFilter::creature().you_control()),
         vec![
@@ -452,7 +452,7 @@ fn graveyard_return_counter_ability(
 ) -> Ability {
     let filter = crate::target::ObjectFilter::default()
         .in_zone(crate::zone::Zone::Graveyard)
-        .same_stable_id_as_tagged(trigger_tag);
+        .same_stable_id_as_tagged(ironsmith_compiler_semantic::tag::declared_key(trigger_tag));
 
     Ability {
         kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
@@ -464,7 +464,7 @@ fn graveyard_return_counter_ability(
                 )),
                 Effect::new(
                     crate::effects::MoveToZoneEffect::new(
-                        crate::target::ChooseSpec::Tagged(return_tag.into()),
+                        crate::target::ChooseSpec::Tagged(ironsmith_compiler_semantic::tag::declared_key(return_tag)),
                         crate::zone::Zone::Battlefield,
                         true,
                     )

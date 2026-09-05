@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
 import {
   DEATH_COLLAPSE_EFFECT_MS,
   MARQUEE_STREAM_EFFECT_MS,
@@ -1099,9 +1098,7 @@ function ShaderCanvas({ effects }) {
 }
 
 function ParticleExileCard({ effect }) {
-  const name = String(effect.card?.name || "");
-  const resolvedArtUrl = useScryfallImageUrl(name, "art_crop");
-  const artUrl = effect.sourceImageUrl || resolvedArtUrl || null;
+  const artUrl = effect.sourceImageUrl || null;
   const rect = effect.rect;
   const targetRect = effect.targetRect || rect;
   const sourceCenterX = rect.left + rect.width / 2;
@@ -1169,9 +1166,7 @@ const DEATH_ASH_COUNT = 10;
 
 function DeathCollapseCard({ effect }) {
   const rect = effect.rect;
-  const name = String(effect.card?.name || "");
-  const resolvedArtUrl = useScryfallImageUrl(name, "art_crop");
-  const artUrl = effect.sourceImageUrl || resolvedArtUrl || null;
+  const artUrl = effect.sourceImageUrl || null;
   const sacrificed = effect.collapseVariant === "sacrificed";
 
   // The layout hold keeps the dead card's slot occupied so neighbors don't
@@ -1286,9 +1281,7 @@ const SHATTER_SHARD_POLYGONS = [
 
 function CounterShatterCard({ effect }) {
   const rect = effect.rect;
-  const name = String(effect.card?.name || "");
-  const resolvedArtUrl = useScryfallImageUrl(name, "art_crop");
-  const artUrl = effect.sourceImageUrl || resolvedArtUrl || null;
+  const artUrl = effect.sourceImageUrl || null;
 
   const shards = useMemo(() => (
     SHATTER_SHARD_POLYGONS.slice(0, SHATTER_SHARD_COUNT).map((polygon, index) => {

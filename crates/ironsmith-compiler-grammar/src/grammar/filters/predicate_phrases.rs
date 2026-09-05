@@ -4076,7 +4076,7 @@ fn parse_demonstrative_shares_predicate(tokens: &[OwnedLexToken]) -> Option<Pred
         Some(PlayerFilter::Any) => PlayerAst::Any,
         _ => return None,
     };
-    filter = filter.shares_color_with_tagged(crate::tag::CompilerReferenceTag::It.as_str());
+    filter = filter.shares_color_with_tagged(crate::tag::CompilerReferenceTag::It.bind());
     Some(PredicateAst::PlayerControls { player, filter })
 }
 

@@ -973,7 +973,7 @@ pub fn parse_target_player_graveyard_filter(tokens: &[OwnedLexToken]) -> Option<
             crate::filter::ObjectRef::tagged(crate::tag::CompilerReferenceTag::Triggering.bind()),
         )),
         PlayerAst::ItsOwner => Some(PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(
-            "triggering",
+            crate::tag::CompilerReferenceTag::Triggering.bind(),
         ))),
         _ => None,
     };

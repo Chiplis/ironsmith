@@ -276,7 +276,6 @@ function KeywordHelperText({ text, rule }) {
         onKeyDown={(event) => event.stopPropagation()}
       >
         <span className="mtg-keyword-helper__text">{text}</span>
-        <span className="mtg-keyword-helper__icon" aria-hidden="true">?</span>
       </span>
     </ComicTooltip>
   );

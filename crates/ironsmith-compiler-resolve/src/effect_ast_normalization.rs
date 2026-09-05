@@ -570,7 +570,7 @@ fn filter_is_misbound_chosen_subtype_result(
         return false;
     }
     let mut expected = crate::filter::ObjectFilter::creature().match_tagged(
-        crate::tag::CompilerReferenceTag::It.key(),
+        crate::tag::CompilerReferenceTag::It.bind(),
         crate::filter::TaggedOpbjectRelation::IsTaggedObject,
     );
     // The ordinary object-filter route may leave the implicit permanent zone
@@ -693,7 +693,7 @@ fn retag_quantified_choice_collection(effect: &mut EffectAst) -> bool {
         let EffectAst::ChooseObjects { tag, .. } = effect else {
             return false;
         };
-        *tag = crate::tag::CompilerReferenceTag::ChosenObjects.key();
+        *tag = crate::tag::CompilerReferenceTag::ChosenObjects.bind();
     }
     true
 }
@@ -851,7 +851,7 @@ fn target_only_collection_tag_mut(effect: &mut EffectAst) -> Option<&mut crate::
         );
         *effect = EffectAst::TagAffected {
             effect: Box::new(target_only),
-            tag: crate::tag::CompilerReferenceTag::It.key(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
         };
     }
     match effect {
@@ -904,7 +904,7 @@ fn bind_explicit_chosen_object_followups(effects: &mut [EffectAst]) {
         if choice_collection_producer_has_accumulating_tags(&effects[consumer_index - 1]) {
             retag_choice_collection_producer(
                 &mut effects[consumer_index - 1],
-                &crate::tag::CompilerReferenceTag::ChosenObjects.key(),
+                &crate::tag::CompilerReferenceTag::ChosenObjects.bind(),
             );
             continue;
         }
@@ -918,7 +918,7 @@ fn bind_explicit_chosen_object_followups(effects: &mut [EffectAst]) {
             .rev()
             .find_map(target_only_collection_tag_mut)
         {
-            *tag = crate::tag::CompilerReferenceTag::ChosenObjects.key();
+            *tag = crate::tag::CompilerReferenceTag::ChosenObjects.bind();
         }
     }
 }
@@ -1118,7 +1118,7 @@ fn bind_quantified_choice_collections_to_destroy_followups(effects: &mut [Effect
             }
         }
 
-        let durable_tag = crate::tag::CompilerReferenceTag::ChosenObjects.key();
+        let durable_tag = crate::tag::CompilerReferenceTag::ChosenObjects.bind();
         for producer in &mut effects[producer_start..consumer_index] {
             retag_choice_collection_producer(producer, &durable_tag);
         }
@@ -1345,7 +1345,7 @@ fn correlate_split_for_each_player_choice_complements(effects: &mut [EffectAst])
 
         let durable_tag = if original_tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         {
-            crate::tag::CompilerReferenceTag::ChosenForEachPlayer.key()
+            crate::tag::CompilerReferenceTag::ChosenForEachPlayer.bind()
         } else {
             original_tag.clone()
         };
@@ -1824,7 +1824,7 @@ mod tests {
             )],
         };
         let misbound = ObjectFilter::creature().match_tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             TaggedOpbjectRelation::IsTaggedObject,
         );
 
@@ -1844,11 +1844,11 @@ mod tests {
                 count: ChoiceCount::exactly(1),
                 count_value: None,
                 player: PlayerAst::That,
-                tag: crate::tag::CompilerReferenceTag::It.key(),
+                tag: crate::tag::CompilerReferenceTag::It.bind(),
             }],
         };
         let chosen = ObjectFilter::creature().match_tagged(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             TaggedOpbjectRelation::IsTaggedObject,
         );
 
@@ -1866,10 +1866,10 @@ mod tests {
             count: ChoiceCount::exactly(2),
             count_value: None,
             player: PlayerAst::You,
-            tag: crate::tag::CompilerReferenceTag::It.key(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
         };
         let chosen_filter = ObjectFilter::creature().match_tagged(
-            crate::tag::CompilerReferenceTag::ChosenObjects.key(),
+            crate::tag::CompilerReferenceTag::ChosenObjects.bind(),
             TaggedOpbjectRelation::IsTaggedObject,
         );
         let difference = Value::absolute_difference(
@@ -1900,13 +1900,13 @@ mod tests {
             count: ChoiceCount::exactly(1),
             count_value: None,
             player: PlayerAst::You,
-            tag: crate::tag::CompilerReferenceTag::It.key(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
         };
         let mut chosen_permanents = ObjectFilter::permanent();
         chosen_permanents
             .tagged_constraints
             .push(TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::ChosenObjects.key(),
+                tag: crate::tag::CompilerReferenceTag::ChosenObjects.bind(),
                 relation: TaggedOpbjectRelation::IsTaggedObject,
             });
         let effects = vec![
@@ -1950,11 +1950,11 @@ mod tests {
             count: ChoiceCount::exactly(1),
             count_value: None,
             player: PlayerAst::You,
-            tag: crate::tag::CompilerReferenceTag::It.key(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
         };
         let mut complement = ObjectFilter::creature();
         complement.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.key(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
             relation: TaggedOpbjectRelation::IsNotTaggedObject,
         });
         let normalized = normalize_effects_ast(&[
@@ -1989,7 +1989,7 @@ mod tests {
             count: ChoiceCount::exactly(1),
             count_value: None,
             player: PlayerAst::You,
-            tag: crate::tag::CompilerReferenceTag::It.key(),
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
         };
         let mut complement = ObjectFilter::permanent();
         complement.other = true;
@@ -2044,7 +2044,7 @@ mod tests {
                     count: ChoiceCount::exactly(1),
                     count_value: None,
                     player: PlayerAst::You,
-                    tag: crate::tag::CompilerReferenceTag::It.key(),
+                    tag: crate::tag::CompilerReferenceTag::It.bind(),
                 }],
             },
             EffectAst::subject_verb_destroy_all(unrelated_complement),
@@ -2064,7 +2064,7 @@ mod tests {
 
     #[test]
     fn normalize_preserves_custom_choice_collection_tags() {
-        let custom_tag = TagKey::from("custom_choice_collection");
+        let custom_tag = ironsmith_compiler_semantic::tag::declared_key("custom_choice_collection");
         let mut complement = ObjectFilter::creature();
         complement.other = true;
         let normalized = normalize_effects_ast(&[
@@ -2142,7 +2142,7 @@ mod tests {
             EffectAst::subject_verb_look_at_top_cards(
                 PlayerAst::You,
                 where_x,
-                TagKey::from("looked"),
+                ironsmith_compiler_semantic::tag::declared_key("looked"),
             ),
             EffectAst::Conditional {
                 predicate: PredicateAst::ValueComparison {
@@ -2361,7 +2361,7 @@ mod tests {
 
     #[test]
     fn normalize_binds_player_choice_remainder_to_the_same_graveyard_domain() {
-        let tag = crate::tag::CompilerReferenceTag::It.key();
+        let tag = crate::tag::CompilerReferenceTag::It.bind();
         let choice_filter = ObjectFilter::default()
             .in_zone(Zone::Graveyard)
             .owned_by(crate::target::PlayerFilter::IteratedPlayer);
@@ -2373,7 +2373,7 @@ mod tests {
             tag: tag.clone(),
         };
         let exile_rest = EffectAst::subject_verb_exile(
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::Rest.key(), None),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::Rest.bind(), None),
             false,
         );
 
@@ -2400,8 +2400,8 @@ mod tests {
 
     #[test]
     fn normalize_binds_consult_remainder_to_revealed_minus_matched_collection() {
-        let revealed = TagKey::from("consult_revealed");
-        let matched = TagKey::from("consult_matched");
+        let revealed = ironsmith_compiler_semantic::tag::declared_key("consult_revealed");
+        let matched = ironsmith_compiler_semantic::tag::declared_key("consult_matched");
         let consult = EffectAst::subject_verb_consult_top_of_library(
             PlayerAst::You,
             crate::cards::builders::LibraryConsultModeAst::Reveal,
@@ -2411,7 +2411,7 @@ mod tests {
             matched.clone(),
         );
         let remainder = EffectAst::subject_verb_move_to_zone(
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::Rest.key(), None),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::Rest.bind(), None),
             Zone::Library,
             false,
             crate::cards::builders::ReturnControllerAst::Preserve,
@@ -2444,7 +2444,7 @@ mod tests {
 
     #[test]
     fn normalize_binds_next_turn_permission_to_exile_inside_delayed_trigger() {
-        let exiled_tag = TagKey::from("delayed_exiled_cards");
+        let exiled_tag = ironsmith_compiler_semantic::tag::declared_key("delayed_exiled_cards");
         let delayed = EffectAst::DelayedTriggerForDuration {
             trigger: crate::cards::builders::TriggerSpec::Dies(ObjectFilter::creature()),
             effects: vec![EffectAst::subject_verb_exile_top_of_library(
@@ -2459,7 +2459,7 @@ mod tests {
             while_any_tagged_object_in_zone: None,
         };
         let grant = EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
-            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::It.bind(),
             PlayerAst::You,
             true,
             false,
@@ -2482,7 +2482,7 @@ mod tests {
             effects: vec![EffectAst::subject_verb_exile_top_of_library(
                 PlayerAst::You,
                 Value::Fixed(1),
-                vec![TagKey::from("delayed_exiled_cards")],
+                vec![ironsmith_compiler_semantic::tag::declared_key("delayed_exiled_cards")],
                 Vec::new(),
             )],
             one_shot: false,
@@ -2490,7 +2490,7 @@ mod tests {
             either_of_watched_objects: false,
             while_any_tagged_object_in_zone: None,
         };
-        let explicit_tag = TagKey::from("explicit_permission_pool");
+        let explicit_tag = ironsmith_compiler_semantic::tag::declared_key("explicit_permission_pool");
         let grant = EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
             explicit_tag.clone(),
             PlayerAst::You,

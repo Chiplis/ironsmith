@@ -72,15 +72,15 @@ export default function ActionPopover({
     () => (
       variant === "game"
         ? {
-          panel: "#0a1a2a",
-          titleText: "#e6f2ff",
-          subtitleText: "#9ec4eb",
-          rowText: "#d7e9fc",
-          rowDivider: "rgba(74, 111, 148, 0.46)",
-          rowHoverBg: "rgba(35, 66, 98, 0.86)",
-          rowHoverText: "#ffffff",
-          tail: "#0a1a2a",
-          tailHover: "rgba(35, 66, 98, 0.86)",
+          panel: "var(--ui-surface-raised, #211f1c)",
+          titleText: "var(--ui-text-primary, #f3ead8)",
+          subtitleText: "var(--ui-text-secondary, #c4b79f)",
+          rowText: "var(--ui-text-primary, #f3ead8)",
+          rowDivider: "rgba(205, 180, 132, 0.14)",
+          rowHoverBg: "#383021",
+          rowHoverText: "#ffe3a3",
+          tail: "var(--ui-surface-raised, #211f1c)",
+          tailHover: "#383021",
         }
         : {
           panel: "#f0f0f0",
@@ -96,8 +96,8 @@ export default function ActionPopover({
     ),
     [variant]
   );
-  const popoverWidth = variant === "game" ? 318 : 260;
-  const rowHeight = variant === "game" ? 38 : 34;
+  const popoverWidth = variant === "game" ? 292 : 260;
+  const rowHeight = 34;
   const headerHeight = (title || subtitle) ? (subtitle ? 58 : 40) : 0;
   const actionGroups = useMemo(
     () => (
@@ -141,6 +141,7 @@ export default function ActionPopover({
       data-action-popover="true"
       data-action-count={actionGroups.length}
       style={{
+        fontFamily: variant === "game" ? "var(--ironsmith-ui-font, 'Rajdhani'), system-ui, sans-serif" : undefined,
         left: `${left}px`,
         top: `${top}px`,
         filter: "drop-shadow(0 4px 12px rgba(0,0,0,0.4))",
@@ -157,7 +158,7 @@ export default function ActionPopover({
         style={{
           width: `${popoverWidth}px`,
           background: palette.panel,
-          border: variant === "game" ? "1px solid rgba(72, 109, 143, 0.64)" : "none",
+          border: variant === "game" ? "1px solid var(--ui-border-strong, rgba(218, 188, 126, 0.42))" : "none",
         }}
       >
         {(title || subtitle) && (
@@ -165,7 +166,7 @@ export default function ActionPopover({
             className="px-3 py-2"
             style={{
               borderBottom: `1px solid ${palette.rowDivider}`,
-              background: variant === "game" ? "rgba(10, 24, 38, 0.95)" : "rgba(255,255,255,0.82)",
+              background: variant === "game" ? "var(--ui-surface-control, #2b2823)" : "rgba(255,255,255,0.82)",
             }}
           >
             {title && (
@@ -190,8 +191,11 @@ export default function ActionPopover({
           return (
             <div
               key={group.key}
-              className="px-3 py-2 text-[14px] font-bold cursor-pointer select-none transition-all duration-200"
+              className="px-3 py-2 cursor-pointer select-none transition-colors duration-150"
               style={{
+                fontSize: variant === "game" ? "12px" : "14px",
+                fontWeight: variant === "game" ? 600 : 700,
+                lineHeight: 1.4,
                 color: palette.rowText,
                 borderTop: showDivider ? `1px solid ${palette.rowDivider}` : undefined,
                 background: hoveredIdx === i ? palette.rowHoverBg : "transparent",

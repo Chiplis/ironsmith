@@ -195,6 +195,8 @@ test("destroy animation builds a collapse plus an inspector-bound stream", () =>
     ],
   );
   assert.equal(result.visualEffects[0].collapseVariant, "destroyed");
+  assert.equal(result.visualEffects[0].sourceImageUrl, rect.sourceImageUrl);
+  assert.equal(result.visualEffects[0].sourceCloneHtml, rect.sourceCloneHtml);
   assert.equal(result.visualEffects[1].streamProfile, "death");
   assert.equal(result.visualEffects[1].targetToken, "p0:stable:43");
   assert.equal(result.visualEffects[1].targetScope, "inspector");

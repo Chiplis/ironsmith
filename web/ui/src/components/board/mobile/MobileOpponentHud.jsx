@@ -1,3 +1,4 @@
+import { useCastPlayerHovered } from "@/context/DragContext";
 import { useCallback } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useGame } from "@/context/GameContext";
@@ -38,6 +39,7 @@ export default function MobileOpponentHud({
   className,
 }) {
   const { state, playerAccentOverrides } = useGame();
+  const castPlayerHovered = useCastPlayerHovered(opponent?.index ?? opponent?.id);
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const accent = getPlayerAccent(state?.players || [], opponent?.id, state?.perspective, playerAccentOverrides);
   const isActiveTurn = opponent?.id === state?.active_player;
@@ -86,6 +88,7 @@ export default function MobileOpponentHud({
           "mobile-mtga-opponent-hud-body",
           targetable && "mobile-mtga-opponent-hud-body--targetable player-target-box"
         )}
+        data-cast-hovered={targetable && castPlayerHovered ? "true" : undefined}
         data-player-target={opponent.index ?? opponent.id}
         data-player-target-name={opponent.id ?? opponent.index}
         style={accent ? { "--player-accent": accent.hex } : undefined}

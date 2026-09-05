@@ -432,7 +432,7 @@ fn fuse_delayed_return_control_loss_sacrifice_followup(lowered: &mut LoweredEffe
         return false;
     }
 
-    let returned_tag = crate::tag::CompilerReferenceTag::ReturnedControlLoss.key();
+    let returned_tag = crate::tag::CompilerReferenceTag::ReturnedControlLoss.bind();
     let tagged_return = Effect::new(crate::effects::TaggedEffect::new(
         returned_tag.clone(),
         Effect::new(returned),
@@ -764,7 +764,7 @@ fn replace_exile_top_event_count_with_triggering_counter_count(effect: &mut Effe
                 | Value::EventValue(EventValueSpec::LifeAmount)
         )
     {
-        *count = Value::CountersOn(Box::new(ChooseSpec::Tagged("triggering".into())), None);
+        *count = Value::CountersOn(Box::new(ChooseSpec::Tagged(ironsmith_compiler_semantic::tag::declared_key("triggering"))), None);
     }
 
     for_each_nested_effects_mut(effect, false, replace_in_effects);
@@ -953,7 +953,7 @@ fn bind_unblocked_trigger_attacker_combat_assignment(
                     && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
             })
         {
-            *source = TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), *span);
+            *source = TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), *span);
             return;
         }
         for_each_nested_effects_mut(effect, true, |nested| {
@@ -1161,7 +1161,7 @@ fn bind_post_copy_cast_spell_exile_to_triggering_object(
         }) = effect
             && matches!(target, TargetAst::Object(filter, _, _) if filter == cast_spell)
         {
-            *target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), None);
+            *target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None);
             return;
         }
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -1175,7 +1175,7 @@ fn bind_post_copy_cast_spell_exile_to_triggering_object(
         }) = effect
             && matches!(target, TargetAst::Object(filter, _, _) if filter == cast_spell)
         {
-            *target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), None);
+            *target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None);
             return;
         }
         for_each_nested_effects_mut(effect, true, |nested| {
@@ -1550,7 +1550,7 @@ fn bind_stack_retargets_to_triggering_object(effects: &mut [EffectAst]) {
                     if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             )
         {
-            *target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), None);
+            *target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None);
         }
         crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
             for nested_effect in nested {
@@ -1904,7 +1904,7 @@ fn stage_effects_from_normalized(
                 .as_ref()
                 .filter(|tag| tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
                 .cloned()
-                .unwrap_or_else(|| crate::tag::CompilerReferenceTag::Triggering.key());
+                .unwrap_or_else(|| crate::tag::CompilerReferenceTag::Triggering.bind());
             prelude.insert(0, EffectPreludeTag::TriggeringObject(tag));
         }
         if let Some(default_prelude) = default_last_object_prelude {
@@ -1914,7 +1914,7 @@ fn stage_effects_from_normalized(
             prelude.insert(
                 0,
                 EffectPreludeTag::TriggeringSource(
-                    crate::tag::CompilerReferenceTag::TriggeringSource.key(),
+                    crate::tag::CompilerReferenceTag::TriggeringSource.bind(),
                 ),
             );
         }
@@ -1926,7 +1926,7 @@ fn stage_effects_from_normalized(
             prelude.insert(
                 0,
                 EffectPreludeTag::TriggeringDamageTarget(
-                    crate::tag::CompilerReferenceTag::Damaged.key(),
+                    crate::tag::CompilerReferenceTag::Damaged.bind(),
                 ),
             );
         }
@@ -2718,14 +2718,14 @@ pub fn stage_owned_triggered_effects_for_lowering(
     fn bind_stack_trigger_intervening_object(predicate: PredicateAst) -> PredicateAst {
         match predicate {
             PredicateAst::ItMatches(filter) => PredicateAst::TaggedMatches(
-                crate::tag::CompilerReferenceTag::Triggering.key(),
+                crate::tag::CompilerReferenceTag::Triggering.bind(),
                 filter,
             ),
             PredicateAst::SourceMatches(filter)
                 if filter.has_trailing_candidate_ability_condition_surface() =>
             {
                 PredicateAst::TaggedMatches(
-                    crate::tag::CompilerReferenceTag::Triggering.key(),
+                    crate::tag::CompilerReferenceTag::Triggering.bind(),
                     filter,
                 )
             }
@@ -2794,7 +2794,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
             if &object_domain != trigger_object || &*player != trigger_player {
                 continue;
             }
-            object.tagged_constraints[0].tag = crate::tag::CompilerReferenceTag::Damaged.key();
+            object.tagged_constraints[0].tag = crate::tag::CompilerReferenceTag::Damaged.bind();
             *player = PlayerFilter::DamagedPlayer;
         }
     }
@@ -2994,7 +2994,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
             ) {
             // Exact single-partner attack triggers can bind "that creature"
             // to the other attacker snapshot captured at trigger time.
-            Some(crate::tag::CompilerReferenceTag::OtherAttacker.key())
+            Some(crate::tag::CompilerReferenceTag::OtherAttacker.bind())
         } else {
             default_trigger_last_object_tag(&trigger)
         };
@@ -3041,7 +3041,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
     {
         prepared.prelude.insert(
             0,
-            EffectPreludeTag::TriggeringObject(crate::tag::CompilerReferenceTag::Triggering.key()),
+            EffectPreludeTag::TriggeringObject(crate::tag::CompilerReferenceTag::Triggering.bind()),
         );
     }
 
@@ -4850,7 +4850,7 @@ mod tests {
 
     fn copy_then_exile_cast_spell(caster: PlayerFilter) -> Vec<EffectAst> {
         let triggering =
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.key(), None);
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None);
         let mut cast_spell = ObjectFilter::spell().cast_by(caster);
         cast_spell.has_mana_cost = true;
         vec![EffectAst::Sequence {
@@ -4918,7 +4918,7 @@ mod tests {
         let effects = ironsmith_compiler::effect_sentences::parse_effect_sentences_lexed(&tokens)
             .expect("attachment trigger body should parse");
         let trigger = TriggerSpec::BeginningOfUpkeep(PlayerFilter::ControllerOf(
-            ObjectRef::tagged("enchanted"),
+            ObjectRef::tagged(ironsmith_compiler_semantic::tag::declared_key("enchanted")),
         ));
         let (_, prepared) =
             stage_triggered_effects_for_lowering(trigger, &effects, ReferenceImports::default())
@@ -5200,7 +5200,7 @@ mod tests {
             crate::object::CounterType::PlusOnePlusOne,
             Value::PendingPriorEffectMetric(query)
                 .with_surface_hint(ValueSurfaceHint::CountersRemovedThisWay),
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.key(), None),
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
             None,
             false,
         )];
@@ -5224,7 +5224,7 @@ mod tests {
         blocker.blocking = true;
         let prelude = default_trigger_last_object_prelude(
             &TriggerSpec::ThisBecomesBlockedByObject(blocker),
-            &crate::tag::CompilerReferenceTag::Blocking.key(),
+            &crate::tag::CompilerReferenceTag::Blocking.bind(),
         )
         .expect("becomes-blocked trigger should capture its blocker");
 
@@ -5251,7 +5251,7 @@ mod tests {
             .with_alternative_cast(ironsmith_core::AlternativeCastKind::Madness);
         let effects = vec![EffectAst::Conditional {
             predicate: PredicateAst::TaggedMatches(
-                crate::tag::CompilerReferenceTag::It.key(),
+                crate::tag::CompilerReferenceTag::It.bind(),
                 madness_filter.clone(),
             ),
             if_true: body,
@@ -5288,7 +5288,7 @@ mod tests {
             .expect("linked unblocked-attacker body should parse");
         let trigger = TriggerSpec::AttacksAndIsntBlocked(
             ObjectFilter::creature()
-                .match_tagged("enchanted", TaggedOpbjectRelation::IsTaggedObject),
+                .match_tagged(ironsmith_compiler_semantic::tag::declared_key("enchanted"), TaggedOpbjectRelation::IsTaggedObject),
         );
         let (_, prepared) =
             stage_triggered_effects_for_lowering(trigger, &effects, ReferenceImports::default())
@@ -5517,8 +5517,7 @@ mod tests {
             ),
             (
                 "This Aura deals 2 damage to that player unless that creature attacked this turn.",
-                TriggerSpec::BeginningOfEndStep(PlayerFilter::ControllerOf(ObjectRef::tagged(
-                    "enchanted",
+                TriggerSpec::BeginningOfEndStep(PlayerFilter::ControllerOf(ObjectRef::tagged(ironsmith_compiler_semantic::tag::declared_key("enchanted"),
                 ))),
             ),
         ];

@@ -109,7 +109,7 @@ fn source_owner_exclusion(words: &[&str]) -> Option<PlayerFilter> {
         .collect::<Vec<_>>();
     this_source_surface_for_words(&normalized)?;
     Some(PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(
-        crate::tag::CompilerReferenceTag::SourceObject.as_str(),
+        crate::tag::CompilerReferenceTag::SourceObject.bind(),
     )))
 }
 

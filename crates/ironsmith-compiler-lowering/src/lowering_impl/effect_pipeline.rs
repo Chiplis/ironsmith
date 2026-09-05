@@ -180,6 +180,9 @@ pub struct NormalizedCardAst {
 
 #[derive(Debug, Clone)]
 pub struct LoweredCardDocument {
+    /// The symbol table after lowering: every key the definition carries was
+    /// bound here, by the grammar or by lowering itself.
+    pub symbols: SymbolTable,
     pub definition: CardDefinition,
     pub annotations: ParseAnnotations,
 }

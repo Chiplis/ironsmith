@@ -2181,7 +2181,7 @@ fn apply_embedded_token_rules(
                 } else {
                     Trigger::this_deals_damage_to(ObjectFilter::planeswalker())
                 };
-                let damaged_tag = crate::tag::CompilerReferenceTag::Damaged.key();
+                let damaged_tag = crate::tag::CompilerReferenceTag::Damaged.bind();
                 builder.with_ability(Ability {
                     kind: AbilityKind::Triggered(TriggeredAbility {
                         trigger,

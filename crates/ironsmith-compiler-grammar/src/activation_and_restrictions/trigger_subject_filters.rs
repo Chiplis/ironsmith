@@ -376,7 +376,7 @@ pub fn parse_trigger_subject_filter_lexed(
     if let Some(chosen) = crate::grammar::targets::parse_chosen_object_target(subject_tokens) {
         let mut filter = parse_object_filter_lexed(chosen.filter_tokens, false)?;
         filter = filter.match_tagged(
-            crate::tag::CompilerReferenceTag::ChosenObjects.as_str(),
+            crate::tag::CompilerReferenceTag::ChosenObjects.bind(),
             crate::filter::TaggedOpbjectRelation::IsTaggedObject,
         );
         return Ok(Some(filter));

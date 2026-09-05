@@ -1,3 +1,4 @@
+import { objectExistsInState } from "@/lib/inspector-selection";
 import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
@@ -31,9 +32,9 @@ import { sameActionRef } from "@/lib/sync-commands";
 import {
   dropTargetCandidateFromElements,
   legalTargetForDropCandidates,
+  castIntentSourcePoint,
   plainRect,
   pointIsOutsideRect,
-  rectBoundaryPointToward,
   shouldBeginTargetCastIntent,
   targetDropCompletesDecision,
 } from "@/lib/hand-drag-intent";
@@ -59,45 +60,6 @@ const ZONE_TRANSITION_LABELS = {
   hidden: "Hidden",
 };
 
-function objectExistsInState(state, objectId) {
-  if (!state || objectId == null) return false;
-  const needle = String(objectId);
-  const players = state?.players || [];
-
-  for (const player of players) {
-    const zones = [
-      player?.battlefield || [],
-      player?.hand_cards || [],
-      player?.graveyard_cards || [],
-      player?.exile_cards || [],
-      player?.command_cards || [],
-      player?.ante_cards || [],
-    ];
-    for (const cards of zones) {
-      for (const card of cards) {
-        if (String(card?.id) === needle) return true;
-        if (Array.isArray(card?.member_ids) && card.member_ids.some((id) => String(id) === needle)) {
-          return true;
-        }
-      }
-    }
-  }
-
-  for (const entry of getVisibleStackObjects(state)) {
-    if (String(entry?.id) === needle) return true;
-    if (String(entry?.inspect_object_id) === needle) return true;
-  }
-
-  for (const card of state?.planechase?.face_up || []) {
-    if (String(card?.id) === needle) return true;
-  }
-
-  if ((state?.viewed_cards?.card_ids || []).some((id) => String(id) === needle)) {
-    return true;
-  }
-
-  return false;
-}
 
 function rectContainsPoint(rect, x, y, fuzz = 0) {
   if (!rect) return false;
@@ -795,7 +757,7 @@ export default function Workspace({
     playerAccentOverrides,
   } = useGame();
   const { updateStackArrows, clearStackArrows } = useCombatArrows();
-  const { endDrag, markCastIntent } = useDragActions();
+  const { endDrag, markCastIntent, setCastTargetPreview } = useDragActions();
   const dragState = useDragState();
   const {
     clearPendingPlacement,
@@ -823,10 +785,11 @@ export default function Workspace({
   const selectedObjectIsValid = objectExistsInState(state, selectedObjectId);
   const decision = state?.decision || null;
   const combatDeclarationActive = decision?.kind === "attackers" || decision?.kind === "blockers";
+  const targetHighlightDecision = decision?.kind === "targets" ? decision : dragState?.castIntent?.targetDecision;
   const legalTargetObjectIds = useMemo(() => {
     const ids = new Set();
-    if (!decision || decision.kind !== "targets") return ids;
-    for (const req of decision.requirements || []) {
+    if (!targetHighlightDecision || targetHighlightDecision.kind !== "targets") return ids;
+    for (const req of targetHighlightDecision.requirements || []) {
       for (const target of req.legal_targets || []) {
         if (target.kind === "object" && target.object != null) {
           ids.add(Number(target.object));
@@ -834,11 +797,11 @@ export default function Workspace({
       }
     }
     return ids;
-  }, [decision]);
+  }, [targetHighlightDecision]);
   const legalTargetPlayerIds = useMemo(() => {
     const ids = new Set();
-    if (!decision || decision.kind !== "targets") return ids;
-    for (const req of decision.requirements || []) {
+    if (!targetHighlightDecision || targetHighlightDecision.kind !== "targets") return ids;
+    for (const req of targetHighlightDecision.requirements || []) {
       for (const target of req.legal_targets || []) {
         if (target.kind === "player" && target.player != null) {
           ids.add(Number(target.player));
@@ -846,7 +809,7 @@ export default function Workspace({
       }
     }
     return ids;
-  }, [decision]);
+  }, [targetHighlightDecision]);
   const stackTargetPresentation = useMemo(
     () => buildStackTargetPresentation(state, zoneViews, focusedStackObjectId ?? selectedObjectId),
     [focusedStackObjectId, selectedObjectId, state, zoneViews]
@@ -1389,8 +1352,9 @@ export default function Workspace({
     const currentDecision = state?.decision || null;
     if (currentDecision?.kind !== "priority") return false;
     const liveAction = (currentDecision.actions || []).find((action) => (
-      Number(action?.index) === Number(requestedAction?.index)
-      || sameActionRef(requestedAction?.action_ref, action?.action_ref)
+      requestedAction?.action_ref
+        ? sameActionRef(requestedAction.action_ref, action?.action_ref)
+        : Number(action?.index) === Number(requestedAction?.index)
     ));
     if (!liveAction) return false;
 
@@ -1407,7 +1371,8 @@ export default function Workspace({
     } else {
       dispatch(
         { type: "priority_action", action_index: liveAction.index, action_ref: liveAction.action_ref },
-        liveAction.label
+        liveAction.label,
+        { castingAction: liveAction }
       );
     }
     clearPendingPlacement();
@@ -1432,13 +1397,7 @@ export default function Workspace({
       const dispatchKey = `${dragState.objectId}:${dragState.startX}:${dragState.startY}`;
       if (castIntentDispatchKeyRef.current === dispatchKey) return;
       castIntentDispatchKeyRef.current = dispatchKey;
-      const sourcePoint = dragState.hiddenSourcePoint || rectBoundaryPointToward(
-        dragState.sourceContainerRect || dragState.sourceRect,
-        dragState.startX,
-        dragState.startY,
-        dragState.currentX,
-        dragState.currentY,
-      );
+      const sourcePoint = castIntentSourcePoint(dragState);
       markCastIntent(sourcePoint);
       // A unique cast can enter the engine's targeting decision immediately.
       // When several payment/cast paths exist, keep this as a provisional
@@ -1459,6 +1418,20 @@ export default function Workspace({
     markCastIntent,
     triggerPriorityCardAction,
   ]);
+
+  const previewObjectId = dragState?.objectId;
+  const previewActions = dragState?.actions;
+  const previewCastIntent = dragState?.castIntent;
+  useEffect(() => {
+    if (!previewCastIntent || previewActions.length < 2 || previewCastIntent.targetDecision) return;
+    let cancelled = false;
+    game.previewCastTargets(previewActions, state?.perspective ?? 0).then((targetDecision) => {
+      if (!cancelled) setCastTargetPreview(previewObjectId, previewCastIntent.startedAt, targetDecision);
+    }).catch((error) => {
+      if (!cancelled) setStatus(`Target preview failed: ${error?.message || error}`, true);
+    });
+    return () => { cancelled = true; };
+  }, [game, previewCastIntent, previewObjectId, previewActions, state?.perspective, setCastTargetPreview, setStatus]);
 
   const requestHandCardAction = useCallback(({
     objectId,
@@ -1496,6 +1469,7 @@ export default function Workspace({
     return true;
   }, [clearPendingPlacement, stagePlacement, state?.decision, triggerPriorityCardAction]);
 
+
   useEffect(() => {
     if (!pendingCastTargetDrop) return;
     if (decision == null) return;
@@ -1507,6 +1481,11 @@ export default function Workspace({
       return () => cancelAnimationFrame(clearFrameId);
     }
     const frameId = requestAnimationFrame(() => {
+      if (pendingCastTargetDrop.cancelCast) {
+        setPendingCastTargetDrop(null);
+        if (samePlayerId(decision.player, state?.perspective)) cancelDecision();
+        return;
+      }
       // Payment and additional-cost decisions can sit between declaring the
       // cast and choosing targets. Keep the remembered release target through
       // those steps, but note that returning to priority means the cast was
@@ -1533,7 +1512,10 @@ export default function Workspace({
         currentCandidate,
       ]);
       setPendingCastTargetDrop(null);
-      if (!target) return;
+      if (!target) {
+        cancelDecision();
+        return;
+      }
 
       window.dispatchEvent(new CustomEvent("ironsmith:target-choice", {
         detail: {
@@ -1544,7 +1526,7 @@ export default function Workspace({
       }));
     });
     return () => cancelAnimationFrame(frameId);
-  }, [decision, pendingCastTargetDrop, state?.perspective]);
+  }, [cancelDecision, decision, pendingCastTargetDrop, state?.perspective]);
 
   // Handle drag drop — if user drops on the battlefield area, dispatch the action
   useEffect(() => {
@@ -1554,14 +1536,26 @@ export default function Workspace({
       if (!ds || !ds.actions || ds.actions.length === 0) return;
       const el = document.elementFromPoint(e.clientX, e.clientY);
       if (ds.castIntent) {
+        const candidate = dropTargetCandidateAtPoint(e.clientX, e.clientY);
+        const targetDecision = state?.decision?.kind === "targets"
+          ? state.decision
+          : ds.castIntent.targetDecision;
+        const cancelCast = !candidate || (targetDecision?.kind === "targets"
+          && !legalTargetForDropCandidates(targetDecision, [candidate]));
+        clearHover();
+        if (cancelCast && ds.actions.length > 1) {
+          // Provisional gestures have not started a cast in the engine yet.
+          setPendingCastTargetDrop(null);
+          return;
+        }
         const pendingTargetDrop = {
-          candidate: dropTargetCandidateAtPoint(e.clientX, e.clientY),
+          candidate,
+          cancelCast,
           x: e.clientX,
           y: e.clientY,
           sourceObjectId: ds.objectId,
         };
         setPendingCastTargetDrop(pendingTargetDrop);
-        clearHover();
         if (ds.actions.length > 1) {
           requestHandCardAction({
             objectId: ds.objectId,

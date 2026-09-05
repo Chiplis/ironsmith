@@ -3216,6 +3216,7 @@ pub fn parse_text_to_semantic_document_with_context(
         );
     }
     let document_context = context.view().child(ParseScopeKind::Document);
+    document_context.bind_well_known_keys();
     let recognized = recognize_document_with_context(document_context, &preprocessed)?;
     let cleave_recognized = cleave_preprocessed
         .as_ref()

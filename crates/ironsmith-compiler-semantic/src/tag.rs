@@ -1,12 +1,15 @@
 pub use ironsmith_core::TagKey;
+pub use ironsmith_core::tag::{TagKeyWalk, tag_keys_of};
 use ironsmith_compiler_ast::symbols::{Cardinality, ObjectDomain, ReferenceRole};
 
 const SENTENCE_HELPER_ROOT: &str = "__sentence_helper_";
 
 pub fn sentence_helper_tag(purpose: &str, line: usize, start: usize, end: usize) -> TagKey {
+    declared({
     TagKey::new(format!(
         "{SENTENCE_HELPER_ROOT}{purpose}_l{line}_s{start}_e{end}"
     ))
+    })
 }
 
 pub fn is_sentence_helper_tag(tag: &TagKey, purpose: &str) -> bool {
@@ -29,11 +32,13 @@ pub fn is_sentence_helper_tag(tag: &TagKey, purpose: &str) -> bool {
 }
 
 pub fn generated_result_tag(purpose: &str, ordinal: u32) -> TagKey {
+    declared({
     if matches!(purpose, "exiled" | "looked" | "chosen" | "revealed") {
         sentence_helper_tag(purpose, 0, 0, ordinal as usize)
     } else {
         TagKey::new(format!("{purpose}_{ordinal}"))
     }
+    })
 }
 
 /// Compiler-owned roles for objects selected while paying a cost.

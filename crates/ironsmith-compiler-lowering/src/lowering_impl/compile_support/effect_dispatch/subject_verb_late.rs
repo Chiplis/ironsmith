@@ -1037,7 +1037,7 @@ pub(super) fn compile_subject_verb_late(
                     // MoveToZone/Exile populate the source-exiled link without
                     // needing a second runtime tag wrapper.
                     ctx.last_object_tag =
-                        Some(crate::tag::CompilerReferenceTag::SourceExiled.key());
+                        Some(crate::tag::CompilerReferenceTag::SourceExiled.bind());
                 }
             }
             Ok((vec![effect], choices))
@@ -2197,7 +2197,7 @@ pub(super) fn compile_subject_verb_late(
             let mut follow_ups = Vec::new();
             if !follow_up_effects.is_empty() {
                 let saved_last_object_tag = ctx.last_object_tag.clone();
-                ctx.last_object_tag = Some(crate::tag::CompilerReferenceTag::It.key());
+                ctx.last_object_tag = Some(crate::tag::CompilerReferenceTag::It.bind());
                 let (compiled_follow_ups, follow_up_choices) =
                     compile_effects(follow_up_effects, ctx)?;
                 follow_ups = compiled_follow_ups;

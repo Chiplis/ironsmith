@@ -1,3 +1,4 @@
+import { useCastPlayerHovered } from "@/context/DragContext";
 import { useCallback, useEffect, useState } from "react";
 import BattlefieldRow from "./BattlefieldRow";
 import ManaPool from "@/components/left-rail/ManaPool";
@@ -406,6 +407,7 @@ function OpponentSlot({
   const playerIdx = player.index ?? player.id;
   const isActivePlayer = Number(state?.active_player) === Number(player?.id);
   const isPriorityPlayer = Number(state?.priority_player) === Number(player?.id);
+  const castPlayerHovered = useCastPlayerHovered(player?.index ?? player?.id);
   const isPlayerLegalTarget =
     legalTargetPlayerIds.has(Number(player.id)) || legalTargetPlayerIds.has(Number(player.index));
   const canPickTargetFromBoard = state?.decision?.kind === "targets"
@@ -559,7 +561,8 @@ function OpponentSlot({
             data-turn-priority={isPriorityPlayer ? "true" : "false"}
           >
             <span
-              className={cn("player-identity-box inline-flex min-w-0 items-center gap-2", isPlayerLegalTarget && canPickTargetFromBoard && "player-target-box")}
+              className={cn("player-identity-box inline-flex min-w-0 items-center gap-2", isPlayerLegalTarget && "player-target-box")}
+              data-cast-hovered={isPlayerLegalTarget && castPlayerHovered ? "true" : undefined}
               data-player-target={player.index ?? player.id}
               onPointerDown={(event) => { if (event.target === event.currentTarget) handlePlayerTargetPointerDown(event); }}
               onClick={(event) => { if (event.target === event.currentTarget) handlePlayerTargetClick(event); }}
@@ -745,6 +748,7 @@ function OpponentSlot({
                   battlefieldSide="top"
                   paperLayoutMode={mobileBattleScene && entry.zone === "battlefield" ? "mobile-battle-top" : "default"}
                   paperMinSlotsPerRow={mobileBattleScene && entry.zone === "battlefield" ? 7 : null}
+                  enableReposition={entry.zone === "battlefield"}
                   selectedObjectId={selectedObjectId}
                   onCardClick={handleCardClick}
                   onCardPointerDown={handleCardPointerDown}

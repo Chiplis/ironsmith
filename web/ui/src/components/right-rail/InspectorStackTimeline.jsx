@@ -1,3 +1,4 @@
+import RollingPanel from "@/components/board/RollingPanel";
 import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import { useGame } from "@/context/GameContext";
 import PlayerStackAlert from "@/components/board/PlayerStackAlert";
@@ -484,14 +485,8 @@ export default function InspectorStackTimeline({
         </div>
       </header>
       {embedded ? (
-        <div
-          ref={bodyRef}
-          className={cn(
-            "pointer-events-auto overflow-hidden transition-[max-height,opacity] duration-300 ease-out",
-            collapsed ? "opacity-0" : "opacity-100"
-          )}
-          style={{ maxHeight: collapsed ? "0px" : `${embeddedExpandedMaxHeight}px` }}
-        >
+        <RollingPanel open={!collapsed}>
+        <div ref={bodyRef} className="pointer-events-auto overflow-hidden">
           <div
             className="stack-timeline-scroll pointer-events-auto grid gap-1.5 overflow-y-auto overscroll-contain p-1.5"
             style={{ maxHeight: `${embeddedExpandedMaxHeight}px` }}
@@ -549,6 +544,7 @@ export default function InspectorStackTimeline({
                 ))}
           </div>
         </div>
+        </RollingPanel>
       ) : (
         <ScrollArea className="pointer-events-none h-[calc(100%-38px)]">
           <div ref={bodyRef} className="grid gap-1.5 p-1.5">

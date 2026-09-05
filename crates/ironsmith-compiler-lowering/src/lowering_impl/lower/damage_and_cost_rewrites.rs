@@ -314,6 +314,16 @@ fn remember_single_cross_ability_object_choice(builder: &mut CardDefinitionBuild
     }
 }
 
+/// The reference scope of the line with this display index, entered for the
+/// duration of its lowering; `None` when the parse opened no scope for it.
+fn line_reference_scope(
+    symbols: &std::cell::RefCell<crate::model::symbols::SymbolTable>,
+    display_line_index: usize,
+) -> Option<ironsmith_compiler_ast::reference_ledger::ReferenceScopeGuard<'_>> {
+    let scope = symbols.borrow().line_scope(display_line_index)?;
+    Some(ironsmith_compiler_ast::reference_ledger::ReferenceScopeGuard::enter(symbols, scope))
+}
+
 pub fn lower_normalized_card_ast_with_facts(
     ast: NormalizedCardAst,
 ) -> Result<LoweredCardDocument, CardTextError> {
@@ -328,12 +338,27 @@ pub fn lower_normalized_card_ast_with_facts(
         allow_unsupported,
     } = ast;
     let provenance_view = provenance.view();
-    let _symbols = &symbols;
+    // Lowering mints keys of its own (auto-tags, pronoun antecedents): they
+    // bind in the scope of the line being lowered, like the grammar's.
+    let symbols = std::cell::RefCell::new(symbols);
+    // Whatever lowering mints outside a line (finalization, shared rewrites)
+    // binds in the document's scope, visible from every line.
+    let document_scope = {
+        let table = symbols.borrow();
+        table
+            .scopes()
+            .iter()
+            .find(|scope| scope.kind == crate::model::symbols::SymbolScopeKind::Document)
+            .map(|scope| scope.id)
+            .unwrap_or(table.root_scope())
+    };
+    let _document_references =
+        ironsmith_compiler_ast::reference_ledger::ReferenceScopeGuard::enter(&symbols, document_scope);
     let overload_ast = overload_branch.map(|branch| NormalizedCardAst {
         builder: builder.clone(),
         annotations: ParseAnnotations::default(),
         provenance: provenance.clone(),
-        symbols: symbols.clone(),
+        symbols: symbols.borrow().clone(),
         items: branch.items,
         overload_branch: None,
         cleave_branch: None,
@@ -343,7 +368,7 @@ pub fn lower_normalized_card_ast_with_facts(
         builder: builder.clone(),
         annotations: ParseAnnotations::default(),
         provenance: provenance.clone(),
-        symbols: symbols.clone(),
+        symbols: symbols.borrow().clone(),
         items: branch.items,
         overload_branch: None,
         cleave_branch: None,
@@ -358,6 +383,7 @@ pub fn lower_normalized_card_ast_with_facts(
     for item in items {
         match item {
             NormalizedCardItem::Line(line) => {
+                let _references = line_reference_scope(&symbols, line.info.display_line_index);
                 lower_line_ast(
                     &mut builder,
                     &mut state,
@@ -368,6 +394,8 @@ pub fn lower_normalized_card_ast_with_facts(
                 )?;
             }
             NormalizedCardItem::Modal(modal) => {
+                let _references =
+                    line_reference_scope(&symbols, modal.header.info.display_line_index);
                 let abilities_before = builder.abilities.len();
                 builder = lower_parsed_modal(builder, modal, allow_unsupported, provenance_view)?;
                 update_last_restrictable_ability(
@@ -377,6 +405,12 @@ pub fn lower_normalized_card_ast_with_facts(
                 );
             }
             NormalizedCardItem::LevelAbility(level) => {
+                let _references = level.items.iter().find_map(|item| match item {
+                    crate::model::ParsedLevelAbilityItemAst::ActivatedAbility(activated) => {
+                        line_reference_scope(&symbols, activated.info.display_line_index)
+                    }
+                    _ => None,
+                });
                 let lowered = lower_level_ability_ast(level)?;
                 level_abilities.push(lowered.level_ability);
                 level_activated_lines.extend(lowered.activated_lines);
@@ -427,8 +461,13 @@ pub fn lower_normalized_card_ast_with_facts(
             }
         }
     }
+    // Building the definition expands keywords (undying, persist, ...) that
+    // mint keys of their own: still inside the document's reference scope.
+    let definition = builder.build();
+    drop(_document_references);
     Ok(LoweredCardDocument {
-        definition: builder.build(),
+        symbols: symbols.into_inner(),
+        definition,
         annotations,
     })
 }

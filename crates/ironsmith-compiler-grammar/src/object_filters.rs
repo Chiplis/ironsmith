@@ -128,7 +128,7 @@ fn apply_sacrificed_as_it_entered_relation(
 ) -> ObjectFilter {
     if present {
         filter = filter.match_tagged(
-            "sacrificed_0",
+            crate::tag::CompilerReferenceTag::Sacrificed0.bind(),
             TaggedOpbjectRelation::IsTaggedObjectSacrificedAsSourceEntered,
         );
     }
@@ -155,7 +155,7 @@ fn apply_sacrificed_card_type_relation(
         ],
     );
     if shares_card_type && references_sacrificed_permanent {
-        filter = filter.match_tagged("sacrificed_0", TaggedOpbjectRelation::SharesCardType);
+        filter = filter.match_tagged(crate::tag::CompilerReferenceTag::Sacrificed0.bind(), TaggedOpbjectRelation::SharesCardType);
     }
     filter
 }

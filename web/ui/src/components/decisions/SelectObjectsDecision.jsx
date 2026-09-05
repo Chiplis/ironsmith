@@ -22,7 +22,8 @@ export default function SelectObjectsDecision({
   layout = "panel",
 }) {
   const { dispatch, state, playerAccentOverrides } = useGame();
-  const { hoveredObjectId, hoverCard, clearHover } = useHover();
+  const { hoveredObjectId, hoverCard, clearHover, setHoverLinkedObjects, clearHoverLinkedObjects } = useHover();
+  useEffect(() => () => clearHoverLinkedObjects(), [clearHoverLinkedObjects]);
   const stripLayout = layout === "strip";
   const candidates = useMemo(() => decision.candidates || [], [decision.candidates]);
   const [selected, setSelected] = useState(new Set());
@@ -220,8 +221,16 @@ export default function SelectObjectsDecision({
                     if (isDisabled || event.detail !== 0) return;
                     toggleObject(c.id);
                   }}
-                  onMouseEnter={() => hoverCard(c.id)}
+                  onMouseEnter={() => {
+                    hoverCard(c.id);
+                    setHoverLinkedObjects([c.id]);
+                  }}
                   onMouseLeave={clearHover}
+                  onFocus={() => {
+                    hoverCard(c.id);
+                    setHoverLinkedObjects([c.id]);
+                  }}
+                  onBlur={clearHover}
                 >
                   <HighlightedDecisionText
                     className="decision-option-label"

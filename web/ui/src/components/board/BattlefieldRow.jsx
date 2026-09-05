@@ -20,6 +20,7 @@ import {
   PAPER_BACK_LANES,
   PAPER_FRONT_LANES,
   normalizeBattlefieldLane,
+  retainBattlefieldSlots,
 } from "@/lib/battlefield-layout";
 import { isTriggerOrderingDecision } from "@/lib/trigger-ordering";
 import {
@@ -609,7 +610,11 @@ function measureLiveCardPositions(row) {
       .split(",")
       .map((value) => value.trim())
       .filter(Boolean);
+    const image = node.querySelector(".game-card-surface > img") || node.querySelector("img");
+    const sourceImageUrl = image?.currentSrc || image?.src
+      || node.querySelector("svg image")?.getAttribute("href") || null;
     const position = {
+      sourceImageUrl,
       left: rect.left - rowRect.left + row.scrollLeft,
       top: rect.top - rowRect.top + row.scrollTop,
       viewportLeft: rect.left,
@@ -751,7 +756,7 @@ function playLiveDamageAnimation(node, motionStore, stableId) {
   motionStore.set(key, motion);
 }
 
-function BattlefieldGhostCard({ ghost, compact, onDone }) {
+function BattlefieldGhostCard({ ghost, compact, battlefieldVisualMode, onDone }) {
   const shellRef = useRef(null);
   const motionRef = useRef(null);
 
@@ -837,8 +842,10 @@ function BattlefieldGhostCard({ ghost, compact, onDone }) {
     >
       <GameCard
         card={ghost.card}
+        sourceImageUrl={ghost.sourceImageUrl}
         compact={compact}
         className="battlefield-ghost-card"
+        battlefieldVisualMode={battlefieldVisualMode}
         hideDebugBadge
         style={{
           width: "100%",
@@ -873,10 +880,12 @@ export default function BattlefieldRow({
   allowVerticalScroll = false,
   forceSingleColumn = false,
   enablePlacementPreview = false,
+  enableReposition = enablePlacementPreview,
 }) {
   const rowRef = useRef(null);
   const previousCardsRef = useRef(cards);
   const previousPaperLayoutRef = useRef(null);
+  const stablePaperLayoutRef = useRef(null);
   const previousPaperFitStyleRef = useRef(null);
   const previousPositionsRef = useRef(new Map());
   const lastProcessedSnapshotIdRef = useRef(null);
@@ -997,15 +1006,18 @@ export default function BattlefieldRow({
       : null;
   const heldPermanentPlacement = livePermanentPlacement || pendingPermanentPlacement;
   const isBattlefieldMoveDrag = livePermanentPlacement?.kind === "move_battlefield";
+  const canPreviewHeldPlacement = isBattlefieldMoveDrag
+    ? enableReposition && cards.some((card) => String(card.id) === String(dragState?.objectId))
+    : enablePlacementPreview;
   const pointerInsideBattlefield = useMemo(() => {
     if (stagedPlacementSlot) return true;
-    if (!enablePlacementPreview || !heldPermanentPlacement || !rowRef.current) return false;
+    if (!canPreviewHeldPlacement || !heldPermanentPlacement || !rowRef.current) return false;
     const x = Number(dragState?.currentX);
     const y = Number(dragState?.currentY);
     if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
     const rect = rowRef.current.getBoundingClientRect();
     return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
-  }, [dragState?.currentX, dragState?.currentY, enablePlacementPreview, heldPermanentPlacement, stagedPlacementSlot]);
+  }, [dragState?.currentX, dragState?.currentY, canPreviewHeldPlacement, heldPermanentPlacement, stagedPlacementSlot]);
   const layoutCards = useMemo(
     () => mergeBattlefieldLayoutHolds(
       cards,
@@ -1016,7 +1028,7 @@ export default function BattlefieldRow({
   );
   const usesDensePaperLayout = isPaperBattlefieldLayout
     && layoutCards.length > DENSE_BATTLEFIELD_THRESHOLD;
-  const computedPaperLayout = useMemo(
+  const automaticPaperLayout = useMemo(
     () => buildPaperBattlefieldLayout(layoutCards, battlefieldSide, alignStart, {
       singleRow: paperLayoutMode === "single-row",
       mobileBattleMode:
@@ -1031,7 +1043,22 @@ export default function BattlefieldRow({
     }),
     [alignStart, battlefieldSide, layoutCards, paperGridMinSlots, paperLayoutMode, placementSlots, usesDensePaperLayout]
   );
-  const shouldFreezePaperLayout = isPaperBattlefieldLayout && activeLayoutHolds.length > 0;
+  const stableLayoutKey = `${battlefieldSide}:${paperLayoutMode}:${paperGridMinSlots}`;
+  const computedPaperLayout = useMemo(() => {
+    if (!useDesktopPortraitBattlefield) return automaticPaperLayout;
+    const previous = stablePaperLayoutRef.current;
+    const layout = retainBattlefieldSlots(layoutCards,
+      previous?.key === stableLayoutKey ? previous.layout : null,
+      { columns: paperGridMinSlots, singleRow: paperLayoutMode === "single-row" });
+    applyRememberedPlacementSlots(layoutCards, layout.gridPositionById, placementSlots, layout.rowCount, layout.maxCols);
+    return layout;
+  }, [automaticPaperLayout, layoutCards, paperGridMinSlots, paperLayoutMode, placementSlots, stableLayoutKey, useDesktopPortraitBattlefield]);
+  useLayoutEffect(() => {
+    stablePaperLayoutRef.current = useDesktopPortraitBattlefield
+      ? { key: stableLayoutKey, layout: computedPaperLayout } : null;
+  }, [computedPaperLayout, stableLayoutKey, useDesktopPortraitBattlefield]);
+  const shouldFreezePaperLayout = isPaperBattlefieldLayout
+    && !useDesktopPortraitBattlefield && activeLayoutHolds.length > 0;
   const frozenSourcePaperLayout = useMemo(
     () => (
       shouldFreezePaperLayout
@@ -1262,7 +1289,7 @@ export default function BattlefieldRow({
   const syncOverflowMode = useCallback((layout) => {
     const row = rowRef.current;
     if (!row) return;
-    if ((!allowVerticalScroll && !usesDensePaperLayout) || !layout) {
+    if ((!allowVerticalScroll && !usesDensePaperLayout && !useDesktopPortraitBattlefield) || !layout) {
       row.style.overflowY = "visible";
       row.style.overflowX = "visible";
       row.style.overscrollBehaviorY = "";
@@ -1271,7 +1298,7 @@ export default function BattlefieldRow({
     row.style.overflowY = "auto";
     row.style.overflowX = "hidden";
     row.style.overscrollBehaviorY = "contain";
-  }, [allowVerticalScroll, usesDensePaperLayout]);
+  }, [allowVerticalScroll, usesDensePaperLayout, useDesktopPortraitBattlefield]);
   const handleGhostDone = useCallback((ghostKey) => {
     setGhosts((existing) => existing.filter((entry) => entry.key !== ghostKey));
   }, []);
@@ -1531,7 +1558,7 @@ export default function BattlefieldRow({
         : Math.max(ABSOLUTE_MIN_CARD_WIDTH, Math.floor(width * mobileBattleWidthRatio));
     const clampedCardWidth = Math.max(
       isPaperBattlefieldLayout ? ABSOLUTE_MIN_CARD_WIDTH : 22,
-      Math.min(best.cardWidth, maxCardWidth)
+      useDesktopPortraitBattlefield ? maxCardWidth : Math.min(best.cardWidth, maxCardWidth)
     );
     best = {
       ...best,
@@ -1822,6 +1849,7 @@ export default function BattlefieldRow({
           ghostsToAdd.push({
             key: `ghost-${snapshotId}-${stableId}-${transition.leaveKind}`,
             card: cloneLeavingCard(previousCard, stableId),
+            sourceImageUrl: previousPosition.sourceImageUrl,
             kind: transition.leaveKind,
             includeDamage: transition.damaged,
             duration: GHOST_BASE_ANIMATION_MS,
@@ -1988,8 +2016,7 @@ export default function BattlefieldRow({
 
   const handleBattlefieldMovePointerDown = useCallback((event, card) => {
     const canReposition = (
-      enablePlacementPreview
-      && battlefieldSide === "bottom"
+      enableReposition
       && paperLayoutMode === "default"
       && isPaperBattlefieldLayout
       && state?.decision?.kind === "priority"
@@ -2081,11 +2108,10 @@ export default function BattlefieldRow({
     document.addEventListener("pointercancel", onCancel, { passive: false });
     return true;
   }, [
-    battlefieldSide,
     clearBattlefieldMoveListeners,
     clearHover,
     commitPlacementSlot,
-    enablePlacementPreview,
+    enableReposition,
     endDrag,
     isPaperBattlefieldLayout,
     onInspect,
@@ -2315,7 +2341,7 @@ export default function BattlefieldRow({
       className={`battlefield-row ${displayCards.length === 0 ? "battlefield-row-empty" : ""} ${alignStart ? "battlefield-row--align-start" : ""} ${isMobileBattleBottomLayout ? "battlefield-row--mobile-bottom-inline-fit" : ""} ${shouldFreezePaperLayout ? "battlefield-row--layout-freeze" : ""} ${usesDensePaperLayout ? "battlefield-row--dense" : ""} relative grid gap-1.5 content-start justify-center min-h-0 h-full`}
       data-bf-side={battlefieldSide}
       data-placement-active={pointerInsideBattlefield ? "true" : "false"}
-      data-battlefield-drop-grid={enablePlacementPreview ? "true" : undefined}
+      data-battlefield-drop-grid={canPreviewHeldPlacement ? "true" : undefined}
       data-battlefield-grid-columns={isPaperBattlefieldLayout ? paperLayout.maxCols : undefined}
       data-battlefield-grid-rows={isPaperBattlefieldLayout ? paperLayout.rowCount : undefined}
       data-battlefield-column-capacity={isPaperBattlefieldLayout ? paperColumnCapacity : undefined}
@@ -2329,7 +2355,7 @@ export default function BattlefieldRow({
           ? `repeat(var(--bf-rows, 1), var(--bf-card-height, 101px))`
           : undefined,
         gridAutoRows: isPaperBattlefieldLayout ? undefined : "var(--bf-card-height, 101px)",
-        scrollbarGutter: allowVerticalScroll ? "stable" : "auto",
+        scrollbarGutter: (allowVerticalScroll || useDesktopPortraitBattlefield) ? "stable" : "auto",
       }}
     >
       {placementGridCells.map((cell) => (
@@ -2524,7 +2550,7 @@ export default function BattlefieldRow({
                 ? "grabbing"
                 : isCombatCandidate || isCombatTargetCard
                   ? "pointer"
-                  : enablePlacementPreview && paperLayoutMode === "default"
+                  : enableReposition && paperLayoutMode === "default"
                     ? "grab"
                     : undefined,
             }}
@@ -2537,7 +2563,8 @@ export default function BattlefieldRow({
           card={card}
           compact={compact}
           className="battlefield-freeze-card"
-          battlefieldVisualMode={useMobileBattlefieldToken ? "mobile-token" : "classic"}
+          sourceImageUrl={position.sourceImageUrl}
+          battlefieldVisualMode={useMobileBattlefieldToken ? "mobile-token" : useDesktopPortraitBattlefield ? "portrait" : "classic"}
           suppressTooltip
           style={{
             position: "absolute",
@@ -2560,6 +2587,7 @@ export default function BattlefieldRow({
         <BattlefieldGhostCard
           key={ghost.key}
           ghost={ghost}
+          battlefieldVisualMode={useMobileBattlefieldToken ? "mobile-token" : useDesktopPortraitBattlefield ? "portrait" : "classic"}
           compact={compact}
           onDone={handleGhostDone}
         />

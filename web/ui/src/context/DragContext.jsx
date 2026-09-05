@@ -1,6 +1,9 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useCallback, useMemo, useRef } from "react";
+import { castHoverTargetAtPoint } from "@/lib/hand-drag-intent";
 
+const CastHoverContext = createContext(null);
+const CastTargetContext = createContext(null);
 const DragStateContext = createContext(undefined);
 const DragActionsContext = createContext(undefined);
 const PlacementSlotsContext = createContext(undefined);
@@ -60,9 +63,13 @@ export function DragProvider({ children }) {
   }, []);
 
   const updateDrag = useCallback((x, y) => {
+    const hit = dragStateRef.current?.castIntent ? castHoverTargetAtPoint(x, y) : null;
     setDragState((prev) => {
       if (!prev) return null;
-      const next = { ...prev, currentX: x, currentY: y };
+      const hoverCandidate = JSON.stringify(prev.hoverCandidate ?? null) === JSON.stringify(hit)
+        ? prev.hoverCandidate
+        : hit;
+      const next = { ...prev, currentX: x, currentY: y, hoverCandidate };
       dragStateRef.current = next;
       return next;
     });
@@ -73,11 +80,21 @@ export function DragProvider({ children }) {
       if (!prev || prev.castIntent) return prev;
       const next = {
         ...prev,
+        hoverCandidate: castHoverTargetAtPoint(prev.currentX, prev.currentY),
         castIntent: {
           sourcePoint,
           startedAt: Date.now(),
         },
       };
+      dragStateRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const setCastTargetPreview = useCallback((objectId, startedAt, targetDecision) => {
+    setDragState((prev) => {
+      if (!prev?.castIntent || prev.objectId !== objectId || prev.castIntent.startedAt !== startedAt) return prev;
+      const next = { ...prev, castIntent: { ...prev.castIntent, targetDecision } };
       dragStateRef.current = next;
       return next;
     });
@@ -91,8 +108,8 @@ export function DragProvider({ children }) {
   }, []);
 
   const actions = useMemo(
-    () => ({ startDrag, updateDrag, markCastIntent, endDrag }),
-    [startDrag, updateDrag, markCastIntent, endDrag]
+    () => ({ startDrag, updateDrag, markCastIntent, setCastTargetPreview, endDrag }),
+    [startDrag, updateDrag, markCastIntent, setCastTargetPreview, endDrag]
   );
 
   const commitPlacementSlot = useCallback((card, slot) => {
@@ -129,17 +146,21 @@ export function DragProvider({ children }) {
   );
 
   return (
-    <DragStateContext.Provider value={dragState}>
-      <DragActionsContext.Provider value={actions}>
-        <PlacementSlotsContext.Provider value={placementSlots}>
-          <PlacementActionsContext.Provider value={placementActions}>
-            <PendingPlacementContext.Provider value={pendingPlacement}>
-              {children}
-            </PendingPlacementContext.Provider>
-          </PlacementActionsContext.Provider>
-        </PlacementSlotsContext.Provider>
-      </DragActionsContext.Provider>
-    </DragStateContext.Provider>
+    <CastHoverContext.Provider value={dragState?.castIntent ? dragState.hoverCandidate : null}>
+      <CastTargetContext.Provider value={dragState?.castIntent || null}>
+        <DragStateContext.Provider value={dragState}>
+          <DragActionsContext.Provider value={actions}>
+            <PlacementSlotsContext.Provider value={placementSlots}>
+              <PlacementActionsContext.Provider value={placementActions}>
+                <PendingPlacementContext.Provider value={pendingPlacement}>
+                  {children}
+                </PendingPlacementContext.Provider>
+              </PlacementActionsContext.Provider>
+            </PlacementSlotsContext.Provider>
+          </DragActionsContext.Provider>
+        </DragStateContext.Provider>
+      </CastTargetContext.Provider>
+    </CastHoverContext.Provider>
   );
 }
 
@@ -185,4 +206,17 @@ export function placementSlotForCard(placementSlots, card) {
     if (slot) return slot;
   }
   return null;
+}
+
+export function useCastTargeting() {
+  return useContext(CastTargetContext);
+}
+
+export function useCastTargetHover() {
+  return useContext(CastHoverContext);
+}
+
+export function useCastPlayerHovered(playerId) {
+  const candidate = useCastTargetHover();
+  return candidate?.kind === "player" && candidate.playerIds.some(id => Number(id) === Number(playerId));
 }

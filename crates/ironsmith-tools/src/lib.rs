@@ -1,3 +1,4 @@
+pub mod serde_tag_keys;
 mod tooling;
 
 pub use ironsmith_registry::{

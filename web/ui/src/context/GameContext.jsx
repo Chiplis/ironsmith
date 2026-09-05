@@ -1,3 +1,4 @@
+import { castingMethodChoiceForAction, finishExplicitCastingMethod } from "@/lib/casting-method-choice";
 import { useContext, useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { useWasmGame } from "@/hooks/useWasmGame";
 import { usePeerLobby } from "@/hooks/usePeerLobby";
@@ -1847,7 +1848,7 @@ export function GameProvider({ children }) {
   );
 
   const dispatch = useCallback(
-    async (command, successMessage) => {
+    async (command, successMessage, { castingAction = null } = {}) => {
       if (!game) return;
       return runWasmInteraction(async () => {
         const isTargetSubmit = command?.type === "select_targets";
@@ -1896,6 +1897,16 @@ export function GameProvider({ children }) {
             multiplayerSubmitInFlightRef.current = true;
             try {
               await submitMultiplayerCommand(syncedCommand, successMessage);
+              // Keep the explicit method choice within this interaction; a
+              // render-driven dispatch would be dropped by the input cooldown.
+              const nextState = stateRef.current;
+              const methodCommand = castingMethodChoiceForAction(nextState?.decision, castingAction);
+              if (methodCommand && samePlayerId(nextState.decision.player, nextState.perspective)) {
+                await submitMultiplayerCommand(
+                  serializeMultiplayerCommand(methodCommand, nextState),
+                  successMessage,
+                );
+              }
             } finally {
               multiplayerSubmitInFlightRef.current = false;
             }
@@ -1926,6 +1937,7 @@ export function GameProvider({ children }) {
           const dispatchStartedAt = performance.now();
           if (isTargetSubmit) armTargetSubmitDebounce();
           let st = await game.dispatch(command);
+          st = await finishExplicitCastingMethod(st, castingAction, (nextCommand) => game.dispatch(nextCommand));
           const workerRoundTripMs = performance.now() - dispatchStartedAt;
           if (isTargetSubmit) settleTargetSubmitDebounce();
           const workerPerf = readDispatchPerf(st);
