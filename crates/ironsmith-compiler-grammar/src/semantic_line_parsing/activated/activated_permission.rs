@@ -1,3 +1,5 @@
+use crate::cards::builders::StatChangeActionAst;
+use crate::cards::builders::GrantActionAst;
 use super::*;
 use crate::cards::builders::PredicateAst;
 
@@ -7,10 +9,10 @@ fn contains_compound_pump_and_grant(effects: &[EffectAst]) -> bool {
     fn inspect(effects: &[EffectAst], pump: &mut bool, grant: &mut bool) {
         for effect in effects {
             if let EffectAst::SubjectVerb(subject_verb) = effect {
-                *pump |= matches!(subject_verb.action, SubjectVerbActionAst::Pump { .. });
+                *pump |= matches!(subject_verb.action, SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { .. }));
                 *grant |= matches!(
                     subject_verb.action,
-                    SubjectVerbActionAst::GrantAbilitiesToTarget { .. }
+                    SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { .. })
                 );
             }
             crate::model::visit::for_each_nested_effects(effect, true, |nested| {

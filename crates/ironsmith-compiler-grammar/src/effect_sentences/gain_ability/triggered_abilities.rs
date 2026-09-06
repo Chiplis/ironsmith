@@ -1,3 +1,5 @@
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::ForEachEffectAst;
 use super::*;
 
 fn parse_required_fight_effect(tokens: &[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError> {
@@ -64,10 +66,10 @@ fn parse_quantified_player_shared_resource_chain(
     }];
     Ok(Some(vec![match scope {
         crate::grammar::effects::chain_carry::ChainPlayerScope::EachOpponent => {
-            EffectAst::ForEachOpponent { effects }
+            EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })
         }
         crate::grammar::effects::chain_carry::ChainPlayerScope::EachPlayer => {
-            EffectAst::ForEachPlayer { effects }
+            EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })
         }
     }]))
 }
@@ -128,13 +130,13 @@ fn parse_granted_optional_tap_effect(
     let tap = super::super::zone_handlers::parse_tap(target_tokens)?;
     Ok(Some(vec![match shape.actor {
         crate::grammar::effects::clause_dispatch_shapes::LeadingMayActorShape::Player(player) => {
-            EffectAst::MayByPlayer {
+            EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
                 player,
                 effects: vec![tap],
-            }
+            })
         }
         crate::grammar::effects::clause_dispatch_shapes::LeadingMayActorShape::Implicit => {
-            EffectAst::May { effects: vec![tap] }
+            EffectAst::Permissions(PermissionEffectAst::May { effects: vec![tap] })
         }
     }]))
 }
@@ -186,7 +188,7 @@ fn parse_granted_trigger_pump_if_monarch_otherwise(
     else {
         return Ok(None);
     };
-    if !matches!(trailing_if.predicate, PredicateAst::PlayerIsMonarch { .. }) {
+    if !matches!(trailing_if.predicate, PredicateAst::Player(PlayerPredicateAst::PlayerIsMonarch { .. })) {
         return Ok(None);
     }
     let Some(shape) =
@@ -217,11 +219,11 @@ fn parse_granted_trigger_pump_if_monarch_otherwise(
     ) {
         return Ok(None);
     }
-    Ok(Some(vec![EffectAst::Conditional {
+    Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
         predicate: trailing_if.predicate,
         if_true: vec![pump],
         if_false: vec![EffectAst::subject_verb_become_monarch(PlayerAst::You)],
-    }]))
+    })]))
 }
 
 pub(super) fn parse_granted_trigger_with_nested_token_rule(
@@ -658,20 +660,20 @@ pub(super) fn parse_granted_triggered_otherwise_ability(
         &false_tokens,
     )?);
     let mut conditional = match true_effect {
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true,
             if_false,
-        } if if_false.is_empty() => EffectAst::Conditional {
+        }) if if_false.is_empty() => EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true,
             if_false,
-        },
-        EffectAst::TrailingIf { predicate, effects } => EffectAst::Conditional {
+        }),
+        EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects }) => EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true: effects,
             if_false: Vec::new(),
-        },
+        }),
         EffectAst::ControlFlow(control) => {
             let crate::model::CompilerControlFlowAst {
                 semantic,
@@ -714,7 +716,7 @@ pub(super) fn parse_granted_triggered_otherwise_ability(
         }
         _ => return Ok(None),
     };
-    if let EffectAst::Conditional { if_false, .. } = &mut conditional {
+    if let EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_false, .. }) = &mut conditional {
         *if_false = vec![false_effect.take().expect("otherwise branch effect")];
     }
 

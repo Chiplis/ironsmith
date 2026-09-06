@@ -11,12 +11,13 @@
 //! what disposes of the rest is the remainder statement or the sentence the
 //! statement read together with its own.
 
+use crate::cards::builders::ForEachEffectAst;
 use super::super::dispatch_entry::{SentenceInput, leading_may_actor_to_player};
 use super::super::looked_cards_family::{parse_looked_card_choice_filter, parse_looked_card_reveal_filter};
 use super::{ViewStyle, ViewedGroup, it};
 use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, ObjectFilter, PlayerAst, ReturnControllerAst,
-    SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TargetAst,
+    SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TargetAst, CounterActionAst, GrantActionAst, LibraryActionAst, ObjectChoiceEffectAst, ConditionalEffectAst, PermissionEffectAst,
 };
 use crate::grammar::effects::looked_card_shapes::parse_optional_looked_top_remainder_shape;
 use crate::grammar::effects::sequence_quad_shapes as quad_grammar;
@@ -51,25 +52,25 @@ pub(super) fn same_name_battlefield(group: &mut ViewedGroup, sentence: &Sentence
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
     selection_filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: comparison_tag.clone(),
+        tag: comparison_tag.clone().into(),
         relation: TaggedOpbjectRelation::SameNameAsTagged,
     });
     group.effects.push(EffectAst::subject_verb_tag_matching_objects(
         ObjectFilter::permanent(),
         vec![Zone::Battlefield],
-        comparison_tag,
+        crate::tag::TagRef::of(comparison_tag),
     ));
-    group.effects.push(EffectAst::May {
+    group.effects.push(EffectAst::Permissions(PermissionEffectAst::May {
         effects: vec![
-            EffectAst::ChooseTaggedObjectsInZone {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
                 filter: selection_filter,
                 count: ChoiceCount::exactly(1),
                 player: PlayerAst::You,
-                tag: chosen_tag.clone(),
+                tag: crate::tag::TagRef::of(chosen_tag.clone()),
                 zone: Zone::Library,
-            },
-            EffectAst::ForEachTagged {
-                tag: chosen_tag.clone(),
+            }),
+            EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+                tag: crate::tag::TagRef::of(chosen_tag.clone()),
                 effects: vec![EffectAst::subject_verb_move_to_zone(
                     it(),
                     Zone::Battlefield,
@@ -78,10 +79,10 @@ pub(super) fn same_name_battlefield(group: &mut ViewedGroup, sentence: &Sentence
                     false,
                     None,
                 )],
-            },
+            }),
         ],
-    });
-    group.selected = Some(chosen_tag);
+    }));
+    group.selected = Some(chosen_tag.key.clone());
     group.remainder_player = PlayerAst::You;
     true
 }
@@ -115,21 +116,21 @@ pub(super) fn optional_top(
     )
     .expect("checked");
     // The program this replaces named the group "looked_partition".
-    group.tag = helper_tag_for_tokens(&group.view_tokens, "looked_partition");
+    group.tag = helper_tag_for_tokens(&group.view_tokens, "looked_partition").into();
     let selected_tag = helper_tag_for_tokens(sentence.lowered(), "partition_selected");
     let mut selected_filter = ObjectFilter::tagged(group.tag.clone());
     selected_filter.zone = Some(Zone::Library);
-    group.effects.push(EffectAst::May {
+    group.effects.push(EffectAst::Permissions(PermissionEffectAst::May {
         effects: vec![
-            EffectAst::ChooseTaggedObjectsInZone {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
                 filter: selected_filter,
                 count: shape.count,
                 player: PlayerAst::You,
-                tag: selected_tag.clone(),
+                tag: crate::tag::TagRef::of(selected_tag.clone()),
                 zone: Zone::Library,
-            },
-            EffectAst::ForEachTagged {
-                tag: selected_tag.clone(),
+            }),
+            EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+                tag: crate::tag::TagRef::of(selected_tag.clone()),
                 effects: vec![EffectAst::subject_verb_move_to_zone(
                     it(),
                     Zone::Library,
@@ -138,18 +139,18 @@ pub(super) fn optional_top(
                     false,
                     None,
                 )],
-            },
+            }),
         ],
-    });
+    }));
     group.pending_statements = std::collections::VecDeque::from([vec![
         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-            group.tag.clone(),
-            Some(selected_tag.clone()),
+            crate::tag::TagRef::of(group.tag.clone()),
+            Some(crate::tag::TagRef::of(selected_tag.clone())),
             shape.remainder_order,
             PlayerAst::You,
         ),
     ]]);
-    group.selected = Some(selected_tag);
+    group.selected = Some(selected_tag.key.clone());
     true
 }
 
@@ -189,19 +190,19 @@ pub(super) fn reveal_put_top(group: &mut ViewedGroup, sentence: &SentenceInput) 
         group.view_style = ViewStyle::LookThenRevealTagged;
     }
     let chosen_tag = helper_tag_for_tokens(sentence.lowered(), "chosen");
-    group.effects.push(EffectAst::ChooseTaggedObjectsInZone {
+    group.effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
         filter,
         count: ChoiceCount::up_to(1),
         player: chooser,
-        tag: chosen_tag.clone(),
+        tag: crate::tag::TagRef::of(chosen_tag.clone()),
         zone: Zone::Library,
-    });
-    group.effects.push(EffectAst::ForEachTagged {
-        tag: chosen_tag.clone(),
-        effects: vec![EffectAst::subject_verb_reveal_tagged(chosen_tag.clone())],
-    });
-    group.effects.push(EffectAst::ForEachTagged {
-        tag: chosen_tag.clone(),
+    }));
+    group.effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+        tag: crate::tag::TagRef::of(chosen_tag.clone()),
+        effects: vec![EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(chosen_tag.clone()))],
+    }));
+    group.effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+        tag: crate::tag::TagRef::of(chosen_tag.clone()),
         effects: vec![EffectAst::subject_verb_move_to_zone(
             it(),
             Zone::Library,
@@ -210,8 +211,8 @@ pub(super) fn reveal_put_top(group: &mut ViewedGroup, sentence: &SentenceInput) 
             false,
             None,
         )],
-    });
-    group.selected = Some(chosen_tag);
+    }));
+    group.selected = Some(chosen_tag.key.clone());
     group.remainder_player = chooser;
     true
 }
@@ -264,19 +265,19 @@ pub(super) fn reveal_to_hand_then_shuffle(
         tag: group.tag.clone(),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
-    group.effects.push(EffectAst::ChooseTaggedObjectsInZone {
+    group.effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
         filter,
         count: shape.count,
         player: group.owner,
-        tag: revealed_tag.clone(),
+        tag: crate::tag::TagRef::of(revealed_tag.clone()),
         zone: Zone::Library,
-    });
+    }));
     group
         .effects
-        .push(EffectAst::subject_verb_reveal_tagged(revealed_tag.clone()));
+        .push(EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(revealed_tag.clone())));
     group.pending_statements = std::collections::VecDeque::from([vec![
         EffectAst::subject_verb_move_to_zone(
-            TargetAst::Tagged(revealed_tag.clone(), None),
+            TargetAst::Tagged(crate::tag::TagRef::of(revealed_tag.clone()), None),
             Zone::Hand,
             false,
             ReturnControllerAst::Preserve,
@@ -286,10 +287,10 @@ pub(super) fn reveal_to_hand_then_shuffle(
         EffectAst::subject_verb(
             SubjectVerbRoleAst::LibraryOwner,
             group.owner,
-            SubjectVerbActionAst::ShuffleLibrary,
+            SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
         ),
     ]]);
-    group.selected = Some(revealed_tag);
+    group.selected = Some(revealed_tag.key.clone());
     Ok(true)
 }
 
@@ -308,7 +309,7 @@ pub(super) fn hand_bottom_exile_split_shape(
                 )
                 .flatten(),
                 Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn { .. },
+                    action: SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn { .. }),
                     ..
                 }))
             )
@@ -325,14 +326,14 @@ pub(super) fn hand_bottom_exile_split(
     }
     let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
                 player: permission_player,
                 allow_land,
                 without_paying_mana_cost,
                 allow_any_color_for_cast,
                 surface,
                 ..
-            },
+            }),
         ..
     })) = crate::grammar::primitives::probe_shape(
         crate::permission_helpers::parse_cast_or_play_tagged_clause(
@@ -352,35 +353,35 @@ pub(super) fn hand_bottom_exile_split(
     }
     let mut hand_filter = ObjectFilter::tagged(group.tag.clone());
     hand_filter.zone = Some(Zone::Library);
-    group.effects.push(EffectAst::ChooseTaggedObjectsInZone {
+    group.effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
         filter: hand_filter,
         count: ChoiceCount::exactly(1),
         player,
-        tag: hand_tag.clone(),
+        tag: crate::tag::TagRef::of(hand_tag.clone()),
         zone: Zone::Library,
-    });
+    }));
     let mut bottom_filter = ObjectFilter::tagged(group.tag.clone()).not_tagged(hand_tag.clone());
     bottom_filter.zone = Some(Zone::Library);
-    group.effects.push(EffectAst::ChooseTaggedObjectsInZone {
+    group.effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
         filter: bottom_filter,
         count: ChoiceCount::exactly(1),
         player,
-        tag: bottom_tag.clone(),
+        tag: crate::tag::TagRef::of(bottom_tag.clone()),
         zone: Zone::Library,
-    });
+    }));
     let mut exile_filter = ObjectFilter::tagged(group.tag.clone())
         .not_tagged(hand_tag.clone())
         .not_tagged(bottom_tag.clone());
     exile_filter.zone = Some(Zone::Library);
-    group.effects.push(EffectAst::ChooseTaggedObjectsInZone {
+    group.effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
         filter: exile_filter,
         count: ChoiceCount::exactly(1),
         player,
-        tag: exiled_tag.clone(),
+        tag: crate::tag::TagRef::of(exiled_tag.clone()),
         zone: Zone::Library,
-    });
+    }));
     group.effects.push(EffectAst::subject_verb_move_to_zone(
-        TargetAst::Tagged(hand_tag, None),
+        TargetAst::Tagged(crate::tag::TagRef::of(hand_tag), None),
         Zone::Hand,
         false,
         ReturnControllerAst::Preserve,
@@ -388,7 +389,7 @@ pub(super) fn hand_bottom_exile_split(
         None,
     ));
     group.effects.push(EffectAst::subject_verb_move_to_zone(
-        TargetAst::Tagged(bottom_tag, None),
+        TargetAst::Tagged(crate::tag::TagRef::of(bottom_tag), None),
         Zone::Library,
         false,
         ReturnControllerAst::Preserve,
@@ -396,12 +397,12 @@ pub(super) fn hand_bottom_exile_split(
         None,
     ));
     group.effects.push(EffectAst::subject_verb_exile(
-        TargetAst::Tagged(exiled_tag.clone(), None),
+        TargetAst::Tagged(crate::tag::TagRef::of(exiled_tag.clone()), None),
         false,
     ));
     group.pending_statements = std::collections::VecDeque::from([vec![
         EffectAst::subject_verb_grant_play_tagged_until_end_of_turn_with_optional_surface(
-            exiled_tag.clone(),
+            crate::tag::TagRef::of(exiled_tag.clone()),
             permission_player,
             allow_land,
             without_paying_mana_cost,
@@ -409,7 +410,7 @@ pub(super) fn hand_bottom_exile_split(
             surface,
         ),
     ]]);
-    group.selected = Some(exiled_tag);
+    group.selected = Some(exiled_tag.key.clone());
     true
 }
 
@@ -424,9 +425,9 @@ pub(super) fn entry_counter_condition(group: &mut ViewedGroup, sentence: &Senten
         return false;
     };
     let [
-        conditional @ EffectAst::Conditional {
+        conditional @ EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             if_true, if_false, ..
-        },
+        }),
     ] = parsed.as_slice()
     else {
         return false;
@@ -435,7 +436,7 @@ pub(super) fn entry_counter_condition(group: &mut ViewedGroup, sentence: &Senten
         || !matches!(
             if_true.as_slice(),
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::PutCounters { count, .. },
+                action: SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { count, .. }),
                 ..
             })] if count.has_surface_hint(
                 ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter
@@ -543,32 +544,32 @@ pub(super) fn exile_one_cast_else_hand(
     let exiled_tag = helper_tag_for_tokens(sentence.lowered(), "exiled");
     let mut choice_filter = ObjectFilter::tagged(group.tag.clone());
     choice_filter.zone = Some(Zone::Library);
-    group.effects.push(EffectAst::ChooseTaggedObjectsInZone {
+    group.effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
         filter: choice_filter,
         count: ChoiceCount::exactly(1),
         player,
-        tag: exiled_tag.clone(),
+        tag: crate::tag::TagRef::of(exiled_tag.clone()),
         zone: Zone::Library,
-    });
+    }));
     group.effects.push(EffectAst::subject_verb_exile(
-        TargetAst::Tagged(exiled_tag.clone(), None),
+        TargetAst::Tagged(crate::tag::TagRef::of(exiled_tag.clone()), None),
         true,
     ));
     group.effects.push(EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-        group.tag.clone(),
-        Some(exiled_tag.clone()),
+        crate::tag::TagRef::of(group.tag.clone()),
+        Some(crate::tag::TagRef::of(exiled_tag.clone())),
         crate::cards::builders::LibraryBottomOrderAst::Random,
         player,
     ));
     group.pending_statements = std::collections::VecDeque::from([
-        vec![EffectAst::May {
-            effects: vec![EffectAst::Conditional {
+        vec![EffectAst::Permissions(PermissionEffectAst::May {
+            effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: crate::cards::builders::PredicateAst::TaggedMatches(
-                    exiled_tag.clone(),
+                    crate::tag::TagRef::of(exiled_tag.clone()),
                     cast_filter,
                 ),
                 if_true: vec![EffectAst::subject_verb_cast_tagged(
-                    exiled_tag.clone(),
+                    crate::tag::TagRef::of(exiled_tag.clone()),
                     player,
                     false,
                     false,
@@ -576,21 +577,21 @@ pub(super) fn exile_one_cast_else_hand(
                     None,
                 )],
                 if_false: Vec::new(),
-            }],
-        }],
-        vec![EffectAst::IfResult {
+            })],
+        })],
+        vec![EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: crate::cards::builders::IfResultPredicate::DidNot,
             effects: vec![EffectAst::subject_verb_move_to_zone(
-                TargetAst::Tagged(exiled_tag.clone(), None),
+                TargetAst::Tagged(crate::tag::TagRef::of(exiled_tag.clone()), None),
                 Zone::Hand,
                 false,
                 ReturnControllerAst::Preserve,
                 false,
                 None,
             )],
-        }],
+        })],
     ]);
-    group.selected = Some(exiled_tag);
+    group.selected = Some(exiled_tag.key.clone());
     Ok(true)
 }
 
@@ -627,23 +628,23 @@ pub(super) fn kicked_hand_count(
     };
     let kicked_tokens = rest[0].lowered();
     let player = group.owner;
-    group.effects.push(EffectAst::Conditional {
+    group.effects.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
         predicate: crate::cards::builders::PredicateAst::ThisSpellWasKicked,
         if_true: EffectAst::compose_put_some_into_hand_rest_on_bottom_of_library(
             player,
             ChoiceCount::exactly(kicked_count as usize),
-            helper_tag_for_tokens(kicked_tokens, "looked"),
-            helper_tag_for_tokens(kicked_tokens, "chosen"),
+            crate::tag::TagRef::of(helper_tag_for_tokens(kicked_tokens, "looked")),
+            crate::tag::TagRef::of(helper_tag_for_tokens(kicked_tokens, "chosen")),
             order,
         ),
         if_false: EffectAst::compose_put_some_into_hand_rest_on_bottom_of_library(
             player,
             ChoiceCount::exactly(base as usize),
-            helper_tag_for_tokens(sentence.lowered(), "looked"),
-            helper_tag_for_tokens(sentence.lowered(), "chosen"),
+            crate::tag::TagRef::of(helper_tag_for_tokens(sentence.lowered(), "looked")),
+            crate::tag::TagRef::of(helper_tag_for_tokens(sentence.lowered(), "chosen")),
             order,
         ),
-    });
+    }));
     group.pending_statements = none_pending(2);
     group.selected = Some(group.tag.clone());
     true
@@ -703,8 +704,8 @@ pub(super) fn reveal_then_your_turn(
         tag: group.tag.clone(),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
-    let battlefield_move = EffectAst::ForEachTagged {
-        tag: selected_tag.clone(),
+    let battlefield_move = EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+        tag: crate::tag::TagRef::of(selected_tag.clone()),
         effects: vec![EffectAst::subject_verb_move_to_zone(
             it(),
             Zone::Battlefield,
@@ -713,9 +714,9 @@ pub(super) fn reveal_then_your_turn(
             false,
             None,
         )],
-    };
-    let hand_move = EffectAst::ForEachTagged {
-        tag: selected_tag.clone(),
+    });
+    let hand_move = EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+        tag: crate::tag::TagRef::of(selected_tag.clone()),
         effects: vec![EffectAst::subject_verb_move_to_zone(
             it(),
             Zone::Hand,
@@ -724,32 +725,32 @@ pub(super) fn reveal_then_your_turn(
             false,
             None,
         )],
-    };
-    group.effects.push(EffectAst::ChooseTaggedObjectsInZone {
+    });
+    group.effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
         filter,
         count: reveal_count,
         player,
-        tag: selected_tag.clone(),
+        tag: crate::tag::TagRef::of(selected_tag.clone()),
         zone: Zone::Library,
-    });
+    }));
     group
         .effects
-        .push(EffectAst::subject_verb_reveal_tagged(selected_tag.clone()));
-    group.effects.push(EffectAst::Conditional {
+        .push(EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(selected_tag.clone())));
+    group.effects.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
         predicate: crate::cards::builders::PredicateAst::YourTurn,
         if_true: vec![
-            EffectAst::May {
+            EffectAst::Permissions(PermissionEffectAst::May {
                 effects: vec![battlefield_move],
-            },
-            EffectAst::IfResult {
+            }),
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                 predicate: crate::cards::builders::IfResultPredicate::DidNot,
                 effects: vec![hand_move.clone()],
-            },
+            }),
         ],
         if_false: vec![hand_move],
-    });
+    }));
     group.pending_statements = none_pending(2);
-    group.selected = Some(selected_tag);
+    group.selected = Some(selected_tag.key.clone());
     group.remainder_player = player;
     Ok(true)
 }
@@ -790,20 +791,20 @@ pub(super) fn reveal_then_bargain(
         tag: group.tag.clone(),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
-    group.effects.push(EffectAst::ChooseTaggedObjectsInZone {
+    group.effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
         filter,
         count: reveal_count,
         player,
-        tag: revealed_tag.clone(),
+        tag: crate::tag::TagRef::of(revealed_tag.clone()),
         zone: Zone::Library,
-    });
+    }));
     group
         .effects
-        .push(EffectAst::subject_verb_reveal_tagged(revealed_tag.clone()));
-    group.effects.push(EffectAst::Conditional {
+        .push(EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(revealed_tag.clone())));
+    group.effects.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
         predicate: crate::cards::builders::PredicateAst::ThisSpellPaidLabel("Bargain".into()),
         if_true: vec![EffectAst::subject_verb_move_to_zone(
-            TargetAst::Tagged(revealed_tag.clone(), None),
+            TargetAst::Tagged(crate::tag::TagRef::of(revealed_tag.clone()), None),
             Zone::Battlefield,
             false,
             ReturnControllerAst::Preserve,
@@ -811,24 +812,24 @@ pub(super) fn reveal_then_bargain(
             None,
         )],
         if_false: vec![EffectAst::subject_verb_move_to_zone(
-            TargetAst::Tagged(revealed_tag.clone(), None),
+            TargetAst::Tagged(crate::tag::TagRef::of(revealed_tag.clone()), None),
             Zone::Hand,
             false,
             ReturnControllerAst::Preserve,
             false,
             None,
         )],
-    });
+    }));
     group.pending_statements = std::collections::VecDeque::from([
         Vec::new(),
         Vec::new(),
         vec![EffectAst::subject_verb(
             SubjectVerbRoleAst::LibraryOwner,
             PlayerAst::You,
-            SubjectVerbActionAst::ShuffleLibrary,
+            SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
         )],
     ]);
-    group.selected = Some(revealed_tag);
+    group.selected = Some(revealed_tag.key.clone());
     Ok(true)
 }
 
@@ -864,18 +865,18 @@ pub(super) fn nonhand_replacement(
     let mut hand_filter = ObjectFilter::tagged(group.tag.clone());
     hand_filter.zone = Some(Zone::Library);
     let look_effect =
-        EffectAst::subject_verb_look_at_top_cards(player, group.count.clone(), group.tag.clone());
+        EffectAst::subject_verb_look_at_top_cards(player, group.count.clone(), crate::tag::TagRef::of(group.tag.clone()));
     let default_effects = vec![
         look_effect.clone(),
-        EffectAst::ChooseTaggedObjectsInZone {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter: hand_filter,
             count: ChoiceCount::exactly(1),
             player,
-            tag: hand_tag.clone(),
+            tag: crate::tag::TagRef::of(hand_tag.clone()),
             zone: Zone::Library,
-        },
+        }),
         EffectAst::subject_verb_move_to_zone(
-            TargetAst::Tagged(hand_tag.clone(), None),
+            TargetAst::Tagged(crate::tag::TagRef::of(hand_tag.clone()), None),
             Zone::Hand,
             false,
             ReturnControllerAst::Preserve,
@@ -883,8 +884,8 @@ pub(super) fn nonhand_replacement(
             None,
         ),
         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-            group.tag.clone(),
-            Some(hand_tag),
+            crate::tag::TagRef::of(group.tag.clone()),
+            Some(crate::tag::TagRef::of(hand_tag)),
             crate::cards::builders::LibraryBottomOrderAst::ChooserChooses,
             player,
         ),
@@ -892,7 +893,7 @@ pub(super) fn nonhand_replacement(
     let replacement_effects = vec![
         look_effect,
         EffectAst::subject_verb_move_to_zone(
-            TargetAst::Tagged(group.tag.clone(), None),
+            TargetAst::Tagged(crate::tag::TagRef::of(group.tag.clone()), None),
             Zone::Hand,
             false,
             ReturnControllerAst::Preserve,
@@ -958,17 +959,17 @@ pub(super) fn any_number_revealed_land_split(
         card_types: vec![crate::types::CardType::Land],
         ..Default::default()
     };
-    group.effects.push(EffectAst::ChooseTaggedObjectsInZone {
+    group.effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
         filter,
         count: choice_count,
         player,
-        tag: chosen_tag.clone(),
+        tag: crate::tag::TagRef::of(chosen_tag.clone()),
         zone: Zone::Library,
-    });
+    }));
     group.pending_statements = std::collections::VecDeque::from([vec![
-        EffectAst::ForEachTagged {
-            tag: chosen_tag.clone(),
-            effects: vec![EffectAst::Conditional {
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+            tag: crate::tag::TagRef::of(chosen_tag.clone()),
+            effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: crate::cards::builders::PredicateAst::ItMatches(land_filter),
                 if_true: vec![EffectAst::subject_verb_put_onto_battlefield(
                     player,
@@ -982,15 +983,15 @@ pub(super) fn any_number_revealed_land_split(
                     false,
                     ReturnControllerAst::Preserve,
                 )],
-            }],
-        },
+            })],
+        }),
         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-            group.tag.clone(),
-            Some(chosen_tag.clone()),
+            crate::tag::TagRef::of(group.tag.clone()),
+            Some(crate::tag::TagRef::of(chosen_tag.clone())),
             crate::cards::builders::LibraryBottomOrderAst::Random,
             player,
         ),
     ]]);
-    group.selected = Some(chosen_tag);
+    group.selected = Some(chosen_tag.key.clone());
     true
 }

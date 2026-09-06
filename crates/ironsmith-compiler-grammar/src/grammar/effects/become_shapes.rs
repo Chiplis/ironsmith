@@ -81,7 +81,7 @@ fn enchanted_target() -> TargetAst {
     filter
         .tagged_constraints
         .push(crate::target::TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::Enchanted.bind(),
+            tag: (crate::tag::CompilerReferenceTag::Enchanted.bind()).into(),
             relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
         });
     TargetAst::Object(filter, None, None)

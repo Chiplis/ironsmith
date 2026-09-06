@@ -1,3 +1,5 @@
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::ZoneMoveActionAst;
 use super::*;
 use crate::effect::Value;
 use crate::target::PlayerFilter;
@@ -125,7 +127,7 @@ pub(super) fn normalize_selected_sacrifice_tags(mut effects: Vec<EffectAst>) -> 
     };
 
     let choose_tag = match first {
-        EffectAst::ChooseObjects { tag, .. } | EffectAst::ChooseObjectsAcrossZones { tag, .. }
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. }) | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { tag, .. })
             if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() =>
         {
             tag
@@ -140,11 +142,11 @@ pub(super) fn normalize_selected_sacrifice_tags(mut effects: Vec<EffectAst>) -> 
             EffectAst::SubjectVerb(subject_verb)
                 if matches!(
                     &subject_verb.action,
-                    SubjectVerbActionAst::Sacrifice { filter, .. }
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { filter, .. })
                         if filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
                 ) =>
             {
-                if let SubjectVerbActionAst::Sacrifice { filter, .. } = &mut subject_verb.action {
+                if let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { filter, .. }) = &mut subject_verb.action {
                     replaced |= replace_filter_tag(
                         filter,
                         crate::tag::CompilerReferenceTag::It.as_str(),
@@ -155,11 +157,11 @@ pub(super) fn normalize_selected_sacrifice_tags(mut effects: Vec<EffectAst>) -> 
             EffectAst::SubjectVerb(subject_verb)
                 if matches!(
                     &subject_verb.action,
-                    SubjectVerbActionAst::SacrificeAll { filter }
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter })
                         if filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
                 ) =>
             {
-                if let SubjectVerbActionAst::SacrificeAll { filter } = &mut subject_verb.action {
+                if let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter }) = &mut subject_verb.action {
                     replaced |= replace_filter_tag(
                         filter,
                         crate::tag::CompilerReferenceTag::It.as_str(),
@@ -1106,7 +1108,7 @@ mod chosen_type_search_destination_tests {
         ))
         .tag("searched");
         let move_card = crate::effect::Effect::move_to_zone(
-            ChooseSpec::Tagged(ironsmith_compiler_semantic::tag::declared_key(move_tag)),
+            ChooseSpec::Tagged(ironsmith_compiler_semantic::tag::declared_key(move_tag).into()),
             Zone::Battlefield,
             false,
         )

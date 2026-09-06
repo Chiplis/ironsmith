@@ -1,3 +1,5 @@
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::LibraryActionAst;
 use super::*;
 
 pub(super) fn parse_prefix_then_look_at_top_exile_one(
@@ -70,7 +72,7 @@ pub(super) fn parse_source_and_blocked_creatures_top_library_shuffle_sentence(
     let mut moved_objects = ObjectFilter::default();
     moved_objects.any_of = vec![ObjectFilter::source(), blocked_creature];
 
-    Some(EffectAst::ForEachObject {
+    Some(EffectAst::ForEach(ForEachEffectAst::ForEachObject {
         filter: moved_objects,
         effects: vec![
             EffectAst::subject_verb_move_to_zone(
@@ -84,10 +86,10 @@ pub(super) fn parse_source_and_blocked_creatures_top_library_shuffle_sentence(
             EffectAst::subject_verb(
                 SubjectVerbRoleAst::LibraryOwner,
                 PlayerAst::ItsOwner,
-                SubjectVerbActionAst::ShuffleLibrary,
+                SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
             ),
         ],
-    })
+    }))
 }
 
 pub(super) fn parse_put_cards_from_single_graveyard_on_bottom_owner_library_sentence(

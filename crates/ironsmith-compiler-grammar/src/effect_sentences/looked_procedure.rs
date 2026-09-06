@@ -29,7 +29,7 @@ mod selections;
 
 use super::dispatch_entry::SentenceInput;
 use crate::cards::builders::{
-    CardTextError, EffectAst, IfResultPredicate, PlayerAst, TargetAst, Value,
+    CardTextError, EffectAst, IfResultPredicate, PlayerAst, TargetAst, Value, ConditionalEffectAst, PermissionEffectAst,
 };
 use crate::grammar::effects::triple_sequence_shapes as triple_grammar;
 use crate::grammar::sentence_markers;
@@ -211,7 +211,7 @@ pub(super) fn open(sentences: &[SentenceInput], sentence_idx: usize) -> Option<V
         if revealed { "revealed" } else { "looked" },
     );
     Some(ViewedGroup {
-        tag,
+        tag: tag.key.clone(),
         owner,
         count,
         revealed,
@@ -355,34 +355,34 @@ pub(super) fn finish(mut group: ViewedGroup) -> Vec<EffectAst> {
         ViewStyle::Look => vec![EffectAst::subject_verb_look_at_top_cards(
             group.owner,
             group.count,
-            group.tag.clone(),
+            crate::tag::TagRef::of(group.tag.clone()),
         )],
         ViewStyle::RevealTop => vec![EffectAst::subject_verb_reveal_top_cards(
             group.owner,
             group.count,
-            group.tag.clone(),
+            crate::tag::TagRef::of(group.tag.clone()),
         )],
         ViewStyle::LookThenRevealTagged => vec![
-            EffectAst::subject_verb_look_at_top_cards(group.owner, group.count, group.tag.clone()),
-            EffectAst::subject_verb_reveal_tagged(group.tag.clone()),
+            EffectAst::subject_verb_look_at_top_cards(group.owner, group.count, crate::tag::TagRef::of(group.tag.clone())),
+            EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(group.tag.clone())),
         ],
         ViewStyle::Absorbed => Vec::new(),
     };
     if group.optional {
         return vec![
-            EffectAst::May { effects },
-            EffectAst::IfResult {
+            EffectAst::Permissions(PermissionEffectAst::May { effects }),
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                 predicate: IfResultPredicate::Did,
                 effects: group.effects,
-            },
+            }),
         ];
     }
     effects.extend(group.effects);
     if group.gated {
-        vec![EffectAst::IfResult {
+        vec![EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,
             effects,
-        }]
+        })]
     } else {
         effects
     }

@@ -18,21 +18,21 @@ fn preserves_participant_fanout_and_greatest_mana_value_ties() {
         .expect("typed participant loot parser")
         .expect("exact participant loot shape");
     let [
-        EffectAst::IfEffectResult {
+        EffectAst::Conditionals(ConditionalEffectAst::IfEffectResult {
             effect,
             predicate:
                 EffectPredicate::PlayerAffectedObjectHasGreatestManaValue {
                     player: PlayerFilter::You,
                 },
             if_true,
-        },
+        }),
     ] = parsed.as_slice()
     else {
         panic!("expected typed producer/result gate: {parsed:#?}");
     };
     assert!(matches!(
         effect.as_ref(),
-        EffectAst::ForEachPlayersFiltered { filter, effects }
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { filter, effects })
             if *filter == PlayerFilter::excluding(
                 PlayerFilter::Any,
                 PlayerFilter::excluding(PlayerFilter::NotYou, PlayerFilter::Defending),
@@ -41,7 +41,7 @@ fn preserves_participant_fanout_and_greatest_mana_value_ties() {
     assert!(matches!(
         if_true.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::PutCounters { .. },
+            action: SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { .. }),
             ..
         })]
     ));

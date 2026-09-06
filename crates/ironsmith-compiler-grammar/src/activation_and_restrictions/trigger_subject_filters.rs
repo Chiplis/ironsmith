@@ -1,3 +1,5 @@
+use crate::cards::builders::PermissionEffectAst;
+use crate::cards::builders::ConditionalEffectAst;
 use super::*;
 use crate::grammar::trigger_subjects as trigger_subject_grammar;
 use crate::grammar::trigger_subjects::SpellOwnerSurface;
@@ -12,7 +14,7 @@ fn trigger_controller_player_filter(
         TriggerControllerReference::NotYou => PlayerFilter::NotYou,
         TriggerControllerReference::ChosenPlayer => PlayerFilter::ChosenPlayer,
         TriggerControllerReference::EnchantedPlayer => {
-            PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.bind())
+            PlayerFilter::TaggedPlayer((crate::tag::CompilerReferenceTag::Enchanted.bind()).into())
         }
         TriggerControllerReference::EffectController => PlayerFilter::EffectController,
         TriggerControllerReference::AnyPlayer => PlayerFilter::Any,
@@ -151,7 +153,7 @@ pub fn parse_possessive_clause_player_filter(words: &[&str]) -> PlayerFilter {
 
     match crate::grammar::trigger_subjects::parse_possessive_player_reference(words) {
         PossessivePlayerReference::EnchantedPlayer => {
-            PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.bind())
+            PlayerFilter::TaggedPlayer((crate::tag::CompilerReferenceTag::Enchanted.bind()).into())
         }
         PossessivePlayerReference::AttachedController(subject) => {
             let tag = match subject {
@@ -176,7 +178,7 @@ pub fn parse_subject_clause_player_filter(words: &[&str]) -> PlayerFilter {
     if facts.on_your_team || facts.contains_you {
         PlayerFilter::You
     } else if facts.contains_enchanted_player {
-        PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.bind())
+        PlayerFilter::TaggedPlayer((crate::tag::CompilerReferenceTag::Enchanted.bind()).into())
     } else if facts.contains_chosen_player {
         PlayerFilter::ChosenPlayer
     } else if facts.contains_opponent {
@@ -508,7 +510,7 @@ pub fn parse_trigger_subject_filter_lexed(
             }
             if let Some(ref tag) = intrinsic_attachment_state
                 && !filter.tagged_constraints.iter().any(|constraint| {
-                    constraint.tag == *tag
+                    constraint.tag == tag.key
                         && constraint.relation
                             == crate::filter::TaggedOpbjectRelation::IsTaggedObject
                 })
@@ -516,7 +518,7 @@ pub fn parse_trigger_subject_filter_lexed(
                 filter
                     .tagged_constraints
                     .push(crate::filter::TaggedObjectConstraint {
-                        tag: tag.clone(),
+                        tag: tag.clone().into(),
                         relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
                     });
             }
@@ -926,7 +928,7 @@ pub fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<MayCastTag
     };
 
     Some(MayCastTaggedSpec {
-        tag,
+        tag: tag.key.clone(),
         player,
         verb,
         as_copy,
@@ -950,7 +952,7 @@ pub fn parse_copy_reference_cost_reduction_sentence(tokens: &[OwnedLexToken]) ->
 
 pub fn build_may_cast_tagged_effect(spec: &MayCastTaggedSpec) -> EffectAst {
     let cast = EffectAst::subject_verb_cast_tagged(
-        spec.tag.clone(),
+        crate::tag::TagRef::of(spec.tag.clone()),
         spec.player,
         matches!(spec.verb, MayCastItVerb::Play),
         spec.as_copy,
@@ -962,21 +964,21 @@ pub fn build_may_cast_tagged_effect(spec: &MayCastTaggedSpec) -> EffectAst {
         .map(|surface| cast.clone().with_copy_instruction_surface(surface))
         .unwrap_or(cast);
     let may = if matches!(spec.player, PlayerAst::Implicit | PlayerAst::You) {
-        EffectAst::May {
+        EffectAst::Permissions(PermissionEffectAst::May {
             effects: vec![cast],
-        }
+        })
     } else {
-        EffectAst::MayByPlayer {
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
             player: spec.player,
             effects: vec![cast],
-        }
+        })
     };
     if let Some(predicate) = &spec.predicate {
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: predicate.clone(),
             if_true: vec![may],
             if_false: Vec::new(),
-        }
+        })
     } else {
         may
     }
@@ -997,10 +999,10 @@ pub fn effect_creates_eldrazi_spawn_or_scion(effect: &EffectAst) -> bool {
         EffectAst::SubjectVerb(subject_verb)
             if matches!(
                 &subject_verb.action,
-                crate::model::ast::SubjectVerbActionAst::CreateTokenWithMods {
+                crate::model::ast::SubjectVerbActionAst::Tokens(crate::model::ast::TokenActionAst::CreateTokenWithMods {
                     name,
                     ..
-                } if token_name_mentions_eldrazi_spawn_or_scion(name)
+                }) if token_name_mentions_eldrazi_spawn_or_scion(name)
             ) =>
         {
             true
@@ -1022,10 +1024,10 @@ pub fn effect_creates_any_token(effect: &EffectAst) -> bool {
         EffectAst::SubjectVerb(subject_verb)
             if matches!(
                 &subject_verb.action,
-                crate::model::ast::SubjectVerbActionAst::Populate { .. }
-                    | crate::model::ast::SubjectVerbActionAst::CreateTokenWithMods { .. }
-                    | crate::model::ast::SubjectVerbActionAst::CreateTokenCopy { .. }
-                    | crate::model::ast::SubjectVerbActionAst::CreateTokenCopyFromSource { .. }
+                crate::model::ast::SubjectVerbActionAst::KeywordActions(crate::model::ast::KeywordActionAst::Populate { .. })
+                    | crate::model::ast::SubjectVerbActionAst::Tokens(crate::model::ast::TokenActionAst::CreateTokenWithMods { .. })
+                    | crate::model::ast::SubjectVerbActionAst::Tokens(crate::model::ast::TokenActionAst::CreateTokenCopy { .. })
+                    | crate::model::ast::SubjectVerbActionAst::Tokens(crate::model::ast::TokenActionAst::CreateTokenCopyFromSource { .. })
             ) =>
         {
             true
@@ -1066,12 +1068,12 @@ pub fn created_token_info_from_effect(
 )> {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-            crate::model::ast::SubjectVerbActionAst::CreateTokenWithMods {
+            crate::model::ast::SubjectVerbActionAst::Tokens(crate::model::ast::TokenActionAst::CreateTokenWithMods {
                 name,
                 definition,
                 player,
                 ..
-            } => Some((name.clone(), definition.clone(), *player)),
+            }) => Some((name.clone(), definition.clone(), *player)),
             _ => {
                 let mut found = None;
                 for_each_nested_effects(effect, true, |nested| {
@@ -1372,12 +1374,12 @@ fn append_token_granted_ability_to_effect(
     };
     match effect {
         EffectAst::SubjectVerb(subject_verb) => {
-            let crate::model::ast::SubjectVerbActionAst::CreateTokenWithMods {
+            let crate::model::ast::SubjectVerbActionAst::Tokens(crate::model::ast::TokenActionAst::CreateTokenWithMods {
                 definition,
                 granted_abilities,
                 ability_presentation,
                 ..
-            } = &mut subject_verb.action
+            }) = &mut subject_verb.action
             else {
                 return Ok(false);
             };
@@ -1464,14 +1466,14 @@ pub fn append_token_reminder_to_effect(
     };
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
-            crate::model::ast::SubjectVerbActionAst::Populate {
+            crate::model::ast::SubjectVerbActionAst::KeywordActions(crate::model::ast::KeywordActionAst::Populate {
                 has_haste,
                 exile_at_end_of_combat,
                 sacrifice_at_next_end_step,
                 exile_at_next_end_step,
                 next_end_step_player,
                 ..
-            } => {
+            }) => {
                 if reminder.has_haste {
                     *has_haste = true;
                     return true;
@@ -1492,22 +1494,22 @@ pub fn append_token_reminder_to_effect(
                 }
                 false
             }
-            crate::model::ast::SubjectVerbActionAst::CreateTokenCopy {
+            crate::model::ast::SubjectVerbActionAst::Tokens(crate::model::ast::TokenActionAst::CreateTokenCopy {
                 has_haste,
                 exile_at_end_of_combat,
                 sacrifice_at_next_end_step,
                 exile_at_next_end_step,
                 next_end_step_player,
                 ..
-            }
-            | crate::model::ast::SubjectVerbActionAst::CreateTokenCopyFromSource {
+            })
+            | crate::model::ast::SubjectVerbActionAst::Tokens(crate::model::ast::TokenActionAst::CreateTokenCopyFromSource {
                 has_haste,
                 exile_at_end_of_combat,
                 sacrifice_at_next_end_step,
                 exile_at_next_end_step,
                 next_end_step_player,
                 ..
-            } => {
+            }) => {
                 if reminder.has_haste {
                     *has_haste = true;
                     return true;
@@ -1528,7 +1530,7 @@ pub fn append_token_reminder_to_effect(
                     || *exile_at_next_end_step
                     || *exile_at_end_of_combat
             }
-            crate::model::ast::SubjectVerbActionAst::CreateTokenWithMods {
+            crate::model::ast::SubjectVerbActionAst::Tokens(crate::model::ast::TokenActionAst::CreateTokenWithMods {
                 definition,
                 dynamic_power_toughness,
                 exile_at_end_of_combat,
@@ -1538,7 +1540,7 @@ pub fn append_token_reminder_to_effect(
                 next_end_step_player,
                 ability_presentation: create_ability_presentation,
                 ..
-            } => {
+            }) => {
                 if let Some((power, toughness)) = &reminder.dynamic_power_toughness {
                     *dynamic_power_toughness = Some((power.clone(), toughness.clone()));
                     return true;
@@ -1857,7 +1859,7 @@ mod typed_trigger_subject_migration_tests {
         assert_eq!(
             filter.tagged_constraints[0],
             crate::filter::TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::ChosenObjects.bind(),
+                tag: crate::tag::CompilerReferenceTag::ChosenObjects.bind().into(),
                 relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
             }
         );

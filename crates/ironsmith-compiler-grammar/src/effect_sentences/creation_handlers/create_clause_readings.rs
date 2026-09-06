@@ -171,9 +171,9 @@ fn read_delayed_combat_token_action(
                 )
             }
         };
-        return Ok(Some(EffectAst::DelayedUntilEndOfCombat {
+        return Ok(Some(EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat {
             effects: vec![effect],
-        }));
+        })));
     }
     Ok(None)
 }

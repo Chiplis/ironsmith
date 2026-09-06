@@ -891,7 +891,7 @@ pub fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Option<Value
             }
             (EtbSourceStatFallback::TaggedObject, kind) => {
                 let tagged = Box::new(ChooseSpec::Tagged(
-                    crate::tag::CompilerReferenceTag::It.bind(),
+                    (crate::tag::CompilerReferenceTag::It.bind()).into(),
                 ));
                 match kind {
                     EtbSourceStatKind::Power => Value::PowerOf(tagged),
@@ -901,7 +901,7 @@ pub fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Option<Value
             }
             (EtbSourceStatFallback::TriggeringSpell, EtbSourceStatKind::ManaValue) => {
                 Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
-                    crate::tag::CompilerReferenceTag::Triggering.bind(),
+                    (crate::tag::CompilerReferenceTag::Triggering.bind()).into(),
                 )))
             }
             (EtbSourceStatFallback::TriggeringSpell, _) => return None,
@@ -956,7 +956,7 @@ pub fn parse_where_x_is_fixed_plus_reference_value(tokens: &[OwnedLexToken]) -> 
     }
 
     let reference_value = {
-        let it = || ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.bind());
+        let it = || ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into());
         let value = match captured.reference_kind {
             EtbReferenceValueKind::SacrificedCreaturePower => Value::PowerOf(Box::new(it())),
             EtbReferenceValueKind::SacrificedCreatureToughness => {
@@ -1130,7 +1130,7 @@ pub fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Opti
             filter
                 .tagged_constraints
                 .push(crate::filter::TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::It.bind(),
+                    tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
                     relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
                 });
         }
@@ -1196,7 +1196,7 @@ fn parse_cast_time_controlled_objects_filter(tokens: &[OwnedLexToken]) -> Option
     filter
         .tagged_constraints
         .push(crate::filter::TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::CastControlledObjects.bind(),
+            tag: (crate::tag::CompilerReferenceTag::CastControlledObjects.bind()).into(),
             relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
         });
     Some(filter)
@@ -2235,10 +2235,10 @@ mod etb_enters_tapped_with_counters_tests {
             );
             assert!(matches!(
                 parse_enters_with_counter_condition_clause(&tokens),
-                Some(PredicateAst::PlayerCastSpellsThisTurnOrMore {
+                Some(PredicateAst::Player(PlayerPredicateAst::PlayerCastSpellsThisTurnOrMore {
                     player: PlayerAst::You,
                     count
-                }) if count == expected
+                })) if count == expected
             ));
         }
     }

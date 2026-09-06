@@ -85,10 +85,10 @@ pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<TagKey> 
         return None;
     }
     if this_blocks_or_becomes_blocked_other_filter(trigger).is_some() {
-        return Some(crate::tag::CompilerReferenceTag::Blocking.bind());
+        return Some((crate::tag::CompilerReferenceTag::Blocking.bind()).into());
     }
     if matches!(trigger, TriggerSpec::BlocksOrBecomesBlockedByObject { .. }) {
-        return Some(crate::tag::CompilerReferenceTag::Blocking.bind());
+        return Some((crate::tag::CompilerReferenceTag::Blocking.bind()).into());
     }
     if match trigger {
         TriggerSpec::ThisBecomesBlockedByObject(_)
@@ -102,20 +102,20 @@ pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<TagKey> 
         }
         _ => false,
     } {
-        return Some(crate::tag::CompilerReferenceTag::Blocking.bind());
+        return Some((crate::tag::CompilerReferenceTag::Blocking.bind()).into());
     }
     if matches!(
         trigger,
         TriggerSpec::ThisBlocksObject { .. } | TriggerSpec::BlocksObjectWithLesserPower { .. }
     ) {
-        return Some(crate::tag::CompilerReferenceTag::Blocked.bind());
+        return Some((crate::tag::CompilerReferenceTag::Blocked.bind()).into());
     }
     if matches!(
         trigger,
         TriggerSpec::KeywordActionTaggedObject { object_tag, .. }
             if object_tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     ) {
-        return Some(crate::tag::CompilerReferenceTag::It.bind());
+        return Some((crate::tag::CompilerReferenceTag::It.bind()).into());
     }
     if matches!(
         trigger,
@@ -124,7 +124,7 @@ pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<TagKey> 
             ..
         }
     ) {
-        return Some(crate::tag::CompilerReferenceTag::ManifestDreadGraveyard.bind());
+        return Some((crate::tag::CompilerReferenceTag::ManifestDreadGraveyard.bind()).into());
     }
     if matches!(
         trigger,
@@ -139,8 +139,8 @@ pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<TagKey> 
             | TriggerSpec::DealsExactDamageToObjectOrPlayer { .. }
             | TriggerSpec::DealsCombatDamageTo { .. }
     ) {
-        Some(crate::tag::CompilerReferenceTag::Damaged.bind())
+        Some((crate::tag::CompilerReferenceTag::Damaged.bind()).into())
     } else {
-        Some(crate::tag::CompilerReferenceTag::Triggering.bind())
+        Some((crate::tag::CompilerReferenceTag::Triggering.bind()).into())
     }
 }

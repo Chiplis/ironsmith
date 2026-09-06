@@ -11,6 +11,7 @@
 //! tag to the sentences that follow, as [`super::looked_procedure`] carries a
 //! viewed group.
 
+use crate::cards::builders::ForEachEffectAst;
 use super::dispatch_entry::SentenceInput;
 use super::sequence_rules::generic_subject_verb_sequences::exile_permission_followups::rebind_permission_tag;
 use super::sequence_rules::generic_subject_verb_sequences::exiled_collections::{
@@ -19,7 +20,7 @@ use super::sequence_rules::generic_subject_verb_sequences::exiled_collections::{
 };
 use crate::cards::builders::{
     CardTextError, EffectAst, IfResultPredicate, ObjectFilter, PlayerAst, SubjectVerbActionAst,
-    SubjectVerbEffectAst, TriggerSpec,
+    SubjectVerbEffectAst, TriggerSpec, GrantActionAst, DelayedEffectAst, ObjectChoiceEffectAst, ConditionalEffectAst,
 };
 use crate::grammar::effects::{
     ExilePermissionFollowupKind, clause_dispatch_shapes, parse_exile_permission_followup_shape,
@@ -81,15 +82,15 @@ fn cast_collection(
     let chosen_tag = helper_tag_for_tokens(sentence.lowered(), "cast_from_exiled_collection");
     Ok(Some((
         vec![
-            EffectAst::ChooseTaggedObjectsInZone {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
                 filter,
                 count: shape.count,
                 player: PlayerAst::You,
-                tag: chosen_tag.clone(),
+                tag: crate::tag::TagRef::of(chosen_tag.clone()),
                 zone: Zone::Exile,
-            },
-            EffectAst::ForEachTagged {
-                tag: chosen_tag.clone(),
+            }),
+            EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+                tag: crate::tag::TagRef::of(chosen_tag.clone()),
                 effects: vec![EffectAst::subject_verb_cast_tagged(
                     crate::tag::CompilerReferenceTag::It.bind(),
                     PlayerAst::You,
@@ -98,9 +99,9 @@ fn cast_collection(
                     true,
                     None,
                 )],
-            },
+            }),
         ],
-        chosen_tag,
+        chosen_tag.key.clone(),
     )))
 }
 
@@ -118,7 +119,7 @@ fn play_this_turn_permission(
     Ok(matches!(
         &permission,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn { .. },
+            action: SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn { .. }),
             ..
         })
     )
@@ -239,13 +240,13 @@ pub(super) fn continue_with(
             };
             match kind {
                 ExilePermissionFollowupKind::ReflexiveExileNonland => {
-                    group.effects.push(EffectAst::WhenResult {
+                    group.effects.push(EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
                         predicate: IfResultPredicate::AffectedObjectMatchesCardType {
                             card_type: CardType::Land,
                             negated: true,
                         },
                         effects: followup_effects,
-                    });
+                    }));
                     group.effects.push(permission);
                 }
                 ExilePermissionFollowupKind::DelayedPlayCard => {
@@ -267,13 +268,13 @@ pub(super) fn continue_with(
                             filter: tagged,
                         }),
                     );
-                    group.effects.push(EffectAst::DelayedTriggerThisTurn {
+                    group.effects.push(EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
                         trigger,
                         effects: followup_effects,
                         one_shot: true,
                         until_end_of_combat: false,
                         attach_to_previous_ability: false,
-                    });
+                    }));
                 }
             }
         }

@@ -370,7 +370,7 @@ fn read_where_x_known_value(input: &BindingClause<'_>) -> Option<Value> {
             }
             WhereXKnownValue::ThatPlayerSpeed => Value::Speed(PlayerFilter::target_player()),
             WhereXKnownValue::DiscardedCardManaValue => Value::ManaValueOf(Box::new(
-                ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::DiscardedCost.bind()),
+                ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::DiscardedCost.bind()).into()),
             )),
             WhereXKnownValue::RevealedCardsTotalManaValue => Value::TotalManaValue(
                 ObjectFilter::tagged(crate::tag::CompilerReferenceTag::PublicRevealed.bind()),
@@ -511,7 +511,7 @@ fn read_tagged_mana_value_reference(input: &BindingClause<'_>) -> Option<Value> 
                 crate::tag::CompilerReferenceTag::Triggering
             }
         };
-        return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(tag.bind()))));
+        return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(tag.bind().into()))));
     }
     None
 }

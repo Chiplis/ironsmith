@@ -24,7 +24,7 @@ fn exact_three_sentence_shape_shares_selected_tag_and_creature_filter() {
         parse("For as long as it remains exiled, you may cast it if it's a creature spell.")
             .expect("three-sentence hidden-card permission");
     let selected_tag = match &effects[1] {
-        EffectAst::ChooseTaggedObjectsInZone { tag, .. } | EffectAst::ChooseObjects { tag, .. } => {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { tag, .. }) | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. }) => {
             tag
         }
         _ => panic!("expected selected-card tag: {effects:#?}"),
@@ -32,11 +32,11 @@ fn exact_three_sentence_shape_shares_selected_tag_and_creature_filter() {
     assert!(matches!(
         effects.as_slice(),
         [.., EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
+            action: SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
                 tag,
                 filter: Some(filter),
                 ..
-            },
+            }),
             ..
         })] if tag == selected_tag
             && filter.card_types == [CardType::Creature]

@@ -1,4 +1,14 @@
 #![allow(unused_imports)]
+use crate::cards::builders::SourcePredicateAst;
+use crate::cards::builders::PermissionEffectAst;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::TokenActionAst;
+use crate::cards::builders::LifeResourceActionAst;
+use crate::cards::builders::RevealLookActionAst;
+use crate::cards::builders::ZoneMoveActionAst;
+use crate::cards::builders::LibraryActionAst;
 use super::shard_00::*;
 use super::shard_01::*;
 use super::shard_02::*;
@@ -192,18 +202,18 @@ pub(super) fn rewrite_lexed_conditional_parser_routes_commaless_clause_through_s
 
     match parsed.as_slice() {
         [
-            crate::cards::builders::EffectAst::Conditional {
+            crate::cards::builders::EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: _,
                 if_true,
                 if_false,
-            },
+            }),
         ] => {
             assert!(if_false.is_empty());
             assert!(matches!(
                 if_true.as_slice(),
                 [crate::cards::builders::EffectAst::SubjectVerb(
                     crate::cards::builders::SubjectVerbEffectAst {
-                        action: crate::cards::builders::SubjectVerbActionAst::CreateTokenWithMods { .. },
+                        action: crate::cards::builders::SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { .. }),
                         ..
                     }
                 )]
@@ -227,13 +237,13 @@ pub(super) fn rewrite_lexed_leading_may_trailing_if_keeps_condition_outside_perm
     let (predicate, if_true, if_false) = super::shard_01::conditional_effect_parts(effect);
     assert!(matches!(
         predicate,
-        crate::cards::builders::PredicateAst::SourceIsEnchanted
+        crate::cards::builders::PredicateAst::Source(SourcePredicateAst::SourceIsEnchanted)
     ));
     assert!(if_false.is_empty());
     assert!(
         matches!(
             if_true,
-            [crate::cards::builders::EffectAst::MayByPlayer { .. }]
+            [crate::cards::builders::EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. })]
         ),
         "{effect:#?}"
     );
@@ -249,10 +259,10 @@ pub(super) fn rewrite_lexed_conditional_parser_keeps_if_you_dont_result_predicat
 
     assert!(matches!(
         parsed.as_slice(),
-        [crate::cards::builders::EffectAst::IfResult {
+        [crate::cards::builders::EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: crate::cards::builders::IfResultPredicate::DidNot,
             ..
-        }]
+        })]
     ));
 }
 
@@ -288,10 +298,10 @@ pub(super) fn rewrite_lexed_effect_sentence_keeps_when_you_do_result_prefix_afte
 
     assert!(matches!(
         parsed.as_slice(),
-        [crate::cards::builders::EffectAst::WhenResult {
+        [crate::cards::builders::EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
             predicate: crate::cards::builders::IfResultPredicate::Did,
             ..
-        }]
+        })]
     ));
 }
 
@@ -309,10 +319,10 @@ pub(super) fn rewrite_lexed_gain_ability_sentence_keeps_if_you_do_result_prefix(
     assert!(
         matches!(
             parsed.as_slice(),
-            [crate::cards::builders::EffectAst::IfResult {
+            [crate::cards::builders::EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                 predicate: crate::cards::builders::IfResultPredicate::Did,
                 ..
-            }]
+            })]
         ),
         "{debug}"
     );
@@ -378,8 +388,8 @@ pub(super) fn rewrite_lexed_effect_sentence_keeps_trailing_if_clause_after_struc
 
     assert!(matches!(
         parsed.as_slice(),
-        [crate::cards::builders::EffectAst::Conditional { .. }
-            | crate::cards::builders::EffectAst::TrailingIf { .. }
+        [crate::cards::builders::EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. })
+            | crate::cards::builders::EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { .. })
             | crate::cards::builders::EffectAst::ControlFlow(_)]
     ));
 }
@@ -649,11 +659,11 @@ pub(super) fn rewrite_sequence_registry_keeps_initial_exile_collection_across_pl
         return_exiled,
         crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::MoveToZone {
+                action: crate::cards::builders::SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                     target: crate::cards::builders::TargetAst::Tagged(return_tag, _),
                     zone: crate::zone::Zone::Hand,
                     ..
-                },
+                }),
                 ..
             }
         ) if return_tag == tag
@@ -3076,7 +3086,7 @@ pub(super) fn rewrite_lexed_effect_sequence_parses_inline_consult_battlefield_bo
         .iter()
         .find_map(|effect| match effect {
             EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-                SubjectVerbActionAst::ConsultTopOfLibrary { filter, .. } => Some(filter),
+                SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary { filter, .. }) => Some(filter),
                 _ => None,
             },
             _ => None,
@@ -3192,7 +3202,7 @@ pub(super) fn rewrite_lexed_consult_any_number_and_repeated_moves_keep_explicit_
     assert!(vivid_debug.contains("ColorsAmong"), "{vivid_debug}");
     assert!(vivid.iter().any(|effect| matches!(
         effect,
-        EffectAst::ChooseObjects { count, .. } if count.is_any_number()
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { count, .. }) if count.is_any_number()
     )));
     assert!(
         vivid_debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
@@ -3227,9 +3237,9 @@ pub(super) fn rewrite_lexed_consult_any_number_and_repeated_moves_keep_explicit_
     ) {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect {
             match action {
-                SubjectVerbActionAst::LookAtTopCards {
+                SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
                     tag, reveal: true, ..
-                } => reveal_tags.push(tag.clone()),
+                }) => reveal_tags.push(tag.clone().into()),
                 SubjectVerbActionAst::TagMatchingObjects { filter, .. } => {
                     captures.push(filter.clone());
                 }
@@ -3541,10 +3551,10 @@ pub(super) fn each_player_optional_hand_wheel_keeps_discard_and_draw_in_one_may_
     let effects = super::super::clause_support::parse_effect_sentences_lexed(&tokens)
         .expect("optional hand-wheel sentence should parse");
 
-    let [crate::cards::builders::EffectAst::ForEachPlayer { effects }] = effects.as_slice() else {
+    let [crate::cards::builders::EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })] = effects.as_slice() else {
         panic!("expected each-player wrapper, got {effects:#?}");
     };
-    let [crate::cards::builders::EffectAst::May { effects }] = effects.as_slice() else {
+    let [crate::cards::builders::EffectAst::Permissions(PermissionEffectAst::May { effects })] = effects.as_slice() else {
         panic!("expected one iterated-player may scope, got {effects:#?}");
     };
     assert_eq!(effects.len(), 2);
@@ -3552,7 +3562,7 @@ pub(super) fn each_player_optional_hand_wheel_keeps_discard_and_draw_in_one_may_
         effects[0],
         crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::DiscardHand,
+                action: crate::cards::builders::SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DiscardHand),
                 ..
             }
         )
@@ -3561,9 +3571,9 @@ pub(super) fn each_player_optional_hand_wheel_keeps_discard_and_draw_in_one_may_
         effects[1],
         crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::Draw {
+                action: crate::cards::builders::SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
                     count: crate::effect::Value::Fixed(7)
-                },
+                }),
                 ..
             }
         )
@@ -3580,16 +3590,16 @@ pub(super) fn conditional_optional_hand_wheel_keeps_the_typed_sequence_inside_on
     let effects = super::super::clause_support::parse_effect_sentences_lexed(&tokens)
         .expect("conditional optional hand-wheel sentence should parse");
 
-    let [crate::cards::builders::EffectAst::Conditional { if_true, .. }] = effects.as_slice()
+    let [crate::cards::builders::EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, .. })] = effects.as_slice()
     else {
         panic!("expected conditional wrapper, got {effects:#?}");
     };
-    let [crate::cards::builders::EffectAst::ForEachPlayer { effects }] = if_true.as_slice() else {
+    let [crate::cards::builders::EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })] = if_true.as_slice() else {
         panic!("expected each-player wrapper inside conditional, got {if_true:#?}");
     };
     let optional_effects = match effects.as_slice() {
-        [crate::cards::builders::EffectAst::May { effects }]
-        | [crate::cards::builders::EffectAst::MayByPlayer { effects, .. }] => effects,
+        [crate::cards::builders::EffectAst::Permissions(PermissionEffectAst::May { effects })]
+        | [crate::cards::builders::EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. })] => effects,
         _ => panic!("expected one may scope inside conditional, got {effects:#?}"),
     };
     assert_eq!(
@@ -5005,14 +5015,14 @@ fn vision_quest_search_threshold_shuffle_keeps_three_typed_steps() {
     assert!(
         matches!(
             parsed[1],
-            crate::cards::builders::EffectAst::Conditional { .. }
+            crate::cards::builders::EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. })
         ),
         "{parsed:#?}"
     );
     assert!(
         matches!(
             parsed[2],
-            crate::cards::builders::EffectAst::IfResult { .. }
+            crate::cards::builders::EffectAst::Conditionals(ConditionalEffectAst::IfResult { .. })
         ),
         "{parsed:#?}"
     );

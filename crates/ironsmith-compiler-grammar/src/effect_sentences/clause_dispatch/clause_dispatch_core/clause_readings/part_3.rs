@@ -424,7 +424,7 @@ pub(super) fn read_ordered_choose_all(
             )))
             .map(Some);
         }
-        return Ok(Some(EffectAst::ChooseObjects {
+        return Ok(Some(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter: filter.clone(),
             count: ChoiceCount::dynamic_x(),
             count_value: Some(
@@ -432,7 +432,7 @@ pub(super) fn read_ordered_choose_all(
             ),
             player: PlayerAst::You,
             tag: crate::tag::CompilerReferenceTag::It.bind(),
-        }));
+        })));
     }
     Ok(None)
 }
@@ -565,13 +565,13 @@ pub(super) fn read_target_player_choose_objects_with_count(
     if let Some((chooser, choose_filter, choose_count, count_value)) =
         parse_target_player_choose_objects_clause_with_count_value(tokens)?
     {
-        return Ok(Some(EffectAst::ChooseObjects {
+        return Ok(Some(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter: choose_filter,
             count: choose_count,
             count_value,
             player: chooser,
             tag: crate::tag::CompilerReferenceTag::It.bind(),
-        }));
+        })));
     }
     Ok(None)
 }
@@ -610,13 +610,13 @@ pub(super) fn read_you_choose_objects_with_count(
     if let Some((chooser, choose_filter, choose_count, count_value)) =
         parse_you_choose_objects_clause_with_count_value(tokens)?
     {
-        return Ok(Some(EffectAst::ChooseObjects {
+        return Ok(Some(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter: choose_filter,
             count: choose_count,
             count_value,
             player: chooser,
             tag: crate::tag::CompilerReferenceTag::It.bind(),
-        }));
+        })));
     }
     Ok(None)
 }

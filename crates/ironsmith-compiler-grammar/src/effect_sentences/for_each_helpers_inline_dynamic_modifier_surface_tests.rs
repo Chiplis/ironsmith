@@ -1,3 +1,5 @@
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::CharacteristicActionAst;
 use super::*;
 use crate::lexer::lex_line;
 
@@ -23,10 +25,10 @@ fn each_player_choice_keeps_comma_separated_negative_modifiers_in_one_filter() {
     let effect = parse_for_each_player_clause(&tokens)
         .expect("participant choice should parse")
         .expect("participant choice should match");
-    let EffectAst::ForEachPlayer { effects } = effect else {
+    let EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }) = effect else {
         panic!("expected a player loop, got {effect:#?}");
     };
-    let [EffectAst::ChooseObjects { filter, count, .. }] = effects.as_slice() else {
+    let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, count, .. })] = effects.as_slice() else {
         panic!("expected one object choice, got {effects:#?}");
     };
 
@@ -110,7 +112,7 @@ fn full_sentence_dispatch_preserves_bounded_target_player_iteration() {
     assert!(
         matches!(
             effects.as_slice(),
-            [EffectAst::ForEachTargetPlayers { count, .. }]
+            [EffectAst::ForEach(ForEachEffectAst::ForEachTargetPlayers { count, .. })]
                 if *count == ChoiceCount::exactly(2)
         ),
         "{effects:#?}"
@@ -161,13 +163,13 @@ fn candlekeep_shape_binds_where_x_to_an_owned_multi_zone_count() {
         .expect("Candlekeep-style base-P/T clause should be recognized");
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::SetBasePowerToughness {
+            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness {
                 power,
                 toughness,
                 target,
                 duration,
                 ..
-            },
+            }),
         ..
     }) = effect
     else {
@@ -218,13 +220,13 @@ fn jolrael_shape_binds_where_x_to_cards_in_hand() {
         .expect("Jolrael-style base-P/T clause should be recognized");
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::SetBasePowerToughness {
+            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness {
                 power,
                 toughness,
                 target,
                 duration,
                 ..
-            },
+            }),
         ..
     }) = effect
     else {

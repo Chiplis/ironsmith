@@ -1,3 +1,4 @@
+use crate::cards::builders::ZoneMoveActionAst;
 use super::*;
 use crate::types::Subtype;
 use crate::{lex_line, split_lexed_sentences};
@@ -34,10 +35,10 @@ fn later_wall_subset_reuses_the_exact_multi_target_set() {
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::Destroy {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy {
                     target: TargetAst::Object(destroyed, _, _),
                     ..
-                },
+                }),
             ..
         }),
     ] = effects.as_slice()
@@ -56,12 +57,12 @@ fn later_wall_subset_reuses_the_exact_multi_target_set() {
         }) if count == &ChoiceCount::up_to(3)
     ));
     assert!(restricted.tagged_constraints.iter().any(|constraint| {
-        constraint.tag == *target_tag
+        constraint.tag == **target_tag
             && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     }));
     assert!(destroyed.subtypes.contains(&Subtype::Wall));
     assert!(destroyed.tagged_constraints.iter().any(|constraint| {
-        constraint.tag == *target_tag
+        constraint.tag == **target_tag
             && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     }));
 }

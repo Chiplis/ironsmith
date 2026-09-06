@@ -381,7 +381,7 @@ fn read_token_lifecycle_sentence(
             if !matches!(
                 &create_effect,
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::CreateTokenWithMods { .. },
+                    action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { .. }),
                     ..
                 })
             ) {

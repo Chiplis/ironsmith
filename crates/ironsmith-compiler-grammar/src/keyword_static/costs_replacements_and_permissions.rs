@@ -1,3 +1,7 @@
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::TokenActionAst;
+use crate::cards::builders::LifeResourceActionAst;
+use crate::cards::builders::KeywordActionAst;
 use super::*;
 use crate::cards::builders::PredicateAst;
 #[cfg(test)]
@@ -1616,7 +1620,7 @@ pub fn parse_dynamic_cost_modifier_value(
                 },
                 CounterReferenceKind::Tagged => Value::CountersOn(
                     Box::new(ChooseSpec::Tagged(
-                        crate::tag::CompilerReferenceTag::It.bind(),
+                        (crate::tag::CompilerReferenceTag::It.bind()).into(),
                     )),
                     counter_type,
                 ),
@@ -3133,7 +3137,7 @@ pub fn parse_you_may_cast_exile_counter_cards_with_mana_permission_line(
         base_filter
             .tagged_constraints
             .push(crate::target::TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::SourceExiled.bind(),
+                tag: (crate::tag::CompilerReferenceTag::SourceExiled.bind()).into(),
                 relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
             });
     }
@@ -3266,7 +3270,7 @@ pub fn parse_you_may_static_grant_line(
         filter
             .tagged_constraints
             .push(crate::target::TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::SourceExiled.bind(),
+                tag: (crate::tag::CompilerReferenceTag::SourceExiled.bind()).into(),
                 relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
             });
         let grant = StaticAbility::grants(
@@ -3977,12 +3981,12 @@ pub fn parse_conditional_draw_replacement_line(
             ..Default::default()
         };
         nonland.set_explicit_card_noun(true);
-        let choose_kind = EffectAst::ChooseOneOf {
+        let choose_kind = EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf {
             modes: vec![
                 mode("land", land, "land"),
                 mode("nonland", nonland, "nonland"),
             ],
-        };
+        });
         return Ok(Some(
             StaticAbility::conditional_draw_replacement_with_optional(
                 always(),
@@ -4021,17 +4025,17 @@ pub fn parse_conditional_draw_replacement_line(
     let mut replacement_effects = vec![EffectAst::subject_verb(
         SubjectVerbRoleAst::AffectedPlayer,
         PlayerAst::You,
-        SubjectVerbActionAst::Draw {
+        SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
             count: Value::Fixed(draw_count as i32),
-        },
+        }),
     )];
     if let Some(amount) = fact.life_loss {
         replacement_effects.push(EffectAst::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             PlayerAst::You,
-            SubjectVerbActionAst::LoseLife {
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife {
                 amount: Value::Fixed(amount as i32),
-            },
+            }),
         ));
     }
 
@@ -4149,7 +4153,7 @@ pub fn parse_keyword_action_replacement_line(
                     EffectAst::subject_verb(
                         SubjectVerbRoleAst::Actor,
                         PlayerAst::You,
-                        SubjectVerbActionAst::Scry { count },
+                        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Scry { count }),
                     ),
                     EffectAst::subject_verb_explore(TargetAst::Tagged(
                         crate::tag::CompilerReferenceTag::It.bind(),
@@ -4226,6 +4230,7 @@ pub fn parse_exile_to_countered_exile_instead_of_graveyard_line(
 
 #[cfg(test)]
 mod optional_draw_replacement_regression_tests {
+    use crate::cards::builders::TokenActionAst;
     use super::*;
     use crate::lexer::lex_line;
 
@@ -4423,7 +4428,7 @@ pub fn build_replacement_creature_token(
     EffectAst::subject_verb(
         SubjectVerbRoleAst::Actor,
         PlayerAst::Implicit,
-        SubjectVerbActionAst::CreateTokenWithMods {
+        SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
             name,
             definition: crate::model::token_definition::TokenDefinitionSpec::Creature(shape),
             count: Value::Fixed(1),
@@ -4441,7 +4446,7 @@ pub fn build_replacement_creature_token(
             next_end_step_player: PlayerFilter::Any,
             granted_abilities: Vec::new(),
             ability_presentation: None,
-        },
+        }),
     )
 }
 

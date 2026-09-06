@@ -1,3 +1,4 @@
+use crate::cards::builders::ForEachEffectAst;
 use super::super::grammar::effects::fanout_shapes as fanout_grammar;
 use super::super::grammar::effects::parse_serial_damage_fanout_tokens;
 use super::super::keyword_static::{parse_pt_modifier, parse_pt_modifier_values};
@@ -13,7 +14,7 @@ use super::zone_handlers::collapse_leading_signed_pt_modifier_tokens;
 use super::{apply_where_x_to_damage_amounts, find_verb, parse_simple_gain_ability_clause};
 use crate::cards::builders::{
     CardTextError, EffectAst, PlayerAst, PredicateAst, SubjectVerbActionAst, SubjectVerbEffectAst,
-    TagKey, TargetAst, Verb,
+    TagKey, TargetAst, Verb, CounterActionAst, GrantActionAst, DamageActionAst, ConditionalEffectAst,
 };
 use crate::effect::{EventValueSpec, Until, Value};
 use crate::model::visit::for_each_nested_effects_mut;
@@ -185,16 +186,16 @@ pub fn parse_same_name_fanout_filter(
         ))
     })?;
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: crate::tag::CompilerReferenceTag::It.bind(),
+        tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
         relation: TaggedOpbjectRelation::SameNameAsTagged,
     });
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: crate::tag::CompilerReferenceTag::It.bind(),
+        tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
         relation: TaggedOpbjectRelation::IsNotTaggedObject,
     });
     if controller_shape.same_controller {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.bind(),
+            tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
             relation: TaggedOpbjectRelation::SameControllerAsTagged,
         });
     }
@@ -317,11 +318,11 @@ pub fn parse_shared_color_fanout_filter(
         ))
     })?;
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: crate::tag::CompilerReferenceTag::It.bind(),
+        tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
         relation: TaggedOpbjectRelation::SharesColorWithTagged,
     });
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: crate::tag::CompilerReferenceTag::It.bind(),
+        tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
         relation: TaggedOpbjectRelation::IsNotTaggedObject,
     });
     Ok(Some(filter))
@@ -420,16 +421,16 @@ fn parse_explicit_shared_color_gets_or_gains(
     let (abilities, duration) = match first_effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::GrantAbilitiesToTarget {
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                     abilities,
                     duration,
                     ..
-                }
-                | SubjectVerbActionAst::GrantAbilitiesAll {
+                })
+                | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll {
                     abilities,
                     duration,
                     ..
-                },
+                }),
             ..
         }) => (abilities, duration),
         _ => return Ok(None),
@@ -580,11 +581,11 @@ pub fn parse_shared_color_target_fanout_sentence(
             };
             let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::GrantAbilitiesToTarget {
+                    SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                         abilities,
                         duration,
                         ..
-                    },
+                    }),
                 ..
             })) = first_effect
             else {
@@ -687,7 +688,7 @@ fn lower_damage_part_shape(
             {
                 return Ok(Some(CompoundDamagePart::OpponentChosenTarget {
                     target: parse_target_phrase(&choice.object_tokens)?,
-                    tag: crate::util::helper_tag_for_tokens(&tokens, "opponent_chosen_target"),
+                    tag: crate::util::helper_tag_for_tokens(&tokens, "opponent_chosen_target").into(),
                 }));
             }
             let mut target = parse_target_phrase(&tokens)?;
@@ -762,12 +763,12 @@ fn parse_damage_part(
 
 fn damage_player_iteration_effect(filter: PlayerFilter, effects: Vec<EffectAst>) -> EffectAst {
     match filter {
-        PlayerFilter::Opponent => EffectAst::ForEachOpponent { effects },
-        PlayerFilter::Any => EffectAst::ForEachPlayer { effects },
-        other => EffectAst::ForEachPlayersFiltered {
+        PlayerFilter::Opponent => EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }),
+        PlayerFilter::Any => EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }),
+        other => EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
             filter: other,
             effects,
-        },
+        }),
     }
 }
 
@@ -781,9 +782,9 @@ fn compound_damage_part_to_effect(part: CompoundDamagePart, amount: Value) -> Ef
                         target,
                         PlayerAst::Opponent,
                     )),
-                    tag: tag.clone(),
+                    tag: crate::tag::TagRef::of(tag.clone()),
                 },
-                EffectAst::subject_verb_damage(amount, TargetAst::Tagged(tag, None)),
+                EffectAst::subject_verb_damage(amount, TargetAst::Tagged(crate::tag::TagRef::of(tag), None)),
             ],
         },
         CompoundDamagePart::EachObject(filter) => {
@@ -885,16 +886,16 @@ fn parse_conditional_damage_pair_sentence(
 
     Ok(Some(vec![EffectAst::Coordinated {
         effects: vec![
-            EffectAst::Conditional {
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: first_predicate,
                 if_true: first_effects,
                 if_false: Vec::new(),
-            },
-            EffectAst::Conditional {
+            }),
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: second_predicate,
                 if_true: second_effects,
                 if_false: Vec::new(),
-            },
+            }),
         ],
         leading_duration: false,
         result_conjunction: true,
@@ -983,14 +984,14 @@ pub fn parse_compound_damage_fanout_sentence(
 fn source_counter_removal(effect: &EffectAst) -> Option<crate::object::CounterType> {
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::RemoveUpToAnyCounters {
+            SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters {
                 amount,
                 target: TargetAst::Source(_),
                 counter_type: Some(counter_type),
                 up_to: false,
                 distributed_across_all: false,
                 all_of_them: false,
-            },
+            }),
         ..
     }) = effect
     else {
@@ -1007,10 +1008,10 @@ fn bind_damage_amount_to_removed_counter_count(
     let mut bound = 0;
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect {
         let amount = match action {
-            SubjectVerbActionAst::DealDamage { amount, .. }
-            | SubjectVerbActionAst::DealDamageEqualToPower { amount, .. }
-            | SubjectVerbActionAst::DealDistributedDamage { amount, .. }
-            | SubjectVerbActionAst::DealDamageEach { amount, .. } => Some(amount),
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { amount, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { amount, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. }) => Some(amount),
             _ => None,
         };
         if let Some(amount) = amount
@@ -1041,19 +1042,19 @@ fn is_removed_counter_damage_fanout_member(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) => matches!(
             action,
-            SubjectVerbActionAst::DealDamage { .. }
-                | SubjectVerbActionAst::DealDamageEqualToPower { .. }
-                | SubjectVerbActionAst::DealDistributedDamage { .. }
-                | SubjectVerbActionAst::DealDamageEach { .. }
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { .. })
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { .. })
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { .. })
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { .. })
         ),
         EffectAst::Sequence { effects }
         | EffectAst::CommaThen { effects }
         | EffectAst::SourceSentence { effects, .. }
         | EffectAst::Coordinated { effects, .. }
-        | EffectAst::ForEachOpponent { effects }
-        | EffectAst::ForEachPlayer { effects }
-        | EffectAst::ForEachPlayersFiltered { effects, .. }
-        | EffectAst::ForEachObject { effects, .. } => {
+        | EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })
+        | EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })
+        | EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { effects, .. })
+        | EffectAst::ForEach(ForEachEffectAst::ForEachObject { effects, .. }) => {
             !effects.is_empty() && effects.iter().all(is_removed_counter_damage_fanout_member)
         }
         _ => false,
@@ -1281,6 +1282,9 @@ pub fn parse_same_name_gets_fanout_sentence(
 
 #[cfg(test)]
 mod coordinated_target_tests {
+    use crate::cards::builders::TurnEventPredicateAst;
+    use crate::cards::builders::StatChangeActionAst;
+    use crate::cards::builders::LifeResourceActionAst;
     use super::*;
     use crate::lexer::lex_line;
     use crate::model::ast::SubjectVerbRoleAst;
@@ -1365,7 +1369,7 @@ mod coordinated_target_tests {
         creature_filter.controller = Some(PlayerFilter::IteratedPlayer);
         let mut effects = vec![
             removal,
-            EffectAst::ForEachPlayer {
+            EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
                 effects: vec![
                     EffectAst::subject_verb_damage(
                         Value::EventValue(EventValueSpec::Amount),
@@ -1376,7 +1380,7 @@ mod coordinated_target_tests {
                         creature_filter,
                     ),
                 ],
-            },
+            }),
         ];
 
         assert!(bind_removed_counter_damage_fanout(&mut effects));
@@ -1410,9 +1414,9 @@ mod coordinated_target_tests {
             EffectAst::subject_verb(
                 crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
                 crate::cards::builders::PlayerAst::You,
-                SubjectVerbActionAst::Draw {
+                SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
                     count: Value::Fixed(1),
-                },
+                }),
             ),
         ];
 
@@ -1435,11 +1439,11 @@ mod coordinated_target_tests {
         assert!(
             matches!(
                 parsed.as_slice(),
-                [EffectAst::Conditional {
-                    predicate: PredicateAst::ThisAbilityResolvedThisTurnExactly(3),
+                [EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                    predicate: PredicateAst::TurnEvents(TurnEventPredicateAst::ThisAbilityResolvedThisTurnExactly(3)),
                     if_false,
                     ..
-                }] if if_false.is_empty()
+                })] if if_false.is_empty()
             ),
             "{debug}"
         );
@@ -1467,11 +1471,11 @@ mod coordinated_target_tests {
         assert!(
             matches!(
                 parsed.as_slice(),
-                [EffectAst::Conditional {
-                    predicate: PredicateAst::ThisAbilityResolvedThisTurnExactly(3),
+                [EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                    predicate: PredicateAst::TurnEvents(TurnEventPredicateAst::ThisAbilityResolvedThisTurnExactly(3)),
                     if_false,
                     ..
-                }] if if_false.is_empty()
+                })] if if_false.is_empty()
             ),
             "{debug}"
         );
@@ -1500,7 +1504,7 @@ mod coordinated_target_tests {
         let [
             _,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::DealDamage { target, .. },
+                action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { target, .. }),
                 ..
             }),
         ] = effects.as_slice()
@@ -1531,7 +1535,7 @@ mod coordinated_target_tests {
         let [
             _,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::DealDamage { target, .. },
+                action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { target, .. }),
                 ..
             }),
         ] = effects.as_slice()
@@ -1609,11 +1613,11 @@ mod coordinated_target_tests {
         ));
         assert!(matches!(
             &damage.action,
-            SubjectVerbActionAst::DealDamage {
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamage {
                 target: TargetAst::Tagged(tag, _),
                 amount: Value::Fixed(7),
                 ..
-            } if tag == chosen_tag
+            }) if tag == chosen_tag
         ));
     }
 
@@ -1635,7 +1639,7 @@ mod coordinated_target_tests {
         let [
             _,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::DealDamageEach { filter, .. },
+                action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { filter, .. }),
                 ..
             }),
         ] = effects.as_slice()
@@ -1676,16 +1680,16 @@ mod coordinated_target_tests {
         assert!(effects.iter().all(|effect| matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Pump {
+                action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
                     duration: Until::YourNextTurn,
                     ..
-                },
+                }),
                 ..
             })
         )));
         assert!(effects.iter().all(|effect| {
             let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Pump { target, .. },
+                action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. }),
                 ..
             }) = effect
             else {

@@ -1,13 +1,14 @@
+use crate::cards::builders::ForEachEffectAst;
 use super::*;
 
 pub(super) fn wrap_opponents(filter: &PlayerFilter, effects: Vec<EffectAst>) -> EffectAst {
     if *filter == PlayerFilter::Opponent {
-        EffectAst::ForEachOpponent { effects }
+        EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })
     } else {
-        EffectAst::ForEachPlayersFiltered {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
             filter: filter.clone(),
             effects,
-        }
+        })
     }
 }
 

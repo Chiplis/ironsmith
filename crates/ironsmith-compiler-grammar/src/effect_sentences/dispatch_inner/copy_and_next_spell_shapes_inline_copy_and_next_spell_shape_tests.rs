@@ -109,16 +109,16 @@ use ironsmith_compiler::ParseCardText;
             .expect("delayed death parser should not error")
             .expect("delayed death parser should match");
         let [
-            EffectAst::DelayedWhenLastObjectDiesThisTurn {
+            EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn {
                 effects: delayed, ..
-            },
+            }),
         ] = effects.as_slice()
         else {
             panic!("expected one delayed watcher: {effects:#?}");
         };
         let [
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::ExileAll { filter, .. },
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { filter, .. }),
                 ..
             }),
         ] = delayed.as_slice()
@@ -145,10 +145,10 @@ use ironsmith_compiler::ParseCardText;
             .expect("definite delayed-death parser should not error")
             .expect("definite delayed-death parser should match");
         let [
-            EffectAst::DelayedWhenLastObjectDiesThisTurn {
+            EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn {
                 filter: Some(filter),
                 effects,
-            },
+            }),
         ] = effects.as_slice()
         else {
             panic!("expected a prior-object delayed death watcher: {effects:#?}");
@@ -197,10 +197,10 @@ use ironsmith_compiler::ParseCardText;
             .expect("damage-history delayed-death parser should not error")
             .expect("damage-history delayed-death parser should match");
         let [
-            EffectAst::DelayedWhenLastObjectDiesThisTurn {
+            EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn {
                 filter: Some(filter),
                 ..
-            },
+            }),
         ] = effects.as_slice()
         else {
             panic!("expected a this-way delayed death watcher: {effects:#?}");
@@ -274,11 +274,11 @@ use ironsmith_compiler::ParseCardText;
 
         let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
             .expect("public effect sequence should parse");
-        let [EffectAst::DelayedTriggerThisTurn {
+        let [EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
             trigger: TriggerSpec::SpellCast { .. },
             effects: delayed,
             ..
-        }] = effects.as_slice()
+        })] = effects.as_slice()
         else {
             panic!("expected intact delayed spell trigger: {effects:#?}");
         };
@@ -308,7 +308,7 @@ use ironsmith_compiler::ParseCardText;
 
         let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
             .expect("public effect sequence should keep the delayed schedule");
-        let [EffectAst::DelayedTriggerThisTurn { effects: delayed, .. }] = effects.as_slice()
+        let [EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn { effects: delayed, .. })] = effects.as_slice()
         else {
             panic!("expected one delayed trigger: {effects:#?}");
         };
@@ -330,7 +330,7 @@ use ironsmith_compiler::ParseCardText;
             .expect("correlated next-spell copy parser should not error")
             .expect("correlated next-spell copy parser should match");
         let [
-            EffectAst::DelayedTriggerThisTurn {
+            EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
                 trigger:
                     TriggerSpec::SpellCast {
                         filter: Some(filter),
@@ -340,7 +340,7 @@ use ironsmith_compiler::ParseCardText;
                 effects: delayed,
                 one_shot: true,
                 ..
-            },
+            }),
         ] = effects.as_slice()
         else {
             panic!("expected one exact delayed spell watcher: {effects:#?}");
@@ -357,10 +357,10 @@ use ironsmith_compiler::ParseCardText;
             Some(&PlayerFilter::Opponent)
         );
         let [
-            EffectAst::ForEachPlayersFiltered {
+            EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
                 filter: player_filter,
                 effects: per_opponent,
-            },
+            }),
         ] = delayed.as_slice()
         else {
             panic!("expected one per-other-opponent loop: {delayed:#?}");
@@ -404,13 +404,13 @@ use ironsmith_compiler::ParseCardText;
             .expect("damage-history death watcher should not error")
             .expect("damage-history death watcher should match");
         let [
-            EffectAst::DelayedTriggerThisTurn {
+            EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
                 trigger: TriggerSpec::Dies(victim),
                 effects: delayed_effects,
                 one_shot,
                 attach_to_previous_ability,
                 ..
-            },
+            }),
         ] = effects.as_slice()
         else {
             panic!("expected one delayed death watcher: {effects:#?}");
@@ -442,7 +442,7 @@ use ironsmith_compiler::ParseCardText;
             .expect("first-matching-cast delayed trigger parser should match");
 
         let [
-            EffectAst::DelayedTriggerThisTurn {
+            EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
                 trigger:
                     TriggerSpec::SpellCast {
                         filter: Some(filter),
@@ -452,7 +452,7 @@ use ironsmith_compiler::ParseCardText;
                 effects: delayed_effects,
                 one_shot,
                 ..
-            },
+            }),
         ] = effects.as_slice()
         else {
             panic!("expected one named-spell delayed trigger, got {effects:#?}");
@@ -486,10 +486,10 @@ use ironsmith_compiler::ParseCardText;
         assert!(debug.contains("loyalty_only: true"), "{debug}");
         assert!(debug.contains("CopySpell"), "{debug}");
         let [
-            EffectAst::DelayedTriggerThisTurn {
+            EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
                 effects: delayed_effects,
                 ..
-            },
+            }),
         ] = effects.as_slice()
         else {
             panic!("expected one delayed trigger effect, got {effects:#?}");
@@ -497,11 +497,11 @@ use ironsmith_compiler::ParseCardText;
         let [EffectAst::SubjectVerb(subject_verb)] = delayed_effects.as_slice() else {
             panic!("expected one delayed copy effect, got {delayed_effects:#?}");
         };
-        let SubjectVerbActionAst::CopySpell {
+        let SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
             count,
             may_choose_new_targets,
             ..
-        } = &subject_verb.action
+        }) = &subject_verb.action
         else {
             panic!("expected delayed copy spell action, got {subject_verb:#?}");
         };

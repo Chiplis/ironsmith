@@ -1,3 +1,17 @@
+use crate::cards::builders::PermissionEffectAst;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::VoteEffectAst;
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::ControlActionAst;
+use crate::cards::builders::TokenActionAst;
+use crate::cards::builders::StatChangeActionAst;
+use crate::cards::builders::LifeResourceActionAst;
+use crate::cards::builders::KeywordActionAst;
+use crate::cards::builders::CharacteristicActionAst;
+use crate::cards::builders::LibraryActionAst;
+use crate::cards::builders::GrantActionAst;
+use crate::cards::builders::CounterActionAst;
 use super::*;
 
 #[path = "effect_dispatch/subject_verb_early.rs"]
@@ -965,7 +979,7 @@ fn compile_effect_inner(
         };
         return Ok((vec![Effect::new(sequence)], choices));
     }
-    if let EffectAst::ChooseOneOf { modes } = effect {
+    if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes }) = effect {
         use crate::effect::EffectMode;
         let mut lowered_modes = Vec::with_capacity(modes.len());
         let mut choices = Vec::new();
@@ -979,7 +993,7 @@ fn compile_effect_inner(
                 effects: mode_effects,
             });
         }
-        // `EffectAst::ChooseOneOf` represents an instruction-level choice
+        // `EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf)` represents an instruction-level choice
         // made while the effect resolves. Printed modal spell/ability blocks
         // have their own document AST and deliberately lower without a
         // chooser so their modes are announced before targets. Keeping the
@@ -989,11 +1003,11 @@ fn compile_effect_inner(
             .with_chooser(crate::target::PlayerFilter::You);
         return Ok((vec![Effect::new(choose)], choices));
     }
-    if let EffectAst::VillainousChoice {
+    if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice {
         player,
         player_surface,
         modes,
-    } = effect
+    }) = effect
     {
         use crate::effect::EffectMode;
         let mut lowered_modes = Vec::with_capacity(modes.len());
@@ -1017,7 +1031,7 @@ fn compile_effect_inner(
             choices,
         ));
     }
-    if let EffectAst::IfEffectDidNotHappen { effect, otherwise } = effect {
+    if let EffectAst::Conditionals(ConditionalEffectAst::IfEffectDidNotHappen { effect, otherwise }) = effect {
         let id = ctx.next_effect_id();
         let (mut lowered, mut choices) = compile_effect(effect, ctx)?;
         let observed_unique_clash =
@@ -1049,11 +1063,11 @@ fn compile_effect_inner(
         let fallback = Effect::if_then(id, EffectPredicate::DidNotHappen, otherwise_effects);
         return Ok((vec![wrapped, fallback], choices));
     }
-    if let EffectAst::IfEffectResult {
+    if let EffectAst::Conditionals(ConditionalEffectAst::IfEffectResult {
         effect,
         predicate,
         if_true,
-    } = effect
+    }) = effect
     {
         let id = ctx.next_effect_id();
         let (mut lowered, mut choices) = compile_effect(effect, ctx)?;
@@ -1080,7 +1094,7 @@ fn compile_effect_inner(
         let wraps_plural_exile_collection = matches!(
             effect.as_ref(),
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::ExileAll { .. },
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { .. }),
                 ..
             })
         );
@@ -1129,13 +1143,13 @@ fn compile_effect_inner(
                 "tag-affected nested effect may only have target or capture preludes".to_string(),
             ));
         }
-        ctx.last_object_tag = Some(tag.clone());
+        ctx.last_object_tag = Some(tag.clone().into());
         if wraps_plural_exile_collection && is_sentence_helper_exiled_collection_tag(tag) {
             // The explicit outcome wrapper suppresses the nested ExileAll
             // action's automatic tag. Preserve the collection facts that the
             // automatic path would have recorded so a following plural cast
             // permission remains plural as well.
-            ctx.last_exiled_collection_tag = Some(tag.clone());
+            ctx.last_exiled_collection_tag = Some(tag.clone().into());
             ctx.last_exiled_collection_is_plural = true;
         }
         lowered.push(inner.tag_all(tag.clone()));
@@ -1167,11 +1181,11 @@ fn compile_effect_inner(
             choices,
         ));
     }
-    if let EffectAst::RepeatEffects { count, effects } = effect {
+    if let EffectAst::ForEach(ForEachEffectAst::RepeatEffects { count, effects }) = effect {
         let repeats_manifest_dread = matches!(
             effects.as_slice(),
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::ManifestDread,
+                action: SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestDread),
                 ..
             })]
         );
@@ -1199,11 +1213,11 @@ fn compile_effect_inner(
         }
         return Ok((vec![repeated], choices));
     }
-    if let EffectAst::BidLife {
+    if let EffectAst::Votes(VoteEffectAst::BidLife {
         target,
         starting_bid,
         winner_effects,
-    } = effect
+    }) = effect
     {
         let refs = current_reference_env(ctx);
         let (target_spec, mut choices) = resolve_target_spec_with_choices(target, &refs)?;
@@ -1220,11 +1234,11 @@ fn compile_effect_inner(
             choices,
         ));
     }
-    if let EffectAst::SecretChoiceStart {
+    if let EffectAst::Votes(VoteEffectAst::SecretChoiceStart {
         options,
         participants,
         object_choice,
-    } = effect
+    }) = effect
     {
         let secret_choice = if let Some(object_choice) = object_choice {
             crate::effects::SecretChoiceEffect::new_objects(
@@ -1236,16 +1250,16 @@ fn compile_effect_inner(
         };
         return Ok((vec![Effect::new(secret_choice)], Vec::new()));
     }
-    if let EffectAst::SecretChoiceReveal = effect {
+    if let EffectAst::Votes(VoteEffectAst::SecretChoiceReveal) = effect {
         return Ok((Vec::new(), Vec::new()));
     }
-    if let EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+    if let EffectAst::Permissions(PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
         player,
         zone_owner,
         filter,
         zone,
         payment,
-    } = effect
+    }) = effect
     {
         let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
         let player = resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
@@ -1268,7 +1282,7 @@ fn compile_effect_inner(
     }
     if matches!(
         effect,
-        EffectAst::RepeatThisProcess | EffectAst::RepeatThisProcessOnce
+        EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess) | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce)
     ) {
         return Err(CardTextError::ParseError(
             "unsupported repeat this process effect tail".to_string(),
@@ -1320,41 +1334,41 @@ fn compile_compiler_control_flow(
             for effect in effects {
                 if let EffectAst::SubjectVerb(subject_verb) = effect {
                     match &mut subject_verb.action {
-                        SubjectVerbActionAst::Pump { duration, .. }
-                        | SubjectVerbActionAst::PumpForEach { duration, .. }
-                        | SubjectVerbActionAst::PumpAll { duration, .. }
-                        | SubjectVerbActionAst::PumpByLastEffect { duration, .. }
-                        | SubjectVerbActionAst::SetBasePowerToughness { duration, .. }
-                        | SubjectVerbActionAst::BecomeBasePtCreature { duration, .. }
-                        | SubjectVerbActionAst::SetBasePower { duration, .. }
-                        | SubjectVerbActionAst::BecomeBasicLandType { duration, .. }
-                        | SubjectVerbActionAst::BecomeBasicLandTypeChoice { duration, .. }
-                        | SubjectVerbActionAst::BecomeCreatureTypeChoice { duration, .. }
-                        | SubjectVerbActionAst::BecomeColorChoice { duration, .. }
-                        | SubjectVerbActionAst::BecomeCopy { duration, .. }
-                        | SubjectVerbActionAst::BecomeAuraEnchantment { duration, .. }
-                        | SubjectVerbActionAst::MakeColorless { duration, .. }
-                        | SubjectVerbActionAst::AddColors { duration, .. }
-                        | SubjectVerbActionAst::AddCardTypes { duration, .. }
-                        | SubjectVerbActionAst::SetCardTypes { duration, .. }
-                        | SubjectVerbActionAst::RemoveCardTypes { duration, .. }
-                        | SubjectVerbActionAst::AddSubtypes { duration, .. }
-                        | SubjectVerbActionAst::RemoveSubtypes { duration, .. }
-                        | SubjectVerbActionAst::SetCreatureSubtypes { duration, .. }
-                        | SubjectVerbActionAst::AddAllSubtypesOfFamily { duration, .. }
-                        | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { duration, .. }
-                        | SubjectVerbActionAst::SetColors { duration, .. }
-                        | SubjectVerbActionAst::GrantAbilitiesToTarget { duration, .. }
-                        | SubjectVerbActionAst::GrantAbilitiesAll { duration, .. }
-                        | SubjectVerbActionAst::RemoveAbilitiesAll { duration, .. }
-                        | SubjectVerbActionAst::GrantAbilitiesChoiceAll { duration, .. }
-                        | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { duration, .. }
-                        | SubjectVerbActionAst::RemoveAbilitiesFromTarget { duration, .. } => {
+                        SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { duration, .. })
+                        | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach { duration, .. })
+                        | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll { duration, .. })
+                        | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpByLastEffect { duration, .. })
+                        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness { duration, .. })
+                        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature { duration, .. })
+                        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { duration, .. })
+                        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasicLandType { duration, .. })
+                        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasicLandTypeChoice { duration, .. })
+                        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCreatureTypeChoice { duration, .. })
+                        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice { duration, .. })
+                        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCopy { duration, .. })
+                        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeAuraEnchantment { duration, .. })
+                        | SubjectVerbActionAst::StatChanges(StatChangeActionAst::MakeColorless { duration, .. })
+                        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddColors { duration, .. })
+                        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddCardTypes { duration, .. })
+                        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCardTypes { duration, .. })
+                        | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveCardTypes { duration, .. })
+                        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes { duration, .. })
+                        | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSubtypes { duration, .. })
+                        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCreatureSubtypes { duration, .. })
+                        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddAllSubtypesOfFamily { duration, .. })
+                        | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAllSubtypesOfFamily { duration, .. })
+                        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetColors { duration, .. })
+                        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { duration, .. })
+                        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll { duration, .. })
+                        | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll { duration, .. })
+                        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceAll { duration, .. })
+                        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceToTarget { duration, .. })
+                        | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget { duration, .. }) => {
                             *duration = until.clone();
                             changed += 1;
                         }
-                        SubjectVerbActionAst::GrantToTarget { duration, .. }
-                        | SubjectVerbActionAst::GrantBySpec { duration, .. } => {
+                        SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { duration, .. })
+                        | SubjectVerbActionAst::Grants(GrantActionAst::GrantBySpec { duration, .. }) => {
                             *duration = match until {
                                 Until::EndOfTurn => crate::grant::GrantDuration::UntilEndOfTurn,
                                 Until::YourNextTurn | Until::YourNextTurnEnd => {
@@ -1415,15 +1429,15 @@ fn compile_compiler_control_flow(
                             == crate::model::control_flow::ConditionPositionAst::Postcondition
                     {
                         if condition.negated_surface {
-                            EffectAst::TrailingUnless {
+                            EffectAst::Conditionals(ConditionalEffectAst::TrailingUnless {
                                 predicate: predicate.clone(),
                                 effects: consequence,
-                            }
+                            })
                         } else {
-                            EffectAst::TrailingIf {
+                            EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
                                 predicate: predicate.clone(),
                                 effects: consequence,
-                            }
+                            })
                         }
                     } else {
                         let predicate = if condition.negated_surface {
@@ -1431,21 +1445,21 @@ fn compile_compiler_control_flow(
                         } else {
                             predicate.clone()
                         };
-                        EffectAst::Conditional {
+                        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                             predicate,
                             if_true: consequence,
                             if_false: alternative,
-                        }
+                        })
                     }
                 }
-                ControlPredicateAst::Result(predicate) if *reflexive => EffectAst::WhenResult {
+                ControlPredicateAst::Result(predicate) if *reflexive => EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
                     predicate: predicate.clone(),
                     effects: consequence,
-                },
-                ControlPredicateAst::Result(predicate) => EffectAst::IfResult {
+                }),
+                ControlPredicateAst::Result(predicate) => EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                     predicate: predicate.clone(),
                     effects: consequence,
-                },
+                }),
                 ControlPredicateAst::Constant(true) => {
                     return compile_effects(&consequence, ctx);
                 }
@@ -1550,25 +1564,25 @@ fn compile_subject_verb_effect(
 ) -> Result<EffectCompileOutcome, CardTextError> {
     if matches!(
         subject_verb.action,
-        SubjectVerbActionAst::ExileTopOfLibrary { .. }
+        SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { .. })
     ) {
         return subject_verb_early::compile_exile_top_of_library(subject_verb, ctx);
     }
     if matches!(
         subject_verb.action,
-        SubjectVerbActionAst::ReturnToHand { .. }
+        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { .. })
     ) {
         return subject_verb_late::compile_return_to_hand(subject_verb, ctx);
     }
-    if matches!(subject_verb.action, SubjectVerbActionAst::Clash { .. }) {
+    if matches!(subject_verb.action, SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash { .. })) {
         return subject_verb_early::compile_clash(subject_verb);
     }
-    if matches!(subject_verb.action, SubjectVerbActionAst::Draw { .. }) {
+    if matches!(subject_verb.action, SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { .. })) {
         return subject_verb_early::compile_draw_action(subject_verb, ctx);
     }
     if matches!(
         subject_verb.action,
-        SubjectVerbActionAst::GainControl { .. }
+        SubjectVerbActionAst::Control(ControlActionAst::GainControl { .. })
     ) {
         return subject_verb_early::compile_gain_control_action(subject_verb, ctx);
     }
@@ -1578,7 +1592,7 @@ fn compile_subject_verb_effect(
     if let Some(outcome) = try_compile_plain_all_move_to_nonbattlefield_zone(subject_verb, ctx)? {
         return Ok(outcome);
     }
-    if matches!(subject_verb.action, SubjectVerbActionAst::BecomeCopy { .. }) {
+    if matches!(subject_verb.action, SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCopy { .. })) {
         return compile_become_copy(subject_verb, ctx);
     }
     if is_plain_fixed_token_creation(subject_verb) {
@@ -1586,28 +1600,28 @@ fn compile_subject_verb_effect(
     }
     if matches!(
         subject_verb.action,
-        SubjectVerbActionAst::CreateTokenWithMods { .. }
+        SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { .. })
     ) {
         return subject_verb_middle::compile_create_token_with_mods_action(subject_verb, ctx);
     }
     if matches!(
         subject_verb.action,
-        SubjectVerbActionAst::PutCounters { .. }
+        SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { .. })
     ) {
         return subject_verb_late::compile_put_counters_action(subject_verb, ctx);
     }
     if matches!(subject_verb.action, SubjectVerbActionAst::TargetOnly { .. }) {
         return subject_verb_middle::compile_target_only_action(subject_verb, ctx);
     }
-    if matches!(subject_verb.action, SubjectVerbActionAst::Pump { .. }) {
+    if matches!(subject_verb.action, SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { .. })) {
         return subject_verb_middle::compile_pump_action(subject_verb, ctx);
     }
-    if matches!(subject_verb.action, SubjectVerbActionAst::PumpAll { .. }) {
+    if matches!(subject_verb.action, SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll { .. })) {
         return subject_verb_middle::compile_pump_all_action(subject_verb, ctx);
     }
     if matches!(
         subject_verb.action,
-        SubjectVerbActionAst::BecomeBasePtCreature { .. }
+        SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature { .. })
     ) {
         return subject_verb_middle::compile_become_base_pt_creature_action(subject_verb, ctx);
     }
@@ -1616,13 +1630,13 @@ fn compile_subject_verb_effect(
     }
     if matches!(
         subject_verb.action,
-        SubjectVerbActionAst::GrantAbilitiesToTarget { .. }
+        SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { .. })
     ) {
         return subject_verb_middle::compile_grant_abilities_to_target_action(subject_verb, ctx);
     }
     if matches!(
         subject_verb.action,
-        SubjectVerbActionAst::GrantAbilitiesAll { .. }
+        SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll { .. })
     ) {
         return subject_verb_middle::compile_grant_abilities_all_action(subject_verb, ctx);
     }
@@ -1653,12 +1667,12 @@ fn try_compile_simple_source_sacrifice(
     subject_verb: &SubjectVerbEffectAst,
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<EffectCompileOutcome>, CardTextError> {
-    let SubjectVerbActionAst::Sacrifice {
+    let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice {
         filter,
         count: 1,
         target: None,
         one_of_referenced_set: false,
-    } = &subject_verb.action
+    }) = &subject_verb.action
     else {
         return Ok(None);
     };
@@ -1699,7 +1713,7 @@ fn try_compile_plain_all_move_to_nonbattlefield_zone(
     subject_verb: &SubjectVerbEffectAst,
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<EffectCompileOutcome>, CardTextError> {
-    let SubjectVerbActionAst::MoveToZone {
+    let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
         target,
         source_top_only: false,
         zone,
@@ -1720,7 +1734,7 @@ fn try_compile_plain_all_move_to_nonbattlefield_zone(
         battlefield_transformed: false,
         attached_to: None,
         all,
-    } = &subject_verb.action
+    }) = &subject_verb.action
     else {
         return Ok(None);
     };
@@ -1768,7 +1782,7 @@ fn compile_become_copy(
     subject_verb: &SubjectVerbEffectAst,
     ctx: &mut EffectLoweringContext,
 ) -> Result<EffectCompileOutcome, CardTextError> {
-    let SubjectVerbActionAst::BecomeCopy {
+    let SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCopy {
         target,
         source,
         duration,
@@ -1785,7 +1799,7 @@ fn compile_become_copy(
         granted_abilities,
         set_base_power_toughness,
         copy_exception_surface,
-    } = &subject_verb.action
+    }) = &subject_verb.action
     else {
         unreachable!("typed copy route requires a BecomeCopy action")
     };
@@ -1867,7 +1881,7 @@ fn is_plain_fixed_token_creation(subject_verb: &SubjectVerbEffectAst) -> bool {
         && subject_verb.subject.player == PlayerAst::Implicit
         && matches!(
             &subject_verb.action,
-            SubjectVerbActionAst::CreateTokenWithMods {
+            SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
                 count: Value::Fixed(_),
                 dynamic_power_toughness: None,
                 player: PlayerAst::Implicit,
@@ -1882,7 +1896,7 @@ fn is_plain_fixed_token_creation(subject_verb: &SubjectVerbEffectAst) -> bool {
                 granted_abilities,
                 ability_presentation: None,
                 ..
-            } if granted_abilities.is_empty()
+            }) if granted_abilities.is_empty()
         )
 }
 
@@ -1890,14 +1904,14 @@ fn compile_plain_fixed_token_creation(
     subject_verb: &SubjectVerbEffectAst,
     ctx: &mut EffectLoweringContext,
 ) -> Result<EffectCompileOutcome, CardTextError> {
-    let SubjectVerbActionAst::CreateTokenWithMods {
+    let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
         name,
         definition,
         count,
         attached_to,
         next_end_step_player,
         ..
-    } = &subject_verb.action
+    }) = &subject_verb.action
     else {
         unreachable!("typed plain-token route requires a create-token action")
     };
@@ -1965,7 +1979,7 @@ fn is_iterated_pronoun_move_to_zone(
         && subject_verb.subject.player == PlayerAst::Implicit
         && matches!(
             &subject_verb.action,
-            SubjectVerbActionAst::MoveToZone {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                 target: TargetAst::Tagged(tag, _),
                 source_top_only: false,
                 library_order: None,
@@ -1982,7 +1996,7 @@ fn is_iterated_pronoun_move_to_zone(
                 attached_to: None,
                 all: false,
                 ..
-            } if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+            }) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         )
 }
 
@@ -2000,14 +2014,14 @@ fn compile_iterated_pronoun_move_to_zone(
     subject_verb: &SubjectVerbEffectAst,
     ctx: &mut EffectLoweringContext,
 ) -> Result<EffectCompileOutcome, CardTextError> {
-    let SubjectVerbActionAst::MoveToZone {
+    let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
         target,
         zone,
         to_top,
         verb_surface,
         battlefield_controller,
         ..
-    } = &subject_verb.action
+    }) = &subject_verb.action
     else {
         unreachable!("typed iterated-pronoun move route requires a move-to-zone action")
     };

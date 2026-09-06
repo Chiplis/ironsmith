@@ -274,6 +274,7 @@ pub fn parse_activation_condition_lexed(
 
 #[cfg(test)]
 mod tests {
+    use crate::cards::builders::SourcePredicateAst;
     use super::*;
     use crate::lexer::lex_line;
 
@@ -304,7 +305,7 @@ mod tests {
         assert_eq!(details.timing, ActivationTiming::OncePerTurn);
         assert_eq!(
             details.condition,
-            Some(PredicateAst::SourceAttackedThisTurn)
+            Some(PredicateAst::Source(SourcePredicateAst::SourceAttackedThisTurn))
         );
         assert!(!details.once_per_turn_after_other_restrictions);
     }

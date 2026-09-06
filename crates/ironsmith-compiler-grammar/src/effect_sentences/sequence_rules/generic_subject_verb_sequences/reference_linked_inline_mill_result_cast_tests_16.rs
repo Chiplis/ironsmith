@@ -26,13 +26,13 @@ fn choice_is_optional_and_scoped_to_the_milled_result() {
         panic!("mill result must be tagged: {effects:#?}");
     };
     let choose = effects.iter().find_map(|effect| match effect {
-        EffectAst::ChooseTaggedObjectsInZone {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter,
             count,
             tag,
             zone,
             ..
-        } => Some((filter, count, tag, zone)),
+        }) => Some((filter, count, tag, zone)),
         _ => None,
     });
     let Some((filter, count, chosen_tag, zone)) = choose else {
@@ -45,16 +45,16 @@ fn choice_is_optional_and_scoped_to_the_milled_result() {
         vec![CardType::Instant, CardType::Sorcery]
     );
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag == *mill_tag && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        constraint.tag == **mill_tag && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     }));
     assert!(effects.iter().any(|effect| matches!(
         effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::CastTagged {
+            action: SubjectVerbActionAst::Stack(StackActionAst::CastTagged {
                 tag,
                 without_paying_mana_cost: true,
                 ..
-            },
+            }),
             ..
         }) if tag == chosen_tag
     )));
@@ -67,7 +67,7 @@ fn dynamic_mana_value_cap_is_shared_by_both_spell_types() {
         )
         .expect("exact capped mill-result cast pair");
     let filter = effects.iter().find_map(|effect| match effect {
-        EffectAst::ChooseTaggedObjectsInZone { filter, .. } => Some(filter),
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { filter, .. }) => Some(filter),
         _ => None,
     });
     let filter = filter.expect("milled-card choice");

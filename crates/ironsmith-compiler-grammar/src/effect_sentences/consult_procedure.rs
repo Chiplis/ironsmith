@@ -11,6 +11,7 @@
 //! optional traversal ("you may reveal ...") and an "if you do," gate around
 //! the whole procedure; the close does the same.
 
+use crate::cards::builders::ForEachEffectAst;
 use super::dispatch_entry::{
     ConsultCastCost, ConsultSentenceParts, SentenceInput, consult_cast_effects,
     consult_stop_rule_is_single_match, parse_consult_bottom_remainder_clause,
@@ -22,7 +23,7 @@ use super::sequence_rules::generic_subject_verb_sequences::reference_linked_prog
 };
 use crate::cards::builders::{
     CardTextError, EffectAst, IfResultPredicate, LibraryConsultModeAst, ObjectFilter, PlayerAst, PredicateAst,
-    ReturnControllerAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TargetAst,
+    ReturnControllerAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TargetAst, CounterActionAst, LibraryActionAst, ZoneMoveActionAst, StatChangeActionAst, ConditionalEffectAst, PermissionEffectAst,
 };
 use crate::grammar::effects::{
     self as effect_grammar, ConsultBattlefieldGraveyardShape, ConsultMoveBottomShape,
@@ -127,9 +128,9 @@ fn traversal(parts: &ConsultSentenceParts) -> Option<(LibraryConsultModeAst, boo
     match parts.effects.last() {
         Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::ConsultTopOfLibrary {
+                SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
                     mode, stop_rule, ..
-                },
+                }),
             ..
         })) => Some((*mode, consult_stop_rule_is_single_match(stop_rule))),
         _ => None,
@@ -274,7 +275,7 @@ fn counters_on_match(next: &SentenceInput) -> Option<SubjectVerbEffectAst> {
     let [EffectAst::SubjectVerb(effect)] = effects.as_slice() else {
         return None;
     };
-    let SubjectVerbActionAst::PutCounters { target, .. } = &effect.action else {
+    let SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target, .. }) = &effect.action else {
         return None;
     };
     super::dispatch_entry::target_references_it(target).then(|| effect.clone())
@@ -286,7 +287,7 @@ fn cleanup(next: &SentenceInput) -> Option<EffectAst> {
     let effects =
         crate::grammar::primitives::probe_shape(super::parse_effect_sentence_lexed(next.lowered()))?;
     let [effect @ EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary { .. },
+        action: SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary { .. }),
         ..
     })] = effects.as_slice()
     else {
@@ -303,7 +304,7 @@ fn reveal_pump(next: &SentenceInput) -> Option<EffectAst> {
     let mut effects =
         crate::grammar::primitives::probe_shape(super::parse_effect_sentence_lexed(tokens))?;
     let [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::PumpForEach { target, count, .. },
+        action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach { target, count, .. }),
         ..
     })] = effects.as_mut_slice()
     else {
@@ -332,12 +333,12 @@ fn revealed_to_graveyard(sentence: &SentenceInput, all_tag: &TagKey) -> Option<E
         crate::grammar::primitives::probe_shape(super::parse_effect_sentence_lexed(tokens))?;
     let [EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::MoveToZone {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                 target: cleanup_target,
                 zone: Zone::Graveyard,
                 target_plural_surface,
                 ..
-            },
+            }),
         ..
     })] = effects.as_mut_slice()
     else {
@@ -350,7 +351,7 @@ fn revealed_to_graveyard(sentence: &SentenceInput, all_tag: &TagKey) -> Option<E
     {
         return None;
     }
-    *cleanup_target = TargetAst::Tagged(all_tag.clone(), None);
+    *cleanup_target = TargetAst::Tagged(crate::tag::TagRef::of(all_tag.clone()), None);
     *target_plural_surface = true;
     effects.pop()
 }
@@ -360,7 +361,7 @@ fn revealed_to_graveyard(sentence: &SentenceInput, all_tag: &TagKey) -> Option<E
 fn when_result(sentence: &SentenceInput) -> Option<EffectAst> {
     let effects =
         crate::grammar::primitives::probe_shape(super::parse_effect_sentence_lexed(sentence.lowered()))?;
-    let [effect @ EffectAst::WhenResult { .. }] = effects.as_slice() else {
+    let [effect @ EffectAst::Conditionals(ConditionalEffectAst::WhenResult { .. })] = effects.as_slice() else {
         return None;
     };
     Some(effect.clone())
@@ -499,34 +500,34 @@ pub(super) fn continue_with(
         group.cast_declinable = false;
         group.cast_without_paying = false;
         match group.followups.pop() {
-            Some(EffectAst::Conditional {
+            Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate,
                 mut if_true,
                 mut if_false,
-            }) if group.followups.is_empty() => {
-                if_true.push(EffectAst::IfResult {
+            })) if group.followups.is_empty() => {
+                if_true.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                     predicate: IfResultPredicate::WasDeclined,
                     effects: hand_effects.clone(),
-                });
+                }));
                 if_false.extend(hand_effects);
-                group.followups.push(EffectAst::Conditional {
+                group.followups.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                     predicate,
                     if_true,
                     if_false,
-                });
+                }));
             }
             Some(last) => {
                 group.followups.push(last);
-                group.followups.push(EffectAst::IfResult {
+                group.followups.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                     predicate: IfResultPredicate::WasDeclined,
                     effects: hand_effects,
-                });
+                }));
             }
             None => {
-                group.followups.push(EffectAst::IfResult {
+                group.followups.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                     predicate: IfResultPredicate::WasDeclined,
                     effects: hand_effects,
-                });
+                }));
             }
         }
         group.consumed += 1;
@@ -558,7 +559,7 @@ pub(super) fn continue_with(
                 .expect("a cast statement chose a reading");
             group.followups.push(
                 EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-                    parts.all_tag.clone(),
+                    crate::tag::TagRef::of(parts.all_tag.clone()),
                     None,
                     order,
                     parts.player,
@@ -601,7 +602,7 @@ pub(super) fn continue_with(
                 .expect("the statement was recognized");
             group.followups.push(
                 EffectAst::subject_verb_move_to_zone(
-                    TargetAst::Tagged(match_tag, None),
+                    TargetAst::Tagged(crate::tag::TagRef::of(match_tag), None),
                     matched.zone,
                     false,
                     controller(matched.controller_you),
@@ -623,7 +624,7 @@ pub(super) fn continue_with(
                     );
                     group.followups.push(
                         EffectAst::subject_verb_move_to_zone(
-                            TargetAst::Tagged(match_tag, None),
+                            TargetAst::Tagged(crate::tag::TagRef::of(match_tag), None),
                             Zone::Battlefield,
                             false,
                             ReturnControllerAst::Preserve,
@@ -644,7 +645,7 @@ pub(super) fn continue_with(
                     order,
                 } => {
                     group.followups.push(EffectAst::subject_verb_move_to_zone(
-                        TargetAst::Tagged(match_tag.clone(), None),
+                        TargetAst::Tagged(crate::tag::TagRef::of(match_tag.clone()), None),
                         zone,
                         false,
                         ReturnControllerAst::Preserve,
@@ -653,8 +654,8 @@ pub(super) fn continue_with(
                     ));
                     group.followups.push(
                         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-                            all_tag,
-                            Some(match_tag),
+                            crate::tag::TagRef::of(all_tag),
+                            Some(crate::tag::TagRef::of(match_tag)),
                             order,
                             player,
                         ),
@@ -675,27 +676,27 @@ pub(super) fn continue_with(
                 .extend(consult_cast_effects(&clause, match_tag)?);
         }
         Statement::BattlefieldOrHand => {
-            group.followups.push(EffectAst::May {
+            group.followups.push(EffectAst::Permissions(PermissionEffectAst::May {
                 effects: vec![EffectAst::subject_verb_move_to_zone(
-                    TargetAst::Tagged(match_tag.clone(), None),
+                    TargetAst::Tagged(crate::tag::TagRef::of(match_tag.clone()), None),
                     Zone::Battlefield,
                     false,
                     ReturnControllerAst::Preserve,
                     false,
                     None,
                 )],
-            });
-            group.followups.push(EffectAst::IfResult {
+            }));
+            group.followups.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                 predicate: IfResultPredicate::DidNot,
                 effects: vec![EffectAst::subject_verb_move_to_zone(
-                    TargetAst::Tagged(match_tag, None),
+                    TargetAst::Tagged(crate::tag::TagRef::of(match_tag), None),
                     Zone::Hand,
                     false,
                     ReturnControllerAst::You,
                     false,
                     None,
                 )],
-            });
+            }));
         }
         Statement::Cleanup => {
             group.pending_cleanup = cleanup(sentence);
@@ -708,40 +709,40 @@ pub(super) fn continue_with(
         }
         Statement::HandExileOthers => {
             group.followups.push(EffectAst::subject_verb_move_to_zone(
-                TargetAst::Tagged(match_tag.clone(), None),
+                TargetAst::Tagged(crate::tag::TagRef::of(match_tag.clone()), None),
                 Zone::Hand,
                 false,
                 ReturnControllerAst::Preserve,
                 false,
                 None,
             ));
-            group.followups.push(EffectAst::ForEachTagged {
-                tag: all_tag,
-                effects: vec![EffectAst::Conditional {
+            group.followups.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+                tag: crate::tag::TagRef::of(all_tag),
+                effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                     predicate: PredicateAst::TaggedMatches(
                         crate::tag::CompilerReferenceTag::It.bind(),
                         ObjectFilter::tagged(match_tag),
                     ),
                     if_true: Vec::new(),
                     if_false: vec![EffectAst::subject_verb_exile(it(), false)],
-                }],
-            });
+                })],
+            }));
         }
         Statement::PutCountersOnMatch => {
             let mut effect = counters_on_match(sentence).expect("the statement was recognized");
-            if let SubjectVerbActionAst::PutCounters { target, .. } = &mut effect.action {
+            if let SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target, .. }) = &mut effect.action {
                 let reference_span = match &*target {
                     TargetAst::Tagged(_, span) | TargetAst::Source(span) => *span,
                     TargetAst::Object(_, _, span) => *span,
                     _ => None,
                 };
-                *target = TargetAst::Tagged(match_tag, reference_span);
+                *target = TargetAst::Tagged(crate::tag::TagRef::of(match_tag), reference_span);
             }
             group.followups.push(EffectAst::SubjectVerb(effect));
         }
         Statement::AllToGraveyard => {
             group.followups.push(EffectAst::subject_verb_move_to_zone(
-                TargetAst::Tagged(all_tag, None),
+                TargetAst::Tagged(crate::tag::TagRef::of(all_tag), None),
                 Zone::Graveyard,
                 false,
                 ReturnControllerAst::Preserve,
@@ -752,7 +753,7 @@ pub(super) fn continue_with(
         Statement::HandOthersGraveyard => {
             group.gate_on_result = gate_on_result;
             group.followups.push(EffectAst::subject_verb_move_to_zone(
-                TargetAst::Tagged(match_tag.clone(), None),
+                TargetAst::Tagged(crate::tag::TagRef::of(match_tag.clone()), None),
                 Zone::Hand,
                 false,
                 ReturnControllerAst::Preserve,
@@ -773,18 +774,18 @@ pub(super) fn continue_with(
                     group.followups.push(EffectAst::subject_verb(
                         SubjectVerbRoleAst::Actor,
                         PlayerAst::Implicit,
-                        SubjectVerbActionAst::PutTaggedRemainderInZone {
-                            tag: all_tag,
-                            keep_tagged: match_tag.clone(),
+                        SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderInZone {
+                            tag: crate::tag::TagRef::of(all_tag),
+                            keep_tagged: crate::tag::TagRef::of(match_tag.clone()),
                             zone: Zone::Graveyard,
                             surface: ironsmith_core::LibraryRemainderSurface::Rest,
-                        },
+                        }),
                     ));
                     group
                         .followups
                         .push(EffectAst::subject_verb_put_onto_battlefield(
                             PlayerAst::Implicit,
-                            TargetAst::Tagged(match_tag, None),
+                            TargetAst::Tagged(crate::tag::TagRef::of(match_tag), None),
                             false,
                             controller(controller_you),
                         ));
@@ -794,7 +795,7 @@ pub(super) fn continue_with(
                     tapped,
                 } => {
                     group.followups.push(EffectAst::subject_verb_move_to_zone(
-                        TargetAst::Tagged(match_tag.clone(), None),
+                        TargetAst::Tagged(crate::tag::TagRef::of(match_tag.clone()), None),
                         Zone::Battlefield,
                         false,
                         controller(controller_you),
@@ -822,9 +823,9 @@ fn controller(controller_you: bool) -> ReturnControllerAst {
 
 /// Every traversed card that is not the match goes to the graveyard.
 fn others_into_graveyard(all_tag: TagKey, match_tag: TagKey) -> EffectAst {
-    EffectAst::ForEachTagged {
-        tag: all_tag,
-        effects: vec![EffectAst::Conditional {
+    EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+        tag: crate::tag::TagRef::of(all_tag),
+        effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: PredicateAst::TaggedMatches(
                 crate::tag::CompilerReferenceTag::It.bind(),
                 ObjectFilter::tagged(match_tag),
@@ -838,8 +839,8 @@ fn others_into_graveyard(all_tag: TagKey, match_tag: TagKey) -> EffectAst {
                 false,
                 None,
             )],
-        }],
-    }
+        })],
+    })
 }
 
 /// Close the procedure: the traversal, then its follow-ups, wrapped as the
@@ -873,11 +874,11 @@ pub(super) fn finish(mut group: ConsultedGroup) -> Vec<EffectAst> {
         group.gated,
     );
     match group.condition {
-        Some(predicate) => vec![EffectAst::Conditional {
+        Some(predicate) => vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true: effects,
             if_false: Vec::new(),
-        }],
+        })],
         None => effects,
     }
 }

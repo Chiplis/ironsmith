@@ -39,7 +39,7 @@ fn next_turn_pump_and_activation_restriction_keeps_typed_duration_scope() {
     assert!(program.effects.iter().any(|effect| matches!(
         effect,
         EffectAst::SubjectVerb(subject_verb)
-            if matches!(&subject_verb.action, SubjectVerbActionAst::Pump { .. })
+            if matches!(&subject_verb.action, SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { .. }))
     )));
     assert!(program.effects.iter().any(|effect| matches!(
         effect,

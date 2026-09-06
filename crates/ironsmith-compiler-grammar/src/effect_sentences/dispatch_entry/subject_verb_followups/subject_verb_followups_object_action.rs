@@ -49,11 +49,11 @@ pub(super) fn pre_rule_token_followups(
                 attach_to_previous_ability: false,
             });
         } else {
-            state.effects.push(EffectAst::Conditional {
+            state.effects.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: followup.predicate,
                 if_true: vec![followup.create],
                 if_false: Vec::new(),
-            });
+            }));
         }
         return Ok(Some(PreParseFollowupResult::Handled {
             consumed_sentences: 1,
@@ -304,9 +304,9 @@ pub(super) fn parse_create_more_of_prior_tokens(
         return None;
     };
     let (count, previous_target) = match &mut subject_verb.action {
-        SubjectVerbActionAst::CreateTokenWithMods { count, .. }
-        | SubjectVerbActionAst::CreateTokenCopy { count, .. } => (count, None),
-        SubjectVerbActionAst::CreateTokenCopyFromSource { source, count, .. } => {
+        SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { count, .. })
+        | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { count, .. }) => (count, None),
+        SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { source, count, .. }) => {
             (count, Some(source.clone()))
         }
         _ => return None,
@@ -344,7 +344,7 @@ pub(super) fn post_rule_token_copy_and_extra_turn(
         // turn we just parsed instead of wrapping the schedule a second time.
         // A second wrapper would register a delayed trigger whose payload is
         // another identical delayed trigger.
-        if let [EffectAst::DelayedUntilEndStepOfExtraTurn { player, .. }] =
+        if let [EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndStepOfExtraTurn { player, .. })] =
             sentence_effects.as_mut_slice()
         {
             *player = extra_turn_player;
@@ -354,19 +354,19 @@ pub(super) fn post_rule_token_copy_and_extra_turn(
             // specializing it to the preceding extra turn.
             let delayed_effects = if matches!(
                 sentence_effects.as_slice(),
-                [EffectAst::DelayedUntilNextEndStep { .. }]
+                [EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep { .. })]
             ) {
                 match sentence_effects.pop().expect("matched one delayed effect") {
-                    EffectAst::DelayedUntilNextEndStep { effects, .. } => effects,
+                    EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep { effects, .. }) => effects,
                     _ => unreachable!("matched delayed-next-end-step effect"),
                 }
             } else {
                 std::mem::take(sentence_effects)
             };
-            sentence_effects.push(EffectAst::DelayedUntilEndStepOfExtraTurn {
+            sentence_effects.push(EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndStepOfExtraTurn {
                 player: extra_turn_player,
                 effects: delayed_effects,
-            });
+            }));
         }
     }
     if *sentence_effects == sentence_effects_baseline {
@@ -380,20 +380,20 @@ pub(super) fn trailing_optional_copy_effects_mut(
     effect: &mut EffectAst,
 ) -> Option<&mut Vec<EffectAst>> {
     let is_optional_copy = match &*effect {
-        EffectAst::May { effects }
-        | EffectAst::MayByPlayer {
+        EffectAst::Permissions(PermissionEffectAst::May { effects })
+        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
             player: PlayerAst::You | PlayerAst::Implicit,
             effects,
-        } => effects_copy_a_stack_object(effects),
+        }) => effects_copy_a_stack_object(effects),
         _ => false,
     };
     if is_optional_copy {
         return match effect {
-            EffectAst::May { effects }
-            | EffectAst::MayByPlayer {
+            EffectAst::Permissions(PermissionEffectAst::May { effects })
+            | EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
                 player: PlayerAst::You | PlayerAst::Implicit,
                 effects,
-            } => Some(effects),
+            }) => Some(effects),
             _ => None,
         };
     }

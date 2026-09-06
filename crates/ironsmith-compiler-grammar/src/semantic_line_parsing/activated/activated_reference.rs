@@ -1,3 +1,5 @@
+use crate::cards::builders::ZoneMoveActionAst;
+use crate::cards::builders::CounterActionAst;
 use super::*;
 
 /// How far the authored line was indented: `source_tokens` are lexed from the
@@ -144,18 +146,18 @@ pub(super) fn recognize_named_source_action_surfaces(info: &LineInfo, effects: &
             if let EffectAst::SubjectVerb(subject_verb) = effect
                 && matches!(
                     &subject_verb.action,
-                    SubjectVerbActionAst::ReturnToBattlefield {
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
                         target: TargetAst::Source(_),
                         controller: ReturnControllerAst::Owner,
                         transformed: true,
                         ..
-                    } | SubjectVerbActionAst::MoveToZone {
+                    }) | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                         target: TargetAst::Source(_),
                         zone: Zone::Battlefield,
                         battlefield_controller: ReturnControllerAst::Owner,
                         battlefield_transformed: true,
                         ..
-                    }
+                    })
                 )
             {
                 count += 1;
@@ -174,19 +176,19 @@ pub(super) fn recognize_named_source_action_surfaces(info: &LineInfo, effects: &
         for effect in effects {
             if let EffectAst::SubjectVerb(subject_verb) = effect {
                 let target = match &mut subject_verb.action {
-                    SubjectVerbActionAst::ReturnToBattlefield {
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
                         target,
                         controller: ReturnControllerAst::Owner,
                         transformed: true,
                         ..
-                    }
-                    | SubjectVerbActionAst::MoveToZone {
+                    })
+                    | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                         target,
                         zone: Zone::Battlefield,
                         battlefield_controller: ReturnControllerAst::Owner,
                         battlefield_transformed: true,
                         ..
-                    } => Some(target),
+                    }) => Some(target),
                     _ => None,
                 };
                 if let Some(target) = target
@@ -210,15 +212,15 @@ pub(super) fn recognize_named_source_action_surfaces(info: &LineInfo, effects: &
         for effect in effects {
             if let EffectAst::SubjectVerb(subject_verb) = effect {
                 match &mut subject_verb.action {
-                    SubjectVerbActionAst::Exile { target, .. } => apply_target(info, target),
-                    SubjectVerbActionAst::PutCounters { target, .. } => {
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. }) => apply_target(info, target),
+                    SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target, .. }) => {
                         apply_counter_target(info, target)
                     }
-                    SubjectVerbActionAst::MoveToZone {
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                         target,
                         zone: Zone::Exile,
                         ..
-                    } => apply_target(info, target),
+                    }) => apply_target(info, target),
                     _ => {}
                 }
             }
@@ -273,10 +275,10 @@ mod named_source_counter_surface_tests {
         let [EffectAst::SubjectVerb(subject_verb)] = effects.as_slice() else {
             panic!("expected one counter action: {effects:#?}");
         };
-        let SubjectVerbActionAst::PutCounters {
+        let SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
             target: TargetAst::Object(filter, _, _),
             ..
-        } = &subject_verb.action
+        }) = &subject_verb.action
         else {
             panic!("expected a typed named source target: {subject_verb:#?}");
         };
@@ -301,10 +303,10 @@ mod named_source_counter_surface_tests {
         assert!(
             matches!(
                 &subject_verb.action,
-                SubjectVerbActionAst::PutCounters {
+                SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
                     target: TargetAst::Source(None),
                     ..
-                }
+                })
             ),
             "ordinary type-relative source should not acquire a name: {effects:#?}"
         );

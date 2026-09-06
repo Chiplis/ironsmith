@@ -17,7 +17,7 @@ fn revealed_target_hand_scopes_shared_terminal_union_count() {
     let [
         _,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Draw { count },
+            action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count }),
             ..
         }),
     ] = effects.as_slice()

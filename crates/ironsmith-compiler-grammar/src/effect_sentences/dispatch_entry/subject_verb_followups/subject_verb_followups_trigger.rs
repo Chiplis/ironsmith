@@ -1,10 +1,11 @@
+use crate::cards::builders::SourcePredicateAst;
 use super::*;
 
 pub(super) fn bind_demonstrative_land_match_to_triggering_object(
     predicate: PredicateAst,
 ) -> PredicateAst {
     match predicate {
-        PredicateAst::SourceMatches(filter)
+        PredicateAst::Source(SourcePredicateAst::SourceMatches(filter))
         | PredicateAst::ItMatches(filter)
         | PredicateAst::TargetMatches(filter)
             if filter.demonstrative_antecedent_surface()
@@ -69,10 +70,10 @@ pub(super) fn post_rule_reflexive_object_followup(
     if sentence_effects.is_empty() || !references_reflexive_object {
         return Ok(None);
     }
-    let Some(EffectAst::WhenResult {
+    let Some(EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
         effects: reflexive_effects,
         ..
-    }) = state.effects.last_mut()
+    })) = state.effects.last_mut()
     else {
         return Ok(None);
     };
@@ -105,14 +106,14 @@ pub(super) fn post_rule_targeted_object_delayed_leave(
         return Ok(None);
     }
     let Some(tag) = state.effects.iter().rev().find_map(|effect| match effect {
-        EffectAst::ChooseObjects { tag, .. } => Some(tag.clone()),
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. }) => Some(tag.clone()),
         _ => None,
     }) else {
         return Ok(None);
     };
     for effect in sentence_effects {
-        if let EffectAst::DelayedTriggerThisTurn { trigger, .. }
-        | EffectAst::DelayedTriggerForDuration { trigger, .. } = effect
+        if let EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn { trigger, .. })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { trigger, .. }) = effect
         {
             bind_targeted_leaves_filter(trigger, &tag);
         }
@@ -127,21 +128,21 @@ pub(super) fn post_rule_delayed_trigger_result_followup(
     _sentence_tokens: &[OwnedLexToken],
     sentence_effects: &mut Vec<EffectAst>,
 ) -> Result<Option<PostParseFollowupResult>, CardTextError> {
-    let [EffectAst::IfResult { .. } | EffectAst::WhenResult { .. }] = sentence_effects.as_slice()
+    let [EffectAst::Conditionals(ConditionalEffectAst::IfResult { .. }) | EffectAst::Conditionals(ConditionalEffectAst::WhenResult { .. })] = sentence_effects.as_slice()
     else {
         return Ok(None);
     };
     let Some(
-        EffectAst::DelayedTriggerThisTurn { effects, .. }
-        | EffectAst::DelayedTriggerForDuration { effects, .. }
-        | EffectAst::DelayedUntilNextEndStep { effects, .. }
-        | EffectAst::DelayedUntilNextCleanupStep { effects, .. }
-        | EffectAst::DelayedUntilNextUntapStep { effects, .. }
-        | EffectAst::DelayedUntilNextUpkeep { effects, .. }
-        | EffectAst::DelayedUntilNextDrawStep { effects, .. }
-        | EffectAst::DelayedUntilNextMainPhase { effects, .. }
-        | EffectAst::DelayedUntilNextFirstMainPhase { effects, .. }
-        | EffectAst::DelayedUntilEndOfCombat { effects },
+        EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn { effects, .. })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { effects, .. })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep { effects, .. })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextCleanupStep { effects, .. })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUntapStep { effects, .. })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep { effects, .. })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextDrawStep { effects, .. })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextMainPhase { effects, .. })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextFirstMainPhase { effects, .. })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat { effects }),
     ) = state.effects.last_mut()
     else {
         return Ok(None);
@@ -156,14 +157,14 @@ pub(super) fn trailing_delayed_trigger_effects_mut(
     effect: &mut EffectAst,
 ) -> Option<&mut Vec<EffectAst>> {
     match effect {
-        EffectAst::DelayedTriggerThisTurn { effects, .. }
-        | EffectAst::DelayedTriggerForDuration { effects, .. } => Some(effects),
+        EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn { effects, .. })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { effects, .. }) => Some(effects),
         EffectAst::SourceSentence { effects, .. }
         | EffectAst::Sequence { effects }
         | EffectAst::Coordinated { effects, .. } => effects
             .last_mut()
             .and_then(trailing_delayed_trigger_effects_mut),
-        EffectAst::Conditional { if_true, .. } => if_true
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, .. }) => if_true
             .last_mut()
             .and_then(trailing_delayed_trigger_effects_mut),
         _ => None,

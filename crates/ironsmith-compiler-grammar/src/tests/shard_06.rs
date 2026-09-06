@@ -1,4 +1,9 @@
 #![allow(unused_imports)]
+use crate::cards::builders::PermissionEffectAst;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::DamageActionAst;
+use crate::cards::builders::LifeResourceActionAst;
+use crate::cards::builders::ManaActionAst;
 use super::shard_00::*;
 use super::shard_01::*;
 use super::shard_02::*;
@@ -66,9 +71,9 @@ pub(super) fn fixed_life_payment_parser_preserves_payment_action() {
     assert!(
         matches!(
             &subject_verb.action,
-            SubjectVerbActionAst::PayLife {
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayLife {
                 amount: Value::Fixed(2)
-            }
+            })
         ),
         "authored payment must not collapse into ordinary life loss: {subject_verb:#?}"
     );
@@ -268,10 +273,10 @@ pub(super) fn typed_counter_where_x_carries_into_payment_and_result_followup() {
         }
     }
     let payment_sentence = source_sentence_effects(&effects[1]);
-    let EffectAst::MayByPlayer {
+    let EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
         effects: payment_effects,
         ..
-    } = payment_sentence
+    }) = payment_sentence
         .first()
         .expect("payment sentence should contain an effect")
     else {
@@ -282,15 +287,15 @@ pub(super) fn typed_counter_where_x_carries_into_payment_and_result_followup() {
         [EffectAst::SubjectVerb(subject_verb)]
             if matches!(
                 &subject_verb.action,
-                SubjectVerbActionAst::PayMana { x_value: Some(value), .. }
+                SubjectVerbActionAst::Mana(ManaActionAst::PayMana { x_value: Some(value), .. })
                     if is_source_plus_one_counter_count(value)
             )
     ));
     let decline_sentence = source_sentence_effects(&effects[2]);
-    let EffectAst::IfResult {
+    let EffectAst::Conditionals(ConditionalEffectAst::IfResult {
         effects: decline_effects,
         ..
-    } = decline_sentence
+    }) = decline_sentence
         .first()
         .expect("decline sentence should contain an effect")
     else {
@@ -300,8 +305,8 @@ pub(super) fn typed_counter_where_x_carries_into_payment_and_result_followup() {
         effects.iter().any(|effect| match effect {
             EffectAst::SubjectVerb(subject_verb) => matches!(
                 &subject_verb.action,
-                SubjectVerbActionAst::DealDamage { amount, .. }
-                    | SubjectVerbActionAst::DealDamageEqualToPower { amount, .. }
+                SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount, .. })
+                    | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { amount, .. })
                     if is_source_plus_one_counter_count(amount)
             ),
             EffectAst::Coordinated { effects, .. } => contains_typed_x_damage(effects),

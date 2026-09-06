@@ -189,9 +189,9 @@ fn read_opponent_chosen_second_target(
                                     PlayerAst::Opponent,
                                 ),
                             ),
-                            tag: target_tag.clone(),
+                            tag: crate::tag::TagRef::of(target_tag.clone()),
                         },
-                        EffectAst::subject_verb_tap(TargetAst::Tagged(target_tag, None)),
+                        EffectAst::subject_verb_tap(TargetAst::Tagged(crate::tag::TagRef::of(target_tag), None)),
                     ],
                 },
             ],
@@ -206,7 +206,7 @@ fn read_chosen_object_set(input: &TapClause<'_>) -> Result<Option<EffectAst>, Ca
     if let Some(filter_tokens) = parse_chosen_object_set_filter_tokens(tokens) {
         let mut filter = parse_object_filter(filter_tokens, false)?;
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::ChosenObjects.bind(),
+            tag: (crate::tag::CompilerReferenceTag::ChosenObjects.bind()).into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
         return Ok(Some(EffectAst::subject_verb_tap_all(filter)));

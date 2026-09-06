@@ -14,10 +14,10 @@ fn activation_fact_carries_timing_condition_and_residual_text() {
     .expect("activation restriction should parse");
 
     assert_eq!(parsed.timing, Some(ActivationTiming::OncePerTurn));
-    assert_eq!(parsed.condition, Some(PredicateAst::SourceAttackedThisTurn));
+    assert_eq!(parsed.condition, Some(PredicateAst::Source(SourcePredicateAst::SourceAttackedThisTurn)));
     assert_eq!(
         parsed.text_only_condition,
-        Some(PredicateAst::SourceAttackedThisTurn)
+        Some(PredicateAst::Source(SourcePredicateAst::SourceAttackedThisTurn))
     );
     assert_eq!(
         parsed.normalization,

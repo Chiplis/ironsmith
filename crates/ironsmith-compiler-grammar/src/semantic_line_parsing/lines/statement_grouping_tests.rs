@@ -119,11 +119,11 @@ fn destroy_no_regeneration_pair_preempts_statement_group_splitting() {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::Destroy {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy {
                     target: TargetAst::Object(filter, _, _),
                     no_regeneration: true,
                     ..
-                },
+                }),
             ..
         }),
     ] = effects.as_slice()
@@ -196,10 +196,10 @@ fn failed_comma_then_sequence_keeps_its_result_branch_in_the_next_source_group()
     assert!(matches!(first.as_slice(), [EffectAst::CommaThen { .. }]));
     assert!(matches!(
         fallback.as_slice(),
-        [EffectAst::IfResult {
+        [EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: crate::cards::builders::IfResultPredicate::DidNot,
             ..
-        }]
+        })]
     ));
 }
 
@@ -238,9 +238,9 @@ fn quoted_token_copy_replacement_stays_grouped_with_its_granted_ability() {
         .find_map(|effect| match effect {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::CreateTokenCopyFromSource {
+                    SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
                         granted_abilities, ..
-                    },
+                    }),
                 ..
             }) => Some(granted_abilities),
             _ => None,
@@ -278,7 +278,7 @@ fn revealed_hand_union_count_stays_linked_through_the_public_statement_route() {
     let [
         _,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Draw { count },
+            action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count }),
             ..
         }),
     ] = effects.as_slice()

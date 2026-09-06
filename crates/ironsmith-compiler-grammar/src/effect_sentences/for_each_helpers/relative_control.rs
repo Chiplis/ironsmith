@@ -1,3 +1,4 @@
+use crate::cards::builders::ConditionalEffectAst;
 use super::*;
 
 pub(super) fn parse_relative_control_conditional(
@@ -76,20 +77,20 @@ pub(super) fn parse_relative_control_conditional(
         } else {
             parse_maybe_effects(relative.effect_tokens, true, false)?
         };
-        PredicateAst::PlayerControlsMost {
+        PredicateAst::Player(PlayerPredicateAst::PlayerControlsMost {
             player: PlayerAst::That,
             filter,
-        }
+        })
     } else {
         branch_effects = if let Some(effects) = participant_choice_effects {
             effects
         } else {
             parse_maybe_effects(relative.effect_tokens, true, false)?
         };
-        PredicateAst::PlayerControls {
+        PredicateAst::Player(PlayerPredicateAst::PlayerControls {
             player: PlayerAst::That,
             filter,
-        }
+        })
     };
     if let Some(where_x) = participant_where_x {
         replace_unbound_x_in_effects_anywhere(&mut branch_effects, &where_x, clause_text)?;
@@ -99,9 +100,9 @@ pub(super) fn parse_relative_control_conditional(
             bind_implicit_player_context(effect, PlayerAst::That);
         }
     }
-    Ok(EffectAst::Conditional {
+    Ok(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
         predicate,
         if_true: branch_effects,
         if_false: Vec::new(),
-    })
+    }))
 }

@@ -1,3 +1,6 @@
+use crate::cards::builders::ZoneMoveActionAst;
+use crate::cards::builders::ReplacementActionAst;
+use crate::cards::builders::LibraryActionAst;
 use super::*;
 use crate::lexer::lex_line;
 
@@ -133,10 +136,10 @@ fn reflexive_targeted_graveyard_cast_keeps_target_x_and_replacement_scope() {
             .expect("reflexive graveyard cast parser should not error")
             .expect("reflexive graveyard cast pair should parse");
     let [
-        EffectAst::WhenResult {
+        EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
             predicate: IfResultPredicate::Did,
             effects: body,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected one typed reflexive result wrapper: {effects:#?}");
@@ -270,13 +273,13 @@ fn targeted_graveyard_cast_keeps_dynamic_source_power_and_exact_spell_tag() {
             effect: target_effect,
             tag: target_tag,
         },
-        EffectAst::May {
+        EffectAst::Permissions(PermissionEffectAst::May {
             effects: cast_effects,
-        },
-        EffectAst::IfResult {
+        }),
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,
             effects: replacement_effects,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected target/cast/replacement program: {effects:#?}");
@@ -313,7 +316,7 @@ fn targeted_graveyard_cast_keeps_dynamic_source_power_and_exact_spell_tag() {
     assert!(matches!(
         cast_effect.as_ref(),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::CastTagged { tag, .. },
+            action: SubjectVerbActionAst::Stack(StackActionAst::CastTagged { tag, .. }),
             ..
         }) if tag == target_tag
     ));
@@ -321,13 +324,13 @@ fn targeted_graveyard_cast_keeps_dynamic_source_power_and_exact_spell_tag() {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::RegisterFutureZoneReplacement {
+                SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterFutureZoneReplacement {
                     filter: replacement_filter,
                     from_zone: Some(Zone::Stack),
                     to_zone: Some(Zone::Graveyard),
                     replacement_zone: Zone::Exile,
                     ..
-                },
+                }),
             ..
         }),
     ] = replacement_effects.as_slice()
@@ -339,7 +342,7 @@ fn targeted_graveyard_cast_keeps_dynamic_source_power_and_exact_spell_tag() {
             .tagged_constraints
             .iter()
             .any(|constraint| {
-                constraint.tag == *cast_spell_tag
+                constraint.tag == **cast_spell_tag
                     && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
             })
     );
@@ -412,25 +415,25 @@ fn duration_scoped_targeted_graveyard_cast_keeps_permission_and_replacement_life
         },
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
                     tag: permission_tag,
                     without_paying_mana_cost: true,
                     free_cast_from_current_zone: true,
                     surface: Some(surface),
                     ..
-                },
+                }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::RegisterFutureZoneReplacement {
+                SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterFutureZoneReplacement {
                     filter,
                     from_zone: Some(Zone::Stack),
                     to_zone: Some(Zone::Graveyard),
                     replacement_zone: Zone::Exile,
                     duration: ZoneReplacementDurationAst::UntilEndOfTurn,
                     ..
-                },
+                }),
             ..
         }),
     ] = effects.as_slice()
@@ -444,7 +447,7 @@ fn duration_scoped_targeted_graveyard_cast_keeps_permission_and_replacement_life
         Some(ironsmith_core::GrantPlayTaggedObjectSurface::ThatCard)
     );
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag == *target_tag
+        constraint.tag == **target_tag
             && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     }));
 }
@@ -452,13 +455,13 @@ fn duration_scoped_targeted_graveyard_cast_keeps_permission_and_replacement_life
 fn move_parts(effect: &EffectAst) -> (Zone, bool, Option<LibraryBottomOrderAst>, PlayerAst) {
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::MoveToZone {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                 zone,
                 to_top,
                 library_order,
                 library_order_chooser,
                 ..
-            },
+            }),
         ..
     }) = effect
     else {
@@ -475,19 +478,19 @@ fn assert_singleton_hand_partition_has_exact_complement(
         panic!("expected look/choose/complement/two-move program: {effects:#?}");
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::LookAtTopCards {
+        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
             tag: looked_tag, ..
-        },
+        }),
         ..
     }) = look
     else {
         panic!("expected looked-card producer: {look:#?}");
     };
-    let EffectAst::ChooseTaggedObjectsInZone {
+    let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
         tag: selected_tag,
         count,
         ..
-    } = choose
+    }) = choose
     else {
         panic!("expected selected-card choice: {choose:#?}");
     };
@@ -507,22 +510,22 @@ fn assert_singleton_hand_partition_has_exact_complement(
     };
     assert_eq!(zones, &[Zone::Library]);
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag == *looked_tag
+        constraint.tag == **looked_tag
             && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     }));
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag == *selected_tag
+        constraint.tag == **selected_tag
             && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
     }));
     assert!(matches!(
         selected_move,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::MoveToZone {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                     target: TargetAst::Tagged(tag, _),
                     zone: Zone::Hand,
                     ..
-                },
+                }),
             ..
         }) if tag == selected_tag
     ));
@@ -530,10 +533,10 @@ fn assert_singleton_hand_partition_has_exact_complement(
         remainder_move,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::MoveToZone {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                     target: TargetAst::Tagged(tag, _),
                     ..
-                },
+                }),
             ..
         }) if tag == remainder_tag
     ));
@@ -587,22 +590,22 @@ fn target_library_partition_keeps_you_as_chooser_and_tags_the_complement() {
             player: library_owner,
             ..
         },
-        action: SubjectVerbActionAst::LookAtTopCards {
+        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
             tag: looked_tag, ..
-        },
+        }),
     }) = &effects[0]
     else {
         panic!("expected looked-card provenance: {:?}", effects[0]);
     };
     assert_eq!(*library_owner, PlayerAst::TargetOpponent);
 
-    let EffectAst::ChooseTaggedObjectsInZone {
+    let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
         player,
         tag: selected_tag,
         count,
         zone,
         ..
-    } = &effects[1]
+    }) = &effects[1]
     else {
         panic!("expected selected-subset choice: {:?}", effects[1]);
     };
@@ -619,11 +622,11 @@ fn target_library_partition_keeps_you_as_chooser_and_tags_the_complement() {
     };
     assert_eq!(zones, &[Zone::Library]);
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag == *looked_tag
+        constraint.tag == **looked_tag
             && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     }));
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag == *selected_tag
+        constraint.tag == **selected_tag
             && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
     }));
 
@@ -646,7 +649,7 @@ fn selected_and_remainder_library_orders_are_independent() {
             "Put any number of them on the bottom of that library in a random order and the rest on top of the library in any order",
         )
         .expect("Ransack shape should parse");
-    let EffectAst::ChooseTaggedObjectsInZone { count, player, .. } = &effects[1] else {
+    let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { count, player, .. }) = &effects[1] else {
         panic!("expected selected-subset choice: {:?}", effects[1]);
     };
     assert_eq!(*count, ChoiceCount::any_number());
@@ -682,35 +685,35 @@ fn optional_top_selection_uses_a_tagged_move_and_exact_bottom_remainder() {
         panic!("expected look/choose/move/remainder program: {effects:#?}");
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::LookAtTopCards { tag: looked, .. },
+        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { tag: looked, .. }),
         ..
     }) = look
     else {
         panic!("expected looked-card producer: {look:#?}");
     };
-    let EffectAst::ChooseTaggedObjectsInZone {
+    let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
         count,
         tag: selected,
         ..
-    } = choose
+    }) = choose
     else {
         panic!("expected selected tag: {choose:#?}");
     };
     assert_eq!(*count, ChoiceCount::up_to(1));
     assert!(matches!(
         move_each,
-        EffectAst::ForEachTagged { tag, .. } if tag == selected
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, .. }) if tag == selected
     ));
     assert!(matches!(
         remainder,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
                     tag,
                     keep_tagged: Some(keep),
                     order: LibraryBottomOrderAst::Random,
                     ..
-                },
+                }),
             ..
         }) if tag == looked && keep == selected
     ));
@@ -725,13 +728,13 @@ fn counted_hand_selection_and_singular_graveyard_remainder_stay_disjoint() {
     .expect("counted hand/graveyard partition should parse");
     assert_eq!(effects.len(), 5);
 
-    let EffectAst::ChooseTaggedObjectsInZone {
+    let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
         count,
         player,
         tag: selected_tag,
         zone,
         ..
-    } = &effects[1]
+    }) = &effects[1]
     else {
         panic!("expected selected-subset choice: {:?}", effects[1]);
     };
@@ -751,7 +754,7 @@ fn counted_hand_selection_and_singular_graveyard_remainder_stay_disjoint() {
     };
     assert_eq!(zones, &[Zone::Library]);
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag == *selected_tag
+        constraint.tag == **selected_tag
             && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
     }));
     assert_eq!(move_parts(&effects[3]).0, Zone::Hand);
@@ -779,21 +782,21 @@ fn direct_counted_hand_selection_uses_one_looked_pool_and_exact_complement() {
         };
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::LookAtTopCards {
+                SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
                     tag: looked_tag, ..
-                },
+                }),
             ..
         }) = look_effect
         else {
             panic!("expected looked-card provenance: {look_effect:#?}");
         };
-        let EffectAst::ChooseTaggedObjectsInZone {
+        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter,
             count,
             player,
             tag: selected_tag,
             zone,
-        } = choose_effect
+        }) = choose_effect
         else {
             panic!("expected selected looked-card subset: {choose_effect:#?}");
         };
@@ -801,20 +804,20 @@ fn direct_counted_hand_selection_uses_one_looked_pool_and_exact_complement() {
         assert_eq!(*player, PlayerAst::You);
         assert_eq!(*zone, Zone::Library);
         assert!(filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag == *looked_tag
+            constraint.tag == **looked_tag
                 && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
         }));
         assert!(matches!(
             move_effect,
-            EffectAst::ForEachTagged { tag, effects }
+            EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, effects })
                 if tag == selected_tag
                     && matches!(
                         effects.as_slice(),
                         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                            action: SubjectVerbActionAst::MoveToZone {
+                            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                                 zone: Zone::Hand,
                                 ..
-                            },
+                            }),
                             ..
                         })]
                     )
@@ -823,13 +826,13 @@ fn direct_counted_hand_selection_uses_one_looked_pool_and_exact_complement() {
             remainder_effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                    SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
                         tag,
                         keep_tagged: Some(keep_tagged),
                         order: LibraryBottomOrderAst::Random,
                         player: PlayerAst::You,
                         ..
-                    },
+                    }),
                 ..
             }) if tag == looked_tag && keep_tagged == selected_tag
         ));
@@ -861,11 +864,11 @@ fn exact_singleton_looked_selection_moves_only_the_selected_tag() {
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             subject: SubjectVerbSubjectAst { player, .. },
             action:
-                SubjectVerbActionAst::LookAtTopCards {
+                SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
                     count,
                     tag: looked_tag,
                     reveal: false,
-                },
+                }),
         }) = look_effect
         else {
             panic!("expected private looked-card producer: {look_effect:#?}");
@@ -873,13 +876,13 @@ fn exact_singleton_looked_selection_moves_only_the_selected_tag() {
         assert_eq!(*player, expected_owner);
         assert_eq!(*count, Value::Fixed(2));
 
-        let EffectAst::ChooseTaggedObjectsInZone {
+        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter,
             count,
             player,
             tag: selected_tag,
             zone,
-        } = choose_effect
+        }) = choose_effect
         else {
             panic!("expected exact selected-card tag: {choose_effect:#?}");
         };
@@ -888,7 +891,7 @@ fn exact_singleton_looked_selection_moves_only_the_selected_tag() {
         assert_eq!(*zone, Zone::Library);
         assert_eq!(filter.owner.as_ref(), Some(&expected_filter_owner));
         assert!(filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag == *looked_tag
+            constraint.tag == **looked_tag
                 && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
         }));
 
@@ -896,11 +899,11 @@ fn exact_singleton_looked_selection_moves_only_the_selected_tag() {
             move_effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::MoveToZone {
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                         target: TargetAst::Tagged(tag, _),
                         zone: Zone::Graveyard,
                         ..
-                    },
+                    }),
                 ..
             }) if tag == selected_tag
         ));
@@ -943,39 +946,39 @@ fn face_down_exile_keeps_the_graveyard_complement_and_permission_tag() {
     assert_eq!(effects.len(), 5);
 
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::LookAtTopCards {
+        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
             tag: looked_tag, ..
-        },
+        }),
         ..
     }) = &effects[0]
     else {
         panic!("expected looked-card producer: {:?}", effects[0]);
     };
-    let EffectAst::ChooseTaggedObjectsInZone {
+    let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
         tag: exiled_tag,
         count,
         filter,
         zone,
         ..
-    } = &effects[1]
+    }) = &effects[1]
     else {
         panic!("expected face-down selected subset: {:?}", effects[1]);
     };
     assert_eq!(*count, ChoiceCount::exactly(1));
     assert_eq!(*zone, Zone::Library);
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag == *looked_tag
+        constraint.tag == **looked_tag
             && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     }));
 
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::PutTaggedRemainderInZone {
+            SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderInZone {
                 tag,
                 keep_tagged,
                 zone: Zone::Graveyard,
                 ..
-            },
+            }),
         ..
     }) = &effects[3]
     else {
@@ -986,10 +989,10 @@ fn face_down_exile_keeps_the_graveyard_complement_and_permission_tag() {
 
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
                 tag: permission_tag,
                 ..
-            },
+            }),
         ..
     }) = &effects[4]
     else {
@@ -1022,15 +1025,15 @@ fn complete_face_down_partition_does_not_steal_cast_permission_followup() {
 
     assert_eq!(matched.name, "looked-procedure");
     assert_eq!(matched.effects.len(), 5);
-    let EffectAst::ChooseTaggedObjectsInZone {
+    let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
         tag: selected_tag, ..
-    } = &matched.effects[1]
+    }) = &matched.effects[1]
     else {
         panic!("expected selected looked card: {:#?}", matched.effects[1]);
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
                 tag: permission_tag,
                 player: PlayerAst::You,
                 allow_land: false,
@@ -1038,7 +1041,7 @@ fn complete_face_down_partition_does_not_steal_cast_permission_followup() {
                 allow_any_color_for_cast: ironsmith_core::value_model::ManaSpendMode::AnyType,
                 filter: None,
                 ..
-            },
+            }),
         ..
     }) = &matched.effects[4]
     else {

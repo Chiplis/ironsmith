@@ -208,7 +208,7 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         {
             return Some((
                 constructor(Box::new(ChooseSpec::Tagged(
-                    crate::tag::CompilerReferenceTag::It.bind(),
+                    (crate::tag::CompilerReferenceTag::It.bind()).into(),
                 )))
                 .with_surface_hint(ValueSurfaceHint::SacrificedObject(kind)),
                 used,
@@ -297,7 +297,7 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if permission_shapes::prefix_words(words, &["its", "power"]) {
         return Some((
             Value::PowerOf(Box::new(
-                ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.bind()).with_surface_hint(
+                ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into()).with_surface_hint(
                     ChooseSpecSurfaceHint::SourceReference(
                         SourceReferenceSurface::ThisPermanentType("it".to_string()),
                     ),
@@ -340,7 +340,7 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if permission_shapes::prefix_words(words, &["its", "toughness"]) {
         return Some((
             Value::ToughnessOf(Box::new(
-                ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.bind()).with_surface_hint(
+                ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into()).with_surface_hint(
                     ChooseSpecSurfaceHint::SourceReference(
                         SourceReferenceSurface::ThisPermanentType("it".to_string()),
                     ),
@@ -369,7 +369,7 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if permission_shapes::prefix_words(words, &["its", "mana", "value"]) {
         return Some((
             Value::ManaValueOf(Box::new(
-                ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.bind()).with_surface_hint(
+                ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into()).with_surface_hint(
                     ChooseSpecSurfaceHint::SourceReference(
                         SourceReferenceSurface::ThisPermanentType("it".to_string()),
                     ),
@@ -391,7 +391,7 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     ) {
         return Some((
             Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
-                crate::tag::CompilerReferenceTag::It.bind(),
+                (crate::tag::CompilerReferenceTag::It.bind()).into(),
             ))),
             used,
         ));
@@ -431,7 +431,7 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         let tag = tagged_characteristic_reference_tag(&words[..used]);
         return Some((
             with_sacrificed_object_surface(
-                Value::PowerOf(Box::new(ChooseSpec::Tagged(tag.bind()))),
+                Value::PowerOf(Box::new(ChooseSpec::Tagged(tag.bind().into()))),
                 &words[..used],
             ),
             used,
@@ -441,7 +441,7 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         let tag = tagged_characteristic_reference_tag(&words[..used]);
         return Some((
             with_sacrificed_object_surface(
-                Value::ToughnessOf(Box::new(ChooseSpec::Tagged(tag.bind()))),
+                Value::ToughnessOf(Box::new(ChooseSpec::Tagged(tag.bind().into()))),
                 &words[..used],
             ),
             used,
@@ -450,7 +450,7 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if let Some(used) = prefix_len(words, EXILED_MANA_VALUE_PREFIXES) {
         return Some((
             Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
-                crate::tag::CompilerReferenceTag::SourceExiled.bind(),
+                (crate::tag::CompilerReferenceTag::SourceExiled.bind()).into(),
             ))),
             used,
         ));
@@ -458,7 +458,7 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if let Some(used) = prefix_len(words, REVEALED_MANA_VALUE_PREFIXES) {
         return Some((
             Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
-                crate::tag::CompilerReferenceTag::PublicRevealed.bind(),
+                (crate::tag::CompilerReferenceTag::PublicRevealed.bind()).into(),
             )))
             .with_surface_hint(ValueSurfaceHint::RevealedCardReference),
             used,
@@ -468,7 +468,7 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         return Some((
             with_sacrificed_object_surface(
                 Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
-                    crate::tag::CompilerReferenceTag::It.bind(),
+                    (crate::tag::CompilerReferenceTag::It.bind()).into(),
                 ))),
                 &words[..used],
             ),
@@ -636,7 +636,7 @@ pub(super) fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
             return Some((
                 Value::CountersOn(
                     Box::new(ChooseSpec::Tagged(
-                        crate::tag::CompilerReferenceTag::It.bind(),
+                        (crate::tag::CompilerReferenceTag::It.bind()).into(),
                     )),
                     parsed_counter_type,
                 ),

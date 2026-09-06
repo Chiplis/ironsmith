@@ -1,6 +1,6 @@
 use crate::cards::builders::{
     CardTextError, EffectAst, EffectLoweringContext, PlayerAst, PredicateAst, SubjectVerbActionAst,
-    TagKey, TargetAst,
+    TagKey, TargetAst, CounterActionAst, ZoneMoveActionAst, ConditionalEffectAst,
 };
 use crate::effect::{ChoiceCount, Condition, Effect, EffectPredicate, SearchSelectionMode, Value};
 use crate::filter::ObjectRef;
@@ -549,7 +549,7 @@ fn normalize_iterated_consult_exile_collection(compiled: Vec<Effect>) -> Vec<Eff
     )
     .tag_all(collection_tag.clone());
     let mut collected_move = move_to_zone.clone();
-    collected_move.target = ChooseSpec::Tagged(collection_tag);
+    collected_move.target = ChooseSpec::Tagged(collection_tag.key.clone());
 
     vec![
         producer_effect.clone(),
@@ -958,8 +958,8 @@ fn normalize_cross_segment_correlated_created_result_fights(
         let result_binding_tag =
             crate::tag::CompilerDerivedTag::CorrelatedResult.key(&tagged_create.tag);
         let fixed_fight = Effect::fight(
-            ChooseSpec::Tagged(result_binding_tag.clone()),
-            ChooseSpec::Tagged(source_binding_tag.clone()),
+            ChooseSpec::Tagged(result_binding_tag.clone().into()),
+            ChooseSpec::Tagged(source_binding_tag.clone().into()),
         );
         let correlated = Effect::new(crate::effects::ForEachObjectCorrelatedResultEffect::new(
             producer.filter.clone(),
@@ -1530,11 +1530,11 @@ fn bind_implicit_discard_after_you_draw(annotated_effects: &mut [AnnotatedEffect
     let [annotated] = annotated_effects else {
         return;
     };
-    let EffectAst::Conditional {
+    let EffectAst::Conditionals(ConditionalEffectAst::Conditional {
         predicate: PredicateAst::Not(_),
         if_true,
         if_false,
-    } = &mut annotated.effect
+    }) = &mut annotated.effect
     else {
         return;
     };
@@ -1542,7 +1542,7 @@ fn bind_implicit_discard_after_you_draw(annotated_effects: &mut [AnnotatedEffect
         return;
     };
     if !if_false.is_empty()
-        || !matches!(discard.action, SubjectVerbActionAst::Discard { .. })
+        || !matches!(discard.action, SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { .. }))
         || discard.subject.player != PlayerAst::Implicit
     {
         return;
@@ -1580,7 +1580,7 @@ fn target_has_explicit_declaration_span(target: &TargetAst) -> bool {
 fn primary_put_counters_target(effects: &[EffectAst]) -> Option<TargetAst> {
     for effect in effects {
         if let EffectAst::SubjectVerb(subject_verb) = effect
-            && let SubjectVerbActionAst::PutCounters { target, .. } = &subject_verb.action
+            && let SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target, .. }) = &subject_verb.action
         {
             return Some(target.clone());
         }
@@ -1600,7 +1600,7 @@ fn primary_put_counters_target(effects: &[EffectAst]) -> Option<TargetAst> {
 fn primary_double_counters_target(effects: &[EffectAst]) -> Option<TargetAst> {
     for effect in effects {
         if let EffectAst::SubjectVerb(subject_verb) = effect
-            && let SubjectVerbActionAst::DoubleCountersOnTarget { target, .. } =
+            && let SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnTarget { target, .. }) =
                 &subject_verb.action
         {
             return Some(target.clone());
@@ -1638,8 +1638,8 @@ fn bind_shared_counter_target_to_it(effects: &mut [EffectAst], shared_target: &T
     for effect in effects {
         if let EffectAst::SubjectVerb(subject_verb) = effect {
             let counter_target = match &mut subject_verb.action {
-                SubjectVerbActionAst::PutCounters { target, .. }
-                | SubjectVerbActionAst::DoubleCountersOnTarget { target, .. } => Some(target),
+                SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target, .. })
+                | SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnTarget { target, .. }) => Some(target),
                 _ => None,
             };
             if let Some(target) = counter_target
@@ -2468,7 +2468,7 @@ fn normalize_targeted_conditional_action_then_fight(effects: Vec<Effect>) -> Vec
             ));
             rewritten.push(Effect::fight(
                 ChooseSpec::Tagged(friendly_tag.clone()),
-                ChooseSpec::Tagged(opposing_tag),
+                ChooseSpec::Tagged(opposing_tag.key.clone()),
             ));
             idx += 4;
             continue;
@@ -2523,7 +2523,7 @@ fn normalize_targeted_conditional_action_then_fight(effects: Vec<Effect>) -> Vec
             ));
             rewritten.push(Effect::fight(
                 ChooseSpec::Tagged(friendly_tag.clone()),
-                ChooseSpec::Tagged(opposing_tag),
+                ChooseSpec::Tagged(opposing_tag.key.clone()),
             ));
             idx += 4;
             continue;
@@ -2568,7 +2568,7 @@ fn normalize_targeted_conditional_action_then_fight(effects: Vec<Effect>) -> Vec
             ));
             rewritten.push(Effect::fight(
                 ChooseSpec::Tagged(friendly_tag.clone()),
-                ChooseSpec::Tagged(opposing_tag),
+                ChooseSpec::Tagged(opposing_tag.key.clone()),
             ));
             idx += 4;
             continue;
@@ -3025,7 +3025,7 @@ mod plural_result_reference_tests {
     fn plural_followup(tag: &str) -> Effect {
         Effect::new(
             crate::effects::ApplyContinuousEffect::with_spec(
-                ChooseSpec::Tagged(ironsmith_compiler_semantic::tag::declared_key(tag)),
+                ChooseSpec::Tagged(ironsmith_compiler_semantic::tag::declared_key(tag).into()),
                 crate::continuous::Modification::AddCardTypes(vec![
                     crate::types::CardType::Creature,
                 ]),
@@ -3122,7 +3122,7 @@ mod counter_rewrite_mode_tests {
         let target = ChooseSpec::target(ChooseSpec::Object(spell));
         let counter = Effect::counter(target).tag(tag.clone());
         let replacement = Effect::new(crate::effects::RegisterZoneReplacementEffect::new(
-            ChooseSpec::Tagged(tag),
+            ChooseSpec::Tagged(tag.into()),
             Some(crate::zone::Zone::Stack),
             Some(crate::zone::Zone::Graveyard),
             crate::zone::Zone::Exile,

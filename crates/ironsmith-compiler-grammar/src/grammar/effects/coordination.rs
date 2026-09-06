@@ -1,3 +1,4 @@
+use crate::cards::builders::DamageActionAst;
 use crate::diagnostics::TextSpan;
 use crate::lexer::{OwnedLexToken, TokenKind, trim_lexed_commas};
 use crate::model::{
@@ -202,7 +203,7 @@ pub fn coordination_from_effects(
 }
 
 fn member_produces_plural_created_collection(effect: &crate::cards::builders::EffectAst) -> bool {
-    use crate::cards::builders::{EffectAst, SubjectVerbActionAst};
+    use crate::cards::builders::{EffectAst, SubjectVerbActionAst, DamageActionAst, TokenActionAst};
     use crate::effect::Value;
 
     if matches!(
@@ -210,7 +211,7 @@ fn member_produces_plural_created_collection(effect: &crate::cards::builders::Ef
         EffectAst::SubjectVerb(subject_verb)
             if matches!(
                 &subject_verb.action,
-                SubjectVerbActionAst::CreateTokenWithMods { count, .. }
+                SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { count, .. })
                     if !matches!(count.unhinted(), Value::Fixed(1))
             )
     ) {
@@ -228,7 +229,7 @@ fn bind_singular_damage_source_to_ability_source(effect: &mut crate::cards::buil
     use crate::target::ObjectFilter;
 
     if let EffectAst::SubjectVerb(subject_verb) = effect
-        && let SubjectVerbActionAst::DealDamageEqualToPower { source, .. } =
+        && let SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { source, .. }) =
             &mut subject_verb.action
     {
         match source {

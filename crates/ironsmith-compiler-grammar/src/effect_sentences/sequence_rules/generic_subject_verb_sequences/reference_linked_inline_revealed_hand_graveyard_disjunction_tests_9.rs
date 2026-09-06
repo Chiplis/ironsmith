@@ -18,7 +18,7 @@ fn parse(second: &str) -> Option<Vec<EffectAst>> {
 fn exact_choice_keeps_branch_specific_nonland_and_opponent_constraints() {
     let effects = parse("You choose a nonland card from it or a card from their graveyard.")
         .expect("revealed-hand/graveyard choice");
-    let EffectAst::ChooseObjects { filter, .. } = &effects[1] else {
+    let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, .. }) = &effects[1] else {
         panic!("expected cross-zone choice: {effects:#?}");
     };
     let [hand, graveyard] = filter.any_of.as_slice() else {

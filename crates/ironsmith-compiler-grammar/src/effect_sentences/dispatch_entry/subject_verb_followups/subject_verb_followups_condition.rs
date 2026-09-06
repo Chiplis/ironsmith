@@ -1,3 +1,5 @@
+use crate::cards::builders::SourcePredicateAst;
+use crate::cards::builders::ForEachEffectAst;
 use super::*;
 
 pub(super) fn pre_rule_if_no_one_does_followup(
@@ -50,16 +52,16 @@ pub(super) fn take_self_replacement_condition(
     effect: EffectAst,
 ) -> Option<(PredicateAst, Vec<EffectAst>, Vec<EffectAst>)> {
     match effect {
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true,
             if_false,
-        } => Some((predicate, if_true, if_false)),
+        }) => Some((predicate, if_true, if_false)),
         // Damage parsing preserves authored trailing condition order with a
         // typed `TrailingIf`. Once an `instead` follow-up has been classified
         // as a self-replacement, both surfaces carry the same semantic branch
         // and must be normalized before ordinary object-reference lowering.
-        EffectAst::TrailingIf { predicate, effects } => Some((predicate, effects, Vec::new())),
+        EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects }) => Some((predicate, effects, Vec::new())),
         EffectAst::ControlFlow(control) => {
             let crate::model::control_flow::ControlFlowNodeAst::Condition {
                 condition,
@@ -91,14 +93,14 @@ fn explicit_self_replacement_result_tag(effect: &EffectAst) -> Option<TagKey> {
         EffectAst::TagAffected { tag, .. }
             if tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str() =>
         {
-            Some(tag.clone())
+            Some(tag.clone().into())
         }
         EffectAst::Sequence { effects }
         | EffectAst::CommaThen { effects }
         | EffectAst::SourceSentence { effects, .. }
         | EffectAst::Coordinated { effects, .. }
-        | EffectAst::May { effects }
-        | EffectAst::MayByPlayer { effects, .. }
+        | EffectAst::Permissions(PermissionEffectAst::May { effects })
+        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. })
             if effects.len() == 1 =>
         {
             explicit_self_replacement_result_tag(&effects[0])
@@ -109,7 +111,7 @@ fn explicit_self_replacement_result_tag(effect: &EffectAst) -> Option<TagKey> {
 
 pub(super) fn predicate_explicitly_says_that_land(predicate: &PredicateAst) -> bool {
     match predicate {
-        PredicateAst::SourceMatches(filter)
+        PredicateAst::Source(SourcePredicateAst::SourceMatches(filter))
         | PredicateAst::ItMatches(filter)
         | PredicateAst::TargetMatches(filter) => {
             filter.demonstrative_antecedent_surface()
@@ -160,17 +162,17 @@ pub(super) fn post_rule_self_replacement_common_suffix(
         && !effects_contain_gain_life(sentence_effects)
     {
         let iterated = crate::tag::CompilerReferenceTag::It.bind();
-        sentence_effects.push(EffectAst::ForEachTagged {
+        sentence_effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
             tag: crate::tag::CompilerReferenceTag::ChosenObjects.bind(),
             effects: vec![EffectAst::subject_verb(
                 SubjectVerbRoleAst::AffectedPlayer,
                 PlayerAst::ItsController,
-                SubjectVerbActionAst::GainLife {
-                    amount: Value::ManaValueOf(Box::new(ChooseSpec::Tagged(iterated)))
+                SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife {
+                    amount: Value::ManaValueOf(Box::new(ChooseSpec::Tagged(iterated.key.clone())))
                         .with_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo),
-                },
+                }),
             )],
-        });
+        }));
     }
 
     if_true.extend(sentence_effects.iter().cloned());
@@ -201,7 +203,7 @@ pub(in super::super) fn post_rule_future_zone_and_self_replacement(
         && sentence_effects.first().is_some_and(|effect| {
             matches!(
                 effect,
-                EffectAst::Conditional { .. } | EffectAst::TrailingIf { .. }
+                EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. }) | EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { .. })
             ) || matches!(
                 effect,
                 EffectAst::ControlFlow(control)
@@ -246,9 +248,9 @@ pub(in super::super) fn post_rule_future_zone_and_self_replacement(
                 crate::util::helper_tag_for_tokens(sentence_tokens, "self_replacement_antecedent");
             previous = EffectAst::TagAffected {
                 effect: Box::new(previous),
-                tag: tag.clone(),
+                tag: crate::tag::TagRef::of(tag.clone()),
             };
-            previous_result_tag = Some(tag);
+            previous_result_tag = Some(tag.key.clone());
         }
         let previous_damage_target = primary_damage_target_from_effect(&previous);
         let previous_damage_source = primary_damage_source_from_effect(&previous);
@@ -289,7 +291,7 @@ pub(in super::super) fn post_rule_future_zone_and_self_replacement(
         }
         if let Some(target) = previous_result_tag
             .as_ref()
-            .map(|tag| TargetAst::Tagged(tag.clone(), None))
+            .map(|tag| TargetAst::Tagged(crate::tag::TagRef::of(tag.clone()), None))
             .as_ref()
             .or(previous_target.as_ref())
         {

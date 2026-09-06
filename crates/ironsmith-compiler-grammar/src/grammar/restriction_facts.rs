@@ -1,5 +1,6 @@
 use crate::ability::ActivationTiming;
 use crate::cards::builders::PredicateAst;
+use crate::cards::builders::SourcePredicateAst;
 use crate::lexer::{OwnedLexToken, render_token_slice};
 use crate::model::compiler_semantic::{
     ActivationRestrictionNormalizationFact, ParsedActivationRestriction, ParsedManaRestriction,
@@ -113,10 +114,10 @@ pub fn parse_mana_restriction_surface_tokens(tokens: &[OwnedLexToken]) -> Parsed
 fn text_only_condition(parsed: TextOnlyActivationRestriction) -> PredicateAst {
     match parsed {
         TextOnlyActivationRestriction::SourceDidNotAttackThisTurn => {
-            PredicateAst::Not(Box::new(PredicateAst::SourceAttackedThisTurn))
+            PredicateAst::Not(Box::new(PredicateAst::Source(SourcePredicateAst::SourceAttackedThisTurn)))
         }
         TextOnlyActivationRestriction::SourceAttackedThisTurn => {
-            PredicateAst::SourceAttackedThisTurn
+            PredicateAst::Source(SourcePredicateAst::SourceAttackedThisTurn)
         }
     }
 }

@@ -1,3 +1,4 @@
+use crate::cards::builders::ForEachEffectAst;
 use super::super::grammar::effects as effect_grammar;
 use super::super::grammar::effects::{
     CounterSpellConditionalKind, ForEachPlayerKind, split_for_each_opponent_doesnt_clause_lexed,
@@ -15,7 +16,7 @@ use super::parse_effect_chain_inner;
 #[cfg(test)]
 use super::parse_effect_chain_lexed;
 use crate::cards::builders::{
-    CardTextError, EffectAst, PlayerAst, PredicateAst, TagKey, TargetAst,
+    CardTextError, EffectAst, PlayerAst, PredicateAst, TagKey, TargetAst, ConditionalEffectAst, PlayerPredicateAst,
 };
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::types::{CardType, Subtype, Supertype};
@@ -76,10 +77,10 @@ pub fn parse_for_each_opponent_doesnt(
 
     let effects = parse_effect_chain_inner(split.effect_tokens)?;
     let predicate = parse_negated_who_this_way_predicate(split.inner_tokens)?;
-    Ok(Some(EffectAst::ForEachOpponentDoesNot {
+    Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDoesNot {
         effects,
         predicate,
-    }))
+    })))
 }
 
 pub fn parse_for_each_player_doesnt(
@@ -101,7 +102,7 @@ pub fn parse_for_each_player_doesnt(
 
     let effects = parse_effect_chain_inner(split.effect_tokens)?;
     let predicate = parse_negated_who_this_way_predicate(split.inner_tokens)?;
-    Ok(Some(EffectAst::ForEachPlayerDoesNot { effects, predicate }))
+    Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDoesNot { effects, predicate })))
 }
 
 pub fn parse_for_each_doesnt_control_lose_game(
@@ -125,23 +126,23 @@ pub fn parse_for_each_doesnt_control_lose_game(
     }
     let filter = parse_object_filter(&filter_tokens, false)?;
 
-    let effect = EffectAst::Conditional {
-        predicate: PredicateAst::PlayerControlsNo {
+    let effect = EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+        predicate: PredicateAst::Player(PlayerPredicateAst::PlayerControlsNo {
             player: PlayerAst::That,
             filter,
-        },
+        }),
         if_true: vec![EffectAst::subject_verb_lose_game(PlayerAst::That)],
         if_false: Vec::new(),
-    };
+    });
 
     Ok(Some(if opponent {
-        EffectAst::ForEachOpponent {
+        EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
             effects: vec![effect],
-        }
+        })
     } else {
-        EffectAst::ForEachPlayer {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
             effects: vec![effect],
-        }
+        })
     }))
 }
 
@@ -157,12 +158,12 @@ fn parse_negated_who_this_way_predicate(
         Err(_) => return Ok(None),
     };
 
-    Ok(Some(PredicateAst::PlayerTaggedObjectMatches {
+    Ok(Some(PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches {
         player: PlayerAst::That,
         tag: crate::tag::CompilerReferenceTag::It.bind(),
         filter,
         mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
-    }))
+    })))
 }
 
 pub fn parse_sentence_counter_target_spell_if_it_was_kicked(
@@ -177,11 +178,11 @@ pub fn parse_sentence_counter_target_spell_if_it_was_kicked(
 
     let target = TargetAst::Spell(span_from_tokens(shape.target_tokens));
     let counter = EffectAst::subject_verb_counter(target);
-    let effect = EffectAst::Conditional {
+    let effect = EffectAst::Conditionals(ConditionalEffectAst::Conditional {
         predicate: PredicateAst::TargetWasKicked,
         if_true: vec![counter],
         if_false: Vec::new(),
-    };
+    });
     Ok(Some(vec![effect]))
 }
 
@@ -197,11 +198,11 @@ pub fn parse_sentence_counter_target_spell_thats_second_cast_this_turn(
 
     let target = TargetAst::Spell(span_from_tokens(shape.target_tokens));
     let counter = EffectAst::subject_verb_counter(target);
-    let effect = EffectAst::Conditional {
+    let effect = EffectAst::Conditionals(ConditionalEffectAst::Conditional {
         predicate: PredicateAst::TargetSpellCastOrderThisTurn(2),
         if_true: vec![counter],
         if_false: Vec::new(),
-    };
+    });
     Ok(Some(vec![effect]))
 }
 
@@ -215,10 +216,10 @@ pub fn parse_sentence_exile_target_creature_with_greatest_power(
     let target_tokens = trim_commas(shape.target_tokens);
     let target = parse_target_phrase(&target_tokens)?;
     let exile = EffectAst::subject_verb_exile(target.clone(), false);
-    let effect = EffectAst::Conditional {
+    let effect = EffectAst::Conditionals(ConditionalEffectAst::Conditional {
         predicate: PredicateAst::TargetHasGreatestPowerAmongCreatures,
         if_true: vec![exile],
         if_false: Vec::new(),
-    };
+    });
     Ok(Some(vec![effect]))
 }

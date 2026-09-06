@@ -965,7 +965,7 @@ mod tests {
     fn source_linked_battlefield_move() -> Effect {
         let mut filter = ObjectFilter::creature().in_zone(Zone::Exile);
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::SourceExiled.bind(),
+            tag: crate::tag::CompilerReferenceTag::SourceExiled.bind().into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
         Effect::new(crate::effects::MoveToZoneEffect::new(
@@ -1042,7 +1042,7 @@ mod tests {
         let producer = Effect::new(crate::effects::MayEffect {
             decider: Some(crate::target::PlayerFilter::You),
             effects: vec![Effect::new(crate::effects::ForEachTaggedEffect {
-                tag: tag.clone(),
+                tag: tag.clone().into(),
                 effects: vec![move_effect],
                 controller_at_last_blocked_by: None,
             })],
@@ -1054,10 +1054,10 @@ mod tests {
         let counter = Effect::put_counters(
             crate::object::CounterType::PlusOnePlusOne,
             amount,
-            ChooseSpec::Tagged(tag.clone()),
+            ChooseSpec::Tagged(tag.clone().into()),
         );
         let condition = Condition::TaggedObjectMatches(
-            tag.clone(),
+            tag.clone().into(),
             ObjectFilter {
                 mana_value: Some(crate::filter::Comparison::LessThanOrEqual(3)),
                 ..Default::default()

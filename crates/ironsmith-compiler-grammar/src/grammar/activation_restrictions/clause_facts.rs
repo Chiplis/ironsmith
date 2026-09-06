@@ -227,7 +227,7 @@ pub fn parse_player_negated_subject_words(words: &[&str]) -> Option<PlayerFilter
         Some(PlayerFilter::Any)
     } else if exact(words, &["enchanted", "player"]) {
         Some(PlayerFilter::TaggedPlayer(
-            crate::tag::CompilerReferenceTag::Enchanted.bind(),
+            (crate::tag::CompilerReferenceTag::Enchanted.bind()).into(),
         ))
     } else {
         None
@@ -241,7 +241,7 @@ pub fn parse_player_restriction_subject_words(words: &[&str]) -> Option<PlayerFi
         Some(PlayerFilter::IteratedPlayer)
     } else if exact(words, &["players", "dealt", "damage", "this", "way"]) {
         Some(PlayerFilter::TaggedPlayer(
-            crate::tag::CompilerReferenceTag::Damaged0.bind(),
+            (crate::tag::CompilerReferenceTag::Damaged0.bind()).into(),
         ))
     } else if exact_any(
         words,
@@ -274,7 +274,7 @@ pub fn parse_player_restriction_subject_words(words: &[&str]) -> Option<PlayerFi
 pub fn parse_cant_cast_subject_words(words: &[&str]) -> Option<CantCastSubject> {
     let (player, consumed) = if prefix(words, &["players", "dealt", "damage", "this", "way"]) {
         (
-            PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Damaged0.bind()),
+            PlayerFilter::TaggedPlayer((crate::tag::CompilerReferenceTag::Damaged0.bind()).into()),
             5,
         )
     } else if prefix(words, &["that", "player"]) {

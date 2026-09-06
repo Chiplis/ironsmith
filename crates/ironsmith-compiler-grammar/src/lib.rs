@@ -297,8 +297,8 @@ pub use line_info::LineInfo;
 pub mod host {
     pub use crate::cards::builders::{
         CardTextError, EffectAst, OwnedLexToken, PlayerAst, PredicateAst, SubjectAst, TagKey,
-        TargetAst, TriggerSpec,
-    };
+        TargetAst, TriggerSpec, DelayedEffectAst, ForEachEffectAst, ObjectChoiceEffectAst, VoteEffectAst, ConditionalEffectAst, PermissionEffectAst, PlayerPredicateAst, SourcePredicateAst, TriggeringPredicateAst, TurnEventPredicateAst,
+};
 }
 
 pub fn parse_context_for_builder(

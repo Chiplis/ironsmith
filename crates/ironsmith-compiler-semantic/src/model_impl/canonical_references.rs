@@ -10,6 +10,16 @@ use std::convert::Infallible;
 use std::ops::ControlFlow;
 
 use crate::model::ast::EffectAst;
+
+use crate::model::ast::PermissionEffectAst;
+
+use crate::model::ast::ConditionalEffectAst;
+
+use crate::model::ast::ObjectChoiceEffectAst;
+
+use crate::model::ast::ForEachEffectAst;
+
+use crate::model::ast::DelayedEffectAst;
 use crate::model::compiler_semantic::{
     LineAst, ParsedCardItem, ParsedLevelAbilityItemAst, ParsedModalAst,
 };
@@ -318,9 +328,9 @@ impl<'a> CanonicalReferenceResolver<'a> {
                     self.join(ReferenceJoinKindAst::Delayed, env, branches)
                 }
             },
-            EffectAst::Conditional {
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 if_true, if_false, ..
-            }
+            })
             | EffectAst::SelfReplacement {
                 if_true, if_false, ..
             } => {
@@ -336,18 +346,18 @@ impl<'a> CanonicalReferenceResolver<'a> {
                     vec![true_env, false_env],
                 )
             }
-            EffectAst::ChooseOneOf { modes } | EffectAst::VillainousChoice { modes, .. } => {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes }) | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
                 let branches = modes
                     .iter()
                     .map(|mode| self.resolve_sequence(&mode.effects, env.clone()))
                     .collect();
                 self.join(ReferenceJoinKindAst::Modal, env, branches)
             }
-            EffectAst::May { effects }
-            | EffectAst::MayByPlayer { effects, .. }
-            | EffectAst::AnyPlayerMay { effects, .. }
-            | EffectAst::TrailingIf { effects, .. }
-            | EffectAst::TrailingUnless { effects, .. } => {
+            EffectAst::Permissions(PermissionEffectAst::May { effects })
+            | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. })
+            | EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay { effects, .. })
+            | EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { effects, .. })
+            | EffectAst::Conditionals(ConditionalEffectAst::TrailingUnless { effects, .. }) => {
                 let branch = self.resolve_sequence(effects, env.clone());
                 self.join(
                     ReferenceJoinKindAst::Optional,
@@ -355,20 +365,20 @@ impl<'a> CanonicalReferenceResolver<'a> {
                     vec![env, branch],
                 )
             }
-            EffectAst::RepeatEffects { effects, .. }
-            | EffectAst::RepeatProcess { effects, .. }
-            | EffectAst::ForEachOpponent { effects }
-            | EffectAst::ForEachPlayersFiltered { effects, .. }
-            | EffectAst::ForEachPlayer { effects }
-            | EffectAst::ForEachTargetPlayers { effects, .. }
-            | EffectAst::ForEachObject { effects, .. }
-            | EffectAst::ForEachTagged { effects, .. }
-            | EffectAst::ForEachTaggedWithControllerAtLastBlockedBy { effects, .. }
-            | EffectAst::ForEachOpponentDoesNot { effects, .. }
-            | EffectAst::ForEachPlayerDoesNot { effects, .. }
-            | EffectAst::ForEachOpponentDid { effects, .. }
-            | EffectAst::ForEachPlayerDid { effects, .. }
-            | EffectAst::ForEachTaggedPlayer { effects, .. } => {
+            EffectAst::ForEach(ForEachEffectAst::RepeatEffects { effects, .. })
+            | EffectAst::ForEach(ForEachEffectAst::RepeatProcess { effects, .. })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { effects, .. })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachTargetPlayers { effects, .. })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachObject { effects, .. })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachTagged { effects, .. })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy { effects, .. })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDoesNot { effects, .. })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDoesNot { effects, .. })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDid { effects, .. })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDid { effects, .. })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer { effects, .. }) => {
                 let body = self.resolve_sequence(effects, env.clone());
                 self.join(
                     ReferenceJoinKindAst::Iteration,
@@ -376,19 +386,19 @@ impl<'a> CanonicalReferenceResolver<'a> {
                     vec![env, body],
                 )
             }
-            EffectAst::DelayedUntilNextEndStep { effects, .. }
-            | EffectAst::DelayedUntilNextCleanupStep { effects, .. }
-            | EffectAst::DelayedUntilNextUntapStep { effects, .. }
-            | EffectAst::DelayedUntilNextUpkeep { effects, .. }
-            | EffectAst::DelayedUntilNextDrawStep { effects, .. }
-            | EffectAst::DelayedUntilNextMainPhase { effects, .. }
-            | EffectAst::DelayedUntilNextFirstMainPhase { effects, .. }
-            | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
-            | EffectAst::DelayedUntilEndOfCombat { effects }
-            | EffectAst::DelayedTriggerThisTurn { effects, .. }
-            | EffectAst::DelayedTriggerForDuration { effects, .. }
-            | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
-            | EffectAst::DelayedWhenLastObjectLeavesBattlefield { effects, .. } => {
+            EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep { effects, .. })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextCleanupStep { effects, .. })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUntapStep { effects, .. })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep { effects, .. })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextDrawStep { effects, .. })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextMainPhase { effects, .. })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextFirstMainPhase { effects, .. })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat { effects })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn { effects, .. })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { effects, .. })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectLeavesBattlefield { effects, .. }) => {
                 let branch = self.resolve_sequence(effects, env.clone());
                 self.join(ReferenceJoinKindAst::Delayed, env, vec![branch])
             }

@@ -136,7 +136,7 @@ pub fn parse_typed_choice_object_clause_tokens(
             constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         }) {
             filter.tagged_constraints.push(TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::It.bind(),
+                tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
                 relation: TaggedOpbjectRelation::IsTaggedObject,
             });
         }
@@ -149,7 +149,7 @@ pub fn parse_typed_choice_object_clause_tokens(
         })
     {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::ChosenObjects.bind(),
+            tag: (crate::tag::CompilerReferenceTag::ChosenObjects.bind()).into(),
             relation: TaggedOpbjectRelation::IsNotTaggedObject,
         });
     }
@@ -258,7 +258,7 @@ fn expand_tagged_hand_or_graveyard_disjunction_filter(
         .any(|constraint| constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
     {
         hand_arm.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.bind(),
+            tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
     }

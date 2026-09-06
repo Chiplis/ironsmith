@@ -1,3 +1,10 @@
+use crate::cards::builders::PlayerPredicateAst;
+use crate::cards::builders::PermissionEffectAst;
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::DamageActionAst;
+use crate::cards::builders::LifeResourceActionAst;
+use crate::cards::builders::ZoneMoveActionAst;
 use super::*;
 use crate::grammar::effects::choice_damage_shapes as choice_shapes;
 
@@ -20,21 +27,21 @@ pub fn parse_sentence_each_opponent_loses_x_and_you_gain_x(
     })?;
 
     Ok(Some(vec![
-        EffectAst::ForEachOpponent {
+        EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
             effects: vec![EffectAst::subject_verb(
                 SubjectVerbRoleAst::AffectedPlayer,
                 PlayerAst::Implicit,
-                SubjectVerbActionAst::LoseLife {
+                SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife {
                     amount: where_value.clone(),
-                },
+                }),
             )],
-        },
+        }),
         EffectAst::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             PlayerAst::You,
-            SubjectVerbActionAst::GainLife {
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife {
                 amount: where_value,
-            },
+            }),
         ),
     ]))
 }
@@ -68,20 +75,20 @@ pub fn parse_sentence_relative_opponent_damage_difference(
     // card name in the AST.
     let _source_surface = shape.source_tokens;
     base_filter.zone = None;
-    Ok(Some(vec![EffectAst::ForEachOpponent {
-        effects: vec![EffectAst::Conditional {
-            predicate: PredicateAst::PlayerControlsMoreThanYou {
+    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
+        effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::Player(PlayerPredicateAst::PlayerControlsMoreThanYou {
                 player: PlayerAst::That,
                 filter: base_filter,
-            },
+            }),
             if_true: vec![EffectAst::subject_verb_damage_with_source(
                 TargetAst::Source(None),
                 amount,
                 TargetAst::Player(PlayerFilter::IteratedPlayer, None),
             )],
             if_false: Vec::new(),
-        }],
-    }]))
+        })],
+    })]))
 }
 
 pub fn parse_sentence_same_name_target_fanout(
@@ -193,21 +200,21 @@ pub fn parse_sentence_exile_multi_target(
         }
         let tag = helper_tag_for_tokens(clause.tokens(), "exiled");
         return Ok(Some(vec![
-            EffectAst::ChooseObjects {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                 filter: first_filter,
                 count: first_count,
                 count_value: None,
                 player: PlayerAst::You,
-                tag: tag.clone(),
-            },
-            EffectAst::ChooseObjects {
+                tag: crate::tag::TagRef::of(tag.clone()),
+            }),
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                 filter: second_filter,
                 count: second_count,
                 count_value: None,
                 player: PlayerAst::You,
-                tag: tag.clone(),
-            },
-            EffectAst::subject_verb_exile(TargetAst::Tagged(tag, None), false),
+                tag: crate::tag::TagRef::of(tag.clone()),
+            }),
+            EffectAst::subject_verb_exile(TargetAst::Tagged(crate::tag::TagRef::of(tag), None), false),
         ]));
     }
 
@@ -421,14 +428,14 @@ fn parse_sentence_reveal_selected_cards_in_hand_for_player(
 
     let tag = helper_tag_for_tokens(clause.tokens(), "revealed");
     Ok(Some(vec![
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter,
             count,
             count_value: None,
             player,
-            tag: tag.clone(),
-        },
-        EffectAst::subject_verb_reveal_tagged(tag),
+            tag: crate::tag::TagRef::of(tag.clone()),
+        }),
+        EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(tag)),
     ]))
 }
 
@@ -449,12 +456,12 @@ pub fn parse_sentence_each_player_may_reveal_selected_cards_in_their_hand(
         return Ok(None);
     };
 
-    Ok(Some(vec![EffectAst::ForEachPlayer {
-        effects: vec![EffectAst::MayByPlayer {
+    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+        effects: vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
             player: PlayerAst::That,
             effects,
-        }],
-    }]))
+        })],
+    })]))
 }
 
 pub fn parse_sentence_target_player_reveals_random_card_from_hand(
@@ -510,14 +517,14 @@ pub fn parse_sentence_target_player_reveals_random_card_from_hand(
     let tag = helper_tag_for_tokens(clause.tokens(), "revealed");
 
     Ok(Some(vec![
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter,
             count: ChoiceCount::exactly(1).at_random(),
             count_value: None,
             player,
-            tag: tag.clone(),
-        },
-        EffectAst::subject_verb_reveal_tagged(tag),
+            tag: crate::tag::TagRef::of(tag.clone()),
+        }),
+        EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(tag)),
     ]))
 }
 
@@ -555,8 +562,8 @@ pub fn parse_sentence_damage_unless_controller_has_source_deal_damage(
     };
     let main_target = match main_effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-            SubjectVerbActionAst::DealDamage { target, .. }
-            | SubjectVerbActionAst::Destroy { target, .. } => target,
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { target, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { target, .. }) => target,
             _ => return Ok(None),
         },
         _ => return Ok(None),
@@ -633,11 +640,11 @@ pub fn parse_sentence_damage_unless_controller_has_source_deal_damage(
             None,
         ),
     );
-    let unless = EffectAst::UnlessAction {
+    let unless = EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
         effects,
         alternative: vec![alternative],
         player: PlayerAst::ItsController,
-    };
+    });
     Ok(Some(vec![unless]))
 }
 
@@ -681,13 +688,13 @@ pub fn parse_sentence_damage_to_that_player_unless_enchanted_attacked(
         return Ok(None);
     }
 
-    Ok(Some(vec![EffectAst::TrailingUnless {
+    Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::TrailingUnless {
         predicate: PredicateAst::EnchantedPermanentAttackedThisTurn,
         effects: vec![EffectAst::subject_verb_damage(
             amount,
             TargetAst::Player(PlayerFilter::IteratedPlayer, None),
         )],
-    }]))
+    })]))
 }
 
 #[cfg(test)]

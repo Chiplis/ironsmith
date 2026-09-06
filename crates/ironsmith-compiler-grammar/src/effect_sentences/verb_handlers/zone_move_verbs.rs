@@ -1,3 +1,4 @@
+use crate::cards::builders::ConditionalEffectAst;
 use super::super::grammar::effects::zone_move_shapes as zone_move_grammar;
 
 fn mana_cost_is_x_only(mana: &[ManaSymbol]) -> bool {
@@ -96,9 +97,9 @@ pub fn parse_draw(
     let mut effect = subject_verb_player_resource_effect(
         SubjectVerbRoleAst::AffectedPlayer,
         player,
-        SubjectVerbActionAst::Draw {
+        SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
             count: draw_count_with_surface(count.clone(), head.additional),
-        },
+        }),
     );
 
     if !tail.is_empty() && head.parsed_offset.is_none() {
@@ -129,9 +130,9 @@ pub fn parse_draw(
                 effect = subject_verb_player_resource_effect(
                     SubjectVerbRoleAst::AffectedPlayer,
                     player,
-                    SubjectVerbActionAst::Draw {
+                    SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
                         count: draw_count_with_surface(count.clone(), head.additional),
-                    },
+                    }),
                 );
             } else if let Some(parsed) = parse_draw_trailing_clause(tail, effect.clone())? {
                 effect = parsed;
@@ -185,101 +186,101 @@ fn parse_draw_for_each_player_condition(
             PredicateAst::Not(inner) => {
                 PredicateAst::Not(Box::new(bind_loop_player_predicate(*inner)))
             }
-            PredicateAst::PlayerControls { player, filter } if player == PlayerAst::That => {
-                PredicateAst::PlayerControls {
+            PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerControls { player, filter }) if player == PlayerAst::That => {
+                PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerControls {
                     player: PlayerAst::Implicit,
                     filter,
-                }
+                })
             }
-            PredicateAst::PlayerHasAtLeast {
+            PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerHasAtLeast {
                 player,
                 filter,
                 count,
-            } if player == PlayerAst::That => PredicateAst::PlayerHasAtLeast {
+            }) if player == PlayerAst::That => PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerHasAtLeast {
                 player: PlayerAst::Implicit,
                 filter,
                 count,
-            },
-            PredicateAst::PlayerControlsExactly {
+            }),
+            PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerControlsExactly {
                 player,
                 filter,
                 count,
-            } if player == PlayerAst::That => PredicateAst::PlayerControlsExactly {
+            }) if player == PlayerAst::That => PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerControlsExactly {
                 player: PlayerAst::Implicit,
                 filter,
                 count,
-            },
-            PredicateAst::PlayerControlsMost { player, filter } if player == PlayerAst::That => {
-                PredicateAst::PlayerControlsMost {
+            }),
+            PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerControlsMost { player, filter }) if player == PlayerAst::That => {
+                PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerControlsMost {
                     player: PlayerAst::Implicit,
                     filter,
-                }
+                })
             }
-            PredicateAst::PlayerControlsMoreThanEachOtherPlayer { player, filter }
+            PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerControlsMoreThanEachOtherPlayer { player, filter })
                 if player == PlayerAst::That =>
             {
-                PredicateAst::PlayerControlsMoreThanEachOtherPlayer {
+                PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerControlsMoreThanEachOtherPlayer {
                     player: PlayerAst::Implicit,
                     filter,
-                }
+                })
             }
-            PredicateAst::PlayerControlsMoreThanYou { player, filter }
+            PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerControlsMoreThanYou { player, filter })
                 if player == PlayerAst::That =>
             {
-                PredicateAst::PlayerControlsMoreThanYou {
+                PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerControlsMoreThanYou {
                     player: PlayerAst::Implicit,
                     filter,
-                }
+                })
             }
-            PredicateAst::PlayerHasLessLifeThanYou { player } if player == PlayerAst::That => {
-                PredicateAst::PlayerHasLessLifeThanYou {
+            PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerHasLessLifeThanYou { player }) if player == PlayerAst::That => {
+                PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerHasLessLifeThanYou {
                     player: PlayerAst::Implicit,
-                }
+                })
             }
-            PredicateAst::PlayerHasMoreLifeThanYou { player } if player == PlayerAst::That => {
-                PredicateAst::PlayerHasMoreLifeThanYou {
+            PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerHasMoreLifeThanYou { player }) if player == PlayerAst::That => {
+                PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerHasMoreLifeThanYou {
                     player: PlayerAst::Implicit,
-                }
+                })
             }
-            PredicateAst::PlayerHasNoOpponentWithMoreLifeThan { player }
+            PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerHasNoOpponentWithMoreLifeThan { player })
                 if player == PlayerAst::That =>
             {
-                PredicateAst::PlayerHasNoOpponentWithMoreLifeThan {
+                PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerHasNoOpponentWithMoreLifeThan {
                     player: PlayerAst::Implicit,
-                }
+                })
             }
-            PredicateAst::PlayerHasMoreLifeThanEachOtherPlayer { player }
+            PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerHasMoreLifeThanEachOtherPlayer { player })
                 if player == PlayerAst::That =>
             {
-                PredicateAst::PlayerHasMoreLifeThanEachOtherPlayer {
+                PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerHasMoreLifeThanEachOtherPlayer {
                     player: PlayerAst::Implicit,
-                }
+                })
             }
-            PredicateAst::PlayerHasMoreCardsInHandThanYou { player }
+            PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerHasMoreCardsInHandThanYou { player })
                 if player == PlayerAst::That =>
             {
-                PredicateAst::PlayerHasMoreCardsInHandThanYou { player }
+                PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerHasMoreCardsInHandThanYou { player })
             }
-            PredicateAst::PlayerHasMoreCardsInHandThanEachOtherPlayer { player }
+            PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerHasMoreCardsInHandThanEachOtherPlayer { player })
                 if player == PlayerAst::That =>
             {
-                PredicateAst::PlayerHasMoreCardsInHandThanEachOtherPlayer {
+                PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerHasMoreCardsInHandThanEachOtherPlayer {
                     player: PlayerAst::Implicit,
-                }
+                })
             }
-            PredicateAst::PlayerTappedLandForManaThisTurn { player }
+            PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerTappedLandForManaThisTurn { player })
                 if player == PlayerAst::That =>
             {
-                PredicateAst::PlayerTappedLandForManaThisTurn {
+                PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerTappedLandForManaThisTurn {
                     player: PlayerAst::Implicit,
-                }
+                })
             }
-            PredicateAst::PlayerHadLandEnterBattlefieldThisTurn { player }
+            PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerHadLandEnterBattlefieldThisTurn { player })
                 if player == PlayerAst::That =>
             {
-                PredicateAst::PlayerHadLandEnterBattlefieldThisTurn {
+                PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerHadLandEnterBattlefieldThisTurn {
                     player: PlayerAst::Implicit,
-                }
+                })
             }
             other => other,
         }
@@ -311,22 +312,22 @@ fn parse_draw_for_each_player_condition(
     match &mut draw_effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             subject: SubjectVerbSubjectAst { player, .. },
-            action: SubjectVerbActionAst::Draw { .. },
+            action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { .. }),
         }) if *player == PlayerAst::Implicit => {
             *player = PlayerAst::You;
         }
         _ => {}
     }
 
-    let effects = vec![EffectAst::Conditional {
+    let effects = vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
         predicate,
         if_true: vec![draw_effect],
         if_false: Vec::new(),
-    }];
+    })];
     Ok(Some(if shape.opponents_only {
-        EffectAst::ForEachOpponent { effects }
+        EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })
     } else {
-        EffectAst::ForEachPlayer { effects }
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })
     }))
 }
 
@@ -371,11 +372,11 @@ pub fn parse_draw_trailing_clause(
             let predicate = parse_trailing_if_predicate_lexed(tokens).ok_or_else(|| {
                 CardTextError::ParseError("missing condition after trailing if clause".to_string())
             })?;
-            Ok(Some(EffectAst::Conditional {
+            Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate,
                 if_true: vec![draw_effect],
                 if_false: Vec::new(),
-            }))
+            })))
         }
         zone_move_grammar::DrawTrailingShape::Unless => try_build_unless(
             vec![draw_effect],
@@ -582,10 +583,10 @@ pub fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
 
     if let Some(spec) = split_trailing_if_clause_lexed(tokens) {
         let target = parse_counter_target_phrase(spec.leading_tokens)?;
-        return Ok(EffectAst::TrailingIf {
+        return Ok(EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
             predicate: spec.predicate,
             effects: vec![EffectAst::subject_verb_counter(target)],
-        });
+        }));
     }
 
     let clause_words = crate::lexer::token_word_refs(tokens);
@@ -600,13 +601,13 @@ pub fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
         })?;
     let unless_shape = match shape {
         zone_move_grammar::CounterClauseShape::SecondSpellThisTurn { target_tokens } => {
-            return Ok(EffectAst::Conditional {
+            return Ok(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: crate::cards::builders::PredicateAst::TargetSpellCastOrderThisTurn(2),
                 if_true: vec![EffectAst::subject_verb_counter(TargetAst::Spell(
                     span_from_tokens(&target_tokens),
                 ))],
                 if_false: Vec::new(),
-            });
+            }));
         }
         zone_move_grammar::CounterClauseShape::MalformedConditional => {
             return Err(CardTextError::ParseError(format!(
@@ -842,11 +843,11 @@ fn parse_counter_unless_source_damage(
             None,
         ),
     );
-    Ok(Some(EffectAst::UnlessAction {
+    Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
         effects: vec![EffectAst::subject_verb_counter(target)],
         alternative: vec![alternative],
         player: PlayerAst::ItsController,
-    }))
+    })))
 }
 
 #[cfg(test)]
@@ -865,7 +866,7 @@ mod turn_history_draw_tests {
     fn additional_draw_surface_survives_into_the_subject_verb_ast() {
         let parsed = parse_draw(&lex("an additional card"), None).expect("additional draw parse");
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Draw { count },
+            action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count }),
             ..
         }) = parsed
         else {

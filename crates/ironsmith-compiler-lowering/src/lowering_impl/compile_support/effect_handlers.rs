@@ -1,3 +1,6 @@
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::DelayedEffectAst;
+use crate::cards::builders::CounterActionAst;
 use super::*;
 use crate::condition_antecedent::{
     ConditionAntecedentBinding, bind_condition_antecedent_in_effects,
@@ -335,7 +338,7 @@ fn compile_delayed_effects_preserving_outer_context_with_event_value(
 /// accumulated amount as its event value when it resolves.
 fn replace_delayed_prior_prevention_amounts(effect: &mut EffectAst) {
     if let EffectAst::SubjectVerb(subject_verb) = effect
-        && let SubjectVerbActionAst::PutCounters { count, .. } = &mut subject_verb.action
+        && let SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { count, .. }) = &mut subject_verb.action
         && matches!(
             count.unhinted(),
             Value::PendingPriorEffectMetric(query) | Value::PriorEffectMetric { query, .. }
@@ -629,7 +632,7 @@ pub(super) fn try_compile_timing_and_control_effect(
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let compiled = match effect {
-        EffectAst::DelayedUntilNextEndStep { player, effects } => {
+        EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep { player, effects }) => {
             let uses_prior_prevention_amount = effects
                 .iter()
                 .any(effect_references_prior_prevention_amount);
@@ -658,7 +661,7 @@ pub(super) fn try_compile_timing_and_control_effect(
             let effect = Effect::new(delayed);
             (vec![effect], choices)
         }
-        EffectAst::DelayedUntilNextCleanupStep { player, effects } => {
+        EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextCleanupStep { player, effects }) => {
             let (delayed_effects, choices) =
                 compile_delayed_effects_preserving_outer_context(effects, ctx)?;
             let effect = Effect::new(crate::effects::ScheduleDelayedTriggerEffect::new(
@@ -670,7 +673,7 @@ pub(super) fn try_compile_timing_and_control_effect(
             ));
             (vec![effect], choices)
         }
-        EffectAst::DelayedUntilNextUntapStep { player, effects } => {
+        EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUntapStep { player, effects }) => {
             let subject = LoweredSubject::resolve_affected_player(*player, ctx, true, true, true)?;
             let player_filter = subject.into_player_filter();
             let mut choices = subject.into_choices();
@@ -692,7 +695,7 @@ pub(super) fn try_compile_timing_and_control_effect(
             );
             (vec![effect], choices)
         }
-        EffectAst::DelayedUntilNextUpkeep { player, effects } => {
+        EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep { player, effects }) => {
             let subject = LoweredSubject::resolve_affected_player(*player, ctx, true, true, true)?;
             let player_filter = subject.into_player_filter();
             let mut choices = subject.into_choices();
@@ -714,7 +717,7 @@ pub(super) fn try_compile_timing_and_control_effect(
             let effect = Effect::new(delayed);
             (vec![effect], choices)
         }
-        EffectAst::DelayedUntilNextDrawStep { player, effects } => {
+        EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextDrawStep { player, effects }) => {
             let subject = LoweredSubject::resolve_affected_player(*player, ctx, true, true, true)?;
             let player_filter = subject.into_player_filter();
             let mut choices = subject.into_choices();
@@ -736,7 +739,7 @@ pub(super) fn try_compile_timing_and_control_effect(
             let effect = Effect::new(delayed);
             (vec![effect], choices)
         }
-        EffectAst::DelayedUntilNextMainPhase { player, effects } => {
+        EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextMainPhase { player, effects }) => {
             let (delayed_effects, choices) =
                 compile_delayed_effects_preserving_outer_context(effects, ctx)?;
             let effect = Effect::new(crate::effects::ScheduleDelayedTriggerEffect::new(
@@ -748,7 +751,7 @@ pub(super) fn try_compile_timing_and_control_effect(
             ));
             (vec![effect], choices)
         }
-        EffectAst::DelayedUntilNextFirstMainPhase { player, effects } => {
+        EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextFirstMainPhase { player, effects }) => {
             let (delayed_effects, choices) =
                 compile_delayed_effects_preserving_outer_context(effects, ctx)?;
             let effect = Effect::new(crate::effects::ScheduleDelayedTriggerEffect::new(
@@ -760,7 +763,7 @@ pub(super) fn try_compile_timing_and_control_effect(
             ));
             (vec![effect], choices)
         }
-        EffectAst::DelayedUntilEndStepOfExtraTurn { player, effects } => {
+        EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndStepOfExtraTurn { player, effects }) => {
             let subject = LoweredSubject::resolve_affected_player(*player, ctx, true, true, true)?;
             let player_filter = subject.into_player_filter();
             let mut choices = subject.into_choices();
@@ -779,7 +782,7 @@ pub(super) fn try_compile_timing_and_control_effect(
             );
             (vec![effect], choices)
         }
-        EffectAst::DelayedUntilEndOfCombat { effects } => {
+        EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat { effects }) => {
             let (delayed_effects, choices) =
                 compile_delayed_effects_preserving_outer_context(effects, ctx)?;
             let effect = Effect::new(crate::effects::ScheduleDelayedTriggerEffect::new(
@@ -791,32 +794,32 @@ pub(super) fn try_compile_timing_and_control_effect(
             ));
             (vec![effect], choices)
         }
-        EffectAst::DelayedTriggerForDuration {
+        EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
             trigger,
             effects,
             one_shot,
             duration,
             either_of_watched_objects,
             while_any_tagged_object_in_zone,
-        } => {
+        }) => {
             return compile_duration_scoped_delayed_trigger(
                 trigger,
                 effects,
                 *one_shot,
                 duration,
                 *either_of_watched_objects,
-                while_any_tagged_object_in_zone,
+                &while_any_tagged_object_in_zone.as_ref().map(|(tag, zone)| (tag.key.clone(), *zone)),
                 ctx,
             )
             .map(Some);
         }
-        EffectAst::DelayedTriggerThisTurn {
+        EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
             trigger,
             effects,
             one_shot,
             until_end_of_combat,
             attach_to_previous_ability,
-        } => {
+        }) => {
             let (mut delayed_effects, _delayed_choices) =
                 compile_trigger_effects(Some(trigger), effects)?;
             fuse_next_cast_entry_counter_body(trigger, *one_shot, &mut delayed_effects);
@@ -1010,7 +1013,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                     let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
                     let watched_tag = watch_tag_from_filter(&resolved_filter).or_else(|| {
                         filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
-                            .then(|| crate::tag::CompilerReferenceTag::Targeted0.bind())
+                            .then(|| crate::tag::CompilerReferenceTag::Targeted0.bind()).map(Into::into)
                     });
                     if let Some(watched_tag) = watched_tag {
                         let lowered = compile_trigger_effects_with_imports(
@@ -1211,7 +1214,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                 }
             }
         }
-        EffectAst::DelayedWhenLastObjectDiesThisTurn { filter, effects } => {
+        EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn { filter, effects }) => {
             let target_tag = ctx.last_object_tag.clone().ok_or_else(|| {
                 CardTextError::ParseError(
                     "cannot schedule 'dies this turn' trigger without prior object context"
@@ -1219,7 +1222,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                 )
             })?;
             let previous_last = ctx.last_object_tag.clone();
-            ctx.last_object_tag = Some(crate::tag::CompilerReferenceTag::Triggering.bind());
+            ctx.last_object_tag = Some((crate::tag::CompilerReferenceTag::Triggering.bind()).into());
             let compiled = compile_effects_preserving_last_effect(effects, ctx);
             ctx.last_object_tag = previous_last;
             let (delayed_effects, choices) = compiled?;
@@ -1239,7 +1242,7 @@ pub(super) fn try_compile_timing_and_control_effect(
             let effect = Effect::new(delayed);
             (vec![effect], choices)
         }
-        EffectAst::DelayedWhenLastObjectLeavesBattlefield { filter, effects } => {
+        EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectLeavesBattlefield { filter, effects }) => {
             let target_tag = ctx.last_object_tag.clone().ok_or_else(|| {
                 CardTextError::ParseError(
                     "cannot schedule leaves-the-battlefield trigger without prior object context"
@@ -1247,7 +1250,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                 )
             })?;
             let previous_last = ctx.last_object_tag.clone();
-            ctx.last_object_tag = Some(crate::tag::CompilerReferenceTag::Triggering.bind());
+            ctx.last_object_tag = Some((crate::tag::CompilerReferenceTag::Triggering.bind()).into());
             let compiled = compile_effects_preserving_last_effect(effects, ctx);
             ctx.last_object_tag = previous_last;
             let (delayed_effects, choices) = compiled?;
@@ -1281,11 +1284,11 @@ pub(super) fn try_compile_stack_and_condition_effect(
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let compiled = match effect {
-        EffectAst::ResolvedIfResult {
+        EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult {
             condition,
             predicate,
             effects,
-        } => {
+        }) => {
             let (inner_effects, inner_choices) = with_preserved_lowering_context(
                 ctx,
                 |ctx| {
@@ -1297,11 +1300,11 @@ pub(super) fn try_compile_stack_and_condition_effect(
             let effect = Effect::if_then(*condition, predicate, inner_effects);
             (vec![effect], inner_choices)
         }
-        EffectAst::ResolvedWhenResult {
+        EffectAst::Conditionals(ConditionalEffectAst::ResolvedWhenResult {
             condition,
             predicate,
             effects,
-        } => {
+        }) => {
             let (inner_effects, inner_choices) = with_preserved_lowering_context(
                 ctx,
                 |ctx| {
@@ -1314,12 +1317,12 @@ pub(super) fn try_compile_stack_and_condition_effect(
                 Effect::reflexive_trigger(*condition, predicate, inner_effects, inner_choices);
             (vec![effect], Vec::new())
         }
-        EffectAst::TrailingIf { predicate, effects } => {
-            let conditional = EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects }) => {
+            let conditional = EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: predicate.clone(),
                 if_true: effects.clone(),
                 if_false: Vec::new(),
-            };
+            });
             let Some((mut compiled, choices)) =
                 try_compile_stack_and_condition_effect(&conditional, ctx)?
             else {
@@ -1349,12 +1352,12 @@ pub(super) fn try_compile_stack_and_condition_effect(
             ));
             (compiled, choices)
         }
-        EffectAst::TrailingUnless { predicate, effects } => {
-            let conditional = EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::TrailingUnless { predicate, effects }) => {
+            let conditional = EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: PredicateAst::Not(Box::new(predicate.clone())),
                 if_true: effects.clone(),
                 if_false: Vec::new(),
-            };
+            });
             let Some((mut compiled, choices)) =
                 try_compile_stack_and_condition_effect(&conditional, ctx)?
             else {
@@ -1384,11 +1387,11 @@ pub(super) fn try_compile_stack_and_condition_effect(
             ));
             (compiled, choices)
         }
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true,
             if_false,
-        } => {
+        }) => {
             let mut effective_if_true = if_true.clone();
             if let Some(antecedent) = predicate_object_filter_antecedent(predicate) {
                 bind_condition_antecedent_in_effects(

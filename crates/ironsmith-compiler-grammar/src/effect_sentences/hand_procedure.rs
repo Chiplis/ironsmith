@@ -12,7 +12,7 @@
 use super::dispatch_entry::SentenceInput;
 use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, ObjectFilter, PlayerAst, SubjectVerbActionAst,
-    SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst, TargetAst, Value,
+    SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst, TargetAst, Value, RevealLookActionAst, LifeResourceActionAst, ObjectChoiceEffectAst, PermissionEffectAst,
 };
 use crate::target::{PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::CardType;
@@ -40,9 +40,9 @@ fn shown_hand(sentence: &SentenceInput) -> Option<(EffectAst, Shown)> {
         && let [look_effect] = look_effects.as_slice()
         && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::LookAtHand {
+                SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtHand {
                     target: TargetAst::Player(hand_owner, _),
-                },
+                }),
             ..
         }) = look_effect
         && matches!(
@@ -62,7 +62,7 @@ fn shown_hand(sentence: &SentenceInput) -> Option<(EffectAst, Shown)> {
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         subject: SubjectVerbSubjectAst { player, .. },
-        action: SubjectVerbActionAst::RevealHand,
+        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealHand),
     }) = effect
     else {
         return None;
@@ -93,7 +93,7 @@ fn choose_from_it_or_graveyard(sentence: &SentenceInput) -> Option<EffectAst> {
     hand.zone = Some(Zone::Hand);
     hand.excluded_card_types = vec![CardType::Land];
     hand.tagged_constraints.push(TaggedObjectConstraint {
-        tag: crate::tag::CompilerReferenceTag::It.bind(),
+        tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
     let mut graveyard = ObjectFilter::default();
@@ -101,13 +101,13 @@ fn choose_from_it_or_graveyard(sentence: &SentenceInput) -> Option<EffectAst> {
     graveyard.owner = Some(PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Opponent)));
     let mut filter = ObjectFilter::default();
     filter.any_of = vec![hand, graveyard];
-    Some(EffectAst::ChooseObjects {
+    Some(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
         filter,
         count: ChoiceCount::exactly(1),
         count_value: None,
         player: PlayerAst::You,
         tag: crate::tag::CompilerReferenceTag::It.bind(),
-    })
+    }))
 }
 
 /// "You may cast an instant or sorcery spell/card from among those cards
@@ -130,18 +130,18 @@ fn may_cast_instant_or_sorcery_from_among(sentence: &SentenceInput) -> Option<Ef
     filter.zone = Some(Zone::Hand);
     filter.owner = Some(PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Opponent)));
     filter.card_types = vec![CardType::Instant, CardType::Sorcery];
-    Some(EffectAst::May {
+    Some(EffectAst::Permissions(PermissionEffectAst::May {
         effects: vec![
-            EffectAst::ChooseTaggedObjectsInZone {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
                 filter,
                 count: ChoiceCount::exactly(1),
                 player: PlayerAst::You,
-                tag: chosen_tag.clone(),
+                tag: crate::tag::TagRef::of(chosen_tag.clone()),
                 zone: Zone::Hand,
-            },
-            EffectAst::subject_verb_cast_tagged(chosen_tag, PlayerAst::You, false, false, true, None),
+            }),
+            EffectAst::subject_verb_cast_tagged(crate::tag::TagRef::of(chosen_tag), PlayerAst::You, false, false, true, None),
         ],
-    })
+    }))
 }
 
 /// "You may cast a spell from among those cards without paying its mana
@@ -183,7 +183,7 @@ fn draw_for_each_in_it(sentence: &SentenceInput, revealed: PlayerFilter) -> Opti
     Some(EffectAst::subject_verb(
         SubjectVerbRoleAst::AffectedPlayer,
         PlayerAst::You,
-        SubjectVerbActionAst::Draw { count },
+        SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count }),
     ))
 }
 

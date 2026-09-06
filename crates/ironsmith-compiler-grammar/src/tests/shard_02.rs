@@ -1,4 +1,9 @@
 #![allow(unused_imports)]
+use crate::cards::builders::SourcePredicateAst;
+use crate::cards::builders::PlayerPredicateAst;
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::TokenActionAst;
+use crate::cards::builders::GrantActionAst;
 use super::shard_00::*;
 use super::shard_01::*;
 use super::shard_03::*;
@@ -82,14 +87,14 @@ pub(super) fn rewrite_anthem_static_condition_normalizes_apostrophe_shapes() {
     let parsed = super::super::keyword_static::parse_static_condition_clause(&tokens)
         .expect("static-condition clause should parse");
 
-    assert!(matches!(parsed, PredicateAst::SourceIsEnchanted));
+    assert!(matches!(parsed, PredicateAst::Source(SourcePredicateAst::SourceIsEnchanted)));
 }
 
 #[test]
 pub(super) fn rewrite_anthem_static_status_condition_uses_subject_status_capture() {
     for (text, expected) in [
-        ("this permanent is tapped", PredicateAst::SourceIsTapped),
-        ("it is attacking", PredicateAst::SourceIsAttacking),
+        ("this permanent is tapped", PredicateAst::Source(SourcePredicateAst::SourceIsTapped)),
+        ("it is attacking", PredicateAst::Source(SourcePredicateAst::SourceIsAttacking)),
         (
             "equipped creature is untapped",
             PredicateAst::EquippedCreatureUntapped,
@@ -117,7 +122,7 @@ pub(super) fn rewrite_anthem_static_condition_preserves_attacking_alone_semantic
     assert_eq!(
         parsed,
         PredicateAst::And(
-            Box::new(PredicateAst::SourceIsAttacking),
+            Box::new(PredicateAst::Source(SourcePredicateAst::SourceIsAttacking)),
             Box::new(PredicateAst::CountComparison {
                 count: crate::static_abilities::AnthemCountExpression::MatchingFilter(
                     attacking_creatures,
@@ -175,15 +180,15 @@ pub(super) fn rewrite_anthem_static_player_status_condition_uses_player_status_c
     for (text, expected) in [
         (
             "You're the monarch",
-            PredicateAst::PlayerIsMonarch {
+            PredicateAst::Player(PlayerPredicateAst::PlayerIsMonarch {
                 player: crate::cards::builders::PlayerAst::You,
-            },
+            }),
         ),
         (
             "you have the initiative",
-            PredicateAst::PlayerHasInitiative {
+            PredicateAst::Player(PlayerPredicateAst::PlayerHasInitiative {
                 player: crate::cards::builders::PlayerAst::You,
-            },
+            }),
         ),
         (
             "you have maximum speed",
@@ -999,7 +1004,7 @@ pub(super) fn rewrite_created_token_followup_keeps_tap_mana_ability() {
         .expect("token followup should parse");
     let token_definition = effect_ast.iter().find_map(|effect| match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-            SubjectVerbActionAst::CreateTokenWithMods { definition, .. } => Some(definition),
+            SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { definition, .. }) => Some(definition),
             _ => None,
         },
         _ => None,
@@ -1270,7 +1275,7 @@ pub(super) fn rewrite_lexed_next_spell_cascade_grants_parse_natively() {
         [crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
                 action:
-                    crate::cards::builders::SubjectVerbActionAst::GrantNextSpellAbilityThisTurn { .. },
+                    crate::cards::builders::SubjectVerbActionAst::Grants(GrantActionAst::GrantNextSpellAbilityThisTurn { .. }),
                 ..
             },
         )]
@@ -1290,9 +1295,9 @@ pub(super) fn rewrite_lexed_next_spell_cascade_grants_parse_natively() {
         crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
                 action:
-                    crate::cards::builders::SubjectVerbActionAst::GrantNextSpellAbilityThisTurn {
+                    crate::cards::builders::SubjectVerbActionAst::Grants(GrantActionAst::GrantNextSpellAbilityThisTurn {
                         ..
-                    },
+                    }),
                 ..
             },
         )
@@ -1353,7 +1358,7 @@ pub(super) fn rewrite_lexed_next_spell_cant_be_countered_grant_parses_natively()
         [crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
                 action:
-                    crate::cards::builders::SubjectVerbActionAst::GrantNextSpellAbilityThisTurn { .. },
+                    crate::cards::builders::SubjectVerbActionAst::Grants(GrantActionAst::GrantNextSpellAbilityThisTurn { .. }),
                 ..
             },
         )]
@@ -1461,7 +1466,7 @@ pub(super) fn rewrite_search_library_head_splitter_ignores_quoted_emblem_search_
     match effects.as_slice() {
         [crate::cards::builders::EffectAst::SubjectVerb(subject_verb)] => {
             match &subject_verb.action {
-                crate::cards::builders::SubjectVerbActionAst::CreateEmblem { emblem } => assert!(
+                crate::cards::builders::SubjectVerbActionAst::Tokens(TokenActionAst::CreateEmblem { emblem }) => assert!(
                     emblem.text.contains("may search your library"),
                     "emblem text should retain the quoted search clause, got {}",
                     emblem.text
@@ -1491,7 +1496,7 @@ pub(super) fn rewrite_trailing_if_splitter_ignores_quoted_emblem_conditionals() 
     match effects.as_slice() {
         [crate::cards::builders::EffectAst::SubjectVerb(subject_verb)] => {
             match &subject_verb.action {
-                crate::cards::builders::SubjectVerbActionAst::CreateEmblem { emblem } => assert!(
+                crate::cards::builders::SubjectVerbActionAst::Tokens(TokenActionAst::CreateEmblem { emblem }) => assert!(
                     emblem
                         .text
                         .to_ascii_lowercase()
@@ -2748,7 +2753,7 @@ pub(super) fn rewrite_split_destination_search_uses_one_tagged_partition() {
     let searches = partition
         .iter()
         .filter_map(|effect| match effect {
-            EffectAst::ChooseObjectsAcrossZones { count, .. } => Some(count),
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { count, .. }) => Some(count),
             _ => None,
         })
         .collect::<Vec<_>>();

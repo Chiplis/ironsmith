@@ -32,22 +32,22 @@ fn exact_triple_shares_mill_tag_and_defers_one_cast_choice() {
     };
     assert!(matches!(
         conditional,
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: PredicateAst::TaggedMatches(tag, filter),
             ..
-        } if tag == mill_tag && filter.card_types == [CardType::Land]
+        }) if tag == mill_tag && filter.card_types == [CardType::Land]
             && filter.prior_effect_action_surface()
                 == Some(ironsmith_core::PriorEffectAction::Milled)
     ));
     assert!(matches!(
         permission,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+            action: SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
                 tag,
                 max_plays: Some(1),
                 allow_land: false,
                 ..
-            },
+            }),
             ..
         }) if tag == mill_tag
     ));

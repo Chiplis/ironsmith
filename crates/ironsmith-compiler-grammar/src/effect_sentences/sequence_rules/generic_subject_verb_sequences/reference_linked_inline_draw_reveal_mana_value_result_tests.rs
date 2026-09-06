@@ -45,14 +45,14 @@ fn exports_the_drawn_card_without_rebinding_the_triggering_creature() {
         result.as_slice(),
         [
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Pump {
+                action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
                     target: TargetAst::Tagged(tag, None),
                     ..
-                },
+                }),
                 ..
             }),
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::LoseLife { .. },
+                action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { .. }),
                 ..
             }),
         ] if tag.as_str() == "triggering"

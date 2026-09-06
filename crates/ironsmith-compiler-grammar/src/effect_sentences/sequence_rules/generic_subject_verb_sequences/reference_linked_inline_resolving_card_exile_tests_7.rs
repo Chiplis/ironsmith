@@ -1,3 +1,4 @@
+use crate::cards::builders::ReplacementActionAst;
 use super::*;
 use crate::lexer::lex_line;
 
@@ -24,7 +25,7 @@ fn resolving_card_exile_registers_exact_one_shot_replacement_and_linked_return()
     assert!(matches!(
         effects.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::RegisterZoneReplacement {
+            action: SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterZoneReplacement {
                 target: TargetAst::Tagged(tag, _),
                 from_zone: Some(Zone::Stack),
                 to_zone: Some(Zone::Graveyard),
@@ -34,7 +35,7 @@ fn resolving_card_exile_registers_exact_one_shot_replacement_and_linked_return()
                     ironsmith_core::LinkedExileFollowUp::ReturnToHandAtNextEndStep
                 ),
                 ..
-            },
+            }),
             ..
         })] if tag.as_str() == "triggering"
     ));

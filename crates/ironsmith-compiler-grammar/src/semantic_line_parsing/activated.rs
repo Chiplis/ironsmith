@@ -1,3 +1,10 @@
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::StatChangeActionAst;
+use crate::cards::builders::DamageActionAst;
+use crate::cards::builders::LifeResourceActionAst;
+use crate::cards::builders::LibraryActionAst;
+use crate::cards::builders::ManaActionAst;
+use crate::cards::builders::GrantActionAst;
 use super::super::effect_ast_traversal::for_each_nested_effects_mut;
 use super::super::grammar::activated_lowering as activated_grammar;
 use super::super::grammar::activated_lowering::{
@@ -159,13 +166,13 @@ fn bind_event_amount_to_cost_x(value: &mut crate::effect::Value) {
 
 fn bind_event_amounts_to_cost_x_in_effect(effect: &mut EffectAst) {
     if let EffectAst::SubjectVerb(subject_verb) = effect
-        && let SubjectVerbActionAst::PumpByLastEffect {
+        && let SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpByLastEffect {
             power,
             toughness,
             target,
             duration,
             includes_this_way,
-        } = &subject_verb.action
+        }) = &subject_verb.action
     {
         let basis = crate::effect::Value::X.with_surface_hint(if *includes_this_way {
             ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay
@@ -189,18 +196,18 @@ fn bind_event_amounts_to_cost_x_in_effect(effect: &mut EffectAst) {
 
     if let EffectAst::SubjectVerb(subject_verb) = effect {
         match &mut subject_verb.action {
-            SubjectVerbActionAst::DealDamage { amount, .. }
-            | SubjectVerbActionAst::DealDamageEqualToPower { amount, .. }
-            | SubjectVerbActionAst::DealDistributedDamage { amount, .. }
-            | SubjectVerbActionAst::DealDamageEach { amount, .. }
-            | SubjectVerbActionAst::Mill { count: amount }
-            | SubjectVerbActionAst::Draw { count: amount }
-            | SubjectVerbActionAst::AddManaScaled { amount, .. }
-            | SubjectVerbActionAst::AddManaAnyColor { amount, .. }
-            | SubjectVerbActionAst::AddManaAnyOneColor { amount }
-            | SubjectVerbActionAst::AddManaChosenColor { amount, .. }
-            | SubjectVerbActionAst::AddManaFromLandCouldProduce { amount, .. }
-            | SubjectVerbActionAst::AddManaCommanderIdentity { amount } => {
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { amount, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { amount, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. })
+            | SubjectVerbActionAst::Library(LibraryActionAst::Mill { count: amount })
+            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count: amount })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { amount }) => {
                 bind_event_amount_to_cost_x(amount);
             }
             _ => {}
@@ -223,16 +230,16 @@ fn effect_ast_is_mana_effect(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => matches!(
             &subject_verb.action,
-            SubjectVerbActionAst::AddMana { .. }
-                | SubjectVerbActionAst::AddManaScaled { .. }
-                | SubjectVerbActionAst::AddManaAnyColor { .. }
-                | SubjectVerbActionAst::AddManaAnyOneColor { .. }
-                | SubjectVerbActionAst::AddManaChosenColor { .. }
-                | SubjectVerbActionAst::AddManaFromLandCouldProduce { .. }
-                | SubjectVerbActionAst::AddManaColorsAmong { .. }
-                | SubjectVerbActionAst::AddOneManaAnyColorAmong { .. }
-                | SubjectVerbActionAst::AddManaCommanderIdentity { .. }
-                | SubjectVerbActionAst::AddManaImprintedColors
+            SubjectVerbActionAst::Mana(ManaActionAst::AddMana { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaColorsAmong { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddOneManaAnyColorAmong { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaImprintedColors)
         ),
         EffectAst::Sequence { effects }
         | EffectAst::CommaThen { effects }
@@ -241,9 +248,9 @@ fn effect_ast_is_mana_effect(effect: &EffectAst) -> bool {
         | EffectAst::ManaRestricted { effects, .. } => {
             !effects.is_empty() && effects.iter().all(effect_ast_is_mana_effect)
         }
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             if_true, if_false, ..
-        }
+        })
         | EffectAst::SelfReplacement {
             if_true, if_false, ..
         } => {
@@ -301,7 +308,7 @@ fn parse_standalone_x_definition_value(tokens: &[OwnedLexToken]) -> Option<crate
         // different resolution context. Check this typed shape before the
         // generic value parser can erase that distinction.
         return Some(crate::effect::Value::ManaValueOf(Box::new(
-            ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind()),
+            ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::SourceExiled.bind()).into()),
         )));
     }
 
@@ -602,9 +609,9 @@ fn parse_named_source_leading_gain_activated(
         for effect in effects {
             if let EffectAst::SubjectVerb(subject_verb) = effect {
                 match &mut subject_verb.action {
-                    SubjectVerbActionAst::Pump { target, .. }
-                    | SubjectVerbActionAst::PumpForEach { target, .. }
-                    | SubjectVerbActionAst::GrantAbilitiesToTarget { target, .. } => {
+                    SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. })
+                    | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach { target, .. })
+                    | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { target, .. }) => {
                         apply_surface(target, surface);
                     }
                     _ => {}

@@ -1,3 +1,5 @@
+use crate::cards::builders::TurnEventPredicateAst;
+use crate::cards::builders::PlayerPredicateAst;
 use super::*;
 
 pub(super) fn parse_carried_cant_effects(
@@ -59,7 +61,7 @@ pub fn parse_effect_clause_with_trailing_if_lexed(
         && let Ok(effect) = parse_effect_clause_lexed(tokens)
         && matches!(
             &effect,
-            EffectAst::TrailingIf { effects, .. } if effects.len() > 1
+            EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { effects, .. }) if effects.len() > 1
         )
     {
         return Ok(effect);
@@ -116,10 +118,10 @@ pub fn parse_effect_clause_with_trailing_if_lexed(
     };
 
     let predicate = bind_trailing_it_predicate_to_explicit_effect_target(predicate, &base_effect);
-    Ok(EffectAst::TrailingIf {
+    Ok(EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
         predicate,
         effects: vec![base_effect],
-    })
+    }))
 }
 
 pub(super) fn trailing_if_predicate_supported(predicate: &PredicateAst) -> bool {
@@ -131,23 +133,23 @@ pub(super) fn trailing_if_predicate_supported(predicate: &PredicateAst) -> bool 
             | PredicateAst::ItMatches(_)
             | PredicateAst::ItMatchedLastKnown(_)
             | PredicateAst::TargetMatches(_)
-            | PredicateAst::PlayerControlsMoreThanYou { .. }
-            | PredicateAst::PlayerControls { .. }
-            | PredicateAst::PlayerHasAtLeast { .. }
-            | PredicateAst::PlayerControlsExactly { .. }
-            | PredicateAst::PlayerHasAtLeastWithDifferentPowers { .. }
-            | PredicateAst::PlayerLifeAtMostHalfStartingLifeTotal { .. }
-            | PredicateAst::PlayerLifeLessThanHalfStartingLifeTotal { .. }
-            | PredicateAst::PlayerHasMoreLifeThanYou { .. }
-            | PredicateAst::PlayerHasNoOpponentWithMoreLifeThan { .. }
-            | PredicateAst::PlayerHasMoreLifeThanEachOtherPlayer { .. }
-            | PredicateAst::PlayerIsMonarch { .. }
-            | PredicateAst::PlayerHasInitiative { .. }
-            | PredicateAst::PlayerHasCitysBlessing { .. }
-            | PredicateAst::PlayerHasMoreCardsInHandThanYou { .. }
-            | PredicateAst::PlayerHasCardTypesInGraveyardOrMore { .. }
+            | PredicateAst::Player(PlayerPredicateAst::PlayerControlsMoreThanYou { .. })
+            | PredicateAst::Player(PlayerPredicateAst::PlayerControls { .. })
+            | PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast { .. })
+            | PredicateAst::Player(PlayerPredicateAst::PlayerControlsExactly { .. })
+            | PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeastWithDifferentPowers { .. })
+            | PredicateAst::Player(PlayerPredicateAst::PlayerLifeAtMostHalfStartingLifeTotal { .. })
+            | PredicateAst::Player(PlayerPredicateAst::PlayerLifeLessThanHalfStartingLifeTotal { .. })
+            | PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreLifeThanYou { .. })
+            | PredicateAst::Player(PlayerPredicateAst::PlayerHasNoOpponentWithMoreLifeThan { .. })
+            | PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreLifeThanEachOtherPlayer { .. })
+            | PredicateAst::Player(PlayerPredicateAst::PlayerIsMonarch { .. })
+            | PredicateAst::Player(PlayerPredicateAst::PlayerHasInitiative { .. })
+            | PredicateAst::Player(PlayerPredicateAst::PlayerHasCitysBlessing { .. })
+            | PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreCardsInHandThanYou { .. })
+            | PredicateAst::Player(PlayerPredicateAst::PlayerHasCardTypesInGraveyardOrMore { .. })
             | PredicateAst::YouControlMoreCreaturesThanTargetSpellController
-            | PredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(_)
+            | PredicateAst::TurnEvents(TurnEventPredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(_))
             | PredicateAst::ValueComparison { .. }
     ) || matches!(predicate, PredicateAst::TaggedMatches(tag, _) if crate::tag::CompilerReferenceTag::Enchanted.matches(tag))
 }

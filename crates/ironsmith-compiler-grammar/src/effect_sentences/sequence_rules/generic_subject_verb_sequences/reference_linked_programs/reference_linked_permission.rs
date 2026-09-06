@@ -1,3 +1,5 @@
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::LibraryActionAst;
 use super::*;
 
 pub fn parse_exile_until_match_grant_play_this_turn(
@@ -13,11 +15,11 @@ pub fn parse_exile_until_match_grant_play_this_turn(
         parts.effects.last(),
         Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::ConsultTopOfLibrary {
+                SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
                     mode: crate::cards::builders::LibraryConsultModeAst::Exile,
                     stop_rule,
                     ..
-                },
+                }),
             ..
         })) if consult_stop_rule_is_single_match(stop_rule)
     ) {
@@ -45,10 +47,10 @@ pub fn parse_consult_match_into_hand_exile_others(
     if !matches!(
         parts.effects.last(),
         Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ConsultTopOfLibrary {
+            action: SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
                 mode: crate::cards::builders::LibraryConsultModeAst::Reveal,
                 ..
-            },
+            }),
             ..
         }))
     ) {
@@ -62,16 +64,16 @@ pub fn parse_consult_match_into_hand_exile_others(
 
     let mut effects = parts.effects;
     effects.push(EffectAst::subject_verb_move_to_zone(
-        TargetAst::Tagged(parts.match_tag.clone(), None),
+        TargetAst::Tagged(crate::tag::TagRef::of(parts.match_tag.clone()), None),
         Zone::Hand,
         false,
         crate::cards::builders::ReturnControllerAst::Preserve,
         false,
         None,
     ));
-    effects.push(EffectAst::ForEachTagged {
-        tag: parts.all_tag,
-        effects: vec![EffectAst::Conditional {
+    effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+        tag: crate::tag::TagRef::of(parts.all_tag),
+        effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: PredicateAst::TaggedMatches(
                 crate::tag::CompilerReferenceTag::It.bind(),
                 ObjectFilter::tagged(parts.match_tag),
@@ -81,7 +83,7 @@ pub fn parse_consult_match_into_hand_exile_others(
                 TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                 false,
             )],
-        }],
-    });
+        })],
+    }));
     Ok(Some(effects))
 }

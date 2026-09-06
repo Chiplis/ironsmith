@@ -81,7 +81,7 @@ pub(super) fn post_rule_numeric_result_branch_label(
     if label.is_empty() {
         return Ok(None);
     }
-    let [EffectAst::IfResult { predicate, effects }] = sentence_effects.as_mut_slice() else {
+    let [EffectAst::Conditionals(ConditionalEffectAst::IfResult { predicate, effects })] = sentence_effects.as_mut_slice() else {
         return Ok(None);
     };
     if predicate != &prefix.predicate || effects.is_empty() {

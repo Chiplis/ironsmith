@@ -11,15 +11,15 @@ fn chosen_permanents_and_sacrifice_results_keep_distinct_typed_sets() {
         .expect("correlated each-player sequence should parse");
 
     let [
-        EffectAst::ForEachPlayer { .. },
-        EffectAst::ForEachPlayer {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { .. }),
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
             effects: sacrifice_effects,
-        },
-        EffectAst::ForEachPlayerDid {
+        }),
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDid {
             effects: followups,
             predicate: Some(_),
             ..
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected target, tagged sacrifice, and correlated follow-up: {effects:#?}");
@@ -34,20 +34,20 @@ fn chosen_permanents_and_sacrifice_results_keep_distinct_typed_sets() {
     assert!(matches!(
         effect.as_ref(),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::SacrificeAll { .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { .. }),
             ..
         })
     ));
 
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::RevealTop,
+            action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTop),
             ..
         }),
-        EffectAst::TrailingIf {
+        EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
             effects: move_effects,
             ..
-        },
+        }),
     ] = followups.as_slice()
     else {
         panic!("the reveal and conditional move must both survive: {followups:#?}");
@@ -55,10 +55,10 @@ fn chosen_permanents_and_sacrifice_results_keep_distinct_typed_sets() {
     assert!(matches!(
         move_effects.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::MoveToZone {
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                 zone: Zone::Battlefield,
                 ..
-            },
+            }),
             ..
         })]
     ));
@@ -79,25 +79,25 @@ fn wave_of_vitriol_keeps_sacrificed_lands_partitioned_by_snapshot_controller() {
             effect: sacrifice,
             tag: sacrificed_tag,
         },
-        EffectAst::ForEachTagged {
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
             tag: iterated_tag,
             effects: land_effects,
-        },
-        EffectAst::ForEachPlayerDid { .. },
+        }),
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDid { .. }),
     ] = effects.as_slice()
     else {
         panic!("expected tagged sacrifice, typed iterator, and searched-player gate: {effects:#?}");
     };
     assert_eq!(sacrificed_tag, iterated_tag);
-    let EffectAst::ForEachPlayer {
+    let EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
         effects: sacrifice_effects,
-    } = sacrifice.as_ref()
+    }) = sacrifice.as_ref()
     else {
         panic!("the tagged producer must remain an each-player loop: {sacrifice:#?}");
     };
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::SacrificeAll { filter: union },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter: union }),
             ..
         }),
     ] = sacrifice_effects.as_slice()
@@ -127,11 +127,11 @@ fn wave_of_vitriol_keeps_sacrificed_lands_partitioned_by_snapshot_controller() {
         [crate::types::Supertype::Basic]
     );
     let [
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: PredicateAst::ItMatchedLastKnown(filter),
             if_true,
             if_false,
-        },
+        }),
     ] = land_effects.as_slice()
     else {
         panic!("sacrifice iterator must gate each LKI snapshot by type: {land_effects:#?}");
@@ -140,9 +140,9 @@ fn wave_of_vitriol_keeps_sacrificed_lands_partitioned_by_snapshot_controller() {
     assert!(if_false.is_empty());
     assert!(if_true.iter().any(|effect| matches!(
         effect,
-        EffectAst::MayByPlayer {
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
             player: PlayerAst::That,
             ..
-        }
+        })
     )));
 }

@@ -1,3 +1,7 @@
+use crate::cards::builders::TurnEventPredicateAst;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::ForEachEffectAst;
 use super::*;
 use winnow::Parser;
 
@@ -27,21 +31,21 @@ pub fn parse_sacrifice(
         let base = parse_sacrifice(&sacrifice_tokens, subject, target.clone())?;
         match clause_shape.unless_kind {
             sacrifice_discard_grammar::SacrificeUnlessKind::ManaSpent(symbol) => {
-                return Ok(EffectAst::Conditional {
+                return Ok(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                     predicate: PredicateAst::ManaSpentToCastThisSpellAtLeast {
                         amount: 1,
                         symbol: Some(symbol),
                     },
                     if_true: Vec::new(),
                     if_false: vec![base],
-                });
+                }));
             }
             sacrifice_discard_grammar::SacrificeUnlessKind::OpponentDamagedThisTurn => {
-                return Ok(EffectAst::Conditional {
-                    predicate: PredicateAst::OpponentWasDealtDamageThisTurn,
+                return Ok(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                    predicate: PredicateAst::TurnEvents(TurnEventPredicateAst::OpponentWasDealtDamageThisTurn),
                     if_true: Vec::new(),
                     if_false: vec![base],
-                });
+                }));
             }
             sacrifice_discard_grammar::SacrificeUnlessKind::General => {
                 let Some(unless_token_offset) = clause_shape.unless_token_offset else {
@@ -119,13 +123,13 @@ pub fn parse_sacrifice(
         return Ok(wrap_unless_escaped(
             EffectAst::Sequence {
                 effects: vec![
-                    EffectAst::ChooseObjects {
+                    EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                         filter,
                         count: crate::effect::ChoiceCount::dynamic_x(),
                         count_value: Some(count_value),
                         player,
-                        tag: tag.clone(),
-                    },
+                        tag: crate::tag::TagRef::of(tag.clone()),
+                    }),
                     EffectAst::subject_verb_sacrifice_all(
                         PlayerAst::That,
                         ObjectFilter::tagged(tag),
@@ -165,13 +169,13 @@ pub fn parse_sacrifice(
         let filter = parse_object_filter_lexed(filter_tokens, false)?;
         let tag = crate::util::helper_tag_for_tokens(tokens, "sacrificed");
         let mut effects = vec![
-            EffectAst::ChooseObjects {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                 filter,
                 count: choice_count,
                 count_value: None,
                 player,
-                tag: tag.clone(),
-            },
+                tag: crate::tag::TagRef::of(tag.clone()),
+            }),
             EffectAst::subject_verb_sacrifice_all(PlayerAst::That, ObjectFilter::tagged(tag)),
         ];
         if let Some(followup_tokens) = followup_tokens {
@@ -210,13 +214,13 @@ pub fn parse_sacrifice(
                 return Ok(wrap_unless_escaped(
                     EffectAst::Sequence {
                         effects: vec![
-                            EffectAst::ChooseObjects {
+                            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                                 filter,
                                 count: crate::effect::ChoiceCount::dynamic_x(),
                                 count_value: Some(Value::EventValue(EventValueSpec::Amount)),
                                 player,
-                                tag: tag.clone(),
-                            },
+                                tag: crate::tag::TagRef::of(tag.clone()),
+                            }),
                             EffectAst::subject_verb_sacrifice_all(
                                 PlayerAst::That,
                                 ObjectFilter::tagged(tag),
@@ -273,13 +277,13 @@ pub fn parse_sacrifice(
                 return Ok(wrap_unless_escaped(
                     EffectAst::Sequence {
                         effects: vec![
-                            EffectAst::ChooseObjects {
+                            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                                 filter,
                                 count: crate::effect::ChoiceCount::dynamic_x(),
                                 count_value: Some(count_value),
                                 player,
-                                tag: tag.clone(),
-                            },
+                                tag: crate::tag::TagRef::of(tag.clone()),
+                            }),
                             EffectAst::subject_verb_sacrifice_all(
                                 PlayerAst::That,
                                 ObjectFilter::tagged(tag),
@@ -422,13 +426,13 @@ pub fn parse_sacrifice(
         return Ok(wrap_unless_escaped(
             EffectAst::Sequence {
                 effects: vec![
-                    EffectAst::ChooseObjects {
+                    EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                         filter,
                         count: crate::effect::ChoiceCount::exactly(count as usize),
                         count_value: None,
                         player: PlayerAst::Opponent,
-                        tag: tag.clone(),
-                    },
+                        tag: crate::tag::TagRef::of(tag.clone()),
+                    }),
                     EffectAst::subject_verb_sacrifice_all(
                         sacrificing_player,
                         ObjectFilter::tagged(tag),
@@ -462,14 +466,14 @@ pub fn parse_sacrifice(
     // Wrap in ForEachObject when the clause has a "for each <filter>" suffix,
     // e.g. "sacrifices a land for each card in your hand".
     let effect = match for_each_filter {
-        Some(Value::Count(fe_filter)) => EffectAst::ForEachObject {
+        Some(Value::Count(fe_filter)) => EffectAst::ForEach(ForEachEffectAst::ForEachObject {
             filter: fe_filter,
             effects: vec![sacrifice],
-        },
-        Some(count) => EffectAst::RepeatEffects {
+        }),
+        Some(count) => EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
             count: count.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
             effects: vec![sacrifice],
-        },
+        }),
         None => sacrifice,
     };
     Ok(wrap_unless_escaped(effect, unless_escaped))

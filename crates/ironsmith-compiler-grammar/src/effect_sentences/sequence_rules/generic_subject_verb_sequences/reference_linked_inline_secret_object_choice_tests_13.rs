@@ -1,3 +1,4 @@
+use crate::cards::builders::ZoneMoveActionAst;
 use super::*;
 use crate::lexer::lex_line;
 
@@ -22,12 +23,12 @@ fn participant_relative_secret_object_choices_keep_the_revealed_result_set() {
         .expect("secret object choice parser should not error")
         .expect("secret object choice sequence should match");
     let [
-        EffectAst::SecretChoiceStart {
+        EffectAst::Votes(VoteEffectAst::SecretChoiceStart {
             participants,
             object_choice: Some(object_choice),
             ..
-        },
-        EffectAst::ForEachTagged { tag, effects },
+        }),
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, effects }),
     ] = effects.as_slice()
     else {
         panic!("expected a secret selection and tagged sacrifice: {effects:#?}");
@@ -36,7 +37,7 @@ fn participant_relative_secret_object_choices_keep_the_revealed_result_set() {
         participants,
         &[PlayerFilter::You, PlayerFilter::target_opponent()]
     );
-    assert_eq!(object_choice.tag, *tag);
+    assert_eq!(object_choice.tag, tag.key);
     assert!(object_choice.reveal_after_choice);
     assert_eq!(
         object_choice.filter.controller,
@@ -45,10 +46,10 @@ fn participant_relative_secret_object_choices_keep_the_revealed_result_set() {
     assert!(matches!(
         effects.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Sacrifice {
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice {
                 target: Some(TargetAst::Tagged(iterated, _)),
                 ..
-            },
+            }),
             ..
         })] if iterated.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     ));

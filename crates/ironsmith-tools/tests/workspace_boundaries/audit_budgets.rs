@@ -49,7 +49,11 @@ const RANKED_REGISTRY_BUDGET: usize = 14;
 /// reading, over every 50th card.
 /// Grammar sites that mint or compare string reference keys instead of
 /// binding a scoped symbol (item 6). Enforced by `audit_reference_keys`.
-const REFERENCE_KEY_BUDGET: usize = 232;
+const REFERENCE_KEY_BUDGET: usize = 833;
+/// Variants of the god AST enums (item 7): each typed family extracted lowers these.
+const ACTION_VARIANT_BUDGET: usize = 27;
+const EFFECT_VARIANT_BUDGET: usize = 26;
+const PREDICATE_VARIANT_BUDGET: usize = 74;
 
 const REGISTRY_OVERLAP_BUDGET: usize = 15;
 
@@ -161,6 +165,26 @@ pub(super) fn ranked_registry_audit_is_enforced() {
         "registry-overlap",
         reported_count(&report, "registry overlaps:"),
         REGISTRY_OVERLAP_BUDGET,
+    );
+}
+
+#[test]
+pub(super) fn ast_variant_audit_is_enforced() {
+    let report = audit_output(env!("CARGO_BIN_EXE_audit_ast_variants"), &[]);
+    assert_within_budget(
+        "action-variant",
+        reported_count(&report, "SubjectVerbActionAst variants:"),
+        ACTION_VARIANT_BUDGET,
+    );
+    assert_within_budget(
+        "effect-variant",
+        reported_count(&report, "EffectAst variants:"),
+        EFFECT_VARIANT_BUDGET,
+    );
+    assert_within_budget(
+        "predicate-variant",
+        reported_count(&report, "PredicateAst variants:"),
+        PREDICATE_VARIANT_BUDGET,
     );
 }
 

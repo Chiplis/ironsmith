@@ -1,3 +1,4 @@
+use crate::cards::builders::ForEachEffectAst;
 use super::*;
 use crate::lexer::lex_line;
 
@@ -37,12 +38,12 @@ fn imperative_for_each_keeps_iterated_player_inside_object_filter() {
     let effect = parse_for_each_opponent_clause(&tokens)
         .expect("quantified token-copy clause should parse")
         .expect("quantified token-copy clause should match");
-    let EffectAst::ForEachOpponent { effects } = effect else {
+    let EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }) = effect else {
         panic!("expected opponent iteration, got {effect:#?}");
     };
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::CreateTokenCopyFromSource { source, player, .. },
+            action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { source, player, .. }),
             ..
         }),
     ] = effects.as_slice()
@@ -60,7 +61,7 @@ fn imperative_for_each_keeps_iterated_player_inside_object_filter() {
 
     let parsed = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
         .expect("public effect parser should keep the quantified program");
-    let [EffectAst::ForEachOpponent { effects }] = parsed.as_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })] = parsed.as_slice() else {
         panic!("public parser split the quantified program: {parsed:#?}");
     };
     assert_eq!(effects.len(), 1, "{effects:#?}");
@@ -76,7 +77,7 @@ fn source_attacked_player_subject_keeps_runtime_filter() {
     let effect = parse_for_each_player_clause(&tokens)
         .expect("source-relative player clause should parse")
         .expect("source-relative player clause should match");
-    let EffectAst::ForEachPlayersFiltered { filter, effects } = effect else {
+    let EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { filter, effects }) = effect else {
         panic!("expected filtered player iteration, got {effect:#?}");
     };
     assert_eq!(filter, PlayerFilter::AttackedBySourceThisTurn);
@@ -93,7 +94,7 @@ fn named_creature_combat_damage_history_keeps_filtered_participant() {
     let effect = parse_for_each_opponent_clause(&tokens)
         .expect("combat-history participant clause should parse")
         .expect("combat-history participant clause should match");
-    let EffectAst::ForEachPlayersFiltered { filter, effects } = effect else {
+    let EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { filter, effects }) = effect else {
         panic!("expected filtered player iteration, got {effect:#?}");
     };
     assert!(
@@ -120,7 +121,7 @@ fn other_players_copying_triggering_spell_exclude_its_controller() {
     let effect = parse_for_each_player_clause(&tokens)
         .expect("triggering-spell fanout should parse")
         .expect("triggering-spell fanout should match");
-    let EffectAst::ForEachPlayersFiltered { filter, effects } = effect else {
+    let EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { filter, effects }) = effect else {
         panic!("expected filtered player iteration, got {effect:#?}");
     };
     assert_eq!(
@@ -130,7 +131,7 @@ fn other_players_copying_triggering_spell_exclude_its_controller() {
             PlayerFilter::AliasedControllerOf(ObjectRef::tagged("triggering")),
         )
     );
-    assert!(matches!(effects.as_slice(), [EffectAst::May { .. }]));
+    assert!(matches!(effects.as_slice(), [EffectAst::Permissions(PermissionEffectAst::May { .. })]));
 }
 
 #[test]
@@ -182,7 +183,7 @@ fn participant_graveyard_choice_keeps_the_remainder_in_the_same_loop() {
     let effect = parse_for_each_opponent_clause(&tokens)
         .expect("participant graveyard choice should parse")
         .expect("participant graveyard choice should match");
-    let EffectAst::ForEachOpponent { effects } = effect else {
+    let EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }) = effect else {
         panic!("expected opponent loop: {effect:#?}");
     };
     assert!(

@@ -1,7 +1,9 @@
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::DelayedEffectAst;
 use super::*;
 use crate::cards::builders::{
     ChooseOneModeAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst,
-    SubjectVerbSubjectAst,
+    SubjectVerbSubjectAst, LibraryActionAst, KeywordActionAst,
 };
 use crate::grammar::effects::for_each_shapes::parse_fixed_pt_alternative_shape;
 use crate::grammar::effects::misc_action_shapes::{
@@ -241,10 +243,10 @@ pub fn parse_flip(
         }
     };
     Ok(if shape.delayed_until_next_end_step {
-        EffectAst::DelayedUntilNextEndStep {
+        EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
             player: PlayerFilter::Any,
             effects: vec![effect],
-        }
+        })
     } else {
         effect
     })
@@ -311,7 +313,7 @@ pub fn parse_mill(
     Ok(subject_verb_player_effect(
         SubjectVerbRoleAst::AffectedPlayer,
         subject_player,
-        SubjectVerbActionAst::Mill { count: shape.count },
+        SubjectVerbActionAst::Library(LibraryActionAst::Mill { count: shape.count }),
     ))
 }
 
@@ -396,7 +398,7 @@ pub fn parse_get(
         };
         let first = parse_get(&branch_tokens(&alternative.first_modifier), subject)?;
         let second = parse_get(&branch_tokens(&alternative.second_modifier), subject)?;
-        return Ok(EffectAst::ChooseOneOf {
+        return Ok(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf {
             modes: vec![
                 ChooseOneModeAst {
                     description: String::new(),
@@ -407,7 +409,7 @@ pub fn parse_get(
                     effects: vec![second],
                 },
             ],
-        });
+        }));
     }
 
     if grammar::contains_word(tokens, "poison")
@@ -609,7 +611,7 @@ pub fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError>
         let mut filter = parse_object_filter(filter_tokens, false)?;
         constrain_untap_filter_to_battlefield(&mut filter);
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::ChosenObjects.bind(),
+            tag: (crate::tag::CompilerReferenceTag::ChosenObjects.bind()).into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
         return Ok(EffectAst::subject_verb_untap_all(filter));
@@ -642,7 +644,7 @@ pub fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError>
             constrain_untap_filter_to_battlefield(&mut filter);
             filter.set_plural_pronoun_reference_surface(filter_tokens.is_none());
             filter.tagged_constraints.push(TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::It.bind(),
+                tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
                 relation: TaggedOpbjectRelation::IsTaggedObject,
             });
             Ok(EffectAst::subject_verb_untap_all(filter))
@@ -671,7 +673,7 @@ pub fn parse_scry(
     Ok(subject_verb_player_effect(
         SubjectVerbRoleAst::Chooser,
         player,
-        SubjectVerbActionAst::Scry { count },
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Scry { count }),
     ))
 }
 
@@ -691,7 +693,7 @@ pub fn parse_surveil(
     Ok(subject_verb_player_effect(
         SubjectVerbRoleAst::Chooser,
         player,
-        SubjectVerbActionAst::Surveil { count },
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Surveil { count }),
     ))
 }
 

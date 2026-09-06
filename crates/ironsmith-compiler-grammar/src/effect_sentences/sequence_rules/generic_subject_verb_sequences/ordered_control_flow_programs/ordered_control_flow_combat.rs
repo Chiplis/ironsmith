@@ -1,3 +1,4 @@
+use crate::cards::builders::ForEachEffectAst;
 use super::*;
 
 /// Parse the historical block provenance shared by effects of the form
@@ -137,22 +138,22 @@ pub fn parse_destroy_historically_blocked_then_reanimate_from_historical_control
     let destroyed_tag = helper_tag_for_tokens(&first_tokens, "destroyed");
     let target_blocker = EffectAst::TagAffected {
         effect: Box::new(EffectAst::subject_verb_explicit_target_only(blocker_target)),
-        tag: blocker_tag.clone(),
+        tag: crate::tag::TagRef::of(blocker_tag.clone()),
     };
 
     let mut destroyed_filter = ObjectFilter::creature();
-    destroyed_filter.blocked_by = Some(ObjectRef::Tagged(blocker_tag.clone()));
+    destroyed_filter.blocked_by = Some(ObjectRef::Tagged(blocker_tag.clone().into()));
     let destroy = EffectAst::TagAffected {
         effect: Box::new(EffectAst::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DestroyAll {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll {
                 filter: destroyed_filter,
                 no_regeneration: true,
                 creature_destroyed_this_way_surface: false,
-            },
+            }),
         )),
-        tag: destroyed_tag.clone(),
+        tag: crate::tag::TagRef::of(destroyed_tag.clone()),
     };
 
     let mut creature_card = ObjectFilter::creature();
@@ -170,11 +171,11 @@ pub fn parse_destroy_historically_blocked_then_reanimate_from_historical_control
         false,
         None,
     );
-    let followup = EffectAst::ForEachTaggedWithControllerAtLastBlockedBy {
-        tag: destroyed_tag,
-        blocker_tag,
+    let followup = EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy {
+        tag: crate::tag::TagRef::of(destroyed_tag),
+        blocker_tag: crate::tag::TagRef::of(blocker_tag),
         effects: vec![reanimate_one],
-    };
+    });
 
     Ok(Some(vec![target_blocker, destroy, followup]))
 }

@@ -1,5 +1,5 @@
 use crate::cards::builders::{
-    EffectAst, GrantedAbilityAst, PredicateAst, SubjectVerbActionAst, TargetAst,
+    EffectAst, GrantedAbilityAst, PredicateAst, SubjectVerbActionAst, TargetAst, CounterActionAst, GrantActionAst, LibraryActionAst, CharacteristicActionAst, KeywordActionAst, ZoneMoveActionAst, PermanentStateActionAst, RevealLookActionAst, DamageActionAst, StatChangeActionAst, TokenActionAst, ControlActionAst, ObjectChoiceEffectAst, PlayerPredicateAst, SourcePredicateAst,
 };
 use crate::effect::Value;
 use crate::filter::{ObjectFilter, TaggedOpbjectRelation};
@@ -66,9 +66,9 @@ fn predicate_random_count_object_filter_antecedent(
             Value::Count(filter) => Some(filter.clone()),
             _ => None,
         },
-        PredicateAst::PlayerHasAtLeast { filter, .. }
-        | PredicateAst::PlayerControlsExactly { filter, .. }
-        | PredicateAst::PlayerHasAtLeastWithDifferentPowers { filter, .. } => Some(filter.clone()),
+        PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast { filter, .. })
+        | PredicateAst::Player(PlayerPredicateAst::PlayerControlsExactly { filter, .. })
+        | PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeastWithDifferentPowers { filter, .. }) => Some(filter.clone()),
         PredicateAst::And(left, right) => match (
             predicate_random_count_object_filter_antecedent(left),
             predicate_random_count_object_filter_antecedent(right),
@@ -90,7 +90,7 @@ fn predicate_random_count_object_filter_antecedent(
 
 pub fn predicate_source_counter_antecedent(predicate: &PredicateAst) -> Option<CounterType> {
     match predicate {
-        PredicateAst::SourceHasCounterAtLeast { counter_type, .. } => Some(*counter_type),
+        PredicateAst::Source(SourcePredicateAst::SourceHasCounterAtLeast { counter_type, .. }) => Some(*counter_type),
         PredicateAst::And(left, right) => match (
             predicate_source_counter_antecedent(left),
             predicate_source_counter_antecedent(right),
@@ -182,43 +182,43 @@ fn target_establishes_body_object_antecedent(target: &TargetAst) -> bool {
 fn effect_establishes_body_object_antecedent(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-            SubjectVerbActionAst::Tap { target }
-            | SubjectVerbActionAst::Untap { target }
-            | SubjectVerbActionAst::TapOrUntap { target }
-            | SubjectVerbActionAst::Destroy { target, .. }
-            | SubjectVerbActionAst::Exile { target, .. }
-            | SubjectVerbActionAst::DealDamage { target, .. }
-            | SubjectVerbActionAst::DealDamageEqualToPower { target, .. }
-            | SubjectVerbActionAst::GainControl { target, .. }
-            | SubjectVerbActionAst::PutCounters { target, .. }
-            | SubjectVerbActionAst::PutCounterChoice { target, .. }
-            | SubjectVerbActionAst::Pump { target, .. }
-            | SubjectVerbActionAst::PumpForEach { target, .. }
-            | SubjectVerbActionAst::GrantAbilitiesToTarget { target, .. }
-            | SubjectVerbActionAst::GrantToTarget { target, .. }
-            | SubjectVerbActionAst::RemoveAbilitiesFromTarget { target, .. }
-            | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { target, .. }
+            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap { target })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Untap { target })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapOrUntap { target })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { target, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { target, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { target, .. })
+            | SubjectVerbActionAst::Control(ControlActionAst::GainControl { target, .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target, .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice { target, .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { target, .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceToTarget { target, .. })
             | SubjectVerbActionAst::TargetOnly { target, .. } => {
                 target_establishes_body_object_antecedent(target)
             }
             // These actions export a generated or selected object set when a
             // later body clause references `it`/`those`. Once one occurs, the
             // condition subject is no longer the body's newest antecedent.
-            SubjectVerbActionAst::Mill { .. }
-            | SubjectVerbActionAst::Discover { .. }
-            | SubjectVerbActionAst::ManifestTopCardOfLibrary
-            | SubjectVerbActionAst::CloakTopCardOfLibrary
-            | SubjectVerbActionAst::ManifestCardFromHand
-            | SubjectVerbActionAst::Amass { .. }
-            | SubjectVerbActionAst::Populate { .. }
-            | SubjectVerbActionAst::CreateTokenCopy { .. }
-            | SubjectVerbActionAst::CreateTokenCopyFromSource { .. }
-            | SubjectVerbActionAst::CreateTokenWithMods { .. } => true,
+            SubjectVerbActionAst::Library(LibraryActionAst::Mill { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Discover { .. })
+            | SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary)
+            | SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestCardFromHand)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Populate { .. })
+            | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. })
+            | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { .. })
+            | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { .. }) => true,
             _ => false,
         },
-        EffectAst::ChooseObjects { .. }
-        | EffectAst::ChooseObjectsWithAggregateConstraint { .. }
-        | EffectAst::ChooseObjectsAcrossZones { .. } => true,
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { .. }) => true,
         _ => false,
     }
 }
@@ -235,30 +235,30 @@ fn bind_condition_antecedent_in_effect(
     let establishes_body_antecedent = effect_establishes_body_object_antecedent(effect);
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
-            SubjectVerbActionAst::Tap { target }
-            | SubjectVerbActionAst::Untap { target }
-            | SubjectVerbActionAst::TapOrUntap { target }
-            | SubjectVerbActionAst::Destroy { target, .. }
-            | SubjectVerbActionAst::Exile { target, .. }
-            | SubjectVerbActionAst::DealDamage { target, .. }
-            | SubjectVerbActionAst::DealDamageEqualToPower { target, .. }
-            | SubjectVerbActionAst::GainControl { target, .. }
-            | SubjectVerbActionAst::PutCounters { target, .. }
-            | SubjectVerbActionAst::PutCounterChoice { target, .. }
-            | SubjectVerbActionAst::Pump { target, .. }
-            | SubjectVerbActionAst::PumpForEach { target, .. }
-            | SubjectVerbActionAst::GrantAbilitiesToTarget { target, .. }
-            | SubjectVerbActionAst::GrantToTarget { target, .. }
-            | SubjectVerbActionAst::RemoveAbilitiesFromTarget { target, .. }
-            | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { target, .. }
+            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap { target })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Untap { target })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapOrUntap { target })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { target, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { target, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { target, .. })
+            | SubjectVerbActionAst::Control(ControlActionAst::GainControl { target, .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target, .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice { target, .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { target, .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceToTarget { target, .. })
             | SubjectVerbActionAst::TargetOnly { target, .. } => {
                 bind_condition_antecedent_in_target(target, antecedent, mode);
             }
             _ => {}
         },
-        EffectAst::ChooseObjects { filter, .. }
-        | EffectAst::ChooseObjectsWithAggregateConstraint { filter, .. }
-        | EffectAst::ChooseObjectsAcrossZones { filter, .. } => {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { filter, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { filter, .. }) => {
             bind_condition_filter_antecedent(filter, antecedent);
         }
         _ => {}
@@ -317,7 +317,7 @@ pub fn bind_condition_collection_antecedent_in_effects(
 
     fn collection_filter(predicate: &PredicateAst) -> Option<ObjectFilter> {
         match predicate {
-            PredicateAst::PlayerControls { filter, .. } => Some(filter.clone()),
+            PredicateAst::Player(PlayerPredicateAst::PlayerControls { filter, .. }) => Some(filter.clone()),
             PredicateAst::ValueComparison { left, right, .. } => {
                 match (left.unhinted(), right.unhinted()) {
                     (Value::Count(filter), Value::Fixed(_))
@@ -348,7 +348,7 @@ pub fn bind_condition_collection_antecedent_in_effects(
         let EffectAst::SubjectVerb(subject_verb) = effect else {
             return false;
         };
-        let SubjectVerbActionAst::GainControl { target, .. } = &mut subject_verb.action else {
+        let SubjectVerbActionAst::Control(ControlActionAst::GainControl { target, .. }) = &mut subject_verb.action else {
             return false;
         };
         let TargetAst::WithCount(inner, count) = target else {
@@ -384,13 +384,13 @@ pub fn bind_condition_collection_antecedent_in_effects(
             .controller
             .get_or_insert(crate::filter::PlayerFilter::IteratedPlayer);
         let tag = crate::tag::CompilerReferenceTag::ConditionCollectionChoice.bind();
-        let choice = EffectAst::ChooseObjects {
+        let choice = EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter: choice_filter,
             count: *count,
             count_value: None,
             player: crate::cards::builders::PlayerAst::That,
             tag: tag.clone(),
-        };
+        });
         *target = TargetAst::Tagged(tag, None);
         let gain_control = std::mem::replace(
             effect,
@@ -408,12 +408,12 @@ pub fn bind_condition_collection_antecedent_in_effects(
         let EffectAst::SubjectVerb(subject_verb) = effect else {
             return false;
         };
-        let SubjectVerbActionAst::MoveToZone {
+        let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
             target,
             target_plural_surface,
             all,
             ..
-        } = &mut subject_verb.action
+        }) = &mut subject_verb.action
         else {
             return false;
         };
@@ -441,9 +441,9 @@ pub fn bind_condition_collection_antecedent_in_effects(
             return;
         }
         match effect {
-            EffectAst::ChooseObjects { filter, .. }
-            | EffectAst::ChooseObjectsWithAggregateConstraint { filter, .. }
-            | EffectAst::ChooseObjectsAcrossZones { filter, .. } => {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, .. })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { filter, .. })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { filter, .. }) => {
                 bind_condition_filter_antecedent(filter, antecedent);
             }
             _ => {}
@@ -510,7 +510,7 @@ fn bind_unresolved_it_to_antecedent(target: &mut TargetAst, antecedent_tag: &cra
         TargetAst::Tagged(tag, _)
             if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() =>
         {
-            *tag = antecedent_tag.clone();
+            *tag = ironsmith_compiler_ast::TagRef::of(antecedent_tag.clone());
         }
         TargetAst::Object(filter, explicit_target_span, _) if explicit_target_span.is_none() => {
             for constraint in &mut filter.tagged_constraints {
@@ -531,7 +531,7 @@ fn bind_unresolved_it_to_antecedent(target: &mut TargetAst, antecedent_tag: &cra
 fn is_top_library_observation(action: &SubjectVerbActionAst) -> bool {
     matches!(
         action,
-        SubjectVerbActionAst::RevealTop | SubjectVerbActionAst::LookAtTopCards { .. }
+        SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTop) | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { .. })
     )
 }
 
@@ -541,21 +541,21 @@ fn persistent_battlefield_subject(action: &mut SubjectVerbActionAst) -> Option<&
         // top-library observation, a still-unmoved card cannot be their
         // subject, so an unresolved pronoun continues to denote the trigger's
         // persistent object instead.
-        SubjectVerbActionAst::Destroy { target, .. }
-        | SubjectVerbActionAst::Pump { target, .. }
-        | SubjectVerbActionAst::RemoveFromCombat { target } => Some(target),
+        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { target, .. })
+        | SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. })
+        | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat { target }) => Some(target),
         _ => None,
     }
 }
 
 fn moves_observed_object(action: &SubjectVerbActionAst) -> bool {
     let target = match action {
-        SubjectVerbActionAst::MoveToZone { target, .. }
-        | SubjectVerbActionAst::MayMoveToZone { target, .. }
-        | SubjectVerbActionAst::PutOntoBattlefield { target, .. }
-        | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target }
-        | SubjectVerbActionAst::ReturnToBattlefield { target, .. }
-        | SubjectVerbActionAst::Exile { target, .. } => target,
+        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { target, .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MayMoveToZone { target, .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PutOntoBattlefield { target, .. })
+        | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice { target })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { target, .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. }) => target,
         _ => return false,
     };
     target_references_observed_object(target)
@@ -636,10 +636,10 @@ fn source_deals_damage_to_player(effect: &EffectAst) -> bool {
         EffectAst::SubjectVerb(subject_verb)
             if matches!(
                 &subject_verb.action,
-                SubjectVerbActionAst::DealDamage {
+                SubjectVerbActionAst::Damage(DamageActionAst::DealDamage {
                     target: TargetAst::Player(_, _),
                     ..
-                }
+                })
             )
     )
 }
@@ -648,9 +648,9 @@ fn resolve_implicit_must_attack_to_source(effect: &mut EffectAst) {
     let EffectAst::SubjectVerb(subject_verb) = effect else {
         return;
     };
-    let SubjectVerbActionAst::GrantAbilitiesToTarget {
+    let SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
         target, abilities, ..
-    } = &mut subject_verb.action
+    }) = &mut subject_verb.action
     else {
         return;
     };
@@ -685,13 +685,13 @@ pub fn resolve_source_damage_attack_followups_to_source(effects: &mut [EffectAst
 
 fn bind_condition_counter_antecedent_in_effect(effect: &mut EffectAst, counter_type: CounterType) {
     if let EffectAst::SubjectVerb(subject_verb) = effect
-        && let SubjectVerbActionAst::RemoveUpToAnyCounters {
+        && let SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters {
             amount,
             target,
             counter_type: remove_counter_type,
             all_of_them,
             ..
-        } = &mut subject_verb.action
+        }) = &mut subject_verb.action
         && *all_of_them
         && remove_counter_type.is_none()
         && matches!(target, TargetAst::Source(_))
@@ -733,11 +733,11 @@ fn resolve_it_animation_to_source(effect: &mut EffectAst) -> bool {
     // sequence of source-bound grants/animations is retargeted consistently.
     let establishes_body_antecedent = effect_establishes_body_object_antecedent(effect);
     if let EffectAst::SubjectVerb(subject_verb) = effect
-        && let SubjectVerbActionAst::BecomeBasePtCreature { target, .. }
-        | SubjectVerbActionAst::GrantAbilitiesToTarget { target, .. }
-        | SubjectVerbActionAst::GrantToTarget { target, .. }
-        | SubjectVerbActionAst::RemoveAbilitiesFromTarget { target, .. }
-        | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { target, .. } =
+        && let SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature { target, .. })
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { target, .. })
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { target, .. })
+        | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget { target, .. })
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceToTarget { target, .. }) =
             &mut subject_verb.action
     {
         resolve_it_animation_target_to_source(target);

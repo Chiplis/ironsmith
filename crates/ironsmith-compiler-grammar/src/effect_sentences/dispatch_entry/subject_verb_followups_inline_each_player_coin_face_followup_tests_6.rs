@@ -15,14 +15,14 @@ fn heads_and_tails_followups_keep_face_only_player_correlation() {
             parse_effect_sentences_lexed(&tokens).expect("coin-face player sequence should parse");
 
         let [
-            EffectAst::ForEachPlayer {
+            EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
                 effects: flip_effects,
-            },
-            EffectAst::ForEachPlayerDid {
+            }),
+            EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDid {
                 result_predicate,
                 effects: followups,
                 ..
-            },
+            }),
         ] = effects.as_slice()
         else {
             panic!("expected correlated flip/follow-up pair: {effects:#?}");
@@ -30,7 +30,7 @@ fn heads_and_tails_followups_keep_face_only_player_correlation() {
         assert!(matches!(
             flip_effects.as_slice(),
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::FlipCoinFaceOnly,
+                action: SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly),
                 ..
             })]
         ));

@@ -1,5 +1,7 @@
 //! Readings shard 4 of 4, in rank order.
 
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::StackActionAst;
 use super::super::*;
 use super::Clause;
 
@@ -130,7 +132,7 @@ pub(super) fn read_cast_target_without_paying(
                     role: SubjectVerbRoleAst::Actor,
                     player: PlayerAst::Implicit,
                 },
-                action: SubjectVerbActionAst::CastTagged {
+                action: SubjectVerbActionAst::Stack(StackActionAst::CastTagged {
                     tag: crate::tag::CompilerReferenceTag::It.bind(),
                     player: PlayerAst::Implicit,
                     allow_land: false,
@@ -141,7 +143,7 @@ pub(super) fn read_cast_target_without_paying(
                     additional_mana_cost: None,
                     cost_reduction: None,
                     mana_spend_mode: ironsmith_core::value_model::ManaSpendMode::Normal,
-                },
+                }),
             },
         )));
     }
@@ -261,11 +263,11 @@ pub(super) fn read_trailing_if_fallback(
         && !head_effects.is_empty()
     {
         parser_trace("parse_effect_clause:trailing-if-fallback", tokens);
-        return Ok(Some(EffectAst::Conditional {
+        return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: shape.predicate,
             if_true: head_effects,
             if_false: Vec::new(),
-        }));
+        })));
     }
     Ok(None)
 }

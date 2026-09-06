@@ -130,6 +130,10 @@ name = "audit_unbound_reference_keys"
 path = "src/bin/audit_unbound_reference_keys.rs"
 
 [[bin]]
+name = "audit_ast_variants"
+path = "src/bin/audit_ast_variants.rs"
+
+[[bin]]
 name = "audit_reference_keys"
 path = "src/bin/audit_reference_keys.rs"
 test = false

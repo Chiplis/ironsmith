@@ -1,12 +1,13 @@
+use crate::cards::builders::ConditionalEffectAst;
 use super::*;
 
 pub(super) fn rewrite_self_replacements_as_conditionals(effect: EffectAst) -> EffectAst {
     match effect {
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true,
             if_false,
-        } => EffectAst::Conditional {
+        }) => EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true: if_true
                 .into_iter()
@@ -16,13 +17,13 @@ pub(super) fn rewrite_self_replacements_as_conditionals(effect: EffectAst) -> Ef
                 .into_iter()
                 .map(rewrite_self_replacements_as_conditionals)
                 .collect(),
-        },
+        }),
         EffectAst::SelfReplacement {
             predicate,
             if_true,
             if_false,
             ..
-        } => EffectAst::Conditional {
+        } => EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true: if_true
                 .into_iter()
@@ -32,7 +33,7 @@ pub(super) fn rewrite_self_replacements_as_conditionals(effect: EffectAst) -> Ef
                 .into_iter()
                 .map(rewrite_self_replacements_as_conditionals)
                 .collect(),
-        },
+        }),
         other => other,
     }
 }

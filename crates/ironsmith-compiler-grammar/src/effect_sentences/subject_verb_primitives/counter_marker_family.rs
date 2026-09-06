@@ -1,3 +1,9 @@
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::DelayedEffectAst;
+use crate::cards::builders::StatChangeActionAst;
+use crate::cards::builders::CharacteristicActionAst;
+use crate::cards::builders::GrantActionAst;
+use crate::cards::builders::{CounterActionAst, DamagePreventionActionAst};
 use super::*;
 use crate::grammar::effects::counter_marker_shapes as counter_shapes;
 use crate::grammar::effects::zone_counter_shapes;
@@ -5,8 +11,8 @@ use crate::grammar::effects::zone_counter_shapes;
 fn subject_verb_put_counters_target(effect: &EffectAst) -> Option<TargetAst> {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-            SubjectVerbActionAst::PutCounters { target, .. } => Some(target.clone()),
-            SubjectVerbActionAst::PutCounterChoice { target, .. } => Some(target.clone()),
+            SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target, .. }) => Some(target.clone()),
+            SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice { target, .. }) => Some(target.clone()),
             _ => None,
         },
         _ => None,
@@ -106,10 +112,10 @@ fn retarget_it_effect_for_counter_followup(effect: &mut EffectAst, source_target
     let source_filter = target_ast_to_object_filter(source_target.clone());
     match effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) => match action {
-            SubjectVerbActionAst::Pump { target, .. }
-            | SubjectVerbActionAst::GrantAbilitiesToTarget { target, .. }
-            | SubjectVerbActionAst::GrantToTarget { target, .. }
-            | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { target, .. } => {
+            SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceToTarget { target, .. }) => {
                 retarget_it_target_for_counter_followup(target, source_target);
             }
             SubjectVerbActionAst::Cant { restriction, .. } => {
@@ -119,9 +125,9 @@ fn retarget_it_effect_for_counter_followup(effect: &mut EffectAst, source_target
             }
             _ => {}
         },
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             if_true, if_false, ..
-        }
+        })
         | EffectAst::SelfReplacement {
             if_true, if_false, ..
         } => {
@@ -218,14 +224,14 @@ pub fn parse_sentence_sacrifice_at_end_of_combat(
         parse_object_filter(shape.object_tokens, false)?
     };
 
-    Ok(Some(vec![EffectAst::DelayedUntilEndOfCombat {
+    Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat {
         effects: vec![EffectAst::subject_verb_sacrifice(
             PlayerAst::Implicit,
             filter,
             1,
             None,
         )],
-    }]))
+    })]))
 }
 
 pub fn parse_sentence_for_each_counter_kind_put_or_remove(
@@ -324,10 +330,10 @@ pub fn is_pump_like_effect(effect: &EffectAst) -> bool {
     matches!(
         effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Pump { .. }
-                | SubjectVerbActionAst::PumpByLastEffect { .. }
-                | SubjectVerbActionAst::SetBasePowerToughness { .. }
-                | SubjectVerbActionAst::SetBasePower { .. },
+            action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { .. })
+                | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpByLastEffect { .. })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness { .. })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { .. }),
             ..
         })
     )
@@ -429,13 +435,13 @@ pub fn parse_return_with_counters_on_it_sentence(
     let wrapped = if let Some(timing) = shape.timing {
         match timing {
             counter_shapes::CounterMarkerTimingShape::NextEndStep(player) => {
-                vec![EffectAst::DelayedUntilNextEndStep { player, effects }]
+                vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep { player, effects })]
             }
             counter_shapes::CounterMarkerTimingShape::NextUpkeep(player) => {
-                vec![EffectAst::DelayedUntilNextUpkeep { player, effects }]
+                vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep { player, effects })]
             }
             counter_shapes::CounterMarkerTimingShape::EndOfCombat => {
-                vec![EffectAst::DelayedUntilEndOfCombat { effects }]
+                vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat { effects })]
             }
         }
     } else {
@@ -675,17 +681,17 @@ fn parse_optional_put_from_owned_hand_or_graveyard_with_counters(
 
     let selected = helper_tag_for_tokens(clause.tokens(), "owned_zone_entry");
     let mut effects = vec![
-        EffectAst::ChooseObjectsAcrossZones {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
             filter,
             count: ChoiceCount::exactly(1),
             count_value: None,
             player: PlayerAst::You,
-            tag: selected.clone(),
+            tag: crate::tag::TagRef::of(selected.clone()),
             zones: vec![Zone::Hand, Zone::Graveyard],
             search_mode: None,
-        },
+        }),
         EffectAst::subject_verb_move_to_zone(
-            TargetAst::Tagged(selected.clone(), clause.span()),
+            TargetAst::Tagged(crate::tag::TagRef::of(selected.clone()), clause.span()),
             Zone::Battlefield,
             false,
             ReturnControllerAst::Preserve,
@@ -699,7 +705,7 @@ fn parse_optional_put_from_owned_hand_or_graveyard_with_counters(
         effects.push(EffectAst::subject_verb_put_counters(
             descriptor.counter_type,
             count,
-            TargetAst::Tagged(selected.clone(), clause.span()),
+            TargetAst::Tagged(crate::tag::TagRef::of(selected.clone()), clause.span()),
             None,
             false,
         ));

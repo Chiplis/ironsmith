@@ -1,5 +1,6 @@
 use crate::ability::{PresentationKeyword, PresentationLabel};
 use crate::host::EffectAst;
+use crate::host::ConditionalEffectAst;
 
 type AnthemNormalizedWords<'a> = crate::grammar::primitives::TokenWordView<'a>;
 
@@ -130,11 +131,11 @@ fn triggered_grant_effects_and_condition(
     effects: &[EffectAst],
 ) -> Result<(Vec<EffectAst>, Option<PredicateAst>), CardTextError> {
     if let [
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true,
             if_false,
-        },
+        }),
     ] = effects
         && if_false.is_empty()
     {
@@ -2410,7 +2411,7 @@ fn parse_enchanted_player_controls_subject(
     };
     let mut filter = parse_object_filter(prefix_tokens, false)?;
     filter.controller = Some(PlayerFilter::TaggedPlayer(
-        crate::tag::CompilerReferenceTag::Enchanted.bind(),
+        (crate::tag::CompilerReferenceTag::Enchanted.bind()).into(),
     ));
     Ok(Some(filter))
 }
@@ -2681,10 +2682,10 @@ pub fn parse_static_condition_clause(
             use anthem_grant_grammar::ExistentialConditionTail;
             match shape.tail {
                 ExistentialConditionTail::CardTypesInYourGraveyard { threshold } => {
-                    return Ok(PredicateAst::PlayerHasCardTypesInGraveyardOrMore {
+                    return Ok(PredicateAst::Player(PlayerPredicateAst::PlayerHasCardTypesInGraveyardOrMore {
                         player: PlayerAst::You,
                         count: threshold,
-                    });
+                    }));
                 }
                 ExistentialConditionTail::CardsInYourGraveyard => {
                     let Some((operator, value)) =
@@ -2885,7 +2886,7 @@ fn parse_independently_articled_graveyard_cards_static_condition(
     fn is_owned_graveyard_card_requirement(
         predicate: &crate::cards::builders::PredicateAst,
     ) -> bool {
-        let PredicateAst::PlayerControls { player, filter } = predicate else {
+        let PredicateAst::Player(PlayerPredicateAst::PlayerControls { player, filter }) = predicate else {
             return false;
         };
         *player == crate::cards::builders::PlayerAst::You
@@ -3929,9 +3930,9 @@ pub fn parse_soulbond_shared_line(
                 vec![EffectAst::subject_verb(
                     crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
                     crate::cards::builders::PlayerAst::Opponent,
-                    crate::cards::builders::SubjectVerbActionAst::Mill {
+                    crate::cards::builders::SubjectVerbActionAst::Library(crate::cards::builders::LibraryActionAst::Mill {
                         count: Value::ToughnessOf(Box::new(ChooseSpec::Source)),
-                    },
+                    }),
                 )],
                 vec![Zone::Battlefield],
                 None,
@@ -4799,7 +4800,7 @@ mod dynamic_anthem_tests {
             (left.as_ref(), CardType::Instant),
             (right.as_ref(), CardType::Sorcery),
         ] {
-            let PredicateAst::PlayerControls { player, filter } = condition else {
+            let PredicateAst::Player(PlayerPredicateAst::PlayerControls { player, filter }) = condition else {
                 panic!("expected an owned-zone card requirement, got {condition:#?}");
             };
             assert_eq!(*player, PlayerAst::You);
@@ -4823,7 +4824,7 @@ mod dynamic_anthem_tests {
         let [
             StaticAbilityAst::ConditionalKeywordAction {
                 action: KeywordAction::Indestructible,
-                condition: PredicateAst::SourceMatches(filter),
+                condition: PredicateAst::Source(SourcePredicateAst::SourceMatches(filter)),
             },
         ] = abilities.as_slice()
         else {
@@ -4842,6 +4843,6 @@ mod dynamic_anthem_tests {
         let condition =
             parse_static_condition_clause(&tokens).expect("attack-history condition should parse");
 
-        assert_eq!(condition, PredicateAst::SourceAttackedBattleThisTurn);
+        assert_eq!(condition, PredicateAst::Source(SourcePredicateAst::SourceAttackedBattleThisTurn));
     }
 }

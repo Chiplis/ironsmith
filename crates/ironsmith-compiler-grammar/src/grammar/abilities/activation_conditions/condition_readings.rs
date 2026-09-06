@@ -303,10 +303,10 @@ fn read_text_only_activation_restriction(input: &ActivationCondition<'_>) -> Opt
         {
             return Some(match condition {
                 super::super::super::restriction_normalization::TextOnlyActivationRestriction::SourceDidNotAttackThisTurn => {
-                    PredicateAst::Not(Box::new(PredicateAst::SourceAttackedThisTurn))
+                    PredicateAst::Not(Box::new(PredicateAst::Source(crate::cards::builders::SourcePredicateAst::SourceAttackedThisTurn)))
                 }
                 super::super::super::restriction_normalization::TextOnlyActivationRestriction::SourceAttackedThisTurn => {
-                    PredicateAst::SourceAttackedThisTurn
+                    PredicateAst::Source(crate::cards::builders::SourcePredicateAst::SourceAttackedThisTurn)
                 }
             });
         }
@@ -318,19 +318,19 @@ fn read_activate_only_if_predicate(input: &ActivationCondition<'_>) -> Option<Pr
         && let Ok(predicate) = super::super::super::filters::parse_predicate(condition_tokens)
     {
         match predicate {
-            crate::cards::builders::PredicateAst::SourceHasCounterAtLeast {
+            crate::cards::builders::PredicateAst::Source(crate::cards::builders::SourcePredicateAst::SourceHasCounterAtLeast {
                 counter_type,
                 count,
                 surface,
-            } => {
-                return Some(PredicateAst::SourceHasCounterAtLeast {
+            }) => {
+                return Some(PredicateAst::Source(crate::cards::builders::SourcePredicateAst::SourceHasCounterAtLeast {
                     counter_type,
                     count,
                     surface,
-                });
+                }));
             }
-            crate::cards::builders::PredicateAst::SourceMatches(filter) => {
-                return Some(PredicateAst::SourceMatches(filter));
+            crate::cards::builders::PredicateAst::Source(crate::cards::builders::SourcePredicateAst::SourceMatches(filter)) => {
+                return Some(PredicateAst::Source(crate::cards::builders::SourcePredicateAst::SourceMatches(filter)));
             }
             _ => {}
         }

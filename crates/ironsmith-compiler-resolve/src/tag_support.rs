@@ -1,6 +1,8 @@
+use ironsmith_compiler_semantic::model::ForEachEffectAst;
+use ironsmith_compiler_semantic::model::DamagePreventionActionAst;
 use crate::cards::builders::{
     EffectAst, ObjectRefAst, ParseAnnotations, PlayerAst, PredicateAst, RetargetModeAst,
-    SubjectVerbActionAst, SubjectVerbEffectAst, TagKey, TargetAst,
+    SubjectVerbActionAst, SubjectVerbEffectAst, TagKey, TargetAst, CounterActionAst, GrantActionAst, ManaActionAst, LibraryActionAst, ReplacementActionAst, ExchangeActionAst, TurnStructureActionAst, CharacteristicActionAst, KeywordActionAst, ZoneMoveActionAst, PermanentStateActionAst, RevealLookActionAst, RandomActionAst, LifeResourceActionAst, ChoiceActionAst, DamageActionAst, StatChangeActionAst, StackActionAst, TokenActionAst, ControlActionAst, GameActionAst, DelayedEffectAst, ObjectChoiceEffectAst, ConditionalEffectAst, PermissionEffectAst, PlayerPredicateAst, SourcePredicateAst, TurnEventPredicateAst,
 };
 use crate::effect::{EventValueSpec, Value};
 use crate::filter::{ObjectFilter, ObjectRef, PlayerFilter, TaggedOpbjectRelation};
@@ -70,23 +72,23 @@ fn effect_ast_values_any(effect: &EffectAst, predicate: impl Fn(&Value) -> bool 
         EffectAst::SubjectVerb(subject_verb) => {
             subject_verb_action_value(&subject_verb.action).is_some_and(predicate)
         }
-        EffectAst::RepeatEffects { count, .. } => predicate(count),
-        EffectAst::ChooseObjects {
+        EffectAst::ForEach(ForEachEffectAst::RepeatEffects { count, .. }) => predicate(count),
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             count_value: Some(value),
             ..
-        }
-        | EffectAst::ChooseObjectsBottomOfLibrary {
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
             count_value: Some(value),
             ..
-        }
-        | EffectAst::ChooseObjectsTopOfLibrary {
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary {
             count_value: Some(value),
             ..
-        }
-        | EffectAst::ChooseObjectsAcrossZones {
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
             count_value: Some(value),
             ..
-        } => predicate(value),
+        }) => predicate(value),
         _ => false,
     };
     for_each_nested_effects(effect, true, |nested| {
@@ -111,41 +113,41 @@ fn push_unique_tag(tags: &mut Vec<TagKey>, tag: &TagKey) {
 
 fn collect_effect_produced_tags(effect: &EffectAst, tags: &mut Vec<TagKey>) {
     match effect {
-        EffectAst::ChooseObjects { tag, .. }
-        | EffectAst::ChooseObjectsWithAggregateConstraint { tag, .. }
-        | EffectAst::ChooseObjectsBottomOfLibrary { tag, .. }
-        | EffectAst::ChooseObjectsTopOfLibrary { tag, .. }
-        | EffectAst::ChooseTaggedObjectsInZone { tag, .. }
-        | EffectAst::ChooseObjectsAcrossZones { tag, .. }
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { tag, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { tag, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary { tag, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { tag, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { tag, .. })
         | EffectAst::TagAffected { tag, .. } => push_unique_tag(tags, tag),
         EffectAst::SnapshotLastObjectTag { into } => push_unique_tag(tags, into),
         EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) => match action {
-            SubjectVerbActionAst::ChooseCardName { tag, .. }
-            | SubjectVerbActionAst::ChoosePlayer { tag, .. }
-            | SubjectVerbActionAst::ChooseSpellCastHistory { tag, .. }
-            | SubjectVerbActionAst::RevealCardsFromHand { tag, .. }
-            | SubjectVerbActionAst::LookAtTopCards { tag, .. }
+            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { tag, .. })
+            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChoosePlayer { tag, .. })
+            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseSpellCastHistory { tag, .. })
+            | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealCardsFromHand { tag, .. })
+            | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { tag, .. })
             | SubjectVerbActionAst::TagMatchingObjects { tag, .. }
-            | SubjectVerbActionAst::SearchLibrarySlotsToHand {
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrarySlotsToHand {
                 progress_tag: tag, ..
-            } => push_unique_tag(tags, tag),
-            SubjectVerbActionAst::ExileTopOfLibrary {
+            }) => push_unique_tag(tags, tag),
+            SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
                 tags: result_tags,
                 accumulated_tags,
                 ..
-            } => {
+            }) => {
                 for tag in result_tags.iter().chain(accumulated_tags) {
                     push_unique_tag(tags, tag);
                 }
             }
-            SubjectVerbActionAst::ConsultTopOfLibrary {
+            SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
                 all_tag, match_tag, ..
-            } => {
+            }) => {
                 push_unique_tag(tags, all_tag);
                 push_unique_tag(tags, match_tag);
             }
-            SubjectVerbActionAst::CopySpell { .. }
-            | SubjectVerbActionAst::CopySpellForEachTarget { .. } => push_unique_tag(
+            SubjectVerbActionAst::Stack(StackActionAst::CopySpell { .. })
+            | SubjectVerbActionAst::Stack(StackActionAst::CopySpellForEachTarget { .. }) => push_unique_tag(
                 tags,
                 &crate::tag::CompilerReferenceTag::CopiedStackObject.bind(),
             ),
@@ -188,109 +190,109 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
     assert_effect_ast_variant_coverage(effect);
     if let EffectAst::SubjectVerb(subject_verb) = effect {
         match &subject_verb.action {
-            SubjectVerbActionAst::DealDistributedDamage { target, source, .. } => {
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { target, source, .. }) => {
                 visit(target);
                 visit(source);
             }
-            SubjectVerbActionAst::DealDamage { target, .. }
-            | SubjectVerbActionAst::DealDamageEqualToPower { target, .. }
-            | SubjectVerbActionAst::Tap { target }
-            | SubjectVerbActionAst::Untap { target }
-            | SubjectVerbActionAst::Destroy { target, .. }
-            | SubjectVerbActionAst::Exile { target, .. }
-            | SubjectVerbActionAst::LookAtHand { target }
-            | SubjectVerbActionAst::LookAtTarget { target }
-            | SubjectVerbActionAst::Counter { target }
-            | SubjectVerbActionAst::CounterUnlessPays { target, .. }
-            | SubjectVerbActionAst::PutCounters { target, .. }
-            | SubjectVerbActionAst::PutCounterChoice { target, .. }
-            | SubjectVerbActionAst::PutOrRemoveCounters { target, .. }
-            | SubjectVerbActionAst::CopySpell { target, .. }
-            | SubjectVerbActionAst::CopySpellForEachTarget { target, .. }
-            | SubjectVerbActionAst::ReturnToBattlefield { target, .. }
-            | SubjectVerbActionAst::FightIterated { creature2: target }
-            | SubjectVerbActionAst::Detain { target }
-            | SubjectVerbActionAst::Goad { target, .. }
-            | SubjectVerbActionAst::Suspect { target }
-            | SubjectVerbActionAst::RemoveFromCombat { target }
-            | SubjectVerbActionAst::Flip { target }
-            | SubjectVerbActionAst::Regenerate { target, .. }
-            | SubjectVerbActionAst::TapOrUntap { target }
-            | SubjectVerbActionAst::PhaseOut { target, .. }
-            | SubjectVerbActionAst::PhaseIn { target }
-            | SubjectVerbActionAst::Transform { target }
-            | SubjectVerbActionAst::Convert { target }
-            | SubjectVerbActionAst::Explore { target }
-            | SubjectVerbActionAst::Endure { target, .. }
-            | SubjectVerbActionAst::Connive { target, .. }
-            | SubjectVerbActionAst::ExchangeControlHeterogeneous {
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { target, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { target, .. })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap { target })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Untap { target })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { target, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. })
+            | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtHand { target })
+            | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTarget { target })
+            | SubjectVerbActionAst::Stack(StackActionAst::Counter { target })
+            | SubjectVerbActionAst::Stack(StackActionAst::CounterUnlessPays { target, .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target, .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice { target, .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutOrRemoveCounters { target, .. })
+            | SubjectVerbActionAst::Stack(StackActionAst::CopySpell { target, .. })
+            | SubjectVerbActionAst::Stack(StackActionAst::CopySpellForEachTarget { target, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { target, .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::FightIterated { creature2: target })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Detain { target })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { target, .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { target })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat { target })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Flip { target })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Regenerate { target, .. })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapOrUntap { target })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseOut { target, .. })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseIn { target })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Transform { target })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Convert { target })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure { target, .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Connive { target, .. })
+            | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeControlHeterogeneous {
                 permanent1: target, ..
-            }
-            | SubjectVerbActionAst::DestroyAllAttachedTo { target, .. }
-            | SubjectVerbActionAst::ExileAllAttachedTo { target, .. }
-            | SubjectVerbActionAst::ExileWhenSourceLeaves { target }
-            | SubjectVerbActionAst::SacrificeSourceWhenLeaves { target }
-            | SubjectVerbActionAst::MayMoveToZone { target, .. }
-            | SubjectVerbActionAst::RegisterZoneReplacement { target, .. }
-            | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { target, .. }
-            | SubjectVerbActionAst::AssignNoCombatDamage { source: target, .. }
-            | SubjectVerbActionAst::PreventAllCombatDamageFromSource { source: target, .. }
-            | SubjectVerbActionAst::RedirectNextTimeDamageToSource { target, .. }
-            | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
+            })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAllAttachedTo { target, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAllAttachedTo { target, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileWhenSourceLeaves { target })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeSourceWhenLeaves { target })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MayMoveToZone { target, .. })
+            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterZoneReplacement { target, .. })
+            | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleObjectsIntoLibrary { target, .. })
+            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::AssignNoCombatDamage { source: target, .. })
+            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllCombatDamageFromSource { source: target, .. })
+            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectNextTimeDamageToSource { target, .. })
+            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
                 source: target,
-            }
-            | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { target, .. }
-            | SubjectVerbActionAst::CreateTokenCopyFromSource { source: target, .. }
-            | SubjectVerbActionAst::PreventDamage { target, .. }
-            | SubjectVerbActionAst::PreventDamageToTargetPutCounters { target, .. }
-            | SubjectVerbActionAst::MoveToLibraryNthFromTop { target, .. }
-            | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target }
-            | SubjectVerbActionAst::RemoveUpToAnyCounters { target, .. }
-            | SubjectVerbActionAst::DoubleCountersOnTarget { target, .. }
-            | SubjectVerbActionAst::PutCounterOfChosenKind { target }
+            })
+            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectAllDamageThisTurnToTarget { target, .. })
+            | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { source: target, .. })
+            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage { target, .. })
+            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamageToTargetPutCounters { target, .. })
+            | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryNthFromTop { target, .. })
+            | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice { target })
+            | SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters { target, .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnTarget { target, .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { target })
             | SubjectVerbActionAst::PutSticker { target, .. }
-            | SubjectVerbActionAst::SwitchPowerToughness { target, .. }
-            | SubjectVerbActionAst::GrantProtectionChoice { target, .. }
-            | SubjectVerbActionAst::ReturnToHand { target, .. } => visit(target),
-            SubjectVerbActionAst::ForEachCounterKindPutOrRemove {
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::SwitchPowerToughness { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantProtectionChoice { target, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. }) => visit(target),
+            SubjectVerbActionAst::Counters(CounterActionAst::ForEachCounterKindPutOrRemove {
                 target,
                 counter_source,
                 ..
-            } => {
+            }) => {
                 visit(target);
                 if let Some(counter_source) = counter_source {
                     visit(counter_source);
                 }
             }
-            SubjectVerbActionAst::ExileUntilSourceLeaves {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileUntilSourceLeaves {
                 target,
                 leave_watcher,
                 ..
-            } => {
+            }) => {
                 visit(target);
                 if let Some(leave_watcher) = leave_watcher {
                     visit(leave_watcher);
                 }
             }
-            SubjectVerbActionAst::PreventAllDamageToTarget {
+            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllDamageToTarget {
                 target,
                 source_target,
                 ..
-            } => {
+            }) => {
                 visit(target);
                 if let Some(source_target) = source_target {
                     visit(source_target);
                 }
             }
-            SubjectVerbActionAst::PreventAllCombatDamageFromSourceFilter {
+            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllCombatDamageFromSourceFilter {
                 excluded_source_target: Some(target),
                 ..
-            } => visit(target),
-            SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget {
+            }) => visit(target),
+            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectNextDamageFromSourceToTarget {
                 protected_target,
                 destination_target,
                 ..
-            } => {
+            }) => {
                 if let Some(target) = protected_target {
                     visit(target);
                 }
@@ -298,73 +300,73 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
                     visit(target);
                 }
             }
-            SubjectVerbActionAst::RetargetStackObject { target, mode, .. } => {
+            SubjectVerbActionAst::Stack(StackActionAst::RetargetStackObject { target, mode, .. }) => {
                 visit(target);
                 if let RetargetModeAst::OneToFixed { target: fixed } = mode {
                     visit(fixed);
                 }
             }
-            SubjectVerbActionAst::MoveAllCounters { from, to }
-            | SubjectVerbActionAst::MoveOneCounter { from, to } => {
+            SubjectVerbActionAst::Counters(CounterActionAst::MoveAllCounters { from, to })
+            | SubjectVerbActionAst::Counters(CounterActionAst::MoveOneCounter { from, to }) => {
                 visit(from);
                 visit(to);
             }
-            SubjectVerbActionAst::Attach { object, target } => {
+            SubjectVerbActionAst::Control(ControlActionAst::Attach { object, target }) => {
                 visit(object);
                 visit(target);
             }
-            SubjectVerbActionAst::Unattach { object } => visit(object),
-            SubjectVerbActionAst::Fight {
+            SubjectVerbActionAst::Control(ControlActionAst::Unattach { object }) => visit(object),
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fight {
                 creature1,
                 creature2,
                 ..
-            } => {
+            }) => {
                 visit(creature1);
                 visit(creature2);
             }
-            SubjectVerbActionAst::Sacrifice {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice {
                 target: Some(target),
                 ..
-            }
-            | SubjectVerbActionAst::GainControl { target, .. } => visit(target),
-            SubjectVerbActionAst::MoveToZone {
+            })
+            | SubjectVerbActionAst::Control(ControlActionAst::GainControl { target, .. }) => visit(target),
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                 target,
                 attached_to,
                 ..
-            } => {
+            }) => {
                 visit(target);
                 if let Some(attach_target) = attached_to {
                     visit(attach_target);
                 }
             }
             SubjectVerbActionAst::TargetOnly { target, .. } => visit(target),
-            SubjectVerbActionAst::Pump { target, .. }
-            | SubjectVerbActionAst::SetBasePowerToughness { target, .. }
-            | SubjectVerbActionAst::BecomeBasePtCreature { target, .. }
-            | SubjectVerbActionAst::SetBasePower { target, .. }
-            | SubjectVerbActionAst::PumpForEach { target, .. }
-            | SubjectVerbActionAst::PumpByLastEffect { target, .. }
-            | SubjectVerbActionAst::AddCardTypes { target, .. }
-            | SubjectVerbActionAst::SetCardTypes { target, .. }
-            | SubjectVerbActionAst::RemoveCardTypes { target, .. }
-            | SubjectVerbActionAst::AddSubtypes { target, .. }
-            | SubjectVerbActionAst::RemoveSubtypes { target, .. }
-            | SubjectVerbActionAst::SetCreatureSubtypes { target, .. }
-            | SubjectVerbActionAst::BecomeSaddledUntilEndOfTurn { target }
-            | SubjectVerbActionAst::AddColors { target, .. }
-            | SubjectVerbActionAst::AddAllSubtypesOfFamily { target, .. }
-            | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { target, .. }
-            | SubjectVerbActionAst::BecomeBasicLandType { target, .. }
-            | SubjectVerbActionAst::SetColors { target, .. }
-            | SubjectVerbActionAst::MakeColorless { target, .. }
-            | SubjectVerbActionAst::BecomeBasicLandTypeChoice { target, .. }
-            | SubjectVerbActionAst::BecomeCreatureTypeChoice { target, .. }
-            | SubjectVerbActionAst::BecomeColorChoice { target, .. }
-            | SubjectVerbActionAst::GrantAbilitiesToTarget { target, .. }
-            | SubjectVerbActionAst::GrantToTarget { target, .. }
-            | SubjectVerbActionAst::RemoveAbilitiesFromTarget { target, .. }
-            | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { target, .. } => visit(target),
-            SubjectVerbActionAst::BecomeCopy { target, source, .. } => {
+            SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { target, .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach { target, .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpByLastEffect { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddCardTypes { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCardTypes { target, .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveCardTypes { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes { target, .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSubtypes { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCreatureSubtypes { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeSaddledUntilEndOfTurn { target })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddColors { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddAllSubtypesOfFamily { target, .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAllSubtypesOfFamily { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasicLandType { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetColors { target, .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::MakeColorless { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasicLandTypeChoice { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCreatureTypeChoice { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { target, .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceToTarget { target, .. }) => visit(target),
+            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCopy { target, source, .. }) => {
                 visit(target);
                 visit(source);
             }
@@ -396,14 +398,14 @@ fn effect_references_tag_in_object_position(effect: &EffectAst, tag: &str) -> bo
 
     match effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::DealDamageEach { filter, .. },
+            action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { filter, .. }),
             ..
         }) => filter_references_tag(filter, tag),
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true,
             if_false,
-        }
+        })
         | EffectAst::SelfReplacement {
             predicate,
             if_true,
@@ -414,24 +416,24 @@ fn effect_references_tag_in_object_position(effect: &EffectAst, tag: &str) -> bo
                 || effects_reference_tag_in_object_position(if_true, tag)
                 || effects_reference_tag_in_object_position(if_false, tag)
         }
-        EffectAst::TrailingIf { predicate, effects }
-        | EffectAst::TrailingUnless { predicate, effects } => {
+        EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects })
+        | EffectAst::Conditionals(ConditionalEffectAst::TrailingUnless { predicate, effects }) => {
             predicate_references_tag(predicate, tag)
                 || effects_reference_tag_in_object_position(effects, tag)
         }
-        EffectAst::ForEachObject { filter, effects } => {
+        EffectAst::ForEach(ForEachEffectAst::ForEachObject { filter, effects }) => {
             filter_references_tag(filter, tag)
                 || effects_reference_tag_in_object_position(effects, tag)
         }
-        EffectAst::ForEachTagged {
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
             tag: found,
             effects,
-        } => found.as_str() == tag || effects_reference_tag_in_object_position(effects, tag),
-        EffectAst::ForEachTaggedWithControllerAtLastBlockedBy {
+        }) => found.as_str() == tag || effects_reference_tag_in_object_position(effects, tag),
+        EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy {
             tag: found,
             blocker_tag,
             effects,
-        } => {
+        }) => {
             found.as_str() == tag
                 || blocker_tag.as_str() == tag
                 || effects_reference_tag_in_object_position(effects, tag)
@@ -550,39 +552,39 @@ pub fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
 fn effect_tagged_filter(effect: &EffectAst) -> Option<&ObjectFilter> {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-            SubjectVerbActionAst::DestroyAll { filter, .. }
-            | SubjectVerbActionAst::DestroyAllOfChosenColor { filter, .. }
-            | SubjectVerbActionAst::ExileAll { filter, .. }
-            | SubjectVerbActionAst::ReturnAllToHand { filter, .. }
-            | SubjectVerbActionAst::ReturnAllToHandOfChosenColor { filter }
-            | SubjectVerbActionAst::PutCountersAll { filter, .. }
-            | SubjectVerbActionAst::DoubleCountersOnEach { filter, .. }
-            | SubjectVerbActionAst::RemoveCountersAll { filter, .. }
-            | SubjectVerbActionAst::ScalePowerToughnessAll { filter, .. }
-            | SubjectVerbActionAst::Sacrifice { filter, .. }
-            | SubjectVerbActionAst::ExchangeControl { filter, .. }
-            | SubjectVerbActionAst::DestroyAllAttachedTo { filter, .. }
-            | SubjectVerbActionAst::ExileAllAttachedTo { filter, .. }
-            | SubjectVerbActionAst::ChooseSpellCastHistory { filter, .. }
-            | SubjectVerbActionAst::PreventDamageEach { filter, .. }
-            | SubjectVerbActionAst::ReturnAllToBattlefield { filter, .. }
-            | SubjectVerbActionAst::PumpAll { filter, .. }
-            | SubjectVerbActionAst::GrantAbilitiesAll { filter, .. }
-            | SubjectVerbActionAst::RemoveAbilitiesAll { filter, .. }
-            | SubjectVerbActionAst::GrantAbilitiesChoiceAll { filter, .. }
-            | SubjectVerbActionAst::ConsultTopOfLibrary { filter, .. }
-            | SubjectVerbActionAst::SearchLibrary { filter, .. }
-            | SubjectVerbActionAst::SacrificeAll { filter } => Some(filter),
-            SubjectVerbActionAst::GrantBySpec { spec, .. } => Some(&spec.filter),
-            SubjectVerbActionAst::Enchant {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { filter, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAllOfChosenColor { filter, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { filter, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand { filter, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHandOfChosenColor { filter })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCountersAll { filter, .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnEach { filter, .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::RemoveCountersAll { filter, .. })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ScalePowerToughnessAll { filter, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { filter, .. })
+            | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeControl { filter, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAllAttachedTo { filter, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAllAttachedTo { filter, .. })
+            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseSpellCastHistory { filter, .. })
+            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamageEach { filter, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield { filter, .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll { filter, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll { filter, .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll { filter, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceAll { filter, .. })
+            | SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary { filter, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary { filter, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter }) => Some(filter),
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantBySpec { spec, .. }) => Some(&spec.filter),
+            SubjectVerbActionAst::Control(ControlActionAst::Enchant {
                 filter: crate::object::AuraAttachmentFilter::Object(filter),
-            } => Some(filter),
+            }) => Some(filter),
             _ => None,
         },
-        EffectAst::ChooseObjects { filter, .. }
-        | EffectAst::ChooseObjectsWithAggregateConstraint { filter, .. }
-        | EffectAst::ChooseObjectsAcrossZones { filter, .. }
-        | EffectAst::MayCastMatchingSpellWithoutPayingManaCost { filter, .. } => Some(filter),
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { filter, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { filter, .. })
+        | EffectAst::Permissions(PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost { filter, .. }) => Some(filter),
         _ => None,
     }
 }
@@ -603,10 +605,10 @@ pub fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
     }
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::GainControl {
+            SubjectVerbActionAst::Control(ControlActionAst::GainControl {
                 controller_reference: Some(ObjectRef::Tagged(controller_reference_tag)),
                 ..
-            },
+            }),
         ..
     }) = effect
         && controller_reference_tag.as_str() == tag
@@ -619,7 +621,7 @@ pub fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
     {
         return true;
     }
-    if let EffectAst::ChooseObjectsWithAggregateConstraint { constraint, .. } = effect
+    if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { constraint, .. }) = effect
         && (value_references_tag(&constraint.maximum, tag)
             || constraint
                 .minimum
@@ -633,11 +635,11 @@ pub fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
     }
 
     match effect {
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true,
             if_false,
-        }
+        })
         | EffectAst::SelfReplacement {
             predicate,
             if_true,
@@ -648,24 +650,24 @@ pub fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
                 || effects_reference_tag(if_true, tag)
                 || effects_reference_tag(if_false, tag)
         }
-        EffectAst::TrailingIf { predicate, effects }
-        | EffectAst::TrailingUnless { predicate, effects } => {
+        EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects })
+        | EffectAst::Conditionals(ConditionalEffectAst::TrailingUnless { predicate, effects }) => {
             predicate_references_tag(predicate, tag) || effects_reference_tag(effects, tag)
         }
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::CopySpellForEachTarget { object_filter, .. },
+            action: SubjectVerbActionAst::Stack(StackActionAst::CopySpellForEachTarget { object_filter, .. }),
             ..
         }) => object_filter
             .as_ref()
             .is_some_and(|filter| filter_references_tag(filter, tag)),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::DealDamageEqualToPower {
+                SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
                     source,
                     amount,
                     target,
                     ..
-                },
+                }),
             ..
         }) => {
             target_references_tag(source, tag)
@@ -673,19 +675,19 @@ pub fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
                 || target_references_tag(target, tag)
         }
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::CreateTokenCopy { object, .. },
+            action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { object, .. }),
             ..
         }) => match object {
             ObjectRefAst::Tagged(found) => found.as_str() == tag,
         },
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::CreateTokenWithMods {
+                SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
                     count,
                     dynamic_power_toughness,
                     attached_to,
                     ..
-                },
+                }),
             ..
         }) => {
             value_references_tag(count, tag)
@@ -698,7 +700,7 @@ pub fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
                     .as_ref()
                     .is_some_and(|target| target_references_tag(target, tag))
         }
-        EffectAst::ForEachObject { filter, effects } => {
+        EffectAst::ForEach(ForEachEffectAst::ForEachObject { filter, effects }) => {
             filter
                 .tagged_constraints
                 .iter()
@@ -786,41 +788,41 @@ pub fn predicate_references_tag(predicate: &PredicateAst, tag: &str) -> bool {
         PredicateAst::ItMatches(filter)
         | PredicateAst::ItMatchedLastKnown(filter)
         | PredicateAst::TargetMatches(filter)
-        | PredicateAst::SourceMatches(filter)
+        | PredicateAst::Source(SourcePredicateAst::SourceMatches(filter))
         | PredicateAst::AttachedToSourceMatches(filter)
         | PredicateAst::NoVoteObjectsMatched { filter }
-        | PredicateAst::ObjectEnteredBattlefieldThisTurn(filter)
-        | PredicateAst::ObjectEnteredBattlefieldLastTurn(filter)
-        | PredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter) => {
+        | PredicateAst::TurnEvents(TurnEventPredicateAst::ObjectEnteredBattlefieldThisTurn(filter))
+        | PredicateAst::TurnEvents(TurnEventPredicateAst::ObjectEnteredBattlefieldLastTurn(filter))
+        | PredicateAst::TurnEvents(TurnEventPredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter)) => {
             filter_references_tag(filter, tag)
         }
         PredicateAst::TaggedMatches(found, filter) => {
             found.as_str() == tag || filter_references_tag(filter, tag)
         }
         PredicateAst::TaggedWasCast(found)
-        | PredicateAst::PlayerTaggedObjectEnteredBattlefieldThisTurn { tag: found, .. } => {
+        | PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectEnteredBattlefieldThisTurn { tag: found, .. }) => {
             found.as_str() == tag
         }
-        PredicateAst::PlayerTaggedObjectMatches {
+        PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches {
             tag: found, filter, ..
-        } => found.as_str() == tag || filter_references_tag(filter, tag),
-        PredicateAst::PlayerControls { filter, .. }
-        | PredicateAst::PlayerHasAtLeast { filter, .. }
-        | PredicateAst::PlayerControlsExactly { filter, .. }
-        | PredicateAst::PlayerHasAtLeastWithDifferentPowers { filter, .. }
-        | PredicateAst::PlayerControlsNo { filter, .. }
-        | PredicateAst::PlayerControlsMost { filter, .. }
-        | PredicateAst::PlayerControlsMoreThanEachOtherPlayer { filter, .. }
+        }) => found.as_str() == tag || filter_references_tag(filter, tag),
+        PredicateAst::Player(PlayerPredicateAst::PlayerControls { filter, .. })
+        | PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast { filter, .. })
+        | PredicateAst::Player(PlayerPredicateAst::PlayerControlsExactly { filter, .. })
+        | PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeastWithDifferentPowers { filter, .. })
+        | PredicateAst::Player(PlayerPredicateAst::PlayerControlsNo { filter, .. })
+        | PredicateAst::Player(PlayerPredicateAst::PlayerControlsMost { filter, .. })
+        | PredicateAst::Player(PlayerPredicateAst::PlayerControlsMoreThanEachOtherPlayer { filter, .. })
         | PredicateAst::AnOpponentHasFewerThanPlayer { filter, .. }
-        | PredicateAst::PlayerControlsMoreThanYou { filter, .. }
-        | PredicateAst::SourceHasAttachmentsMatching { filter, .. } => {
+        | PredicateAst::Player(PlayerPredicateAst::PlayerControlsMoreThanYou { filter, .. })
+        | PredicateAst::Source(SourcePredicateAst::SourceHasAttachmentsMatching { filter, .. }) => {
             filter_references_tag(filter, tag)
         }
-        PredicateAst::PlayerControlsOrHasCardInGraveyard {
+        PredicateAst::Player(PlayerPredicateAst::PlayerControlsOrHasCardInGraveyard {
             control_filter,
             graveyard_filter,
             ..
-        } => {
+        }) => {
             filter_references_tag(control_filter, tag)
                 || filter_references_tag(graveyard_filter, tag)
         }
@@ -1010,301 +1012,301 @@ fn target_references_event_derived_amount(target: &TargetAst) -> bool {
 
 fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
     match action {
-        SubjectVerbActionAst::Draw { count }
-        | SubjectVerbActionAst::Mill { count }
-        | SubjectVerbActionAst::ExileTopOfLibrary { count, .. }
-        | SubjectVerbActionAst::Scry { count }
-        | SubjectVerbActionAst::Surveil { count }
-        | SubjectVerbActionAst::Proliferate { count }
-        | SubjectVerbActionAst::Investigate { count }
-        | SubjectVerbActionAst::Discover { count }
-        | SubjectVerbActionAst::Fateseal { count }
-        | SubjectVerbActionAst::Populate { count, .. }
-        | SubjectVerbActionAst::Connive { count, .. }
-        | SubjectVerbActionAst::CreateTokenCopy { count, .. }
-        | SubjectVerbActionAst::CreateTokenCopyFromSource { count, .. }
-        | SubjectVerbActionAst::CreateTokenWithMods { count, .. } => Some(count),
-        SubjectVerbActionAst::Incubate { amount, .. } => Some(amount),
-        SubjectVerbActionAst::Monstrosity { amount } => Some(amount),
-        SubjectVerbActionAst::LoseLife { amount }
-        | SubjectVerbActionAst::PayLife { amount }
-        | SubjectVerbActionAst::GainLife { amount }
-        | SubjectVerbActionAst::DealDamage { amount, .. }
-        | SubjectVerbActionAst::DealDamageEqualToPower { amount, .. }
-        | SubjectVerbActionAst::DealDistributedDamage { amount, .. }
-        | SubjectVerbActionAst::DealDamageEach { amount, .. }
-        | SubjectVerbActionAst::PreventDamage { amount, .. }
-        | SubjectVerbActionAst::PreventDamageEach { amount, .. }
-        | SubjectVerbActionAst::CopySpell { count: amount, .. }
-        | SubjectVerbActionAst::PutCounters { count: amount, .. }
-        | SubjectVerbActionAst::PutCounterChoice { count: amount, .. }
-        | SubjectVerbActionAst::PutCountersAll { count: amount, .. }
-        | SubjectVerbActionAst::RemoveUpToAnyCounters { amount, .. }
-        | SubjectVerbActionAst::RemoveCountersAll { amount, .. }
-        | SubjectVerbActionAst::Discard { count: amount, .. }
-        | SubjectVerbActionAst::PoisonCounters { count: amount }
-        | SubjectVerbActionAst::EnergyCounters { count: amount }
-        | SubjectVerbActionAst::ExperienceCounters { count: amount }
-        | SubjectVerbActionAst::TicketCounters { count: amount }
-        | SubjectVerbActionAst::PayEnergy { amount }
-        | SubjectVerbActionAst::SetLifeTotal { amount }
-        | SubjectVerbActionAst::AddManaScaled { amount, .. }
-        | SubjectVerbActionAst::AddManaAnyColor { amount, .. }
-        | SubjectVerbActionAst::AddManaAnyOneColor { amount }
-        | SubjectVerbActionAst::AddManaChosenColor { amount, .. }
-        | SubjectVerbActionAst::AddManaFromLandCouldProduce { amount, .. }
-        | SubjectVerbActionAst::AddManaCommanderIdentity { amount }
-        | SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget { amount, .. }
-        | SubjectVerbActionAst::LookAtTopCards { count: amount, .. }
-        | SubjectVerbActionAst::MoveToLibraryNthFromTop {
+        SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count })
+        | SubjectVerbActionAst::Library(LibraryActionAst::Mill { count })
+        | SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { count, .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Scry { count })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Surveil { count })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Proliferate { count })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Investigate { count })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Discover { count })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fateseal { count })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Populate { count, .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Connive { count, .. })
+        | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { count, .. })
+        | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { count, .. })
+        | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { count, .. }) => Some(count),
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Incubate { amount, .. }) => Some(amount),
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { amount }) => Some(amount),
+        SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount })
+        | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayLife { amount })
+        | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount })
+        | SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount, .. })
+        | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { amount, .. })
+        | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { amount, .. })
+        | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. })
+        | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage { amount, .. })
+        | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamageEach { amount, .. })
+        | SubjectVerbActionAst::Stack(StackActionAst::CopySpell { count: amount, .. })
+        | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { count: amount, .. })
+        | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice { count: amount, .. })
+        | SubjectVerbActionAst::Counters(CounterActionAst::PutCountersAll { count: amount, .. })
+        | SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters { amount, .. })
+        | SubjectVerbActionAst::Counters(CounterActionAst::RemoveCountersAll { amount, .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { count: amount, .. })
+        | SubjectVerbActionAst::Counters(CounterActionAst::PoisonCounters { count: amount })
+        | SubjectVerbActionAst::Counters(CounterActionAst::EnergyCounters { count: amount })
+        | SubjectVerbActionAst::Counters(CounterActionAst::ExperienceCounters { count: amount })
+        | SubjectVerbActionAst::Counters(CounterActionAst::TicketCounters { count: amount })
+        | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayEnergy { amount })
+        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetLifeTotal { amount })
+        | SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled { amount, .. })
+        | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { amount, .. })
+        | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount })
+        | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { amount, .. })
+        | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce { amount, .. })
+        | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { amount })
+        | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectNextDamageFromSourceToTarget { amount, .. })
+        | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { count: amount, .. })
+        | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryNthFromTop {
             position: amount, ..
-        }
-        | SubjectVerbActionAst::AdditionalLandPlays { count: amount, .. }
-        | SubjectVerbActionAst::HealDamage {
+        })
+        | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalLandPlays { count: amount, .. })
+        | SubjectVerbActionAst::Damage(DamageActionAst::HealDamage {
             amount: Some(amount),
             ..
-        } => Some(amount),
-        SubjectVerbActionAst::PayMana {
+        }) => Some(amount),
+        SubjectVerbActionAst::Mana(ManaActionAst::PayMana {
             x_value, x_maximum, ..
-        } => x_value.as_ref().or(x_maximum.as_ref()),
-        SubjectVerbActionAst::SearchLibrary {
+        }) => x_value.as_ref().or(x_maximum.as_ref()),
+        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
             count_value: Some(value),
             ..
-        } => Some(value),
-        SubjectVerbActionAst::DrawForEachTaggedMatching { .. }
-        | SubjectVerbActionAst::RevealHand
-        | SubjectVerbActionAst::RevealTop
-        | SubjectVerbActionAst::RevealTagged { .. }
-        | SubjectVerbActionAst::RevealCardsFromHand { .. }
-        | SubjectVerbActionAst::LookAtObjects { .. }
-        | SubjectVerbActionAst::LookAtTarget { .. }
-        | SubjectVerbActionAst::EmitKeywordAction { .. }
-        | SubjectVerbActionAst::Amass { .. }
-        | SubjectVerbActionAst::Bolster { .. }
-        | SubjectVerbActionAst::Support { .. }
-        | SubjectVerbActionAst::Adapt { .. }
-        | SubjectVerbActionAst::Explore { .. }
-        | SubjectVerbActionAst::Endure { .. }
-        | SubjectVerbActionAst::Exploit
-        | SubjectVerbActionAst::ConniveIterated
-        | SubjectVerbActionAst::OpenAttraction { .. }
-        | SubjectVerbActionAst::ManifestTopCardOfLibrary
-        | SubjectVerbActionAst::CloakTopCardOfLibrary
-        | SubjectVerbActionAst::ManifestCardFromHand
-        | SubjectVerbActionAst::ManifestDread
-        | SubjectVerbActionAst::Earthbend { .. }
-        | SubjectVerbActionAst::Behold { .. }
-        | SubjectVerbActionAst::Fight { .. }
-        | SubjectVerbActionAst::FightIterated { .. }
-        | SubjectVerbActionAst::Clash { .. }
-        | SubjectVerbActionAst::FlipCoin
-        | SubjectVerbActionAst::FlipCoinFaceOnly
-        | SubjectVerbActionAst::RollDie { .. }
-        | SubjectVerbActionAst::RollDiceChooseResult { .. }
-        | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
-        | SubjectVerbActionAst::ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary
-        | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary { .. }
-        | SubjectVerbActionAst::ReorderGraveyard
-        | SubjectVerbActionAst::ChooseColor
-        | SubjectVerbActionAst::ChooseCardType { .. }
-        | SubjectVerbActionAst::ChooseNamedOption { .. }
-        | SubjectVerbActionAst::ChooseCreatureType { .. }
-        | SubjectVerbActionAst::ChooseLandType { .. }
-        | SubjectVerbActionAst::ChooseCardName { .. }
-        | SubjectVerbActionAst::ChoosePlayer { .. }
-        | SubjectVerbActionAst::NoteLifeTotal
-        | SubjectVerbActionAst::AddMana { .. }
-        | SubjectVerbActionAst::ExchangeLifeTotals { .. }
-        | SubjectVerbActionAst::ExchangeTextBoxes { .. }
-        | SubjectVerbActionAst::ExchangeZones { .. }
-        | SubjectVerbActionAst::PutRestOnBottomOfLibrary
-        | SubjectVerbActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn
-        | SubjectVerbActionAst::ExchangeValues { .. }
-        | SubjectVerbActionAst::ExileInsteadOfGraveyardThisTurn
-        | SubjectVerbActionAst::ControlCombatChoicesThisTurn { .. }
-        | SubjectVerbActionAst::GainControl { .. }
+        }) => Some(value),
+        SubjectVerbActionAst::LifeResources(LifeResourceActionAst::DrawForEachTaggedMatching { .. })
+        | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealHand)
+        | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTop)
+        | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTagged { .. })
+        | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealCardsFromHand { .. })
+        | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects { .. })
+        | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTarget { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Bolster { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Support { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Adapt { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Exploit)
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ConniveIterated)
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OpenAttraction { .. })
+        | SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary)
+        | SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary)
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestCardFromHand)
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestDread)
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Earthbend { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Behold { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fight { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::FightIterated { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash { .. })
+        | SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)
+        | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
+        | SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. })
+        | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. })
+        | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary)
+        | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary)
+        | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleGraveyardIntoLibrary { .. })
+        | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyard)
+        | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)
+        | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { .. })
+        | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNamedOption { .. })
+        | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType { .. })
+        | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType { .. })
+        | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { .. })
+        | SubjectVerbActionAst::Choices(ChoiceActionAst::ChoosePlayer { .. })
+        | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::NoteLifeTotal)
+        | SubjectVerbActionAst::Mana(ManaActionAst::AddMana { .. })
+        | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeLifeTotals { .. })
+        | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeTextBoxes { .. })
+        | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeZones { .. })
+        | SubjectVerbActionAst::Library(LibraryActionAst::PutRestOnBottomOfLibrary)
+        | SubjectVerbActionAst::Mana(ManaActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn)
+        | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeValues { .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileInsteadOfGraveyardThisTurn)
+        | SubjectVerbActionAst::Control(ControlActionAst::ControlCombatChoicesThisTurn { .. })
+        | SubjectVerbActionAst::Control(ControlActionAst::GainControl { .. })
         | SubjectVerbActionAst::PutSticker { .. }
-        | SubjectVerbActionAst::SwitchPowerToughness { .. }
-        | SubjectVerbActionAst::ScalePowerToughnessAll { .. }
-        | SubjectVerbActionAst::ScaleXValue { .. }
-        | SubjectVerbActionAst::AddManaColorsAmong { .. }
-        | SubjectVerbActionAst::AddOneManaAnyColorAmong { .. }
-        | SubjectVerbActionAst::AddManaImprintedColors
-        | SubjectVerbActionAst::DoubleManaPool
-        | SubjectVerbActionAst::EmptyManaPool
-        | SubjectVerbActionAst::EndTurn
-        | SubjectVerbActionAst::EndCombatPhase
-        | SubjectVerbActionAst::SkipTurn
-        | SubjectVerbActionAst::SkipCombatPhases
-        | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
-        | SubjectVerbActionAst::SkipMainPhasesThisTurn
-        | SubjectVerbActionAst::SkipCombatPhasesThisTurn
-        | SubjectVerbActionAst::SkipDrawStep
-        | SubjectVerbActionAst::PlayFromGraveyardUntilEot
-        | SubjectVerbActionAst::ControlPlayer { .. }
-        | SubjectVerbActionAst::ReduceNextSpellCostThisTurn { .. }
-        | SubjectVerbActionAst::ReduceMatchingSpellCostThisTurn { .. }
-        | SubjectVerbActionAst::GrantNextSpellAbilityThisTurn { .. }
-        | SubjectVerbActionAst::RingTemptsYou
-        | SubjectVerbActionAst::VentureIntoDungeon { .. }
-        | SubjectVerbActionAst::BecomeMonarch
-        | SubjectVerbActionAst::TakeInitiative
-        | SubjectVerbActionAst::CreateEmblem { .. }
-        | SubjectVerbActionAst::LoseGame
-        | SubjectVerbActionAst::WinGame
+        | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::SwitchPowerToughness { .. })
+        | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ScalePowerToughnessAll { .. })
+        | SubjectVerbActionAst::Stack(StackActionAst::ScaleXValue { .. })
+        | SubjectVerbActionAst::Mana(ManaActionAst::AddManaColorsAmong { .. })
+        | SubjectVerbActionAst::Mana(ManaActionAst::AddOneManaAnyColorAmong { .. })
+        | SubjectVerbActionAst::Mana(ManaActionAst::AddManaImprintedColors)
+        | SubjectVerbActionAst::Mana(ManaActionAst::DoubleManaPool)
+        | SubjectVerbActionAst::Mana(ManaActionAst::EmptyManaPool)
+        | SubjectVerbActionAst::Game(GameActionAst::EndTurn)
+        | SubjectVerbActionAst::Game(GameActionAst::EndCombatPhase)
+        | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipTurn)
+        | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhases)
+        | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipNextCombatPhaseThisTurn)
+        | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipMainPhasesThisTurn)
+        | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhasesThisTurn)
+        | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipDrawStep)
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PlayFromGraveyardUntilEot)
+        | SubjectVerbActionAst::Control(ControlActionAst::ControlPlayer { .. })
+        | SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn { .. })
+        | SubjectVerbActionAst::Stack(StackActionAst::ReduceMatchingSpellCostThisTurn { .. })
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantNextSpellAbilityThisTurn { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RingTemptsYou)
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::VentureIntoDungeon { .. })
+        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeMonarch)
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::TakeInitiative)
+        | SubjectVerbActionAst::Tokens(TokenActionAst::CreateEmblem { .. })
+        | SubjectVerbActionAst::Game(GameActionAst::LoseGame)
+        | SubjectVerbActionAst::Game(GameActionAst::WinGame)
         | SubjectVerbActionAst::ReorderTopPlanarDeck { .. }
-        | SubjectVerbActionAst::ReturnSourceTransformedFromExile
-        | SubjectVerbActionAst::Reconfigure { .. }
-        | SubjectVerbActionAst::CumulativeUpkeep { .. }
-        | SubjectVerbActionAst::Casualty { .. }
-        | SubjectVerbActionAst::PayAnyEnergy { .. }
-        | SubjectVerbActionAst::PayAnyLife { .. }
-        | SubjectVerbActionAst::DiscardHand
-        | SubjectVerbActionAst::Detain { .. }
-        | SubjectVerbActionAst::Goad { .. }
-        | SubjectVerbActionAst::Suspect { .. }
-        | SubjectVerbActionAst::ClearSuspected { .. }
-        | SubjectVerbActionAst::HealDamage { amount: None, .. }
-        | SubjectVerbActionAst::RemoveFromCombat { .. }
-        | SubjectVerbActionAst::Flip { .. }
-        | SubjectVerbActionAst::Regenerate { .. }
-        | SubjectVerbActionAst::RegenerateAll { .. }
-        | SubjectVerbActionAst::TapAll { .. }
-        | SubjectVerbActionAst::UntapAll { .. }
-        | SubjectVerbActionAst::TapOrUntap { .. }
-        | SubjectVerbActionAst::TapOrUntapAll { .. }
-        | SubjectVerbActionAst::PhaseOut { .. }
-        | SubjectVerbActionAst::PhaseOutAll { .. }
-        | SubjectVerbActionAst::PhaseIn { .. }
-        | SubjectVerbActionAst::PhaseInAll { .. }
-        | SubjectVerbActionAst::Transform { .. }
-        | SubjectVerbActionAst::Convert { .. }
-        | SubjectVerbActionAst::Tap { .. }
-        | SubjectVerbActionAst::Untap { .. }
-        | SubjectVerbActionAst::Destroy { .. }
-        | SubjectVerbActionAst::DestroyAll { .. }
-        | SubjectVerbActionAst::DestroyAllOfChosenColor { .. }
-        | SubjectVerbActionAst::Exile { .. }
-        | SubjectVerbActionAst::ExileAll { .. }
-        | SubjectVerbActionAst::LookAtHand { .. }
-        | SubjectVerbActionAst::Counter { .. }
-        | SubjectVerbActionAst::CounterUnlessPays { .. }
-        | SubjectVerbActionAst::MoveAllCounters { .. }
-        | SubjectVerbActionAst::MoveOneCounter { .. }
-        | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { .. }
-        | SubjectVerbActionAst::PutCounterOfChosenKind { .. }
-        | SubjectVerbActionAst::DoubleCountersOnTarget { .. }
-        | SubjectVerbActionAst::ReturnToHand { .. }
-        | SubjectVerbActionAst::ReturnAllToHand { .. }
-        | SubjectVerbActionAst::ReturnAllToHandOfChosenColor { .. }
-        | SubjectVerbActionAst::DoubleCountersOnEach { .. }
-        | SubjectVerbActionAst::Sacrifice { .. }
-        | SubjectVerbActionAst::SacrificeAll { .. }
-        | SubjectVerbActionAst::ExtraTurnAfterTurn { .. }
-        | SubjectVerbActionAst::ReorderTopOfLibrary { .. }
-        | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { .. }
-        | SubjectVerbActionAst::GrantProtectionChoice { .. }
-        | SubjectVerbActionAst::PreventAllCombatDamage { .. }
-        | SubjectVerbActionAst::AssignNoCombatDamage { .. }
-        | SubjectVerbActionAst::PreventAllCombatDamageFromSource { .. }
-        | SubjectVerbActionAst::PreventAllCombatDamageFromSourceFilter { .. }
-        | SubjectVerbActionAst::PreventAllCombatDamageToPlayers { .. }
-        | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }
-        | SubjectVerbActionAst::PreventNextTimeDamage { .. }
-        | SubjectVerbActionAst::ReplaceNextDamageToTarget { .. }
-        | SubjectVerbActionAst::RedirectNextTimeDamageToSource { .. }
-        | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController { .. }
-        | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { .. }
-        | SubjectVerbActionAst::PreventAllDamageToTarget { .. }
-        | SubjectVerbActionAst::PreventAllDamageToTargetFromSourceFilter { .. }
-        | SubjectVerbActionAst::PreventAllDamageFromSourceFilter { .. }
-        | SubjectVerbActionAst::PreventDamageToTargetPutCounters { .. }
-        | SubjectVerbActionAst::PutOrRemoveCounters { .. }
-        | SubjectVerbActionAst::CopySpellForEachTarget { .. }
-        | SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary { .. }
-        | SubjectVerbActionAst::PutTaggedRemainderInZone { .. }
-        | SubjectVerbActionAst::CastTagged { .. }
-        | SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn { .. }
-        | SubjectVerbActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnSourceTransformedFromExile)
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Reconfigure { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CumulativeUpkeep { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Casualty { .. })
+        | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayAnyEnergy { .. })
+        | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayAnyLife { .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DiscardHand)
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Detain { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearSuspected { .. })
+        | SubjectVerbActionAst::Damage(DamageActionAst::HealDamage { amount: None, .. })
+        | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat { .. })
+        | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Flip { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Regenerate { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RegenerateAll { .. })
+        | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapAll { .. })
+        | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::UntapAll { .. })
+        | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapOrUntap { .. })
+        | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapOrUntapAll { .. })
+        | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseOut { .. })
+        | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseOutAll { .. })
+        | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseIn { .. })
+        | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll { .. })
+        | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Transform { .. })
+        | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Convert { .. })
+        | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap { .. })
+        | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Untap { .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAllOfChosenColor { .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { .. })
+        | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtHand { .. })
+        | SubjectVerbActionAst::Stack(StackActionAst::Counter { .. })
+        | SubjectVerbActionAst::Stack(StackActionAst::CounterUnlessPays { .. })
+        | SubjectVerbActionAst::Counters(CounterActionAst::MoveAllCounters { .. })
+        | SubjectVerbActionAst::Counters(CounterActionAst::MoveOneCounter { .. })
+        | SubjectVerbActionAst::Counters(CounterActionAst::ForEachCounterKindPutOrRemove { .. })
+        | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { .. })
+        | SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnTarget { .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand { .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHandOfChosenColor { .. })
+        | SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnEach { .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { .. })
+        | SubjectVerbActionAst::Game(GameActionAst::ExtraTurnAfterTurn { .. })
+        | SubjectVerbActionAst::Library(LibraryActionAst::ReorderTopOfLibrary { .. })
+        | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleObjectsIntoLibrary { .. })
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantProtectionChoice { .. })
+        | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllCombatDamage { .. })
+        | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::AssignNoCombatDamage { .. })
+        | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllCombatDamageFromSource { .. })
+        | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllCombatDamageFromSourceFilter { .. })
+        | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllCombatDamageToPlayers { .. })
+        | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllCombatDamageToYou { .. })
+        | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventNextTimeDamage { .. })
+        | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::ReplaceNextDamageToTarget { .. })
+        | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectNextTimeDamageToSource { .. })
+        | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectAllDamageThisTurnBySourceToSourceController { .. })
+        | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectAllDamageThisTurnToTarget { .. })
+        | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllDamageToTarget { .. })
+        | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter { .. })
+        | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllDamageFromSourceFilter { .. })
+        | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamageToTargetPutCounters { .. })
+        | SubjectVerbActionAst::Counters(CounterActionAst::PutOrRemoveCounters { .. })
+        | SubjectVerbActionAst::Stack(StackActionAst::CopySpellForEachTarget { .. })
+        | SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary { .. })
+        | SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderInZone { .. })
+        | SubjectVerbActionAst::Stack(StackActionAst::CastTagged { .. })
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn { .. })
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
             ..
-        }
-        | SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn { .. }
-        | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled { .. }
-        | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsYouControlSource { .. }
-        | SubjectVerbActionAst::ReturnToBattlefield { .. }
-        | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
-        | SubjectVerbActionAst::ExileUntilSourceLeaves { .. }
-        | SubjectVerbActionAst::MoveToZone { .. }
-        | SubjectVerbActionAst::PutOntoBattlefield { .. }
-        | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { .. }
+        })
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilYourNextTurn { .. })
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled { .. })
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield { .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileUntilSourceLeaves { .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PutOntoBattlefield { .. })
+        | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice { .. })
         | SubjectVerbActionAst::TargetOnly { .. }
         | SubjectVerbActionAst::TagMatchingObjects { .. }
-        | SubjectVerbActionAst::Pump { .. }
-        | SubjectVerbActionAst::SetBasePowerToughness { .. }
-        | SubjectVerbActionAst::BecomeBasePtCreature { .. }
-        | SubjectVerbActionAst::SetBasePower { .. }
-        | SubjectVerbActionAst::PumpForEach { .. }
-        | SubjectVerbActionAst::PumpAll { .. }
-        | SubjectVerbActionAst::PumpByLastEffect { .. }
-        | SubjectVerbActionAst::AddCardTypes { .. }
-        | SubjectVerbActionAst::SetCardTypes { .. }
-        | SubjectVerbActionAst::RemoveCardTypes { .. }
-        | SubjectVerbActionAst::AddSubtypes { .. }
-        | SubjectVerbActionAst::RemoveSubtypes { .. }
-        | SubjectVerbActionAst::SetCreatureSubtypes { .. }
-        | SubjectVerbActionAst::BecomeSaddledUntilEndOfTurn { .. }
-        | SubjectVerbActionAst::AddColors { .. }
-        | SubjectVerbActionAst::AddAllSubtypesOfFamily { .. }
-        | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { .. }
-        | SubjectVerbActionAst::BecomeAuraEnchantment { .. }
-        | SubjectVerbActionAst::BecomeBasicLandType { .. }
-        | SubjectVerbActionAst::SetColors { .. }
-        | SubjectVerbActionAst::MakeColorless { .. }
-        | SubjectVerbActionAst::BecomeBasicLandTypeChoice { .. }
-        | SubjectVerbActionAst::BecomeCreatureTypeChoice { .. }
-        | SubjectVerbActionAst::BecomeColorChoice { .. }
-        | SubjectVerbActionAst::BecomeCopy { .. }
-        | SubjectVerbActionAst::GrantAbilitiesAll { .. }
-        | SubjectVerbActionAst::RemoveAbilitiesAll { .. }
-        | SubjectVerbActionAst::GrantAbilitiesChoiceAll { .. }
-        | SubjectVerbActionAst::GrantAbilitiesToTarget { .. }
-        | SubjectVerbActionAst::GrantToTarget { .. }
-        | SubjectVerbActionAst::GrantBySpec { .. }
-        | SubjectVerbActionAst::RemoveAbilitiesFromTarget { .. }
-        | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { .. }
-        | SubjectVerbActionAst::ConsultTopOfLibrary { .. }
-        | SubjectVerbActionAst::SearchLibrary { .. }
+        | SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { .. })
+        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness { .. })
+        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature { .. })
+        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { .. })
+        | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach { .. })
+        | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll { .. })
+        | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpByLastEffect { .. })
+        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddCardTypes { .. })
+        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCardTypes { .. })
+        | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveCardTypes { .. })
+        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes { .. })
+        | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSubtypes { .. })
+        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCreatureSubtypes { .. })
+        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeSaddledUntilEndOfTurn { .. })
+        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddColors { .. })
+        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddAllSubtypesOfFamily { .. })
+        | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAllSubtypesOfFamily { .. })
+        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeAuraEnchantment { .. })
+        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasicLandType { .. })
+        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetColors { .. })
+        | SubjectVerbActionAst::StatChanges(StatChangeActionAst::MakeColorless { .. })
+        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasicLandTypeChoice { .. })
+        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCreatureTypeChoice { .. })
+        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice { .. })
+        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCopy { .. })
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll { .. })
+        | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll { .. })
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceAll { .. })
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { .. })
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { .. })
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantBySpec { .. })
+        | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget { .. })
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceToTarget { .. })
+        | SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary { .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary { .. })
         | SubjectVerbActionAst::Cant { .. }
-        | SubjectVerbActionAst::Meld { .. }
-        | SubjectVerbActionAst::CreateTokenChoice { .. }
-        | SubjectVerbActionAst::SearchLibrarySlotsToHand { .. }
-        | SubjectVerbActionAst::RetargetStackObject { .. }
-        | SubjectVerbActionAst::GrantAbilityToSource { .. }
-        | SubjectVerbActionAst::ExchangeControl { .. }
-        | SubjectVerbActionAst::ExchangeControlHeterogeneous { .. }
-        | SubjectVerbActionAst::DestroyAllAttachedTo { .. }
-        | SubjectVerbActionAst::ExileAllAttachedTo { .. }
-        | SubjectVerbActionAst::Attach { .. }
-        | SubjectVerbActionAst::Unattach { .. }
-        | SubjectVerbActionAst::ExileWhenSourceLeaves { .. }
-        | SubjectVerbActionAst::SacrificeSourceWhenLeaves { .. }
-        | SubjectVerbActionAst::MayMoveToZone { .. }
-        | SubjectVerbActionAst::RegisterZoneReplacement { .. }
-        | SubjectVerbActionAst::RegisterFutureZoneReplacement { .. }
-        | SubjectVerbActionAst::RegisterDrawReplacement { .. }
-        | SubjectVerbActionAst::RegisterManaReplacement { .. }
-        | SubjectVerbActionAst::RegisterDamagedBySourceZoneReplacement { .. }
-        | SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. }
-        | SubjectVerbActionAst::RegisterEnterTappedReplacement { .. }
-        | SubjectVerbActionAst::RegisterNextBatchEnterWithCounters { .. }
-        | SubjectVerbActionAst::Enchant { .. }
-        | SubjectVerbActionAst::ChooseSpellCastHistory { .. }
-        | SubjectVerbActionAst::AdditionalPhases { .. }
-        | SubjectVerbActionAst::Learn
-        | SubjectVerbActionAst::UnlockRoomDoor
-        | SubjectVerbActionAst::ReverseTurnOrder
-        | SubjectVerbActionAst::TurnFaceUp { .. }
-        | SubjectVerbActionAst::ShuffleLibrary => None,
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Meld { .. })
+        | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenChoice { .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrarySlotsToHand { .. })
+        | SubjectVerbActionAst::Stack(StackActionAst::RetargetStackObject { .. })
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilityToSource { .. })
+        | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeControl { .. })
+        | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeControlHeterogeneous { .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAllAttachedTo { .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAllAttachedTo { .. })
+        | SubjectVerbActionAst::Control(ControlActionAst::Attach { .. })
+        | SubjectVerbActionAst::Control(ControlActionAst::Unattach { .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileWhenSourceLeaves { .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeSourceWhenLeaves { .. })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MayMoveToZone { .. })
+        | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterZoneReplacement { .. })
+        | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterFutureZoneReplacement { .. })
+        | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDrawReplacement { .. })
+        | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaReplacement { .. })
+        | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamagedBySourceZoneReplacement { .. })
+        | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterEnterUnderControlReplacement { .. })
+        | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterEnterTappedReplacement { .. })
+        | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterNextBatchEnterWithCounters { .. })
+        | SubjectVerbActionAst::Control(ControlActionAst::Enchant { .. })
+        | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseSpellCastHistory { .. })
+        | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalPhases { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Learn)
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::UnlockRoomDoor)
+        | SubjectVerbActionAst::Game(GameActionAst::ReverseTurnOrder)
+        | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp { .. })
+        | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary) => None,
     }
 }
 
@@ -1318,100 +1320,100 @@ pub fn effect_references_event_derived_amount(effect: &EffectAst) -> bool {
         return true;
     }
     match effect {
-        EffectAst::RepeatEffects { count, effects } => {
+        EffectAst::ForEach(ForEachEffectAst::RepeatEffects { count, effects }) => {
             value_references_event_derived_amount(count)
                 || effects.iter().any(effect_references_event_derived_amount)
         }
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             count_value: Some(count_value),
             ..
-        }
-        | EffectAst::ChooseObjectsBottomOfLibrary {
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
             count_value: Some(count_value),
             ..
-        }
-        | EffectAst::ChooseObjectsTopOfLibrary {
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary {
             count_value: Some(count_value),
             ..
-        }
-        | EffectAst::ChooseObjectsAcrossZones {
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
             count_value: Some(count_value),
             ..
-        } => value_references_event_derived_amount(count_value),
+        }) => value_references_event_derived_amount(count_value),
         EffectAst::SubjectVerb(subject_verb) => {
             subject_verb_action_value(&subject_verb.action)
                 .is_some_and(value_references_event_derived_amount)
                 || match &subject_verb.action {
-                    SubjectVerbActionAst::CounterUnlessPays { cost, .. } => {
+                    SubjectVerbActionAst::Stack(StackActionAst::CounterUnlessPays { cost, .. }) => {
                         total_cost_values_any(cost, value_references_event_derived_amount)
                     }
-                    SubjectVerbActionAst::PreventDamageToTargetPutCounters {
+                    SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamageToTargetPutCounters {
                         amount: Some(amount),
                         ..
-                    } => value_references_event_derived_amount(amount),
-                    SubjectVerbActionAst::PutOrRemoveCounters {
+                    }) => value_references_event_derived_amount(amount),
+                    SubjectVerbActionAst::Counters(CounterActionAst::PutOrRemoveCounters {
                         put_count,
                         remove_count,
                         ..
-                    } => {
+                    }) => {
                         value_references_event_derived_amount(put_count)
                             || value_references_event_derived_amount(remove_count)
                     }
-                    SubjectVerbActionAst::Pump {
+                    SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
                         power, toughness, ..
-                    }
-                    | SubjectVerbActionAst::SetBasePowerToughness {
+                    })
+                    | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness {
                         power, toughness, ..
-                    }
-                    | SubjectVerbActionAst::BecomeBasePtCreature {
+                    })
+                    | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
                         power, toughness, ..
-                    }
-                    | SubjectVerbActionAst::PumpAll {
+                    })
+                    | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
                         power, toughness, ..
-                    } => {
+                    }) => {
                         value_references_event_derived_amount(power)
                             || value_references_event_derived_amount(toughness)
                     }
-                    SubjectVerbActionAst::SetBasePower { power, .. } => {
+                    SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { power, .. }) => {
                         value_references_event_derived_amount(power)
                     }
-                    SubjectVerbActionAst::PumpForEach { count, .. } => {
+                    SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach { count, .. }) => {
                         value_references_event_derived_amount(count)
                     }
-                    SubjectVerbActionAst::ReturnToBattlefield {
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
                         count_value: Some(count_value),
                         ..
-                    } => value_references_event_derived_amount(count_value),
-                    SubjectVerbActionAst::DestroyAll { filter, .. }
-                    | SubjectVerbActionAst::DestroyAllOfChosenColor { filter, .. }
-                    | SubjectVerbActionAst::ExileAll { filter, .. }
-                    | SubjectVerbActionAst::ReturnAllToHand { filter, .. }
-                    | SubjectVerbActionAst::ReturnAllToHandOfChosenColor { filter }
-                    | SubjectVerbActionAst::TapAll { filter }
-                    | SubjectVerbActionAst::UntapAll { filter }
-                    | SubjectVerbActionAst::PhaseOutAll { filter, .. }
-                    | SubjectVerbActionAst::PhaseInAll { filter }
-                    | SubjectVerbActionAst::ScalePowerToughnessAll { filter, .. }
-                    | SubjectVerbActionAst::SacrificeAll { filter }
-                    | SubjectVerbActionAst::RegenerateAll { filter }
-                    | SubjectVerbActionAst::ReturnAllToBattlefield { filter, .. }
+                    }) => value_references_event_derived_amount(count_value),
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { filter, .. })
+                    | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAllOfChosenColor { filter, .. })
+                    | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { filter, .. })
+                    | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand { filter, .. })
+                    | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHandOfChosenColor { filter })
+                    | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapAll { filter })
+                    | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::UntapAll { filter })
+                    | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseOutAll { filter, .. })
+                    | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll { filter })
+                    | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ScalePowerToughnessAll { filter, .. })
+                    | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter })
+                    | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RegenerateAll { filter })
+                    | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield { filter, .. })
                     | SubjectVerbActionAst::TagMatchingObjects { filter, .. }
-                    | SubjectVerbActionAst::GrantAbilitiesAll { filter, .. }
-                    | SubjectVerbActionAst::RemoveAbilitiesAll { filter, .. } => {
+                    | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll { filter, .. })
+                    | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll { filter, .. }) => {
                         filter_references_event_derived_amount(filter)
                     }
-                    SubjectVerbActionAst::CreateTokenWithMods {
+                    SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
                         dynamic_power_toughness: Some((power, toughness)),
                         ..
-                    } => {
+                    }) => {
                         value_references_event_derived_amount(power)
                             || value_references_event_derived_amount(toughness)
                     }
-                    SubjectVerbActionAst::ConsultTopOfLibrary {
+                    SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
                         stop_rule,
                         max_exposed,
                         ..
-                    } => {
+                    }) => {
                         matches!(
                             stop_rule,
                             crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(value)
@@ -1444,47 +1446,47 @@ pub fn effect_references_its_controller(effect: &EffectAst) -> bool {
                 PlayerAst::ItsController | PlayerAst::ItsOwner
             ) || matches!(
                 &subject_verb.action,
-                SubjectVerbActionAst::ExchangeLifeTotals {
+                SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeLifeTotals {
                     player2: PlayerAst::ItsController | PlayerAst::ItsOwner
-                } | SubjectVerbActionAst::CreateTokenCopy {
+                }) | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
                     player: PlayerAst::ItsController | PlayerAst::ItsOwner,
                     ..
-                } | SubjectVerbActionAst::CreateTokenCopyFromSource {
+                }) | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
                     player: PlayerAst::ItsController | PlayerAst::ItsOwner,
                     ..
-                } | SubjectVerbActionAst::CreateTokenWithMods {
+                }) | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
                     player: PlayerAst::ItsController | PlayerAst::ItsOwner,
                     ..
-                }
+                })
             )
         }
-        EffectAst::ChooseObjects { player, .. }
-        | EffectAst::ChooseObjectsWithAggregateConstraint { player, .. }
-        | EffectAst::ChooseObjectsAcrossZones { player, .. } => {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { player, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { player, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { player, .. }) => {
             matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
         }
-        EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+        EffectAst::Permissions(PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
             player, zone_owner, ..
-        } => {
+        }) => {
             matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
                 || matches!(zone_owner, PlayerAst::ItsController | PlayerAst::ItsOwner)
         }
-        EffectAst::MayByPlayer { player, effects } => {
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, effects }) => {
             matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
                 || effects_reference_its_controller(effects)
         }
-        EffectAst::UnlessPays {
+        EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
             effects, player, ..
-        } => {
+        }) => {
             matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
                 || effects_reference_its_controller(effects)
         }
-        EffectAst::UnlessAction {
+        EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
             effects,
             alternative,
             player,
             ..
-        } => {
+        }) => {
             matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
                 || effects_reference_its_controller(effects)
                 || effects_reference_its_controller(alternative)
@@ -1509,150 +1511,150 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
 
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-            SubjectVerbActionAst::DealDamageEach { amount, filter } => {
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, filter }) => {
                 value_references_tag(amount, crate::tag::CompilerReferenceTag::It.as_str()) || filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
             }
-            SubjectVerbActionAst::CounterUnlessPays { cost, .. } => {
+            SubjectVerbActionAst::Stack(StackActionAst::CounterUnlessPays { cost, .. }) => {
                 total_cost_values_any(cost, |value| value_references_tag(value, crate::tag::CompilerReferenceTag::It.as_str()))
             }
-            SubjectVerbActionAst::Discard { count, filter, .. } => {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { count, filter, .. }) => {
                 value_references_tag(count, crate::tag::CompilerReferenceTag::It.as_str())
                     || filter
                         .as_ref()
                         .is_some_and(|filter| filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str()))
             }
-            SubjectVerbActionAst::Sacrifice { filter, target, .. } => {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { filter, target, .. }) => {
                 filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
                     || target
                         .as_ref()
                         .is_some_and(|target| target_references_tag(target, crate::tag::CompilerReferenceTag::It.as_str()))
             }
-            SubjectVerbActionAst::SacrificeAll { filter } => filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str()),
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter }) => filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str()),
             SubjectVerbActionAst::PutSticker { target, .. }
-            | SubjectVerbActionAst::MoveToLibraryNthFromTop { target, .. }
-            | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target }
-            | SubjectVerbActionAst::SwitchPowerToughness { target, .. } => {
+            | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryNthFromTop { target, .. })
+            | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice { target })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::SwitchPowerToughness { target, .. }) => {
                 target_references_tag(target, crate::tag::CompilerReferenceTag::It.as_str())
             }
-            SubjectVerbActionAst::Regenerate {
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Regenerate {
                 follow_up_effects, ..
-            } => effects_reference_it_tag(follow_up_effects),
-            SubjectVerbActionAst::DestroyAll { filter, .. }
-            | SubjectVerbActionAst::DestroyAllOfChosenColor { filter, .. }
-            | SubjectVerbActionAst::ExileAll { filter, .. }
-            | SubjectVerbActionAst::ReturnAllToHand { filter, .. }
-            | SubjectVerbActionAst::ReturnAllToHandOfChosenColor { filter }
-            | SubjectVerbActionAst::TapAll { filter }
-            | SubjectVerbActionAst::UntapAll { filter }
-            | SubjectVerbActionAst::PhaseOutAll { filter, .. }
-            | SubjectVerbActionAst::PhaseInAll { filter }
-            | SubjectVerbActionAst::ScalePowerToughnessAll { filter, .. }
-            | SubjectVerbActionAst::RegenerateAll { filter } => {
+            }) => effects_reference_it_tag(follow_up_effects),
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { filter, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAllOfChosenColor { filter, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { filter, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand { filter, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHandOfChosenColor { filter })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapAll { filter })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::UntapAll { filter })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseOutAll { filter, .. })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll { filter })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ScalePowerToughnessAll { filter, .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RegenerateAll { filter }) => {
                 filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
             }
-            SubjectVerbActionAst::TapOrUntapAll {
+            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapOrUntapAll {
                 tap_filter,
                 untap_filter,
-            } => {
+            }) => {
                 filter_references_tag(tap_filter, crate::tag::CompilerReferenceTag::It.as_str())
                     || filter_references_tag(untap_filter, crate::tag::CompilerReferenceTag::It.as_str())
             }
-            SubjectVerbActionAst::ExileTopOfLibrary {
+            SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
                 count,
                 tags,
                 accumulated_tags,
                 ..
-            } => {
+            }) => {
                 value_references_tag(count, crate::tag::CompilerReferenceTag::It.as_str())
                     || tags.iter().any(|tag| tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
                     || accumulated_tags.iter().any(|tag| tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
             }
-            SubjectVerbActionAst::DrawForEachTaggedMatching { tag, filter } => {
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::DrawForEachTaggedMatching { tag, filter }) => {
                 tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() || filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
             }
-            SubjectVerbActionAst::PutCountersAll { count, filter, .. }
-            | SubjectVerbActionAst::RemoveCountersAll {
+            SubjectVerbActionAst::Counters(CounterActionAst::PutCountersAll { count, filter, .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::RemoveCountersAll {
                 amount: count,
                 filter,
                 ..
-            } => value_references_tag(count, crate::tag::CompilerReferenceTag::It.as_str()) || filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str()),
-            SubjectVerbActionAst::ReorderTopOfLibrary { tag } => tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str(),
-            SubjectVerbActionAst::ReduceNextSpellCostThisTurn { filter, .. }
-            | SubjectVerbActionAst::ReduceMatchingSpellCostThisTurn { filter, .. } => {
+            }) => value_references_tag(count, crate::tag::CompilerReferenceTag::It.as_str()) || filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str()),
+            SubjectVerbActionAst::Library(LibraryActionAst::ReorderTopOfLibrary { tag }) => tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str(),
+            SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn { filter, .. })
+            | SubjectVerbActionAst::Stack(StackActionAst::ReduceMatchingSpellCostThisTurn { filter, .. }) => {
                 filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
             }
-            SubjectVerbActionAst::PreventDamageToTargetPutCounters {
+            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamageToTargetPutCounters {
                 amount: Some(amount),
                 ..
-            } => value_references_tag(amount, crate::tag::CompilerReferenceTag::It.as_str()),
-            SubjectVerbActionAst::PreventDamageEach { amount, filter, .. } => {
+            }) => value_references_tag(amount, crate::tag::CompilerReferenceTag::It.as_str()),
+            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamageEach { amount, filter, .. }) => {
                 value_references_tag(amount, crate::tag::CompilerReferenceTag::It.as_str()) || filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
             }
-            SubjectVerbActionAst::PutOrRemoveCounters {
+            SubjectVerbActionAst::Counters(CounterActionAst::PutOrRemoveCounters {
                 put_count,
                 remove_count,
                 ..
-            } => value_references_tag(put_count, crate::tag::CompilerReferenceTag::It.as_str()) || value_references_tag(remove_count, crate::tag::CompilerReferenceTag::It.as_str()),
-            SubjectVerbActionAst::PutCounterChoice { count, .. } => {
+            }) => value_references_tag(put_count, crate::tag::CompilerReferenceTag::It.as_str()) || value_references_tag(remove_count, crate::tag::CompilerReferenceTag::It.as_str()),
+            SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice { count, .. }) => {
                 value_references_tag(count, crate::tag::CompilerReferenceTag::It.as_str())
             }
-            SubjectVerbActionAst::Pump {
+            SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
                 power, toughness, ..
-            }
-            | SubjectVerbActionAst::SetBasePowerToughness {
+            })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness {
                 power, toughness, ..
-            }
-            | SubjectVerbActionAst::BecomeBasePtCreature {
+            })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
                 power, toughness, ..
-            }
-            | SubjectVerbActionAst::PumpAll {
+            })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
                 power, toughness, ..
-            } => {
+            }) => {
                 value_references_tag(power, crate::tag::CompilerReferenceTag::It.as_str()) || value_references_tag(toughness, crate::tag::CompilerReferenceTag::It.as_str())
             }
-            SubjectVerbActionAst::SetBasePower { power, .. } => {
+            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { power, .. }) => {
                 value_references_tag(power, crate::tag::CompilerReferenceTag::It.as_str())
             }
-            SubjectVerbActionAst::PumpForEach { count, .. } => {
+            SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach { count, .. }) => {
                 value_references_tag(count, crate::tag::CompilerReferenceTag::It.as_str())
             }
-            SubjectVerbActionAst::CopySpellForEachTarget { object_filter, .. } => object_filter
+            SubjectVerbActionAst::Stack(StackActionAst::CopySpellForEachTarget { object_filter, .. }) => object_filter
                 .as_ref()
                 .is_some_and(|filter| filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())),
-            SubjectVerbActionAst::DealDamageEqualToPower {
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
                 source,
                 amount,
                 target,
                 ..
-            } => {
+            }) => {
                 target_references_tag(source, crate::tag::CompilerReferenceTag::It.as_str())
                     || value_references_tag(amount, crate::tag::CompilerReferenceTag::It.as_str())
                     || target_references_tag(target, crate::tag::CompilerReferenceTag::It.as_str())
             }
-            SubjectVerbActionAst::CastTagged { tag, .. } => tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str(),
-            SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn { tag, .. }
-            | SubjectVerbActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
+            SubjectVerbActionAst::Stack(StackActionAst::CastTagged { tag, .. }) => tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str(),
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn { tag, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
                 tag,
                 ..
-            }
-            | SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn { tag, .. }
-            | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled { tag, .. }
-            | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsYouControlSource { tag, .. } => {
+            })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilYourNextTurn { tag, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled { tag, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { tag, .. }) => {
                 tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             }
-            SubjectVerbActionAst::PutRestOnBottomOfLibrary => true,
+            SubjectVerbActionAst::Library(LibraryActionAst::PutRestOnBottomOfLibrary) => true,
             SubjectVerbActionAst::Cant { restriction, .. } => {
                 restriction_references_tag(restriction, crate::tag::CompilerReferenceTag::It.as_str())
             }
-            SubjectVerbActionAst::CreateTokenCopy { object, .. } => {
+            SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { object, .. }) => {
                 matches!(object, ObjectRefAst::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
             }
-            SubjectVerbActionAst::CreateTokenWithMods {
+            SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
                 count,
                 dynamic_power_toughness,
                 attached_to,
                 ..
-            } => {
+            }) => {
                 value_references_tag(count, crate::tag::CompilerReferenceTag::It.as_str())
                     || dynamic_power_toughness.as_ref().is_some_and(|(power, toughness)| {
                         value_references_tag(power, crate::tag::CompilerReferenceTag::It.as_str())
@@ -1665,11 +1667,11 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
             action => subject_verb_action_value(action)
                 .is_some_and(|value| value_references_tag(value, crate::tag::CompilerReferenceTag::It.as_str())),
         },
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true,
             if_false,
-        }
+        })
         | EffectAst::SelfReplacement {
             predicate,
             if_true,
@@ -1681,27 +1683,27 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
                 || effects_reference_it_tag(if_true)
                 || effects_reference_it_tag(if_false)
         }
-        EffectAst::TrailingIf { predicate, effects }
-        | EffectAst::TrailingUnless { predicate, effects } => {
+        EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects })
+        | EffectAst::Conditionals(ConditionalEffectAst::TrailingUnless { predicate, effects }) => {
             predicate_uses_implicit_it_reference(predicate)
                 || predicate_references_tag(predicate, crate::tag::CompilerReferenceTag::It.as_str())
                 || effects_reference_it_tag(effects)
         }
-        EffectAst::ForEachTagged { tag, effects } => {
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, effects }) => {
             tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() || effects_reference_it_tag(effects)
         }
-        EffectAst::ForEachTaggedWithControllerAtLastBlockedBy {
+        EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy {
             tag,
             blocker_tag,
             effects,
-        } => {
+        }) => {
             tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                 || blocker_tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                 || effects_reference_it_tag(effects)
         }
-        EffectAst::DelayedWhenLastObjectDiesThisTurn { .. }
-        | EffectAst::DelayedWhenLastObjectLeavesBattlefield { .. } => true,
-        EffectAst::ForEachObject { filter, effects } => {
+        EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn { .. })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectLeavesBattlefield { .. }) => true,
+        EffectAst::ForEach(ForEachEffectAst::ForEachObject { filter, effects }) => {
             filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str()) || effects_reference_it_tag(effects)
         }
         EffectAst::ControlFlow(control) => {

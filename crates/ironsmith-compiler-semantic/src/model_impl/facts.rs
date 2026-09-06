@@ -228,7 +228,7 @@ impl CompileContext {
     pub fn next_tag(&mut self, prefix: &str) -> TagKey {
         let tag = crate::tag::generated_result_tag(prefix, self.next_tag_id);
         self.next_tag_id += 1;
-        tag
+        tag.key.clone()
     }
 }
 

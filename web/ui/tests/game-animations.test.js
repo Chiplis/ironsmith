@@ -114,7 +114,7 @@ test("exile animation builds source and flight effects for matching runtime even
     result.previews[0].inspectorRevealDelayMs,
     RIFT_DISSOLVE_EXILE_INSPECTOR_REVEAL_DELAY_MS,
   );
-  assert.equal(result.visualEffects[1].targetScope, "inspector");
+  assert.equal(result.visualEffects[1].targetScope, "zone");
 });
 
 test("exile inspector reveal waits for the shared particle arrival window", () => {
@@ -175,7 +175,7 @@ test("exile animation uses the exact previous object rect before stable-id fallb
   );
 });
 
-test("destroy animation builds a collapse plus an inspector-bound stream", () => {
+test("destroy animation builds a collapse plus an owner-graveyard stream", () => {
   const result = resolveGameAnimations({
     previews: [destroyPreview()],
     state: { snapshot_id: 4, battlefield_transitions: [{ stable_id: 43, kind: "destroyed" }] },
@@ -198,8 +198,8 @@ test("destroy animation builds a collapse plus an inspector-bound stream", () =>
   assert.equal(result.visualEffects[0].sourceImageUrl, rect.sourceImageUrl);
   assert.equal(result.visualEffects[0].sourceCloneHtml, rect.sourceCloneHtml);
   assert.equal(result.visualEffects[1].streamProfile, "death");
-  assert.equal(result.visualEffects[1].targetToken, "p0:stable:43");
-  assert.equal(result.visualEffects[1].targetScope, "inspector");
+  assert.equal(result.visualEffects[1].targetToken, "zone:0:graveyard");
+  assert.equal(result.visualEffects[1].targetScope, "zone");
 });
 
 test("death animation follows battlefield-to-graveyard moves without a destroyed event", () => {

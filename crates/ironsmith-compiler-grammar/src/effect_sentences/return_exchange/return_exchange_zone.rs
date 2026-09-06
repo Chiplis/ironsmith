@@ -1,3 +1,5 @@
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::ZoneMoveActionAst;
 use super::*;
 
 pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
@@ -11,10 +13,10 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
         {
             let base_tokens = trim_commas(&tokens[..for_each_idx]);
             if !base_tokens.is_empty() {
-                return Ok(EffectAst::RepeatEffects {
+                return Ok(EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
                     count,
                     effects: vec![parse_return(&base_tokens)?],
-                });
+                }));
             }
         }
     }
@@ -580,7 +582,7 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
     if destination.zone == crate::grammar::effects::ReturnZoneShape::Battlefield
         && destination.destination_player_surface == Some(PlayerAst::That)
         && let EffectAst::SubjectVerb(subject_verb) = &mut effect
-        && let SubjectVerbActionAst::ReturnToBattlefield { target, .. } = &mut subject_verb.action
+        && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { target, .. }) = &mut subject_verb.action
         && let Some(filter) =
             crate::effect_sentences::zone_counter_helpers::target_object_filter_mut(target)
     {

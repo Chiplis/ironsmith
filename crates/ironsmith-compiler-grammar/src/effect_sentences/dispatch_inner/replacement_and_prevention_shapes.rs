@@ -1,3 +1,5 @@
+use crate::cards::builders::KeywordActionAst;
+use crate::cards::builders::CounterActionAst;
 use crate::grammar::effects as replacement_grammar;
 pub fn parse_monstrosity_sentence(
     tokens: &[OwnedLexToken],
@@ -82,7 +84,7 @@ pub fn parse_destroy_or_exile_all_split_sentence(
                 effects: vec![effect],
             });
         }
-        return Ok(Some(vec![EffectAst::ChooseOneOf { modes }]));
+        return Ok(Some(vec![EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })]));
     }
 
     // A coordinated all-object clause can carry independent scope on each
@@ -175,7 +177,7 @@ pub fn parse_exile_then_return_same_object_sentence(
         matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Exile { .. },
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. }),
                 ..
             })
         )
@@ -204,7 +206,7 @@ pub fn parse_exile_then_return_same_object_sentence(
         if matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Exile { .. },
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. }),
                 ..
             })
         ) {
@@ -234,7 +236,7 @@ pub fn parse_exile_then_return_same_object_sentence(
         matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::PutCounters { .. },
+                action: SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { .. }),
                 ..
             })
         )
@@ -255,11 +257,11 @@ pub fn parse_exile_then_return_same_object_sentence(
         match effect {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::ReturnToBattlefield {
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
                         target,
                         target_reference_surface,
                         ..
-                    },
+                    }),
                 ..
             }) if target_references_it_tag(target)
                 || target_references_source_exiled_tag(target) =>
@@ -272,12 +274,12 @@ pub fn parse_exile_then_return_same_object_sentence(
             }
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::MoveToZone {
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                         target,
                         zone: Zone::Battlefield,
                         target_reference_surface,
                         ..
-                    },
+                    }),
                 ..
             }) if target_references_it_tag(target)
                 || target_references_source_exiled_tag(target) =>
@@ -293,7 +295,7 @@ pub fn parse_exile_then_return_same_object_sentence(
                 rewrote_return = true;
             }
             EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
-                SubjectVerbActionAst::ReturnToHand { target, .. }
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. })
                     if target_references_it_tag(target)
                         || target_references_source_exiled_tag(target) =>
                 {
@@ -302,7 +304,7 @@ pub fn parse_exile_then_return_same_object_sentence(
                     }
                     rewrote_return = true;
                 }
-                SubjectVerbActionAst::PutCounters { target, .. }
+                SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target, .. })
                     if target_references_it_tag(target)
                         || target_references_source_exiled_tag(target) =>
                 {
@@ -322,9 +324,9 @@ pub fn parse_exile_then_return_same_object_sentence(
     if shape.delayed_until_end_of_combat {
         let mut delayed_effects = first_effects;
         delayed_effects.extend(second_effects);
-        return Ok(Some(vec![EffectAst::DelayedUntilEndOfCombat {
+        return Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat {
             effects: delayed_effects,
-        }]));
+        })]));
     }
 
     first_effects.extend(second_effects);
@@ -362,16 +364,16 @@ pub fn parse_exile_up_to_one_each_target_type_sentence(
     let tag = helper_tag_for_tokens(tokens, "exiled");
     let mut effects = filters
         .into_iter()
-        .map(|filter| EffectAst::ChooseObjects {
+        .map(|filter| EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter,
             count: ChoiceCount::up_to(1),
             count_value: None,
             player: PlayerAst::You,
-            tag: tag.clone(),
-        })
+            tag: crate::tag::TagRef::of(tag.clone()),
+        }))
         .collect::<Vec<_>>();
     effects.push(EffectAst::subject_verb_exile(
-        TargetAst::Tagged(tag, None),
+        TargetAst::Tagged(crate::tag::TagRef::of(tag), None),
         false,
     ));
 
@@ -425,16 +427,16 @@ pub fn parse_look_at_top_then_exile_one_sentence(
         EffectAst::subject_verb_look_at_top_cards(
             shape.player,
             Value::Fixed(shape.count as i32),
-            looked_tag,
+            crate::tag::TagRef::of(looked_tag),
         ),
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter: looked_filter,
             count: ChoiceCount::exactly(1),
             count_value: None,
             player: PlayerAst::You,
-            tag: chosen_tag.clone(),
-        },
-        EffectAst::subject_verb_exile(TargetAst::Tagged(chosen_tag, None), shape.face_down),
+            tag: crate::tag::TagRef::of(chosen_tag.clone()),
+        }),
+        EffectAst::subject_verb_exile(TargetAst::Tagged(crate::tag::TagRef::of(chosen_tag), None), shape.face_down),
     ]))
 }
 
@@ -455,26 +457,26 @@ pub fn parse_you_and_each_opponent_voted_with_you_sentence(
     };
     let count = shape.count;
 
-    let you_effect = EffectAst::May {
+    let you_effect = EffectAst::Permissions(PermissionEffectAst::May {
         effects: vec![EffectAst::subject_verb(
             SubjectVerbRoleAst::Chooser,
             PlayerAst::You,
-            SubjectVerbActionAst::Scry {
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Scry {
                 count: count.clone(),
-            },
+            }),
         )],
-    };
+    });
 
-    let opponent_effect = EffectAst::ForEachTaggedPlayer {
+    let opponent_effect = EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer {
         tag: crate::tag::CompilerReferenceTag::VotedWithYou.bind(),
-        effects: vec![EffectAst::May {
+        effects: vec![EffectAst::Permissions(PermissionEffectAst::May {
             effects: vec![EffectAst::subject_verb(
                 SubjectVerbRoleAst::Chooser,
                 PlayerAst::Implicit,
-                SubjectVerbActionAst::Scry { count },
+                SubjectVerbActionAst::KeywordActions(KeywordActionAst::Scry { count }),
             )],
-        }],
-    };
+        })],
+    });
 
     Ok(Some(vec![you_effect, opponent_effect]))
 }

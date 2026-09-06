@@ -2828,7 +2828,7 @@ mod tests {
             .tagged_constraints
             .iter()
             .filter(|constraint| {
-                constraint.tag == crate::tag::CompilerReferenceTag::Sacrificed0.bind()
+                constraint.tag == *crate::tag::CompilerReferenceTag::Sacrificed0.bind()
                     && constraint.relation == TaggedOpbjectRelation::SharesCardType
             })
             .count();

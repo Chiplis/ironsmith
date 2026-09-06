@@ -21,29 +21,29 @@ fn animation() -> EffectAst {
 
 #[test]
 fn still_land_followup_reaches_animation_inside_conditional_may() {
-    let mut effects = vec![EffectAst::Conditional {
-        predicate: PredicateAst::SourceIsTapped,
-        if_true: vec![EffectAst::May {
+    let mut effects = vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+        predicate: PredicateAst::Source(SourcePredicateAst::SourceIsTapped),
+        if_true: vec![EffectAst::Permissions(PermissionEffectAst::May {
             effects: vec![animation()],
-        }],
+        })],
         if_false: Vec::new(),
-    }];
+    })];
 
     assert!(mark_last_animation_as_still_a_land(&mut effects));
-    let EffectAst::Conditional { if_true, .. } = &effects[0] else {
+    let EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, .. }) = &effects[0] else {
         panic!("expected conditional wrapper");
     };
-    let [EffectAst::May { effects }] = if_true.as_slice() else {
+    let [EffectAst::Permissions(PermissionEffectAst::May { effects })] = if_true.as_slice() else {
         panic!("expected may wrapper");
     };
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::BecomeBasePtCreature {
+                SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
                     preserve_other_types,
                     type_retention_surface,
                     ..
-                },
+                }),
             ..
         }),
     ] = effects.as_slice()

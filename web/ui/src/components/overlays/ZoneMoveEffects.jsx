@@ -428,6 +428,12 @@ function isElementVisuallyAvailable(element) {
 
 function resolveInspectorTargetElement(targetToken, targetScope = "foreground") {
   if (!targetToken || typeof document === "undefined") return null;
+  if (targetToken.startsWith("zone:")) {
+    const [, owner, zone] = targetToken.split(":");
+    return Array.from(document.querySelectorAll("[data-zone-pile][data-zone-owner]"))
+      .find((element) => element.dataset.zoneOwner === owner
+        && element.dataset.zonePile === zone && isElementVisuallyAvailable(element)) || null;
+  }
   const escapedToken = escapeAttributeValue(targetToken);
   // Two inspector shells (compact + expanded) can both carry the same token at
   // once; we want whichever one is actually visible. For each preferred

@@ -1,3 +1,7 @@
+use crate::cards::builders::ControlActionAst;
+use crate::cards::builders::CharacteristicActionAst;
+use crate::cards::builders::GrantActionAst;
+use crate::cards::builders::DamagePreventionActionAst;
 use super::*;
 
 pub(super) fn is_orphan_rounded_up_where_x_tail(
@@ -30,138 +34,138 @@ pub(super) fn apply_carried_effect_duration(effect: &mut EffectAst, duration: &U
     match effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::GainControl {
+                SubjectVerbActionAst::Control(ControlActionAst::GainControl {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::Pump {
+                })
+                | SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::PumpForEach {
+                })
+                | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::PumpAll {
+                })
+                | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::PumpByLastEffect {
+                })
+                | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpByLastEffect {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::SetBasePowerToughness {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::SetBasePower {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::BecomeBasePtCreature {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::AddCardTypes {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddCardTypes {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::SetCardTypes {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCardTypes {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::RemoveCardTypes {
+                })
+                | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveCardTypes {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::AddSubtypes {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::RemoveSubtypes {
+                })
+                | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSubtypes {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::SetCreatureSubtypes {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCreatureSubtypes {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::AddColors {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddColors {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::AddAllSubtypesOfFamily {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddAllSubtypesOfFamily {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::RemoveAllSubtypesOfFamily {
+                })
+                | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAllSubtypesOfFamily {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::BecomeAuraEnchantment {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeAuraEnchantment {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::SetColors {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetColors {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::MakeColorless {
+                })
+                | SubjectVerbActionAst::StatChanges(StatChangeActionAst::MakeColorless {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::BecomeBasicLandType {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasicLandType {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::BecomeBasicLandTypeChoice {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasicLandTypeChoice {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::BecomeColorChoice {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::BecomeCreatureTypeChoice {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCreatureTypeChoice {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::BecomeCopy {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCopy {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::GrantAbilitiesToTarget {
+                })
+                | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::GrantAbilitiesAll {
+                })
+                | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget {
+                })
+                | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceToTarget {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::RemoveAbilitiesFromTarget {
+                })
+                | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::RemoveAbilitiesAll {
+                })
+                | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::PreventAllDamageToTarget {
+                })
+                | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllDamageToTarget {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::PreventAllDamageToTargetFromSourceFilter {
+                })
+                | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::PreventAllDamageFromSourceFilter {
+                })
+                | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllDamageFromSourceFilter {
                     duration: effect_duration,
                     ..
-                }
+                })
                 | SubjectVerbActionAst::Cant {
                     duration: effect_duration,
                     ..
@@ -170,9 +174,9 @@ pub(super) fn apply_carried_effect_duration(effect: &mut EffectAst, duration: &U
         }) if matches!(effect_duration, Until::Forever) => {
             *effect_duration = duration.clone();
         }
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             if_true, if_false, ..
-        } => {
+        }) => {
             for nested in if_true.iter_mut().chain(if_false.iter_mut()) {
                 apply_carried_effect_duration(nested, duration);
             }

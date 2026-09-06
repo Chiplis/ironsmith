@@ -32,14 +32,14 @@ pub(super) fn parse_player_chooses_source_excluded_permanent_then_exiles(
         "this creature".to_string(),
     ));
     Some(vec![
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter,
             count: ChoiceCount::exactly(1),
             count_value: None,
             player: PlayerAst::Opponent,
-            tag: tag.clone(),
-        },
-        EffectAst::subject_verb_exile(TargetAst::Tagged(tag, None), false),
+            tag: crate::tag::TagRef::of(tag.clone()),
+        }),
+        EffectAst::subject_verb_exile(TargetAst::Tagged(crate::tag::TagRef::of(tag), None), false),
     ])
 }
 
@@ -60,9 +60,9 @@ pub(super) fn explicit_target_choose_spec(target: &TargetAst) -> Option<ChooseSp
 
 pub(super) fn normalize_imperative_choose_player(effect: &mut EffectAst) -> bool {
     let player = match effect {
-        EffectAst::ChooseObjects { player, .. }
-        | EffectAst::ChooseObjectsWithAggregateConstraint { player, .. }
-        | EffectAst::ChooseObjectsAcrossZones { player, .. } => player,
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { player, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { player, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { player, .. }) => player,
         _ => return false,
     };
 

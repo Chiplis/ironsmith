@@ -7,6 +7,8 @@
 //! in `sentence_shape_predicates_core`; every reading runs, resolved by rank
 //! while the overlaps are measured. The chain materializer is the fallback.
 
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::TokenActionAst;
 use super::*;
 use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId, RuleMatch};
 use crate::registry::{
@@ -484,9 +486,9 @@ fn read_each_player_return(
             &mut effect,
             PlayerAst::That,
         );
-        return Ok(Some(vec![EffectAst::ForEachPlayer {
+        return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
             effects: vec![effect],
-        }]));
+        })]));
     }
     Ok(None)
 }
@@ -604,8 +606,8 @@ fn read_create_token_copy_exception(
         && let Ok(
             effect @ EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::CreateTokenCopy { .. }
-                    | SubjectVerbActionAst::CreateTokenCopyFromSource { .. },
+                    SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. })
+                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { .. }),
                 ..
             }),
         ) = super::super::super::parse_create(tokens, None)

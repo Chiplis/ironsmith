@@ -9,10 +9,10 @@ fn optional_single_hand_move_keeps_entry_state_and_grant_in_may_scope() {
         .expect("follow-up fixture should lex");
     let parsed = parse_effect_sentences_lexed(&tokens).expect("follow-up should parse");
     let [
-        EffectAst::MayByPlayer {
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
             player: PlayerAst::You,
             effects,
-        },
+        }),
     ] = parsed.as_slice()
     else {
         panic!("expected one optional procedure: {parsed:#?}");
@@ -20,21 +20,21 @@ fn optional_single_hand_move_keeps_entry_state_and_grant_in_may_scope() {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::MoveToZone {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                     battlefield_tapped: true,
                     battlefield_attacking: true,
                     ..
-                },
+                }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::GrantAbilitiesToTarget {
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                     target: TargetAst::Tagged(tag, _),
                     abilities,
                     duration: Until::EndOfTurn,
                     ..
-                },
+                }),
             ..
         }),
     ] = effects.as_slice()

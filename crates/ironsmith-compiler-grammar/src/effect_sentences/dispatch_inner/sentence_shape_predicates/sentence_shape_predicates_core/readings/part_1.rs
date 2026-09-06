@@ -1,5 +1,7 @@
 //! Sentence readings 1–22, in rank order.
 
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::ZoneMoveActionAst;
 use super::super::*;
 use super::Sentence;
 
@@ -257,13 +259,13 @@ pub(super) fn read_trailing_if_clause(
             )
         && matches!(
             &effect,
-            EffectAst::TrailingIf {
+            EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
                 effects,
                 ..
-            } if matches!(
+            }) if matches!(
                 effects.as_slice(),
                 [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::DestroyAll { .. },
+                    action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { .. }),
                     ..
                 })]
             )
@@ -306,10 +308,10 @@ pub(super) fn read_if_you_dont(
     if let Some(effects) =
         super::super::super::super::dispatch_entry::parse_if_you_dont_sentence(tokens)?
     {
-        return Ok(Some(vec![EffectAst::IfResult {
+        return Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: crate::cards::builders::IfResultPredicate::ExplicitDidNot,
             effects,
-        }]));
+        })]));
     }
     Ok(None)
 }

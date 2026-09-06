@@ -1,3 +1,5 @@
+use crate::cards::builders::PermissionEffectAst;
+use crate::cards::builders::ForEachEffectAst;
 use super::*;
 
 pub(super) fn bind_adjacent_life_stat_pronouns(
@@ -22,9 +24,9 @@ pub(super) fn bind_adjacent_life_stat_pronouns(
             return None;
         };
         match action {
-            SubjectVerbActionAst::GainLife { amount }
-            | SubjectVerbActionAst::LoseLife { amount }
-            | SubjectVerbActionAst::PayLife { amount } => Some(amount),
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount })
+            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount })
+            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayLife { amount }) => Some(amount),
             _ => None,
         }
     }
@@ -61,9 +63,9 @@ pub(super) fn bind_adjacent_life_stat_pronouns(
             continue;
         };
         let amount = match action {
-            SubjectVerbActionAst::GainLife { amount }
-            | SubjectVerbActionAst::LoseLife { amount }
-            | SubjectVerbActionAst::PayLife { amount } => amount,
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount })
+            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount })
+            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayLife { amount }) => amount,
             _ => continue,
         };
         retarget_source_stat(amount, &antecedent);
@@ -105,9 +107,9 @@ pub fn bind_adjacent_shared_x_life_stat_values(
             return None;
         };
         match action {
-            SubjectVerbActionAst::GainLife { amount }
-            | SubjectVerbActionAst::LoseLife { amount }
-            | SubjectVerbActionAst::PayLife { amount } => Some(amount),
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount })
+            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount })
+            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayLife { amount }) => Some(amount),
             _ => None,
         }
     }
@@ -117,9 +119,9 @@ pub fn bind_adjacent_shared_x_life_stat_values(
             return None;
         };
         match action {
-            SubjectVerbActionAst::GainLife { amount }
-            | SubjectVerbActionAst::LoseLife { amount }
-            | SubjectVerbActionAst::PayLife { amount } => Some(amount),
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount })
+            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount })
+            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayLife { amount }) => Some(amount),
             _ => None,
         }
     }
@@ -168,27 +170,27 @@ pub(super) fn effect_uses_half_life_total_value(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::CreateTokenWithMods {
+                SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
                     dynamic_power_toughness,
                     ..
-                },
+                }),
             ..
         }) => dynamic_power_toughness
             .as_ref()
             .is_some_and(|(power, toughness)| {
                 value_is_half_life_total(power) || value_is_half_life_total(toughness)
             }),
-        EffectAst::ForEachObject { effects, .. }
-        | EffectAst::ForEachOpponent { effects }
-        | EffectAst::ForEachPlayer { effects }
-        | EffectAst::ForEachTagged { effects, .. }
-        | EffectAst::ForEachTaggedWithControllerAtLastBlockedBy { effects, .. }
-        | EffectAst::ForEachPlayersFiltered { effects, .. }
-        | EffectAst::May { effects }
-        | EffectAst::MayByPlayer { effects, .. }
-        | EffectAst::AnyPlayerMay { effects, .. }
-        | EffectAst::IfResult { effects, .. }
-        | EffectAst::WhenResult { effects, .. }
+        EffectAst::ForEach(ForEachEffectAst::ForEachObject { effects, .. })
+        | EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })
+        | EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })
+        | EffectAst::ForEach(ForEachEffectAst::ForEachTagged { effects, .. })
+        | EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy { effects, .. })
+        | EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { effects, .. })
+        | EffectAst::Permissions(PermissionEffectAst::May { effects })
+        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. })
+        | EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay { effects, .. })
+        | EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. })
+        | EffectAst::Conditionals(ConditionalEffectAst::WhenResult { effects, .. })
         | EffectAst::ManaRestricted { effects, .. } => {
             effects.iter().any(effect_uses_half_life_total_value)
         }
@@ -230,12 +232,12 @@ pub fn collapse_token_copy_next_end_step_sacrifice_followup_lexed(
             (
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action:
-                        SubjectVerbActionAst::CreateTokenCopy { .. }
-                        | SubjectVerbActionAst::CreateTokenCopyFromSource { .. },
+                        SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. })
+                        | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { .. }),
                     ..
                 }),
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::Sacrifice { filter, count, .. },
+                    action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { filter, count, .. }),
                     ..
                 }),
             ) => *count == 1 && filter.token,
@@ -251,14 +253,14 @@ pub fn collapse_token_copy_next_end_step_sacrifice_followup_lexed(
             let sacrifice = effects.remove(idx + 1);
             effects.insert(
                 idx + 1,
-                EffectAst::DelayedUntilNextUpkeep {
+                EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep {
                     player: if upkeep_player_is_you {
                         PlayerAst::You
                     } else {
                         PlayerAst::Any
                     },
                     effects: vec![sacrifice],
-                },
+                }),
             );
             idx += 2;
             continue;
@@ -266,18 +268,18 @@ pub fn collapse_token_copy_next_end_step_sacrifice_followup_lexed(
 
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::CreateTokenCopy {
+                SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
                     sacrifice_at_next_end_step,
                     sacrifice_at_next_end_step_reference_surface,
                     next_end_step_player: effect_next_end_step_player,
                     ..
-                }
-                | SubjectVerbActionAst::CreateTokenCopyFromSource {
+                })
+                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
                     sacrifice_at_next_end_step,
                     sacrifice_at_next_end_step_reference_surface,
                     next_end_step_player: effect_next_end_step_player,
                     ..
-                },
+                }),
             ..
         }) = &mut effects[idx]
         {

@@ -1,3 +1,4 @@
+use crate::cards::builders::LifeResourceActionAst;
 use super::*;
 use crate::model::ast::SubjectVerbEffectAst;
 
@@ -10,19 +11,19 @@ fn creature_card_exiled_this_way_keeps_a_typed_lki_gate() {
         .expect("typed iterator should parse")
         .expect("typed iterator should be recognized");
     let [
-        EffectAst::ForEachTagged {
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
             effects: iterated, ..
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected one tagged-result loop: {effects:#?}");
     };
     let [
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: PredicateAst::ItMatchedLastKnown(filter),
             if_true,
             if_false,
-        },
+        }),
     ] = iterated.as_slice()
     else {
         panic!("expected a typed LKI condition inside the loop: {iterated:#?}");
@@ -33,7 +34,7 @@ fn creature_card_exiled_this_way_keeps_a_typed_lki_gate() {
     assert!(matches!(
         if_true.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::GainLife { .. },
+            action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { .. }),
             ..
         })]
     ));

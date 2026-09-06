@@ -1,3 +1,4 @@
+use crate::cards::builders::CharacteristicActionAst;
 fn split_attached_keyword_condition_suffix(
     ability_tokens: &[OwnedLexToken],
 ) -> Result<(Vec<OwnedLexToken>, Option<PredicateAst>), CardTextError> {
@@ -847,11 +848,11 @@ fn parse_nonstatic_keyword_action_as_object_ability(
             let animate = EffectAst::subject_verb(
                 SubjectVerbRoleAst::Actor,
                 PlayerAst::Implicit,
-                SubjectVerbActionAst::AddCardTypes {
+                SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddCardTypes {
                     target: TargetAst::Source(None),
                     card_types: vec![CardType::Creature],
                     duration: crate::effect::Until::EndOfTurn,
-                },
+                }),
             );
             Some(ParsedAbility {
                 ability: Ability {

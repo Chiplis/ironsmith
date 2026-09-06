@@ -1,3 +1,4 @@
+use crate::cards::builders::ForEachEffectAst;
 use super::*;
 
 pub(super) fn is_if_card_put_into_exile_this_way_sentence(tokens: &[OwnedLexToken]) -> bool {
@@ -48,12 +49,12 @@ pub(super) fn first_library_search_shape(
     effects: &[EffectAst],
 ) -> Option<(ObjectFilter, Vec<Zone>, ChoiceCount)> {
     for effect in effects {
-        if let EffectAst::ChooseObjectsAcrossZones {
+        if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
             filter,
             count,
             zones,
             ..
-        } = effect
+        }) = effect
             && zones.contains(&Zone::Library)
         {
             return Some((filter.clone(), zones.clone(), *count));
@@ -78,12 +79,12 @@ pub(super) fn replace_matching_library_search_count(
     replacement_count: &ChoiceCount,
 ) -> bool {
     for effect in effects {
-        if let EffectAst::ChooseObjectsAcrossZones {
+        if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
             filter,
             count,
             zones,
             ..
-        } = effect
+        }) = effect
             && zones.as_slice() == replacement_zones
             && filter == replacement_filter
         {
@@ -179,7 +180,7 @@ pub(super) fn post_rule_revealed_same_mana_value_as_another_iterator(
 
     let Some(revealed_tag) = state.effects.iter().rev().find_map(|effect| match effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::RevealTagged { tag },
+            action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTagged { tag }),
             ..
         }) => Some(tag.clone()),
         _ => None,
@@ -188,13 +189,13 @@ pub(super) fn post_rule_revealed_same_mana_value_as_another_iterator(
     };
 
     let conditional_effects = match sentence_effects.as_mut_slice() {
-        [EffectAst::ForEachTagged { tag, effects }]
+        [EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, effects })]
             if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                 && !effects.is_empty() =>
         {
             std::mem::take(effects)
         }
-        [EffectAst::RepeatEffects { count, effects }]
+        [EffectAst::ForEach(ForEachEffectAst::RepeatEffects { count, effects })]
             if !effects.is_empty()
                 && matches!(
                     count.unhinted(),
@@ -217,13 +218,13 @@ pub(super) fn post_rule_revealed_same_mana_value_as_another_iterator(
         revealed_tag.clone(),
         crate::filter::TaggedOpbjectRelation::SameManaValueAsAnotherTagged,
     );
-    *sentence_effects = vec![EffectAst::ForEachTagged {
+    *sentence_effects = vec![EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
         tag: revealed_tag,
-        effects: vec![EffectAst::TrailingIf {
+        effects: vec![EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
             predicate: PredicateAst::ItMatches(filter),
             effects: conditional_effects,
-        }],
-    }];
+        })],
+    })];
     Ok(Some(PostParseFollowupResult::Annotated))
 }
 
@@ -231,12 +232,12 @@ pub(super) fn preserve_search_owner_anaphor_in_self_replacement(effects: &mut [E
     for effect in effects {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::SearchLibrary {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
                     filter,
                     chooser: PlayerAst::Implicit,
                     player,
                     ..
-                },
+                }),
             ..
         }) = effect
             && *player == PlayerAst::Target
@@ -259,7 +260,7 @@ pub(super) fn preserve_search_owner_anaphor_in_self_replacement(effects: &mut [E
 pub(super) fn first_search_library_owner(effects: &[EffectAst]) -> Option<PlayerFilter> {
     for effect in effects {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::SearchLibrary { filter, .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary { filter, .. }),
             ..
         }) = effect
             && let Some(owner) = filter.owner.clone()
@@ -286,12 +287,12 @@ pub(super) fn bind_self_replacement_search_owner(
     for effect in effects {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::SearchLibrary {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
                     filter,
                     chooser: PlayerAst::Implicit,
                     player: PlayerAst::That,
                     ..
-                },
+                }),
             ..
         }) = effect
             && matches!(filter.owner.as_ref(), Some(PlayerFilter::IteratedPlayer))
@@ -307,7 +308,7 @@ pub(super) fn bind_self_replacement_search_owner(
 pub(super) fn mill_count_from_effect(effect: &EffectAst) -> Option<Value> {
     match effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Mill { count },
+            action: SubjectVerbActionAst::Library(LibraryActionAst::Mill { count }),
             ..
         }) => Some(count.clone()),
         _ => None,
@@ -320,7 +321,7 @@ pub(super) fn replace_mill_event_amounts_with_value(
 ) {
     for effect in effects {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Mill { count },
+            action: SubjectVerbActionAst::Library(LibraryActionAst::Mill { count }),
             ..
         }) = effect
         {
@@ -339,17 +340,17 @@ pub(super) fn chosen_card_tag_from_hand_choice_branch(effects: &[EffectAst]) -> 
             let (
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action:
-                        SubjectVerbActionAst::RevealCardsFromHand {
+                        SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealCardsFromHand {
                             tag: revealed_tag, ..
-                        },
+                        }),
                     ..
                 }),
-                EffectAst::ChooseObjects {
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                     filter,
                     count,
                     tag: chosen_tag,
                     ..
-                },
+                }),
             ) = (first, second)
             else {
                 continue;
@@ -361,25 +362,25 @@ pub(super) fn chosen_card_tag_from_hand_choice_branch(effects: &[EffectAst]) -> 
                 && !count.random;
             if chooses_one
                 && tagged_object_reference(filter) == Some(revealed_tag)
-                && !tags.iter().any(|tag| tag == chosen_tag)
+                && !tags.iter().any(|tag| *tag == chosen_tag.key)
             {
-                tags.push(chosen_tag.clone());
+                tags.push(chosen_tag.clone().into());
             }
         }
 
         for effect in effects {
             match effect {
-                EffectAst::ChooseObjects {
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                     filter, count, tag, ..
-                } if filter.zone == Some(Zone::Hand)
+                }) if filter.zone == Some(Zone::Hand)
                     && count.min == 1
                     && count.max == Some(1)
                     && !count.dynamic_x
                     && !count.up_to_x
                     && !count.random =>
                 {
-                    if !tags.iter().any(|existing| existing == tag) {
-                        tags.push(tag.clone());
+                    if !tags.iter().any(|existing| *existing == tag.key) {
+                        tags.push(tag.clone().into());
                     }
                 }
                 EffectAst::Coordinated {
@@ -412,13 +413,13 @@ pub(super) fn is_dependent_that_player_discard(effect: &EffectAst, chosen_tag: &
                 player: PlayerAst::That,
             },
         action:
-            SubjectVerbActionAst::Discard {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard {
                 count: Value::Fixed(1),
                 random: false,
                 any_number: false,
                 filter: Some(filter),
                 tag: None,
-            },
+            }),
     }) = effect
     else {
         return false;
@@ -441,10 +442,10 @@ pub(super) fn post_rule_hand_reveal_choice_discard_followup(
     let [discard] = sentence_effects.as_slice() else {
         return Ok(None);
     };
-    let Some(EffectAst::IfResult {
+    let Some(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
         effects: branch_effects,
         ..
-    }) = state.effects.last_mut()
+    })) = state.effects.last_mut()
     else {
         return Ok(None);
     };
@@ -465,10 +466,10 @@ pub(super) fn effect_references_prior_exiled_card(effect: &EffectAst) -> bool {
     if matches!(
         effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::CopySpell {
+            action: SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
                 target: TargetAst::Tagged(tag, _),
                 ..
-            },
+            }),
             ..
         }) if tag.as_str() == crate::tag::CompilerReferenceTag::PriorExiledCard.as_str()
     ) {
@@ -486,9 +487,9 @@ pub(super) fn effect_references_prior_exiled_card(effect: &EffectAst) -> bool {
 
 pub(super) fn bind_cast_tag_to_prior_exiled_card(effect: &mut EffectAst) {
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::CastTagged {
+        action: SubjectVerbActionAst::Stack(StackActionAst::CastTagged {
             tag, as_copy: true, ..
-        },
+        }),
         ..
     }) = effect
         && tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
@@ -512,10 +513,10 @@ pub(super) fn bind_prior_exiled_card_to_source_link(effect: &mut EffectAst) {
     let is_prior_exiled_copy = matches!(
         effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::CopySpell {
+            action: SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
                 target: TargetAst::Tagged(tag, _),
                 ..
-            },
+            }),
             ..
         }) if tag.as_str() == crate::tag::CompilerReferenceTag::PriorExiledCard.as_str()
     );
@@ -524,7 +525,7 @@ pub(super) fn bind_prior_exiled_card_to_source_link(effect: &mut EffectAst) {
         // linked exiled card and letting the following CastTagged(as_copy)
         // create/cast the copy. This is the same generic program used for the
         // explicit "a card exiled with this artifact" wording.
-        *effect = EffectAst::ChooseObjectsAcrossZones {
+        *effect = EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
             filter: ObjectFilter::default().in_zone(Zone::Exile).match_tagged(
                 crate::tag::CompilerReferenceTag::SourceExiled.bind(),
                 crate::target::TaggedOpbjectRelation::IsTaggedObject,
@@ -535,7 +536,7 @@ pub(super) fn bind_prior_exiled_card_to_source_link(effect: &mut EffectAst) {
             tag: crate::tag::CompilerReferenceTag::It.bind(),
             zones: vec![Zone::Exile],
             search_mode: None,
-        };
+        });
         return;
     }
     for_each_nested_effects_mut(effect, true, |nested| {

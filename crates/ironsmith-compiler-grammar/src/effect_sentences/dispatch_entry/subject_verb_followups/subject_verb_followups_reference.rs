@@ -1,3 +1,5 @@
+use crate::cards::builders::SourcePredicateAst;
+use crate::cards::builders::ForEachEffectAst;
 use super::*;
 
 pub(super) fn append_moved_object_entry_followup_to_optional_move(
@@ -5,7 +7,7 @@ pub(super) fn append_moved_object_entry_followup_to_optional_move(
     grant: EffectAst,
 ) -> bool {
     let effects = match previous {
-        EffectAst::May { effects } | EffectAst::MayByPlayer { effects, .. } => effects,
+        EffectAst::Permissions(PermissionEffectAst::May { effects }) | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. }) => effects,
         _ => return false,
     };
     let [move_effect] = effects.as_mut_slice() else {
@@ -13,7 +15,7 @@ pub(super) fn append_moved_object_entry_followup_to_optional_move(
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::MoveToZone {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                 target,
                 source_top_only,
                 zone,
@@ -30,7 +32,7 @@ pub(super) fn append_moved_object_entry_followup_to_optional_move(
                 attached_to,
                 all,
                 ..
-            },
+            }),
         ..
     }) = move_effect
     else {
@@ -62,13 +64,13 @@ pub(super) fn append_moved_object_entry_followup_to_optional_move(
         &grant,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::GrantAbilitiesToTarget {
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                     target: TargetAst::Tagged(tag, _),
                     abilities,
                     duration: Until::EndOfTurn,
                     condition: None,
                     set_quantifier_surface: None,
-                },
+                }),
             ..
         }) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() && !abilities.is_empty()
     );
@@ -129,35 +131,35 @@ pub(super) fn tagged_may_battlefield_move(effect: &EffectAst) -> Option<TagKey> 
     match effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::MoveToZone {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                     target: TargetAst::Tagged(tag, _),
                     zone: Zone::Battlefield,
                     ..
-                }
-                | SubjectVerbActionAst::MayMoveToZone {
+                })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MayMoveToZone {
                     target: TargetAst::Tagged(tag, _),
                     zone: Zone::Battlefield,
-                },
+                }),
             ..
-        }) => Some(tag.clone()),
+        }) => Some(tag.clone().into()),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::MoveToZone {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                     target: TargetAst::Object(filter, _, _),
                     zone: Zone::Battlefield,
                     ..
-                }
-                | SubjectVerbActionAst::MayMoveToZone {
+                })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MayMoveToZone {
                     target: TargetAst::Object(filter, _, _),
                     zone: Zone::Battlefield,
-                },
+                }),
             ..
         }) => filter
             .tagged_constraints
             .iter()
             .find(|constraint| constraint.relation == TaggedOpbjectRelation::IsTaggedObject)
             .map(|constraint| constraint.tag.clone()),
-        EffectAst::May { effects } | EffectAst::MayByPlayer { effects, .. }
+        EffectAst::Permissions(PermissionEffectAst::May { effects }) | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. })
             if effects.len() == 1 =>
         {
             tagged_may_battlefield_move(&effects[0])
@@ -199,10 +201,10 @@ pub(super) fn pre_rule_declined_tagged_battlefield_move_followup(
     }
 
     let Some(tag) = state.effects.last().and_then(|effect| match effect {
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             if_true, if_false, ..
-        } if if_false.is_empty() && if_true.len() == 1 => tagged_may_battlefield_move(&if_true[0]),
-        EffectAst::TrailingIf { effects, .. } if effects.len() == 1 => {
+        }) if if_false.is_empty() && if_true.len() == 1 => tagged_may_battlefield_move(&if_true[0]),
+        EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { effects, .. }) if effects.len() == 1 => {
             tagged_may_battlefield_move(&effects[0])
         }
         _ => None,
@@ -215,28 +217,28 @@ pub(super) fn pre_rule_declined_tagged_battlefield_move_followup(
     if fallback.is_empty() {
         return Ok(None);
     }
-    let explicit_target = TargetAst::Tagged(tag, span_from_tokens(condition_tokens));
+    let explicit_target = TargetAst::Tagged(crate::tag::TagRef::of(tag), span_from_tokens(condition_tokens));
     replace_it_target_in_effects(&mut fallback, &explicit_target);
 
-    if let Some(EffectAst::TrailingIf { predicate, effects }) = state.effects.last_mut() {
+    if let Some(EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects })) = state.effects.last_mut() {
         let predicate = predicate.clone();
         let if_true = std::mem::take(effects);
-        *state.effects.last_mut().expect("trailing-if still present") = EffectAst::Conditional {
+        *state.effects.last_mut().expect("trailing-if still present") = EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true,
             if_false: Vec::new(),
-        };
+        });
     }
-    let Some(EffectAst::Conditional {
+    let Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
         if_true, if_false, ..
-    }) = state.effects.last_mut()
+    })) = state.effects.last_mut()
     else {
         return Ok(None);
     };
-    if_true.push(EffectAst::IfResult {
+    if_true.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
         predicate: IfResultPredicate::WasDeclined,
         effects: fallback.clone(),
-    });
+    }));
     *if_false = fallback;
     *state.carried_context = None;
 
@@ -251,7 +253,7 @@ pub(super) fn pre_rule_declined_tagged_battlefield_move_followup(
 pub(super) fn last_remove_abilities_all_filter(effects: &[EffectAst]) -> Option<ObjectFilter> {
     effects.iter().rev().find_map(|effect| match effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::RemoveAbilitiesAll { filter, .. },
+            action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll { filter, .. }),
             ..
         }) => Some(filter.clone()),
         _ => None,
@@ -260,7 +262,7 @@ pub(super) fn last_remove_abilities_all_filter(effects: &[EffectAst]) -> Option<
 
 pub(super) fn rebind_source_match_to_target(predicate: PredicateAst) -> PredicateAst {
     match predicate {
-        PredicateAst::SourceMatches(filter) | PredicateAst::ItMatches(filter) => {
+        PredicateAst::Source(SourcePredicateAst::SourceMatches(filter)) | PredicateAst::ItMatches(filter) => {
             PredicateAst::TargetMatches(filter)
         }
         PredicateAst::Not(inner) => {
@@ -358,14 +360,14 @@ pub(super) fn bind_nested_self_replacement_condition_to_previous_target(
     fn rebind_first(effects: &mut [EffectAst]) -> bool {
         for effect in effects {
             match effect {
-                EffectAst::Conditional {
+                EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                     predicate,
                     if_true,
                     if_false,
-                } => {
+                }) => {
                     if matches!(
                         predicate,
-                        PredicateAst::SourceMatches(_) | PredicateAst::ItMatches(_)
+                        PredicateAst::Source(SourcePredicateAst::SourceMatches(_)) | PredicateAst::ItMatches(_)
                     ) && !if_true.is_empty()
                     {
                         *predicate = rebind_source_match_to_target(predicate.clone());
@@ -375,10 +377,10 @@ pub(super) fn bind_nested_self_replacement_condition_to_previous_target(
                         return true;
                     }
                 }
-                EffectAst::TrailingIf { predicate, effects } => {
+                EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects }) => {
                     if matches!(
                         predicate,
-                        PredicateAst::SourceMatches(_) | PredicateAst::ItMatches(_)
+                        PredicateAst::Source(SourcePredicateAst::SourceMatches(_)) | PredicateAst::ItMatches(_)
                     ) && !effects.is_empty()
                     {
                         *predicate = rebind_source_match_to_target(predicate.clone());
@@ -397,7 +399,7 @@ pub(super) fn bind_nested_self_replacement_condition_to_previous_target(
                             &mut condition.predicate
                         && matches!(
                             predicate,
-                            PredicateAst::SourceMatches(_) | PredicateAst::ItMatches(_)
+                            PredicateAst::Source(SourcePredicateAst::SourceMatches(_)) | PredicateAst::ItMatches(_)
                         )
                     {
                         *predicate = rebind_source_match_to_target(predicate.clone());
@@ -453,9 +455,9 @@ pub(super) fn post_rule_each_player_coin_face_followup(
         _ => return Ok(None),
     };
 
-    let Some(EffectAst::ForEachPlayer {
+    let Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
         effects: flip_effects,
-    }) = state.effects.last_mut()
+    })) = state.effects.last_mut()
     else {
         return Ok(None);
     };
@@ -463,14 +465,14 @@ pub(super) fn post_rule_each_player_coin_face_followup(
     else {
         return Ok(None);
     };
-    if !matches!(action, SubjectVerbActionAst::FlipCoin) {
+    if !matches!(action, SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)) {
         return Ok(None);
     }
 
     let [
-        EffectAst::ForEachPlayer {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
             effects: followup_effects,
-        },
+        }),
     ] = sentence_effects.as_slice()
     else {
         return Ok(None);
@@ -479,12 +481,12 @@ pub(super) fn post_rule_each_player_coin_face_followup(
         return Ok(None);
     }
 
-    *action = SubjectVerbActionAst::FlipCoinFaceOnly;
-    *sentence_effects = vec![EffectAst::ForEachPlayerDid {
+    *action = SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly);
+    *sentence_effects = vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDid {
         effects: followup_effects.clone(),
         predicate: None,
         result_predicate,
-    }];
+    })];
     Ok(Some(PostParseFollowupResult::Annotated))
 }
 
@@ -569,11 +571,11 @@ pub(super) fn bind_that_player_subjects(effect: &mut EffectAst, player: PlayerAs
         if subject.player == PlayerAst::That {
             subject.player = player;
         }
-        if let SubjectVerbActionAst::SearchLibrary {
+        if let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
             filter,
             player: library_owner,
             ..
-        } = action
+        }) = action
             && *library_owner == PlayerAst::That
             && filter.owner.is_none()
         {
@@ -612,7 +614,7 @@ pub(super) fn tag_latest_prior_exile(effects: &mut [EffectAst]) -> bool {
         matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Exile { .. },
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. }),
                 ..
             })
         )
@@ -626,7 +628,7 @@ pub(super) fn tag_latest_prior_exile(effects: &mut [EffectAst]) -> bool {
     };
     for effect in &mut effects[exile_idx + 1..] {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::PumpAll { power, .. },
+            action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll { power, .. }),
             ..
         }) = effect
         {
@@ -646,16 +648,16 @@ pub(super) fn post_rule_consult_remainder_reference(
     fn consult_tags(effect: &EffectAst) -> Option<(TagKey, TagKey, PlayerAst)> {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::ConsultTopOfLibrary {
+                SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
                     all_tag,
                     match_tag,
                     player,
                     ..
-                },
+                }),
             ..
         }) = effect
         {
-            return Some((all_tag.clone(), match_tag.clone(), *player));
+            return Some((all_tag.clone().into(), match_tag.clone().into(), *player));
         }
         let mut found = None;
         for_each_nested_effects(effect, true, |nested| {
@@ -686,13 +688,13 @@ pub(super) fn post_rule_consult_remainder_reference(
             });
             return;
         };
-        let SubjectVerbActionAst::MoveToZone {
+        let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
             target: TargetAst::Tagged(tag, _),
             zone,
             library_order,
             library_order_chooser,
             ..
-        } = &subject_verb.action
+        }) = &subject_verb.action
         else {
             return;
         };
@@ -703,9 +705,9 @@ pub(super) fn post_rule_consult_remainder_reference(
             let Some(order) = *library_order else {
                 return;
             };
-            SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
-                tag: all_tag.clone(),
-                keep_tagged: Some(match_tag.clone()),
+            SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                tag: crate::tag::TagRef::of(all_tag.clone()),
+                keep_tagged: Some(crate::tag::TagRef::of(match_tag.clone())),
                 order,
                 player: if matches!(library_order_chooser, PlayerAst::Implicit) {
                     consult_player
@@ -713,14 +715,14 @@ pub(super) fn post_rule_consult_remainder_reference(
                     *library_order_chooser
                 },
                 surface: ironsmith_core::LibraryRemainderSurface::Rest,
-            }
+            })
         } else {
-            SubjectVerbActionAst::PutTaggedRemainderInZone {
-                tag: all_tag.clone(),
-                keep_tagged: match_tag.clone(),
+            SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderInZone {
+                tag: crate::tag::TagRef::of(all_tag.clone()),
+                keep_tagged: crate::tag::TagRef::of(match_tag.clone()),
                 zone: *zone,
                 surface: ironsmith_core::LibraryRemainderSurface::Rest,
-            }
+            })
         };
     }
     for effect in sentence_effects {
@@ -752,10 +754,10 @@ pub(super) fn effects_are_copy_retarget_followup(effects: &[EffectAst]) -> bool 
         if matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::RetargetStackObject {
+                action: SubjectVerbActionAst::Stack(StackActionAst::RetargetStackObject {
                     target: TargetAst::Tagged(tag, _),
                     ..
-                },
+                }),
                 ..
             }) if tag.as_str() == crate::tag::CompilerReferenceTag::CopiedStackObject.as_str()
         ) {
@@ -776,10 +778,10 @@ pub(super) fn effects_are_one_copy_retarget_followup(effects: &[EffectAst]) -> b
         if matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::RetargetStackObject {
+                action: SubjectVerbActionAst::Stack(StackActionAst::RetargetStackObject {
                     target: TargetAst::Tagged(tag, _),
                     ..
-                },
+                }),
                 ..
             }) if tag.as_str() == crate::tag::CompilerReferenceTag::CopiedStackObject.as_str()
         ) {
@@ -790,8 +792,8 @@ pub(super) fn effects_are_one_copy_retarget_followup(effects: &[EffectAst]) -> b
             | EffectAst::Sequence { effects }
             | EffectAst::CommaThen { effects }
             | EffectAst::Coordinated { effects, .. }
-            | EffectAst::May { effects }
-            | EffectAst::MayByPlayer { effects, .. } => {
+            | EffectAst::Permissions(PermissionEffectAst::May { effects })
+            | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. }) => {
                 matches!(effects.as_slice(), [effect] if is_one_retarget(effect))
             }
             _ => false,
@@ -806,8 +808,8 @@ pub(super) fn effects_copy_a_stack_object(effects: &[EffectAst]) -> bool {
         if matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::CopySpell { .. }
-                    | SubjectVerbActionAst::CopySpellForEachTarget { .. },
+                action: SubjectVerbActionAst::Stack(StackActionAst::CopySpell { .. })
+                    | SubjectVerbActionAst::Stack(StackActionAst::CopySpellForEachTarget { .. }),
                 ..
             })
         ) {

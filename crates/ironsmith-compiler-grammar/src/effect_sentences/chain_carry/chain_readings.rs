@@ -4,6 +4,8 @@
 //! segments, ...). Formerly a first-match ladder in `chain_carry`; every
 //! reading runs, resolved by rank while the overlaps are measured.
 
+use crate::cards::builders::PermissionEffectAst;
+use crate::cards::builders::ForEachEffectAst;
 use super::*;
 use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId, RuleMatch};
 use crate::registry::{
@@ -556,10 +558,10 @@ fn read_cast_or_play_tagged_permission(
         if immediate_tagged_permission_spec(tokens)?
             && let Some(player) = parse_leading_player_may_lexed(tokens)
         {
-            return Ok(Some(vec![EffectAst::MayByPlayer {
+            return Ok(Some(vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
                 player,
                 effects: vec![effect],
-            }]));
+            })]));
         }
         return Ok(Some(vec![effect]));
     }
@@ -699,7 +701,7 @@ fn read_attacking_doesnt_tap_if_source_untapped(
                         Box::new(crate::payload::KeywordAction::Vigilance),
                     )],
                     Until::EndOfCombat,
-                    PredicateAst::SourceIsUntapped,
+                    PredicateAst::Source(SourcePredicateAst::SourceIsUntapped),
                 ),
             ]));
         }
@@ -783,16 +785,16 @@ fn read_each_player_may_discard_hand_and_draw(
             EffectAst::subject_verb(
                 crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
                 PlayerAst::That,
-                SubjectVerbActionAst::Draw {
+                SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
                     count: shape.draw_count,
-                },
+                }),
             ),
         ];
-        return Ok(Some(vec![EffectAst::ForEachPlayer {
-            effects: vec![EffectAst::May {
+        return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+            effects: vec![EffectAst::Permissions(PermissionEffectAst::May {
                 effects: optional_effects,
-            }],
-        }]));
+            })],
+        })]));
     }
     Ok(None)
 }
@@ -844,14 +846,14 @@ fn read_any_player_or_opponent_may(
                 crate::util::trim_edge_punctuation_tokens(&stripped[1..]),
                 Some(crate::cards::builders::SubjectAst::Player(PlayerAst::That)),
             )?;
-            return Ok(Some(vec![EffectAst::AnyPlayerMay {
+            return Ok(Some(vec![EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay {
                 players: if player == PlayerAst::Opponent {
                     PlayerFilter::Opponent
                 } else {
                     PlayerFilter::Any
                 },
                 effects: vec![payment],
-            }]));
+            })]));
         }
     }
     Ok(None)
@@ -866,10 +868,10 @@ fn read_any_player_may_sacrifice(
             Some(crate::cards::builders::SubjectAst::Player(PlayerAst::That)),
             None,
         )?;
-        return Ok(Some(vec![EffectAst::AnyPlayerMay {
+        return Ok(Some(vec![EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay {
             players: shape.players,
             effects: vec![sacrifice],
-        }]));
+        })]));
     }
     Ok(None)
 }
@@ -908,10 +910,10 @@ fn read_trailing_if_player_may(input: &Chain<'_>) -> Result<Option<Vec<EffectAst
             for effect in &mut effects {
                 bind_implicit_player_context(effect, player);
             }
-            return Ok(Some(vec![EffectAst::TrailingIf {
+            return Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
                 predicate: trailing_if.predicate,
-                effects: vec![EffectAst::MayByPlayer { player, effects }],
-            }]));
+                effects: vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, effects })],
+            })]));
         }
 
         if chain_grammar::starts_with_may_tokens(trailing_if.leading_tokens)
@@ -920,10 +922,10 @@ fn read_trailing_if_player_may(input: &Chain<'_>) -> Result<Option<Vec<EffectAst
         {
             let stripped = remove_first_word(trailing_if.leading_tokens);
             let effects = parse_effect_chain_lexed(&stripped)?;
-            return Ok(Some(vec![EffectAst::TrailingIf {
+            return Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
                 predicate: trailing_if.predicate,
-                effects: vec![EffectAst::May { effects }],
-            }]));
+                effects: vec![EffectAst::Permissions(PermissionEffectAst::May { effects })],
+            })]));
         }
     }
     Ok(None)
@@ -968,18 +970,18 @@ fn read_player_may(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, CardText
         }
         if leading_may_is_permission_clause_lexed(&stripped)? {
             if immediate_tagged_permission_spec(&stripped)? {
-                return Ok(Some(vec![EffectAst::MayByPlayer { player, effects }]));
+                return Ok(Some(vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, effects })]));
             }
             return Ok(Some(effects));
         }
         if has_any_number_of_times_suffix(&stripped) && is_repeatable_optional_payment(&effects) {
-            return Ok(Some(vec![EffectAst::RepeatProcess {
-                effects: vec![EffectAst::MayByPlayer { player, effects }],
+            return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
+                effects: vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, effects })],
                 continue_effect_index: 0,
                 continue_predicate: crate::cards::builders::IfResultPredicate::Did,
-            }]));
+            })]));
         }
-        return Ok(Some(vec![EffectAst::MayByPlayer { player, effects }]));
+        return Ok(Some(vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, effects })]));
     }
     Ok(None)
 }
@@ -1001,18 +1003,18 @@ fn read_leading_may(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, CardTex
         let effects = parse_effect_chain_lexed(&stripped)?;
         if leading_may_is_permission_clause_lexed(&stripped)? {
             if immediate_tagged_permission_spec(&stripped)? {
-                return Ok(Some(vec![EffectAst::May { effects }]));
+                return Ok(Some(vec![EffectAst::Permissions(PermissionEffectAst::May { effects })]));
             }
             return Ok(Some(effects));
         }
         if has_any_number_of_times_suffix(&stripped) && is_repeatable_optional_payment(&effects) {
-            return Ok(Some(vec![EffectAst::RepeatProcess {
-                effects: vec![EffectAst::May { effects }],
+            return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
+                effects: vec![EffectAst::Permissions(PermissionEffectAst::May { effects })],
                 continue_effect_index: 0,
                 continue_predicate: crate::cards::builders::IfResultPredicate::Did,
-            }]));
+            })]));
         }
-        return Ok(Some(vec![EffectAst::May { effects }]));
+        return Ok(Some(vec![EffectAst::Permissions(PermissionEffectAst::May { effects })]));
     }
     Ok(None)
 }
@@ -1099,10 +1101,10 @@ fn read_cast_or_play_tagged_permission_late(
         if immediate_tagged_permission_spec(tokens)?
             && let Some(player) = parse_leading_player_may_lexed(tokens)
         {
-            return Ok(Some(vec![EffectAst::MayByPlayer {
+            return Ok(Some(vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
                 player,
                 effects: vec![effect],
-            }]));
+            })]));
         }
         return Ok(Some(vec![effect]));
     }

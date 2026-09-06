@@ -3,6 +3,15 @@
 //! Each of these recognizes real Oracle text and asserts what it lowers to, so
 //! they exercise both phases and live in the crate that assembles them.
 
+use ironsmith_compiler::card_builders::SourcePredicateAst;
+use ironsmith_compiler::card_builders::PlayerPredicateAst;
+use ironsmith_compiler::card_builders::PermissionEffectAst;
+use ironsmith_compiler::card_builders::ConditionalEffectAst;
+use ironsmith_compiler::card_builders::ObjectChoiceEffectAst;
+use ironsmith_compiler::card_builders::ForEachEffectAst;
+use ironsmith_compiler::card_builders::DamageActionAst;
+use ironsmith_compiler::card_builders::LifeResourceActionAst;
+use ironsmith_compiler::card_builders::KeywordActionAst;
 use ironsmith_compiler::ParseCardText;
 use ironsmith_compiler::card::PowerToughness;
 use ironsmith_compiler::color::ColorSet;
@@ -300,12 +309,12 @@ fn lowering_preserves_past_control_lki_mode_and_authored_noun() {
     filter.set_demonstrative_antecedent_surface(Some(
         ironsmith_core::DemonstrativeAntecedentSurface::Permanent,
     ));
-    let predicate = PredicateAst::PlayerTaggedObjectMatches {
+    let predicate = PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches {
         player: PlayerAst::You,
-        tag: TagKey::from("returned_0"),
+        tag: ironsmith_compiler::tag::TagRef::of(TagKey::from("returned_0")),
         filter,
         mode: ironsmith_core::TaggedObjectMatchMode::LastKnown,
-    };
+    });
 
     let condition =
         compile_condition_from_predicate_ast(&predicate, &mut EffectLoweringContext::new(), &None)
@@ -631,7 +640,7 @@ fn explicit_controller_return_lowering_retains_return_surface() {
     let (effects, choices) = compile_effect(
         &EffectAst::subject_verb_return_to_battlefield(
             TargetAst::Tagged(
-                ironsmith_compiler::tag::CompilerReferenceTag::Triggering.key(),
+                ironsmith_compiler::tag::TagRef::of(ironsmith_compiler::tag::CompilerReferenceTag::Triggering.key()),
                 None,
             ),
             false,
@@ -861,7 +870,7 @@ fn compile_damage_equal_to_power_over_each_object_fans_out_per_object() {
     recipients.set_plural_object_noun_surface(true);
     let (effects, choices) = compile_effect(
         &EffectAst::subject_verb_damage_equal_to_power(
-            TargetAst::Tagged(TagKey::from("amassed_0"), None),
+            TargetAst::Tagged(ironsmith_compiler::tag::TagRef::of(TagKey::from("amassed_0")), None),
             TargetAst::Object(recipients, None, None),
         ),
         &mut EffectLoweringContext::new(),
@@ -1152,7 +1161,7 @@ fn qualified_power_damage_clause_builds_canonical_ast_directly() {
     assert!(matches!(
         effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::DealDamageEqualToPower { .. },
+            action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { .. }),
             ..
         })
     ));
@@ -2240,10 +2249,10 @@ fn quoted_sacrifice_damage_activation_stays_on_created_token() {
 
 #[test]
 fn endure_builds_typed_spirit_without_token_text_parsing() {
-    let action = SubjectVerbActionAst::Endure {
+    let action = SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure {
         target: TargetAst::Object(ObjectFilter::source(), None, None),
         amount: Value::Fixed(2),
-    };
+    });
     let ast = EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::You, action);
     let (effects, choices) =
         compile_effect(&ast, &mut EffectLoweringContext::new()).expect("fixed endure should lower");
@@ -2338,7 +2347,7 @@ fn predicate_tag_detection_descends_through_surface_hinted_characteristic_specs(
 }
 
 fn target_mana_value_threshold_branch(target_span: TextSpan, threshold: i32) -> EffectAst {
-    EffectAst::TrailingIf {
+    EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
         predicate: PredicateAst::ValueComparison {
             left: Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
                 ironsmith_compiler::tag::CompilerReferenceTag::It.key(),
@@ -2351,7 +2360,7 @@ fn target_mana_value_threshold_branch(target_span: TextSpan, threshold: i32) -> 
             Some(target_span),
             None,
         ))],
-    }
+    })
 }
 
 fn threshold_self_replacement(
@@ -2445,7 +2454,7 @@ fn source_sacrifice_preserves_its_authored_permanent_noun() {
 #[test]
 fn resolve_target_spec_preserves_implicit_it_when_it_resolves_to_source() {
     let target = TargetAst::Tagged(
-        ironsmith_compiler::tag::CompilerReferenceTag::It.key(),
+        ironsmith_compiler::tag::CompilerReferenceTag::It.bind(),
         Some(TextSpan {
             line: 0,
             start: 42,
@@ -2512,7 +2521,7 @@ fn collect_tag_spans_tracks_connive_and_destroy_no_regeneration_targets() {
     collect_tag_spans_from_effect(
         &EffectAst::subject_verb_connive(
             TargetAst::Tagged(
-                alpha.clone(),
+                ironsmith_compiler::tag::TagRef::of(alpha.clone()),
                 Some(TextSpan {
                     line: 0,
                     start: 0,
@@ -2526,7 +2535,7 @@ fn collect_tag_spans_tracks_connive_and_destroy_no_regeneration_targets() {
     );
     collect_tag_spans_from_effect(
         &EffectAst::subject_verb_destroy_no_regeneration(TargetAst::Tagged(
-            beta.clone(),
+            ironsmith_compiler::tag::TagRef::of(beta.clone()),
             Some(TextSpan {
                 line: 0,
                 start: 6,
@@ -2561,7 +2570,7 @@ fn collect_tag_spans_tracks_counter_unless_pays_target() {
     let gamma = TagKey::from("gamma");
     let effect = EffectAst::subject_verb_counter_unless_pays(
         TargetAst::Tagged(
-            gamma.clone(),
+            ironsmith_compiler::tag::TagRef::of(gamma.clone()),
             Some(TextSpan {
                 line: 0,
                 start: 0,
@@ -2636,7 +2645,7 @@ fn compile_effects_with_explicit_frame_uses_annotated_reference_frames() {
             None,
         )),
         EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-            ironsmith_compiler::tag::CompilerReferenceTag::It.key(),
+            ironsmith_compiler::tag::TagRef::of(ironsmith_compiler::tag::CompilerReferenceTag::It.key()),
             PlayerAst::You,
             false,
             false,
@@ -2677,15 +2686,15 @@ fn synthesis_pod_consult_match_keeps_its_tag_through_exile_and_cast() {
             ironsmith_compiler::cards::builders::LibraryConsultStopRuleAst::MatchCount(
                 Value::Fixed(1),
             ),
-            TagKey::from("__sentence_helper_revealed_l0_s0_e0"),
-            match_tag.clone(),
+            ironsmith_compiler::tag::TagRef::of(TagKey::from("__sentence_helper_revealed_l0_s0_e0")),
+            ironsmith_compiler::tag::TagRef::of(match_tag.clone()),
         ),
         EffectAst::subject_verb_exile(
-            TargetAst::Tagged(match_tag.clone(), Some(TextSpan::synthetic())),
+            TargetAst::Tagged(ironsmith_compiler::tag::TagRef::of(match_tag.clone()), Some(TextSpan::synthetic())),
             false,
         ),
         EffectAst::subject_verb_cast_tagged(
-            ironsmith_compiler::tag::CompilerReferenceTag::It.key(),
+            ironsmith_compiler::tag::TagRef::of(ironsmith_compiler::tag::CompilerReferenceTag::It.key()),
             PlayerAst::You,
             false,
             false,
@@ -2714,19 +2723,19 @@ fn praetors_grasp_search_exile_uses_source_exiled_permission_provenance() {
     let mut searched_filter = ObjectFilter::default().in_zone(Zone::Library);
     searched_filter.owner = Some(PlayerFilter::Opponent);
     let effects = vec![
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter: searched_filter,
             count: ironsmith_compiler::effect::ChoiceCount::exactly(1),
             count_value: None,
             player: PlayerAst::You,
-            tag: searched_tag.clone(),
-        },
+            tag: ironsmith_compiler::tag::TagRef::of(searched_tag.clone()),
+        }),
         EffectAst::subject_verb_exile(
-            TargetAst::Tagged(searched_tag.clone(), Some(TextSpan::synthetic())),
+            TargetAst::Tagged(ironsmith_compiler::tag::TagRef::of(searched_tag.clone()), Some(TextSpan::synthetic())),
             true,
         ),
         EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
-            ironsmith_compiler::tag::CompilerReferenceTag::It.key(),
+            ironsmith_compiler::tag::TagRef::of(ironsmith_compiler::tag::CompilerReferenceTag::It.key()),
             PlayerAst::You,
             true,
             false,
@@ -2759,13 +2768,13 @@ fn praetors_grasp_search_exile_uses_source_exiled_permission_provenance() {
 fn optional_exile_from_another_players_hand_does_not_use_controller_hand_imprint() {
     let mut filter = ObjectFilter::nonland().in_zone(Zone::Hand);
     filter.owner = Some(PlayerFilter::target_opponent());
-    let ast = EffectAst::MayByPlayer {
+    let ast = EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
         player: PlayerAst::You,
         effects: vec![EffectAst::subject_verb_exile(
             TargetAst::Object(filter, None, None),
             false,
         )],
-    };
+    });
 
     let (compiled, _) = compile_effect(&ast, &mut EffectLoweringContext::new())
         .expect("optional opponent-hand exile should lower");
@@ -2836,7 +2845,7 @@ fn plural_untargeted_causative_damage_still_fans_out() {
 
 #[test]
 fn optional_self_prompting_free_cast_does_not_gain_a_second_may_prompt() {
-    let ast = EffectAst::MayByPlayer {
+    let ast = EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
         player: PlayerAst::You,
         effects: vec![
             EffectAst::may_cast_matching_spell_without_paying_mana_cost_from_zone_owner(
@@ -2846,7 +2855,7 @@ fn optional_self_prompting_free_cast_does_not_gain_a_second_may_prompt() {
                 Zone::Hand,
             ),
         ],
-    };
+    });
 
     let (compiled, _) = compile_effect(&ast, &mut EffectLoweringContext::new())
         .expect("optional free cast should lower");
@@ -2865,7 +2874,7 @@ fn optional_self_prompting_free_cast_does_not_gain_a_second_may_prompt() {
 #[test]
 fn compile_may_branch_preserves_auto_tagged_destroy_followup() {
     let effects = vec![
-        EffectAst::May {
+        EffectAst::Permissions(PermissionEffectAst::May {
             effects: vec![EffectAst::subject_verb_destroy(TargetAst::WithCount(
                 Box::new(TargetAst::Object(
                     ObjectFilter::creature(),
@@ -2874,9 +2883,9 @@ fn compile_may_branch_preserves_auto_tagged_destroy_followup() {
                 )),
                 ChoiceCount::up_to(3),
             ))],
-        },
+        }),
         EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-            ironsmith_compiler::tag::CompilerReferenceTag::It.key(),
+            ironsmith_compiler::tag::TagRef::of(ironsmith_compiler::tag::CompilerReferenceTag::It.key()),
             PlayerAst::You,
             false,
             false,
@@ -2917,19 +2926,19 @@ fn compile_may_branch_preserves_auto_tagged_destroy_followup() {
 
 #[test]
 fn compile_optional_turn_skip_keeps_if_result_inside_may_branch() {
-    let effects = vec![EffectAst::Conditional {
-        predicate: PredicateAst::SourceIsTapped,
-        if_true: vec![EffectAst::May {
+    let effects = vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+        predicate: PredicateAst::Source(SourcePredicateAst::SourceIsTapped),
+        if_true: vec![EffectAst::Permissions(PermissionEffectAst::May {
             effects: vec![
                 EffectAst::subject_verb_skip_turn(PlayerAst::You),
-                EffectAst::IfResult {
+                EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                     predicate: IfResultPredicate::Did,
                     effects: vec![EffectAst::subject_verb_untap(TargetAst::Source(None))],
-                },
+                }),
             ],
-        }],
+        })],
         if_false: Vec::new(),
-    }];
+    })];
 
     let mut ctx = EffectLoweringContext::new();
     let (compiled, _) = compile_effects(&effects, &mut ctx)
@@ -2951,11 +2960,11 @@ fn compile_last_known_countered_spell_preserves_stack_identity() {
             Some(TextSpan::synthetic()),
             None,
         )),
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: PredicateAst::ItMatchedLastKnown(legendary_spell),
             if_true: vec![EffectAst::subject_verb_ring_tempts_you(PlayerAst::You)],
             if_false: Vec::new(),
-        },
+        }),
     ];
 
     let mut ctx = EffectLoweringContext::new();
@@ -3012,7 +3021,7 @@ fn compile_live_permanent_spell_predicate_preserves_stack_identity() {
 fn compile_copy_does_not_replace_the_original_pronoun_antecedent() {
     let effects = vec![EffectAst::subject_verb_copy_spell(
         TargetAst::Tagged(
-            ironsmith_compiler::tag::CompilerReferenceTag::Triggering.key(),
+            ironsmith_compiler::tag::TagRef::of(ironsmith_compiler::tag::CompilerReferenceTag::Triggering.key()),
             None,
         ),
         Value::Fixed(1),
@@ -3032,13 +3041,13 @@ fn compile_copy_does_not_replace_the_original_pronoun_antecedent() {
 
 #[test]
 fn compile_for_each_tagged_rewrites_it_targets_to_iterated_object() {
-    let effects = vec![EffectAst::ForEachTagged {
-        tag: TagKey::from("revealed_0"),
-        effects: vec![EffectAst::Conditional {
+    let effects = vec![EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+        tag: ironsmith_compiler::tag::TagRef::of(TagKey::from("revealed_0")),
+        effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: PredicateAst::ItMatches(ObjectFilter::permanent()),
             if_true: vec![EffectAst::subject_verb_move_to_zone(
                 TargetAst::Tagged(
-                    ironsmith_compiler::tag::CompilerReferenceTag::It.key(),
+                    ironsmith_compiler::tag::TagRef::of(ironsmith_compiler::tag::CompilerReferenceTag::It.key()),
                     None,
                 ),
                 Zone::Battlefield,
@@ -3049,7 +3058,7 @@ fn compile_for_each_tagged_rewrites_it_targets_to_iterated_object() {
             )],
             if_false: vec![EffectAst::subject_verb_move_to_zone(
                 TargetAst::Tagged(
-                    ironsmith_compiler::tag::CompilerReferenceTag::It.key(),
+                    ironsmith_compiler::tag::TagRef::of(ironsmith_compiler::tag::CompilerReferenceTag::It.key()),
                     None,
                 ),
                 Zone::Graveyard,
@@ -3058,8 +3067,8 @@ fn compile_for_each_tagged_rewrites_it_targets_to_iterated_object() {
                 false,
                 None,
             )],
-        }],
-    }];
+        })],
+    })];
 
     let (compiled, _, _) = compile_effects_with_explicit_frame(
         &effects,
@@ -3089,33 +3098,33 @@ fn compile_for_each_tagged_rewrites_it_targets_to_iterated_object() {
 
 #[test]
 fn consult_inside_for_each_tagged_does_not_steal_the_iteration_binding() {
-    let effects = vec![EffectAst::ForEachTagged {
-        tag: TagKey::from("chosen_targets"),
+    let effects = vec![EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+        tag: ironsmith_compiler::tag::TagRef::of(TagKey::from("chosen_targets")),
         effects: vec![
             EffectAst::subject_verb_consult_top_of_library(
                 PlayerAst::You,
                 ironsmith_compiler::cards::builders::LibraryConsultModeAst::Reveal,
                 ObjectFilter::default().without_type(CardType::Land),
                 ironsmith_compiler::cards::builders::LibraryConsultStopRuleAst::FirstMatch,
-                TagKey::from("revealed"),
-                TagKey::from("matched"),
+                ironsmith_compiler::tag::TagRef::of(TagKey::from("revealed")),
+                ironsmith_compiler::tag::TagRef::of(TagKey::from("matched")),
             ),
             EffectAst::subject_verb(
                 SubjectVerbRoleAst::Actor,
                 PlayerAst::Implicit,
-                SubjectVerbActionAst::DealDamage {
+                SubjectVerbActionAst::Damage(DamageActionAst::DealDamage {
                     amount: Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
                         ironsmith_compiler::tag::CompilerReferenceTag::It.key(),
                     ))),
                     target: TargetAst::Tagged(
-                        ironsmith_compiler::tag::CompilerReferenceTag::It.key(),
+                        ironsmith_compiler::tag::TagRef::of(ironsmith_compiler::tag::CompilerReferenceTag::It.key()),
                         None,
                     ),
                     unpreventable: false,
-                },
+                }),
             ),
         ],
-    }];
+    })];
 
     let (compiled, _, _) = compile_effects_with_explicit_frame(
         &effects,
@@ -3290,16 +3299,16 @@ fn compile_shared_you_then_that_player_draw_preserves_prior_non_you_binding() {
         EffectAst::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             PlayerAst::You,
-            SubjectVerbActionAst::Draw {
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
                 count: Value::Fixed(1),
-            },
+            }),
         ),
         EffectAst::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             PlayerAst::That,
-            SubjectVerbActionAst::Draw {
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
                 count: Value::Fixed(1),
-            },
+            }),
         ),
     ];
 
@@ -3394,11 +3403,11 @@ fn explicit_damage_target_binds_same_clause_that_player_value_in_iterated_contex
     let effects = vec![EffectAst::subject_verb(
         SubjectVerbRoleAst::Actor,
         PlayerAst::Implicit,
-        SubjectVerbActionAst::DealDamage {
+        SubjectVerbActionAst::Damage(DamageActionAst::DealDamage {
             amount,
             target: TargetAst::Player(PlayerFilter::Opponent, Some(TextSpan::synthetic())),
             unpreventable: false,
-        },
+        }),
     )];
     for frame in [
         LoweringFrame {
@@ -3454,11 +3463,11 @@ fn nonexplicit_damage_recipient_preserves_outer_iterated_player_value() {
     let effects = vec![EffectAst::subject_verb(
         SubjectVerbRoleAst::Actor,
         PlayerAst::Implicit,
-        SubjectVerbActionAst::DealDamage {
+        SubjectVerbActionAst::Damage(DamageActionAst::DealDamage {
             amount: Value::Count(that_players_hand),
             target: TargetAst::Player(PlayerFilter::IteratedPlayer, None),
             unpreventable: false,
-        },
+        }),
     )];
     let frame = LoweringFrame {
         iterated_player: true,

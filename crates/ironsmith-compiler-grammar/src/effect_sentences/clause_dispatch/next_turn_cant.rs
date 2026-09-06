@@ -1,3 +1,4 @@
+use crate::cards::builders::ForEachEffectAst;
 use super::super::super::activation_and_restrictions::parse_cant_restriction_clause;
 use super::super::super::grammar::effects::clause_dispatch_shapes::parse_next_turn_cant_shape_tokens;
 use super::super::super::lexer::OwnedLexToken;
@@ -54,9 +55,9 @@ pub(super) fn parse_next_turn_cant_clause(
         None,
     );
     Ok(Some(if for_each_opponent {
-        EffectAst::ForEachOpponent {
+        EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
             effects: vec![restriction],
-        }
+        })
     } else {
         restriction
     }))

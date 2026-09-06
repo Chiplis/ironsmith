@@ -1,3 +1,4 @@
+use crate::cards::builders::RevealLookActionAst;
 use super::*;
 use crate::Subtype;
 
@@ -15,12 +16,12 @@ fn as_you_cast_from_zone_this_turn_grant_preserves_origin_duration_and_keyword()
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::GrantAbilitiesAll {
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll {
                 filter,
                 abilities,
                 duration,
                 ..
-            },
+            }),
         ..
     }) = effect
     else {
@@ -185,10 +186,10 @@ fn source_exiled_counted_return_keeps_original_set_for_the_remainder() {
     assert_eq!(tag.as_str(), "source_exiled_returned");
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::MoveToZone {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                 target: TargetAst::WithCount(returned, count),
                 ..
-            },
+            }),
         ..
     }) = effect.as_ref()
     else {
@@ -207,11 +208,11 @@ fn source_exiled_counted_return_keeps_original_set_for_the_remainder() {
     );
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::PutTaggedRemainderInZone {
+            SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderInZone {
                 tag: original_set,
                 keep_tagged,
                 ..
-            },
+            }),
         ..
     }) = &effects[1]
     else {
@@ -307,40 +308,40 @@ fn face_down_exile_counter_stays_on_the_selected_card_not_the_remainder() {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::LookAtTopCards {
+                SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
                     tag: looked_tag, ..
-                },
+                }),
             ..
         }),
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             tag: selected_tag, ..
-        },
+        }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::Exile {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
                     target: TargetAst::Tagged(exile_tag, _),
                     face_down: true,
                     ..
-                },
+                }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::PutCounters {
+                SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
                     counter_type: CounterType::Named(counter_name),
                     count: Value::Fixed(1),
                     target: TargetAst::Tagged(counter_tag, _),
                     ..
-                },
+                }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
                     tag: remainder_pool_tag,
                     keep_tagged: Some(remainder_keep_tag),
                     ..
-                },
+                }),
             ..
         }),
     ] = effects.as_slice()
@@ -388,11 +389,11 @@ fn undying_flames_exile_until_uses_typed_consult_traversal() {
     assert!(matches!(
         effects.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ConsultTopOfLibrary {
+            action: SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
                 mode: crate::cards::builders::LibraryConsultModeAst::Exile,
                 filter,
                 ..
-            },
+            }),
             ..
         })] if filter.excluded_card_types.contains(&crate::types::CardType::Land)
     ));
@@ -806,10 +807,10 @@ fn where_x_binding_prioritizes_spell_history_aggregate_over_plain_count() {
     let [EffectAst::SubjectVerb(subject_verb)] = effects.as_slice() else {
         panic!("expected one token-creation effect: {effects:#?}");
     };
-    let SubjectVerbActionAst::CreateTokenWithMods {
+    let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
         dynamic_power_toughness: Some((power, toughness)),
         ..
-    } = &subject_verb.action
+    }) = &subject_verb.action
     else {
         panic!("expected dynamic token power and toughness: {effects:#?}");
     };
@@ -908,8 +909,8 @@ fn shared_where_x_dynamic_subtraction_binds_both_hand_counts() {
             panic!("{text}: expected one subject-verb effect: {effects:#?}");
         };
         let amount = match &subject_verb.action {
-            SubjectVerbActionAst::LoseLife { amount }
-            | SubjectVerbActionAst::DealDamage { amount, .. } => amount,
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount, .. }) => amount,
             action => panic!("{text}: expected life-loss or damage action: {action:#?}"),
         };
         let mut actual_players = Vec::new();
@@ -1031,7 +1032,7 @@ fn counted_choice_complement_keeps_that_many_and_sacrifices_others() {
     assert!(debug.contains("ChooseObjects"), "{debug}");
     assert!(debug.contains("min: 5"), "{debug}");
     assert!(
-        debug.contains("max: Some(\n                    5"),
+        debug.split_whitespace().collect::<Vec<_>>().join(" ").contains("max: Some( 5"),
         "{debug}"
     );
     assert!(debug.contains("SacrificeAll"), "{debug}");
@@ -1056,7 +1057,7 @@ fn aggregate_choice_complement_keeps_the_group_power_constraint() {
         "{debug}"
     );
     assert!(
-        debug.contains("Power") && debug.contains("maximum: Fixed(\n                    4"),
+        debug.contains("Power") && debug.split_whitespace().collect::<Vec<_>>().join(" ").contains("maximum: Fixed( 4"),
         "{debug}"
     );
     assert!(debug.contains("SacrificeAll"), "{debug}");
@@ -1080,13 +1081,13 @@ fn party_choice_complement_uses_four_optional_distinct_role_slots() {
     let effect = parse_choice_complement_subject_verb(&tokens)
         .expect("party choice parser should not error")
         .expect("party choice parser should match");
-    let EffectAst::ForEachPlayer { effects } = effect else {
+    let EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }) = effect else {
         panic!("party choice must iterate over players: {effect:#?}");
     };
     assert_eq!(effects.len(), 5, "{effects:#?}");
     let mut roles = Vec::new();
     for choice in &effects[..4] {
-        let EffectAst::ChooseObjects { filter, count, .. } = choice else {
+        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, count, .. }) = choice else {
             panic!("party slot must be an object choice: {choice:#?}");
         };
         assert_eq!(*count, ChoiceCount::up_to(1));
@@ -1349,21 +1350,21 @@ fn target_gains_then_gets_where_x_reuses_the_exact_declared_target() {
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::GrantAbilitiesToTarget {
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                     target: grant,
                     duration: grant_duration,
                     ..
-                },
+                }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::Pump {
+                SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
                     target: pump,
                     power,
                     duration: pump_duration,
                     ..
-                },
+                }),
             ..
         }),
     ] = effects.as_slice()
@@ -1405,20 +1406,20 @@ fn full_dispatch_keeps_gain_then_get_on_one_declared_target() {
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::GrantAbilitiesToTarget {
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                     target: grant,
                     duration: grant_duration,
                     ..
-                },
+                }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::Pump {
+                SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
                     target: pump,
                     duration: pump_duration,
                     ..
-                },
+                }),
             ..
         }),
     ] = effects.as_slice()
@@ -1632,7 +1633,7 @@ fn target_controlled_pump_keeps_trailing_mana_spent_condition() {
         .expect("conditional target-controlled pump parser should not error")
         .expect("conditional target-controlled pump parser should match");
 
-    let [EffectAst::TrailingIf { predicate, effects }] = effects.as_slice() else {
+    let [EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects })] = effects.as_slice() else {
         panic!("expected one trailing-if program, got {effects:#?}");
     };
     assert!(matches!(
@@ -1676,7 +1677,7 @@ fn triggering_object_counter_total_binds_create_x_without_duplicating_condition(
         .expect("counter-count parser should not error")
         .expect("counter-count parser should match");
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::CreateTokenWithMods { count, .. },
+        action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { count, .. }),
         ..
     }) = effect
     else {

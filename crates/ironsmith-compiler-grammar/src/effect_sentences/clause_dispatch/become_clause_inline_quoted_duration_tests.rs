@@ -1,3 +1,6 @@
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::CharacteristicActionAst;
+use crate::cards::builders::GrantActionAst;
 use super::*;
 
 fn animation_pt_surface(text: &str) -> ironsmith_core::AnimationPtSurface {
@@ -8,10 +11,10 @@ fn animation_pt_surface(text: &str) -> ironsmith_core::AnimationPtSurface {
         .expect("animation should parse through the generic become clause");
     let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
         action:
-            crate::cards::builders::SubjectVerbActionAst::BecomeBasePtCreature {
+            crate::cards::builders::SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
                 animation_pt_surface: Some(surface),
                 ..
-            },
+            }),
         ..
     }) = effect
     else {
@@ -48,7 +51,7 @@ fn triggering_spell_color_protection_becomes_exact_color_gated_grants() {
     };
     assert_eq!(effects.len(), 6, "{effects:#?}");
     let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-        action: crate::cards::builders::SubjectVerbActionAst::BecomeBasePtCreature { subtypes, .. },
+        action: crate::cards::builders::SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature { subtypes, .. }),
         ..
     }) = &effects[0]
     else {
@@ -60,11 +63,11 @@ fn triggering_spell_color_protection_becomes_exact_color_gated_grants() {
     assert_eq!(subtypes, &[crate::types::Subtype::Giant]);
 
     for effect in &effects[1..] {
-        let EffectAst::Conditional {
+        let EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: PredicateAst::TaggedMatches(tag, filter),
             if_true,
             if_false,
-        } = effect
+        }) = effect
         else {
             panic!("expected a tagged-color conditional grant: {effect:#?}");
         };
@@ -75,10 +78,10 @@ fn triggering_spell_color_protection_becomes_exact_color_gated_grants() {
             if_true.as_slice(),
             [EffectAst::SubjectVerb(
                 crate::cards::builders::SubjectVerbEffectAst {
-                    action: crate::cards::builders::SubjectVerbActionAst::GrantAbilitiesToTarget {
+                    action: crate::cards::builders::SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                         target: TargetAst::Source(_),
                         ..
-                    },
+                    }),
                     ..
                 }
             )]
@@ -107,11 +110,11 @@ fn leading_and_trailing_animation_durations_remain_distinct() {
     let duration_surface = |effect: EffectAst| {
         let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
             action:
-                crate::cards::builders::SubjectVerbActionAst::BecomeBasePtCreature {
+                crate::cards::builders::SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
                     animation_duration_surface,
                     duration,
                     ..
-                },
+                }),
             ..
         }) = effect
         else {
@@ -171,11 +174,11 @@ fn aura_animation_preserves_balanced_quoted_ability_grant() {
     let effect = parse_become_clause(&subject, &body).expect("parse Aura animation");
     let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
         action:
-            crate::cards::builders::SubjectVerbActionAst::BecomeAuraEnchantment {
+            crate::cards::builders::SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeAuraEnchantment {
                 attachment_filter,
                 granted_abilities,
                 ..
-            },
+            }),
         ..
     }) = effect
     else {
@@ -192,10 +195,10 @@ fn aura_animation_preserves_balanced_quoted_ability_grant() {
         plain,
         EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
             action:
-                crate::cards::builders::SubjectVerbActionAst::BecomeAuraEnchantment {
+                crate::cards::builders::SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeAuraEnchantment {
                     granted_abilities,
                     ..
-                },
+                }),
             ..
         }) if granted_abilities.is_empty()
     ));
@@ -213,12 +216,12 @@ fn unclosed_sentence_quote_keeps_animation_descriptor_and_granted_trigger() {
     let effect = parse_become_clause(&subject, &body).expect("quoted land animation should parse");
     let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
         action:
-            crate::cards::builders::SubjectVerbActionAst::BecomeBasePtCreature {
+            crate::cards::builders::SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
                 subtypes,
                 colors: Some(colors),
                 granted_abilities,
                 ..
-            },
+            }),
         ..
     }) = effect
     else {

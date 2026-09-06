@@ -1,3 +1,6 @@
+use crate::cards::builders::TurnEventPredicateAst;
+use crate::cards::builders::SourcePredicateAst;
+use crate::cards::builders::PlayerPredicateAst;
 use super::*;
 
 use crate::CounterType;
@@ -724,7 +727,7 @@ fn parse_control_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, 
         }
         let mut filter = parse_object_filter(object_tokens, false)?;
         filter.controller = Some(controller);
-        return Ok(Some(PredicateAst::PlayerControlsNo { player, filter }));
+        return Ok(Some(PredicateAst::Player(PlayerPredicateAst::PlayerControlsNo { player, filter })));
     }
 
     let Some((comparison, quantity_used)) = predicate_quantity_prefix_tokens(tail.tokens()) else {
@@ -752,13 +755,13 @@ fn parse_control_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, 
     let predicate = match comparison {
         crate::effect::Comparison::Equal(count) if count >= 0 => {
             if count == 1 && !authored_exactly {
-                PredicateAst::PlayerControls { player, filter }
+                PredicateAst::Player(PlayerPredicateAst::PlayerControls { player, filter })
             } else {
-                PredicateAst::PlayerControlsExactly {
+                PredicateAst::Player(PlayerPredicateAst::PlayerControlsExactly {
                     player,
                     filter,
                     count: count as u32,
-                }
+                })
             }
         }
         comparison => {
@@ -766,13 +769,13 @@ fn parse_control_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, 
                 return Ok(None);
             };
             if count <= 1 {
-                PredicateAst::PlayerControls { player, filter }
+                PredicateAst::Player(PlayerPredicateAst::PlayerControls { player, filter })
             } else {
-                PredicateAst::PlayerHasAtLeast {
+                PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast {
                     player,
                     filter,
                     count,
-                }
+                })
             }
         }
     };
@@ -802,10 +805,10 @@ fn parse_all_controlled_objects_share_color_gate(tokens: &[OwnedLexToken]) -> Op
         crate::grammar::primitives::probe_shape(parse_object_filter(objects.tokens(), false))?;
     filter.controller = Some(PlayerFilter::You);
     filter = filter.without_colors(color);
-    Some(PredicateAst::PlayerControlsNo {
+    Some(PredicateAst::Player(PlayerPredicateAst::PlayerControlsNo {
         player: PlayerAst::You,
         filter,
-    })
+    }))
 }
 
 fn parse_attachment_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, CardTextError> {
@@ -1005,9 +1008,9 @@ fn parse_source_state_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     ) {
         let mut filter = ObjectFilter::creature();
         filter.entered_battlefield_this_turn = true;
-        return Some(PredicateAst::Not(Box::new(PredicateAst::SourceMatches(
+        return Some(PredicateAst::Not(Box::new(PredicateAst::Source(SourcePredicateAst::SourceMatches(
             filter,
-        ))));
+        )))));
     }
     if surface::exact(
         clause,
@@ -1015,7 +1018,7 @@ fn parse_source_state_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     ) {
         let mut filter = ObjectFilter::creature();
         filter.was_dealt_damage_this_turn = true;
-        return Some(PredicateAst::SourceMatches(filter));
+        return Some(PredicateAst::Source(SourcePredicateAst::SourceMatches(filter)));
     }
     if surface::exact(
         clause,
@@ -1025,7 +1028,7 @@ fn parse_source_state_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     ) {
         let mut filter = ObjectFilter::creature();
         filter.dealt_damage_to_player_this_turn = Some(PlayerFilter::Opponent);
-        return Some(PredicateAst::SourceMatches(filter));
+        return Some(PredicateAst::Source(SourcePredicateAst::SourceMatches(filter)));
     }
     if surface::exact_any(
         clause,
@@ -1049,12 +1052,12 @@ fn parse_source_state_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
         ],
     ) {
         return Some(PredicateAst::And(
-            Box::new(PredicateAst::SourceIsInZone(Zone::Exile)),
-            Box::new(PredicateAst::SourceHasCounterAtLeast {
+            Box::new(PredicateAst::Source(SourcePredicateAst::SourceIsInZone(Zone::Exile))),
+            Box::new(PredicateAst::Source(SourcePredicateAst::SourceHasCounterAtLeast {
                 counter_type: CounterType::Time,
                 count: 1,
                 surface: crate::SourceCounterThresholdSurface::SourceHas,
-            }),
+            })),
         ));
     }
     None
@@ -1114,9 +1117,9 @@ fn parse_existing_zone_history_gate(tokens: &[OwnedLexToken]) -> Option<Predicat
             if graveyard_owner.is_some() {
                 filter.owner = graveyard_owner;
             }
-            return Some(PredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(
+            return Some(PredicateAst::TurnEvents(TurnEventPredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(
                 filter,
-            ));
+            )));
         }
     }
 
@@ -1145,9 +1148,9 @@ fn parse_existing_zone_history_gate_exact(clause: LexedClause<'_>) -> Option<Pre
     ) {
         let mut filter = ObjectFilter::default();
         filter.card_types = vec![CardType::Artifact, CardType::Creature];
-        return Some(PredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(
+        return Some(PredicateAst::TurnEvents(TurnEventPredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(
             filter,
-        ));
+        )));
     }
     if surface::exact(
         clause,
@@ -1168,9 +1171,9 @@ fn parse_existing_zone_history_gate_exact(clause: LexedClause<'_>) -> Option<Pre
     ) {
         let mut filter = ObjectFilter::enchantment();
         filter.owner = Some(PlayerFilter::You);
-        return Some(PredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(
+        return Some(PredicateAst::TurnEvents(TurnEventPredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(
             filter,
-        ));
+        )));
     }
     if surface::exact(
         clause,
@@ -1193,7 +1196,7 @@ fn parse_existing_zone_history_gate_exact(clause: LexedClause<'_>) -> Option<Pre
     }
     if surface::exact(clause, &["no", "creatures", "died", "this", "turn"]) {
         return Some(PredicateAst::Not(Box::new(
-            PredicateAst::CreatureDiedThisTurn,
+            PredicateAst::TurnEvents(TurnEventPredicateAst::CreatureDiedThisTurn),
         )));
     }
     None
@@ -1205,17 +1208,17 @@ fn parse_player_counter_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
         return None;
     }
     let count = comparison_to_at_least_threshold(&condition.comparison)?;
-    Some(PredicateAst::PlayerHasPoisonCountersOrMore {
+    Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasPoisonCountersOrMore {
         player: player_ast_from_status_player_filter(condition.player)?,
         count,
-    })
+    }))
 }
 
 fn parse_world_status_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     surface::exact(LexedClause::new(tokens), &["there", "is", "no", "monarch"]).then(|| {
-        PredicateAst::Not(Box::new(PredicateAst::PlayerIsMonarch {
+        PredicateAst::Not(Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerIsMonarch {
             player: PlayerAst::Any,
-        }))
+        })))
     })
 }
 
@@ -1261,7 +1264,7 @@ mod tests {
 
     #[test]
     fn parses_source_and_control_phase_step_gates() {
-        let PredicateAst::PlayerControls { filter, .. } =
+        let PredicateAst::Player(PlayerPredicateAst::PlayerControls { filter, .. }) =
             parse("you control a creature with power greater than its base power")
         else {
             panic!("expected control predicate");
@@ -1270,7 +1273,7 @@ mod tests {
 
         assert!(matches!(
             parse("you control exactly one creature"),
-            PredicateAst::PlayerControlsExactly { count: 1, .. }
+            PredicateAst::Player(PlayerPredicateAst::PlayerControlsExactly { count: 1, .. })
         ));
 
         assert!(matches!(

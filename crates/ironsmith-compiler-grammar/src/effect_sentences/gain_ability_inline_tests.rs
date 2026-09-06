@@ -1,3 +1,7 @@
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::StatChangeActionAst;
+use crate::cards::builders::CharacteristicActionAst;
+use crate::cards::builders::GrantActionAst;
 use super::super::super::lexer::lex_line;
 use super::super::super::util::tokenize_line;
 use super::*;
@@ -524,10 +528,10 @@ fn leading_duration_pump_and_keyword_chain_preserves_optional_target_count() {
     let parsed_count = coordinated.effects().find_map(|effect| match effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::Pump {
+                SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
                     target: TargetAst::WithCount(_, count),
                     ..
-                },
+                }),
             ..
         }) => Some(*count),
         _ => None,
@@ -625,7 +629,7 @@ fn shared_target_where_x_possessive_binds_only_the_bare_pronoun() {
             .effects()
             .find_map(|effect| match effect {
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::Pump { power, .. },
+                    action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { power, .. }),
                     ..
                 }) => Some(power.clone()),
                 _ => None,
@@ -866,11 +870,11 @@ fn mass_ability_loss_keeps_spent_mana_condition_through_lowering() {
         .expect("conditional mass ability loss should produce effects");
 
     let [
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true,
             if_false,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected conditional mass ability removal, got {effects:#?}");
@@ -885,7 +889,7 @@ fn mass_ability_loss_keeps_spent_mana_condition_through_lowering() {
     assert!(matches!(
         if_true.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::RemoveAbilitiesAll { .. },
+            action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll { .. }),
             ..
         })]
     ));
@@ -910,7 +914,7 @@ fn bare_card_type_and_subtype_mass_loss_uses_union_filter() {
 
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::RemoveAbilitiesAll { filter, .. },
+            action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll { filter, .. }),
             ..
         }),
     ] = effects.as_slice()
@@ -1054,7 +1058,7 @@ fn quoted_granted_trigger_keeps_trailing_if_otherwise_branch() {
         .iter()
         .find_map(|effect| match effect {
             EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-                SubjectVerbActionAst::GrantAbilitiesAll { abilities, .. } => Some(abilities),
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll { abilities, .. }) => Some(abilities),
                 _ => None,
             },
             _ => None,
@@ -1074,11 +1078,11 @@ fn quoted_granted_trigger_keeps_trailing_if_otherwise_branch() {
     let false_branch = trigger_effects
         .iter()
         .find_map(|effect| match effect {
-            EffectAst::Conditional {
-                predicate: PredicateAst::PlayerIsMonarch { .. },
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate: PredicateAst::Player(PlayerPredicateAst::PlayerIsMonarch { .. }),
                 if_false,
                 ..
-            } => Some(if_false),
+            }) => Some(if_false),
             EffectAst::ControlFlow(control) => {
                 let crate::model::control_flow::ControlFlowNodeAst::Condition {
                     condition,
@@ -1091,7 +1095,7 @@ fn quoted_granted_trigger_keeps_trailing_if_otherwise_branch() {
                 if !matches!(
                     &condition.predicate,
                     crate::model::control_flow::ControlPredicateAst::State(
-                        PredicateAst::PlayerIsMonarch { .. }
+                        PredicateAst::Player(PlayerPredicateAst::PlayerIsMonarch { .. })
                     )
                 ) {
                     return None;
@@ -1112,7 +1116,7 @@ fn quoted_granted_trigger_keeps_trailing_if_otherwise_branch() {
         false_branch.iter().any(|effect| matches!(
             effect,
             EffectAst::SubjectVerb(subject_verb)
-                if matches!(subject_verb.action, SubjectVerbActionAst::BecomeMonarch)
+                if matches!(subject_verb.action, SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeMonarch))
         )),
         "expected otherwise branch to become the monarch"
     );
@@ -1242,30 +1246,30 @@ fn lose_become_and_base_pt_chain_keeps_one_unmodified_subject() {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::RemoveAbilitiesAll {
+                SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll {
                     filter: remove,
                     set_quantifier_surface: remove_quantifier,
                     ..
-                },
+                }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::AddSubtypes {
+                SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes {
                     target: TargetAst::Object(add, ..),
                     subtypes,
                     ..
-                },
+                }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::SetBasePowerToughness {
+                SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness {
                     target: TargetAst::Object(set_pt, ..),
                     power: Value::Fixed(1),
                     toughness: Value::Fixed(1),
                     ..
-                },
+                }),
             ..
         }),
     ] = coordinated.as_slice()
@@ -1306,15 +1310,15 @@ fn sentence_dispatch_preserves_loss_become_and_base_pt_coordination() {
             coordinated.as_slice(),
             [
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::RemoveAbilitiesAll { .. },
+                    action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll { .. }),
                     ..
                 }),
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::AddSubtypes { .. },
+                    action: SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes { .. }),
                     ..
                 }),
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::SetBasePowerToughness { .. },
+                    action: SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness { .. }),
                     ..
                 }),
             ]
@@ -1341,11 +1345,11 @@ fn target_controller_qualifier_does_not_hide_an_explicit_object_target() {
             coordinated.as_slice(),
             [
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::RemoveAbilitiesFromTarget { .. },
+                    action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget { .. }),
                     ..
                 }),
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::SetBasePowerToughness { .. },
+                    action: SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness { .. }),
                     ..
                 })
             ]
@@ -1364,10 +1368,10 @@ fn plural_pronoun_grant_is_typed_without_pluralizing_singular_it() {
         let [
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::GrantAbilitiesToTarget {
+                    SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                         set_quantifier_surface,
                         ..
-                    },
+                    }),
                 ..
             }),
         ] = effects.as_slice()
@@ -1383,10 +1387,10 @@ fn plural_pronoun_grant_is_typed_without_pluralizing_singular_it() {
             .expect("simple pronoun grant should produce an effect");
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::GrantAbilitiesToTarget {
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                     set_quantifier_surface,
                     ..
-                },
+                }),
             ..
         }) = effect
         else {
@@ -1416,12 +1420,12 @@ fn this_creature_keyword_grant_targets_only_the_ability_source() {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::GrantAbilitiesToTarget {
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                     target: TargetAst::Object(source_filter, None, None),
                     abilities,
                     duration: Until::EndOfTurn,
                     ..
-                },
+                }),
             ..
         }),
     ] = effects.as_slice()

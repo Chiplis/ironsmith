@@ -1,4 +1,18 @@
+use ironsmith_compiler_ast::TagRef;
 use ironsmith_core::tag::TagKeyWalk;
+
+#[path = "predicates/player.rs"]
+mod player;
+pub use player::*;
+#[path = "predicates/source.rs"]
+mod source;
+pub use source::*;
+#[path = "predicates/triggering.rs"]
+mod triggering;
+pub use triggering::*;
+#[path = "predicates/turn_events.rs"]
+mod turn_events;
+pub use turn_events::*;
 
 use super::*;
 
@@ -19,12 +33,18 @@ pub enum TriggerFrequencyPredicateAst {
 #[derive(Debug, Clone, PartialEq)]
 #[derive(TagKeyWalk)]
 pub enum PredicateAst {
+    /// TurnEvents: see [`TurnEventPredicateAst`].
+    TurnEvents(TurnEventPredicateAst),
+    /// Triggering: see [`TriggeringPredicateAst`].
+    Triggering(TriggeringPredicateAst),
+    /// Source: see [`SourcePredicateAst`].
+    Source(SourcePredicateAst),
+    /// Player: see [`PlayerPredicateAst`].
+    Player(PlayerPredicateAst),
     ItIsNight,
     FirstCombatPhaseOfTurn,
-    SourceControllersMainPhase,
     ItIsLandCard,
     ItIsSoulbondPaired,
-    SourceChosenOption(String),
     ItMatches(ObjectFilter),
     /// The implicit object matched this filter immediately before its zone change.
     ///
@@ -33,88 +53,14 @@ pub enum PredicateAst {
     /// characteristics in its new zone.
     ItMatchedLastKnown(ObjectFilter),
     TargetMatches(ObjectFilter),
-    TaggedMatches(TagKey, ObjectFilter),
-    TaggedWasCast(TagKey),
+    TaggedMatches(TagRef, ObjectFilter),
+    TaggedWasCast(TagRef),
     EnchantedPermanentAttackedThisTurn,
     EnchantedPermanentAttackedOrBlockedSinceLastUpkeep,
-    SourceBlockedOrBecameBlockedSinceLastUpkeep,
     TargetObjectsHaveDifferentColorSets,
-    PlayerTaggedObjectMatches {
-        player: PlayerAst,
-        tag: TagKey,
-        filter: ObjectFilter,
-        mode: ironsmith_core::TaggedObjectMatchMode,
-    },
-    PlayerTaggedObjectEnteredBattlefieldThisTurn {
-        player: PlayerAst,
-        tag: TagKey,
-    },
-    PlayerControls {
-        player: PlayerAst,
-        filter: ObjectFilter,
-    },
-    PlayerHasAtLeast {
-        player: PlayerAst,
-        filter: ObjectFilter,
-        count: u32,
-    },
-    PlayerControlsExactly {
-        player: PlayerAst,
-        filter: ObjectFilter,
-        count: u32,
-    },
-    PlayerHasAtLeastWithDifferentPowers {
-        player: PlayerAst,
-        filter: ObjectFilter,
-        count: u32,
-    },
-    PlayerControlsOrHasCardInGraveyard {
-        player: PlayerAst,
-        control_filter: ObjectFilter,
-        graveyard_filter: ObjectFilter,
-    },
-    PlayerOwnsCardNamedInZones {
-        player: PlayerAst,
-        name: String,
-        zones: Vec<Zone>,
-    },
-    PlayerControlsNo {
-        player: PlayerAst,
-        filter: ObjectFilter,
-    },
-    PlayerControlsMost {
-        player: PlayerAst,
-        filter: ObjectFilter,
-    },
-    PlayerControlsMoreThanEachOtherPlayer {
-        player: PlayerAst,
-        filter: ObjectFilter,
-    },
     AnOpponentHasFewerThanPlayer {
         player: PlayerAst,
         filter: ObjectFilter,
-    },
-    PlayerControlsMoreThanYou {
-        player: PlayerAst,
-        filter: ObjectFilter,
-    },
-    PlayerLifeAtMostHalfStartingLifeTotal {
-        player: PlayerAst,
-    },
-    PlayerLifeLessThanHalfStartingLifeTotal {
-        player: PlayerAst,
-    },
-    PlayerHasLessLifeThanYou {
-        player: PlayerAst,
-    },
-    PlayerHasMoreLifeThanYou {
-        player: PlayerAst,
-    },
-    PlayerHasNoOpponentWithMoreLifeThan {
-        player: PlayerAst,
-    },
-    PlayerHasMoreLifeThanEachOtherPlayer {
-        player: PlayerAst,
     },
     CountParity {
         count: crate::static_abilities::AnthemCountExpression,
@@ -128,73 +74,6 @@ pub enum PredicateAst {
         comparison: crate::effect::Comparison,
         display: Option<String>,
     },
-    PlayerIsMonarch {
-        player: PlayerAst,
-    },
-    PlayerHasInitiative {
-        player: PlayerAst,
-    },
-    PlayerHasCitysBlessing {
-        player: PlayerAst,
-    },
-    SourceIsRingBearer {
-        player: PlayerAst,
-    },
-    PlayerRingTemptedThisGameOrMore {
-        player: PlayerAst,
-        count: u32,
-    },
-    PlayerCompletedDungeon {
-        player: PlayerAst,
-        dungeon_name: Option<String>,
-    },
-    PlayerTappedLandForManaThisTurn {
-        player: PlayerAst,
-    },
-    PlayerGainedLifeThisTurnOrMore {
-        player: PlayerAst,
-        count: u32,
-    },
-    PlayerHadLandEnterBattlefieldThisTurn {
-        player: PlayerAst,
-    },
-    PlayerDescendedThisTurn {
-        player: PlayerAst,
-    },
-    PlayerControlsBasicLandTypesAmongLandsOrMore {
-        player: PlayerAst,
-        count: u32,
-    },
-    PlayerHasCardTypesInGraveyardOrMore {
-        player: PlayerAst,
-        count: u32,
-    },
-    PlayerCardsInHandOrMore {
-        player: PlayerAst,
-        count: u32,
-    },
-    PlayerCardsInHandOrFewer {
-        player: PlayerAst,
-        count: u32,
-    },
-    PlayerCardsInHandAtTurnStartOrMore {
-        player: PlayerAst,
-        count: u32,
-    },
-    PlayerCardsInHandAtTurnStartOrFewer {
-        player: PlayerAst,
-        count: u32,
-    },
-    PlayerHasMoreCardsInHandThanYou {
-        player: PlayerAst,
-    },
-    PlayerHasMoreCardsInHandThanEachOtherPlayer {
-        player: PlayerAst,
-    },
-    PlayerHasPoisonCountersOrMore {
-        player: PlayerAst,
-        count: u32,
-    },
     VoteOptionGetsMoreVotes {
         option: String,
     },
@@ -205,105 +84,15 @@ pub enum PredicateAst {
     NoVoteObjectsMatched {
         filter: ObjectFilter,
     },
-    PlayerCastSpellsThisTurnOrMore {
-        player: PlayerAst,
-        count: u32,
-    },
-    OpponentLostLifeThisTurn,
-    AnyPlayerLostLifeThisTurnOrMore {
-        count: u32,
-    },
-    OpponentWasDealtDamageThisTurn,
     YouHaveNoCardsInHand,
-    PlayerWouldDrawCard {
-        player: PlayerAst,
-    },
-    PlayerWouldProliferate {
-        player: PlayerAst,
-    },
-    PlayerWouldBeginExtraTurn {
-        player: PlayerAst,
-    },
-    SourceIsTapped,
-    SourceIsEquipped,
-    SourceIsEnchanted,
-    SourceIsSaddled,
-    SourceIsRenowned,
-    SourceCrewedByExactly {
-        count: u32,
-        filter: ObjectFilter,
-    },
-    SourceMatches(ObjectFilter),
     /// The battlefield object this Aura or Equipment source is attached to
     /// matches the filter at the time the trigger is checked.
     AttachedToSourceMatches(ObjectFilter),
-    /// The object in the surrounding tap event is becoming tapped for the
-    /// first time this turn. This is per object, not per triggered ability.
-    TriggeringObjectBecameTappedFirstTimeThisTurn,
-    /// The object in the surrounding counter event is receiving counters for
-    /// the first time this turn. This is per object, not per triggered
-    /// ability.
-    TriggeringObjectHadCountersPutFirstTimeThisTurn,
-    TriggeringObjectHadToAttackThisCombat,
 
-    SourceHasNoCounter(CounterType),
-    TriggeringObjectHadNoCounter(CounterType),
-    TriggeringObjectHadCounterAtLeast {
-        counter_type: CounterType,
-        count: u32,
-    },
-    SourceHasCounterAtLeast {
-        counter_type: CounterType,
-        count: u32,
-        surface: crate::SourceCounterThresholdSurface,
-    },
-    SourceHasCountersAtLeast(u32),
-    SourceHasAttachmentsMatching {
-        filter: ObjectFilter,
-        comparison: crate::effect::Comparison,
-        display: String,
-    },
-    SourcePowerAtLeast(u32),
-    SourceDealtCombatDamageToPlayerThisTurn,
-    PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn {
-        player: PlayerAst,
-        subtype: Subtype,
-    },
-    SourceAttackedThisTurn,
-    SourceSuspected,
-    SourceCameUnderYourControlThisTurn,
-    SourceAttackedOrBlockedThisTurn,
-    SourceInGraveyardWithCardsAbove {
-        filter: ObjectFilter,
-        count: u32,
-    },
-    SourceIsInZone(Zone),
     YourTurn,
-    YouAttackedWithExactlyNOtherCreaturesThisCombat(u32),
-    CreatureDiedThisTurn,
-    CreatureDiedThisTurnOrMore(u32),
-    CreatureDealtDamageBySourceDiedThisTurn {
-        victim: ObjectFilter,
-        damager: DamageBySpec,
-        count: u32,
-    },
-    CreatureCardPutIntoYourGraveyardThisTurn,
-    PermanentLeftBattlefieldThisTurn,
-    NonlandPermanentLeftBattlefieldThisTurn,
-    SpellWasWarpedThisTurn,
-    PermanentLeftBattlefieldUnderYourControlThisTurn {
-        surface: crate::PermanentLeftBattlefieldControlSurface,
-    },
-    ObjectEnteredBattlefieldThisTurn(ObjectFilter),
-    ObjectEnteredBattlefieldLastTurn(ObjectFilter),
-    ObjectPutIntoGraveyardFromBattlefieldThisTurn(ObjectFilter),
     YouHaveFullParty,
-    YouAttackedThisTurn,
-    YouAttackedWithNOrMoreCreaturesThisTurn(u32),
-    SourceWasCast,
     ThisSpellWasCastAtSorceryTiming,
     ThisSpellEscaped,
-    NoSpellsWereCastLastTurn,
     ThisSpellWasKicked,
     ThisSpellPaidLabel(OptionalCostRef),
     /// A condition that arrived already bound.
@@ -317,12 +106,6 @@ pub enum PredicateAst {
     /// "if you control a basic land" — the plain "you control one of these"
     /// check, distinct from a counted comparison.
     YouControl(ObjectFilter),
-    /// "if you attacked this turn"
-    AttackedThisTurn,
-    /// "if this creature attacked a battle this turn"
-    SourceAttackedBattleThisTurn,
-    /// "as long as this creature is paired"
-    SourceIsSoulbondPaired,
     /// "as long as it has two or more Auras attached to it"
     AttachmentCount {
         attachment: ObjectFilter,
@@ -334,44 +117,19 @@ pub enum PredicateAst {
     LifeTotalOrLess(i32),
     /// "if you have one or more cards in hand"
     CardsInHandOrMore(i32),
-    /// "if you rolled a 6 this turn"
-    PlayerRolledResultThisTurn {
-        player: PlayerAst,
-        result: u32,
-    },
     /// "if that card is the top card of your library"
     TaggedObjectIsTopOfLibrary {
-        tag: TagKey,
+        tag: TagRef,
         player: PlayerAst,
     },
-    /// "if you committed a crime this turn"
-    PlayerCommittedCrimeThisTurn {
-        player: PlayerAst,
-    },
-    /// "if you removed a card matching this from the draft"
-    PlayerRemovedDraftCardMatching {
-        player: PlayerAst,
-        filter: ObjectFilter,
-        with_cards_named: String,
-    },
-    /// "if this creature devoured two or more creatures"
-    SourceDevouredCreaturesOrMore(u32),
     /// "if X is 5 or greater"
     XValueAtLeast(u32),
     /// "if two or more colors of mana were spent to cast it"
     ColorsOfManaSpentToCastThisSpellOrMore(u32),
-    /// "at the beginning of its controller's end step"
-    SourceControllersEndStep,
     /// "if you have a card in hand matching this"
     YouHaveCardInHandMatching(ObjectFilter),
     /// "during your first turn of the game"
     YourFirstTurnsOfTheGameOrFewer(u32),
-    /// "as long as this creature is attacking"
-    SourceIsAttacking,
-    /// "as long as this permanent is untapped"
-    SourceIsUntapped,
-    /// "as long as this creature is monstrous"
-    SourceIsMonstrous,
     /// "as long as equipped creature is attacking"
     EquippedCreatureAttacking,
     /// "as long as equipped creature is tapped"
@@ -405,7 +163,6 @@ pub enum PredicateAst {
     /// it is recognized as a predicate rather than resolved on the spot.
     TriggerFrequency(TriggerFrequencyPredicateAst),
     TargetWasKicked,
-    ThisAbilityResolvedThisTurnExactly(u32),
     TargetSpellCastOrderThisTurn(u32),
     TargetSpellControllerIsPoisoned,
     TargetSpellNoManaSpentToCast,
@@ -417,12 +174,7 @@ pub enum PredicateAst {
         amount: u32,
         symbol: Option<ManaSymbol>,
     },
-    TriggeringSpellManaSpentToCastAtLeast {
-        amount: u32,
-        symbol: Option<ManaSymbol>,
-    },
     ColoredManaSpentToCastThisSpellAtLeast(u32),
-    TriggeringSpellColoredManaSpentToCastAtLeast(u32),
     SnowManaOfAnySpellColorSpentToCastThisSpell,
     SameColorManaSpentToCastThisSpellAtLeast(u32),
     ThisSpellWasCastFromZone(Zone),
@@ -528,27 +280,27 @@ impl PredicateAst {
 
     pub fn reference_antecedent(&self) -> Option<PredicateReferenceAntecedent> {
         match self {
-            PredicateAst::SourceChosenOption(_)
-            | PredicateAst::SourceIsTapped
-            | PredicateAst::SourceIsEquipped
-            | PredicateAst::SourceIsEnchanted
-            | PredicateAst::SourceIsSaddled
-            | PredicateAst::SourceIsRenowned
-            | PredicateAst::SourceCrewedByExactly { .. }
-            | PredicateAst::SourceMatches(_)
+            PredicateAst::Source(SourcePredicateAst::SourceChosenOption(_))
+            | PredicateAst::Source(SourcePredicateAst::SourceIsTapped)
+            | PredicateAst::Source(SourcePredicateAst::SourceIsEquipped)
+            | PredicateAst::Source(SourcePredicateAst::SourceIsEnchanted)
+            | PredicateAst::Source(SourcePredicateAst::SourceIsSaddled)
+            | PredicateAst::Source(SourcePredicateAst::SourceIsRenowned)
+            | PredicateAst::Source(SourcePredicateAst::SourceCrewedByExactly { .. })
+            | PredicateAst::Source(SourcePredicateAst::SourceMatches(_))
             | PredicateAst::AttachedToSourceMatches(_)
-            | PredicateAst::SourceHasNoCounter(_)
-            | PredicateAst::SourceHasCounterAtLeast { .. }
-            | PredicateAst::SourceHasCountersAtLeast(_)
-            | PredicateAst::SourceHasAttachmentsMatching { .. }
-            | PredicateAst::SourcePowerAtLeast(_)
-            | PredicateAst::SourceAttackedThisTurn
-            | PredicateAst::SourceSuspected
-            | PredicateAst::SourceCameUnderYourControlThisTurn
-            | PredicateAst::SourceAttackedOrBlockedThisTurn
-            | PredicateAst::SourceInGraveyardWithCardsAbove { .. }
-            | PredicateAst::SourceIsInZone(_)
-            | PredicateAst::SourceWasCast
+            | PredicateAst::Source(SourcePredicateAst::SourceHasNoCounter(_))
+            | PredicateAst::Source(SourcePredicateAst::SourceHasCounterAtLeast { .. })
+            | PredicateAst::Source(SourcePredicateAst::SourceHasCountersAtLeast(_))
+            | PredicateAst::Source(SourcePredicateAst::SourceHasAttachmentsMatching { .. })
+            | PredicateAst::Source(SourcePredicateAst::SourcePowerAtLeast(_))
+            | PredicateAst::Source(SourcePredicateAst::SourceAttackedThisTurn)
+            | PredicateAst::Source(SourcePredicateAst::SourceSuspected)
+            | PredicateAst::Source(SourcePredicateAst::SourceCameUnderYourControlThisTurn)
+            | PredicateAst::Source(SourcePredicateAst::SourceAttackedOrBlockedThisTurn)
+            | PredicateAst::Source(SourcePredicateAst::SourceInGraveyardWithCardsAbove { .. })
+            | PredicateAst::Source(SourcePredicateAst::SourceIsInZone(_))
+            | PredicateAst::Source(SourcePredicateAst::SourceWasCast)
             | PredicateAst::ThisSpellWasCastAtSorceryTiming
             | PredicateAst::ThisSpellEscaped
             | PredicateAst::ThisSpellWasKicked

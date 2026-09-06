@@ -1,8 +1,14 @@
+use crate::cards::builders::PermissionEffectAst;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::ZoneMoveActionAst;
+use crate::cards::builders::KeywordActionAst;
+use crate::cards::builders::ReplacementActionAst;
 use super::*;
 
 pub(super) fn first_for_each_object_filter(effects: &[EffectAst]) -> Option<ObjectFilter> {
     for effect in effects {
-        if let EffectAst::ForEachObject { filter, .. } = effect {
+        if let EffectAst::ForEach(ForEachEffectAst::ForEachObject { filter, .. }) = effect {
             return Some(filter.clone());
         }
         let mut found = None;
@@ -23,7 +29,7 @@ pub(super) fn mark_matching_for_each_object_leading_then(
     expected: &ObjectFilter,
 ) -> bool {
     for effect in effects {
-        if let EffectAst::ForEachObject { filter, .. } = effect
+        if let EffectAst::ForEach(ForEachEffectAst::ForEachObject { filter, .. }) = effect
             && filter == expected
             && !filter.has_for_each_leading_then_surface()
         {
@@ -141,23 +147,23 @@ fn build_clash_then_return_coordination(
             role: SubjectVerbRoleAst::Actor,
             player: PlayerAst::Implicit,
         },
-        action: SubjectVerbActionAst::ReturnToHand {
+        action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand {
             target: TargetAst::Object(filter, crate::util::span_from_tokens(target_tokens), None),
             random: false,
             destination_player_surface: None,
             exiled_with_source_surface: None,
             set_quantifier_surface: None,
             set_reference_surface: None,
-        },
+        }),
     });
     let clash = EffectAst::SubjectVerb(SubjectVerbEffectAst {
         subject: SubjectVerbSubjectAst {
             role: SubjectVerbRoleAst::Actor,
             player: PlayerAst::Implicit,
         },
-        action: SubjectVerbActionAst::Clash {
+        action: SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash {
             opponent: crate::ClashOpponentAst::Opponent,
-        },
+        }),
     });
     let coordination = CoordinationAst::new(
         CoordinationKindAst::Sequence,
@@ -218,13 +224,13 @@ fn build_clash_win_replacement_followup(
                 "typed clash-return replacement has an invalid library destination".to_string(),
             )
         })?;
-    Ok(EffectAst::IfResult {
+    Ok(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
         predicate: crate::IfResultPredicate::Did,
-        effects: vec![EffectAst::MayByPlayer {
+        effects: vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
             player: PlayerAst::You,
             effects: vec![move_effect],
-        }],
-    })
+        })],
+    }))
 }
 
 fn parse_effect_sentences_preserving_source_boundaries_general(
@@ -235,10 +241,10 @@ fn parse_effect_sentences_preserving_source_boundaries_general(
             effect,
             EffectAst::SelfReplacement { .. }
                 | EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::RegisterZoneReplacement {
+                    action: SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterZoneReplacement {
                         duration: crate::cards::builders::ZoneReplacementDurationAst::OneShot,
                         ..
-                    },
+                    }),
                     ..
                 })
         ) {
@@ -254,9 +260,9 @@ fn parse_effect_sentences_preserving_source_boundaries_general(
     fn depends_on_prior_resolution_result(effect: &EffectAst) -> bool {
         if matches!(
             effect,
-            EffectAst::IfResult { .. }
-                | EffectAst::WhenResult { .. }
-                | EffectAst::ResolvedIfResult { .. }
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult { .. })
+                | EffectAst::Conditionals(ConditionalEffectAst::WhenResult { .. })
+                | EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult { .. })
         ) || matches!(
             effect,
             EffectAst::ControlFlow(control)
@@ -495,10 +501,10 @@ fn parse_effect_sentences_preserving_source_boundaries_general(
         && effects.len() >= 2
         && matches!(
             effects.last(),
-            Some(EffectAst::IfResult {
+            Some(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                 predicate: crate::cards::builders::IfResultPredicate::DidNot,
                 ..
-            })
+            }))
         )
     {
         let prefix = EffectAst::CommaThen {

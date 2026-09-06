@@ -21,11 +21,11 @@ fn it_deals_to_that_creature_ignores_prior_cost_object_provenance() {
         matches!(
             if_true.as_slice(),
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::DealDamageEqualToPower {
+                action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
                     source: TargetAst::Source(_),
                     target: TargetAst::Object(filter, None, Some(_)),
                     ..
-                },
+                }),
                 ..
             })] if !filter.tagged_constraints.is_empty()
         ),
@@ -65,10 +65,10 @@ fn omitted_damage_target_reuses_the_default_target() {
         matches!(
             if_true.as_slice(),
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::DealDamageEqualToPower {
+                action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
                     target: TargetAst::Object(_, Some(_), _),
                     ..
-                },
+                }),
                 ..
             })]
         ),

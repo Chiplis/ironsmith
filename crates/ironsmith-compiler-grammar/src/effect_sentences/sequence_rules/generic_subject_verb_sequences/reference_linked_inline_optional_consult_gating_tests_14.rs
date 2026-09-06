@@ -13,11 +13,11 @@ fn avenging_druid_keeps_the_consult_optional_and_gates_its_disposition() {
         "You may reveal cards from the top of your library until you reveal a land card. If you do, put that card onto the battlefield and put all other cards revealed this way into your graveyard.",
     );
     let [
-        EffectAst::May { effects: consult },
-        EffectAst::IfResult {
+        EffectAst::Permissions(PermissionEffectAst::May { effects: consult }),
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,
             effects: disposition,
-        },
+        }),
     ] = parsed.as_slice()
     else {
         panic!("expected optional consult followed by its result gate: {parsed:#?}");
@@ -36,11 +36,11 @@ fn optional_consult_gates_an_unprefixed_move_and_bottom_disposition() {
         "You may reveal cards from the top of your library until you reveal a creature card. Put that card into your hand and the rest on the bottom of your library in a random order.",
     );
     let [
-        EffectAst::May { effects: consult },
-        EffectAst::IfResult {
+        EffectAst::Permissions(PermissionEffectAst::May { effects: consult }),
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,
             effects: disposition,
-        },
+        }),
     ] = parsed.as_slice()
     else {
         panic!("expected the complete consult procedure to remain optional: {parsed:#?}");
@@ -62,13 +62,13 @@ fn foster_gates_the_complete_consult_partition_on_the_optional_payment() {
         "You may pay {1}. If you do, reveal cards from the top of your library until you reveal a creature card. Put that card into your hand and the rest into your graveyard.",
     );
     let [
-        EffectAst::MayByPlayer {
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
             effects: payment, ..
-        },
-        EffectAst::IfResult {
+        }),
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,
             effects: gated_consult,
-        },
+        }),
     ] = parsed.as_slice()
     else {
         panic!("expected optional payment followed by one gated consult partition: {parsed:#?}");

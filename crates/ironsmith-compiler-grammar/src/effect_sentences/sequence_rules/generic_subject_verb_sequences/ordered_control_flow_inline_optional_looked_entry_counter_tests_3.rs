@@ -45,14 +45,14 @@ fn may_put_keeps_an_exact_choice_inside_the_optional_action() {
     assert!(
         matches!(
             effects.as_slice(),
-            [_, EffectAst::May { effects: optional }, _]
+            [_, EffectAst::Permissions(PermissionEffectAst::May { effects: optional }), _]
                 if matches!(optional.as_slice(), [
-                    EffectAst::ChooseTaggedObjectsInZone {
+                    EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
                         count,
                         filter,
                         ..
-                    },
-                    EffectAst::ForEachTagged { .. }
+                    }),
+                    EffectAst::ForEach(ForEachEffectAst::ForEachTagged { .. })
                 ] if count.is_single()
                     && filter.card_types.contains(&CardType::Artifact)
                     && filter.card_types.contains(&CardType::Creature))

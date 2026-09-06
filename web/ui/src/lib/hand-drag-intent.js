@@ -83,6 +83,7 @@ export function shouldBeginTargetCastIntent(actions) {
 function commaSeparatedNumbers(value) {
   return String(value || "")
     .split(",")
+    .filter((part) => part.trim() !== "")
     .map((part) => finiteNumber(part.trim()))
     .filter((part) => part != null);
 }
@@ -90,7 +91,8 @@ function commaSeparatedNumbers(value) {
 /** Capture the raw board identity under a release point before the next UI snapshot arrives. */
 export function dropTargetCandidateFromElement(element) {
   if (!element || typeof element.closest !== "function") return null;
-  const card = element.closest(".game-card[data-object-id]");
+  const card = element.closest(".game-card[data-object-id]")
+    || element.closest("[data-zone-card][data-object-id]");
   if (card) {
     const objectIds = [
       finiteNumber(card.getAttribute("data-object-id")),
@@ -100,6 +102,9 @@ export function dropTargetCandidateFromElement(element) {
       return { kind: "object", objectIds: Array.from(new Set(objectIds)) };
     }
   }
+
+  const pile = element.closest("[data-zone-pile][data-zone-owner]");
+  if (pile) return { kind: "zone", zone: pile.getAttribute("data-zone-pile"), playerId: pile.getAttribute("data-zone-owner") };
 
   const player = element.closest("[data-player-target], [data-player-drop-target]");
   // Self-targeting requires the explicit player box, never our battlefield.
@@ -119,6 +124,7 @@ export function dropTargetCandidateFromElements(elements) {
     .map((element) => dropTargetCandidateFromElement(element))
     .filter(Boolean);
   return candidates.find((candidate) => candidate.kind === "object")
+    || candidates.find((candidate) => candidate.kind === "zone")
     || candidates.find((candidate) => candidate.kind === "player")
     || null;
 }

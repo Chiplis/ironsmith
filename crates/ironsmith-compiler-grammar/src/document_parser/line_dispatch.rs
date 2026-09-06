@@ -1,3 +1,11 @@
+use crate::cards::builders::PermissionEffectAst;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::DelayedEffectAst;
+use crate::cards::builders::ControlActionAst;
+use crate::cards::builders::StatChangeActionAst;
+use crate::cards::builders::PermanentStateActionAst;
+use crate::cards::builders::ZoneMoveActionAst;
 use super::line_family_handlers::{
     run_activation_line_family, run_additional_combat_after_this_phase_line_family,
     run_assign_damage_as_unblocked_enchanted_creature_controller_line_family,
@@ -314,12 +322,12 @@ fn preserve_named_source_exile_surface(
         for effect in effects {
             if let crate::model::ast::EffectAst::SubjectVerb(subject_verb) = effect {
                 let target = match &subject_verb.action {
-                    crate::cards::builders::SubjectVerbActionAst::Exile { target, .. }
-                    | crate::cards::builders::SubjectVerbActionAst::MoveToZone {
+                    crate::cards::builders::SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. })
+                    | crate::cards::builders::SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                         target,
                         zone: crate::zone::Zone::Exile,
                         ..
-                    } => Some(target),
+                    }) => Some(target),
                     _ => None,
                 };
                 count += target.is_some_and(plain_source_target) as usize;
@@ -338,12 +346,12 @@ fn preserve_named_source_exile_surface(
         for effect in effects {
             if let crate::model::ast::EffectAst::SubjectVerb(subject_verb) = effect {
                 let target = match &mut subject_verb.action {
-                    crate::cards::builders::SubjectVerbActionAst::Exile { target, .. }
-                    | crate::cards::builders::SubjectVerbActionAst::MoveToZone {
+                    crate::cards::builders::SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. })
+                    | crate::cards::builders::SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                         target,
                         zone: crate::zone::Zone::Exile,
                         ..
-                    } => Some(target),
+                    }) => Some(target),
                     _ => None,
                 };
                 if let Some(target) = target
@@ -376,7 +384,7 @@ fn preserve_named_source_transform_surface(
         let mut count = 0;
         for effect in effects {
             if let crate::model::ast::EffectAst::SubjectVerb(subject_verb) = effect
-                && let crate::cards::builders::SubjectVerbActionAst::Transform { target } =
+                && let crate::cards::builders::SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Transform { target }) =
                     &subject_verb.action
             {
                 count += plain_source_target(target) as usize;
@@ -394,7 +402,7 @@ fn preserve_named_source_transform_surface(
     ) {
         for effect in effects {
             if let crate::model::ast::EffectAst::SubjectVerb(subject_verb) = effect
-                && let crate::cards::builders::SubjectVerbActionAst::Transform { target } =
+                && let crate::cards::builders::SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Transform { target }) =
                     &mut subject_verb.action
                 && plain_source_target(target)
             {
@@ -423,7 +431,7 @@ fn preserve_named_source_unattach_surface(
         let mut count = 0;
         for effect in effects {
             if let crate::model::ast::EffectAst::SubjectVerb(subject_verb) = effect
-                && let crate::cards::builders::SubjectVerbActionAst::Unattach { object } =
+                && let crate::cards::builders::SubjectVerbActionAst::Control(ControlActionAst::Unattach { object }) =
                     &subject_verb.action
             {
                 count += plain_source_target(object) as usize;
@@ -441,7 +449,7 @@ fn preserve_named_source_unattach_surface(
     ) {
         for effect in effects {
             if let crate::model::ast::EffectAst::SubjectVerb(subject_verb) = effect
-                && let crate::cards::builders::SubjectVerbActionAst::Unattach { object } =
+                && let crate::cards::builders::SubjectVerbActionAst::Control(ControlActionAst::Unattach { object }) =
                     &mut subject_verb.action
                 && plain_source_target(object)
             {
@@ -470,7 +478,7 @@ fn preserve_named_source_put_counters_surface(
         let mut count = 0;
         for effect in effects {
             if let crate::model::ast::EffectAst::SubjectVerb(subject_verb) = effect
-                && let crate::cards::builders::SubjectVerbActionAst::PutCounters { target, .. } =
+                && let crate::cards::builders::SubjectVerbActionAst::Counters(crate::cards::builders::CounterActionAst::PutCounters { target, .. }) =
                     &subject_verb.action
             {
                 count += plain_source_target(target) as usize;
@@ -488,7 +496,7 @@ fn preserve_named_source_put_counters_surface(
     ) {
         for effect in effects {
             if let crate::model::ast::EffectAst::SubjectVerb(subject_verb) = effect
-                && let crate::cards::builders::SubjectVerbActionAst::PutCounters { target, .. } =
+                && let crate::cards::builders::SubjectVerbActionAst::Counters(crate::cards::builders::CounterActionAst::PutCounters { target, .. }) =
                     &mut subject_verb.action
                 && plain_source_target(target)
             {
@@ -527,7 +535,7 @@ fn preserve_named_source_chosen_complement_surface(
         let crate::model::ast::EffectAst::SubjectVerb(subject_verb) = effect else {
             return None;
         };
-        let crate::cards::builders::SubjectVerbActionAst::PumpAll { filter, .. } =
+        let crate::cards::builders::SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll { filter, .. }) =
             &subject_verb.action
         else {
             return None;
@@ -564,7 +572,7 @@ fn preserve_named_source_chosen_complement_surface(
         for effect in effects {
             if matching_filter(effect).is_some()
                 && let crate::model::ast::EffectAst::SubjectVerb(subject_verb) = effect
-                && let crate::cards::builders::SubjectVerbActionAst::PumpAll { filter, .. } =
+                && let crate::cards::builders::SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll { filter, .. }) =
                     &mut subject_verb.action
             {
                 filter.source_surface = Some(surface.clone());
@@ -591,7 +599,7 @@ fn preserve_split_participant_order_surface(
             return false;
         };
         match first {
-            crate::model::ast::EffectAst::ForEachPlayer { .. } => true,
+            crate::model::ast::EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { .. }) => true,
             crate::model::ast::EffectAst::Sequence { effects }
             | crate::model::ast::EffectAst::CommaThen { effects }
             | crate::model::ast::EffectAst::Coordinated { effects, .. }
@@ -709,7 +717,7 @@ pub(super) fn attach_compiler_trigger_facts(
                             ),
                             crate::PlayerAst::Active,
                         ),
-                        crate::host::EffectAst::MayByPlayer {
+                        crate::host::EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
                             player: crate::PlayerAst::Active,
                             effects: vec![
                                 crate::host::EffectAst::subject_verb_consult_top_of_library(
@@ -728,9 +736,9 @@ pub(super) fn attach_compiler_trigger_facts(
                                     false,
                                     None,
                                 ),
-                                crate::host::EffectAst::ForEachTagged {
+                                crate::host::EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
                                     tag: revealed_tag,
-                                    effects: vec![crate::host::EffectAst::Conditional {
+                                    effects: vec![crate::host::EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                                         predicate: crate::host::PredicateAst::TaggedMatches(
                                             creature_tag,
                                             membership_filter,
@@ -749,15 +757,15 @@ pub(super) fn attach_compiler_trigger_facts(
                                                 None,
                                             ),
                                         ],
-                                    }],
-                                },
+                                    })],
+                                }),
                             ],
-                        },
+                        }),
                     ],
                 ))
             }
             Some(semantic_grammar::SpecialTriggeredProgram::PrimeControlledLandCountToken) => {
-                use crate::model::ast::{EffectAst, SubjectVerbActionAst};
+                use crate::model::ast::{EffectAst, SubjectVerbActionAst, CounterActionAst, ZoneMoveActionAst, PermanentStateActionAst, StatChangeActionAst, ControlActionAst, DelayedEffectAst, ConditionalEffectAst, PermissionEffectAst};
 
                 let trigger = super::super::activation_and_restrictions::parse_trigger_clause_lexed_with_context(
                     context,
@@ -785,7 +793,7 @@ pub(super) fn attach_compiler_trigger_facts(
                 );
                 let tagged_create = EffectAst::TagAffected {
                     effect: Box::new(create_effect.clone()),
-                    tag: created_tag.clone(),
+                    tag: crate::tag::TagRef::of(created_tag.clone()),
                 };
 
                 let mut counter_effects = parse_effect_sentences_lexed(counter_tokens)?;
@@ -800,7 +808,7 @@ pub(super) fn attach_compiler_trigger_facts(
                             .to_string(),
                     ));
                 };
-                let SubjectVerbActionAst::PutCounters { count, target, .. } =
+                let SubjectVerbActionAst::Counters(crate::cards::builders::CounterActionAst::PutCounters { count, target, .. }) =
                     &mut counter_verb.action
                 else {
                     return Err(CardTextError::InvariantViolation(
@@ -810,11 +818,11 @@ pub(super) fn attach_compiler_trigger_facts(
                 let controlled_lands = crate::ObjectFilter::land().you_control();
                 *count = crate::Value::Count(controlled_lands.clone())
                     .with_surface_hint(ironsmith_core::ValueSurfaceHint::ThatMany);
-                *target = crate::TargetAst::Tagged(created_tag, Some(crate::TextSpan::synthetic()));
+                *target = crate::TargetAst::Tagged(crate::tag::TagRef::of(created_tag), Some(crate::TextSpan::synthetic()));
                 triggered.intervening_if = Some(crate::host::PredicateAst::And(
-                    Box::new(crate::host::PredicateAst::ObjectEnteredBattlefieldThisTurn(
+                    Box::new(crate::host::PredicateAst::TurnEvents(crate::host::TurnEventPredicateAst::ObjectEnteredBattlefieldThisTurn(
                         controlled_lands.clone(),
-                    )),
+                    ))),
                     Box::new(crate::host::PredicateAst::ValueIsPrime(
                         crate::Value::Count(controlled_lands),
                     )),
@@ -838,20 +846,20 @@ pub(super) fn attach_compiler_trigger_facts(
                 return_filter.owner = Some(crate::PlayerFilter::IteratedPlayer);
                 Some((
                     trigger,
-                    vec![crate::host::EffectAst::Conditional {
+                    vec![crate::host::EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                         predicate: crate::host::PredicateAst::AnOpponentHasFewerThanPlayer {
                             player: crate::PlayerAst::That,
                             filter: graveyard_creatures,
                         },
-                        if_true: vec![crate::host::EffectAst::MayByPlayer {
+                        if_true: vec![crate::host::EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
                             player: crate::PlayerAst::That,
                             effects: vec![crate::host::EffectAst::subject_verb_return_to_hand(
                                 crate::TargetAst::Object(return_filter, None, None),
                                 false,
                             )],
-                        }],
+                        })],
                         if_false: Vec::new(),
-                    }],
+                    })],
                 ))
             }
             _ => None,
@@ -872,21 +880,21 @@ pub(super) fn attach_compiler_trigger_facts(
                         crate::model::ast::TriggerSpec::BeginningOfCombat(
                             crate::target::PlayerFilter::Any,
                         ),
-                        vec![crate::model::ast::EffectAst::UnlessPays {
+                        vec![crate::model::ast::EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
                             effects: vec![
-                                crate::model::ast::EffectAst::DelayedTriggerForDuration {
+                                crate::model::ast::EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
                                     trigger: nested_trigger,
                                     effects: nested_effects,
                                     one_shot: false,
                                     duration: crate::effect::Until::EndOfCombat,
                                     either_of_watched_objects: false,
                                     while_any_tagged_object_in_zone: None,
-                                },
+                                }),
                             ],
                             player: crate::PlayerAst::You,
                             cost,
                             before_delayed_step: false,
-                        }],
+                        })],
                     )
                 })
             })

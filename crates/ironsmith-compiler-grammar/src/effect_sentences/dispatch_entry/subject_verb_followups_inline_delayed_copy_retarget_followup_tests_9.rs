@@ -4,10 +4,10 @@ fn contains_plural_retarget(effect: &EffectAst) -> bool {
     if matches!(
         effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::RetargetStackObject {
+            action: SubjectVerbActionAst::Stack(StackActionAst::RetargetStackObject {
                 copy_reference_plural: true,
                 ..
-            },
+            }),
             ..
         })
     ) {
@@ -33,8 +33,8 @@ fn optional_copy_retarget_stays_inside_repeating_delayed_trigger() {
         panic!("retarget must not remain on the outer program: {parsed:#?}");
     };
     let delayed_effects = match delayed {
-        EffectAst::DelayedTriggerThisTurn { effects, .. }
-        | EffectAst::DelayedTriggerForDuration { effects, .. } => effects,
+        EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn { effects, .. })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { effects, .. }) => effects,
         _ => panic!("expected a repeating delayed trigger: {delayed:#?}"),
     };
     assert!(effects_copy_a_stack_object(delayed_effects));
@@ -52,8 +52,8 @@ fn retarget_does_not_attach_to_a_delayed_trigger_that_creates_no_copy() {
         .expect("noncopy delayed-trigger near miss should parse");
     assert_eq!(parsed.len(), 2, "{parsed:#?}");
     let delayed_effects = match &parsed[0] {
-        EffectAst::DelayedTriggerThisTurn { effects, .. }
-        | EffectAst::DelayedTriggerForDuration { effects, .. } => effects,
+        EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn { effects, .. })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { effects, .. }) => effects,
         effect => panic!("expected delayed near miss: {effect:#?}"),
     };
     assert!(!delayed_effects.iter().any(contains_plural_retarget));
@@ -70,11 +70,11 @@ fn fixed_copy_target_stays_inside_the_optional_copy_branch() {
         panic!("the fixed retarget must not remain an outer sibling: {parsed:#?}");
     };
     let optional_effects = match optional {
-        EffectAst::May { effects }
-        | EffectAst::MayByPlayer {
+        EffectAst::Permissions(PermissionEffectAst::May { effects })
+        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
             player: PlayerAst::You | PlayerAst::Implicit,
             effects,
-        } => effects,
+        }) => effects,
         _ => panic!("expected one optional copy owner: {optional:#?}"),
     };
     assert!(effects_copy_a_stack_object(optional_effects));
@@ -92,6 +92,6 @@ fn unconditional_copy_does_not_acquire_an_optional_owner() {
     assert_eq!(parsed.len(), 2, "{parsed:#?}");
     assert!(!matches!(
         parsed[0],
-        EffectAst::May { .. } | EffectAst::MayByPlayer { .. }
+        EffectAst::Permissions(PermissionEffectAst::May { .. }) | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. })
     ));
 }

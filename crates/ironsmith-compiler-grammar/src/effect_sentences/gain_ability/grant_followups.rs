@@ -1,3 +1,7 @@
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::StatChangeActionAst;
+use crate::cards::builders::CharacteristicActionAst;
+use crate::cards::builders::GrantActionAst;
 use super::*;
 
 pub(super) fn apply_gain_clause_duration_to_leading_effect(
@@ -12,118 +16,118 @@ pub(super) fn apply_gain_clause_duration_to_leading_effect(
         }
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::Pump {
+                SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::PumpForEach {
+                })
+                | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::PumpAll {
+                })
+                | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::PumpByLastEffect {
+                })
+                | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpByLastEffect {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::SetBasePowerToughness {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::BecomeBasePtCreature {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::SetBasePower {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::AddCardTypes {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddCardTypes {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::SetCardTypes {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCardTypes {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::RemoveCardTypes {
+                })
+                | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveCardTypes {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::AddSubtypes {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::RemoveSubtypes {
+                })
+                | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSubtypes {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::AddColors {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddColors {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::AddAllSubtypesOfFamily {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddAllSubtypesOfFamily {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::RemoveAllSubtypesOfFamily {
+                })
+                | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAllSubtypesOfFamily {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::BecomeBasicLandType {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasicLandType {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::SetColors {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetColors {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::MakeColorless {
+                })
+                | SubjectVerbActionAst::StatChanges(StatChangeActionAst::MakeColorless {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::BecomeBasicLandTypeChoice {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasicLandTypeChoice {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::BecomeCreatureTypeChoice {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCreatureTypeChoice {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::BecomeColorChoice {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::BecomeCopy {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCopy {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::GrantAbilitiesToTarget {
+                })
+                | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::GrantAbilitiesAll {
+                })
+                | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::RemoveAbilitiesAll {
+                })
+                | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::GrantAbilitiesChoiceAll {
+                })
+                | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceAll {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget {
+                })
+                | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceToTarget {
                     duration: effect_duration,
                     ..
-                }
-                | SubjectVerbActionAst::RemoveAbilitiesFromTarget {
+                })
+                | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget {
                     duration: effect_duration,
                     ..
-                },
+                }),
             ..
         }) => {
             *effect_duration = duration.clone();
@@ -157,10 +161,10 @@ pub(super) fn parse_single_effect_sentence_for_granted_otherwise(
             trailing_if.leading_tokens,
         )?
     {
-        return Ok(EffectAst::TrailingIf {
+        return Ok(EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
             predicate: trailing_if.predicate,
             effects: vec![pump],
-        });
+        }));
     }
     let mut effects = parse_effect_sentence_lexed(tokens)?;
     match effects.len() {
@@ -182,11 +186,11 @@ pub fn append_gain_ability_trailing_effects(
 
     let trimmed = trim_commas(trailing_tokens);
     if let Some(predicate) = parse_trailing_if_predicate_lexed(&trimmed) {
-        return Ok(vec![EffectAst::Conditional {
+        return Ok(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true: effects,
             if_false: Vec::new(),
-        }]);
+        })]);
     }
 
     if token_slice_first_is(&trimmed, "unless") {

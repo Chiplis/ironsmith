@@ -2,6 +2,7 @@ use super::*;
 
 #[cfg(test)]
 mod tests {
+    use crate::cards::builders::ZoneMoveActionAst;
     use super::*;
     use crate::cards::builders::{CardDefinitionBuilder, LineAst, LineInfo, NormalizedLine};
     use crate::ids::CardId;
@@ -68,7 +69,7 @@ mod tests {
         assert!(matches!(
             parse_single_effect_lexed(trimmed)?,
             EffectAst::SubjectVerb(crate::model::ast::SubjectVerbEffectAst {
-                action: crate::model::ast::SubjectVerbActionAst::Exile { .. },
+                action: crate::model::ast::SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. }),
                 ..
             })
         ));

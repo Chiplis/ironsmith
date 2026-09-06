@@ -4,10 +4,21 @@
 //! tests stay here because their fixtures are built with the grammar's own
 //! token-definition parser.
 
+use crate::cards::builders::GrantActionAst;
+
 use ironsmith_compiler_semantic::condition_antecedent::*;
 
 #[cfg(test)]
 mod tests {
+    use crate::cards::builders::PlayerPredicateAst;
+    use crate::cards::builders::ConditionalEffectAst;
+    use crate::cards::builders::ObjectChoiceEffectAst;
+    use crate::cards::builders::ControlActionAst;
+    use crate::cards::builders::TokenActionAst;
+    use crate::cards::builders::StatChangeActionAst;
+    use crate::cards::builders::LifeResourceActionAst;
+    use crate::cards::builders::PermanentStateActionAst;
+    use crate::cards::builders::ZoneMoveActionAst;
     use super::*;
     use crate::cards::builders::{
         EffectAst, GrantedAbilityAst, ObjectFilter, PlayerAst, PredicateAst, SubjectVerbActionAst,
@@ -28,13 +39,13 @@ mod tests {
     }
 
     fn it_target() -> TargetAst {
-        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.as_str().into(), None)
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None)
     }
 
     #[test]
     fn direct_tagged_condition_establishes_object_antecedent() {
         let tag: crate::tag::TagKey = "enchanted".into();
-        let predicate = PredicateAst::TaggedMatches(tag.clone(), ObjectFilter::creature());
+        let predicate = PredicateAst::TaggedMatches(crate::tag::TagRef::of(tag.clone()), ObjectFilter::creature());
 
         assert_eq!(
             predicate_object_filter_antecedent(&predicate),
@@ -44,10 +55,10 @@ mod tests {
 
     #[test]
     fn existential_condition_does_not_establish_object_antecedent() {
-        let predicate = PredicateAst::PlayerControls {
+        let predicate = PredicateAst::Player(PlayerPredicateAst::PlayerControls {
             player: PlayerAst::You,
             filter: ObjectFilter::creature(),
-        };
+        });
 
         assert_eq!(predicate_object_filter_antecedent(&predicate), None);
     }
@@ -59,10 +70,10 @@ mod tests {
         contested_lands.union_surface = contested_lands
             .union_surface
             .with_counter_requirement_surface(false, true, true);
-        let predicate = PredicateAst::PlayerControls {
+        let predicate = PredicateAst::Player(PlayerPredicateAst::PlayerControls {
             player: PlayerAst::That,
             filter: contested_lands,
-        };
+        });
         let one_of_those = TargetAst::WithCount(
             Box::new(TargetAst::Object(
                 ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()),
@@ -72,16 +83,16 @@ mod tests {
             crate::effect::ChoiceCount::exactly(1),
         );
         let mut effects = vec![
-            effect(SubjectVerbActionAst::GainControl {
+            effect(SubjectVerbActionAst::Control(ControlActionAst::GainControl {
                 target: one_of_those,
                 duration: Until::Forever,
                 condition: None,
                 controller_reference: None,
                 source_reference_surface: None,
-            }),
-            effect(SubjectVerbActionAst::Untap {
+            })),
+            effect(SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Untap {
                 target: it_target(),
-            }),
+            })),
         ];
 
         bind_condition_collection_antecedent_in_effects(&mut effects, &predicate);
@@ -96,13 +107,13 @@ mod tests {
             panic!("expected an explicit collection choice followed by untap: {effects:#?}");
         };
         let [
-            EffectAst::ChooseObjects {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                 filter,
                 count,
                 player,
                 tag,
                 ..
-            },
+            }),
             EffectAst::SubjectVerb(gain),
         ] = collection_effects.as_slice()
         else {
@@ -122,23 +133,23 @@ mod tests {
         assert!(filter.with_counter.is_some());
         assert!(matches!(
             &gain.action,
-            SubjectVerbActionAst::GainControl {
+            SubjectVerbActionAst::Control(ControlActionAst::GainControl {
                 target: TargetAst::Tagged(gain_tag, _),
                 ..
-            } if gain_tag == tag
+            }) if gain_tag == tag
         ));
         assert!(matches!(
             &untap.action,
-            SubjectVerbActionAst::Untap {
+            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Untap {
                 target: TargetAst::Tagged(untap_tag, _),
-            } if untap_tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+            }) if untap_tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         ));
     }
 
     #[test]
     fn negated_tagged_condition_does_not_establish_object_antecedent() {
         let predicate = PredicateAst::Not(Box::new(PredicateAst::TaggedMatches(
-            "enchanted".into(),
+            crate::tag::TagRef::of("enchanted"),
             ObjectFilter::creature(),
         )));
 
@@ -149,13 +160,13 @@ mod tests {
     fn ambiguous_or_condition_does_not_establish_object_antecedent() {
         let predicate = PredicateAst::Or(
             Box::new(PredicateAst::TaggedMatches(
-                "that_creature".into(),
+                crate::tag::TagRef::of("that_creature"),
                 ObjectFilter::creature(),
             )),
-            Box::new(PredicateAst::PlayerControls {
+            Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerControls {
                 player: PlayerAst::You,
                 filter: ObjectFilter::creature().with_subtype(crate::types::Subtype::Lizard),
-            }),
+            })),
         );
 
         assert_eq!(predicate_object_filter_antecedent(&predicate), None);
@@ -166,11 +177,11 @@ mod tests {
         let tag: crate::tag::TagKey = "that_creature".into();
         let predicate = PredicateAst::Or(
             Box::new(PredicateAst::TaggedMatches(
-                tag.clone(),
+                crate::tag::TagRef::of(tag.clone()),
                 ObjectFilter::creature(),
             )),
             Box::new(PredicateAst::TaggedMatches(
-                tag.clone(),
+                crate::tag::TagRef::of(tag.clone()),
                 ObjectFilter::creature().you_control(),
             )),
         );
@@ -207,10 +218,10 @@ mod tests {
         };
         assert!(matches!(
             &destroy.action,
-            SubjectVerbActionAst::Destroy {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy {
                 target: TargetAst::WithCount(inner, count),
                 ..
-            } if count.random
+            }) if count.random
                 && matches!(inner.as_ref(), TargetAst::Object(filter, _, _) if filter == &counted)
         ));
     }
@@ -222,13 +233,13 @@ mod tests {
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
             right: Value::Fixed(2),
         };
-        let mut effects = vec![effect(SubjectVerbActionAst::GrantAbilitiesToTarget {
+        let mut effects = vec![effect(SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
             target: it_target(),
             abilities: Vec::new(),
             duration: Until::EndOfTurn,
             condition: None,
             set_quantifier_surface: None,
-        })];
+        }))];
 
         bind_random_count_condition_antecedent_in_effects(&mut effects, &predicate);
 
@@ -237,10 +248,10 @@ mod tests {
         };
         assert!(matches!(
             &grant.action,
-            SubjectVerbActionAst::GrantAbilitiesToTarget {
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                 target: TargetAst::Tagged(tag, _),
                 ..
-            } if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+            }) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         ));
     }
 
@@ -277,12 +288,12 @@ mod tests {
         };
         assert!(matches!(
             &move_effect.action,
-            SubjectVerbActionAst::MoveToZone {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                 target: TargetAst::Object(filter, _, _),
                 target_plural_surface: true,
                 all: true,
                 ..
-            } if filter == &source_exiled
+            }) if filter == &source_exiled
         ));
     }
 
@@ -307,10 +318,10 @@ mod tests {
         };
         assert!(matches!(
             &grant.action,
-            SubjectVerbActionAst::GrantAbilitiesToTarget {
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                 target: TargetAst::Source(_),
                 ..
-            }
+            })
         ));
     }
 
@@ -318,16 +329,16 @@ mod tests {
     fn body_local_target_supersedes_condition_antecedent() {
         let controlled = TargetAst::Object(ObjectFilter::creature(), None, None);
         let mut effects = vec![
-            effect(SubjectVerbActionAst::GainControl {
+            effect(SubjectVerbActionAst::Control(ControlActionAst::GainControl {
                 target: controlled,
                 duration: Until::EndOfTurn,
                 condition: None,
                 controller_reference: None,
                 source_reference_surface: None,
-            }),
-            effect(SubjectVerbActionAst::Untap {
+            })),
+            effect(SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Untap {
                 target: it_target(),
-            }),
+            })),
         ];
 
         bind_condition_antecedent_in_effects(
@@ -341,15 +352,15 @@ mod tests {
         };
         assert!(matches!(
             &untap.action,
-            SubjectVerbActionAst::Untap {
+            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Untap {
                 target: TargetAst::Tagged(tag, _)
-            } if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+            }) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         ));
     }
 
     #[test]
     fn created_tokens_supersede_condition_antecedent() {
-        let create = effect(SubjectVerbActionAst::CreateTokenWithMods {
+        let create = effect(SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
             name: "Goblin Rogue".to_string(),
             definition: crate::grammar::token_definitions::parse_token_definition_shape_text(
                 "1/1 black Goblin Rogue creature token",
@@ -370,16 +381,16 @@ mod tests {
             next_end_step_player: crate::target::PlayerFilter::Any,
             granted_abilities: Vec::new(),
             ability_presentation: None,
-        });
+        }));
         let mut effects = vec![
             create,
-            effect(SubjectVerbActionAst::GrantAbilitiesToTarget {
+            effect(SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                 target: it_target(),
                 abilities: vec![crate::cards::builders::KeywordAction::Haste.into()],
                 duration: Until::EndOfTurn,
                 condition: None,
                 set_quantifier_surface: None,
-            }),
+            })),
         ];
 
         bind_condition_antecedent_in_effects(
@@ -393,25 +404,25 @@ mod tests {
         };
         assert!(matches!(
             &grant.action,
-            SubjectVerbActionAst::GrantAbilitiesToTarget {
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                 target: TargetAst::Tagged(tag, _),
                 ..
-            } if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+            }) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         ));
     }
 
     #[test]
     fn condition_antecedent_binds_coordinated_object_actions() {
         let mut effects = vec![
-            effect(SubjectVerbActionAst::GainLife {
+            effect(SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife {
                 amount: Value::Fixed(1),
-            }),
-            effect(SubjectVerbActionAst::Tap {
+            })),
+            effect(SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap {
                 target: it_target(),
-            }),
-            effect(SubjectVerbActionAst::Untap {
+            })),
+            effect(SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Untap {
                 target: it_target(),
-            }),
+            })),
         ];
         let antecedent = ObjectFilter::creature().you_control();
 
@@ -426,38 +437,38 @@ mod tests {
         };
         assert!(matches!(
             &tap.action,
-            SubjectVerbActionAst::Tap {
+            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap {
                 target: TargetAst::Object(filter, _, _)
-            } if filter == &antecedent
+            }) if filter == &antecedent
         ));
         let EffectAst::SubjectVerb(untap) = &effects[2] else {
             panic!("expected untap effect");
         };
         assert!(matches!(
             &untap.action,
-            SubjectVerbActionAst::Untap {
+            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Untap {
                 target: TargetAst::Object(filter, _, _)
-            } if filter == &antecedent
+            }) if filter == &antecedent
         ));
     }
 
     #[test]
     fn source_condition_animation_retarget_yields_to_body_local_target() {
         let mut effects = vec![
-            effect(SubjectVerbActionAst::GainControl {
+            effect(SubjectVerbActionAst::Control(ControlActionAst::GainControl {
                 target: TargetAst::Object(ObjectFilter::creature(), None, None),
                 duration: Until::EndOfTurn,
                 condition: None,
                 controller_reference: None,
                 source_reference_surface: None,
-            }),
-            effect(SubjectVerbActionAst::GrantAbilitiesToTarget {
+            })),
+            effect(SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                 target: it_target(),
                 abilities: Vec::new(),
                 duration: Until::EndOfTurn,
                 condition: None,
                 set_quantifier_surface: None,
-            }),
+            })),
         ];
 
         resolve_it_animations_to_source(&mut effects);
@@ -467,23 +478,23 @@ mod tests {
         };
         assert!(matches!(
             &grant.action,
-            SubjectVerbActionAst::GrantAbilitiesToTarget {
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                 target: TargetAst::Tagged(tag, _),
                 ..
-            } if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+            }) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         ));
     }
 
     #[test]
     fn source_condition_animation_retargets_coordinated_unshadowed_it() {
         let grant = || {
-            effect(SubjectVerbActionAst::GrantAbilitiesToTarget {
+            effect(SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                 target: it_target(),
                 abilities: Vec::new(),
                 duration: Until::EndOfTurn,
                 condition: None,
                 set_quantifier_surface: None,
-            })
+            }))
         };
         let mut effects = vec![grant(), grant()];
 
@@ -495,10 +506,10 @@ mod tests {
             };
             assert!(matches!(
                 &grant.action,
-                SubjectVerbActionAst::GrantAbilitiesToTarget {
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                     target: TargetAst::Source(_),
                     ..
-                }
+                })
             ));
         }
     }
@@ -507,7 +518,7 @@ mod tests {
     fn top_library_observation_keeps_persistent_trigger_subjects_distinct() {
         let mut effects = vec![
             EffectAst::subject_verb_reveal_top(PlayerAst::You),
-            EffectAst::Conditional {
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: PredicateAst::ItIsLandCard,
                 if_true: vec![EffectAst::subject_verb_destroy(it_target())],
                 if_false: vec![EffectAst::subject_verb_pump(
@@ -517,7 +528,7 @@ mod tests {
                     Until::EndOfTurn,
                     None,
                 )],
-            },
+            }),
             EffectAst::subject_verb_remove_from_combat(it_target()),
             EffectAst::subject_verb_move_to_zone(
                 it_target(),
@@ -534,9 +545,9 @@ mod tests {
             &crate::tag::CompilerReferenceTag::Triggering.key(),
         );
 
-        let EffectAst::Conditional {
+        let EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             if_true, if_false, ..
-        } = &effects[1]
+        }) = &effects[1]
         else {
             panic!("expected conditional");
         };
@@ -545,10 +556,10 @@ mod tests {
             EffectAst::SubjectVerb(subject_verb)
                 if matches!(
                     &subject_verb.action,
-                    SubjectVerbActionAst::Destroy {
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy {
                         target: TargetAst::Tagged(tag, _),
                         ..
-                    } if tag.as_str() == "triggering"
+                    }) if tag.as_str() == "triggering"
                 )
         ));
         assert!(matches!(
@@ -556,10 +567,10 @@ mod tests {
             EffectAst::SubjectVerb(subject_verb)
                 if matches!(
                     &subject_verb.action,
-                    SubjectVerbActionAst::Pump {
+                    SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
                         target: TargetAst::Tagged(tag, _),
                         ..
-                    } if tag.as_str() == "triggering"
+                    }) if tag.as_str() == "triggering"
                 )
         ));
         assert!(matches!(
@@ -567,9 +578,9 @@ mod tests {
             EffectAst::SubjectVerb(subject_verb)
                 if matches!(
                     &subject_verb.action,
-                    SubjectVerbActionAst::RemoveFromCombat {
+                    SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
                         target: TargetAst::Tagged(tag, _),
-                    } if tag.as_str() == "triggering"
+                    }) if tag.as_str() == "triggering"
                 )
         ));
         assert!(matches!(
@@ -577,10 +588,10 @@ mod tests {
             EffectAst::SubjectVerb(subject_verb)
                 if matches!(
                     &subject_verb.action,
-                    SubjectVerbActionAst::MoveToZone {
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                         target: TargetAst::Tagged(tag, _),
                         ..
-                    } if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                    }) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                 )
         ));
     }
@@ -589,7 +600,7 @@ mod tests {
     fn moved_observed_card_supersedes_trigger_antecedent_within_its_branch() {
         let mut effects = vec![
             EffectAst::subject_verb_reveal_top(PlayerAst::You),
-            EffectAst::Conditional {
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: PredicateAst::ItIsLandCard,
                 if_true: vec![
                     EffectAst::subject_verb_move_to_zone(
@@ -609,7 +620,7 @@ mod tests {
                     ),
                 ],
                 if_false: Vec::new(),
-            },
+            }),
         ];
 
         bind_trigger_antecedent_after_top_library_observation(
@@ -617,7 +628,7 @@ mod tests {
             &crate::tag::CompilerReferenceTag::Triggering.key(),
         );
 
-        let EffectAst::Conditional { if_true, .. } = &effects[1] else {
+        let EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, .. }) = &effects[1] else {
             panic!("expected conditional");
         };
         for effect in if_true {
@@ -625,8 +636,8 @@ mod tests {
                 panic!("expected subject-verb effect");
             };
             let target = match &subject_verb.action {
-                SubjectVerbActionAst::MoveToZone { target, .. }
-                | SubjectVerbActionAst::Pump { target, .. } => target,
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { target, .. })
+                | SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. }) => target,
                 other => panic!("unexpected action {other:?}"),
             };
             assert!(matches!(

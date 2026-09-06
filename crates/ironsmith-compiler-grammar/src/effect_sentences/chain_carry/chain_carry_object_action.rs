@@ -12,7 +12,7 @@ pub(super) fn parse_tap_those_then_unattach_equipment_lexed(
     tapped_filter
         .tagged_constraints
         .push(crate::filter::TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.bind(),
+            tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
 
@@ -23,7 +23,7 @@ pub(super) fn parse_tap_those_then_unattach_equipment_lexed(
     equipment_filter
         .tagged_constraints
         .push(crate::filter::TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.bind(),
+            tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
             relation: TaggedOpbjectRelation::AttachedToTaggedObject,
         });
 
@@ -59,18 +59,18 @@ pub fn collapse_token_copy_next_end_step_exile_followup_lexed(
             (
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action:
-                        SubjectVerbActionAst::CreateTokenCopy { .. }
-                        | SubjectVerbActionAst::CreateTokenCopyFromSource { .. },
+                        SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. })
+                        | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { .. }),
                     ..
                 }),
                 EffectAst::SubjectVerb(subject_verb),
             ) => match &subject_verb.action {
-                SubjectVerbActionAst::MoveToZone {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                     target,
                     zone: Zone::Exile,
                     ..
-                }
-                | SubjectVerbActionAst::Exile { target, .. } => {
+                })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. }) => {
                     target_is_generic_token_filter(target)
                 }
                 _ => false,
@@ -85,18 +85,18 @@ pub fn collapse_token_copy_next_end_step_exile_followup_lexed(
 
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::CreateTokenCopy {
+                SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
                     exile_at_next_end_step,
                     exile_at_next_end_step_reference_surface,
                     next_end_step_player: effect_next_end_step_player,
                     ..
-                }
-                | SubjectVerbActionAst::CreateTokenCopyFromSource {
+                })
+                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
                     exile_at_next_end_step,
                     exile_at_next_end_step_reference_surface,
                     next_end_step_player: effect_next_end_step_player,
                     ..
-                },
+                }),
             ..
         }) = &mut effects[idx]
         {

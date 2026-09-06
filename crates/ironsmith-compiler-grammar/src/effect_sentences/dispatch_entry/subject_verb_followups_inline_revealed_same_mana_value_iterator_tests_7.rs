@@ -12,7 +12,7 @@ fn revealed_cards_compare_against_a_different_card_in_the_revealed_set() {
 
     let reveal_tag = effects.iter().find_map(|effect| match effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::RevealTagged { tag },
+            action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTagged { tag }),
             ..
         }) => Some(tag),
         _ => None,
@@ -20,25 +20,25 @@ fn revealed_cards_compare_against_a_different_card_in_the_revealed_set() {
     let Some(reveal_tag) = reveal_tag else {
         panic!("expected an explicitly tagged reveal: {effects:#?}");
     };
-    let Some(EffectAst::ForEachTagged {
+    let Some(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
         tag,
         effects: iterator_effects,
-    }) = effects.last()
+    })) = effects.last()
     else {
         panic!("expected a tagged revealed-card iterator: {effects:#?}");
     };
     assert_eq!(tag, reveal_tag);
     let [
-        EffectAst::TrailingIf {
+        EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
             predicate: PredicateAst::ItMatches(filter),
             effects: create_effects,
-        },
+        }),
     ] = iterator_effects.as_slice()
     else {
         panic!("expected one typed per-card condition: {iterator_effects:#?}");
     };
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag == *reveal_tag
+        constraint.tag == **reveal_tag
             && constraint.relation
                 == crate::filter::TaggedOpbjectRelation::SameManaValueAsAnotherTagged
     }));

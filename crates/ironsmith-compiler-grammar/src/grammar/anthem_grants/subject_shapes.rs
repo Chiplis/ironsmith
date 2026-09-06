@@ -178,7 +178,7 @@ fn parse_attachment_state_qualified_subject(tokens: &[OwnedLexToken]) -> Option<
         .map(|tag| {
             let mut branch = base_filter.clone();
             branch.tagged_constraints.push(TaggedObjectConstraint {
-                tag: tag.bind(),
+                tag: tag.bind().into(),
                 relation: TaggedOpbjectRelation::IsTaggedObject,
             });
             branch

@@ -9,7 +9,7 @@ const VIEWABLE_ZONES = [
   { id: "command", label: "CZ", i18nKey: "zone.command" },
 ];
 
-const TOGGLEABLE_ZONES = VIEWABLE_ZONES.filter((zone) => zone.id !== "battlefield");
+const TOGGLEABLE_ZONES = VIEWABLE_ZONES.filter((zone) => !["battlefield", "graveyard", "exile"].includes(zone.id));
 
 function normalizeZones(zones) {
   if (!Array.isArray(zones)) return ["battlefield"];

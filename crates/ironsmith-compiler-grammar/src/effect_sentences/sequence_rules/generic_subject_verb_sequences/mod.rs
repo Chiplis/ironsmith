@@ -1,3 +1,4 @@
+use crate::cards::builders::ForEachEffectAst;
 use super::SentenceInput;
 
 #[path = "branching_selection.rs"]
@@ -14,7 +15,7 @@ pub mod reference_linked_programs;
 use crate::cards::builders::{
     CardTextError, EffectAst, IfResultPredicate, ObjectFilter, PlayerAst, PredicateAst,
     ReturnControllerAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey,
-    TargetAst,
+    TargetAst, LibraryActionAst, ZoneMoveActionAst, ConditionalEffectAst,
 };
 use crate::effect::{EventValueSpec, Value};
 use crate::effect_sentences;
@@ -65,7 +66,7 @@ fn effect_ast_is_destroy(effect: &EffectAst) -> bool {
     matches!(
         effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Destroy { .. } | SubjectVerbActionAst::DestroyAll { .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { .. }) | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { .. }),
             ..
         })
     )
@@ -99,7 +100,7 @@ pub fn parse_destroy_for_each_destroyed_consult_exile_put_shuffle(
     if !matches!(
         parts.effects.last(),
         Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ConsultTopOfLibrary { .. },
+            action: SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary { .. }),
             ..
         }))
     ) {
@@ -114,11 +115,11 @@ pub fn parse_destroy_for_each_destroyed_consult_exile_put_shuffle(
     let destroyed_tag = helper_tag_for_tokens(first_tokens, "destroyed");
     let mut loop_effects = parts.effects;
     loop_effects.push(EffectAst::subject_verb_exile(
-        TargetAst::Tagged(parts.match_tag.clone(), None),
+        TargetAst::Tagged(crate::tag::TagRef::of(parts.match_tag.clone()), None),
         false,
     ));
     loop_effects.push(EffectAst::subject_verb_move_to_zone(
-        TargetAst::Tagged(parts.match_tag, None),
+        TargetAst::Tagged(crate::tag::TagRef::of(parts.match_tag), None),
         Zone::Battlefield,
         false,
         ReturnControllerAst::Preserve,
@@ -128,18 +129,18 @@ pub fn parse_destroy_for_each_destroyed_consult_exile_put_shuffle(
     loop_effects.push(EffectAst::subject_verb(
         SubjectVerbRoleAst::LibraryOwner,
         PlayerAst::ItsController,
-        SubjectVerbActionAst::ShuffleLibrary,
+        SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
     ));
 
     Ok(Some(vec![
         EffectAst::TagAffected {
             effect: Box::new(destroy_effect.clone()),
-            tag: destroyed_tag.clone(),
+            tag: crate::tag::TagRef::of(destroyed_tag.clone()),
         },
-        EffectAst::ForEachTagged {
-            tag: destroyed_tag,
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+            tag: crate::tag::TagRef::of(destroyed_tag),
             effects: loop_effects,
-        },
+        }),
     ]))
 }
 
@@ -159,7 +160,7 @@ pub fn parse_iterative_library_procedure_sequence(
     let current_tag = crate::tag::CompilerReferenceTag::IterativeLibraryCurrent.bind();
     let exiled_tag = crate::tag::CompilerReferenceTag::IterativeLibraryExiled.bind();
     let all_exiled_filter = ObjectFilter::tagged(exiled_tag.clone()).in_zone(Zone::Exile);
-    Ok(Some(vec![EffectAst::RepeatProcess {
+    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
         effects: vec![
             EffectAst::subject_verb_exile_top_of_library(
                 PlayerAst::You,
@@ -167,7 +168,7 @@ pub fn parse_iterative_library_procedure_sequence(
                 vec![current_tag.clone()],
                 vec![exiled_tag.clone()],
             ),
-            EffectAst::Conditional {
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: PredicateAst::And(
                     Box::new(PredicateAst::TaggedMatches(
                         current_tag.clone(),
@@ -185,11 +186,11 @@ pub fn parse_iterative_library_procedure_sequence(
                     Zone::Hand,
                 )],
                 if_false: Vec::new(),
-            },
+            }),
         ],
         continue_effect_index: 1,
         continue_predicate: IfResultPredicate::WasDeclined,
-    }]))
+    })]))
 }
 
 pub fn parse_each_player_shuffle_reveal_then_put_revealed_types_bottom(
@@ -225,7 +226,7 @@ pub fn parse_each_player_shuffle_reveal_then_put_revealed_types_bottom(
     shuffled_filter.owner = Some(PlayerFilter::IteratedPlayer);
     let iterated = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None);
 
-    Ok(Some(vec![EffectAst::ForEachPlayer {
+    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
         effects: vec![
             EffectAst::subject_verb_shuffle_all_objects_into_library(
                 PlayerAst::That,
@@ -239,9 +240,9 @@ pub fn parse_each_player_shuffle_reveal_then_put_revealed_types_bottom(
                 },
                 revealed_tag.clone(),
             ),
-            EffectAst::ForEachTagged {
+            EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
                 tag: revealed_tag,
-                effects: vec![EffectAst::Conditional {
+                effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                     predicate: PredicateAst::ItMatches(battlefield_filter),
                     if_true: vec![EffectAst::subject_verb_move_to_zone(
                         iterated.clone(),
@@ -259,10 +260,10 @@ pub fn parse_each_player_shuffle_reveal_then_put_revealed_types_bottom(
                         false,
                         None,
                     )],
-                }],
-            },
+                })],
+            }),
         ],
-    }]))
+    })]))
 }
 
 /// Keep a destroy set and its authored no-regeneration rider as one action.
@@ -317,22 +318,22 @@ pub fn parse_destroy_then_no_regeneration_sequence(
     };
     let singular_followup = crate::word_primitives::first_is(&words, "it");
     match action {
-        SubjectVerbActionAst::Destroy {
+        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy {
             no_regeneration, ..
-        } => *no_regeneration = true,
-        SubjectVerbActionAst::DestroyAll {
+        }) => *no_regeneration = true,
+        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll {
             no_regeneration, ..
-        }
-        | SubjectVerbActionAst::DestroyAllOfChosenColor {
+        })
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAllOfChosenColor {
             no_regeneration, ..
-        } if !singular_followup => *no_regeneration = true,
+        }) if !singular_followup => *no_regeneration = true,
         _ => return Ok(None),
     }
     if authored_unenchanted {
         let mut aura = ObjectFilter::enchantment();
         aura.subtypes.push(crate::types::Subtype::Aura);
         match action {
-            SubjectVerbActionAst::Destroy { target, .. } => {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { target, .. }) => {
                 if let Some(filter) =
                     super::super::zone_counter_helpers::target_object_filter_mut(target)
                     && filter.without_attached_object.is_none()
@@ -340,7 +341,7 @@ pub fn parse_destroy_then_no_regeneration_sequence(
                     filter.without_attached_object = Some(Box::new(aura));
                 }
             }
-            SubjectVerbActionAst::DestroyAll { filter, .. }
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { filter, .. })
                 if filter.without_attached_object.is_none() =>
             {
                 filter.without_attached_object = Some(Box::new(aura));

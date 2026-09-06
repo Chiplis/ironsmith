@@ -1,7 +1,8 @@
+use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{
     CardTextError, ChooseOneModeAst, EffectAst, GrantedAbilityAst, KeywordAction, ObjectRefAst,
     OwnedLexToken, PlayerAst, PredicateAst, StaticAbilityAst, SubjectAst, SubjectVerbActionAst,
-    SubjectVerbRoleAst, TagKey, TargetAst,
+    SubjectVerbRoleAst, TagKey, TargetAst, GrantActionAst, TokenActionAst, DelayedEffectAst, ObjectChoiceEffectAst, ConditionalEffectAst,
 };
 use crate::color::ColorSet;
 use crate::effect::Value;
@@ -832,18 +833,18 @@ fn attach_inline_token_granted_abilities_to_effect(
 ) -> bool {
     if let EffectAst::SubjectVerb(subject_verb) = effect {
         match &mut subject_verb.action {
-            SubjectVerbActionAst::CreateTokenCopy {
+            SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
                 sacrifice_at_next_end_step,
                 sacrifice_at_next_end_step_ability_surface,
                 granted_abilities,
                 ..
-            }
-            | SubjectVerbActionAst::CreateTokenCopyFromSource {
+            })
+            | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
                 sacrifice_at_next_end_step,
                 sacrifice_at_next_end_step_ability_surface,
                 granted_abilities,
                 ..
-            } => {
+            }) => {
                 let mut attached = false;
                 if *sacrifice_at_next_end_step
                     && sacrifice_at_next_end_step_ability_surface.is_none()
@@ -864,13 +865,13 @@ fn attach_inline_token_granted_abilities_to_effect(
     }
 
     if let EffectAst::SubjectVerb(subject_verb) = effect
-        && let SubjectVerbActionAst::CreateTokenWithMods {
+        && let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
             definition,
             dynamic_power_toughness,
             granted_abilities,
             ability_presentation,
             ..
-        } = &mut subject_verb.action
+        }) = &mut subject_verb.action
     {
         for ability in parse_inline_token_granted_abilities(definition, tokens) {
             if !granted_abilities
@@ -939,12 +940,12 @@ pub fn recognize_inline_copy_self_replacement_grants(
     fn copy_has_grants(effect: &EffectAst, expected: &[GrantedAbilityAst]) -> bool {
         let direct = match effect {
             EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-                SubjectVerbActionAst::CreateTokenCopy {
+                SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
                     granted_abilities, ..
-                }
-                | SubjectVerbActionAst::CreateTokenCopyFromSource {
+                })
+                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
                     granted_abilities, ..
-                } => granted_abilities == expected,
+                }) => granted_abilities == expected,
                 _ => false,
             },
             _ => false,
@@ -965,12 +966,12 @@ pub fn recognize_inline_copy_self_replacement_grants(
         for effect in effects {
             if let EffectAst::SubjectVerb(subject_verb) = effect {
                 match &mut subject_verb.action {
-                    SubjectVerbActionAst::CreateTokenCopy {
+                    SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
                         granted_abilities, ..
-                    }
-                    | SubjectVerbActionAst::CreateTokenCopyFromSource {
+                    })
+                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
                         granted_abilities, ..
-                    } if granted_abilities == expected => granted_abilities.clear(),
+                    }) if granted_abilities == expected => granted_abilities.clear(),
                     _ => {}
                 }
             }
@@ -984,14 +985,14 @@ pub fn recognize_inline_copy_self_replacement_grants(
         let EffectAst::SubjectVerb(subject_verb) = effect else {
             return false;
         };
-        let SubjectVerbActionAst::GrantAbilitiesAll {
+        let SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll {
             filter,
             abilities,
             duration,
             condition,
             set_quantifier_surface,
             lock_filter_at_resolution,
-        } = &subject_verb.action
+        }) = &subject_verb.action
         else {
             return false;
         };
@@ -1089,10 +1090,10 @@ pub fn attach_mixed_pronoun_token_rules_to_last_create(
     }
     fn mark_combined_separate_sentence(effect: &mut EffectAst) -> bool {
         if let EffectAst::SubjectVerb(subject_verb) = effect
-            && let SubjectVerbActionAst::CreateTokenWithMods {
+            && let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
                 ability_presentation,
                 ..
-            } = &mut subject_verb.action
+            }) = &mut subject_verb.action
         {
             *ability_presentation =
                 Some(ironsmith_core::TokenAbilityPresentation::SeparateSentenceCombined);
@@ -1166,7 +1167,7 @@ fn parse_create_choice_of_options(
     Ok(Some(EffectAst::subject_verb(
         SubjectVerbRoleAst::Actor,
         PlayerAst::Implicit,
-        SubjectVerbActionAst::CreateTokenChoice { options },
+        SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenChoice { options }),
     )))
 }
 
@@ -1200,7 +1201,7 @@ pub fn lower_complete_simple_create_shape(
     Ok(EffectAst::subject_verb(
         SubjectVerbRoleAst::Actor,
         PlayerAst::Implicit,
-        SubjectVerbActionAst::CreateTokenWithMods {
+        SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
             name,
             definition,
             count,
@@ -1218,7 +1219,7 @@ pub fn lower_complete_simple_create_shape(
             next_end_step_player: PlayerFilter::Any,
             granted_abilities: Vec::new(),
             ability_presentation: None,
-        },
+        }),
     ))
 }
 
@@ -1372,28 +1373,28 @@ pub fn parse_create(
     };
     let wrap_for_each_when_needed = |effect: EffectAst, references_iterated_object: bool| {
         if references_iterated_object && let Some(filter) = for_each_object_filter.clone() {
-            EffectAst::ForEachObject {
+            EffectAst::ForEach(ForEachEffectAst::ForEachObject {
                 filter,
                 effects: vec![effect],
-            }
+            })
         } else {
             effect
         }
     };
     let wrap_for_each_player_condition = |effect: EffectAst| {
         if let Some((filter, predicate)) = &for_each_player_condition {
-            let effects = vec![EffectAst::Conditional {
+            let effects = vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: predicate.clone(),
                 if_true: vec![effect],
                 if_false: Vec::new(),
-            }];
+            })];
             match filter {
-                PlayerFilter::Opponent => EffectAst::ForEachOpponent { effects },
-                PlayerFilter::Any => EffectAst::ForEachPlayer { effects },
-                other => EffectAst::ForEachPlayersFiltered {
+                PlayerFilter::Opponent => EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }),
+                PlayerFilter::Any => EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }),
+                other => EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
                     filter: other.clone(),
                     effects,
-                },
+                }),
             }
         } else {
             effect
@@ -1401,10 +1402,10 @@ pub fn parse_create(
     };
     let wrap_delayed_create = |effect: EffectAst| {
         if let Some(player) = delayed_create_player {
-            EffectAst::DelayedUntilNextEndStep {
+            EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
                 player,
                 effects: vec![effect],
-            }
+            })
         } else {
             effect
         }
@@ -1525,7 +1526,7 @@ pub fn parse_create(
                     let create = EffectAst::subject_verb(
                         SubjectVerbRoleAst::Actor,
                         player,
-                        SubjectVerbActionAst::CreateTokenCopyFromSource {
+                        SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
                             source,
                             count: resolve_create_count(references_iterated_object),
                             player,
@@ -1555,7 +1556,7 @@ pub fn parse_create(
                             set_base_power_toughness_to_source_totals,
                             starting_loyalty,
                             granted_abilities,
-                        },
+                        }),
                     );
                     return Ok(wrap_for_each_player_condition(wrap_delayed_create(
                         wrap_for_each_when_needed(create, references_iterated_object),
@@ -1566,7 +1567,7 @@ pub fn parse_create(
             let create = EffectAst::subject_verb(
                 SubjectVerbRoleAst::Actor,
                 player,
-                SubjectVerbActionAst::CreateTokenCopy {
+                SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
                     object: ObjectRefAst::Tagged(crate::tag::CompilerReferenceTag::It.bind()),
                     count: resolve_create_count(references_iterated_object),
                     player,
@@ -1596,7 +1597,7 @@ pub fn parse_create(
                     set_base_power_toughness_to_source_totals,
                     starting_loyalty,
                     granted_abilities,
-                },
+                }),
             );
             return Ok(wrap_for_each_player_condition(wrap_delayed_create(
                 wrap_for_each_when_needed(create, references_iterated_object),
@@ -1871,7 +1872,7 @@ pub fn parse_create(
     let create = EffectAst::subject_verb(
         SubjectVerbRoleAst::Actor,
         player,
-        SubjectVerbActionAst::CreateTokenWithMods {
+        SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
             name,
             definition,
             count: resolve_create_count(references_iterated_object),
@@ -1889,7 +1890,7 @@ pub fn parse_create(
             next_end_step_player,
             granted_abilities,
             ability_presentation: inline_ability_presentation,
-        },
+        }),
     );
     Ok(wrap_for_each_player_condition(wrap_delayed_create(
         wrap_for_each_when_needed(create, references_iterated_object),
@@ -2007,7 +2008,7 @@ fn parse_direct_token_creation_alternative(
             EffectAst::SubjectVerb(subject_verb)
                 if matches!(
                     &subject_verb.action,
-                    SubjectVerbActionAst::CreateTokenWithMods { .. }
+                    SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { .. })
                 )
         )
         .then_some(parsed)
@@ -2015,7 +2016,7 @@ fn parse_direct_token_creation_alternative(
     let first = parse_branch(&left_tokens)?;
     let second = parse_branch(&right_tokens)?;
 
-    Some(EffectAst::ChooseOneOf {
+    Some(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf {
         modes: vec![
             ChooseOneModeAst {
                 description: String::new(),
@@ -2026,7 +2027,7 @@ fn parse_direct_token_creation_alternative(
                 effects: vec![second],
             },
         ],
-    })
+    }))
 }
 
 fn parse_create_for_each_player_condition(
@@ -2238,7 +2239,7 @@ mod tests {
         let EffectAst::SubjectVerb(effect) = effect else {
             panic!("expected a subject-verb token creation");
         };
-        let SubjectVerbActionAst::CreateTokenWithMods { count, .. } = effect.action else {
+        let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { count, .. }) = effect.action else {
             panic!("expected a token creation with modifiers");
         };
         count
@@ -2256,7 +2257,7 @@ mod tests {
         let [
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::CreateTokenCopyFromSource {
+                    SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
                         count,
                         source: TargetAst::Object(filter, ..),
                         added_card_types,
@@ -2264,7 +2265,7 @@ mod tests {
                         set_base_power_toughness,
                         granted_abilities,
                         ..
-                    },
+                    }),
                 ..
             }),
         ] = effects.as_slice()
@@ -2301,11 +2302,11 @@ mod tests {
         let [
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::CreateTokenCopyFromSource {
+                    SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
                         set_base_power_toughness,
                         added_subtypes,
                         ..
-                    },
+                    }),
                 ..
             }),
         ] = effects.as_slice()
@@ -2352,11 +2353,11 @@ mod tests {
         assert!(
             matches!(
                 effects.as_slice(),
-                [EffectAst::ForEachPlayer { effects: nested }]
+                [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects: nested })]
                     if matches!(
                         nested.as_slice(),
                         [EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-                            action: SubjectVerbActionAst::CreateTokenWithMods { .. },
+                            action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { .. }),
                             ..
                         })]
                     )
@@ -2395,7 +2396,7 @@ mod tests {
         let tokens = lex_line("Create a Food token or a Treasure token.", 0)
             .expect("token alternative should lex");
         let parsed = parse_create(&tokens, None).expect("token creation alternative should parse");
-        let EffectAst::ChooseOneOf { modes } = parsed else {
+        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes }) = parsed else {
             panic!("expected a typed token-creation choice, got {parsed:#?}");
         };
         assert_eq!(modes.len(), 2);
@@ -2406,7 +2407,7 @@ mod tests {
                 let [EffectAst::SubjectVerb(effect)] = mode.effects.as_slice() else {
                     panic!("expected one direct create effect per mode: {mode:#?}");
                 };
-                let SubjectVerbActionAst::CreateTokenWithMods { name, .. } = &effect.action else {
+                let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { name, .. }) = &effect.action else {
                     panic!("expected a named token creation: {effect:#?}");
                 };
                 name.as_str()
@@ -2437,7 +2438,7 @@ mod tests {
         let EffectAst::SubjectVerb(effect) = effect else {
             panic!("expected a subject-verb token creation");
         };
-        let SubjectVerbActionAst::CreateTokenWithMods { definition, .. } = effect.action else {
+        let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { definition, .. }) = effect.action else {
             panic!("expected a token creation with modifiers");
         };
         let crate::model::token_definition::TokenDefinitionSpec::Creature(creature) = definition
@@ -2463,7 +2464,7 @@ mod tests {
         let EffectAst::SubjectVerb(effect) = effect else {
             panic!("expected a subject-verb token creation");
         };
-        let SubjectVerbActionAst::CreateTokenWithMods { definition, .. } = effect.action else {
+        let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { definition, .. }) = effect.action else {
             panic!("expected a token creation with modifiers");
         };
         let crate::model::token_definition::TokenDefinitionSpec::Creature(creature) = definition
@@ -2511,9 +2512,9 @@ mod tests {
         let EffectAst::SubjectVerb(effect) = &ast else {
             panic!("expected subject-verb create AST");
         };
-        let SubjectVerbActionAst::CreateTokenWithMods {
+        let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
             granted_abilities, ..
-        } = &effect.action
+        }) = &effect.action
         else {
             panic!("expected create-token AST");
         };
@@ -2702,11 +2703,11 @@ mod tests {
         let EffectAst::SubjectVerb(effect) = effect else {
             panic!("expected a subject-verb token creation");
         };
-        let SubjectVerbActionAst::CreateTokenWithMods {
+        let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
             definition,
             dynamic_power_toughness,
             ..
-        } = effect.action
+        }) = effect.action
         else {
             panic!("expected a token creation with modifiers");
         };
@@ -2732,10 +2733,10 @@ mod tests {
         let EffectAst::SubjectVerb(subject_verb) = effect else {
             panic!("expected a subject-verb token creation");
         };
-        let SubjectVerbActionAst::CreateTokenWithMods {
+        let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
             dynamic_power_toughness: Some((power, toughness)),
             ..
-        } = subject_verb.action
+        }) = subject_verb.action
         else {
             panic!("expected a token creation with typed dynamic base P/T");
         };
@@ -2764,11 +2765,11 @@ mod tests {
         let EffectAst::SubjectVerb(effect) = effect else {
             panic!("expected a subject-verb token creation");
         };
-        let SubjectVerbActionAst::CreateTokenWithMods {
+        let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
             dynamic_power_toughness,
             granted_abilities,
             ..
-        } = effect.action
+        }) = effect.action
         else {
             panic!("expected a token creation with modifiers");
         };
@@ -2792,11 +2793,11 @@ mod tests {
         let EffectAst::SubjectVerb(effect) = effect else {
             panic!("expected a subject-verb token creation");
         };
-        let SubjectVerbActionAst::CreateTokenWithMods {
+        let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
             dynamic_power_toughness,
             granted_abilities,
             ..
-        } = effect.action
+        }) = effect.action
         else {
             panic!("expected a token creation with modifiers");
         };
@@ -2881,11 +2882,11 @@ mod tests {
         let EffectAst::SubjectVerb(effect) = effect else {
             panic!("expected a subject-verb token creation");
         };
-        let SubjectVerbActionAst::CreateTokenWithMods {
+        let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
             dynamic_power_toughness,
             granted_abilities,
             ..
-        } = effect.action
+        }) = effect.action
         else {
             panic!("expected a token creation with modifiers");
         };
@@ -2991,12 +2992,12 @@ mod tests {
         let EffectAst::SubjectVerb(subject_verb) = &ast else {
             panic!("expected a subject-verb token creation");
         };
-        let SubjectVerbActionAst::CreateTokenWithMods {
+        let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
             definition,
             dynamic_power_toughness,
             granted_abilities,
             ..
-        } = &subject_verb.action
+        }) = &subject_verb.action
         else {
             panic!("expected a token creation with modifiers");
         };
@@ -3187,9 +3188,9 @@ mod tests {
                 .expect("Saw in Half text should parse through the public route");
             let [
                 _,
-                EffectAst::IfResult {
+                EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                     effects: result, ..
-                },
+                }),
             ] = effects.as_slice()
             else {
                 panic!("expected destroy followed by result-gated copy: {effects:#?}");
@@ -3199,10 +3200,10 @@ mod tests {
             };
             assert!(matches!(
                 &copy.action,
-                SubjectVerbActionAst::CreateTokenCopyFromSource {
+                SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
                     half_power_toughness_round_up: true,
                     ..
-                }
+                })
             ));
         }
     }
@@ -3248,11 +3249,11 @@ mod tests {
         let EffectAst::SubjectVerb(subject_verb) = &effect else {
             panic!("expected token creation: {effect:#?}");
         };
-        let SubjectVerbActionAst::CreateTokenWithMods {
+        let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
             granted_abilities,
             ability_presentation,
             ..
-        } = &subject_verb.action
+        }) = &subject_verb.action
         else {
             panic!("expected token creation with modifiers: {subject_verb:#?}");
         };
@@ -3287,9 +3288,9 @@ mod tests {
             let EffectAst::SubjectVerb(subject_verb) = effect else {
                 panic!("expected token creation: {effect:#?}");
             };
-            let SubjectVerbActionAst::CreateTokenWithMods {
+            let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
                 granted_abilities, ..
-            } = subject_verb.action
+            }) = subject_verb.action
             else {
                 panic!("expected token creation modifiers: {subject_verb:#?}");
             };

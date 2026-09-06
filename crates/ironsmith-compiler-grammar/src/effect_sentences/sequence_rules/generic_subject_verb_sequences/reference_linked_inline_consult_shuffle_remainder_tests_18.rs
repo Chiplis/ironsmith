@@ -1,3 +1,5 @@
+use crate::cards::builders::ZoneMoveActionAst;
+use crate::cards::builders::LibraryActionAst;
 use super::*;
 use crate::lexer::lex_line;
 
@@ -25,13 +27,13 @@ fn counted_chosen_type_consult_shuffles_only_the_revealed_complement() {
 
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::ConsultTopOfLibrary {
+            SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
                 filter,
                 stop_rule: crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(stop_value),
                 all_tag,
                 match_tag,
                 ..
-            },
+            }),
         ..
     }) = consult
     else {
@@ -47,21 +49,21 @@ fn counted_chosen_type_consult_shuffles_only_the_revealed_complement() {
     assert!(matches!(
         move_matches,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::MoveToZone {
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                 target: TargetAst::Tagged(tag, _),
                 zone: Zone::Battlefield,
                 target_plural_surface: true,
                 ..
-            },
+            }),
             ..
         }) if tag == match_tag
     ));
 
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::ShuffleObjectsIntoLibrary {
+            SubjectVerbActionAst::Library(LibraryActionAst::ShuffleObjectsIntoLibrary {
                 target, all: false, ..
-            },
+            }),
         ..
     }) = shuffle_remainder
     else {
@@ -71,10 +73,10 @@ fn counted_chosen_type_consult_shuffles_only_the_revealed_complement() {
         panic!("expected a filtered revealed complement: {target:#?}");
     };
     assert!(remainder.tagged_constraints.iter().any(|constraint| {
-        constraint.tag == *all_tag && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        constraint.tag == **all_tag && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     }));
     assert!(remainder.tagged_constraints.iter().any(|constraint| {
-        constraint.tag == *match_tag
+        constraint.tag == **match_tag
             && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
     }));
 }
@@ -92,12 +94,12 @@ fn ordinary_fixed_count_consult_does_not_gain_a_dynamic_count() {
     assert!(matches!(
         parts.effects.last(),
         Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ConsultTopOfLibrary {
+            action: SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
                 stop_rule: crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(
                     Value::Fixed(2),
                 ),
                 ..
-            },
+            }),
             ..
         }))
     ));

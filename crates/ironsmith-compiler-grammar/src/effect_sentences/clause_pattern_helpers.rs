@@ -1,8 +1,11 @@
+use crate::cards::builders::PlayerPredicateAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::DamagePreventionActionAst;
 use crate::cards::builders::{
     CardTextError, EffectAst, GrantedAbilityAst, IfResultPredicate, OwnedLexToken, PlayerAst,
     PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst,
     RedirectNextTimeDamageDestinationAst, SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst,
-    TagKey, TargetAst, TextSpan, Verb,
+    TagKey, TargetAst, TextSpan, Verb, StackActionAst, ConditionalEffectAst, PermissionEffectAst,
 };
 use crate::effect::{EventValueSpec, Until, Value};
 use crate::target::{ObjectFilter, PlayerFilter};
@@ -266,10 +269,10 @@ pub fn parse_copy_spell_clause(
             return Ok(None);
         };
         super::chain_carry::bind_implicit_player_context(&mut effect, player);
-        return Ok(Some(EffectAst::MayByPlayer {
+        return Ok(Some(EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
             player,
             effects: vec![effect],
-        }));
+        })));
     }
     if super::super::grammar::effects::clause_dispatch_shapes::parse_leading_may_shape(tokens)
         .is_some()
@@ -406,11 +409,11 @@ pub fn parse_copy_spell_clause(
                 }
                 let EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action:
-                        SubjectVerbActionAst::CopySpell {
+                        SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
                             may_choose_new_targets,
                             choose_new_target_singular,
                             ..
-                        },
+                        }),
                     ..
                 }) = &mut base
                 else {
@@ -418,10 +421,10 @@ pub fn parse_copy_spell_clause(
                 };
                 *may_choose_new_targets = retarget.may_choose;
                 *choose_new_target_singular = retarget.single_target;
-                return Ok(Some(EffectAst::TrailingIf {
+                return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
                     predicate: trailing_if.predicate,
                     effects: vec![base],
-                }));
+                })));
             }
         }
         let trailing_if = split_trailing_if_clause_lexed(tokens);
@@ -509,10 +512,10 @@ pub fn parse_copy_spell_clause(
             base = base.with_copy_target_reference_kind(kind);
         }
         if let Some(trailing_if) = trailing_if {
-            return Ok(Some(EffectAst::TrailingIf {
+            return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
                 predicate: trailing_if.predicate,
                 effects: vec![base],
-            }));
+            })));
         }
         return Ok(Some(base));
     }
@@ -660,8 +663,9 @@ fn strip_copy_count_suffix(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], Optio
 
 #[cfg(test)]
 mod copy_all_tests {
+    use crate::cards::builders::TokenActionAst;
     use super::*;
-    use crate::model::ast::{PredicateAst, SubjectVerbEffectAst};
+    use crate::model::ast::{PredicateAst, SubjectVerbEffectAst, PlayerPredicateAst};
 
     #[test]
     fn copy_for_each_kind_of_counter_uses_a_distinct_counter_type_value() {
@@ -675,12 +679,12 @@ mod copy_all_tests {
             .expect("distinct-counter copy clause should match");
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::CopySpell {
+                SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
                     target,
                     count,
                     target_reference_pronoun,
                     ..
-                },
+                }),
             ..
         }) = parsed
         else {
@@ -734,11 +738,11 @@ mod copy_all_tests {
         assert!(matches!(
             parsed.as_slice(),
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::CreateTokenCopyFromSource {
+                action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
                     source: TargetAst::Object(filter, ..),
                     count,
                     ..
-                },
+                }),
                 ..
             })]
                 if filter.card_types == [CardType::Creature]
@@ -768,11 +772,11 @@ mod copy_all_tests {
         ]) {
             let EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::CopySpell {
+                    SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
                         all_matches,
                         target: TargetAst::Object(filter, ..),
                         ..
-                    },
+                    }),
                 ..
             }) = effect
             else {
@@ -796,16 +800,16 @@ mod copy_all_tests {
             .expect("variable-count copy sentence should parse")
             .expect("copy parser should match");
         let parsed = match parsed {
-            EffectAst::MayByPlayer { mut effects, .. } if effects.len() == 1 => effects.remove(0),
+            EffectAst::Permissions(PermissionEffectAst::MayByPlayer { mut effects, .. }) if effects.len() == 1 => effects.remove(0),
             effect => effect,
         };
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::CopySpell {
+                SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
                     count,
                     may_choose_new_targets,
                     ..
-                },
+                }),
             ..
         }) = parsed
         else {
@@ -825,10 +829,10 @@ mod copy_all_tests {
         let parsed = parse_copy_spell_clause(&tokens)
             .expect("conditional copy sentence should parse")
             .expect("copy parser should match");
-        let EffectAst::TrailingIf {
+        let EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
             predicate: PredicateAst::ItMatches(filter),
             effects,
-        } = parsed
+        }) = parsed
         else {
             panic!("expected a typed trailing-if copy, got {parsed:#?}");
         };
@@ -838,12 +842,12 @@ mod copy_all_tests {
         assert!(matches!(
             effects.as_slice(),
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::CopySpell {
+                action: SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
                     target: TargetAst::Tagged(tag, _),
                     target_reference_kind: Some(crate::filter::StackObjectKind::Spell),
                     may_choose_new_targets: true,
                     ..
-                },
+                }),
                 ..
             })] if tag.as_str() == "triggering"
         ));
@@ -859,10 +863,10 @@ mod copy_all_tests {
         assert!(matches!(
             parsed,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::CopySpell {
+                action: SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
                     count: Value::Fixed(2),
                     ..
-                },
+                }),
                 ..
             })
         ));
@@ -879,14 +883,14 @@ mod copy_all_tests {
             .expect("conditional replacement should parse");
         assert!(matches!(
             parsed.as_slice(),
-            [EffectAst::Conditional { if_true, .. }]
+            [EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, .. })]
                 if matches!(
                     if_true.as_slice(),
                     [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                        action: SubjectVerbActionAst::CopySpell {
+                        action: SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
                             count: Value::Fixed(2),
                             ..
-                        },
+                        }),
                         ..
                     })]
                 )
@@ -912,10 +916,10 @@ mod copy_all_tests {
                 .expect("copy parser should match");
             let EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::CopySpell {
+                    SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
                         target_reference_kind,
                         ..
-                    },
+                    }),
                 ..
             }) = parsed
             else {
@@ -933,10 +937,10 @@ mod copy_all_tests {
             .expect("copy parser should match");
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::CopySpell {
+                SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
                     target_reference_pronoun,
                     ..
-                },
+                }),
             ..
         }) = parsed
         else {
@@ -957,12 +961,12 @@ mod copy_all_tests {
             .expect("copy parser should match");
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::CopySpell {
+                SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
                     target: TargetAst::Object(filter, ..),
                     count,
                     may_choose_new_targets,
                     ..
-                },
+                }),
             ..
         }) = parsed
         else {
@@ -1006,11 +1010,11 @@ mod copy_all_tests {
             .expect("copy parser should own the complete sentence");
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::CopySpell {
+                SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
                     target: TargetAst::Object(filter, ..),
                     set_colors,
                     ..
-                },
+                }),
             ..
         }) = parsed
         else {
@@ -1040,16 +1044,16 @@ mod copy_all_tests {
             .expect("fixed P/T spell-copy sentence should parse")
             .expect("copy parser should own the complete sentence");
         let parsed = match parsed {
-            EffectAst::MayByPlayer { mut effects, .. } if effects.len() == 1 => effects.remove(0),
+            EffectAst::Permissions(PermissionEffectAst::MayByPlayer { mut effects, .. }) if effects.len() == 1 => effects.remove(0),
             effect => effect,
         };
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::CopySpell {
+                SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
                     added_subtypes,
                     set_base_power_toughness,
                     ..
-                },
+                }),
             ..
         }) = parsed
         else {
@@ -1073,10 +1077,10 @@ mod copy_all_tests {
         assert!(matches!(
             parsed.as_slice(),
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::CopySpell {
+                action: SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
                     set_colors: Some(colors),
                     ..
-                },
+                }),
                 ..
             })] if *colors == crate::color::ColorSet::RED
         ));
@@ -1348,11 +1352,11 @@ pub fn parse_prevent_next_time_damage_sentence(
         let damage_target_tag =
             crate::util::helper_tag_for_tokens(tokens, "replaced_damage_target");
         let replacement =
-            EffectAst::subject_verb_destroy(TargetAst::Tagged(damage_target_tag.clone(), None));
+            EffectAst::subject_verb_destroy(TargetAst::Tagged(crate::tag::TagRef::of(damage_target_tag.clone()), None));
         return Ok(Some(vec![
             EffectAst::subject_verb_replace_next_damage_to_target(
                 target,
-                damage_target_tag,
+                crate::tag::TagRef::of(damage_target_tag),
                 vec![replacement],
             ),
         ]));
@@ -1577,10 +1581,10 @@ pub fn parse_redirect_next_damage_sentence(
                             amount, target,
                         );
                     if let EffectAst::SubjectVerb(subject_verb) = &mut effect
-                        && let SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget {
+                        && let SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectNextDamageFromSourceToTarget {
                             protected_target: effect_protected_target,
                             ..
-                        } = &mut subject_verb.action
+                        }) = &mut subject_verb.action
                     {
                         *effect_protected_target = protected_target;
                     }
@@ -1639,10 +1643,10 @@ pub fn parse_win_the_game_clause(
         }
         clause_shapes::WinGameShape::ConditionalTail => {
             if let Some(trailing_if) = split_trailing_if_clause_lexed(tokens) {
-                return Ok(Some(EffectAst::TrailingIf {
+                return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
                     predicate: trailing_if.predicate,
                     effects: vec![EffectAst::subject_verb_win_game(PlayerAst::You)],
-                }));
+                })));
             }
             Ok(None)
         }
@@ -1655,15 +1659,15 @@ pub fn parse_win_the_game_clause(
             if name.is_empty() {
                 return Ok(None);
             }
-            Ok(Some(EffectAst::Conditional {
-                predicate: crate::cards::builders::PredicateAst::PlayerOwnsCardNamedInZones {
+            Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate: crate::cards::builders::PredicateAst::Player(PlayerPredicateAst::PlayerOwnsCardNamedInZones {
                     player: PlayerAst::You,
                     name,
                     zones: vec![Zone::Exile, Zone::Hand, Zone::Graveyard, Zone::Battlefield],
-                },
+                }),
                 if_true: vec![EffectAst::subject_verb_win_game(PlayerAst::You)],
                 if_false: Vec::new(),
-            }))
+            })))
         }
     }
 }
@@ -1924,10 +1928,10 @@ pub fn parse_keyword_mechanic_clause(
                 1,
             )
         }
-        clause_shapes::KeywordMechanicShape::RollD6 { count_tokens } => EffectAst::RepeatEffects {
+        clause_shapes::KeywordMechanicShape::RollD6 { count_tokens } => EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
             count: parse_keyword_value_tokens(count_tokens, "roll-dice", &clause_text)?,
             effects: vec![EffectAst::subject_verb_roll_die(PlayerAst::Implicit, 6)],
-        },
+        }),
         clause_shapes::KeywordMechanicShape::OddEvenResult { odd, action_tokens } => {
             let predicate = if odd {
                 crate::effect::Comparison::OneOf(ODD_RESULT_VALUES_D6.into())
@@ -1945,10 +1949,10 @@ pub fn parse_keyword_mechanic_clause(
                 )));
             }
             let action = parse_effect_with_verb(verb, None, &action_tokens[1..])?;
-            EffectAst::IfResult {
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                 predicate: IfResultPredicate::Value(predicate),
                 effects: vec![action],
-            }
+            })
         }
         clause_shapes::KeywordMechanicShape::Phase { direction, subject } => match subject {
             clause_shapes::PhaseSubjectShape::All(filter_tokens) => {
@@ -1995,10 +1999,10 @@ pub fn parse_keyword_mechanic_clause(
             let manifest = EffectAst::subject_verb_manifest_dread(PlayerAst::Implicit);
             match repeat {
                 clause_shapes::KeywordRepeatShape::Once => manifest,
-                _ => EffectAst::RepeatEffects {
+                _ => EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
                     count: keyword_repeat_value(repeat, "manifest dread", &clause_text)?,
                     effects: vec![manifest],
-                },
+                }),
             }
         }
         clause_shapes::KeywordMechanicShape::ManifestTop { player } => {
@@ -2084,10 +2088,10 @@ pub fn parse_keyword_mechanic_clause(
             let explore = EffectAst::subject_verb_explore(target);
             match repeat {
                 clause_shapes::KeywordRepeatShape::Once => explore,
-                _ => EffectAst::RepeatEffects {
+                _ => EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
                     count: keyword_repeat_value(repeat, "explore", &clause_text)?,
                     effects: vec![explore],
-                },
+                }),
             }
         }
         clause_shapes::KeywordMechanicShape::Endure {
@@ -2144,10 +2148,10 @@ pub fn parse_connive_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst
 
     let target_tokens = match shape.subject {
         clause_shapes::ConniveSubjectShape::ConvokedThisSpell => {
-            return Ok(Some(EffectAst::ForEachTagged {
+            return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
                 tag: crate::tag::CompilerReferenceTag::ConvokedThisSpell.bind(),
                 effects: vec![EffectAst::subject_verb_connive_iterated()],
-            }));
+            })));
         }
         clause_shapes::ConniveSubjectShape::Target(target_tokens) => target_tokens,
     };

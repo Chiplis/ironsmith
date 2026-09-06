@@ -463,11 +463,11 @@ fn read_removed_from_draft(
     let tokens = input.tokens;
     if let Some(condition) = crate::grammar::conditions::parse_removed_from_draft_condition(&tokens)
     {
-        return Ok(Some(PredicateAst::PlayerRemovedDraftCardMatching {
+        return Ok(Some(PredicateAst::Player(PlayerPredicateAst::PlayerRemovedDraftCardMatching {
             player: condition.player,
             filter: condition.filter,
             with_cards_named: condition.with_cards_named,
-        }));
+        })));
     }
     Ok(None)
 }
@@ -508,7 +508,7 @@ fn read_source_keyword_filter(
     ) && let Some(filter) =
         crate::grammar::filters::parse_source_keyword_condition_filter_lexed(&tokens)
     {
-        return Ok(Some(PredicateAst::SourceMatches(filter)));
+        return Ok(Some(PredicateAst::Source(SourcePredicateAst::SourceMatches(filter))));
     }
     Ok(None)
 }
@@ -526,19 +526,19 @@ fn read_fixed_static_condition_kind(
             ),
             FixedStaticConditionKind::SourceSpellWasKicked => Ok(PredicateAst::ThisSpellWasKicked),
             FixedStaticConditionKind::OpponentLostLifeThisTurn => {
-                Ok(PredicateAst::OpponentLostLifeThisTurn)
+                Ok(PredicateAst::TurnEvents(TurnEventPredicateAst::OpponentLostLifeThisTurn))
             }
             FixedStaticConditionKind::YouDidNotCastSpellThisTurn => Ok(PredicateAst::Not(
-                Box::new(PredicateAst::PlayerCastSpellsThisTurnOrMore {
+                Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerCastSpellsThisTurnOrMore {
                     player: PlayerAst::You,
                     count: 1,
-                }),
+                })),
             )),
             FixedStaticConditionKind::YouCastSpellThisTurn => {
-                Ok(PredicateAst::PlayerCastSpellsThisTurnOrMore {
+                Ok(PredicateAst::Player(PlayerPredicateAst::PlayerCastSpellsThisTurnOrMore {
                     player: PlayerAst::You,
                     count: 1,
-                })
+                }))
             }
             FixedStaticConditionKind::NoCardsInYourLibrary => Ok(PredicateAst::CountComparison {
                 count: AnthemCountExpression::MatchingFilter(
@@ -550,24 +550,24 @@ fn read_fixed_static_condition_kind(
                 display: Some("there are no cards in your library".to_string()),
             }),
             FixedStaticConditionKind::SourceIsOnBattlefield => {
-                Ok(PredicateAst::SourceIsInZone(Zone::Battlefield))
+                Ok(PredicateAst::Source(SourcePredicateAst::SourceIsInZone(Zone::Battlefield)))
             }
             FixedStaticConditionKind::SourceIsNotOnBattlefield => Ok(PredicateAst::Not(Box::new(
-                PredicateAst::SourceIsInZone(Zone::Battlefield),
+                PredicateAst::Source(SourcePredicateAst::SourceIsInZone(Zone::Battlefield)),
             ))),
             FixedStaticConditionKind::SourceDevouredCreature => {
-                Ok(PredicateAst::SourceDevouredCreaturesOrMore(1))
+                Ok(PredicateAst::Source(SourcePredicateAst::SourceDevouredCreaturesOrMore(1)))
             }
             FixedStaticConditionKind::SourceIsSoulbondPaired => {
-                Ok(PredicateAst::SourceIsSoulbondPaired)
+                Ok(PredicateAst::Source(SourcePredicateAst::SourceIsSoulbondPaired))
             }
             FixedStaticConditionKind::SourceAttackedThisTurn => {
-                Ok(PredicateAst::SourceAttackedThisTurn)
+                Ok(PredicateAst::Source(SourcePredicateAst::SourceAttackedThisTurn))
             }
             FixedStaticConditionKind::SourceAttackedBattleThisTurn => {
-                Ok(PredicateAst::SourceAttackedBattleThisTurn)
+                Ok(PredicateAst::Source(SourcePredicateAst::SourceAttackedBattleThisTurn))
             }
-            FixedStaticConditionKind::YouAttackedThisTurn => Ok(PredicateAst::AttackedThisTurn),
+            FixedStaticConditionKind::YouAttackedThisTurn => Ok(PredicateAst::TurnEvents(TurnEventPredicateAst::AttackedThisTurn)),
             FixedStaticConditionKind::SourceEnteredThisTurn => {
                 let mut filter = ObjectFilter::source();
                 filter.entered_battlefield_this_turn = true;
@@ -590,14 +590,14 @@ fn read_fixed_static_condition_kind(
                 Ok(PredicateAst::Not(Box::new(PredicateAst::YourTurn)))
             }
             FixedStaticConditionKind::YourLifeAtMostHalfStarting => {
-                Ok(PredicateAst::PlayerLifeAtMostHalfStartingLifeTotal {
+                Ok(PredicateAst::Player(PlayerPredicateAst::PlayerLifeAtMostHalfStartingLifeTotal {
                     player: PlayerAst::You,
-                })
+                }))
             }
             FixedStaticConditionKind::YouCommittedCrimeThisTurn => {
-                Ok(PredicateAst::PlayerCommittedCrimeThisTurn {
+                Ok(PredicateAst::Player(PlayerPredicateAst::PlayerCommittedCrimeThisTurn {
                     player: PlayerAst::You,
-                })
+                }))
             }
         })
         .map(Some);

@@ -12,10 +12,10 @@ fn chooses_a_color_from_the_filtered_objects_instead_of_an_object() {
     let [EffectAst::SubjectVerb(subject_verb)] = effects.as_slice() else {
         panic!("expected one typed mana effect, got {effects:#?}");
     };
-    let SubjectVerbActionAst::AddOneManaAnyColorAmong {
+    let SubjectVerbActionAst::Mana(ManaActionAst::AddOneManaAnyColorAmong {
         filter,
         choose_color_of_object_surface,
-    } = &subject_verb.action
+    }) = &subject_verb.action
     else {
         panic!("expected a restricted color-choice effect, got {effects:#?}");
     };
@@ -37,7 +37,7 @@ fn chooses_a_color_of_a_typed_permanent_without_erasing_that_type() {
     let [EffectAst::SubjectVerb(subject_verb)] = effects.as_slice() else {
         panic!("expected one typed mana effect, got {effects:#?}");
     };
-    let SubjectVerbActionAst::AddOneManaAnyColorAmong { filter, .. } = &subject_verb.action else {
+    let SubjectVerbActionAst::Mana(ManaActionAst::AddOneManaAnyColorAmong { filter, .. }) = &subject_verb.action else {
         panic!("expected a restricted color-choice effect, got {effects:#?}");
     };
     assert_eq!(filter.card_types, [CardType::Artifact]);

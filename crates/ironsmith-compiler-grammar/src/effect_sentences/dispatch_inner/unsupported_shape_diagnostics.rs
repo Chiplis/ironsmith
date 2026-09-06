@@ -1,3 +1,4 @@
+use crate::cards::builders::LifeResourceActionAst;
 pub fn parse_gain_life_equal_to_power_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -14,11 +15,11 @@ pub fn parse_gain_life_equal_to_power_sentence(
         _ => PlayerAst::Implicit,
     };
 
-    let amount = Value::PowerOf(Box::new(ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.bind())));
+    let amount = Value::PowerOf(Box::new(ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into())));
     Ok(Some(vec![EffectAst::subject_verb(
         SubjectVerbRoleAst::AffectedPlayer,
         player,
-        SubjectVerbActionAst::GainLife { amount },
+        SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount }),
     )]))
 }
 
@@ -60,7 +61,7 @@ pub fn parse_gain_x_plus_life_sentence(
     let effects = vec![EffectAst::subject_verb(
         SubjectVerbRoleAst::AffectedPlayer,
         player,
-        SubjectVerbActionAst::GainLife { amount },
+        SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount }),
     )];
 
     Ok(Some(effects))

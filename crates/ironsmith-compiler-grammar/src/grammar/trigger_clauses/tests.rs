@@ -729,7 +729,7 @@ fn shared_spell_cast_or_copy_subject_is_preserved_on_both_trigger_arms() {
     else {
         panic!("expected spell-cast and spell-copied trigger arms");
     };
-    let enchanted = PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.bind());
+    let enchanted = PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.bind().into());
     assert_eq!(caster, enchanted);
     assert_eq!(copier, enchanted);
     assert_eq!(min_spells_this_turn, Some(2));
@@ -1880,7 +1880,7 @@ fn initiative_holder_attack_target_keeps_dynamic_player_reference() {
         panic!("expected a group attack trigger, got {parsed:#?}");
     };
     let expected =
-        PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::InitiativeHolder.bind());
+        PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::InitiativeHolder.bind().into());
     assert_eq!(
         filter
             .attacking_player_or_planeswalker_controlled_by
@@ -1949,7 +1949,7 @@ fn repeated_attack_intro_resolves_enchanted_player_pronoun_on_both_branches() {
     else {
         panic!("expected enchanted-player counterattack branch, got {right:#?}");
     };
-    let enchanted = PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.bind());
+    let enchanted = PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.bind().into());
     assert_eq!(
         left_filter
             .attacking_player_or_planeswalker_controlled_by

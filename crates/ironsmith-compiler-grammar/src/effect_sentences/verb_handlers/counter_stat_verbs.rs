@@ -1100,7 +1100,7 @@ fn parse_for_each_counter_on_reference_value(tokens: &[OwnedLexToken]) -> Option
             counter_type_tokens,
         } => Some(Value::CountersOn(
             Box::new(ChooseSpec::Tagged(
-                crate::tag::CompilerReferenceTag::It.bind(),
+                (crate::tag::CompilerReferenceTag::It.bind()).into(),
             )),
             crate::grammar::filters::parse_counter_type_from_tokens(counter_type_tokens),
         )),
@@ -1128,17 +1128,17 @@ pub fn remap_source_stat_value_to_it(value: Value) -> Value {
         },
         Value::PowerOf(spec) if matches!(spec.as_ref(), ChooseSpec::Source) => {
             Value::PowerOf(Box::new(ChooseSpec::Tagged(
-                crate::tag::CompilerReferenceTag::It.bind(),
+                (crate::tag::CompilerReferenceTag::It.bind()).into(),
             )))
         }
         Value::ToughnessOf(spec) if matches!(spec.as_ref(), ChooseSpec::Source) => {
             Value::ToughnessOf(Box::new(ChooseSpec::Tagged(
-                crate::tag::CompilerReferenceTag::It.bind(),
+                (crate::tag::CompilerReferenceTag::It.bind()).into(),
             )))
         }
         Value::ManaValueOf(spec) if matches!(spec.as_ref(), ChooseSpec::Source) => {
             Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
-                crate::tag::CompilerReferenceTag::It.bind(),
+                (crate::tag::CompilerReferenceTag::It.bind()).into(),
             )))
         }
         Value::Add(left, right) => Value::Add(
@@ -1343,6 +1343,7 @@ mod counter_spell_target_kind_tests {
 
 #[cfg(test)]
 mod reveal_hand_count_tests {
+    use crate::cards::builders::RevealLookActionAst;
     use super::*;
     use crate::lexer::lex_line;
 
@@ -1359,11 +1360,11 @@ mod reveal_hand_count_tests {
                     ..
                 },
             action:
-                SubjectVerbActionAst::RevealCardsFromHand {
+                SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealCardsFromHand {
                     count,
                     count_value: Some(count_value),
                     ..
-                },
+                }),
         }) = parsed
         else {
             panic!("expected a typed dependent hand reveal, got {parsed:#?}");

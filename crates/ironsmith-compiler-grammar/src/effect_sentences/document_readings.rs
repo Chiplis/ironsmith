@@ -18,7 +18,7 @@ use super::dispatch_inner::trim_edge_punctuation;
 use super::divvy::try_parse_divvy_sentence_sequence;
 use super::sentence_helpers::*;
 use super::SubjectVerbPrimitiveClause;
-use crate::cards::builders::{CardTextError, EffectAst, IfResultPredicate};
+use crate::cards::builders::{CardTextError, EffectAst, IfResultPredicate, ConditionalEffectAst, PermissionEffectAst};
 use crate::grammar::effects as effect_grammar;
 use crate::lexer::{OwnedLexToken, TokenKind, split_lexed_sentences};
 use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId, RuleMatch};
@@ -670,19 +670,19 @@ fn read_leading_player_may(document: &Document<'_>) -> Result<Option<Vec<EffectA
             for effect in &mut optional_effects {
                 super::chain_carry::bind_implicit_player_context(effect, player);
             }
-            let mut effects = vec![EffectAst::MayByPlayer {
+            let mut effects = vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
                 player,
                 effects: optional_effects,
-            }];
+            })];
             for sentence in sentences.iter().skip(1) {
                 if let Some(followup) =
                     super::super::grammar::sentence_markers::parse_conditional_followup_tokens(sentence)
                 {
                     let continuation = trim_edge_punctuation(followup.tail_tokens);
-                    effects.push(EffectAst::IfResult {
+                    effects.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                         predicate: IfResultPredicate::Did,
                         effects: super::dispatch_entry::parse_effect_sentences_lexed_inner(&continuation)?,
-                    });
+                    }));
                 } else {
                     effects.extend(super::dispatch_entry::parse_effect_sentences_lexed_inner(sentence)?);
                 }

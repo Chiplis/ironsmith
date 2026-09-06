@@ -3,13 +3,14 @@
 
 #![allow(unused_imports)]
 
+use crate::cards::builders::ForEachEffectAst;
 use super::super::dispatch_entry::SentenceInput;
 use super::super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_copy_for_each_target_sentence;
 use super::super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::target_opponent_filter;
 use crate::cards::builders::{
     CardTextError, ChoiceCount, ChooseOneModeAst, EffectAst, IfResultPredicate, ObjectFilter,
     PlayerAst, PredicateAst, ReturnControllerAst, SubjectVerbActionAst, SubjectVerbEffectAst,
-    SubjectVerbRoleAst, TargetAst,
+    SubjectVerbRoleAst, TargetAst, LibraryActionAst, ZoneMoveActionAst, TokenActionAst, ObjectChoiceEffectAst, ConditionalEffectAst, PermissionEffectAst, SourcePredicateAst,
 };
 use crate::effect::Value;
 use crate::target::PlayerFilter;
@@ -43,7 +44,7 @@ pub(super) fn destroy_all_then_search_shuffle(
     let destroy_effects = crate::effect_sentences::parse_effect_sentence_lexed(destroy_clause.tokens())?;
     let [
         destroy @ EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::DestroyAll { .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { .. }),
             ..
         }),
     ] = destroy_effects.as_slice()
@@ -67,14 +68,14 @@ pub(super) fn destroy_all_then_search_shuffle(
         }),
         search @ EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::SearchLibrary {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
                     filter,
                     destination: Zone::Graveyard,
                     chooser: PlayerAst::Implicit,
                     player: PlayerAst::That,
                     shuffle: false,
                     ..
-                },
+                }),
             ..
         }),
     ] = search_effects.as_slice()
@@ -98,7 +99,7 @@ pub(super) fn destroy_all_then_search_shuffle(
         EffectAst::subject_verb(
             SubjectVerbRoleAst::LibraryOwner,
             PlayerAst::That,
-            SubjectVerbActionAst::ShuffleLibrary,
+            SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
         ),
     ]))
 }
@@ -117,7 +118,7 @@ pub(super) fn search_two_disposition_then_shuffle(
             [
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action:
-                        SubjectVerbActionAst::SearchLibrary {
+                        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
                             filter,
                             chooser,
                             player,
@@ -125,7 +126,7 @@ pub(super) fn search_two_disposition_then_shuffle(
                             count,
                             count_value,
                             ..
-                        },
+                        }),
                     ..
                 }),
             ] => (
@@ -137,7 +138,7 @@ pub(super) fn search_two_disposition_then_shuffle(
                 *search_mode,
             ),
             [
-                EffectAst::ChooseObjectsAcrossZones {
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
                     filter,
                     count,
                     count_value,
@@ -145,7 +146,7 @@ pub(super) fn search_two_disposition_then_shuffle(
                     zones,
                     search_mode,
                     ..
-                },
+                }),
             ] if zones.len() == 1 && zones.first().is_some_and(|zone| *zone == Zone::Library) => (
                 filter.clone(),
                 *count,
@@ -176,34 +177,34 @@ pub(super) fn search_two_disposition_then_shuffle(
         .same_stable_id_as_tagged(crate::tag::CompilerReferenceTag::It.bind());
 
     Ok(Some(vec![
-        EffectAst::ChooseObjectsAcrossZones {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
             filter: search_filter,
             count,
             count_value,
             player: chooser,
-            tag: searched_tag.clone(),
+            tag: crate::tag::TagRef::of(searched_tag.clone()),
             zones: vec![Zone::Library],
             search_mode: Some(search_mode),
-        },
-        EffectAst::ChooseTaggedObjectsInZone {
+        }),
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter: hand_filter,
             count: ChoiceCount::exactly(1),
             player: chooser,
-            tag: hand_tag.clone(),
+            tag: crate::tag::TagRef::of(hand_tag.clone()),
             zone: Zone::Library,
-        },
+        }),
         EffectAst::subject_verb_move_to_zone(
-            TargetAst::Tagged(hand_tag.clone(), None),
+            TargetAst::Tagged(crate::tag::TagRef::of(hand_tag.clone()), None),
             Zone::Hand,
             false,
             ReturnControllerAst::Preserve,
             false,
             None,
         ),
-        EffectAst::ForEachTagged {
-            tag: searched_tag,
-            effects: vec![EffectAst::Conditional {
-                predicate: PredicateAst::TaggedMatches(hand_tag, iterated_is_hand_card),
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+            tag: crate::tag::TagRef::of(searched_tag),
+            effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate: PredicateAst::TaggedMatches(crate::tag::TagRef::of(hand_tag), iterated_is_hand_card),
                 if_true: Vec::new(),
                 if_false: vec![EffectAst::subject_verb_move_to_zone(
                     TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
@@ -213,12 +214,12 @@ pub(super) fn search_two_disposition_then_shuffle(
                     false,
                     None,
                 )],
-            }],
-        },
+            })],
+        }),
         EffectAst::subject_verb(
             SubjectVerbRoleAst::LibraryOwner,
             library_player,
-            SubjectVerbActionAst::ShuffleLibrary,
+            SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
         ),
     ]))
 }
@@ -264,12 +265,12 @@ pub(super) fn tempting_offer_copy_effects() -> Vec<EffectAst> {
             Some(crate::TextSpan::synthetic()),
             None,
         )),
-        EffectAst::ForEachOpponent {
-            effects: vec![EffectAst::MayByPlayer {
+        EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
+            effects: vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
                 player: PlayerAst::That,
                 effects: vec![opponent_copy],
-            }],
-        },
+            })],
+        }),
         your_copy,
     ]
 }
@@ -308,11 +309,11 @@ pub(super) fn history_counter_source(
     if true_effects.is_empty() || false_effects.is_empty() {
         return Ok(None);
     }
-    Ok(Some(vec![EffectAst::Conditional {
-        predicate: PredicateAst::SourceBlockedOrBecameBlockedSinceLastUpkeep,
+    Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+        predicate: PredicateAst::Source(SourcePredicateAst::SourceBlockedOrBecameBlockedSinceLastUpkeep),
         if_true: true_effects,
         if_false: false_effects,
-    }]))
+    })]))
 }
 
 
@@ -348,11 +349,11 @@ pub(super) fn history_counter_enchanted(
     if true_effects.is_empty() || false_effects.is_empty() {
         return Ok(None);
     }
-    Ok(Some(vec![EffectAst::Conditional {
+    Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
         predicate: PredicateAst::EnchantedPermanentAttackedOrBlockedSinceLastUpkeep,
         if_true: true_effects,
         if_false: false_effects,
-    }]))
+    })]))
 }
 
 
@@ -376,19 +377,19 @@ pub(super) fn choose_phase_then_skip(
                 "combat phase".to_string(),
             ],
         ),
-        EffectAst::Conditional {
-            predicate: PredicateAst::SourceChosenOption("draw step".to_string()),
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::Source(SourcePredicateAst::SourceChosenOption("draw step".to_string())),
             if_true: vec![EffectAst::subject_verb_skip_draw_step(PlayerAst::That)],
-            if_false: vec![EffectAst::Conditional {
-                predicate: PredicateAst::SourceChosenOption("main phase".to_string()),
+            if_false: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate: PredicateAst::Source(SourcePredicateAst::SourceChosenOption("main phase".to_string())),
                 if_true: vec![EffectAst::subject_verb_skip_main_phases_this_turn(
                     PlayerAst::That,
                 )],
                 if_false: vec![EffectAst::subject_verb_skip_combat_phases_this_turn(
                     PlayerAst::That,
                 )],
-            }],
-        },
+            })],
+        }),
     ]))
 }
 
@@ -422,10 +423,10 @@ pub(super) fn target_opponent_copy_retarget(
     );
     Ok(Some(vec![
         EffectAst::subject_verb_explicit_target_only(target),
-        EffectAst::MayByPlayer {
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
             player: PlayerAst::TargetOpponent,
             effects: vec![copy],
-        },
+        }),
     ]))
 }
 
@@ -447,21 +448,21 @@ pub(super) fn starting_each_player_optional_repeat(
         return Ok(None);
     };
     let [
-        EffectAst::ForEachPlayer {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
             effects: per_player_effects,
-        },
+        }),
     ] = parsed.as_slice()
     else {
         return Ok(None);
     };
     if !matches!(
         per_player_effects.as_slice(),
-        [EffectAst::May { .. } | EffectAst::MayByPlayer { .. }]
+        [EffectAst::Permissions(PermissionEffectAst::May { .. }) | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. })]
     ) {
         return Ok(None);
     }
 
-    Ok(Some(vec![EffectAst::RepeatProcess {
+    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
         effects: vec![EffectAst::SourceSentence {
             effects: parsed,
             leading_then: false,
@@ -469,7 +470,7 @@ pub(super) fn starting_each_player_optional_repeat(
         }],
         continue_effect_index: 0,
         continue_predicate: IfResultPredicate::Did,
-    }]))
+    })]))
 }
 
 
@@ -487,22 +488,22 @@ pub(super) fn each_player_pay_life_tokens(
     }
 
     Ok(Some(vec![
-        EffectAst::RepeatProcess {
+        EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
             effects: vec![EffectAst::SourceSentence {
-                effects: vec![EffectAst::ForEachPlayer {
+                effects: vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
                     effects: vec![EffectAst::subject_verb_pay_any_life(PlayerAst::That, 0)],
-                }],
+                })],
                 leading_then: false,
                 starting_with_controller: true,
             }],
             continue_effect_index: 0,
             continue_predicate: IfResultPredicate::Did,
-        },
-        EffectAst::ForEachPlayer {
+        }),
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
             effects: vec![EffectAst::subject_verb(
                 SubjectVerbRoleAst::Actor,
                 PlayerAst::That,
-                SubjectVerbActionAst::CreateTokenWithMods {
+                SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
                     name: "1/1 black Rat creature".to_string(),
                     definition: crate::effect_sentences::sequence_rules::generic_subject_verb_sequences::rat_token_definition(),
                     count: Value::PendingEffectMetric {
@@ -523,9 +524,9 @@ pub(super) fn each_player_pay_life_tokens(
                     next_end_step_player: PlayerFilter::Any,
                     granted_abilities: Vec::new(),
                     ability_presentation: None,
-                },
+                }),
             )],
-        },
+        }),
     ]))
 }
 
@@ -589,7 +590,7 @@ pub(super) fn opponents_sacrifice_or_discard_damage(
     let sacrifice = EffectAst::subject_verb_sacrifice(PlayerAst::That, sacrifice_filter, 1, None);
     let discard =
         EffectAst::subject_verb_discard(PlayerAst::That, Value::Fixed(1), false, false, None, None);
-    let choice = EffectAst::VillainousChoice {
+    let choice = EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice {
         player: PlayerFilter::IteratedPlayer,
         player_surface: None,
         modes: vec![
@@ -602,22 +603,22 @@ pub(super) fn opponents_sacrifice_or_discard_damage(
                 effects: vec![discard],
             },
         ],
-    };
-    let offer = EffectAst::ForEachOpponent {
-        effects: vec![EffectAst::MayByPlayer {
+    });
+    let offer = EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
+        effects: vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
             player: PlayerAst::That,
             effects: vec![choice],
-        }],
-    };
+        })],
+    });
     let damage = EffectAst::subject_verb_damage_equal_to_power(
         TargetAst::Source(None),
         TargetAst::Player(PlayerFilter::IteratedPlayer, None),
     );
-    let consequence = EffectAst::ForEachOpponentDid {
+    let consequence = EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDid {
         effects: vec![damage],
         predicate: None,
         result_predicate: IfResultPredicate::DidNot,
-    };
+    });
 
     Ok(Some(vec![offer, consequence]))
 }

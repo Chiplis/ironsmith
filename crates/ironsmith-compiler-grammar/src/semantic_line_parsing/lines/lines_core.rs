@@ -1,3 +1,4 @@
+use crate::cards::builders::ObjectChoiceEffectAst;
 use super::*;
 
 #[cfg(any(test, feature = "test-support"))]
@@ -57,13 +58,13 @@ pub(super) fn hideaway_line_ast(count: i32) -> LineAst {
                 crate::effect::Value::Fixed(count),
                 looked_tag.clone(),
             ),
-            EffectAst::ChooseObjects {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                 filter: choose_filter,
                 count: ChoiceCount::exactly(1),
                 count_value: None,
                 player: PlayerAst::You,
                 tag: chosen_tag.clone(),
-            },
+            }),
             EffectAst::subject_verb_exile(TargetAst::Tagged(chosen_tag.clone(), None), true),
             EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
                 looked_tag,

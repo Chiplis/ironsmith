@@ -1,4 +1,5 @@
 use crate::cards::builders::PredicateAst;
+use crate::cards::builders::SourcePredicateAst;
 use winnow::combinator::alt;
 use winnow::prelude::*;
 
@@ -144,7 +145,7 @@ pub fn parse_modifier_tail_shape(tokens: &[OwnedLexToken]) -> ModifierTailShape<
         duration = Until::SourceUntaps;
         return ModifierTailShape {
             duration,
-            condition: Some(PredicateAst::SourceIsTapped),
+            condition: Some(PredicateAst::Source(SourcePredicateAst::SourceIsTapped)),
             action: ModifierTailAction::Complete,
         };
     }

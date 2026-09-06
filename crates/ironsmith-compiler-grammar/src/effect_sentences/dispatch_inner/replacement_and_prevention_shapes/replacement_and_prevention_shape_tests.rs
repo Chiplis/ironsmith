@@ -111,7 +111,7 @@ fn source_exile_then_return_at_end_of_combat_stays_delayed() {
     assert!(
         matches!(
             effects.as_slice(),
-            [EffectAst::DelayedUntilEndOfCombat { .. }]
+            [EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat { .. })]
         ),
         "{effects:#?}"
     );
@@ -371,7 +371,7 @@ fn public_split_exile_scopes_types_away_from_requantified_bare_card_domains() {
         .expect("public split route should match");
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ExileAll { filter, .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { filter, .. }),
             ..
         }),
     ] = effects.as_slice()
@@ -409,7 +409,7 @@ fn repeated_all_or_branches_remain_a_resolution_choice() {
     let effects = parse_destroy_or_exile_all_split_sentence(&tokens)
         .expect("destroy-all alternative parser should not error")
         .expect("destroy-all alternative parser should match");
-    let [EffectAst::ChooseOneOf { modes }] = effects.as_slice() else {
+    let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })] = effects.as_slice() else {
         panic!("expected one typed choice, got {effects:#?}");
     };
     assert_eq!(modes.len(), 2, "{modes:#?}");
@@ -418,7 +418,7 @@ fn repeated_all_or_branches_remain_a_resolution_choice() {
     for (mode, expected_type) in modes.iter().zip(expected) {
         let [
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::DestroyAll { filter, .. },
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { filter, .. }),
                 ..
             }),
         ] = mode.effects.as_slice()
@@ -442,7 +442,7 @@ fn destroy_all_split_preserves_branch_scoped_collection_surface() {
         .expect("branch-scoped destroy-all parser should match");
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::DestroyAll { filter, .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { filter, .. }),
             ..
         }),
     ] = effects.as_slice()
@@ -467,10 +467,10 @@ fn destroy_all_split_preserves_branch_scoped_collection_surface() {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::DestroyAll {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll {
                     filter: full_filter,
                     ..
-                },
+                }),
             ..
         }),
     ] = full_effects.as_slice()

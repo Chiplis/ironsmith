@@ -1,4 +1,5 @@
 pub use self::become_clause::parse_become_clause;
+use crate::cards::builders::ForEachEffectAst;
 use self::helpers::{parse_controller_or_owner_of_target_subject, render_lower_words};
 use self::next_turn_cant::parse_next_turn_cant_clause;
 use super::super::activation_and_restrictions::{
@@ -65,7 +66,7 @@ use super::{
 use crate::TagKey;
 use crate::cards::builders::{
     CardTextError, ChooseOneModeAst, EffectAst, GrantedAbilityAst, PlayerAst, ReturnControllerAst,
-    SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TargetAst,
+    SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TargetAst, PermanentStateActionAst, DamageActionAst, StatChangeActionAst, ControlActionAst, ObjectChoiceEffectAst, PermissionEffectAst,
 };
 use crate::effect::{ChoiceCount, EventValueSpec, Until, Value};
 use crate::model::CompilerStaticAbilityCore as StaticAbility;
@@ -132,13 +133,13 @@ fn parse_participant_choice_then_return_chosen_set(
     let chosen_tag = crate::tag::CompilerReferenceTag::It.bind();
     Ok(Some(EffectAst::Sequence {
         effects: vec![
-            EffectAst::ChooseObjects {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                 filter,
                 count,
                 count_value,
                 player: chooser,
                 tag: chosen_tag.clone(),
-            },
+            }),
             EffectAst::subject_verb_return_all_to_hand(ObjectFilter::tagged(chosen_tag)),
         ],
     }))
@@ -258,12 +259,12 @@ fn parse_explicit_target_object_damage_source(
     };
 
     let (mut amount, target, unpreventable) = match parsed.action {
-        SubjectVerbActionAst::DealDamage {
+        SubjectVerbActionAst::Damage(DamageActionAst::DealDamage {
             amount,
             target,
             unpreventable,
-        } if explicitly_targeted => (amount, target, unpreventable),
-        SubjectVerbActionAst::DealDamageEach { amount, mut filter } => {
+        }) if explicitly_targeted => (amount, target, unpreventable),
+        SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, mut filter }) => {
             // The ordinary each-target damage AST carries set semantics in
             // its variant. This explicit-source form uses a TargetAst, so
             // retain the same fact as presentation metadata for mass-damage
@@ -285,22 +286,22 @@ fn parse_explicit_target_object_damage_source(
     Ok(Some(EffectAst::subject_verb(
         SubjectVerbRoleAst::Actor,
         PlayerAst::Implicit,
-        SubjectVerbActionAst::DealDamageEqualToPower {
+        SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
             source,
             amount,
             target,
             unpreventable,
-        },
+        }),
     )))
 }
 
 fn bind_gain_control_pronoun_to_source(effect: &mut EffectAst) {
     if let EffectAst::SubjectVerb(subject_verb) = effect
-        && let SubjectVerbActionAst::GainControl {
+        && let SubjectVerbActionAst::Control(ControlActionAst::GainControl {
             target,
             source_reference_surface,
             ..
-        } = &mut subject_verb.action
+        }) = &mut subject_verb.action
         && let TargetAst::Tagged(tag, span) = target
         && tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     {
@@ -325,7 +326,7 @@ fn target_choice_excluded_controller(
         clause_grammar::ChooseTargetChooserShape::ItsController
         | clause_grammar::ChooseTargetChooserShape::ThatOpponent => {
             Some(PlayerFilter::ControllerOf(
-                crate::filter::ObjectRef::Tagged(crate::tag::CompilerReferenceTag::It.bind()),
+                crate::filter::ObjectRef::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into()),
             ))
         }
         clause_grammar::ChooseTargetChooserShape::Unresolved => None,
@@ -687,7 +688,7 @@ pub fn parse_for_each_prevent_damage_clause(
     } else {
         vec![prevent_effect]
     };
-    Ok(Some(EffectAst::ForEachObject { filter, effects }))
+    Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachObject { filter, effects })))
 }
 
 pub fn parse_for_each_counter_group_removed_this_way_clause(
@@ -710,11 +711,11 @@ pub fn parse_for_each_counter_group_removed_this_way_clause(
     }
 
     let effects = parse_effect_chain_with_subject_verb_primitives(shape.effect_tokens)?;
-    Ok(Some(EffectAst::RepeatEffects {
+    Ok(Some(EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
         count: Value::DividedRoundedDown(Box::new(Value::X), shape.group_size as i32)
             .with_surface_hint(ValueSurfaceHint::CountersRemovedThisWay),
         effects,
-    }))
+    })))
 }
 
 fn parse_cast_any_number_from_among_tagged_clause(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
@@ -727,9 +728,9 @@ fn parse_cast_any_number_from_among_tagged_clause(tokens: &[OwnedLexToken]) -> O
 
     filter.mana_value = shape.mana_value;
 
-    Some(EffectAst::ForEachObject {
+    Some(EffectAst::ForEach(ForEachEffectAst::ForEachObject {
         filter,
-        effects: vec![EffectAst::May {
+        effects: vec![EffectAst::Permissions(PermissionEffectAst::May {
             effects: vec![EffectAst::subject_verb_cast_tagged(
                 crate::tag::CompilerReferenceTag::It.bind(),
                 PlayerAst::You,
@@ -738,8 +739,8 @@ fn parse_cast_any_number_from_among_tagged_clause(tokens: &[OwnedLexToken]) -> O
                 true,
                 None,
             )],
-        }],
-    })
+        })],
+    }))
 }
 
 fn parse_cast_single_spell_from_among_hand_cards_clause(
@@ -769,7 +770,7 @@ fn parse_passive_sacrifice_by_controller_clause(
     };
 
     let filter = parse_object_filter(shape.object_tokens, false)?;
-    Ok(Some(EffectAst::ForEachObject {
+    Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachObject {
         filter,
         effects: vec![EffectAst::subject_verb_sacrifice(
             PlayerAst::ItsController,
@@ -777,7 +778,7 @@ fn parse_passive_sacrifice_by_controller_clause(
             1,
             None,
         )],
-    }))
+    })))
 }
 
 /// Split a conjoined block-permission tail off a pump modifier ("+2/+2 until
@@ -823,7 +824,7 @@ pub(crate) fn parse_get_pump_clause(
         let EffectAst::SubjectVerb(subject_verb) = &pump else {
             return Ok(None);
         };
-        let SubjectVerbActionAst::Pump { target, .. } = &subject_verb.action else {
+        let SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. }) = &subject_verb.action else {
             return Ok(None);
         };
         let grant = EffectAst::subject_verb_grant_abilities_to_target(
@@ -874,7 +875,7 @@ pub(crate) fn parse_get_pump_clause(
         let first = parse_get_pump_clause(subject_tokens, &first_tokens, full_tokens)?;
         let second = parse_get_pump_clause(subject_tokens, &second_tokens, full_tokens)?;
         if let (Some(first), Some(second)) = (first, second) {
-            return Ok(Some(EffectAst::ChooseOneOf {
+            return Ok(Some(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf {
                 modes: vec![
                     ChooseOneModeAst {
                         description: String::new(),
@@ -885,7 +886,7 @@ pub(crate) fn parse_get_pump_clause(
                         effects: vec![second],
                     },
                 ],
-            }));
+            })));
         }
     }
 
@@ -952,7 +953,7 @@ pub(crate) fn parse_get_pump_clause(
                 .filter_map(OwnedLexToken::as_word)
                 .any(|word| word == "those")
         {
-            return Ok(Some(EffectAst::ForEachTagged {
+            return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
                 tag: crate::tag::CompilerReferenceTag::It.bind(),
                 effects: vec![EffectAst::subject_verb_pump_for_each(
                     power_per,
@@ -964,7 +965,7 @@ pub(crate) fn parse_get_pump_clause(
                     count,
                     duration,
                 )],
-            }));
+            })));
         }
         let scale_count = |per: i32| match per {
             0 => Value::Fixed(0),
@@ -1132,10 +1133,10 @@ pub(crate) fn parse_get_pump_clause(
         };
         if let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::PumpAll {
+                SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
                     set_quantifier_surface: surface,
                     ..
-                },
+                }),
             ..
         }) = &mut effect
         {
@@ -1267,14 +1268,14 @@ pub(crate) fn parse_get_pump_clause(
     if demonstrative_set_surface
         && let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::Pump {
+                SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
                     set_quantifier_surface,
                     ..
-                }
-                | SubjectVerbActionAst::PumpAll {
+                })
+                | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
                     set_quantifier_surface,
                     ..
-                },
+                }),
             ..
         }) = &mut effect
     {
@@ -1310,7 +1311,7 @@ fn lower_direct_clause_shape(
             EffectAst::subject_verb_clear_suspected(None)
         }
         clause_grammar::DirectClauseShape::CopySourceExiledCard => {
-            EffectAst::ChooseObjectsAcrossZones {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
                 filter: ObjectFilter::default().in_zone(Zone::Exile).match_tagged(
                     crate::tag::CompilerReferenceTag::SourceExiled.bind(),
                     crate::target::TaggedOpbjectRelation::IsTaggedObject,
@@ -1321,7 +1322,7 @@ fn lower_direct_clause_shape(
                 tag: crate::tag::CompilerReferenceTag::It.bind(),
                 zones: vec![Zone::Exile],
                 search_mode: None,
-            }
+            })
         }
         clause_grammar::DirectClauseShape::PutTaggedPlusOneCounter => {
             EffectAst::subject_verb_put_counters(
@@ -1350,22 +1351,22 @@ fn lower_direct_clause_shape(
         clause_grammar::DirectClauseShape::TurnSourceExiledFaceUp => EffectAst::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::You,
-            SubjectVerbActionAst::TurnFaceUp {
+            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp {
                 target: TargetAst::Tagged(
                     crate::tag::CompilerReferenceTag::SourceExiled.bind(),
                     span_from_tokens(tokens),
                 ),
-            },
+            }),
         ),
         clause_grammar::DirectClauseShape::TurnTaggedFaceUp => EffectAst::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::You,
-            SubjectVerbActionAst::TurnFaceUp {
+            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp {
                 target: TargetAst::Tagged(
                     crate::tag::CompilerReferenceTag::It.bind(),
                     span_from_tokens(tokens),
                 ),
-            },
+            }),
         ),
         clause_grammar::DirectClauseShape::Planeswalk => {
             EffectAst::subject_verb_emit_keyword_action(
@@ -1417,9 +1418,9 @@ fn lower_direct_clause_shape(
                 crate::tag::CompilerReferenceTag::It.bind(),
                 crate::target::TaggedOpbjectRelation::IsTaggedObject,
             );
-            EffectAst::ForEachObject {
+            EffectAst::ForEach(ForEachEffectAst::ForEachObject {
                 filter,
-                effects: vec![EffectAst::May {
+                effects: vec![EffectAst::Permissions(PermissionEffectAst::May {
                     effects: vec![EffectAst::subject_verb_cast_tagged(
                         crate::tag::CompilerReferenceTag::It.bind(),
                         PlayerAst::You,
@@ -1428,8 +1429,8 @@ fn lower_direct_clause_shape(
                         true,
                         None,
                     )],
-                }],
-            }
+                })],
+            })
         }
     }
 }

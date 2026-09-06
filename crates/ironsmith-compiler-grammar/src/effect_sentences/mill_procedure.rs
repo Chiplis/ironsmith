@@ -9,6 +9,7 @@
 //! three cards"), an unconditional follow-up joins that branch, as the registry
 //! program it replaces had it.
 
+use crate::cards::builders::ForEachEffectAst;
 use super::dispatch_entry::{
     SentenceInput, parse_if_you_cant_sentence, parse_if_you_dont_sentence,
 };
@@ -21,7 +22,7 @@ use super::sequence_rules::generic_subject_verb_sequences::reference_linked_prog
 };
 use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, IfResultPredicate, ObjectFilter, PlayerAst,
-    SubjectVerbActionAst, SubjectVerbEffectAst, Value,
+    SubjectVerbActionAst, SubjectVerbEffectAst, Value, LibraryActionAst, CharacteristicActionAst, ObjectChoiceEffectAst, ConditionalEffectAst, PermissionEffectAst,
 };
 use ironsmith_core::CardType;
 use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
@@ -81,7 +82,7 @@ fn mill_effect(
     let bare_mill = matches!(
         effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Mill { .. },
+            action: SubjectVerbActionAst::Library(LibraryActionAst::Mill { .. }),
             ..
         })
     );
@@ -89,7 +90,7 @@ fn mill_effect(
     let mut effect = effect.clone();
     // "Each player mills three cards." mills once per player; the group is
     // every card milled, tagged on the mill inside the iteration.
-    let (player, per_player) = if let EffectAst::ForEachPlayer { effects } = &mut effect
+    let (player, per_player) = if let EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }) = &mut effect
         && let [inner] = effects.as_mut_slice()
     {
         (tag_single_mill_effect(inner, tag)?, true)
@@ -147,14 +148,14 @@ fn cast_from_among(group: &MilledGroup, sentence: &SentenceInput, maximum: Optio
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
     vec![
-        EffectAst::ChooseTaggedObjectsInZone {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter,
             count: ChoiceCount::up_to(1),
             player: PlayerAst::You,
-            tag: chosen_tag.clone(),
+            tag: crate::tag::TagRef::of(chosen_tag.clone()),
             zone: Zone::Graveyard,
-        },
-        EffectAst::subject_verb_cast_tagged(chosen_tag, PlayerAst::You, false, false, true, None),
+        }),
+        EffectAst::subject_verb_cast_tagged(crate::tag::TagRef::of(chosen_tag), PlayerAst::You, false, false, true, None),
     ]
 }
 
@@ -197,7 +198,7 @@ pub(super) fn open(
     if per_player && !exiles_milled_creatures {
         return Ok(None);
     }
-    let continues = parse_put_from_milled_cards_followup(next.lowered(), player, tag.clone())?
+    let continues = parse_put_from_milled_cards_followup(next.lowered(), player, tag.clone().into())?
         .is_some()
         || may_cast_from_among(next).is_some()
         || exiles_milled_creatures
@@ -224,7 +225,7 @@ pub(super) fn open(
         plain_mill,
         bare_mill,
         player,
-        tag,
+        tag: tag.key.clone(),
         pending_hand: None,
         hand_with_if_not: false,
         followups: Vec::new(),
@@ -259,8 +260,8 @@ pub(super) fn continue_with(
             compose_choose_from_looked_cards_into_hand_rest_into_graveyard(
                 chooser,
                 filter,
-                crate::tag::CompilerReferenceTag::It.bind(),
-                chosen_tag,
+                (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                chosen_tag.key.clone(),
                 Zone::Graveyard,
                 false,
                 if_not_chosen,
@@ -297,18 +298,18 @@ pub(super) fn continue_with(
         milled_creature_filter
             .card_types
             .push(crate::types::CardType::Creature);
-        group.followups.push(EffectAst::ChooseTaggedObjectsInZone {
+        group.followups.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter: milled_creature_filter,
             count: ChoiceCount::up_to(2),
             player: PlayerAst::You,
-            tag: exiled_tag.clone(),
+            tag: crate::tag::TagRef::of(exiled_tag.clone()),
             zone: Zone::Graveyard,
-        });
+        }));
         group.followups.push(EffectAst::subject_verb_exile(
-            crate::cards::builders::TargetAst::Tagged(exiled_tag.clone(), None),
+            crate::cards::builders::TargetAst::Tagged(crate::tag::TagRef::of(exiled_tag.clone()), None),
             false,
         ));
-        group.exiled_creatures = Some(exiled_tag);
+        group.exiled_creatures = Some(exiled_tag.key.clone());
         group.consumed += 1;
         return Ok(true);
     }
@@ -318,19 +319,19 @@ pub(super) fn continue_with(
             return Ok(false);
         };
         let chosen_tag = helper_tag_for_tokens(&tail, "chosen");
-        group.followups.push(EffectAst::IfResult {
+        group.followups.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,
             effects: compose_choose_from_looked_cards_into_hand_rest_into_graveyard(
                 chooser,
                 filter,
-                crate::tag::CompilerReferenceTag::It.bind(),
-                chosen_tag,
+                (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                chosen_tag.key.clone(),
                 Zone::Graveyard,
                 false,
                 Vec::new(),
                 ChoiceCount::exactly(1),
             ),
-        });
+        }));
         // The selection reads the milled cards through the prior-object
         // reference, as its program did; the mill is spelled as written.
         group.hand_with_if_not = true;
@@ -367,7 +368,7 @@ pub(super) fn continue_with(
         && let Some(payment) = parse_optional_payment_sentence(sentence.lowered(), group.player)?
         && following.is_some_and(|third| if_you_do_put_from_among_into_hand(third, group.player).is_some())
     {
-        group.followups.push(EffectAst::May { effects: payment });
+        group.followups.push(EffectAst::Permissions(PermissionEffectAst::May { effects: payment }));
         group.payment_made = true;
         group.consumed += 1;
         return Ok(true);
@@ -395,8 +396,8 @@ pub(super) fn finish(mut group: MilledGroup) -> Vec<EffectAst> {
             compose_choose_from_looked_cards_into_hand_rest_into_graveyard(
                 chooser,
                 filter,
-                crate::tag::CompilerReferenceTag::It.bind(),
-                chosen_tag,
+                (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                chosen_tag.key.clone(),
                 Zone::Graveyard,
                 false,
                 Vec::new(),
@@ -415,10 +416,10 @@ pub(super) fn finish(mut group: MilledGroup) -> Vec<EffectAst> {
     }
     let mut effects = vec![mill];
     if group.conditional_followup {
-        effects.push(EffectAst::IfResult {
+        effects.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,
             effects: followups,
-        });
+        }));
     } else {
         effects.extend(followups);
     }
@@ -441,22 +442,22 @@ fn rewrite_total_power_effect(effect: &mut EffectAst, tag: &TagKey) {
     match effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::SetBasePowerToughness {
+                SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness {
                     power, toughness, ..
-                },
+                }),
             ..
         }) => {
             rewrite_total_power_value(power, tag);
             rewrite_total_power_value(toughness, tag);
         }
         EffectAst::Sequence { effects }
-        | EffectAst::May { effects }
-        | EffectAst::MayByPlayer { effects, .. }
-        | EffectAst::ForEachPlayer { effects }
-        | EffectAst::ForEachOpponent { effects }
-        | EffectAst::ForEachTagged { effects, .. }
-        | EffectAst::ForEachTaggedWithControllerAtLastBlockedBy { effects, .. }
-        | EffectAst::ForEachObject { effects, .. } => {
+        | EffectAst::Permissions(PermissionEffectAst::May { effects })
+        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. })
+        | EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })
+        | EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })
+        | EffectAst::ForEach(ForEachEffectAst::ForEachTagged { effects, .. })
+        | EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy { effects, .. })
+        | EffectAst::ForEach(ForEachEffectAst::ForEachObject { effects, .. }) => {
             for effect in effects {
                 rewrite_total_power_effect(effect, tag);
             }

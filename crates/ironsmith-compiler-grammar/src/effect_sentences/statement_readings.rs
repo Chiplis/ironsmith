@@ -12,7 +12,7 @@ use super::dispatch_entry::{
     parse_complete_simple_subject_verb_sentence,
 };
 use crate::grammar::structure::{LeadingResultPrefixKind, split_leading_result_prefix_lexed};
-use crate::cards::builders::{CardTextError, EffectAst};
+use crate::cards::builders::{CardTextError, EffectAst, ConditionalEffectAst};
 use crate::grammar::effects as effect_grammar;
 use crate::lexer::OwnedLexToken;
 use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId, RuleMatch};
@@ -721,14 +721,14 @@ fn read_leading_result_prefix(
             super::clause_pattern_helpers::parse_verb_first_clause(prefix.trailing_tokens)?
         {
             return Ok(Some(vec![match prefix.kind {
-                LeadingResultPrefixKind::If => EffectAst::IfResult {
+                LeadingResultPrefixKind::If => EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                     predicate: prefix.predicate,
                     effects: vec![effect],
-                },
-                LeadingResultPrefixKind::When => EffectAst::WhenResult {
+                }),
+                LeadingResultPrefixKind::When => EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
                     predicate: prefix.predicate,
                     effects: vec![effect],
-                },
+                }),
             }]));
         }
     }

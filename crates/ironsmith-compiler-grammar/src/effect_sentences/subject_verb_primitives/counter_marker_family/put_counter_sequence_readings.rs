@@ -182,7 +182,7 @@ fn read_counter_followup(
             effect if subject_verb_put_counters_target(effect).is_some() => {
                 subject_verb_put_counters_target(effect)
             }
-            EffectAst::Conditional { if_true, .. } if if_true.len() == 1 => {
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, .. }) if if_true.len() == 1 => {
                 if_true.first().and_then(subject_verb_put_counters_target)
             }
             _ => None,

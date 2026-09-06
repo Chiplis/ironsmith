@@ -1,3 +1,8 @@
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::DelayedEffectAst;
+use crate::cards::builders::TokenActionAst;
+use crate::cards::builders::LifeResourceActionAst;
+use crate::cards::builders::LibraryActionAst;
 use super::*;
 use crate::grammar::effects::subject_verb_registry_shapes as registry_shapes;
 use crate::grammar::effects::typed_clause_heads::classify_typed_clause_head;
@@ -687,9 +692,9 @@ pub fn parse_you_and_target_player_each_draw_sentence(
         EffectAst::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             PlayerAst::You,
-            SubjectVerbActionAst::Draw {
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
                 count: count.clone(),
-            },
+            }),
         ),
         EffectAst::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
@@ -698,7 +703,7 @@ pub fn parse_you_and_target_player_each_draw_sentence(
             } else {
                 shape.other_player
             },
-            SubjectVerbActionAst::Draw { count },
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count }),
         ),
     ];
     if shape.another_target_player {
@@ -774,9 +779,9 @@ pub fn parse_you_and_player_each_gain_or_lose_life_sentence(
     }
     let action = |amount: Value| {
         if shape.gains {
-            SubjectVerbActionAst::GainLife { amount }
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount })
         } else {
-            SubjectVerbActionAst::LoseLife { amount }
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount })
         }
     };
     Ok(Some(vec![
@@ -819,10 +824,10 @@ pub fn parse_you_and_player_each_create_sentence(
     ) -> SubjectVerbEffectAst {
         let mut copy = template.clone();
         copy.subject.player = player;
-        if let SubjectVerbActionAst::CreateTokenWithMods {
+        if let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
             player: action_player,
             ..
-        } = &mut copy.action
+        }) = &mut copy.action
         {
             *action_player = player;
         }
@@ -925,13 +930,13 @@ pub fn parse_sentence_return_half_the_creatures_they_control_to_their_owners_han
     )));
     let chosen_tag = crate::tag::CompilerReferenceTag::Chosen.bind();
     Ok(Some(vec![
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter,
             count: ChoiceCount::dynamic_x(),
             count_value: Some(count_value),
             player: PlayerAst::That,
             tag: chosen_tag.clone(),
-        },
+        }),
         EffectAst::subject_verb_return_all_to_hand(ObjectFilter::tagged(chosen_tag)),
     ]))
 }
@@ -957,7 +962,7 @@ pub fn parse_sentence_damage_to_that_player_half_damage_of_those_spells(
         ),
         EffectAst::subject_verb_damage(
             Value::HalfRoundedDown(Box::new(Value::DamageDealtThisTurnByTaggedSpellCast(
-                crate::tag::CompilerReferenceTag::It.bind(),
+                (crate::tag::CompilerReferenceTag::It.bind()).into(),
             ))),
             TargetAst::Player(PlayerFilter::target_player(), None),
         ),
@@ -1006,7 +1011,7 @@ fn draw_exiled_hand_this_way_actor(
             vec![EffectAst::subject_verb(
                 SubjectVerbRoleAst::LibraryOwner,
                 PlayerAst::That,
-                SubjectVerbActionAst::ShuffleLibrary,
+                SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
             )]
         } else {
             Vec::new()
@@ -1098,28 +1103,28 @@ pub fn parse_sentence_you_and_attacking_player_each_draw_and_lose(
         EffectAst::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             PlayerAst::You,
-            SubjectVerbActionAst::Draw {
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
                 count: draw_count.clone(),
-            },
+            }),
         ),
         EffectAst::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             PlayerAst::Attacking,
-            SubjectVerbActionAst::Draw { count: draw_count },
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count: draw_count }),
         ),
         EffectAst::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             PlayerAst::You,
-            SubjectVerbActionAst::LoseLife {
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife {
                 amount: lose_amount.clone(),
-            },
+            }),
         ),
         EffectAst::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             PlayerAst::Attacking,
-            SubjectVerbActionAst::LoseLife {
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife {
                 amount: lose_amount,
-            },
+            }),
         ),
     ]))
 }
@@ -1150,19 +1155,19 @@ pub fn parse_sentence_sacrifice_it_next_end_step(
                         clause.text()
                     ))
                 })?;
-        vec![EffectAst::TrailingIf {
+        vec![EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
             predicate,
             effects: vec![sacrifice],
-        }]
+        })]
     };
-    Ok(Some(vec![EffectAst::DelayedUntilNextEndStep {
+    Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
         player: if shape.your_end_step {
             PlayerFilter::You
         } else {
             PlayerFilter::Any
         },
         effects: delayed_effects,
-    }]))
+    })]))
 }
 
 pub fn parse_sentence_exile_it_next_end_step(
@@ -1196,7 +1201,7 @@ pub fn parse_sentence_exile_it_next_end_step(
                         && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
                 }) {
                     filter.tagged_constraints.push(TaggedObjectConstraint {
-                        tag: crate::tag::CompilerReferenceTag::It.bind(),
+                        tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
                         relation: TaggedOpbjectRelation::IsTaggedObject,
                     });
                 }
@@ -1217,19 +1222,19 @@ pub fn parse_sentence_exile_it_next_end_step(
                         clause.text()
                     ))
                 })?;
-        vec![EffectAst::TrailingIf {
+        vec![EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
             predicate,
             effects: vec![exile],
-        }]
+        })]
     };
-    Ok(Some(vec![EffectAst::DelayedUntilNextEndStep {
+    Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
         player: if shape.your_end_step {
             PlayerFilter::You
         } else {
             PlayerFilter::Any
         },
         effects: delayed_effects,
-    }]))
+    })]))
 }
 
 pub fn parse_sentence_if_tagged_cards_remain_exiled(
@@ -1271,18 +1276,18 @@ mod tests {
                         player: PlayerAst::You,
                         ..
                     },
-                    action: SubjectVerbActionAst::Draw {
+                    action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
                         count: Value::EventValue(EventValueSpec::Amount),
-                    },
+                    }),
                 }),
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     subject: SubjectVerbSubjectAst {
                         player: PlayerAst::That,
                         ..
                     },
-                    action: SubjectVerbActionAst::Draw {
+                    action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
                         count: Value::EventValue(EventValueSpec::Amount),
-                    },
+                    }),
                 }),
             ]
         ));
@@ -1303,9 +1308,9 @@ mod tests {
                     player: PlayerAst::TargetOpponent,
                     ..
                 },
-                action: SubjectVerbActionAst::Draw {
+                action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
                     count: Value::Fixed(3),
-                },
+                }),
                 ..
             }))
         ));
@@ -1334,10 +1339,10 @@ mod tests {
         let full_parse = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
             .expect("the full dispatcher should retain the delayed condition");
         let full_debug = format!("{full_parse:#?}");
-        let [EffectAst::DelayedUntilNextEndStep { effects, .. }] = full_parse.as_slice() else {
+        let [EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep { effects, .. })] = full_parse.as_slice() else {
             panic!("the timing owner must remain outside its condition: {full_parse:#?}");
         };
-        assert!(matches!(effects.as_slice(), [EffectAst::TrailingIf { .. }]));
+        assert!(matches!(effects.as_slice(), [EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { .. })]));
         assert!(full_debug.contains("mana_value"), "{full_debug}");
     }
 }

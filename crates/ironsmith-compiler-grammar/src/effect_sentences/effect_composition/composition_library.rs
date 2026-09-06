@@ -1,3 +1,6 @@
+use crate::cards::builders::PlayerPredicateAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::LifeResourceActionAst;
 use super::*;
 
 pub(super) fn parse_look_hand_optional_exile_play_tax_bundle(
@@ -31,9 +34,9 @@ pub(super) fn parse_look_hand_optional_exile_play_tax_bundle(
         return None;
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::LookAtHand {
+        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtHand {
             target: hand_target,
-        },
+        }),
         ..
     }) = look_effect
     else {
@@ -51,21 +54,21 @@ pub(super) fn parse_look_hand_optional_exile_play_tax_bundle(
         return None;
     };
     let exile_effects = match optional {
-        EffectAst::May { effects } => effects,
-        EffectAst::MayByPlayer {
+        EffectAst::Permissions(PermissionEffectAst::May { effects }) => effects,
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
             player: PlayerAst::You,
             effects,
-        } => effects,
+        }) => effects,
         _ => return None,
     };
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::Exile {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
                     target,
                     face_down: false,
                     ..
-                },
+                }),
             ..
         }),
     ] = exile_effects.as_mut_slice()
@@ -90,7 +93,7 @@ pub(super) fn parse_look_hand_optional_exile_play_tax_bundle(
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
                     tag,
                     player: PlayerAst::ItsOwner,
                     allow_land: true,
@@ -98,7 +101,7 @@ pub(super) fn parse_look_hand_optional_exile_play_tax_bundle(
                     allow_any_color_for_cast,
                     filter: None,
                     ..
-                },
+                }),
             ..
         }),
     ] = permission_effects.as_slice()
@@ -120,21 +123,21 @@ pub(super) fn parse_look_hand_optional_exile_play_tax_bundle(
 
     Some(vec![
         look_effect.clone(),
-        EffectAst::MayByPlayer {
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
             player: PlayerAst::You,
             effects: vec![
-                EffectAst::ChooseObjects {
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                     filter: exile_filter,
                     count: ChoiceCount::exactly(1),
                     count_value: None,
                     player: PlayerAst::You,
-                    tag: exiled_tag.clone(),
-                },
-                EffectAst::subject_verb_exile(TargetAst::Tagged(exiled_tag.clone(), None), false),
+                    tag: crate::tag::TagRef::of(exiled_tag.clone()),
+                }),
+                EffectAst::subject_verb_exile(TargetAst::Tagged(crate::tag::TagRef::of(exiled_tag.clone()), None), false),
             ],
-        },
+        }),
         EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
-            exiled_tag.clone(),
+            crate::tag::TagRef::of(exiled_tag.clone()),
             PlayerAst::ItsOwner,
             true,
             false,
@@ -142,7 +145,7 @@ pub(super) fn parse_look_hand_optional_exile_play_tax_bundle(
             None,
         ),
         EffectAst::subject_verb_grant_to_target(
-            TargetAst::Tagged(exiled_tag, None),
+            TargetAst::Tagged(crate::tag::TagRef::of(exiled_tag), None),
             crate::model::CompilerGrantableCore::Ability(
                 crate::model::CompilerStaticAbilityCore::new(
                     crate::model::CompilerCostIncreaseManaCost::new(
@@ -171,17 +174,17 @@ pub(super) fn parse_discard_redraw_mana_value_ladder_bundle(
             false,
             false,
             None,
-            Some(discarded_tag.clone()),
+            Some(crate::tag::TagRef::of(discarded_tag.clone())),
         ),
         EffectAst::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             PlayerAst::You,
-            SubjectVerbActionAst::Draw {
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
                 count: Value::PendingEffectMetric {
                     source: ironsmith_core::EffectMetricSource::Outcome,
                     metric: ironsmith_core::EffectMetric::Count,
                 },
-            },
+            }),
         ),
     ];
 
@@ -191,20 +194,20 @@ pub(super) fn parse_discard_redraw_mana_value_ladder_bundle(
         filter.owner = Some(PlayerFilter::You);
         filter.mana_value = Some(crate::filter::Comparison::Equal(mana_value as i32));
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: discarded_tag.clone(),
+            tag: discarded_tag.clone().into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
-        effects.push(EffectAst::ChooseObjects {
+        effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter,
             count: ChoiceCount::up_to(1),
             count_value: None,
             player: PlayerAst::You,
-            tag: selected_tag.clone(),
-        });
+            tag: crate::tag::TagRef::of(selected_tag.clone()),
+        }));
     }
 
     effects.push(EffectAst::subject_verb_move_to_zone(
-        TargetAst::Tagged(selected_tag, None),
+        TargetAst::Tagged(crate::tag::TagRef::of(selected_tag), None),
         Zone::Battlefield,
         false,
         ReturnControllerAst::Preserve,
@@ -229,7 +232,7 @@ pub(super) fn parse_each_player_shuffle_then_consult_bundle(
     let qualifying_tag = crate::tag::CompilerReferenceTag::EachPlayerQualifyingShuffled.bind();
     let revealed_tag = crate::tag::CompilerReferenceTag::EachPlayerConsultRevealed.bind();
     let matched_tag = crate::tag::CompilerReferenceTag::EachPlayerConsultMatched.bind();
-    Some(vec![EffectAst::ForEachPlayer {
+    Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
         effects: vec![
             EffectAst::subject_verb_tag_matching_objects(
                 shuffled_filter.clone(),
@@ -252,15 +255,15 @@ pub(super) fn parse_each_player_shuffle_then_consult_bundle(
             EffectAst::subject_verb(
                 SubjectVerbRoleAst::LibraryOwner,
                 PlayerAst::That,
-                SubjectVerbActionAst::ShuffleLibrary,
+                SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
             ),
-            EffectAst::Conditional {
-                predicate: PredicateAst::PlayerTaggedObjectMatches {
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate: PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches {
                     player: PlayerAst::That,
                     tag: qualifying_tag,
                     filter: tagged_library_filter,
                     mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
-                },
+                }),
                 if_true: vec![
                     EffectAst::subject_verb_consult_top_of_library(
                         PlayerAst::That,
@@ -286,7 +289,7 @@ pub(super) fn parse_each_player_shuffle_then_consult_bundle(
                     ),
                 ],
                 if_false: Vec::new(),
-            },
+            }),
         ],
-    }])
+    })])
 }

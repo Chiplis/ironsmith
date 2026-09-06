@@ -23,6 +23,7 @@ const KEY_SITE_PATTERNS: &[&str] = &[
     "is_sentence_helper_tag(",
     "TagKey::new(",
     "TagKey::from(",
+    "TagRef::of(",
 ];
 
 /// Key sites on one line: every pattern counts, except that `.as_str()` is a

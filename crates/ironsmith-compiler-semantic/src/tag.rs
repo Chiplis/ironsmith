@@ -1,10 +1,11 @@
 pub use ironsmith_core::TagKey;
+pub use ironsmith_compiler_ast::TagRef;
 pub use ironsmith_core::tag::{TagKeyWalk, tag_keys_of};
 use ironsmith_compiler_ast::symbols::{Cardinality, ObjectDomain, ReferenceRole};
 
 const SENTENCE_HELPER_ROOT: &str = "__sentence_helper_";
 
-pub fn sentence_helper_tag(purpose: &str, line: usize, start: usize, end: usize) -> TagKey {
+pub fn sentence_helper_tag(purpose: &str, line: usize, start: usize, end: usize) -> TagRef {
     declared({
     TagKey::new(format!(
         "{SENTENCE_HELPER_ROOT}{purpose}_l{line}_s{start}_e{end}"
@@ -31,10 +32,10 @@ pub fn is_sentence_helper_tag(tag: &TagKey, purpose: &str) -> bool {
     line.parse::<usize>().is_ok() && start.parse::<usize>().is_ok() && end.parse::<usize>().is_ok()
 }
 
-pub fn generated_result_tag(purpose: &str, ordinal: u32) -> TagKey {
+pub fn generated_result_tag(purpose: &str, ordinal: u32) -> TagRef {
     declared({
     if matches!(purpose, "exiled" | "looked" | "chosen" | "revealed") {
-        sentence_helper_tag(purpose, 0, 0, ordinal as usize)
+        sentence_helper_tag(purpose, 0, 0, ordinal as usize).into()
     } else {
         TagKey::new(format!("{purpose}_{ordinal}"))
     }
@@ -58,20 +59,19 @@ pub enum CompilerCostObjectTag {
 
 /// Mints a key outside the `CompilerReferenceTag` vocabulary and declares it in
 /// the active reference scope. Prefer a vocabulary tag's `bind()`.
-pub fn declared_key(key: impl Into<TagKey>) -> TagKey {
+pub fn declared_key(key: impl Into<TagKey>) -> TagRef {
     declared(key.into())
 }
 
 /// A key the grammar mints for an object it will refer back to: declared in
 /// the active reference scope (see `ironsmith_compiler_ast::reference_ledger`).
-fn declared(key: TagKey) -> TagKey {
+fn declared(key: TagKey) -> TagRef {
     ironsmith_compiler_ast::reference_ledger::note_minted(
-        key.clone(),
+        key,
         ReferenceRole::Affected,
         ObjectDomain::Object,
         Cardinality::Any,
-    );
-    key
+    )
 }
 
 impl CompilerCostObjectTag {
@@ -87,7 +87,7 @@ impl CompilerCostObjectTag {
         }
     }
 
-    pub fn key(self, ordinal: usize) -> TagKey {
+    pub fn key(self, ordinal: usize) -> TagRef {
         declared(TagKey::new(format!("{}_{ordinal}", self.stem())))
     }
 
@@ -121,7 +121,7 @@ impl CompilerDerivedTag {
         }
     }
 
-    pub fn key(self, source: &TagKey) -> TagKey {
+    pub fn key(self, source: &TagKey) -> TagRef {
         declared(TagKey::new(format!("{}{}", source.as_str(), self.serialized_suffix())))
     }
 }
@@ -150,15 +150,15 @@ impl CompilerIndexedTag {
         }
     }
 
-    pub fn key(self, ordinal: impl std::fmt::Display) -> TagKey {
+    pub fn key(self, ordinal: impl std::fmt::Display) -> TagRef {
         declared(TagKey::new(format!("{}_{ordinal}", self.stem())))
     }
 
-    pub fn key_in_scope(self, scope: impl std::fmt::Display) -> TagKey {
+    pub fn key_in_scope(self, scope: impl std::fmt::Display) -> TagRef {
         declared(match self {
             Self::DrawReplacementAll => TagKey::new(format!("draw_replacement_{scope}_all")),
             Self::DrawReplacementMatch => TagKey::new(format!("draw_replacement_{scope}_match")),
-            _ => self.key(scope),
+            _ => (self.key(scope)).into(),
         })
     }
 }
@@ -179,7 +179,7 @@ pub enum CompilerProvenanceTag {
 }
 
 impl CompilerProvenanceTag {
-    pub fn key(self) -> TagKey {
+    pub fn key(self) -> TagRef {
         declared({
         match self {
             Self::ParticipantChoice { line, start } => {
@@ -547,10 +547,9 @@ impl CompilerReferenceTag {
 
     /// Mint this tag's key and declare the symbol it stands for in the
     /// enclosing reference scope (see `ironsmith_compiler_ast::reference_ledger`).
-    pub fn bind(self) -> TagKey {
+    pub fn bind(self) -> TagRef {
         let key = self.key();
         let (role, domain) = self.symbol_role();
-        ironsmith_compiler_ast::reference_ledger::note_minted(key.clone(), role, domain, Cardinality::Any);
-        key
+        ironsmith_compiler_ast::reference_ledger::note_minted(key, role, domain, Cardinality::Any)
     }
 }

@@ -1,3 +1,4 @@
+use crate::cards::builders::GrantActionAst;
 use super::*;
 use crate::cards::builders::{
     CardDefinitionBuilder, GrantedAbilityAst, StaticAbilityAst, TargetAst,
@@ -230,8 +231,8 @@ fn normalize_line_chunk(
                     // lowered. Snapshot the explicit additional-cost alias now.
                     imports
                         .snapshot_tag_aliases
-                        .retain(|(existing, _)| existing != &alias);
-                    imports.snapshot_tag_aliases.push((alias, cost_tag.clone()));
+                        .retain(|(existing, _)| *existing != alias.key);
+                    imports.snapshot_tag_aliases.push((alias.key.clone(), cost_tag.clone()));
                 }
             }
             if let Some(cost_tag) = imports.last_object_tag.as_ref()
@@ -255,7 +256,7 @@ fn normalize_line_chunk(
                     alias != &crate::tag::CompilerReferenceTag::AdditionalCostObject.key()
                 });
                 imports.snapshot_tag_aliases.push((
-                    crate::tag::CompilerReferenceTag::AdditionalCostObject.bind(),
+                    (crate::tag::CompilerReferenceTag::AdditionalCostObject.bind()).into(),
                     cost_tag.clone(),
                 ));
             }
@@ -341,9 +342,9 @@ fn normalize_line_chunk(
 fn resolve_as_enters_source_counter_grants(effects: &mut [EffectAst]) {
     fn retarget(effect: &mut EffectAst) {
         if let EffectAst::SubjectVerb(subject_verb) = effect
-            && let SubjectVerbActionAst::GrantAbilitiesToTarget {
+            && let SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                 target, abilities, ..
-            } = &mut subject_verb.action
+            }) = &mut subject_verb.action
             && matches!(target, TargetAst::Tagged(_, _))
             && abilities.iter().any(|ability| {
                 matches!(

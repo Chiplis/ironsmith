@@ -1,3 +1,4 @@
+use crate::cards::builders::ForEachEffectAst;
 use super::*;
 
 pub fn parse_next_spell_cost_reduction_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
@@ -17,7 +18,7 @@ pub fn parse_each_player_and_their_creatures_damage_sentence(
     filter.card_types = vec![CardType::Creature];
     filter.controller = Some(PlayerFilter::IteratedPlayer);
 
-    Some(vec![EffectAst::ForEachPlayer {
+    Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
         effects: vec![
             EffectAst::subject_verb_damage(
                 parsed.amount.clone(),
@@ -25,5 +26,5 @@ pub fn parse_each_player_and_their_creatures_damage_sentence(
             ),
             EffectAst::subject_verb_damage_each(parsed.amount, filter),
         ],
-    }])
+    })])
 }

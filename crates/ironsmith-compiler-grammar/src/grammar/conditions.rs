@@ -1,4 +1,4 @@
-use crate::cards::builders::{PredicateAst, TurnHistoryPredicateAst};
+use crate::cards::builders::{PredicateAst, TurnHistoryPredicateAst, PlayerPredicateAst, SourcePredicateAst};
 use winnow::Parser;
 use winnow::combinator::{alt, opt};
 use winnow::error::ModalResult as WResult;
@@ -468,25 +468,25 @@ impl SubjectStatusConditionAst {
     pub fn condition_expr(self) -> Option<PredicateAst> {
         match (self.subject, self.state) {
             (StatusConditionSubjectAst::Source, StatusConditionStateAst::Equipped) => {
-                Some(PredicateAst::SourceIsEquipped)
+                Some(PredicateAst::Source(SourcePredicateAst::SourceIsEquipped))
             }
             (StatusConditionSubjectAst::Source, StatusConditionStateAst::Enchanted) => {
-                Some(PredicateAst::SourceIsEnchanted)
+                Some(PredicateAst::Source(SourcePredicateAst::SourceIsEnchanted))
             }
             (StatusConditionSubjectAst::Source, StatusConditionStateAst::Tapped) => {
-                Some(PredicateAst::SourceIsTapped)
+                Some(PredicateAst::Source(SourcePredicateAst::SourceIsTapped))
             }
             (StatusConditionSubjectAst::Source, StatusConditionStateAst::Untapped) => {
-                Some(PredicateAst::SourceIsUntapped)
+                Some(PredicateAst::Source(SourcePredicateAst::SourceIsUntapped))
             }
             (StatusConditionSubjectAst::Source, StatusConditionStateAst::Attacking) => {
-                Some(PredicateAst::SourceIsAttacking)
+                Some(PredicateAst::Source(SourcePredicateAst::SourceIsAttacking))
             }
             (StatusConditionSubjectAst::Source, StatusConditionStateAst::AttackingAlone) => {
                 let mut attacking_creatures = ObjectFilter::creature();
                 attacking_creatures.attacking = true;
                 Some(PredicateAst::And(
-                    Box::new(PredicateAst::SourceIsAttacking),
+                    Box::new(PredicateAst::Source(SourcePredicateAst::SourceIsAttacking)),
                     Box::new(PredicateAst::CountComparison {
                         count: AnthemCountExpression::MatchingFilter(attacking_creatures),
                         comparison: Comparison::Equal(1),
@@ -495,7 +495,7 @@ impl SubjectStatusConditionAst {
                 ))
             }
             (StatusConditionSubjectAst::Source, StatusConditionStateAst::Monstrous) => {
-                Some(PredicateAst::SourceIsMonstrous)
+                Some(PredicateAst::Source(SourcePredicateAst::SourceIsMonstrous))
             }
             (StatusConditionSubjectAst::EquippedCreature, StatusConditionStateAst::Tapped) => {
                 Some(PredicateAst::EquippedCreatureTapped)
@@ -571,12 +571,12 @@ impl PlayerStatusConditionAst {
     /// shape needs one — the same clauses this declined before.
     pub fn condition_expr(self) -> Option<PredicateAst> {
         Some(match self.status {
-            PlayerStatusAst::Monarch => PredicateAst::PlayerIsMonarch {
+            PlayerStatusAst::Monarch => PredicateAst::Player(PlayerPredicateAst::PlayerIsMonarch {
                 player: self.player,
-            },
-            PlayerStatusAst::Initiative => PredicateAst::PlayerHasInitiative {
+            }),
+            PlayerStatusAst::Initiative => PredicateAst::Player(PlayerPredicateAst::PlayerHasInitiative {
                 player: self.player,
-            },
+            }),
             PlayerStatusAst::MaxSpeed => PredicateAst::ValueComparison {
                 left: Value::Speed(unconditional_player_filter(self.player)?),
                 operator: ValueComparisonOperator::GreaterThanOrEqual,
@@ -593,14 +593,14 @@ impl PlayerAchievementConditionAst {
     /// shape needs one.
     pub fn condition_expr(self) -> Option<PredicateAst> {
         let condition = match self.achievement {
-            PlayerAchievementAst::CitysBlessing => PredicateAst::PlayerHasCitysBlessing {
+            PlayerAchievementAst::CitysBlessing => PredicateAst::Player(PlayerPredicateAst::PlayerHasCitysBlessing {
                 player: self.player,
-            },
+            }),
             PlayerAchievementAst::CompletedDungeon { dungeon_name } => {
-                PredicateAst::PlayerCompletedDungeon {
+                PredicateAst::Player(PlayerPredicateAst::PlayerCompletedDungeon {
                     player: self.player,
                     dungeon_name,
-                }
+                })
             }
             PlayerAchievementAst::FullParty => PredicateAst::YouHaveFullParty,
             PlayerAchievementAst::VisitedAttractionThisTurn => PredicateAst::TurnHistory(
@@ -618,16 +618,16 @@ impl PlayerAchievementConditionAst {
 impl PlayerCardsInHandConditionAst {
     pub fn condition_expr(self) -> Option<PredicateAst> {
         if let Some(count) = comparison_to_strict_at_least_threshold(&self.comparison) {
-            return Some(PredicateAst::PlayerCardsInHandOrMore {
+            return Some(PredicateAst::Player(PlayerPredicateAst::PlayerCardsInHandOrMore {
                 player: self.player,
                 count,
-            });
+            }));
         }
         if let Some(count) = comparison_to_strict_at_most_threshold(&self.comparison) {
-            return Some(PredicateAst::PlayerCardsInHandOrFewer {
+            return Some(PredicateAst::Player(PlayerPredicateAst::PlayerCardsInHandOrFewer {
                 player: self.player,
                 count,
-            });
+            }));
         }
         None
     }

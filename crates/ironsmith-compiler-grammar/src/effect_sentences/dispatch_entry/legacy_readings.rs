@@ -4,7 +4,7 @@
 //! ladder in `dispatch_entry`; every reading runs and the readings must agree.
 use super::SubjectVerbPrimitiveClause;
 use super::*;
-use crate::cards::builders::{CardTextError, EffectAst};
+use crate::cards::builders::{CardTextError, EffectAst, DelayedEffectAst, ObjectChoiceEffectAst, PermissionEffectAst};
 use crate::grammar::effects as effect_grammar;
 use crate::lexer::OwnedLexToken;
 use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId, RuleMatch};
@@ -359,14 +359,14 @@ fn read_exile_return_tagged_entry_counters(
             matches!(
                 effect,
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::Exile { .. },
+                    action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. }),
                     ..
                 })
             )
         });
         let has_delayed_return = return_effects
             .iter()
-            .any(|effect| matches!(effect, EffectAst::DelayedUntilNextEndStep { .. }));
+            .any(|effect| matches!(effect, EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep { .. })));
         if has_exile_producer && has_delayed_return {
             exile_effects.append(&mut return_effects);
             exile_effects.push(EffectAst::Coordinated {
@@ -697,7 +697,7 @@ fn read_direct_token_creation_alternative(
     if sentences.len() == 1
         && source_words.first() == Some(&"create")
         && super::super::creation_handlers::is_direct_token_creation_alternative_candidate(tokens)
-        && let Ok(effect @ EffectAst::ChooseOneOf { .. }) = super::super::parse_create(tokens, None)
+        && let Ok(effect @ EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { .. })) = super::super::parse_create(tokens, None)
     {
         return Ok(Some(vec![effect]));
     }
@@ -782,18 +782,18 @@ fn read_exile_cast_permission(
         if dream_exile_cast {
             filter = filter.with_counter_type(crate::object::CounterType::Dream);
         }
-        return Ok(Some(vec![EffectAst::May {
+        return Ok(Some(vec![EffectAst::Permissions(PermissionEffectAst::May {
             effects: vec![
-                EffectAst::ChooseObjects {
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                     filter,
                     count: ChoiceCount::exactly(1),
                     count_value: None,
                     player: PlayerAst::You,
                     tag: tag.clone(),
-                },
+                }),
                 EffectAst::subject_verb_cast_tagged(tag, PlayerAst::You, false, false, true, None),
             ],
-        }]));
+        })]));
     }
     Ok(None)
 }
@@ -833,7 +833,7 @@ fn read_create_with_abilities_from_among(
         && matches!(
             &effect,
             EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::CreateTokenWithMods { count, .. },
+                action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { count, .. }),
                 ..
             }) if matches!(count.unhinted(), Value::StaticAbilitiesAmong { .. })
         )

@@ -65,7 +65,7 @@ fn damage_to_each_of_those_preserves_the_demonstrative_set_surface() {
         .expect("demonstrative damage clause should lex");
     let effect = parse_deal_damage(&tokens).expect("demonstrative damage clause should parse");
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::DealDamageEach { filter, .. },
+        action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { filter, .. }),
         ..
     }) = effect
     else {
@@ -87,7 +87,7 @@ fn each_damage_except_your_keyword_bearers_keeps_the_boolean_complement() {
     .expect("excluded damage clause should lex");
     let effect = parse_deal_damage(&tokens).expect("excluded damage clause should parse");
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::DealDamageEach { filter, .. },
+        action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { filter, .. }),
         ..
     }) = effect
     else {
@@ -124,7 +124,7 @@ fn each_damage_keeps_a_complete_serial_negative_keyword_filter() {
     let effect = parse_deal_damage(&tokens)
         .expect("serial negative keyword damage clause should parse at the verb boundary");
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::DealDamageEach { filter, .. },
+        action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { filter, .. }),
         ..
     }) = effect
     else {
@@ -160,7 +160,7 @@ fn fixed_plus_count_damage_keeps_equal_to_surface() {
         .expect("equal-to damage should parse")
         .expect("equal-to damage should match");
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::DealDamage { amount, .. },
+        action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount, .. }),
         ..
     }) = effect
     else {
@@ -189,7 +189,7 @@ fn equal_to_damage_keeps_authored_optional_single_target() {
             .expect("linked damage clause should parse")
             .expect("linked damage clause should match");
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::DealDamage { amount, target, .. },
+            action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount, target, .. }),
             ..
         }) = effect
         else {
@@ -216,11 +216,11 @@ fn relative_controller_count_has_unique_typed_amount_ownership() {
     let effect = parse_deal_damage(&tokens).expect("relative-controller damage should parse");
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::DealDamage {
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamage {
                 amount,
                 target: TargetAst::Object(target, Some(_), _),
                 ..
-            },
+            }),
         ..
     }) = effect
     else {
@@ -253,7 +253,7 @@ fn player_or_planeswalker_controller_count_stays_inside_damage_amount() {
     .expect("controller-relative damage body should lex");
     let effect = parse_deal_damage(&body).expect("controller-relative damage body should parse");
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::DealDamage { amount, .. },
+        action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount, .. }),
         ..
     }) = effect
     else {
@@ -300,11 +300,11 @@ fn authored_damage_recipient_pronoun_is_preserved_on_the_amount() {
         let effect = parse_deal_damage(&tokens).expect("damage clause should parse");
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::DealDamage {
+                SubjectVerbActionAst::Damage(DamageActionAst::DealDamage {
                     amount,
                     target: TargetAst::Player(PlayerFilter::IteratedPlayer, _),
                     ..
-                },
+                }),
             ..
         }) = effect
         else {
@@ -353,7 +353,7 @@ fn target_spell_controller_damage_materializes_the_spell_target_first() {
             damage,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::DealDamage {
+                    SubjectVerbActionAst::Damage(DamageActionAst::DealDamage {
                         amount,
                         target:
                             TargetAst::Player(
@@ -363,7 +363,7 @@ fn target_spell_controller_damage_materializes_the_spell_target_first() {
                                 None
                             ),
                         ..
-                    },
+                    }),
                 ..
             }) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                 && matches!(

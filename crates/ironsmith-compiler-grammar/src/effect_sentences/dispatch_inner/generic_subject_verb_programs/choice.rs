@@ -1,3 +1,5 @@
+use crate::cards::builders::VoteEffectAst;
+use crate::cards::builders::ForEachEffectAst;
 use super::*;
 
 pub(super) fn parse_generic_vote_start(
@@ -29,11 +31,11 @@ pub(super) fn parse_generic_vote_start(
 
     let option_clause = vote_options_clause_before_reveal_tail(options_clause);
     if let Some(options) = named_vote_options_from_clause(option_clause) {
-        return Ok(Some(EffectAst::VoteStart {
+        return Ok(Some(EffectAst::Votes(VoteEffectAst::VoteStart {
             options,
             secret,
             starting_with_controller,
-        }));
+        })));
     }
 
     let option_tokens = option_clause.tokens().to_vec();
@@ -48,29 +50,29 @@ pub(super) fn parse_generic_vote_start(
                 } else {
                     filter
                 };
-                return Ok(Some(EffectAst::VoteStartPlayers {
+                return Ok(Some(EffectAst::Votes(VoteEffectAst::VoteStartPlayers {
                     filter,
                     exclude_voter,
                     secret,
                     starting_with_controller,
-                }));
+                })));
             }
             TargetAst::Object(filter, _, _) => {
-                return Ok(Some(EffectAst::VoteStartObjects {
+                return Ok(Some(EffectAst::Votes(VoteEffectAst::VoteStartObjects {
                     filter,
                     count: ChoiceCount::exactly(1),
                     secret,
                     starting_with_controller,
-                }));
+                })));
             }
             TargetAst::WithCount(inner, count) => {
                 if let TargetAst::Object(filter, _, _) = *inner {
-                    return Ok(Some(EffectAst::VoteStartObjects {
+                    return Ok(Some(EffectAst::Votes(VoteEffectAst::VoteStartObjects {
                         filter,
                         count,
                         secret,
                         starting_with_controller,
-                    }));
+                    })));
                 }
             }
             _ => {}
@@ -79,12 +81,12 @@ pub(super) fn parse_generic_vote_start(
     if let Ok(filter) = parse_object_filter_lexed(&option_tokens, false)
         && filter != ObjectFilter::default()
     {
-        return Ok(Some(EffectAst::VoteStartObjects {
+        return Ok(Some(EffectAst::Votes(VoteEffectAst::VoteStartObjects {
             filter,
             count: ChoiceCount::exactly(1),
             secret,
             starting_with_controller,
-        }));
+        })));
     }
 
     let Some(options) = named_vote_options_from_clause(option_clause) else {
@@ -93,11 +95,11 @@ pub(super) fn parse_generic_vote_start(
         ));
     };
 
-    Ok(Some(EffectAst::VoteStart {
+    Ok(Some(EffectAst::Votes(VoteEffectAst::VoteStart {
         options,
         secret,
         starting_with_controller,
-    }))
+    })))
 }
 
 pub(super) fn parse_generic_vote_option_effects(
@@ -119,7 +121,7 @@ pub(super) fn parse_generic_vote_option_effects(
 
     let effect_tokens = trim_commas(shape.effect_tokens);
     let effects = parse_effect_chain_lexed(&effect_tokens)?;
-    Ok(Some(EffectAst::VoteOption { option, effects }))
+    Ok(Some(EffectAst::Votes(VoteEffectAst::VoteOption { option, effects })))
 }
 
 pub(super) fn parse_generic_player_vote_received_effects(
@@ -149,39 +151,39 @@ pub(super) fn parse_generic_player_vote_received_effects(
     let effect_tokens = trim_commas(effect_clause.tokens());
     let effects = parse_effect_chain_lexed(&effect_tokens)?;
     if filter == PlayerFilter::You {
-        return Ok(Some(EffectAst::RepeatEffects {
+        return Ok(Some(EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
             count: Value::PlayerVoteCount(PlayerFilter::You),
             effects,
-        }));
+        })));
     }
-    Ok(Some(EffectAst::ForEachPlayersFiltered {
+    Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
         filter,
-        effects: vec![EffectAst::RepeatEffects {
+        effects: vec![EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
             count: Value::PlayerVoteCount(PlayerFilter::IteratedPlayer),
             effects,
-        }],
-    }))
+        })],
+    })))
 }
 
 pub(super) fn parse_generic_extra_vote(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     let clause = LexedClause::new(tokens).trimmed();
     if OPTIONAL_EXTRA_VOTE_PATTERN.parse_full(clause).is_some() {
-        return Some(EffectAst::VoteExtra {
+        return Some(EffectAst::Votes(VoteEffectAst::VoteExtra {
             count: 1,
             optional: true,
-        });
+        }));
     }
     if REQUIRED_EXTRA_VOTE_PATTERN.parse_full(clause).is_some() {
-        return Some(EffectAst::VoteExtra {
+        return Some(EffectAst::Votes(VoteEffectAst::VoteExtra {
             count: 1,
             optional: false,
-        });
+        }));
     }
     if SUBJECTLESS_EXTRA_VOTE_PATTERN.parse_full(clause).is_some() {
-        return Some(EffectAst::VoteExtra {
+        return Some(EffectAst::Votes(VoteEffectAst::VoteExtra {
             count: 1,
             optional: false,
-        });
+        }));
     }
     None
 }

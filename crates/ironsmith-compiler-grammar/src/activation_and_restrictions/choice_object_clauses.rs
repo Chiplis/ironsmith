@@ -1,3 +1,6 @@
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::ForEachEffectAst;
 use super::*;
 use crate::grammar::choices::{
     ChoiceBattlefieldController, ChoiceBecomeKind, ChoiceBecomeSyntaxError, ChoiceClauseActor,
@@ -195,7 +198,7 @@ pub fn parse_you_choose_objects_clause_with_count_value(
         choose_filter
             .tagged_constraints
             .push(TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::It.bind(),
+                tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
                 relation: TaggedOpbjectRelation::IsTaggedObject,
             });
     }
@@ -295,19 +298,19 @@ pub fn parse_target_player_chooses_then_other_cant_block(
         restriction_filter
             .tagged_constraints
             .push(TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::It.bind(),
+                tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
                 relation: TaggedOpbjectRelation::IsNotTaggedObject,
             });
     }
 
     Ok(Some(vec![
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter: choose_filter,
             count: choose_count,
             count_value: None,
             player: chooser,
             tag: crate::tag::CompilerReferenceTag::It.bind(),
-        },
+        }),
         EffectAst::subject_verb_cant(
             crate::effect::Restriction::block(restriction_filter),
             Until::EndOfTurn,
@@ -337,7 +340,7 @@ pub fn parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(
 
 /// Composes the "choose a card type, reveal the top N, put all of that type into
 /// your hand and the rest on the bottom" effect as a player modal
-/// (`EffectAst::ChooseOneOf`) over the nine card types, mirroring the runtime
+/// (`EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf)`) over the nine card types, mirroring the runtime
 /// `Effect::choose_one` the retired `RevealTopChooseCardTypePutToHandRestBottom`
 /// recipe lowered to. Each mode looks at the top N cards, reveals them, and for
 /// each looked card moves it to hand if it matches the mode's card type, else to
@@ -370,12 +373,12 @@ fn compose_reveal_top_choose_card_type_put_to_hand_rest_bottom(
                 EffectAst::subject_verb_look_at_top_cards(
                     PlayerAst::You,
                     Value::Fixed(count as i32),
-                    looked_tag.clone(),
+                    crate::tag::TagRef::of(looked_tag.clone()),
                 ),
-                EffectAst::subject_verb_reveal_tagged(looked_tag.clone()),
-                EffectAst::ForEachTagged {
-                    tag: looked_tag,
-                    effects: vec![EffectAst::Conditional {
+                EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(looked_tag.clone())),
+                EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+                    tag: crate::tag::TagRef::of(looked_tag),
+                    effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                         predicate: PredicateAst::TaggedMatches(
                             crate::tag::CompilerReferenceTag::It.bind(),
                             card_type_filter,
@@ -396,8 +399,8 @@ fn compose_reveal_top_choose_card_type_put_to_hand_rest_bottom(
                             false,
                             None,
                         )],
-                    }],
-                },
+                    })],
+                }),
             ];
 
             crate::cards::builders::ChooseOneModeAst {
@@ -407,7 +410,7 @@ fn compose_reveal_top_choose_card_type_put_to_hand_rest_bottom(
         })
         .collect();
 
-    EffectAst::ChooseOneOf { modes }
+    EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })
 }
 
 pub fn parse_choose_creature_type_phrase_words(
@@ -582,13 +585,13 @@ pub fn parse_sentence_target_player_chooses_then_puts_on_top_of_library(
     };
 
     Ok(Some(vec![
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter: choose_filter,
             count: choose_count,
             count_value: None,
             player: chooser,
             tag: crate::tag::CompilerReferenceTag::It.bind(),
-        },
+        }),
         EffectAst::subject_verb_move_to_zone(
             target,
             Zone::Library,
@@ -619,13 +622,13 @@ pub fn parse_sentence_target_player_chooses_then_you_put_it_onto_battlefield(
     };
 
     Ok(Some(vec![
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter: choose_filter,
             count: choose_count,
             count_value: None,
             player: chooser,
             tag: crate::tag::CompilerReferenceTag::It.bind(),
-        },
+        }),
         EffectAst::subject_verb_move_to_zone(
             TargetAst::Tagged(
                 crate::tag::CompilerReferenceTag::It.bind(),

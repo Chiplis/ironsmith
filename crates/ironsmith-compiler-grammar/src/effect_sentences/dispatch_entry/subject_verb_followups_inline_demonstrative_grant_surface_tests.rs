@@ -11,11 +11,11 @@ fn rebuilding_a_demonstrative_grant_keeps_its_those_surface() {
 
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::GrantAbilitiesAll {
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll {
                 filter,
                 set_quantifier_surface,
                 ..
-            },
+            }),
         ..
     }) = rebuilt
     else {

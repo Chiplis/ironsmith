@@ -1,3 +1,5 @@
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::StatChangeActionAst;
 use super::*;
 
 pub(super) fn parse_gain_ability_sentence_with_subject(
@@ -8,10 +10,10 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
     if stripped_if_you_do.len() < tokens.len() {
         return Ok(
             parse_gain_ability_sentence(&stripped_if_you_do)?.map(|effects| {
-                vec![EffectAst::IfResult {
+                vec![EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                     predicate: IfResultPredicate::Did,
                     effects,
-                }]
+                })]
             }),
         );
     }
@@ -876,10 +878,10 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
         );
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::RemoveAbilitiesAll {
+                SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll {
                     set_quantifier_surface,
                     ..
-                },
+                }),
             ..
         }) = &mut remove
         {

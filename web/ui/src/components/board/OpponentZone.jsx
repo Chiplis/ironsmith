@@ -1,3 +1,4 @@
+import PlayerZonePiles from "./PlayerZonePiles";
 import { useCastPlayerHovered } from "@/context/DragContext";
 import { useCallback, useEffect, useState } from "react";
 import BattlefieldRow from "./BattlefieldRow";
@@ -74,6 +75,7 @@ function buildZoneEntries(player, zoneViews) {
 
 function shouldShowZoneBody(player, entry, activity = null) {
   if (!entry?.active) return false;
+  if (entry.zone === "graveyard" || entry.zone === "exile") return false;
   if (entry.zone === "library") return false;
   if (activity) return true;
   if (entry.zone === "battlefield") return true;
@@ -432,6 +434,7 @@ function OpponentSlot({
   // clicking anywhere on this opponent's zone assigns the target.
   // Planeswalker is targeted only if the click is exactly on a planeswalker card.
   const handleClickCapture = useCallback((e) => {
+    if (e.target.closest("[data-player-zone-piles], .zone-pile-menu")) return;
     const cm = combatModeRef.current;
     if (!cm?.onTargetAreaClick || cm.selectedAttacker == null) return;
 
@@ -668,12 +671,13 @@ function OpponentSlot({
         ) : null}
         <div
           className={cn(
-            "battlefield-zone-strip min-h-0 h-full overflow-visible",
+            "battlefield-zone-strip has-zone-piles min-h-0 h-full overflow-visible",
             denseSupportLayout ? "battlefield-zone-strip--shelf" : "flex gap-1"
           )}
           data-zone-layout={denseSupportLayout ? "shelf" : "lanes"}
           data-zone-anchor-player={String(player?.id ?? player?.index ?? "")}
         >
+          <PlayerZonePiles player={player} onCardClick={handleCardClick} legalTargetObjectIds={legalTargetObjectIds} />
         {(denseSupportLayout && battlefieldZoneEntry
           ? [battlefieldZoneEntry]
           : boardZoneEntries

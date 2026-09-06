@@ -1,3 +1,4 @@
+use crate::cards::builders::ForEachEffectAst;
 use super::*;
 
 pub fn parse_for_each_put_into_graveyard_this_way_sentence(
@@ -33,17 +34,17 @@ pub fn parse_for_each_put_into_graveyard_this_way_sentence(
         let mut filter = parse_object_filter_lexed(filter_tokens, false)?;
         filter.zone = None;
         filter.set_put_into_graveyard_this_way_surface(true);
-        vec![EffectAst::Conditional {
+        vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: PredicateAst::ItMatchedLastKnown(filter),
             if_true: effects,
             if_false: Vec::new(),
-        }]
+        })]
     } else {
         effects
     };
 
-    Ok(Some(vec![EffectAst::ForEachTagged {
+    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
         tag: crate::tag::CompilerReferenceTag::It.bind(),
         effects,
-    }]))
+    })]))
 }

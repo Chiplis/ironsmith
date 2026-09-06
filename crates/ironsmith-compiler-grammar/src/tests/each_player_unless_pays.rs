@@ -1,3 +1,5 @@
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::ForEachEffectAst;
 use super::*;
 #[cfg(test)]
 use ironsmith_compiler_lowering::CardDefinitionBuilder;
@@ -12,12 +14,12 @@ fn trailing_they_pay_keeps_the_each_player_ast_and_payer_reference() {
         parse_effect_sentence_lexed(&tokens).expect("Lim-Dûl effect sentence should parse");
 
     let [
-        EffectAst::UnlessPays {
+        EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
             effects,
             player,
             cost,
             ..
-        },
+        }),
     ] = parsed.as_slice()
     else {
         panic!("expected a typed trailing unless-payment wrapper, got {parsed:#?}");
@@ -31,7 +33,7 @@ fn trailing_they_pay_keeps_the_each_player_ast_and_payer_reference() {
         "expected the two authored alternative payments, got {cost:#?}"
     );
     assert!(
-        matches!(effects.as_slice(), [EffectAst::ForEachPlayer { .. }]),
+        matches!(effects.as_slice(), [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { .. })]),
         "expected the consequence to retain its each-player loop, got {effects:#?}"
     );
 }

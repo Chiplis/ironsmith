@@ -9,7 +9,7 @@ use super::super::lexer::OwnedLexToken;
 use super::parse_effect_sentence_lexed;
 use crate::cards::builders::{
     CardTextError, ChooseOneModeAst, EffectAst, GrantedAbilityAst, SubjectVerbActionAst,
-    SubjectVerbEffectAst, TargetAst, TextSpan,
+    SubjectVerbEffectAst, TargetAst, TextSpan, GrantActionAst, ObjectChoiceEffectAst, ConditionalEffectAst,
 };
 use crate::effect::Until;
 
@@ -69,11 +69,11 @@ fn leading_action_clause(
 fn choice_grant_parts(effect: EffectAst) -> Option<(TargetAst, Vec<GrantedAbilityAst>, Until)> {
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::GrantAbilitiesChoiceToTarget {
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceToTarget {
                 target,
                 abilities,
                 duration,
-            },
+            }),
         ..
     }) = effect
     else {
@@ -137,7 +137,7 @@ fn combine_shared_keyword_choice(
             }],
         })
         .collect();
-    Ok(Some(EffectAst::ChooseOneOf { modes }))
+    Ok(Some(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })))
 }
 
 fn parse_optional_companion_fanout_body(
@@ -191,19 +191,22 @@ pub fn parse_optional_companion_fanout_sentence(
 
     super::preserve_result_conjunction_body_lexed(prefix.trailing_tokens, &mut effects);
     Ok(Some(vec![match prefix.kind {
-        LeadingResultPrefixKind::If => EffectAst::IfResult {
+        LeadingResultPrefixKind::If => EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: prefix.predicate,
             effects,
-        },
-        LeadingResultPrefixKind::When => EffectAst::WhenResult {
+        }),
+        LeadingResultPrefixKind::When => EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
             predicate: prefix.predicate,
             effects,
-        },
+        }),
     }]))
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::cards::builders::StatChangeActionAst;
+    use crate::cards::builders::PermanentStateActionAst;
+    use crate::cards::builders::ZoneMoveActionAst;
     use super::*;
     use crate::cards::builders::ChoiceCount;
     use crate::lexer::lex_line;
@@ -230,11 +233,11 @@ mod tests {
         };
         let [
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Pump { target: first, .. },
+                action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target: first, .. }),
                 ..
             }),
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Pump { target: second, .. },
+                action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target: second, .. }),
                 ..
             }),
         ] = effects.as_slice()
@@ -264,7 +267,7 @@ mod tests {
         let parsed = parse_optional_companion_fanout_sentence(&tokens)
             .unwrap()
             .unwrap();
-        let [EffectAst::ChooseOneOf { modes }] = parsed.as_slice() else {
+        let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })] = parsed.as_slice() else {
             panic!("expected one shared keyword choice: {parsed:#?}");
         };
         assert_eq!(modes.len(), 2);
@@ -274,7 +277,7 @@ mod tests {
             };
             assert_eq!(effects.len(), 2);
             let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::GrantAbilitiesToTarget { target, .. },
+                action: SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { target, .. }),
                 ..
             }) = &effects[1]
             else {
@@ -300,7 +303,7 @@ mod tests {
         };
         assert_eq!(effects.len(), 2);
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Tap { target, .. },
+            action: SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap { target, .. }),
             ..
         }) = &effects[1]
         else {
@@ -366,7 +369,7 @@ mod tests {
         assert_eq!(effects.len(), 3);
         for effect in effects {
             let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Destroy { target, .. },
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { target, .. }),
                 ..
             }) = effect
             else {

@@ -41,11 +41,11 @@ fn announced_stack_target_and_copy_share_the_unresolved_reference_tag() {
                 ..
             }),
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::CopySpellForEachTarget {
+                action: SubjectVerbActionAst::Stack(StackActionAst::CopySpellForEachTarget {
                     target: TargetAst::Tagged(tag, _),
                     exclude_current_targets: true,
                     ..
-                },
+                }),
                 ..
             })
         ] if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()

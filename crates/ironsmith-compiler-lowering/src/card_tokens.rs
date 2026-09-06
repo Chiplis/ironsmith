@@ -24,7 +24,7 @@ fn role_token(name: &str) -> CardDefinition {
 fn enchanted_creature_filter() -> ObjectFilter {
     let mut filter = ObjectFilter::creature();
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: crate::tag::CompilerReferenceTag::Enchanted.bind(),
+        tag: (crate::tag::CompilerReferenceTag::Enchanted.bind()).into(),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
     filter
@@ -182,10 +182,10 @@ pub fn junk_token_definition() -> CardDefinition {
                     .top_only(),
                 ),
                 Effect::new(crate::effects::ExileEffect::with_spec(ChooseSpec::Tagged(
-                    exile_tag.clone(),
+                    exile_tag.clone().into(),
                 ))),
                 Effect::new(crate::effects::GrantPlayTaggedEffect::new(
-                    exile_tag,
+                    exile_tag.key.clone(),
                     PlayerFilter::You,
                     crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn,
                     true,

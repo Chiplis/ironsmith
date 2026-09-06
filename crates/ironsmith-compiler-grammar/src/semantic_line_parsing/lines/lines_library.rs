@@ -1,3 +1,7 @@
+use crate::cards::builders::PermissionEffectAst;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::StackActionAst;
+use crate::cards::builders::RevealLookActionAst;
 use super::*;
 
 pub(super) fn starts_with_exact_graveyard_card_copy_cast_sequence(
@@ -64,10 +68,10 @@ pub fn exact_graveyard_card_copy_cast_sequence(
                 return None;
             };
             let [
-                effect @ EffectAst::IfResult {
+                effect @ EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                     predicate: crate::cards::builders::IfResultPredicate::Did,
                     effects: result_effects,
-                },
+                }),
             ] = effects.as_slice()
             else {
                 return None;
@@ -87,11 +91,11 @@ pub fn exact_graveyard_card_copy_cast_sequence(
             for effect in effects {
                 if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action:
-                        SubjectVerbActionAst::CastTagged {
+                        SubjectVerbActionAst::Stack(StackActionAst::CastTagged {
                             as_copy: true,
                             copy_cast_reminder_surface,
                             ..
-                        },
+                        }),
                     ..
                 }) = effect
                 {
@@ -126,7 +130,7 @@ pub fn exact_looked_hand_optional_cast_bundle(
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::LookAtHand {
+                SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtHand {
                     target:
                         TargetAst::Player(
                             PlayerFilter::DamagedPlayer
@@ -135,16 +139,16 @@ pub fn exact_looked_hand_optional_cast_bundle(
                             | PlayerFilter::AliasedTarget(_),
                             _,
                         ),
-                },
+                }),
             ..
         }),
-        EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+        EffectAst::Permissions(PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
             player: PlayerAst::You,
             zone_owner: PlayerAst::That,
             filter,
             zone: Zone::Hand,
             payment: ironsmith_core::MayCastMatchingSpellPayment::WithoutPayingManaCost,
-        },
+        }),
     ] = effects.as_slice()
     else {
         return None;

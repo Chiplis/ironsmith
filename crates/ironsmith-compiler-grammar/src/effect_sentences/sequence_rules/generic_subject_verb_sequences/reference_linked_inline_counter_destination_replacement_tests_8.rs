@@ -1,3 +1,4 @@
+use crate::cards::builders::ReplacementActionAst;
 use super::*;
 use crate::lexer::lex_line;
 
@@ -19,12 +20,12 @@ fn counter_destination_is_registered_before_countering() {
     assert!(
         matches!(
             effects.as_slice(),
-            [EffectAst::Conditional { if_true, .. }, EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Counter { .. }, .. })]
+            [EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, .. }), EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Stack(StackActionAst::Counter { .. }), .. })]
                 if matches!(
                     if_true.as_slice(),
                     [
-                        EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::RegisterZoneReplacement { .. }, .. }),
-                        EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. }, .. }),
+                        EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterZoneReplacement { .. }), .. }),
+                        EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterEnterUnderControlReplacement { .. }), .. }),
                     ]
                 )
         ),

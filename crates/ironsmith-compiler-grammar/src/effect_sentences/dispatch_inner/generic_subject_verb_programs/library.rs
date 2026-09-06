@@ -1,3 +1,5 @@
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::RevealLookActionAst;
 use super::*;
 
 pub fn parse_generic_top_cards_cloak_counted_rest_bottom_subject_verb(
@@ -18,24 +20,24 @@ pub fn parse_generic_top_cards_cloak_counted_rest_bottom_subject_verb(
     selected_filter.zone = Some(Zone::Library);
 
     Some(vec![
-        EffectAst::subject_verb_look_at_top_cards(player, count, looked_tag.clone()),
-        EffectAst::ChooseTaggedObjectsInZone {
+        EffectAst::subject_verb_look_at_top_cards(player, count, crate::tag::TagRef::of(looked_tag.clone())),
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter: selected_filter,
             count: shape.selected_count,
             player: PlayerAst::You,
-            tag: selected_tag.clone(),
+            tag: crate::tag::TagRef::of(selected_tag.clone()),
             zone: Zone::Library,
-        },
+        }),
         EffectAst::subject_verb_cloak_onto_battlefield(
             PlayerAst::You,
-            TargetAst::Tagged(selected_tag.clone(), None),
+            TargetAst::Tagged(crate::tag::TagRef::of(selected_tag.clone()), None),
             false,
             ReturnControllerAst::You,
             false,
         ),
         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-            looked_tag,
-            Some(selected_tag),
+            crate::tag::TagRef::of(looked_tag),
+            Some(crate::tag::TagRef::of(selected_tag)),
             shape.remainder_order,
             player,
         ),
@@ -56,7 +58,7 @@ pub fn parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(
     )?;
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         subject: SubjectVerbSubjectAst { player, .. },
-        action: SubjectVerbActionAst::LookAtTopCards { count, .. },
+        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { count, .. }),
     }) = look_effect
     else {
         return None;
@@ -127,14 +129,14 @@ pub fn parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(
     choice_filter.zone = Some(Zone::Library);
 
     let mut effects = vec![
-        EffectAst::subject_verb_look_at_top_cards(player, count, looked_tag.clone()),
-        EffectAst::ChooseObjects {
+        EffectAst::subject_verb_look_at_top_cards(player, count, crate::tag::TagRef::of(looked_tag.clone())),
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter: choice_filter,
             count: exile_count,
             count_value: None,
             player: PlayerAst::You,
             tag: exiled_tag.clone(),
-        },
+        }),
         EffectAst::subject_verb_exile(TargetAst::Tagged(exiled_tag.clone(), None), true),
     ];
     if let Some(descriptor) = counter_modifier {
@@ -148,7 +150,7 @@ pub fn parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(
     }
     effects.push(
         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-            looked_tag,
+            crate::tag::TagRef::of(looked_tag),
             Some(exiled_tag),
             bottom_order,
             player,

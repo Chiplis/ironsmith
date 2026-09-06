@@ -1,3 +1,4 @@
+use crate::cards::builders::ZoneMoveActionAst;
 use super::*;
 use crate::CounterType;
 
@@ -18,10 +19,10 @@ fn owned_graveyard_return_keeps_x_as_an_inline_entry_counter() {
     assert!(matches!(
         returned,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ReturnToBattlefield {
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
                 target: TargetAst::Object(filter, ..),
                 ..
-            },
+            }),
             ..
         }) if filter.zone == Some(Zone::Graveyard)
             && filter.owner == Some(PlayerFilter::You)
@@ -29,12 +30,12 @@ fn owned_graveyard_return_keeps_x_as_an_inline_entry_counter() {
     assert!(matches!(
         counter,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::PutCounters {
+            action: SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
                 counter_type: CounterType::PlusOnePlusOne,
                 count,
                 target: TargetAst::Tagged(tag, _),
                 ..
-            },
+            }),
             ..
         }) if matches!(count.unhinted(), Value::X)
             && count.has_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)

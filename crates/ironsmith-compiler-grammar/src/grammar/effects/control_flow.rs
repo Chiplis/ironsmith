@@ -523,7 +523,7 @@ pub fn is_anaphoric_destroy_battlefield_guard(tokens: &[OwnedLexToken]) -> bool 
     };
     if !matches!(
         split.predicate,
-        crate::cards::builders::PredicateAst::SourceIsInZone(crate::zone::Zone::Battlefield)
+        crate::cards::builders::PredicateAst::Source(crate::cards::builders::SourcePredicateAst::SourceIsInZone(crate::zone::Zone::Battlefield))
     ) {
         return false;
     }

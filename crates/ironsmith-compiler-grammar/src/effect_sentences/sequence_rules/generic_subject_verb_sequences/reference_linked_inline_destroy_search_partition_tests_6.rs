@@ -1,3 +1,5 @@
+use crate::cards::builders::ZoneMoveActionAst;
+use crate::cards::builders::LibraryActionAst;
 use super::*;
 use crate::{lex_line, split_lexed_sentences};
 
@@ -25,7 +27,7 @@ fn global_destroy_keeps_targeted_search_owner_chooser_and_destination_separate()
     assert!(matches!(
         destroy,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::DestroyAll { .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { .. }),
             ..
         })
     ));
@@ -42,7 +44,7 @@ fn global_destroy_keeps_targeted_search_owner_chooser_and_destination_separate()
     assert!(matches!(
         search,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::SearchLibrary {
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
                 filter,
                 destination: Zone::Graveyard,
                 chooser: PlayerAst::Implicit,
@@ -50,7 +52,7 @@ fn global_destroy_keeps_targeted_search_owner_chooser_and_destination_separate()
                 count,
                 shuffle: false,
                 ..
-            },
+            }),
             ..
         }) if filter.zone == Some(Zone::Library)
             && filter.owner.as_ref().is_some_and(target_opponent_filter)
@@ -65,7 +67,7 @@ fn global_destroy_keeps_targeted_search_owner_chooser_and_destination_separate()
                 player: PlayerAst::That,
                 ..
             },
-            action: SubjectVerbActionAst::ShuffleLibrary,
+            action: SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
         })
     ));
 }

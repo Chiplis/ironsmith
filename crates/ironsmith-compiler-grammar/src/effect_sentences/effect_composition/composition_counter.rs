@@ -20,15 +20,15 @@ pub(super) fn parse_proliferate_choose_phase_out_bundle(
         // were not selected for this proliferate action.
         EffectAst::TagAffected {
             effect: Box::new(EffectAst::subject_verb_proliferate(Value::Fixed(1))),
-            tag: proliferated_tag,
+            tag: crate::tag::TagRef::of(proliferated_tag),
         },
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter: selection_filter,
             count: shape.count,
             count_value: None,
             player: PlayerAst::You,
             tag: chosen_tag,
-        },
+        }),
         EffectAst::subject_verb_phase_out_all(phase_out_filter),
     ])
 }

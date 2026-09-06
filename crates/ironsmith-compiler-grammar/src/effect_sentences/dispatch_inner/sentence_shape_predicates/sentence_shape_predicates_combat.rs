@@ -1,3 +1,7 @@
+use crate::cards::builders::SourcePredicateAst;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::TokenActionAst;
+use crate::cards::builders::DamageActionAst;
 use super::*;
 
 /// Split an explicit no-combat-damage action from a preceding action whose
@@ -16,14 +20,14 @@ pub(super) fn parse_explicit_assign_no_combat_damage_followup(
             parse_explicit_assign_no_combat_damage_followup(prefix.trailing_tokens)?
     {
         return Ok(Some(vec![match prefix.kind {
-            LeadingResultPrefixKind::If => EffectAst::IfResult {
+            LeadingResultPrefixKind::If => EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                 predicate: prefix.predicate,
                 effects,
-            },
-            LeadingResultPrefixKind::When => EffectAst::WhenResult {
+            }),
+            LeadingResultPrefixKind::When => EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
                 predicate: prefix.predicate,
                 effects,
-            },
+            }),
         }]));
     }
 
@@ -93,8 +97,8 @@ pub(super) fn restore_authored_damage_source_surface(
     for effect in effects {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect {
             match action {
-                SubjectVerbActionAst::DealDamageEqualToPower { source, .. }
-                | SubjectVerbActionAst::DealDistributedDamage { source, .. } => {
+                SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { source, .. })
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { source, .. }) => {
                     apply(source, surface);
                 }
                 _ => {}
@@ -125,14 +129,14 @@ pub(in crate::effect_sentences) fn parse_attacking_doesnt_tap_if_source_untapped
                 Box::new(crate::payload::KeywordAction::Vigilance),
             )],
             Until::EndOfCombat,
-            PredicateAst::SourceIsUntapped,
+            PredicateAst::Source(SourcePredicateAst::SourceIsUntapped),
         ),
     ];
     if wrapped_if_result {
-        return Ok(Some(vec![EffectAst::IfResult {
+        return Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: crate::cards::builders::IfResultPredicate::Did,
             effects,
-        }]));
+        })]));
     }
     Ok(Some(effects))
 }
@@ -142,7 +146,7 @@ pub(super) fn rebind_plural_create_followup_damage_source(effects: &mut [EffectA
         let previous_creates_more_than_one = matches!(
             &effects[index - 1],
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::CreateTokenWithMods { count, .. },
+                action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { count, .. }),
                 ..
             }) if !matches!(count.unhinted(), Value::Fixed(1))
         );
@@ -150,7 +154,7 @@ pub(super) fn rebind_plural_create_followup_damage_source(effects: &mut [EffectA
             continue;
         }
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::DealDamageEqualToPower { source, .. },
+            action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { source, .. }),
             ..
         }) = &mut effects[index]
         else {

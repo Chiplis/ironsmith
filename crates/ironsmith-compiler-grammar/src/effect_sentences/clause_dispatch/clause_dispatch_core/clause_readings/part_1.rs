@@ -1,5 +1,7 @@
 //! Readings shard 1 of 4, in rank order.
 
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::ZoneMoveActionAst;
 use super::super::*;
 use super::Clause;
 
@@ -46,14 +48,14 @@ pub(super) fn read_any_player_or_opponent_may(
                 crate::util::trim_edge_punctuation_tokens(&stripped[1..]),
                 Some(SubjectAst::Player(PlayerAst::That)),
             )?;
-            return Ok(Some(EffectAst::AnyPlayerMay {
+            return Ok(Some(EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay {
                 players: if player == PlayerAst::Opponent {
                     PlayerFilter::Opponent
                 } else {
                     PlayerFilter::Any
                 },
                 effects: vec![payment],
-            }));
+            })));
         }
     }
     Ok(None)
@@ -101,10 +103,10 @@ pub(super) fn read_any_player_may_sacrifice(
             Some(SubjectAst::Player(PlayerAst::That)),
             None,
         )?;
-        return Ok(Some(EffectAst::AnyPlayerMay {
+        return Ok(Some(EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay {
             players: shape.players,
             effects: vec![sacrifice],
-        }));
+        })));
     }
     Ok(None)
 }
@@ -394,26 +396,26 @@ pub(super) fn read_conditional_return_then_turn_face_up(
         let returns_face_down = matches!(
             &return_effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::MoveToZone {
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                     zone: Zone::Battlefield,
                     battlefield_face_down: true,
                     ..
-                },
+                }),
                 ..
             })
         );
         let turns_face_up = matches!(
             &turn_effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::TurnFaceUp { .. },
+                action: SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp { .. }),
                 ..
             })
         );
         if returns_face_down && turns_face_up {
-            return Ok(Some(EffectAst::TrailingIf {
+            return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
                 predicate: trailing_if.predicate,
                 effects: vec![return_effect, turn_effect],
-            }));
+            })));
         }
     }
     Ok(None)
@@ -492,10 +494,10 @@ pub(super) fn read_trailing_if_clause(
     if let Some(trailing_if) = split_trailing_if_clause_lexed(tokens)
         && let Ok(base_effect) = parse_effect_clause(trailing_if.leading_tokens)
     {
-        return Ok(Some(EffectAst::TrailingIf {
+        return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
             predicate: trailing_if.predicate,
             effects: vec![base_effect],
-        }));
+        })));
     }
     Ok(None)
 }

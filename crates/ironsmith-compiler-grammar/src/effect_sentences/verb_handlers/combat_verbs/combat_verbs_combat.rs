@@ -1,3 +1,6 @@
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::DelayedEffectAst;
 use super::*;
 
 pub fn parse_deal_damage_equal_to_clause(
@@ -117,7 +120,7 @@ pub(super) fn parse_divided_damage_target(
             filter.zone = Some(Zone::Battlefield);
         }
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.bind(),
+            tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
         TargetAst::Object(filter, None, span_from_tokens(shape.target_tokens))
@@ -205,40 +208,40 @@ pub fn parse_deal_damage_with_amount(
             } else {
                 parse_target_phrase(target_tokens)?
             };
-            Ok(EffectAst::TrailingIf {
+            Ok(EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
                 predicate,
                 effects: vec![EffectAst::subject_verb_damage(amount, target)],
-            })
+            }))
         }
         combat_grammar::CombatDamageTargetShape::TrailingIf {
             target_tokens,
             predicate,
         } => {
             let target = parse_target_phrase(target_tokens)?;
-            Ok(EffectAst::Conditional {
+            Ok(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate,
                 if_true: vec![EffectAst::subject_verb_damage(amount, target)],
                 if_false: Vec::new(),
-            })
+            }))
         }
         combat_grammar::CombatDamageTargetShape::TrailingUnless {
             target_tokens,
             predicate,
         } => {
             let target = parse_target_phrase(target_tokens)?;
-            Ok(EffectAst::TrailingUnless {
+            Ok(EffectAst::Conditionals(ConditionalEffectAst::TrailingUnless {
                 predicate,
                 effects: vec![EffectAst::subject_verb_damage(amount, target)],
-            })
+            }))
         }
         combat_grammar::CombatDamageTargetShape::OmittedTargetIf { predicate } => {
-            Ok(EffectAst::TrailingIf {
+            Ok(EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
                 predicate,
                 effects: vec![EffectAst::subject_verb_damage(
                     amount,
                     TargetAst::PlayerOrPlaneswalker(PlayerFilter::Any, None),
                 )],
-            })
+            }))
         }
         combat_grammar::CombatDamageTargetShape::Simple {
             shape,
@@ -278,35 +281,35 @@ pub fn parse_deal_damage_with_amount(
             } else {
                 PlayerFilter::without_max_speed(PlayerFilter::Any)
             };
-            Ok(EffectAst::ForEachPlayersFiltered {
+            Ok(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
                 filter,
                 effects: vec![EffectAst::subject_verb_damage(
                     amount,
                     TargetAst::Player(PlayerFilter::IteratedPlayer, None),
                 )],
-            })
+            }))
         }
         combat_grammar::CombatDamageTargetShape::OpponentWho { predicate_tokens } => {
             let predicate = parse_who_did_this_way_predicate(predicate_tokens)?;
-            Ok(EffectAst::ForEachOpponentDid {
+            Ok(EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDid {
                 effects: vec![EffectAst::subject_verb_damage(
                     amount,
                     TargetAst::Player(PlayerFilter::IteratedPlayer, None),
                 )],
                 predicate,
                 result_predicate: IfResultPredicate::Did,
-            })
+            }))
         }
         combat_grammar::CombatDamageTargetShape::PlayerWho { predicate_tokens } => {
             let predicate = parse_who_did_this_way_predicate(predicate_tokens)?;
-            Ok(EffectAst::ForEachPlayerDid {
+            Ok(EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDid {
                 effects: vec![EffectAst::subject_verb_damage(
                     amount,
                     TargetAst::Player(PlayerFilter::IteratedPlayer, None),
                 )],
                 predicate,
                 result_predicate: IfResultPredicate::Did,
-            })
+            }))
         }
         combat_grammar::CombatDamageTargetShape::PlayerAndObjects {
             player_filter,
@@ -332,7 +335,7 @@ pub fn parse_deal_damage_with_amount(
             if filter.controller.is_none() {
                 filter.controller = Some(PlayerFilter::IteratedPlayer);
             }
-            Ok(EffectAst::ForEachPlayer {
+            Ok(EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
                 effects: vec![
                     EffectAst::subject_verb_damage(
                         amount.clone(),
@@ -340,13 +343,13 @@ pub fn parse_deal_damage_with_amount(
                     ),
                     EffectAst::subject_verb_damage_each(amount, filter),
                 ],
-            })
+            }))
         }
         combat_grammar::CombatDamageTargetShape::OpponentAndControlledCreaturePlaneswalker => {
             let mut filter = ObjectFilter::default();
             filter.card_types = vec![CardType::Creature, CardType::Planeswalker];
             filter.controller = Some(PlayerFilter::IteratedPlayer);
-            Ok(EffectAst::ForEachOpponent {
+            Ok(EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
                 effects: vec![
                     EffectAst::subject_verb_damage(
                         amount.clone(),
@@ -354,7 +357,7 @@ pub fn parse_deal_damage_with_amount(
                     ),
                     EffectAst::subject_verb_damage_each(amount, filter),
                 ],
-            })
+            }))
         }
         combat_grammar::CombatDamageTargetShape::HistoricalDamageRecipients {
             players,
@@ -367,13 +370,13 @@ pub fn parse_deal_damage_with_amount(
             object_filter.was_dealt_damage_by_source_this_game = true;
             Ok(EffectAst::Sequence {
                 effects: vec![
-                    EffectAst::ForEachPlayersFiltered {
+                    EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
                         filter: player_filter,
                         effects: vec![EffectAst::subject_verb_damage(
                             amount.clone(),
                             TargetAst::Player(PlayerFilter::IteratedPlayer, None),
                         )],
-                    },
+                    }),
                     EffectAst::subject_verb_damage_each(amount, object_filter),
                 ],
             })
@@ -384,9 +387,9 @@ pub fn parse_deal_damage_with_amount(
         }
         combat_grammar::CombatDamageTargetShape::DelayedEndOfCombat { target_tokens } => {
             let target = parse_target_phrase(target_tokens)?;
-            Ok(EffectAst::DelayedUntilEndOfCombat {
+            Ok(EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat {
                 effects: vec![EffectAst::subject_verb_damage(amount, target)],
-            })
+            }))
         }
         combat_grammar::CombatDamageTargetShape::General { target_tokens } => {
             let target = parse_target_phrase(target_tokens)?;

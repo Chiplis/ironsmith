@@ -1,3 +1,5 @@
+use crate::cards::builders::DelayedEffectAst;
+use crate::cards::builders::StackActionAst;
 use super::super::grammar::effects::delayed_sentence_shapes as delayed_shapes;
 
 /// "At the beginning of the next combat [phase] this turn, <effects>" — a
@@ -23,13 +25,13 @@ pub fn parse_delayed_next_combat_phase_this_turn_sentence(
             crate::lexer::render_token_slice(tokens).trim()
         )));
     }
-    Ok(Some(vec![EffectAst::DelayedTriggerThisTurn {
+    Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
         trigger: TriggerSpec::BeginningOfCombat(PlayerFilter::Any),
         effects: delayed_effects,
         one_shot: true,
         until_end_of_combat: false,
         attach_to_previous_ability: false,
-    }]))
+    })]))
 }
 
 fn delayed_dies_this_way_filter(
@@ -89,22 +91,22 @@ pub fn parse_delayed_until_next_end_step_sentence(
             PlayerFilter::Opponent => PlayerAst::Opponent,
             _ => PlayerAst::Any,
         };
-        Ok(Some(vec![EffectAst::DelayedUntilEndStepOfExtraTurn {
+        Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndStepOfExtraTurn {
             player: player_ast,
             effects: delayed_effects,
-        }]))
+        })]))
     } else {
-        Ok(Some(vec![EffectAst::DelayedUntilNextEndStep {
+        Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
             player,
             effects: delayed_effects,
-        }]))
+        })]))
     }
 }
 
 fn retarget_source_copy_spell_to_delayed_triggering_object(effects: &mut [EffectAst]) {
     fn visit(effect: &mut EffectAst) {
         if let EffectAst::SubjectVerb(subject_verb) = effect
-            && let SubjectVerbActionAst::CopySpell { target, .. } = &mut subject_verb.action
+            && let SubjectVerbActionAst::Stack(StackActionAst::CopySpell { target, .. }) = &mut subject_verb.action
             && matches!(target, TargetAst::Source(_))
         {
             *target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None);
@@ -276,13 +278,13 @@ fn parse_next_cast_spell_or_loyalty_delayed_sentence(
         )));
     }
     retarget_source_copy_spell_to_delayed_triggering_object(&mut delayed_effects);
-    Ok(Some(vec![EffectAst::DelayedTriggerThisTurn {
+    Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
         trigger,
         effects: delayed_effects,
         one_shot: true,
         until_end_of_combat: false,
         attach_to_previous_ability: shape.references_previous_creature,
-    }]))
+    })]))
 }
 
 /// Preserve the correlated choice loop in
@@ -398,7 +400,7 @@ fn parse_next_cast_single_opponent_or_permanent_copy_loop(
         false,
     );
 
-    Some(vec![EffectAst::DelayedTriggerThisTurn {
+    Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
         trigger: TriggerSpec::SpellCast {
             filter: Some(spell_filter),
             mana_source_filter: None,
@@ -409,17 +411,17 @@ fn parse_next_cast_single_opponent_or_permanent_copy_loop(
             exact_spells_this_turn: None,
             from_not_hand: false,
         },
-        effects: vec![EffectAst::ForEachPlayersFiltered {
+        effects: vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
             filter: PlayerFilter::excluding(
                 PlayerFilter::Opponent,
                 PlayerFilter::TargetPlayerOrControllerOfTarget,
             ),
             effects: vec![EffectAst::subject_verb_target_only(choice), copy, retarget],
-        }],
+        })],
         one_shot: true,
         until_end_of_combat: false,
         attach_to_previous_ability: false,
-    }])
+    })])
 }
 
 pub fn parse_sentence_delayed_trigger_this_turn(
@@ -459,37 +461,37 @@ pub fn parse_sentence_delayed_trigger_this_turn(
             trigger_filter
                 .tagged_constraints
                 .push(TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::It.bind(),
+                    tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
                     relation: TaggedOpbjectRelation::IsTaggedObject,
                 });
             return Ok(Some(vec![
-                EffectAst::ChooseObjects {
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                     filter,
                     count: ChoiceCount::exactly(1),
                     count_value: None,
                     player: PlayerAst::You,
                     tag: crate::tag::CompilerReferenceTag::It.bind(),
-                },
-                EffectAst::DelayedTriggerThisTurn {
+                }),
+                EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
                     trigger: TriggerSpec::AttacksAndIsntBlocked(trigger_filter),
                     effects: delayed_effects,
                     one_shot: true,
                     until_end_of_combat: false,
                     attach_to_previous_ability: shape.references_previous_creature,
-                },
+                }),
             ]));
         }
 
         if let Some(trigger) =
             delayed_that_deals_combat_damage_to_player_trigger_from_core(trigger_tokens)
         {
-            return Ok(Some(vec![EffectAst::DelayedTriggerThisTurn {
+            return Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
                 trigger,
                 effects: delayed_effects,
                 one_shot: false,
                 until_end_of_combat: false,
                 attach_to_previous_ability: shape.references_previous_creature,
-            }]));
+            })]));
         }
 
         let trigger = next_cast_instant_sorcery_or_loyalty_trigger_from_core(trigger_tokens)
@@ -499,13 +501,13 @@ pub fn parse_sentence_delayed_trigger_this_turn(
         if delayed_trigger_provides_triggering_stack_object(&trigger) {
             retarget_source_copy_spell_to_delayed_triggering_object(&mut delayed_effects);
         }
-        return Ok(Some(vec![EffectAst::DelayedTriggerThisTurn {
+        return Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
             trigger,
             effects: delayed_effects,
             one_shot,
             until_end_of_combat: false,
             attach_to_previous_ability: shape.references_previous_creature,
-        }]));
+        })]));
     }
 
     let trigger_core_tokens = trigger_tokens;
@@ -547,7 +549,7 @@ pub fn parse_sentence_delayed_trigger_this_turn(
             )));
         }
         return Ok(Some(vec![
-            EffectAst::ChooseObjects {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                 filter,
                 count: ChoiceCount::exactly(1),
                 count_value: None,
@@ -555,9 +557,9 @@ pub fn parse_sentence_delayed_trigger_this_turn(
                 // An implicit chooser still resolves to the spell's controller
                 // without adding a "you control" restriction to the filter.
                 player: PlayerAst::Implicit,
-                tag,
-            },
-            EffectAst::DelayedTriggerThisTurn {
+                tag: crate::tag::TagRef::of(tag),
+            }),
+            EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
                 trigger: if put_into_your_graveyard {
                     TriggerSpec::PutIntoGraveyard(watched_filter)
                 } else {
@@ -567,7 +569,7 @@ pub fn parse_sentence_delayed_trigger_this_turn(
                 one_shot: true,
                 until_end_of_combat: false,
                 attach_to_previous_ability: false,
-            },
+            }),
         ]));
     }
     if let Some(history_shape) =
@@ -590,13 +592,13 @@ pub fn parse_sentence_delayed_trigger_this_turn(
                 clause_display.trim()
             )));
         }
-        return Ok(Some(vec![EffectAst::DelayedTriggerThisTurn {
+        return Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
             trigger: TriggerSpec::Dies(victim),
             effects: delayed_effects,
             one_shot: delayed_trigger_is_one_shot(trigger_clause),
             until_end_of_combat: false,
             attach_to_previous_ability: true,
-        }]));
+        })]));
     }
     if delayed_shapes::is_delayed_prior_object_put_into_a_graveyard(trigger_core_tokens) {
         let delayed_effects = parse_effect_chain(shape.effect_tokens)?;
@@ -606,13 +608,13 @@ pub fn parse_sentence_delayed_trigger_this_turn(
                 clause_display.trim()
             )));
         }
-        return Ok(Some(vec![EffectAst::DelayedTriggerThisTurn {
+        return Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
             trigger: TriggerSpec::PutIntoGraveyard(ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind())),
             effects: delayed_effects,
             one_shot: true,
             until_end_of_combat: false,
             attach_to_previous_ability: true,
-        }]));
+        })]));
     }
     if let Some(combat_shape) =
         delayed_shapes::parse_delayed_target_deals_combat_damage_shape(trigger_core_tokens)
@@ -631,15 +633,15 @@ pub fn parse_sentence_delayed_trigger_this_turn(
             )));
         }
         return Ok(Some(vec![
-            EffectAst::ChooseObjects {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                 filter,
                 count: ChoiceCount::exactly(1),
                 count_value: None,
                 // `target` identifies the chosen object, not its controller.
                 player: PlayerAst::Implicit,
-                tag,
-            },
-            EffectAst::DelayedTriggerThisTurn {
+                tag: crate::tag::TagRef::of(tag),
+            }),
+            EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
                 trigger: TriggerSpec::DealsCombatDamageTo {
                     source: watched_filter,
                     target: recipient,
@@ -648,7 +650,7 @@ pub fn parse_sentence_delayed_trigger_this_turn(
                 one_shot: false,
                 until_end_of_combat: false,
                 attach_to_previous_ability: false,
-            },
+            }),
         ]));
     }
     let trigger = if let Some(trigger) =
@@ -685,13 +687,13 @@ pub fn parse_sentence_delayed_trigger_this_turn(
     }
 
     let one_shot = delayed_trigger_is_one_shot(trigger_clause);
-    Ok(Some(vec![EffectAst::DelayedTriggerThisTurn {
+    Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
         trigger,
         effects: delayed_effects,
         one_shot,
         until_end_of_combat: false,
         attach_to_previous_ability: shape.references_previous_creature,
-    }]))
+    })]))
 }
 
 pub fn parse_delayed_when_that_dies_this_turn_sentence(
@@ -749,7 +751,7 @@ pub fn parse_delayed_when_that_dies_this_turn_sentence(
         let mut graveyard = ObjectFilter::default();
         graveyard.zone = Some(Zone::Graveyard);
         graveyard.owner = Some(PlayerFilter::ControllerOf(
-            crate::filter::ObjectRef::Tagged(crate::tag::CompilerReferenceTag::It.bind()),
+            crate::filter::ObjectRef::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into()),
         ));
         vec![EffectAst::subject_verb_exile_all(graveyard, false)]
     } else {
@@ -762,10 +764,10 @@ pub fn parse_delayed_when_that_dies_this_turn_sentence(
         )));
     }
 
-    Ok(Some(vec![EffectAst::DelayedWhenLastObjectDiesThisTurn {
+    Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn {
         filter: delayed_filter,
         effects: delayed_effects,
-    }]))
+    })]))
 }
 
 pub fn parse_delayed_when_that_leaves_battlefield_sentence(
@@ -787,10 +789,10 @@ pub fn parse_delayed_when_that_leaves_battlefield_sentence(
         )));
     }
     Ok(Some(vec![
-        EffectAst::DelayedWhenLastObjectLeavesBattlefield {
+        EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectLeavesBattlefield {
             filter,
             effects: delayed_effects,
-        },
+        }),
     ]))
 }
 

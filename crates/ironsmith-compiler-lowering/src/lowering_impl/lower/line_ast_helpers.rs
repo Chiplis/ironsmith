@@ -1,3 +1,4 @@
+use crate::cards::builders::SourcePredicateAst;
 use super::*;
 
 #[derive(Debug, Clone, Default)]
@@ -118,11 +119,11 @@ fn apply_level_range_activation_condition(
         return;
     };
 
-    let min_condition = PredicateAst::SourceHasCounterAtLeast {
+    let min_condition = PredicateAst::Source(SourcePredicateAst::SourceHasCounterAtLeast {
         counter_type: crate::CounterType::Level,
         count: min_level,
         surface: crate::SourceCounterThresholdSurface::SourceHas,
-    };
+    });
     let level_condition = if let Some(max_level) = max_level {
         PredicateAst::And(
             Box::new(min_condition),

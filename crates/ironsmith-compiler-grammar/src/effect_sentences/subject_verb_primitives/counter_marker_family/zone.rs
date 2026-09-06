@@ -1,16 +1,17 @@
+use crate::cards::builders::ZoneMoveActionAst;
 use super::*;
 
 pub fn clone_return_effect_with_subtype(base: &EffectAst, subtype: Subtype) -> Option<EffectAst> {
     match base {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-            SubjectVerbActionAst::ReturnToHand {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand {
                 target,
                 random,
                 destination_player_surface,
                 exiled_with_source_surface,
                 set_quantifier_surface,
                 set_reference_surface,
-            } => {
+            }) => {
                 let mut cloned_target = target.clone();
                 replace_target_subtype(&mut cloned_target, subtype).then_some(
                     EffectAst::subject_verb_return_to_hand(cloned_target, *random)
@@ -20,11 +21,11 @@ pub fn clone_return_effect_with_subtype(base: &EffectAst, subtype: Subtype) -> O
                         .with_return_set_reference_surface(set_reference_surface.clone()),
                 )
             }
-            SubjectVerbActionAst::ReturnAllToHand {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand {
                 filter,
                 destination_player_surface,
                 exiled_with_source_surface,
-            } => {
+            }) => {
                 let mut cloned_filter = filter.clone();
                 cloned_filter.subtypes = vec![subtype];
                 Some(
@@ -33,7 +34,7 @@ pub fn clone_return_effect_with_subtype(base: &EffectAst, subtype: Subtype) -> O
                         .with_exiled_with_source_surface(exiled_with_source_surface.clone()),
                 )
             }
-            SubjectVerbActionAst::ReturnToBattlefield {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
                 target,
                 tapped,
                 transformed,
@@ -43,7 +44,7 @@ pub fn clone_return_effect_with_subtype(base: &EffectAst, subtype: Subtype) -> O
                 as_aura,
                 top_only,
                 ..
-            } => {
+            }) => {
                 let mut cloned_target = target.clone();
                 replace_target_subtype(&mut cloned_target, subtype).then(|| {
                     let mut effect = EffectAst::subject_verb_return_to_battlefield(
@@ -56,7 +57,7 @@ pub fn clone_return_effect_with_subtype(base: &EffectAst, subtype: Subtype) -> O
                     )
                     .with_top_only_return_choice(*top_only);
                     if let EffectAst::SubjectVerb(subject_verb) = &mut effect
-                        && let SubjectVerbActionAst::ReturnToBattlefield { as_aura: dst, .. } =
+                        && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { as_aura: dst, .. }) =
                             &mut subject_verb.action
                     {
                         *dst = as_aura.clone();
@@ -64,13 +65,13 @@ pub fn clone_return_effect_with_subtype(base: &EffectAst, subtype: Subtype) -> O
                     effect
                 })
             }
-            SubjectVerbActionAst::ReturnAllToBattlefield {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield {
                 filter,
                 tapped,
                 face_down,
                 controller,
                 verb_surface,
-            } => {
+            }) => {
                 let mut cloned_filter = filter.clone();
                 cloned_filter.subtypes = vec![subtype];
                 Some(

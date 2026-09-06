@@ -1,3 +1,4 @@
+use crate::cards::builders::ForEachEffectAst;
 use super::super::front_end::grammar::effects::divvy_shapes::{
     self, DivvyChooserShape, DivvyRestDestinationShape, DivvySequenceShape,
 };
@@ -6,7 +7,7 @@ use super::dispatch_entry::SentenceInput;
 use super::dispatch_inner::parse_effect_sentence_lexed;
 use crate::cards::builders::{
     CardTextError, EffectAst, PlayerAst, PredicateAst, ReturnControllerAst, SubjectVerbActionAst,
-    SubjectVerbRoleAst, TagKey, TargetAst,
+    SubjectVerbRoleAst, TagKey, TargetAst, LibraryActionAst, ObjectChoiceEffectAst, ConditionalEffectAst,
 };
 use crate::effect::{ChoiceCount, Until, Value};
 use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
@@ -63,12 +64,12 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         remainder_filter
             .tagged_constraints
             .push(crate::target::TaggedObjectConstraint {
-                tag: chosen_tag.clone(),
+                tag: chosen_tag.clone().into(),
                 relation: TaggedOpbjectRelation::IsNotTaggedObject,
             });
 
         let mut effects = vec![
-            EffectAst::ChooseObjectsAcrossZones {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
                 filter: search_filter,
                 count: ChoiceCount::exactly(5),
                 count_value: None,
@@ -76,7 +77,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 tag: chosen_tag.clone(),
                 zones: vec![Zone::Library, Zone::Graveyard],
                 search_mode: Some(crate::effect::SearchSelectionMode::Exact),
-            },
+            }),
             EffectAst::subject_verb_exile_all(remainder_filter, false),
             EffectAst::subject_verb_move_to_zone(
                 TargetAst::Tagged(chosen_tag, None),
@@ -107,7 +108,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 vec![Zone::Library, Zone::Graveyard],
                 crate::tag::CompilerReferenceTag::DivvySource.bind(),
             ),
-            EffectAst::ChooseObjectsAcrossZones {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
                 filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
                 count: ChoiceCount::exactly(2),
                 count_value: None,
@@ -115,10 +116,10 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
                 zones: vec![Zone::Library, Zone::Graveyard],
                 search_mode: None,
-            },
-            EffectAst::ForEachTagged {
+            }),
+            EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
                 tag: crate::tag::CompilerReferenceTag::DivvySource.bind(),
-                effects: vec![EffectAst::Conditional {
+                effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                     predicate: membership_predicate_for_iterated_object(
                         crate::tag::CompilerReferenceTag::DivvyChosen,
                     ),
@@ -131,9 +132,9 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                         false,
                         None,
                     )],
-                }],
-            },
-            EffectAst::ForEachTagged {
+                })],
+            }),
+            EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
                 tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
                 effects: vec![EffectAst::subject_verb_move_to_zone(
                     TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
@@ -143,11 +144,11 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                     false,
                     None,
                 )],
-            },
+            }),
             EffectAst::subject_verb(
                 SubjectVerbRoleAst::LibraryOwner,
                 PlayerAst::You,
-                SubjectVerbActionAst::ShuffleLibrary,
+                SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
             ),
             EffectAst::subject_verb_exile(TargetAst::Source(None), false),
         ]);
@@ -179,55 +180,55 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 false,
                 1,
             ),
-            EffectAst::ChooseObjects {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                 filter: ObjectFilter::creature()
-                    .controlled_by(PlayerFilter::TaggedPlayer(first_player_tag.clone())),
+                    .controlled_by(PlayerFilter::TaggedPlayer(first_player_tag.clone().into())),
                 count: ChoiceCount::up_to_dynamic_x(),
                 count_value: Some(Value::Count(
                     ObjectFilter::creature()
-                        .controlled_by(PlayerFilter::TaggedPlayer(second_player_tag.clone())),
+                        .controlled_by(PlayerFilter::TaggedPlayer(second_player_tag.clone().into())),
                 )),
                 player: PlayerAst::You,
                 tag: first_creatures_tag.clone(),
-            },
-            EffectAst::ChooseObjects {
+            }),
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                 filter: ObjectFilter::creature()
-                    .controlled_by(PlayerFilter::TaggedPlayer(second_player_tag.clone())),
+                    .controlled_by(PlayerFilter::TaggedPlayer(second_player_tag.clone().into())),
                 count: ChoiceCount::dynamic_x(),
                 count_value: Some(Value::Count(ObjectFilter::tagged(
                     first_creatures_tag.clone(),
                 ))),
                 player: PlayerAst::You,
                 tag: second_creatures_tag.clone(),
-            },
-            EffectAst::ForEachTaggedPlayer {
+            }),
+            EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer {
                 tag: second_player_tag,
                 effects: vec![EffectAst::subject_verb_gain_control(
                     PlayerAst::That,
                     TargetAst::Tagged(first_creatures_tag, None),
                     Until::Forever,
                 )],
-            },
-            EffectAst::ForEachTaggedPlayer {
+            }),
+            EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer {
                 tag: first_player_tag,
                 effects: vec![EffectAst::subject_verb_gain_control(
                     PlayerAst::That,
                     TargetAst::Tagged(second_creatures_tag, None),
                     Until::Forever,
                 )],
-            },
+            }),
         ]));
     }
 
     if shape == DivvySequenceShape::DestroyChosenCreaturePile {
         return Ok(Some(vec![
-            EffectAst::ChooseObjects {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                 filter: ObjectFilter::creature().controlled_by(PlayerFilter::target_player()),
                 count: ChoiceCount::any_number(),
                 count_value: None,
                 player: PlayerAst::Target,
                 tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
-            },
+            }),
             EffectAst::subject_verb_destroy_no_regeneration(TargetAst::Tagged(
                 crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
                 None,
@@ -243,13 +244,13 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             .clone()
             .not_tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind());
         return Ok(Some(vec![
-            EffectAst::ChooseObjects {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                 filter: graveyard_creatures,
                 count: ChoiceCount::any_number(),
                 count_value: None,
                 player: PlayerAst::Opponent,
                 tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
-            },
+            }),
             EffectAst::subject_verb_exile(
                 TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind(), None),
                 false,
@@ -275,19 +276,19 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             .not_tagged(crate::tag::CompilerReferenceTag::DivvyPile.bind());
 
         return Ok(Some(vec![
-            EffectAst::ForEachPlayersFiltered {
+            EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
                 filter: PlayerFilter::Opponent,
-                effects: vec![EffectAst::ChooseObjects {
+                effects: vec![EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                     filter: ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer),
                     count: ChoiceCount::any_number(),
                     count_value: None,
                     player: PlayerAst::That,
                     tag: crate::tag::CompilerReferenceTag::DivvyPile.bind(),
-                }],
-            },
-            EffectAst::ForEachPlayersFiltered {
+                })],
+            }),
+            EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
                 filter: PlayerFilter::Opponent,
-                effects: vec![EffectAst::UnlessAction {
+                effects: vec![EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
                     player: PlayerAst::You,
                     effects: vec![EffectAst::subject_verb_sacrifice_all(
                         PlayerAst::Implicit,
@@ -297,20 +298,20 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                         PlayerAst::Implicit,
                         other_pile_filter,
                     )],
-                }],
-            },
+                })],
+            }),
         ]));
     }
 
     if shape == DivvySequenceShape::PermanentPilesSacrifice {
         return Ok(Some(vec![
-            EffectAst::ChooseObjects {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                 filter: ObjectFilter::permanent().controlled_by(PlayerFilter::target_player()),
                 count: ChoiceCount::any_number(),
                 count_value: None,
                 player: PlayerAst::Target,
                 tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
-            },
+            }),
             EffectAst::subject_verb_sacrifice_all(
                 PlayerAst::Target,
                 ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind()),
@@ -319,16 +320,16 @@ pub(super) fn try_parse_divvy_sentence_sequence(
     }
 
     if shape == DivvySequenceShape::DefendingCreaturePilesBlock {
-        return Ok(Some(vec![EffectAst::ForEachPlayersFiltered {
+        return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
             filter: PlayerFilter::Defending,
             effects: vec![
-                EffectAst::ChooseObjects {
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                     filter: ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer),
                     count: ChoiceCount::any_number(),
                     count_value: None,
                     player: PlayerAst::That,
                     tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
-                },
+                }),
                 EffectAst::subject_verb_cant(
                     crate::effect::Restriction::block(
                         ObjectFilter::creature()
@@ -339,18 +340,18 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                     None,
                 ),
             ],
-        }]));
+        })]));
     }
 
     if shape == DivvySequenceShape::CreaturePilesAttack {
         return Ok(Some(vec![
-            EffectAst::ChooseObjects {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                 filter: ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer),
                 count: ChoiceCount::any_number(),
                 count_value: None,
                 player: PlayerAst::That,
                 tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
-            },
+            }),
             EffectAst::subject_verb_cant(
                 crate::effect::Restriction::attack(
                     ObjectFilter::creature()
@@ -364,7 +365,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
     }
 
     if shape == DivvySequenceShape::LandPiles {
-        return Ok(Some(vec![EffectAst::ForEachPlayer {
+        return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
             effects: vec![
                 EffectAst::subject_verb_choose_player(
                     PlayerAst::Implicit,
@@ -373,7 +374,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                     false,
                     0,
                 ),
-                EffectAst::ChooseObjects {
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                     filter: ObjectFilter::land()
                         .nontoken()
                         .controlled_by(PlayerFilter::IteratedPlayer),
@@ -381,7 +382,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                     count_value: None,
                     player: PlayerAst::That,
                     tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
-                },
+                }),
                 EffectAst::subject_verb_destroy(TargetAst::Tagged(
                     crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
                     None,
@@ -393,7 +394,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                         .not_tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind()),
                 ),
             ],
-        }]));
+        })]));
     }
 
     if shape == DivvySequenceShape::ExilePermanentCardsPile {
@@ -415,7 +416,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 vec![Zone::Exile],
                 crate::tag::CompilerReferenceTag::DivvySource.bind(),
             ),
-            EffectAst::ChooseObjectsAcrossZones {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
                 filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
                 count: ChoiceCount::any_number(),
                 count_value: None,
@@ -423,8 +424,8 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 tag: crate::tag::CompilerReferenceTag::DivvyPile.bind(),
                 zones: vec![Zone::Exile],
                 search_mode: None,
-            },
-            EffectAst::UnlessAction {
+            }),
+            EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
                 player: PlayerAst::Opponent,
                 effects: vec![
                     EffectAst::subject_verb_move_to_zone(
@@ -435,9 +436,9 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                         false,
                         None,
                     ),
-                    EffectAst::ForEachTagged {
+                    EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
                         tag: crate::tag::CompilerReferenceTag::DivvySource.bind(),
-                        effects: vec![EffectAst::Conditional {
+                        effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                             predicate: membership_predicate_for_iterated_object(
                                 crate::tag::CompilerReferenceTag::DivvyPile,
                             ),
@@ -450,17 +451,17 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                                 false,
                                 None,
                             )],
-                        }],
-                    },
+                        })],
+                    }),
                 ],
                 alternative: vec![
                     EffectAst::subject_verb_return_to_hand(
                         TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyPile.bind(), None),
                         false,
                     ),
-                    EffectAst::ForEachTagged {
+                    EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
                         tag: crate::tag::CompilerReferenceTag::DivvySource.bind(),
-                        effects: vec![EffectAst::Conditional {
+                        effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                             predicate: membership_predicate_for_iterated_object(
                                 crate::tag::CompilerReferenceTag::DivvyPile,
                             ),
@@ -473,10 +474,10 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                                 false,
                                 None,
                             )],
-                        }],
-                    },
+                        })],
+                    }),
                 ],
-            },
+            }),
         ]);
         return Ok(Some(effects));
     }
@@ -489,7 +490,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 vec![Zone::Library],
                 crate::tag::CompilerReferenceTag::DivvySource.bind(),
             ),
-            EffectAst::ChooseObjectsAcrossZones {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
                 filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
                 count: ChoiceCount::any_number(),
                 count_value: None,
@@ -497,8 +498,8 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 tag: crate::tag::CompilerReferenceTag::DivvyPile.bind(),
                 zones: vec![Zone::Library],
                 search_mode: None,
-            },
-            EffectAst::UnlessAction {
+            }),
+            EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
                 player: PlayerAst::You,
                 effects: vec![
                     EffectAst::subject_verb_move_to_zone(
@@ -509,9 +510,9 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                         false,
                         None,
                     ),
-                    EffectAst::ForEachTagged {
+                    EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
                         tag: crate::tag::CompilerReferenceTag::DivvySource.bind(),
-                        effects: vec![EffectAst::Conditional {
+                        effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                             predicate: membership_predicate_for_iterated_object(
                                 crate::tag::CompilerReferenceTag::DivvyPile,
                             ),
@@ -524,8 +525,8 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                                 false,
                                 None,
                             )],
-                        }],
-                    },
+                        })],
+                    }),
                 ],
                 alternative: vec![
                     EffectAst::subject_verb_move_to_zone(
@@ -536,9 +537,9 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                         false,
                         None,
                     ),
-                    EffectAst::ForEachTagged {
+                    EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
                         tag: crate::tag::CompilerReferenceTag::DivvySource.bind(),
-                        effects: vec![EffectAst::Conditional {
+                        effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                             predicate: membership_predicate_for_iterated_object(
                                 crate::tag::CompilerReferenceTag::DivvyPile,
                             ),
@@ -551,10 +552,10 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                                 false,
                                 None,
                             )],
-                        }],
-                    },
+                        })],
+                    }),
                 ],
-            },
+            }),
         ]);
         return Ok(Some(effects));
     }
@@ -571,7 +572,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 vec![Zone::Exile],
                 crate::tag::CompilerReferenceTag::DivvySource.bind(),
             ),
-            EffectAst::ChooseObjectsAcrossZones {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
                 filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
                 count: ChoiceCount::any_number(),
                 count_value: None,
@@ -579,7 +580,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
                 zones: vec![Zone::Exile],
                 search_mode: None,
-            },
+            }),
             EffectAst::subject_verb_move_to_zone(
                 TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind(), None),
                 Zone::Battlefield,
@@ -588,9 +589,9 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 false,
                 None,
             ),
-            EffectAst::ForEachTagged {
+            EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
                 tag: crate::tag::CompilerReferenceTag::DivvySource.bind(),
-                effects: vec![EffectAst::Conditional {
+                effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                     predicate: membership_predicate_for_iterated_object(
                         crate::tag::CompilerReferenceTag::DivvyChosen,
                     ),
@@ -603,8 +604,8 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                         false,
                         None,
                     )],
-                }],
-            },
+                })],
+            }),
         ]);
         return Ok(Some(effects));
     }
@@ -619,7 +620,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             vec![Zone::Library],
             crate::tag::CompilerReferenceTag::DivvySource.bind(),
         ));
-        effects.push(EffectAst::ChooseObjectsAcrossZones {
+        effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
             filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
             count: ChoiceCount::exactly(1),
             count_value: None,
@@ -627,7 +628,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
             zones: vec![Zone::Library],
             search_mode: None,
-        });
+        }));
         effects.push(EffectAst::subject_verb_move_to_zone(
             TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind(), None),
             Zone::Hand,
@@ -636,9 +637,9 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             false,
             None,
         ));
-        effects.push(EffectAst::ForEachTagged {
+        effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
             tag: crate::tag::CompilerReferenceTag::DivvySource.bind(),
-            effects: vec![EffectAst::Conditional {
+            effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: membership_predicate_for_iterated_object(
                     crate::tag::CompilerReferenceTag::DivvyChosen,
                 ),
@@ -651,12 +652,12 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                     false,
                     None,
                 )],
-            }],
-        });
+            })],
+        }));
         effects.push(EffectAst::subject_verb(
             SubjectVerbRoleAst::LibraryOwner,
             PlayerAst::You,
-            SubjectVerbActionAst::ShuffleLibrary,
+            SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
         ));
         return Ok(Some(effects));
     }
@@ -677,7 +678,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             vec![Zone::Library],
             crate::tag::CompilerReferenceTag::DivvySource.bind(),
         ));
-        effects.push(EffectAst::ChooseObjectsAcrossZones {
+        effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
             filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
             count: ChoiceCount::exactly(2),
             count_value: None,
@@ -685,7 +686,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
             zones: vec![Zone::Library],
             search_mode: None,
-        });
+        }));
         effects.push(EffectAst::subject_verb_move_to_zone(
             TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind(), None),
             Zone::Graveyard,
@@ -694,9 +695,9 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             false,
             None,
         ));
-        effects.push(EffectAst::ForEachTagged {
+        effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
             tag: crate::tag::CompilerReferenceTag::DivvySource.bind(),
-            effects: vec![EffectAst::Conditional {
+            effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: membership_predicate_for_iterated_object(
                     crate::tag::CompilerReferenceTag::DivvyChosen,
                 ),
@@ -709,12 +710,12 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                     rest_enters_tapped,
                     None,
                 )],
-            }],
-        });
+            })],
+        }));
         effects.push(EffectAst::subject_verb(
             SubjectVerbRoleAst::LibraryOwner,
             PlayerAst::You,
-            SubjectVerbActionAst::ShuffleLibrary,
+            SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
         ));
         return Ok(Some(effects));
     }
@@ -723,7 +724,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         let source_tag = crate::tag::CompilerReferenceTag::Searched.bind();
         let chosen_tag = crate::tag::CompilerReferenceTag::DivvyChosen.bind();
         let mut effects = parse_effect_sentence_lexed(sentences[0].lowered())?;
-        effects.push(EffectAst::ChooseObjectsAcrossZones {
+        effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
             filter: ObjectFilter::tagged(source_tag.clone()),
             count: ChoiceCount::exactly(2),
             count_value: None,
@@ -731,7 +732,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             tag: chosen_tag.clone(),
             zones: vec![Zone::Library],
             search_mode: None,
-        });
+        }));
         effects.push(EffectAst::Coordinated {
             effects: vec![
                 EffectAst::subject_verb_shuffle_objects_into_library(
@@ -765,7 +766,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             vec![Zone::Library],
             crate::tag::CompilerReferenceTag::DivvySource.bind(),
         ));
-        effects.push(EffectAst::ChooseObjectsAcrossZones {
+        effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
             filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
             count: ChoiceCount::exactly(1),
             count_value: None,
@@ -773,7 +774,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
             zones: vec![Zone::Library],
             search_mode: None,
-        });
+        }));
         effects.push(EffectAst::subject_verb_move_to_zone(
             TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind(), None),
             Zone::Hand,
@@ -782,9 +783,9 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             false,
             None,
         ));
-        effects.push(EffectAst::ForEachTagged {
+        effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
             tag: crate::tag::CompilerReferenceTag::DivvySource.bind(),
-            effects: vec![EffectAst::Conditional {
+            effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: membership_predicate_for_iterated_object(
                     crate::tag::CompilerReferenceTag::DivvyChosen,
                 ),
@@ -797,12 +798,12 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                     false,
                     None,
                 )],
-            }],
-        });
+            })],
+        }));
         effects.push(EffectAst::subject_verb(
             SubjectVerbRoleAst::LibraryOwner,
             PlayerAst::You,
-            SubjectVerbActionAst::ShuffleLibrary,
+            SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
         ));
         return Ok(Some(effects));
     }

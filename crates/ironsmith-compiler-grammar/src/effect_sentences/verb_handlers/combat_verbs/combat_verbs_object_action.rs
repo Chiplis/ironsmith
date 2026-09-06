@@ -1,3 +1,4 @@
+use crate::cards::builders::PlayerPredicateAst;
 use super::*;
 
 pub fn parse_instead_if_control_predicate(
@@ -12,21 +13,21 @@ pub fn parse_instead_if_control_predicate(
     }
     if let Some(count) = shape.min_count {
         if shape.requires_different_powers {
-            return Ok(Some(PredicateAst::PlayerHasAtLeastWithDifferentPowers {
+            return Ok(Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeastWithDifferentPowers {
                 player: PlayerAst::You,
                 filter,
                 count,
-            }));
+            })));
         }
-        Ok(Some(PredicateAst::PlayerHasAtLeast {
+        Ok(Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast {
             player: PlayerAst::You,
             filter,
             count,
-        }))
+        })))
     } else {
-        Ok(Some(PredicateAst::PlayerControls {
+        Ok(Some(PredicateAst::Player(PlayerPredicateAst::PlayerControls {
             player: PlayerAst::You,
             filter,
-        }))
+        })))
     }
 }

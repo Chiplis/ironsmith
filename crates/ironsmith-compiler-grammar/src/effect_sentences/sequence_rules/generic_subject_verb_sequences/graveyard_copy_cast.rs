@@ -4,7 +4,7 @@ use crate::activation_and_restrictions::{
 };
 use crate::cards::builders::{
     CardTextError, EffectAst, PlayerAst, SubjectVerbActionAst, SubjectVerbEffectAst,
-    SubjectVerbSubjectAst, TagKey, TargetAst,
+    SubjectVerbSubjectAst, TagKey, TargetAst, ZoneMoveActionAst, StackActionAst,
 };
 use crate::effect::Value;
 use crate::effect_sentences;
@@ -70,7 +70,7 @@ pub(crate) fn normalize_shared_graveyard_union_exile(effect: &mut EffectAst) {
         effect => effect,
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::Exile { target, .. },
+        action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. }),
         ..
     }) = effect
     else {
@@ -87,12 +87,12 @@ pub(crate) fn is_exact_graveyard_exile(effect: &EffectAst) -> bool {
                 player: PlayerAst::Implicit | PlayerAst::You,
                 ..
             },
-            action: SubjectVerbActionAst::Exile {
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
                 target,
                 face_down: false,
                 source_top_only: false,
                 ..
-            },
+            }),
             ..
         }) if target_is_in_graveyard(target)
     )
@@ -103,7 +103,7 @@ pub(crate) fn exact_tagged_graveyard_exile_tag(effect: &EffectAst) -> Option<Tag
         return None;
     };
     let tag = tag.clone();
-    is_exact_graveyard_exile(effect).then_some(tag)
+    is_exact_graveyard_exile(effect).then_some(tag.key.clone())
 }
 
 pub(crate) fn is_exact_tagged_graveyard_exile(effect: &EffectAst, expected_tag: &TagKey) -> bool {
@@ -118,7 +118,7 @@ pub(crate) fn exact_single_card_copy_tag(effect: &EffectAst) -> Option<TagKey> {
                 ..
             },
         action:
-            SubjectVerbActionAst::CopySpell {
+            SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
                 target: TargetAst::Tagged(tag, _),
                 target_reference_kind: None,
                 target_reference_pronoun: true,
@@ -133,7 +133,7 @@ pub(crate) fn exact_single_card_copy_tag(effect: &EffectAst) -> Option<TagKey> {
                 added_card_types,
                 added_subtypes,
                 set_base_power_toughness: None,
-            },
+            }),
         ..
     }) = effect
     else {
@@ -143,7 +143,7 @@ pub(crate) fn exact_single_card_copy_tag(effect: &EffectAst) -> Option<TagKey> {
     {
         return None;
     }
-    Some(tag.clone())
+    Some(tag.clone().into())
 }
 
 pub(crate) fn is_exact_single_source_copy(effect: &EffectAst) -> bool {
@@ -156,7 +156,7 @@ pub(crate) fn is_exact_single_source_copy(effect: &EffectAst) -> bool {
                     ..
                 },
             action:
-                SubjectVerbActionAst::CopySpell {
+                SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
                     target: TargetAst::Source(None),
                     target_reference_kind: None,
                     target_reference_pronoun: false,
@@ -171,7 +171,7 @@ pub(crate) fn is_exact_single_source_copy(effect: &EffectAst) -> bool {
                     added_card_types,
                     added_subtypes,
                     set_base_power_toughness: None,
-                },
+                }),
             ..
         }) if removed_supertypes.is_empty()
             && added_card_types.is_empty()
@@ -190,16 +190,16 @@ pub(crate) fn retag_single_card_copy(effect: &mut EffectAst, tag: TagKey) -> boo
     }
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::CopySpell {
+            SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
                 target: TargetAst::Tagged(copy_tag, _),
                 ..
-            },
+            }),
         ..
     }) = effect
     else {
         return false;
     };
-    *copy_tag = tag;
+    *copy_tag = crate::tag::TagRef::of(tag);
     true
 }
 

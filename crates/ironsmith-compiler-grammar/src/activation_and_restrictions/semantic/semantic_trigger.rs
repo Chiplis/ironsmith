@@ -1,3 +1,4 @@
+use crate::cards::builders::PlayerPredicateAst;
 use super::*;
 
 pub(super) fn try_parse_combat_damage_trigger_lexed(
@@ -3763,10 +3764,10 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             let predicate_token_idx =
                 trigger_word_token_start(tokens, predicate_word_idx).unwrap_or(tokens.len());
             let predicate_tokens = trim_edge_punctuation(&tokens[predicate_token_idx..]);
-            if let PredicateAst::PlayerControls {
+            if let PredicateAst::Player(PlayerPredicateAst::PlayerControls {
                 player: PlayerAst::You,
                 filter,
-            } = crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(
+            }) = crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(
                 &predicate_tokens,
             )? {
                 return Ok(TriggerSpec::ThisAttacksWhileYouControl(filter));
@@ -3988,7 +3989,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 (
                     &words[..=attacks_word_idx],
                     Some(PlayerFilter::TaggedPlayer(
-                        crate::tag::CompilerReferenceTag::Enchanted.bind(),
+                        (crate::tag::CompilerReferenceTag::Enchanted.bind()).into(),
                     )),
                     true,
                 )
@@ -3999,7 +4000,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 (
                     &words[..=attacks_word_idx],
                     Some(PlayerFilter::TaggedPlayer(
-                        crate::tag::CompilerReferenceTag::InitiativeHolder.bind(),
+                        (crate::tag::CompilerReferenceTag::InitiativeHolder.bind()).into(),
                     )),
                     true,
                 )
@@ -4018,7 +4019,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 (
                     &words[..=attacks_word_idx],
                     Some(PlayerFilter::TaggedPlayer(
-                        crate::tag::CompilerReferenceTag::Enchanted.bind(),
+                        (crate::tag::CompilerReferenceTag::Enchanted.bind()).into(),
                     )),
                     false,
                 )

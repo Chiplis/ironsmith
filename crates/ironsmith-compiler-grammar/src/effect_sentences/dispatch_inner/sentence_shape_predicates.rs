@@ -1,3 +1,11 @@
+use crate::cards::builders::PermissionEffectAst;
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::StatChangeActionAst;
+use crate::cards::builders::DamageActionAst;
+use crate::cards::builders::PermanentStateActionAst;
+use crate::cards::builders::ZoneMoveActionAst;
+use crate::cards::builders::CharacteristicActionAst;
+use crate::cards::builders::GrantActionAst;
 use crate::effect_sentences::{
     SubjectVerbPrimitiveClause, parse_sentence_delayed_next_step_unless_pays,
     parse_sentence_delayed_timing_suffix,
@@ -36,8 +44,8 @@ fn apply_trailing_counter_constraint_to_destroy_all(
     for effect in effects {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::DestroyAll { filter, .. }
-                | SubjectVerbActionAst::ExileAll { filter, .. },
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { filter, .. })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { filter, .. }),
             ..
         }) = effect
             && filter.with_counter.is_none()
@@ -62,19 +70,19 @@ fn is_loss_become_base_pt_coordinated_chain(effects: &[EffectAst]) -> bool {
     matches!(
         first,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::RemoveAbilitiesAll { .. },
+            action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll { .. }),
             ..
         })
     ) && matches!(
         second,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::AddSubtypes { .. },
+            action: SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes { .. }),
             ..
         })
     ) && matches!(
         third,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::SetBasePowerToughness { .. },
+            action: SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness { .. }),
             ..
         })
     )
@@ -386,7 +394,7 @@ pub fn lower_where_x_shape(
             filter.is_commander = true;
             filter.owner = Some(PlayerFilter::You);
             let tag = crate::tag::CompilerReferenceTag::WhereXCommanderManaValue.bind();
-            let choice = EffectAst::ChooseObjectsAcrossZones {
+            let choice = EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
                 filter,
                 count: ChoiceCount::exactly(1),
                 count_value: None,
@@ -394,10 +402,10 @@ pub fn lower_where_x_shape(
                 tag: tag.clone(),
                 zones: vec![Zone::Battlefield, Zone::Command],
                 search_mode: None,
-            };
+            });
             (
                 Some(choice),
-                Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(tag))),
+                Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(tag.key.clone()))),
             )
         }
         sentence_shapes::WhereXValueShape::ChosenObjectsPowerDifference { object_kind } => {
@@ -423,7 +431,7 @@ pub fn lower_where_x_shape(
                     crate::target::ChooseSpec::Object(ObjectFilter::default()),
                 ),
                 Reference::TaggedIt => {
-                    crate::target::ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.bind())
+                    crate::target::ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into())
                 }
             };
             let value = match (reference, metric) {
@@ -438,7 +446,7 @@ pub fn lower_where_x_shape(
         sentence_shapes::WhereXValueShape::TapCostPower => (
             None,
             Value::PowerOf(Box::new(crate::target::ChooseSpec::Tagged(
-                crate::tag::CompilerReferenceTag::TapCost0.bind(),
+                (crate::tag::CompilerReferenceTag::TapCost0.bind()).into(),
             )))
             .with_surface_hint(
                 ironsmith_core::ValueSurfaceHint::CharacteristicOfObjectThisWay {
@@ -464,7 +472,7 @@ pub fn lower_where_x_shape(
                 None,
                 Value::ManaValueOf(Box::new(
                     crate::target::ChooseSpec::Tagged(
-                        crate::tag::CompilerReferenceTag::SacrificeCost0.bind(),
+                        (crate::tag::CompilerReferenceTag::SacrificeCost0.bind()).into(),
                     )
                     .with_surface_hint(
                         crate::target::ChooseSpecSurfaceHint::SourceReference(
@@ -491,14 +499,14 @@ pub fn lower_where_x_shape(
             Value::Add(
                 Box::new(Value::Fixed(2)),
                 Box::new(Value::ManaValueOf(Box::new(
-                    crate::target::ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.bind()),
+                    crate::target::ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into()),
                 ))),
             ),
         ),
         sentence_shapes::WhereXValueShape::SourceExiledManaValue => (
             None,
             Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
-                crate::tag::CompilerReferenceTag::SourceExiled.bind(),
+                (crate::tag::CompilerReferenceTag::SourceExiled.bind()).into(),
             ))),
         ),
         sentence_shapes::WhereXValueShape::PriorEffectMetric(query) => {
@@ -525,7 +533,7 @@ pub fn lower_where_x_shape(
                 ),
                 (Reference::TaggedIt, counter_type) => Value::CountersOn(
                     Box::new(ChooseSpec::Tagged(
-                        crate::tag::CompilerReferenceTag::It.bind(),
+                        (crate::tag::CompilerReferenceTag::It.bind()).into(),
                     )),
                     counter_type,
                 ),
@@ -552,7 +560,7 @@ fn parse_tap_then_damage_for_number_tapped_this_way(
     let first_is_tap = matches!(
         &effects[0],
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Tap { .. } | SubjectVerbActionAst::TapAll { .. },
+            action: SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap { .. }) | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapAll { .. }),
             ..
         })
     );
@@ -560,7 +568,7 @@ fn parse_tap_then_damage_for_number_tapped_this_way(
         return Ok(None);
     }
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::DealDamage { amount, target, .. },
+        action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount, target, .. }),
         ..
     }) = &mut effects[1]
     else {
@@ -960,34 +968,34 @@ fn set_first_continuous_set_quantifier(
     for effect in effects {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect {
             let slot = match action {
-                SubjectVerbActionAst::Pump {
+                SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
                     set_quantifier_surface,
                     ..
-                }
-                | SubjectVerbActionAst::PumpAll {
+                })
+                | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
                     set_quantifier_surface,
                     ..
-                }
-                | SubjectVerbActionAst::GrantAbilitiesAll {
+                })
+                | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll {
                     set_quantifier_surface,
                     ..
-                }
-                | SubjectVerbActionAst::GrantAbilitiesToTarget {
+                })
+                | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                     set_quantifier_surface,
                     ..
-                }
-                | SubjectVerbActionAst::RemoveAbilitiesAll {
+                })
+                | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll {
                     set_quantifier_surface,
                     ..
-                }
-                | SubjectVerbActionAst::SetBasePowerToughness {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness {
                     set_quantifier_surface,
                     ..
-                }
-                | SubjectVerbActionAst::ReturnToHand {
+                })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand {
                     set_quantifier_surface,
                     ..
-                } => Some(set_quantifier_surface),
+                }) => Some(set_quantifier_surface),
                 _ => None,
             };
             if let Some(slot) = slot {
@@ -1013,10 +1021,10 @@ fn set_first_return_set_reference_surface(effects: &mut [EffectAst], surface: &s
     for effect in effects {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::ReturnToHand {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand {
                     set_reference_surface,
                     ..
-                },
+                }),
             ..
         }) = effect
         {
@@ -1050,22 +1058,22 @@ fn parse_bounded_x_mana_payment_sentence(tokens: &[OwnedLexToken]) -> Option<Vec
 
     Some(vec![match may_shape.actor {
         effect_grammar::clause_dispatch_shapes::LeadingMayActorShape::Player(player) => {
-            EffectAst::MayByPlayer {
+            EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
                 player,
                 effects: vec![EffectAst::subject_verb_pay_mana_up_to(
                     player,
                     payment_shape.cost,
                     maximum,
                 )],
-            }
+            })
         }
-        effect_grammar::clause_dispatch_shapes::LeadingMayActorShape::Implicit => EffectAst::May {
+        effect_grammar::clause_dispatch_shapes::LeadingMayActorShape::Implicit => EffectAst::Permissions(PermissionEffectAst::May {
             effects: vec![EffectAst::subject_verb_pay_mana_up_to(
                 PlayerAst::You,
                 payment_shape.cost,
                 maximum,
             )],
-        },
+        }),
     }])
 }
 

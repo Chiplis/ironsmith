@@ -6,7 +6,7 @@ use crate::PtValue;
 use crate::ability::{ActivationTiming, PresentationLabel};
 use crate::cards::builders::{
     CardTextError, LineAst, ParseAnnotations, ParsedLevelAbilityItemAst,
-    ParsedLevelActivatedAbilityAst, PredicateAst, TextSpan,
+    ParsedLevelActivatedAbilityAst, PredicateAst, TextSpan, SourcePredicateAst,
 };
 use crate::parse_context::{ParseContext, ParseContextView, ParseScopeKind};
 use crate::parse_trace;
@@ -563,7 +563,7 @@ fn sentence_is_static_after_trigger_effect(tokens: &[OwnedLexToken]) -> bool {
         .is_ok_and(|effects| {
             matches!(
                 effects.as_slice(),
-                [crate::model::ast::EffectAst::Conditional { predicate, .. }]
+                [crate::model::ast::EffectAst::Conditionals(crate::cards::builders::ConditionalEffectAst::Conditional { predicate, .. })]
                     if predicate.uses_implicit_object_reference()
             )
         })
@@ -2437,7 +2437,7 @@ fn try_parse_labeled_line_dispatch(
             grammar::split_lexed_once_on_comma(after_trigger)
         && trigger_with_intro.len() > 1
     {
-        let source_zone_condition = PredicateAst::SourceMatches(crate::ObjectFilter {
+        let source_zone_condition = PredicateAst::Source(SourcePredicateAst::SourceMatches(crate::ObjectFilter {
             any_of: vec![
                 crate::ObjectFilter {
                     zone: Some(crate::zone::Zone::Command),
@@ -2449,7 +2449,7 @@ fn try_parse_labeled_line_dispatch(
                 },
             ],
             ..Default::default()
-        });
+        }));
         let triggered = RecognizedTriggeredLine {
             info: line.info.clone(),
             full_text: render_token_slice(&body_line.tokens),
@@ -4285,6 +4285,9 @@ fn rewrite_line_normalized(
 
 #[cfg(test)]
 mod tests {
+    use crate::cards::builders::TurnEventPredicateAst;
+    use crate::cards::builders::SourcePredicateAst;
+    use crate::cards::builders::KeywordActionAst;
     use crate::ability::PresentationLabel;
     use crate::cards::builders::CardTextError;
     use crate::cards::builders::document_parser::KeywordLineKind;
@@ -4391,7 +4394,7 @@ mod tests {
                 fight_effects.as_slice(),
                 [crate::cards::builders::EffectAst::SubjectVerb(
                     crate::cards::builders::SubjectVerbEffectAst {
-                        action: crate::cards::builders::SubjectVerbActionAst::Fight { .. },
+                        action: crate::cards::builders::SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fight { .. }),
                         ..
                     }
                 )]
@@ -5815,13 +5818,13 @@ mod tests {
             (
                 "At the beginning of your end step, if this creature didn't attack this turn, put a +1/+1 counter on it.",
                 crate::cards::builders::PredicateAst::Not(Box::new(
-                    crate::cards::builders::PredicateAst::SourceAttackedThisTurn,
+                    crate::cards::builders::PredicateAst::Source(SourcePredicateAst::SourceAttackedThisTurn),
                 )),
             ),
             (
                 "At the beginning of your end step, if you didn't attack with a creature this turn, sacrifice this Aura.",
                 crate::cards::builders::PredicateAst::Not(Box::new(
-                    crate::cards::builders::PredicateAst::YouAttackedThisTurn,
+                    crate::cards::builders::PredicateAst::TurnEvents(TurnEventPredicateAst::YouAttackedThisTurn),
                 )),
             ),
         ] {
@@ -5929,11 +5932,11 @@ mod tests {
         ));
         assert!(matches!(
             ability.effects_ast.as_deref(),
-            Some([crate::cards::builders::EffectAst::Conditional {
-                predicate: crate::cards::builders::PredicateAst::SourceMatches(filter),
+            Some([crate::cards::builders::EffectAst::Conditionals(crate::cards::builders::ConditionalEffectAst::Conditional {
+                predicate: crate::cards::builders::PredicateAst::Source(SourcePredicateAst::SourceMatches(filter)),
                 if_true,
                 ..
-            }]) if filter.any_of.len() == 2 && !if_true.is_empty()
+            })]) if filter.any_of.len() == 2 && !if_true.is_empty()
         ));
     }
 

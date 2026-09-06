@@ -4,10 +4,10 @@ use super::super::rule_engine::{
 };
 use super::sentence_helpers::target_ast_to_object_filter;
 use super::{parse_object_filter, parse_target_phrase as parse_target_phrase_lexed};
-use crate::cards::builders::{CardTextError, ChoiceCount, EffectAst};
+use crate::cards::builders::{CardTextError, ChoiceCount, EffectAst, ObjectChoiceEffectAst};
 use crate::cards::builders::{PlayerAst, TagKey, Value};
 use crate::effect::{EventValueSpec, Until};
-use crate::model::ast::{SubjectVerbActionAst, SubjectVerbRoleAst};
+use crate::model::ast::{SubjectVerbActionAst, SubjectVerbRoleAst, LifeResourceActionAst};
 use crate::recognition::{ParseOutcome, RuleId};
 use crate::registry::{HeadDiscriminator, RegistryRuleMetadata};
 use crate::target::{ChooseSpec, ObjectFilter};
@@ -243,21 +243,21 @@ pub(super) fn parse_sacrifice_any_number_then_draw_that_many_rule_lexed(
 
     ParseOutcome::matched(
         vec![
-            EffectAst::ChooseObjects {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                 filter,
                 count: ChoiceCount::any_number(),
                 count_value: None,
                 player: PlayerAst::You,
                 tag: tag.clone(),
-            },
+            }),
             EffectAst::subject_verb_sacrifice_all(PlayerAst::You, ObjectFilter::tagged(tag)),
             EffectAst::subject_verb(
                 SubjectVerbRoleAst::AffectedPlayer,
                 PlayerAst::You,
-                SubjectVerbActionAst::Draw {
+                SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
                     count: Value::EventValue(EventValueSpec::Amount)
                         .with_surface_hint(ironsmith_core::ValueSurfaceHint::ThatManyCards),
-                },
+                }),
             ),
         ],
         lex_clause_span(view),

@@ -10,25 +10,25 @@
         let effect = parse_lose_life(&tokens, Some(SubjectAst::Player(PlayerAst::That)))
             .expect("delayed life loss should parse");
 
-        let EffectAst::DelayedUntilNextDrawStep {
+        let EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextDrawStep {
             player: PlayerAst::That,
             effects,
-        } = effect
+        }) = effect
         else {
             panic!("expected delayed draw-step wrapper: {effect:#?}");
         };
         assert!(matches!(
             effects.as_slice(),
-            [EffectAst::UnlessPays {
+            [EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
                 player: PlayerAst::That,
                 effects,
                 ..
-            }] if matches!(
+            })] if matches!(
                 effects.as_slice(),
                 [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::LoseLife {
+                    action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife {
                         amount: Value::Fixed(1),
-                    },
+                    }),
                     ..
                 })]
             )
@@ -46,11 +46,11 @@
         assert!(matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::GainControl {
+                action: SubjectVerbActionAst::Control(ControlActionAst::GainControl {
                     controller_reference:
                         Some(crate::target::ObjectRef::Tagged(ref tag)),
                     ..
-                },
+                }),
                 ..
             }) if tag.as_str() == "triggering_source"
         ));
@@ -66,7 +66,7 @@
         let effect =
             parse_gain_control(&tokens, None).expect("parse historical gain-control target");
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::GainControl { target, .. },
+            action: SubjectVerbActionAst::Control(ControlActionAst::GainControl { target, .. }),
             ..
         }) = effect
         else {
@@ -131,7 +131,7 @@
         assert!(matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::MoveToZone {
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                     exiled_with_source_surface: Some(
                         ironsmith_core::ExiledWithSourceMoveSurface {
                             subject: ironsmith_core::ExiledWithSourceSubjectSurface::Custom(ref text),
@@ -140,7 +140,7 @@
                     ),
                     zone: Zone::Battlefield,
                     ..
-                },
+                }),
                 ..
             }) if text == "target creature card with mana value X"
         ));
@@ -183,14 +183,14 @@
         assert!(matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::MoveToZone {
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                     exiled_with_source_surface: Some(ironsmith_core::ExiledWithSourceMoveSurface {
                         subject: ironsmith_core::ExiledWithSourceSubjectSurface::AllCards,
                         ..
                     }),
                     zone: Zone::Library,
                     ..
-                },
+                }),
                 ..
             })
         ));
@@ -254,12 +254,12 @@
 
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::MoveToZone {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                     target: TargetAst::WithCount(inner, count),
                     exiled_with_source_surface: Some(surface),
                     zone: Zone::Hand,
                     ..
-                },
+                }),
             ..
         }) = effect
         else {
@@ -284,12 +284,12 @@
 
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::MoveToZone {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                     target: TargetAst::WithCount(inner, count),
                     zone,
                     destination_player_surface,
                     ..
-                },
+                }),
             ..
         }) = effect
         else {
@@ -314,7 +314,7 @@
         .expect("lex same-card destination choice");
         let effect = parse_put_into_hand(&tokens, None).expect("parse destination choice");
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::CreateTokenChoice { options },
+            action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenChoice { options }),
             ..
         }) = effect
         else {
@@ -326,12 +326,12 @@
             .map(|(_, effect)| match effect.as_ref() {
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action:
-                        SubjectVerbActionAst::MoveToZone {
+                        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                             target: TargetAst::WithCount(_, count),
                             zone,
                             to_top,
                             ..
-                        },
+                        }),
                     ..
                 }) => (*zone, *to_top, *count),
                 other => panic!("expected a counted library move: {other:#?}"),
@@ -359,14 +359,14 @@
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                    SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
                         tag,
                         keep_tagged: None,
                         order: crate::cards::builders::LibraryBottomOrderAst::ChooserChooses,
                         surface:
                             ironsmith_core::LibraryRemainderSurface::CardsYouRevealedThisWay,
                         ..
-                    },
+                    }),
                 ..
             }) if tag.as_str() == "__last_revealed__"
         ));
@@ -384,7 +384,7 @@
         assert!(matches!(
             &effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::MoveToZone {
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                     target: TargetAst::Tagged(tag, _),
                     zone: Zone::Library,
                     to_top: false,
@@ -392,7 +392,7 @@
                         crate::cards::builders::LibraryBottomOrderAst::Random
                     ),
                     ..
-                },
+                }),
                 ..
             }) if tag == &crate::tag::CompilerReferenceTag::Rest.key()
         ), "{effect:#?}");

@@ -1,3 +1,4 @@
+import PlayerZonePiles from "./PlayerZonePiles";
 import PriorityHoldControl from "@/components/decisions/PriorityHoldControl";
 import RollingPanel from "./RollingPanel";
 import { useCastPlayerHovered } from "@/context/DragContext";
@@ -80,6 +81,7 @@ function buildZoneEntries(player, zoneViews) {
 
 function shouldShowZoneBody(player, entry, activity = null) {
   if (!entry?.active) return false;
+  if (entry.zone === "graveyard" || entry.zone === "exile") return false;
   if (entry.zone === "library") return false;
   if (activity) return true;
   if (entry.zone === "battlefield") return true;
@@ -589,7 +591,8 @@ export default function MyZone({
           data-turn-active={isActivePlayer ? "true" : "false"}
           data-mobile-hand-drop-target="board"
         >
-          <div className="mobile-battle-my-zone-battlefield">
+          <div className="mobile-battle-my-zone-battlefield has-zone-piles">
+            <PlayerZonePiles player={player} onCardClick={handleCardClick} legalTargetObjectIds={legalTargetObjectIds} />
             <BattlefieldRow
               cards={battlefieldCards}
               battlefieldSide="bottom"
@@ -874,12 +877,13 @@ export default function MyZone({
         ) : null}
         <div
           className={cn(
-            "battlefield-zone-strip min-h-0 h-full overflow-visible",
+            "battlefield-zone-strip has-zone-piles min-h-0 h-full overflow-visible",
             denseSupportLayout ? "battlefield-zone-strip--shelf" : "flex gap-1"
           )}
           data-zone-layout={denseSupportLayout ? "shelf" : "lanes"}
           data-zone-anchor-player={String(player?.id ?? player?.index ?? "")}
         >
+          <PlayerZonePiles player={player} onCardClick={handleCardClick} legalTargetObjectIds={legalTargetObjectIds} />
         {(denseSupportLayout && battlefieldZoneEntry
           ? [battlefieldZoneEntry]
           : boardZoneEntries

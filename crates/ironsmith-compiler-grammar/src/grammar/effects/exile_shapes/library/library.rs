@@ -27,7 +27,7 @@ pub fn parse_exile_dynamic_top_library_shape(
                 && matches!(count.unhinted(), Value::SourcePower | Value::PowerOf(_))
             {
                 count = Value::PowerOf(Box::new(ChooseSpec::Tagged(
-                    crate::tag::CompilerReferenceTag::Triggering.bind(),
+                    (crate::tag::CompilerReferenceTag::Triggering.bind()).into(),
                 )));
             } else if crate::word_primitives::parse_sequence_complete(
                 &count_words,

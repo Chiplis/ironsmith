@@ -1,3 +1,4 @@
+use crate::cards::builders::ForEachEffectAst;
 use super::*;
 
 pub(super) fn parse_combat_damage_history_participant(
@@ -12,11 +13,11 @@ pub(super) fn parse_combat_damage_history_participant(
     let sources = parse_object_filter(history.source_tokens, false)?;
     let normalized = prepend_that_player_subject(history.effect_tokens);
     let effects = parse_maybe_effects(&normalized, false, true)?;
-    Ok(Some(EffectAst::ForEachPlayersFiltered {
+    Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
         filter: PlayerFilter::was_dealt_combat_damage_by_sources_this_game(
             iteration_filter,
             sources,
         ),
         effects,
-    }))
+    })))
 }

@@ -3,6 +3,7 @@
 //! first-match ladder in `generic_subject_verb`; every reading runs, resolved
 //! by rank while the overlaps are measured.
 
+use crate::cards::builders::VoteEffectAst;
 use super::*;
 use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId, RuleMatch};
 use crate::registry::{
@@ -141,11 +142,11 @@ fn read_vote_reveal(input: &VoteSentence<'_>) -> Result<Option<EffectAst>, CardT
 fn read_generic_vote_start(input: &VoteSentence<'_>) -> Result<Option<EffectAst>, CardTextError> {
     let tokens = input.tokens;
     if let Some(effect) = parse_generic_vote_start(tokens)? {
-        if let EffectAst::VoteStart {
+        if let EffectAst::Votes(VoteEffectAst::VoteStart {
             options,
             secret,
             starting_with_controller,
-        } = effect
+        }) = effect
         {
             return Ok(Some(
                 GenericVoteProgram::Start {
@@ -165,7 +166,7 @@ fn read_generic_vote_option_effects(
 ) -> Result<Option<EffectAst>, CardTextError> {
     let tokens = input.tokens;
     if let Some(effect) = parse_generic_vote_option_effects(tokens)? {
-        if let EffectAst::VoteOption { option, effects } = effect {
+        if let EffectAst::Votes(VoteEffectAst::VoteOption { option, effects }) = effect {
             return Ok(Some(
                 GenericVoteProgram::OptionEffects { option, effects }.lower(),
             ));
@@ -177,7 +178,7 @@ fn read_generic_vote_option_effects(
 fn read_generic_extra_vote(input: &VoteSentence<'_>) -> Result<Option<EffectAst>, CardTextError> {
     let tokens = input.tokens;
     if let Some(effect) = parse_generic_extra_vote(tokens) {
-        if let EffectAst::VoteExtra { count, optional } = effect {
+        if let EffectAst::Votes(VoteEffectAst::VoteExtra { count, optional }) = effect {
             return Ok(Some(GenericVoteProgram::Extra { count, optional }.lower()));
         }
         return Ok(Some(effect));

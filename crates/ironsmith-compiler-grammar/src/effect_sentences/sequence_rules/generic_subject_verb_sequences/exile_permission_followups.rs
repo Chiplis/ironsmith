@@ -1,7 +1,7 @@
 use super::super::SentenceInput;
 use crate::cards::builders::{
     CardTextError, EffectAst, IfResultPredicate, ObjectFilter, SubjectVerbActionAst,
-    SubjectVerbEffectAst, TriggerSpec,
+    SubjectVerbEffectAst, TriggerSpec, GrantActionAst,
 };
 use crate::effect_sentences;
 use crate::grammar::effects::{
@@ -22,18 +22,18 @@ pub(crate) fn rebind_permission_tag(
         return None;
     };
     match action {
-        SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+        SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
             tag: permission_tag,
             ..
-        }
-        | SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn {
+        })
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilYourNextTurn {
             tag: permission_tag,
             ..
-        }
-        | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
+        })
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
             tag: permission_tag,
             ..
-        } => *permission_tag = tag,
+        }) => *permission_tag = crate::tag::TagRef::of(tag),
         _ => return None,
     }
     Some(permission)
@@ -74,13 +74,13 @@ pub fn parse_dynamic_exile_top_then_play_for_as_long_as_exiled(
     else {
         return Ok(None);
     };
-    let Some(permission) = rebind_permission_tag(permission, tag.clone()) else {
+    let Some(permission) = rebind_permission_tag(permission, tag.clone().into()) else {
         return Ok(None);
     };
     if !matches!(
         &permission,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled { .. },
+            action: SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled { .. }),
             ..
         })
     ) {
@@ -88,13 +88,16 @@ pub fn parse_dynamic_exile_top_then_play_for_as_long_as_exiled(
     }
 
     Ok(Some(vec![
-        EffectAst::subject_verb_exile_top_of_library(player, shape.count, vec![tag], Vec::new()),
+        EffectAst::subject_verb_exile_top_of_library(player, shape.count, vec![crate::tag::TagRef::of(tag)], Vec::new()),
         permission,
     ]))
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::cards::builders::ConditionalEffectAst;
+    use crate::cards::builders::DelayedEffectAst;
+    use crate::cards::builders::LibraryActionAst;
     use super::*;
     use crate::lexer::{lex_line, split_lexed_sentences};
 
@@ -120,13 +123,13 @@ mod tests {
             reflexive.as_slice(),
             [
                 EffectAst::SubjectVerb(_),
-                EffectAst::WhenResult {
+                EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
                     predicate: IfResultPredicate::AffectedObjectMatchesCardType {
                         card_type: CardType::Land,
                         negated: true,
                     },
                     ..
-                },
+                }),
                 EffectAst::SubjectVerb(_),
             ]
         ));
@@ -136,10 +139,10 @@ mod tests {
         );
         assert!(matches!(
             delayed.last(),
-            Some(EffectAst::DelayedTriggerThisTurn {
+            Some(EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
                 trigger: TriggerSpec::Either(_, _),
                 ..
-            })
+            }))
         ));
     }
 
@@ -161,12 +164,12 @@ mod tests {
         let [
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::ExileTopOfLibrary {
+                    SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
                         count,
                         tags,
                         face_down: false,
                         ..
-                    },
+                    }),
                 subject:
                     crate::cards::builders::SubjectVerbSubjectAst {
                         player: crate::cards::builders::PlayerAst::ItsOwner,
@@ -176,11 +179,11 @@ mod tests {
             }),
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
+                    SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
                         tag,
                         allow_land: false,
                         ..
-                    },
+                    }),
                 ..
             }),
         ] = effects.as_slice()

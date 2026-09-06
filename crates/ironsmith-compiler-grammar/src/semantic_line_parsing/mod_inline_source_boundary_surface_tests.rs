@@ -1,3 +1,6 @@
+use crate::cards::builders::PermissionEffectAst;
+use crate::cards::builders::ZoneMoveActionAst;
+use crate::cards::builders::GrantActionAst;
 use super::*;
 
 #[test]
@@ -86,10 +89,10 @@ fn moved_object_followup_keeps_prior_leading_then_boundary() {
         panic!("expected draw and linked deployment source groups: {parsed:#?}");
     };
     let [
-        EffectAst::MayByPlayer {
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
             player: PlayerAst::You,
             effects,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("entry follow-up must remain inside the optional procedure: {effects:#?}");
@@ -98,19 +101,19 @@ fn moved_object_followup_keeps_prior_leading_then_boundary() {
         effects.as_slice(),
         [
             EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::MoveToZone {
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                     battlefield_tapped: true,
                     battlefield_attacking: true,
                     ..
-                },
+                }),
                 ..
             }),
             EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::GrantAbilitiesToTarget {
+                action: SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                     target: TargetAst::Tagged(tag, _),
                     duration: Until::EndOfTurn,
                     ..
-                },
+                }),
                 ..
             }),
         ] if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()

@@ -307,10 +307,10 @@ fn typed_choice_sequences_preserve_resolution_choice_ast() {
     assert!(matches!(
         cant_block.as_slice(),
         [
-            EffectAst::ChooseObjects {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                 player: PlayerAst::TargetOpponent,
                 ..
-            },
+            }),
             _
         ]
     ));
@@ -324,7 +324,7 @@ fn typed_choice_sequences_preserve_resolution_choice_ast() {
         .expect("expected choose-then-library sequence");
     assert!(matches!(
         put_on_top.as_slice(),
-        [EffectAst::ChooseObjects { .. }, _]
+        [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { .. }), _]
     ));
 }
 
@@ -347,7 +347,7 @@ fn typed_choice_become_and_battlefield_sequences_build_existing_ast() {
             .expect("expected choose-then-battlefield sequence");
     assert!(matches!(
         put_onto_battlefield.as_slice(),
-        [EffectAst::ChooseObjects { .. }, _]
+        [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { .. }), _]
     ));
 }
 

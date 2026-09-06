@@ -1,3 +1,4 @@
+use crate::cards::builders::ForEachEffectAst;
 use super::*;
 
 pub(super) fn pre_rule_draw_count_demonstrative_gain_followup(
@@ -37,7 +38,7 @@ pub(super) fn effects_contain_gain_life(effects: &[EffectAst]) -> bool {
         if matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::GainLife { .. },
+                action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { .. }),
                 ..
             })
         ) {
@@ -80,7 +81,7 @@ pub(super) fn post_rule_correlated_plural_sacrifice_result(
             &["those", "players", "sacrifice", "those", "creatures"],
             &["those", "players", "sacrifice", "those", "tokens"],
         ],
-    ) || !matches!(state.effects.last(), Some(EffectAst::ForEachPlayer { .. }))
+    ) || !matches!(state.effects.last(), Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { .. })))
     {
         return Ok(None);
     }
@@ -89,7 +90,7 @@ pub(super) fn post_rule_correlated_plural_sacrifice_result(
         return Ok(None);
     };
     let sacrifice = match effect {
-        EffectAst::ForEachPlayer { effects } => {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }) => {
             let [sacrifice] = effects.as_mut_slice() else {
                 return Ok(None);
             };
@@ -101,7 +102,7 @@ pub(super) fn post_rule_correlated_plural_sacrifice_result(
     let consumes_prior_result = matches!(
         sacrifice,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::SacrificeAll { filter },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter }),
             ..
         }) if filter.tagged_constraints.iter().any(|constraint| {
             constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
@@ -119,11 +120,11 @@ pub(super) fn post_rule_correlated_plural_sacrifice_result(
     }
     let tagged = EffectAst::TagAffected {
         effect: Box::new(sacrifice),
-        tag: result_tag,
+        tag: crate::tag::TagRef::of(result_tag),
     };
-    *effect = EffectAst::ForEachPlayer {
+    *effect = EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
         effects: vec![tagged],
-    };
+    });
     Ok(Some(PostParseFollowupResult::Annotated))
 }
 
@@ -145,7 +146,7 @@ pub(super) fn post_rule_typed_sacrificed_result_iterator(
         return Ok(None);
     }
 
-    let [EffectAst::ForEachTagged { tag, .. }] = sentence_effects.as_mut_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, .. })] = sentence_effects.as_mut_slice() else {
         return Ok(None);
     };
     if tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str() {
@@ -157,11 +158,11 @@ pub(super) fn post_rule_typed_sacrificed_result_iterator(
     };
     let is_each_player_sacrifice_all = matches!(
         previous,
-        EffectAst::ForEachPlayer { effects }
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })
             if matches!(
                 effects.as_slice(),
                 [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::SacrificeAll { .. },
+                    action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { .. }),
                     ..
                 })]
             )
@@ -173,10 +174,10 @@ pub(super) fn post_rule_typed_sacrificed_result_iterator(
     if let Some(previous_sentence) = sentence_idx
         .checked_sub(1)
         .and_then(|index| sentences.get(index))
-        && let EffectAst::ForEachPlayer { effects } = previous
+        && let EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }) = previous
         && let [
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::SacrificeAll { filter },
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter }),
                 ..
             }),
         ] = effects.as_mut_slice()
@@ -191,9 +192,9 @@ pub(super) fn post_rule_typed_sacrificed_result_iterator(
     let previous_effect = previous.clone();
     *previous = EffectAst::TagAffected {
         effect: Box::new(previous_effect),
-        tag: result_tag.clone(),
+        tag: crate::tag::TagRef::of(result_tag.clone()),
     };
-    *tag = result_tag;
+    *tag = crate::tag::TagRef::of(result_tag);
     Ok(Some(PostParseFollowupResult::Annotated))
 }
 
@@ -202,7 +203,7 @@ pub(super) fn bind_prior_exiled_mana_value(value: &mut Value) {
         Value::SurfaceHinted { value, .. } => bind_prior_exiled_mana_value(value),
         Value::ManaValueOf(spec) if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()) =>
         {
-            **spec = ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::PriorExiledCard.bind());
+            **spec = ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::PriorExiledCard.bind()).into());
         }
         _ => {}
     }
@@ -213,10 +214,10 @@ fn last_effect_creates_tokens(effects: &[EffectAst]) -> bool {
         if matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::CreateTokenWithMods { .. }
-                    | SubjectVerbActionAst::CreateTokenCopy { .. }
-                    | SubjectVerbActionAst::CreateTokenCopyFromSource { .. }
-                    | SubjectVerbActionAst::CreateTokenChoice { .. },
+                action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { .. })
+                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. })
+                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { .. })
+                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenChoice { .. }),
                 ..
             })
         ) {

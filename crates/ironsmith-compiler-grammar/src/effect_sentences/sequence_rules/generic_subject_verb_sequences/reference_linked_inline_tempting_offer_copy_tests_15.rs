@@ -35,12 +35,12 @@ fn additional_copy_count_keeps_typed_authored_surface() {
     assert!(matches!(
             effects.last(),
             Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::CopySpell {
+                action: SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
                     count_surface: Some(
                         ironsmith_core::effect::CopyCountSurface::OncePlusAdditionalPerOpponentWhoCopiedThisWay
                     ),
                     ..
-                },
+                }),
                 ..
             }))
         ));

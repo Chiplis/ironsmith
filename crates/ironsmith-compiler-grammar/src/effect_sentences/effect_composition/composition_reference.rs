@@ -1,3 +1,4 @@
+use crate::cards::builders::ForEachEffectAst;
 use super::*;
 
 pub(super) fn parse_each_player_hand_exile_play_constraints_bundle(
@@ -10,21 +11,21 @@ pub(super) fn parse_each_player_hand_exile_play_constraints_bundle(
     hand_card.owner = Some(PlayerFilter::IteratedPlayer);
 
     Some(vec![
-        EffectAst::ForEachPlayersFiltered {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
             filter: shape.players,
             effects: vec![
-                EffectAst::ChooseObjects {
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                     filter: hand_card,
                     count: ChoiceCount::exactly(1),
                     count_value: None,
                     player: PlayerAst::That,
-                    tag: exiled_tag.clone(),
-                },
-                EffectAst::subject_verb_exile(TargetAst::Tagged(exiled_tag.clone(), None), false),
+                    tag: crate::tag::TagRef::of(exiled_tag.clone()),
+                }),
+                EffectAst::subject_verb_exile(TargetAst::Tagged(crate::tag::TagRef::of(exiled_tag.clone()), None), false),
             ],
-        },
+        }),
         EffectAst::subject_verb_grant_play_tagged_with_play_constraints(
-            exiled_tag,
+            crate::tag::TagRef::of(exiled_tag),
             PlayerAst::ItsOwner,
             Some(shape.additional_cost),
             shape.lands_enter_tapped,
@@ -77,7 +78,7 @@ pub(super) fn parse_untap_then_phase_out_until_source_leaves_bundle(
         return None;
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::UntapAll { filter },
+        action: SubjectVerbActionAst::PermanentState(PermanentStateActionAst::UntapAll { filter }),
         ..
     }) = untap_effect
     else {

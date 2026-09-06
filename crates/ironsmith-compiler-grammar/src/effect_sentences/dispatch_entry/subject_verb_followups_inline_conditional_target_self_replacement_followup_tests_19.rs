@@ -1,3 +1,4 @@
+use crate::cards::builders::TurnEventPredicateAst;
 use super::*;
 use crate::cards::builders::TurnHistoryPredicateAst;
 
@@ -59,7 +60,7 @@ fn trailing_instead_if_rebinds_the_nested_it_threshold_but_not_the_revolt_gate()
     assert!(
         matches!(
             predicate,
-            PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn { .. }
+            PredicateAst::TurnEvents(TurnEventPredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn { .. })
         ),
         "the outer replacement gate must remain the turn-history predicate: {predicate:#?}"
     );
@@ -72,7 +73,7 @@ fn trailing_threshold(effects: &[EffectAst], toughness: bool) {
         [EffectAst::TagAffected { effect, .. }] => {
             trailing_threshold(std::slice::from_ref(effect.as_ref()), toughness);
         }
-        [EffectAst::TrailingIf { predicate, effects }] => {
+        [EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects })] => {
             assert_it_characteristic_threshold(predicate, toughness);
             assert_eq!(effects.len(), 1, "threshold branch must retain one action");
         }

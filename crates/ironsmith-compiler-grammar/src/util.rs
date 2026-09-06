@@ -1,10 +1,11 @@
 #[cfg(test)]
+use crate::cards::builders::{CounterActionAst, DamagePreventionActionAst};
 use crate::PtValue;
 use crate::ability::ActivationTiming;
 use crate::cards::TextSpan;
 use crate::cards::builders::{
     AdditionalCostChoiceOptionAst, CardTextError, KeywordAction, ParsedAbility, PlayerAst,
-    ReferenceImports, SubjectVerbActionAst, SubjectVerbRoleAst, TargetAst,
+    ReferenceImports, SubjectVerbActionAst, SubjectVerbRoleAst, TargetAst, ZoneMoveActionAst,
 };
 use crate::cost::TotalCost;
 use crate::costs::Cost;
@@ -207,12 +208,12 @@ pub fn recognize_unique_named_source_exile_surface(
             return None;
         };
         match &subject_verb.action {
-            SubjectVerbActionAst::Exile { target, .. }
-            | SubjectVerbActionAst::MoveToZone {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                 target,
                 zone: Zone::Exile,
                 ..
-            } => Some(target),
+            }) => Some(target),
             _ => None,
         }
     }
@@ -232,12 +233,12 @@ pub fn recognize_unique_named_source_exile_surface(
         for effect in effects {
             if let crate::cards::builders::EffectAst::SubjectVerb(subject_verb) = effect {
                 let target = match &mut subject_verb.action {
-                    SubjectVerbActionAst::Exile { target, .. }
-                    | SubjectVerbActionAst::MoveToZone {
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. })
+                    | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                         target,
                         zone: Zone::Exile,
                         ..
-                    } => Some(target),
+                    }) => Some(target),
                     _ => None,
                 };
                 if let Some(target) = target
@@ -288,10 +289,10 @@ fn unique_named_source_exile_surface_requires_one_authored_name_and_one_source_a
     let [crate::cards::builders::EffectAst::SubjectVerb(effect)] = effects.as_slice() else {
         panic!("expected one source exile: {effects:#?}");
     };
-    let SubjectVerbActionAst::Exile {
+    let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
         target: TargetAst::Object(filter, _, _),
         ..
-    } = &effect.action
+    }) = &effect.action
     else {
         panic!("expected a surfaced source target: {effect:#?}");
     };
@@ -308,10 +309,10 @@ fn unique_named_source_exile_surface_requires_one_authored_name_and_one_source_a
             crate::cards::builders::EffectAst::SubjectVerb(subject_verb)
                 if matches!(
                     subject_verb.action,
-                    SubjectVerbActionAst::Exile {
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
                         target: TargetAst::Source(_),
                         ..
-                    }
+                    })
                 )
         )
     }));
@@ -497,21 +498,15 @@ pub fn possessive_normalized_word_refs<'a>(words: &[&'a str]) -> Vec<&'a str> {
         .collect()
 }
 
-pub fn helper_tag_for_tokens(tokens: &[OwnedLexToken], prefix: &str) -> TagKey {
+pub fn helper_tag_for_tokens(tokens: &[OwnedLexToken], prefix: &str) -> crate::tag::TagRef {
     let span = span_from_tokens(tokens).unwrap_or(TextSpan {
         line: 0,
         start: 0,
         end: 0,
     });
 
-    let key = crate::tag::sentence_helper_tag(prefix, span.line, span.start, span.end);
-    ironsmith_compiler_ast::reference_ledger::note_minted(
-        key.clone(),
-        ironsmith_compiler_ast::symbols::ReferenceRole::Affected,
-        ironsmith_compiler_ast::symbols::ObjectDomain::Object,
-        ironsmith_compiler_ast::symbols::Cardinality::Any,
-    );
-    key
+    // `sentence_helper_tag` declares the mint in the active reference scope.
+    crate::tag::sentence_helper_tag(prefix, span.line, span.start, span.end)
 }
 
 pub fn is_sentence_helper_tag(tag: &TagKey, prefix: &str) -> bool {
@@ -555,7 +550,7 @@ fn compiler_activation_cost_component_reference(
         CompilerCost::TapChosen { .. } => {
             let tag = crate::tag::CompilerCostObjectTag::Tap.key(counters.tap);
             counters.tap += 1;
-            Some(CompilerActivationCostObjectReference::Tagged(tag))
+            Some(CompilerActivationCostObjectReference::Tagged(tag.key.clone()))
         }
         CompilerCost::Blight { .. } => {
             // Cost materialization shares the tap counter with its private
@@ -575,27 +570,27 @@ fn compiler_activation_cost_component_reference(
             if *random || name.is_some() || *other || filter.is_some() || !supertypes.is_empty() {
                 let tag = crate::tag::CompilerCostObjectTag::Discard.key(counters.discard);
                 counters.discard += 1;
-                Some(CompilerActivationCostObjectReference::Tagged(tag))
+                Some(CompilerActivationCostObjectReference::Tagged(tag.key.clone()))
             } else {
                 Some(CompilerActivationCostObjectReference::Tagged(
-                    crate::tag::CompilerReferenceTag::DiscardedCost.bind(),
+                    (crate::tag::CompilerReferenceTag::DiscardedCost.bind()).into(),
                 ))
             }
         }
         CompilerCost::Sacrifice { .. } => {
             let tag = crate::tag::CompilerCostObjectTag::Sacrifice.key(counters.sacrifice);
             counters.sacrifice += 1;
-            Some(CompilerActivationCostObjectReference::Tagged(tag))
+            Some(CompilerActivationCostObjectReference::Tagged(tag.key.clone()))
         }
         CompilerCost::Unattach { .. } => {
             let tag = crate::tag::CompilerCostObjectTag::Unattach.key(counters.return_to_hand);
             counters.return_to_hand += 1;
-            Some(CompilerActivationCostObjectReference::Tagged(tag))
+            Some(CompilerActivationCostObjectReference::Tagged(tag.key.clone()))
         }
         CompilerCost::ExileChosen { .. } => {
             let tag = crate::tag::CompilerCostObjectTag::Exile.key(counters.exile);
             counters.exile += 1;
-            Some(CompilerActivationCostObjectReference::Tagged(tag))
+            Some(CompilerActivationCostObjectReference::Tagged(tag.key.clone()))
         }
         CompilerCost::ExileSourceAndChosen { .. } => {
             // Materialization emits one source choice followed by the paid
@@ -603,21 +598,21 @@ fn compiler_activation_cost_component_reference(
             counters.exile += 1;
             let tag = crate::tag::CompilerCostObjectTag::Exile.key(counters.exile);
             counters.exile += 1;
-            Some(CompilerActivationCostObjectReference::Tagged(tag))
+            Some(CompilerActivationCostObjectReference::Tagged(tag.key.clone()))
         }
         CompilerCost::ExileSelfAndNamedArtifacts { names } => {
             let mut reference = Some(CompilerActivationCostObjectReference::Source);
             for _ in names {
                 let tag = crate::tag::CompilerCostObjectTag::Exile.key(counters.exile);
                 counters.exile += 1;
-                reference = Some(CompilerActivationCostObjectReference::Tagged(tag));
+                reference = Some(CompilerActivationCostObjectReference::Tagged(tag.key.clone()));
             }
             reference
         }
         CompilerCost::ReturnChosenToHand { .. } => {
             let tag = crate::tag::CompilerCostObjectTag::ReturnToHand.key(counters.return_to_hand);
             counters.return_to_hand += 1;
-            Some(CompilerActivationCostObjectReference::Tagged(tag))
+            Some(CompilerActivationCostObjectReference::Tagged(tag.key.clone()))
         }
         _ => None,
     }
@@ -663,7 +658,7 @@ pub fn compiler_activation_cost_reference_imports(
             let mut imports = ReferenceImports::with_last_object_tag(tag.clone());
             if crate::tag::CompilerCostObjectTag::Sacrifice.matches(&tag) {
                 imports.snapshot_tag_aliases.push((
-                    crate::tag::CompilerReferenceTag::AdditionalCostObject.bind(),
+                    (crate::tag::CompilerReferenceTag::AdditionalCostObject.bind()).into(),
                     tag,
                 ));
             }
@@ -1943,7 +1938,7 @@ mod tests {
         else {
             panic!("reinforce should have one typed counter effect");
         };
-        let SubjectVerbActionAst::PutCounters { target, .. } = &effect.action else {
+        let SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target, .. }) = &effect.action else {
             panic!("reinforce should put counters");
         };
         assert!(matches!(

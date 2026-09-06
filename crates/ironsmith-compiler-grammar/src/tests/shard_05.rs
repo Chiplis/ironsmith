@@ -1,6 +1,12 @@
 #![allow(unused_imports)]
 
 #[cfg(test)]
+use crate::cards::builders::TurnEventPredicateAst;
+use crate::cards::builders::PlayerPredicateAst;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::DelayedEffectAst;
+use crate::cards::builders::TokenActionAst;
+use crate::cards::builders::StatChangeActionAst;
 use ironsmith_compiler::ParseCardText;
 /// Lower a token definition named by its printed shape text.
 ///
@@ -1953,10 +1959,10 @@ pub(super) fn rewrite_lowered_nonattacking_nonblocking_target_pump_keeps_target(
         crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
                 action:
-                    crate::cards::builders::SubjectVerbActionAst::Pump {
+                    crate::cards::builders::SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
                         target: sentence_target,
                         ..
-                    },
+                    }),
                 ..
             },
         ),
@@ -2049,13 +2055,13 @@ pub(super) fn rewrite_hyphenated_broad_pump_subjects_stay_filter_targets()
         crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
                 action:
-                    crate::cards::builders::SubjectVerbActionAst::PumpAll {
+                    crate::cards::builders::SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
                         filter,
                         power,
                         toughness,
                         duration,
                         ..
-                    },
+                    }),
                 ..
             },
         ),
@@ -2077,13 +2083,13 @@ pub(super) fn rewrite_hyphenated_broad_pump_subjects_stay_filter_targets()
         crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
                 action:
-                    crate::cards::builders::SubjectVerbActionAst::PumpAll {
+                    crate::cards::builders::SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
                         filter,
                         power,
                         toughness,
                         duration,
                         ..
-                    },
+                    }),
                 ..
             },
         ),
@@ -2113,13 +2119,13 @@ pub(super) fn rewrite_negated_chosen_type_pump_subject_uses_exclusion_filter()
         crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
                 action:
-                    crate::cards::builders::SubjectVerbActionAst::PumpAll {
+                    crate::cards::builders::SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
                         filter,
                         power,
                         toughness,
                         duration,
                         ..
-                    },
+                    }),
                 ..
             },
         ),
@@ -2717,19 +2723,19 @@ pub(super) fn nested_combat_payment_keeps_blocks_union_and_end_of_combat_lifetim
     );
     assert!(effects_debug.contains("UnlessPays"), "{effects_debug}");
     let [
-        EffectAst::UnlessPays {
+        EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
             effects: delayed, ..
-        },
+        }),
     ] = effects
     else {
         panic!("expected the payment gate to own the delayed trigger: {effects_debug}");
     };
     let [
-        EffectAst::DelayedTriggerForDuration {
+        EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
             trigger: TriggerSpec::BlocksOrBecomesBlockedByObject { subject, other },
             duration,
             ..
-        },
+        }),
     ] = delayed.as_slice()
     else {
         panic!("expected one canonical block-or-blocked trigger: {effects_debug}");
@@ -2758,11 +2764,11 @@ pub(super) fn rewrite_semantic_parse_keeps_toggo_rock_token_rules_tail() -> Resu
             crate::cards::builders::EffectAst::SubjectVerb(
                 crate::cards::builders::SubjectVerbEffectAst {
                     action:
-                        crate::cards::builders::SubjectVerbActionAst::CreateTokenWithMods {
+                        crate::cards::builders::SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
                             name,
                             definition,
                             ..
-                        },
+                        }),
                     ..
                 },
             ),
@@ -3303,14 +3309,15 @@ pub(super) fn parse_choose_then_do_same_for_filter_splits_one_of_mana_values() {
     let debug = format!("{effects:#?}");
 
     assert_eq!(
-        debug.matches("ChooseObjects").count(),
+        debug.matches("ChooseObjects {").count(),
         3,
         "expected three choose-object AST nodes, got {debug}"
     );
     assert!(
-        debug.contains("Equal(\n                    1,")
-            && debug.contains("Equal(\n                    2,")
-            && debug.contains("Equal(\n                    3,"),
+        {
+            let flat = debug.split_whitespace().collect::<Vec<_>>().join(" ");
+            flat.contains("Equal( 1,") && flat.contains("Equal( 2,") && flat.contains("Equal( 3,")
+        },
         "expected mana values 1, 2, and 3 to be split into ordered choices, got {debug}"
     );
 }
@@ -3357,9 +3364,9 @@ pub(super) fn rewrite_grammar_unique_hand_leader_predicate_parses() {
     assert_eq!(
         crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens)
             .expect("predicate should parse"),
-        crate::cards::builders::PredicateAst::PlayerHasMoreCardsInHandThanEachOtherPlayer {
+        crate::cards::builders::PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreCardsInHandThanEachOtherPlayer {
             player: crate::cards::builders::PlayerAst::Any,
-        }
+        })
     );
 }
 
@@ -3371,9 +3378,9 @@ pub(super) fn rewrite_grammar_unique_life_leader_predicate_parses() {
     assert_eq!(
         crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens)
             .expect("predicate should parse"),
-        crate::cards::builders::PredicateAst::PlayerHasMoreLifeThanEachOtherPlayer {
+        crate::cards::builders::PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreLifeThanEachOtherPlayer {
             player: crate::cards::builders::PlayerAst::Any,
-        }
+        })
     );
 }
 
@@ -3387,10 +3394,10 @@ pub(super) fn rewrite_grammar_unique_creature_control_leader_predicate_parses() 
     assert!(
         matches!(
             parsed,
-            crate::cards::builders::PredicateAst::PlayerControlsMoreThanEachOtherPlayer {
+            crate::cards::builders::PredicateAst::Player(PlayerPredicateAst::PlayerControlsMoreThanEachOtherPlayer {
                 player: crate::cards::builders::PlayerAst::Any,
                 ref filter,
-            } if filter.card_types == [CardType::Creature]
+            }) if filter.card_types == [CardType::Creature]
         ),
         "{parsed:?}"
     );
@@ -3404,9 +3411,9 @@ pub(super) fn rewrite_grammar_no_opponent_has_more_life_than_that_player_predica
     assert_eq!(
         crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens)
             .expect("predicate should parse"),
-        crate::cards::builders::PredicateAst::PlayerHasNoOpponentWithMoreLifeThan {
+        crate::cards::builders::PredicateAst::Player(PlayerPredicateAst::PlayerHasNoOpponentWithMoreLifeThan {
             player: crate::cards::builders::PlayerAst::That,
-        }
+        })
     );
 }
 
@@ -3505,9 +3512,9 @@ pub(super) fn rewrite_grammar_permanent_you_controlled_left_battlefield_predicat
     assert_eq!(
         crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens)
             .expect("predicate should parse"),
-        crate::cards::builders::PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn {
+        crate::cards::builders::PredicateAst::TurnEvents(TurnEventPredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn {
             surface: crate::PermanentLeftBattlefieldControlSurface::YouControlledLeft,
-        }
+        })
     );
 }
 
@@ -3543,7 +3550,7 @@ pub(super) fn rewrite_grammar_creature_card_put_into_your_graveyard_from_anywher
     assert_eq!(
         crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens)
             .expect("predicate should parse"),
-        crate::cards::builders::PredicateAst::CreatureCardPutIntoYourGraveyardThisTurn
+        crate::cards::builders::PredicateAst::TurnEvents(TurnEventPredicateAst::CreatureCardPutIntoYourGraveyardThisTurn)
     );
 }
 
@@ -3609,7 +3616,7 @@ pub(super) fn rewrite_grammar_no_permanents_left_battlefield_this_turn_predicate
         crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens)
             .expect("predicate should parse"),
         crate::cards::builders::PredicateAst::Not(Box::new(
-            crate::cards::builders::PredicateAst::PermanentLeftBattlefieldThisTurn,
+            crate::cards::builders::PredicateAst::TurnEvents(TurnEventPredicateAst::PermanentLeftBattlefieldThisTurn),
         ))
     );
 }
@@ -3837,7 +3844,7 @@ pub(super) fn rewrite_lexed_static_grant_line_ignores_inner_has_in_quoted_trigge
     assert!(debug.contains("ThisAttacks"), "{debug}");
     assert!(
         debug.contains("intervening_if: Some")
-            || debug.contains("Conditional { predicate: PlayerHasNoOpponentWithMoreLifeThan"),
+            || debug.contains("Conditional { predicate: Player(PlayerHasNoOpponentWithMoreLifeThan"),
         "{debug}"
     );
 }

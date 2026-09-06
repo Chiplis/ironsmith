@@ -1,3 +1,4 @@
+use crate::cards::builders::ForEachEffectAst;
 use super::super::super::dispatch_entry::{
     is_put_rest_on_bottom_of_library_sentence, parse_counted_looked_cards_into_your_hand_tokens,
     parse_if_this_spell_was_kicked_counted_looked_cards_into_hand,
@@ -6,7 +7,7 @@ use super::super::super::dispatch_entry::{
 use crate::cards::builders::{
     CardTextError, ChooseOneModeAst, EffectAst, IfResultPredicate, LibraryBottomOrderAst,
     ObjectFilter, PlayerAst, PredicateAst, ReturnControllerAst, SubjectVerbActionAst,
-    SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst,
+    SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst, GrantActionAst, LibraryActionAst, ZoneMoveActionAst, RevealLookActionAst, ObjectChoiceEffectAst, ConditionalEffectAst, PermissionEffectAst,
 };
 use crate::effect::ChoiceCount;
 use crate::effect_sentences;
@@ -25,7 +26,7 @@ use crate::zone::Zone;
 fn look_at_top_cards_player(effect: &EffectAst) -> Option<PlayerAst> {
     let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
         subject: crate::cards::builders::SubjectVerbSubjectAst { player, .. },
-        action: SubjectVerbActionAst::LookAtTopCards { .. },
+        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { .. }),
     }) = effect
     else {
         return None;
@@ -38,7 +39,7 @@ fn look_at_top_cards_player_count_reveal(
 ) -> Option<(PlayerAst, crate::effect::Value, bool)> {
     let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
         subject: crate::cards::builders::SubjectVerbSubjectAst { player, .. },
-        action: SubjectVerbActionAst::LookAtTopCards { count, reveal, .. },
+        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { count, reveal, .. }),
     }) = effect
     else {
         return None;
@@ -50,32 +51,32 @@ fn effect_ast_contains_sacrifice(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::Sacrifice { .. } | SubjectVerbActionAst::SacrificeAll { .. },
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { .. }) | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { .. }),
             ..
         }) => true,
         EffectAst::Sequence { effects }
-        | EffectAst::May { effects }
-        | EffectAst::MayByPlayer { effects, .. }
-        | EffectAst::ForEachObject { effects, .. }
-        | EffectAst::ForEachTagged { effects, .. }
-        | EffectAst::ForEachTaggedWithControllerAtLastBlockedBy { effects, .. } => {
+        | EffectAst::Permissions(PermissionEffectAst::May { effects })
+        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. })
+        | EffectAst::ForEach(ForEachEffectAst::ForEachObject { effects, .. })
+        | EffectAst::ForEach(ForEachEffectAst::ForEachTagged { effects, .. })
+        | EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy { effects, .. }) => {
             effects.iter().any(effect_ast_contains_sacrifice)
         }
         EffectAst::TagAffected { effect, .. } => effect_ast_contains_sacrifice(effect),
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             if_true, if_false, ..
-        }
+        })
         | EffectAst::SelfReplacement {
             if_true, if_false, ..
         } => {
             if_true.iter().any(effect_ast_contains_sacrifice)
                 || if_false.iter().any(effect_ast_contains_sacrifice)
         }
-        EffectAst::UnlessAction {
+        EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
             effects,
             alternative,
             ..
-        } => {
+        }) => {
             effects.iter().any(effect_ast_contains_sacrifice)
                 || alternative.iter().any(effect_ast_contains_sacrifice)
         }
@@ -91,13 +92,13 @@ fn rebind_one_of_those_cards_target(target: &mut TargetAst, looked_tag: &TagKey)
         TargetAst::Tagged(tag, _)
             if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() =>
         {
-            *tag = looked_tag.clone();
+            *tag = crate::tag::TagRef::of(looked_tag.clone());
             true
         }
         TargetAst::Object(filter, _, reference_span)
             if *filter == ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()) =>
         {
-            *target = TargetAst::Tagged(looked_tag.clone(), *reference_span);
+            *target = TargetAst::Tagged(crate::tag::TagRef::of(looked_tag.clone()), *reference_span);
             true
         }
         _ => false,
@@ -119,10 +120,10 @@ fn parse_looked_card_move_result_branch(
         return Ok(None);
     };
     let [
-        EffectAst::IfResult {
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: parsed_predicate,
             effects: branch,
-        },
+        }),
     ] = effects.as_mut_slice()
     else {
         return Ok(None);
@@ -135,7 +136,7 @@ fn parse_looked_card_move_result_branch(
     }
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::MoveToZone { target, .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { target, .. }),
             ..
         }),
     ] = branch.as_mut_slice()
@@ -209,13 +210,13 @@ fn compose_independent_looked_card_choices(
                     tag: chosen_tag.clone(),
                     relation: TaggedOpbjectRelation::IsNotTaggedObject,
                 });
-                EffectAst::ChooseTaggedObjectsInZone {
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
                     filter: branch,
                     count: ChoiceCount::up_to(1),
                     player,
-                    tag: chosen_tag.clone(),
+                    tag: crate::tag::TagRef::of(chosen_tag.clone()),
                     zone: Zone::Library,
-                }
+                })
             })
             .collect(),
     )
@@ -277,7 +278,7 @@ pub fn parse_reveal_top_choose_and_or_hand_rest_bottom_with_destination_override
 
     let looked_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "revealed");
     let chosen_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "chosen");
-    let look = EffectAst::subject_verb_reveal_top_cards(player, count, looked_tag.clone());
+    let look = EffectAst::subject_verb_reveal_top_cards(player, count, crate::tag::TagRef::of(looked_tag.clone()));
     let Some(choices) =
         compose_independent_looked_card_choices(filter, &looked_tag, &chosen_tag, player)
     else {
@@ -287,13 +288,13 @@ pub fn parse_reveal_top_choose_and_or_hand_rest_bottom_with_destination_override
     let mut default_effects = vec![look.clone()];
     default_effects.extend(choices.clone());
     default_effects.push(EffectAst::MoveTaggedGroupToZone {
-        tag: chosen_tag.clone(),
+        tag: crate::tag::TagRef::of(chosen_tag.clone()),
         zone: Zone::Hand,
     });
     default_effects.push(
         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-            looked_tag.clone(),
-            Some(chosen_tag.clone()),
+            crate::tag::TagRef::of(looked_tag.clone()),
+            Some(crate::tag::TagRef::of(chosen_tag.clone())),
             default_disposition.order,
             player,
         ),
@@ -301,28 +302,28 @@ pub fn parse_reveal_top_choose_and_or_hand_rest_bottom_with_destination_override
 
     let mut replacement_effects = vec![look];
     replacement_effects.extend(choices);
-    replacement_effects.push(EffectAst::ChooseOneOf {
+    replacement_effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf {
         modes: vec![
             ChooseOneModeAst {
                 description: "Put the chosen cards onto the battlefield".to_string(),
                 effects: vec![EffectAst::MoveTaggedGroupToZone {
-                    tag: chosen_tag.clone(),
+                    tag: crate::tag::TagRef::of(chosen_tag.clone()),
                     zone: Zone::Battlefield,
                 }],
             },
             ChooseOneModeAst {
                 description: "Put the chosen cards into your hand".to_string(),
                 effects: vec![EffectAst::MoveTaggedGroupToZone {
-                    tag: chosen_tag.clone(),
+                    tag: crate::tag::TagRef::of(chosen_tag.clone()),
                     zone: Zone::Hand,
                 }],
             },
         ],
-    });
+    }));
     replacement_effects.push(
         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-            looked_tag,
-            Some(chosen_tag),
+            crate::tag::TagRef::of(looked_tag),
+            Some(crate::tag::TagRef::of(chosen_tag)),
             replacement_shape.order,
             player,
         ),
@@ -343,28 +344,28 @@ fn exact_flat_optional_reveal_to_hand_partition(
         return None;
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::LookAtTopCards {
+        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
             tag: looked_tag, ..
-        },
+        }),
         ..
     }) = look
     else {
         return None;
     };
-    let EffectAst::ChooseTaggedObjectsInZone {
+    let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
         filter,
         count,
         player,
         tag: selected_tag,
         zone,
-    } = choose
+    }) = choose
     else {
         return None;
     };
-    let EffectAst::ForEachTagged {
+    let EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
         tag: revealed_tag,
         effects: reveal_effects,
-    } = reveal
+    }) = reveal
     else {
         return None;
     };
@@ -372,17 +373,17 @@ fn exact_flat_optional_reveal_to_hand_partition(
         || !matches!(
             reveal_effects.as_slice(),
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::RevealTagged { .. },
+                action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTagged { .. }),
                 ..
             })]
         )
     {
         return None;
     }
-    let EffectAst::ForEachTagged {
+    let EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
         tag: moved_tag,
         effects: move_effects,
-    } = move_selected
+    }) = move_selected
     else {
         return None;
     };
@@ -390,10 +391,10 @@ fn exact_flat_optional_reveal_to_hand_partition(
         || !matches!(
             move_effects.as_slice(),
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::MoveToZone {
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                     zone: Zone::Hand,
                     ..
-                },
+                }),
                 ..
             })]
         )
@@ -404,11 +405,11 @@ fn exact_flat_optional_reveal_to_hand_partition(
         remainder,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
                     tag,
                     keep_tagged: Some(keep_tagged),
                     ..
-                },
+                }),
             ..
         }) if tag == looked_tag && keep_tagged == selected_tag
     ) {
@@ -424,15 +425,15 @@ fn wrap_flat_reveal_to_hand_partition_in_may(
 ) -> Option<Vec<EffectAst>> {
     let [look, mut choose, reveal, move_selected, remainder]: [EffectAst; 5] =
         effects.try_into().ok()?;
-    let EffectAst::ChooseTaggedObjectsInZone { count, .. } = &mut choose else {
+    let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { count, .. }) = &mut choose else {
         return None;
     };
     *count = ChoiceCount::exactly(exact_count);
     Some(vec![
         look,
-        EffectAst::May {
+        EffectAst::Permissions(PermissionEffectAst::May {
             effects: vec![choose, reveal, move_selected],
-        },
+        }),
         remainder,
     ])
 }
@@ -569,8 +570,8 @@ fn title_case_card_name(words: &[&str]) -> String {
 
 fn search_reveal_tag(effects: &[EffectAst]) -> Option<TagKey> {
     let searched_tag = effects.iter().find_map(|effect| match effect {
-        EffectAst::ChooseObjects { filter, tag, .. }
-        | EffectAst::ChooseObjectsAcrossZones { filter, tag, .. }
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, tag, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { filter, tag, .. })
             if filter.zone == Some(Zone::Library) =>
         {
             Some(tag.clone())
@@ -585,11 +586,11 @@ fn search_reveal_tag(effects: &[EffectAst]) -> Option<TagKey> {
                 EffectAst::SubjectVerb(subject_verb)
                     if matches!(
                         &subject_verb.action,
-                        SubjectVerbActionAst::RevealTagged { tag } if tag == &searched_tag
+                        SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTagged { tag }) if tag == &searched_tag
                     )
             )
         })
-        .then_some(searched_tag)
+        .then_some(searched_tag.key.clone())
 }
 
 fn named_revealed_card_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
@@ -711,10 +712,10 @@ pub fn parse_top_cards_move_then_grant_rest_bottom(
     let selected_tag = match effects.as_slice() {
         [
             _,
-            EffectAst::ChooseTaggedObjectsInZone {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
                 tag: chosen_tag, ..
-            },
-            EffectAst::ForEachTagged { tag: moved_tag, .. },
+            }),
+            EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag: moved_tag, .. }),
             _,
         ] if chosen_tag == moved_tag => chosen_tag.clone(),
         _ => return Ok(None),
@@ -726,12 +727,12 @@ pub fn parse_top_cards_move_then_grant_rest_bottom(
     let mut grant = grant.clone();
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::GrantAbilitiesToTarget {
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                 target,
                 duration: crate::effect::Until::Forever,
                 condition: None,
                 ..
-            },
+            }),
         ..
     }) = &mut grant
     else {
@@ -753,7 +754,7 @@ pub fn parse_top_cards_move_then_grant_rest_bottom(
     if !matches!(
         remainder,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary { .. },
+            action: SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary { .. }),
             ..
         })
     ) {
@@ -791,7 +792,7 @@ pub fn parse_look_then_may_action_if_did_or_did_not_move_looked_card(
     };
     if !matches!(
         optional_effects.as_slice(),
-        [EffectAst::May { .. } | EffectAst::MayByPlayer { .. }]
+        [EffectAst::Permissions(PermissionEffectAst::May { .. }) | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. })]
     ) {
         return Ok(None);
     }
@@ -815,7 +816,7 @@ pub fn parse_look_then_may_action_if_did_or_did_not_move_looked_card(
     let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
         library_owner,
         count,
-        looked_tag,
+        crate::tag::TagRef::of(looked_tag),
     )];
     effects.extend(optional_effects);
     effects.extend([did, did_not]);

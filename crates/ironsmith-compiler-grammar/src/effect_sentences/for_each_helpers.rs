@@ -1,7 +1,7 @@
 use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, IfResultPredicate, OwnedLexToken, PlayerAst,
     PredicateAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey,
-    TargetAst,
+    TargetAst, TokenActionAst, ObjectChoiceEffectAst, PermissionEffectAst, PlayerPredicateAst,
 };
 use crate::diagnostics::TextSpan;
 use crate::effect::{Until, Value};
@@ -358,9 +358,9 @@ pub fn force_implicit_token_controller_you(effects: &mut [EffectAst]) {
         match effect {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::CreateTokenWithMods { player, .. }
-                    | SubjectVerbActionAst::CreateTokenCopy { player, .. }
-                    | SubjectVerbActionAst::CreateTokenCopyFromSource { player, .. },
+                    SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { player, .. })
+                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { player, .. })
+                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { player, .. }),
                 ..
             }) => {
                 if matches!(*player, PlayerAst::Implicit) {
@@ -377,12 +377,12 @@ pub fn force_implicit_token_controller_you(effects: &mut [EffectAst]) {
 fn bind_implicit_choose_chooser(effects: &mut [EffectAst], chooser: PlayerAst) {
     for effect in effects {
         match effect {
-            EffectAst::ChooseObjects { player, .. }
-            | EffectAst::ChooseObjectsWithAggregateConstraint { player, .. }
-            | EffectAst::ChooseObjectsBottomOfLibrary { player, .. }
-            | EffectAst::ChooseObjectsTopOfLibrary { player, .. }
-            | EffectAst::ChooseObjectsAcrossZones { player, .. }
-            | EffectAst::ChooseTaggedObjectsInZone { player, .. }
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { player, .. })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { player, .. })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { player, .. })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary { player, .. })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { player, .. })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { player, .. })
                 if matches!(*player, PlayerAst::Implicit) =>
             {
                 *player = chooser;
@@ -411,12 +411,12 @@ fn stabilize_standalone_participant_choice_tag(
         return;
     };
     let tag = match effect {
-        EffectAst::ChooseObjects { tag, .. }
-        | EffectAst::ChooseObjectsWithAggregateConstraint { tag, .. }
-        | EffectAst::ChooseObjectsBottomOfLibrary { tag, .. }
-        | EffectAst::ChooseObjectsTopOfLibrary { tag, .. }
-        | EffectAst::ChooseObjectsAcrossZones { tag, .. }
-        | EffectAst::ChooseTaggedObjectsInZone { tag, .. } => tag,
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { tag, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { tag, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary { tag, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { tag, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { tag, .. }) => tag,
         _ => return,
     };
     if tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str() {
@@ -436,12 +436,12 @@ fn stabilize_standalone_participant_choice_tag(
 fn tagged_predicate(filter_tokens: Option<&[OwnedLexToken]>) -> Option<PredicateAst> {
     let filter =
         crate::grammar::primitives::probe_shape(parse_object_filter(filter_tokens?, false))?;
-    Some(PredicateAst::PlayerTaggedObjectMatches {
+    Some(PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches {
         player: PlayerAst::That,
         tag: crate::tag::CompilerReferenceTag::It.bind(),
         filter,
         mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
-    })
+    }))
 }
 
 fn parse_maybe_effects(
@@ -481,7 +481,7 @@ fn parse_maybe_effects(
             bind_implicit_player_context(effect, PlayerAst::That);
         }
     }
-    Ok(vec![EffectAst::May { effects }])
+    Ok(vec![EffectAst::Permissions(PermissionEffectAst::May { effects })])
 }
 
 /// Parse a coordinated action program whose actor is supplied by an outer
@@ -588,9 +588,9 @@ fn bind_quantified_participant_actor(effects: &mut [EffectAst]) {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 subject,
                 action:
-                    SubjectVerbActionAst::CreateTokenWithMods { player, .. }
-                    | SubjectVerbActionAst::CreateTokenCopy { player, .. }
-                    | SubjectVerbActionAst::CreateTokenCopyFromSource { player, .. },
+                    SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { player, .. })
+                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { player, .. })
+                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { player, .. }),
             }) => {
                 if subject.role == SubjectVerbRoleAst::Actor
                     && matches!(subject.player, PlayerAst::Implicit | PlayerAst::You)
@@ -608,12 +608,12 @@ fn bind_quantified_participant_actor(effects: &mut [EffectAst]) {
                     subject.player = PlayerAst::That;
                 }
             }
-            EffectAst::ChooseObjects { player, .. }
-            | EffectAst::ChooseObjectsWithAggregateConstraint { player, .. }
-            | EffectAst::ChooseObjectsBottomOfLibrary { player, .. }
-            | EffectAst::ChooseObjectsTopOfLibrary { player, .. }
-            | EffectAst::ChooseObjectsAcrossZones { player, .. }
-            | EffectAst::ChooseTaggedObjectsInZone { player, .. } => {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { player, .. })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { player, .. })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { player, .. })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary { player, .. })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { player, .. })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { player, .. }) => {
                 if matches!(*player, PlayerAst::Implicit | PlayerAst::You) {
                     *player = PlayerAst::That;
                 }

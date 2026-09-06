@@ -1,3 +1,4 @@
+use crate::cards::builders::ConditionalEffectAst;
 use super::*;
 
 pub(in super::super) fn parse_escalate(
@@ -40,7 +41,7 @@ pub(in super::super) fn parse_evoke(
             trigger: TriggerSpec::ThisEntersBattlefield {
                 origin_condition: None,
             },
-            effects: vec![EffectAst::Conditional {
+            effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: PredicateAst::ThisSpellPaidLabel("Evoke".into()),
                 if_true: vec![EffectAst::subject_verb_sacrifice(
                     PlayerAst::ItsController,
@@ -49,7 +50,7 @@ pub(in super::super) fn parse_evoke(
                     Some(TargetAst::Source(None)),
                 )],
                 if_false: Vec::new(),
-            }],
+            })],
             max_triggers_per_turn: None,
         },
     ])))

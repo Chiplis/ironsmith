@@ -1,3 +1,5 @@
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::LibraryActionAst;
 use super::*;
 
 pub fn parse_consult_match_move_all_to_graveyard(
@@ -16,7 +18,7 @@ pub fn parse_consult_match_move_all_to_graveyard(
 
     let mut effects = parts.effects;
     effects.push(EffectAst::subject_verb_move_to_zone(
-        TargetAst::Tagged(parts.all_tag, None),
+        TargetAst::Tagged(crate::tag::TagRef::of(parts.all_tag), None),
         Zone::Graveyard,
         false,
         crate::cards::builders::ReturnControllerAst::Preserve,
@@ -46,10 +48,10 @@ pub fn parse_consult_match_into_hand_others_graveyard(
     if !matches!(
         parts.effects.last(),
         Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ConsultTopOfLibrary {
+            action: SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
                 mode: crate::cards::builders::LibraryConsultModeAst::Reveal,
                 ..
-            },
+            }),
             ..
         }))
     ) {
@@ -63,16 +65,16 @@ pub fn parse_consult_match_into_hand_others_graveyard(
 
     let followups = vec![
         EffectAst::subject_verb_move_to_zone(
-            TargetAst::Tagged(parts.match_tag.clone(), None),
+            TargetAst::Tagged(crate::tag::TagRef::of(parts.match_tag.clone()), None),
             Zone::Hand,
             false,
             crate::cards::builders::ReturnControllerAst::Preserve,
             false,
             None,
         ),
-        EffectAst::ForEachTagged {
-            tag: parts.all_tag.clone(),
-            effects: vec![EffectAst::Conditional {
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+            tag: crate::tag::TagRef::of(parts.all_tag.clone()),
+            effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: PredicateAst::TaggedMatches(
                     crate::tag::CompilerReferenceTag::It.bind(),
                     ObjectFilter::tagged(parts.match_tag.clone()),
@@ -86,8 +88,8 @@ pub fn parse_consult_match_into_hand_others_graveyard(
                     false,
                     None,
                 )],
-            }],
-        },
+            })],
+        }),
     ];
     if !optional && !gate_on_result && !gate_on_previous_result {
         return Ok(Some(vec![

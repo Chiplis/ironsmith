@@ -1,3 +1,6 @@
+use crate::cards::builders::DelayedEffectAst;
+use crate::cards::builders::ControlActionAst;
+use crate::cards::builders::TokenActionAst;
 use crate::grammar::effects::control_copy_attach_shapes as cca_shapes;
 
 fn cca_controller(shape: cca_shapes::BattlefieldControllerShape) -> ReturnControllerAst {
@@ -55,12 +58,12 @@ fn compose_put_filtered_looked_cards_to_zone_rest_to_zone(
     effects.push(EffectAst::subject_verb(
         SubjectVerbRoleAst::Actor,
         PlayerAst::Implicit,
-        SubjectVerbActionAst::PutTaggedRemainderInZone {
-            tag: looked_tag,
-            keep_tagged: chosen_tag,
+        SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderInZone {
+            tag: crate::tag::TagRef::of(looked_tag),
+            keep_tagged: crate::tag::TagRef::of(chosen_tag),
             zone: rest_zone,
             surface: ironsmith_core::LibraryRemainderSurface::Rest,
-        },
+        }),
     ));
     effects
 }
@@ -81,17 +84,17 @@ fn compose_put_filtered_looked_cards_to_zone(
 
     vec![
         EffectAst::SnapshotLastObjectTag {
-            into: looked_tag.clone(),
+            into: crate::tag::TagRef::of(looked_tag.clone()),
         },
-        EffectAst::ChooseTaggedObjectsInZone {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter,
             count,
             player,
-            tag: chosen_tag.clone(),
+            tag: crate::tag::TagRef::of(chosen_tag.clone()),
             zone: Zone::Library,
-        },
+        }),
         EffectAst::MoveTaggedGroupToZone {
-            tag: chosen_tag.clone(),
+            tag: crate::tag::TagRef::of(chosen_tag.clone()),
             zone: chosen_zone,
         },
     ]
@@ -111,9 +114,9 @@ pub fn parse_lose_life(
         return Ok(subject_verb_player_resource_effect(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
-            SubjectVerbActionAst::LoseLife {
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife {
                 amount: Value::Fixed(amount as i32),
-            },
+            }),
         ));
     }
     if let Some(mut amount) = parse_life_equal_to_value(tokens)? {
@@ -123,7 +126,7 @@ pub fn parse_lose_life(
         return Ok(subject_verb_player_resource_effect(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
-            SubjectVerbActionAst::LoseLife { amount },
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount }),
         ));
     }
     if life_shape.exact == Some(cca_shapes::ExactLifeSurface::LoseGame) {
@@ -134,7 +137,7 @@ pub fn parse_lose_life(
         return Ok(subject_verb_player_resource_effect(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
-            SubjectVerbActionAst::LoseLife { amount },
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount }),
         ));
     }
 
@@ -147,9 +150,9 @@ pub fn parse_lose_life(
         let base_effect = subject_verb_player_resource_effect(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
-            SubjectVerbActionAst::LoseLife {
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife {
                 amount: amount.clone(),
-            },
+            }),
         );
         if let Some(delayed) =
             wrap_parsed_effect_in_delayed_next_step_unless_pays(&trailing, base_effect)?
@@ -161,31 +164,31 @@ pub fn parse_lose_life(
             return Ok(subject_verb_player_resource_effect(
                 SubjectVerbRoleAst::AffectedPlayer,
                 player,
-                SubjectVerbActionAst::LoseLife { amount },
+                SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount }),
             ));
         }
         let base_effect = subject_verb_player_resource_effect(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
-            SubjectVerbActionAst::LoseLife { amount },
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount }),
         );
         if let Some(predicate) = parse_trailing_if_predicate_lexed(&trailing) {
-            return Ok(EffectAst::Conditional {
+            return Ok(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate,
                 if_true: vec![base_effect],
                 if_false: Vec::new(),
-            });
+            }));
         }
         if let Some(unless_tail) = cca_shapes::parse_life_surface_shape(&trailing).unless_tail {
             let mut unless_as_if_tokens = Vec::with_capacity(unless_tail.len() + 1);
             unless_as_if_tokens.push(OwnedLexToken::word("if".to_string(), TextSpan::synthetic()));
             unless_as_if_tokens.extend_from_slice(unless_tail);
             if let Some(predicate) = parse_trailing_if_predicate_lexed(&unless_as_if_tokens) {
-                return Ok(EffectAst::Conditional {
+                return Ok(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                     predicate,
                     if_true: Vec::new(),
                     if_false: vec![base_effect],
-                });
+                }));
             }
         }
         return Err(CardTextError::ParseError(format!(
@@ -197,7 +200,7 @@ pub fn parse_lose_life(
     Ok(subject_verb_player_resource_effect(
         SubjectVerbRoleAst::AffectedPlayer,
         player,
-        SubjectVerbActionAst::LoseLife { amount },
+        SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount }),
     ))
 }
 
@@ -216,7 +219,7 @@ pub fn parse_gain_life(
         return Ok(subject_verb_player_resource_effect(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
-            SubjectVerbActionAst::GainLife { amount },
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount }),
         ));
     }
 
@@ -252,31 +255,31 @@ pub fn parse_gain_life(
             return Ok(subject_verb_player_resource_effect(
                 SubjectVerbRoleAst::AffectedPlayer,
                 player,
-                SubjectVerbActionAst::GainLife { amount },
+                SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount }),
             ));
         }
         let base_effect = subject_verb_player_resource_effect(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
-            SubjectVerbActionAst::GainLife { amount },
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount }),
         );
         if let Some(predicate) = parse_trailing_if_predicate_lexed(&trailing) {
-            return Ok(EffectAst::Conditional {
+            return Ok(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate,
                 if_true: vec![base_effect],
                 if_false: Vec::new(),
-            });
+            }));
         }
         if let Some(unless_tail) = cca_shapes::parse_life_surface_shape(&trailing).unless_tail {
             let mut unless_as_if_tokens = Vec::with_capacity(unless_tail.len() + 1);
             unless_as_if_tokens.push(OwnedLexToken::word("if".to_string(), TextSpan::synthetic()));
             unless_as_if_tokens.extend_from_slice(unless_tail);
             if let Some(predicate) = parse_trailing_if_predicate_lexed(&unless_as_if_tokens) {
-                return Ok(EffectAst::Conditional {
+                return Ok(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                     predicate,
                     if_true: Vec::new(),
                     if_false: vec![base_effect],
-                });
+                }));
             }
         }
         return Err(CardTextError::ParseError(format!(
@@ -288,7 +291,7 @@ pub fn parse_gain_life(
     Ok(subject_verb_player_resource_effect(
         SubjectVerbRoleAst::AffectedPlayer,
         player,
-        SubjectVerbActionAst::GainLife { amount },
+        SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount }),
     ))
 }
 
@@ -376,17 +379,17 @@ pub fn parse_gain_control(
     };
     if explicit_triggering_source_controller
         && let EffectAst::SubjectVerb(subject_verb) = &mut base_effect
-        && let SubjectVerbActionAst::GainControl {
+        && let SubjectVerbActionAst::Control(ControlActionAst::GainControl {
             controller_reference,
             ..
-        } = &mut subject_verb.action
+        }) = &mut subject_verb.action
     {
         *controller_reference = Some(crate::target::ObjectRef::tagged(crate::tag::CompilerReferenceTag::TriggeringSource.bind()));
     }
 
     if opponent_choice.is_some()
         && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::GainControl { target, .. },
+            action: SubjectVerbActionAst::Control(ControlActionAst::GainControl { target, .. }),
             ..
         }) = &mut base_effect
     {
@@ -396,7 +399,7 @@ pub fn parse_gain_control(
         );
         let declared = std::mem::replace(
             target,
-            TargetAst::Tagged(target_tag.clone(), span_from_tokens(target_tokens)),
+            TargetAst::Tagged(crate::tag::TagRef::of(target_tag.clone()), span_from_tokens(target_tokens)),
         );
         base_effect = EffectAst::Sequence {
             effects: vec![
@@ -405,7 +408,7 @@ pub fn parse_gain_control(
                         declared,
                         PlayerAst::Opponent,
                     )),
-                    tag: target_tag,
+                    tag: crate::tag::TagRef::of(target_tag),
                 },
                 base_effect,
             ],
@@ -414,24 +417,24 @@ pub fn parse_gain_control(
 
     let effect = if let Some(predicate) = trailing_predicate {
         if is_unless {
-            EffectAst::TrailingUnless {
+            EffectAst::Conditionals(ConditionalEffectAst::TrailingUnless {
                 predicate,
                 effects: vec![base_effect],
-            }
+            })
         } else {
-            EffectAst::TrailingIf {
+            EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
                 predicate,
                 effects: vec![base_effect],
-            }
+            })
         }
     } else {
         base_effect
     };
 
     if shape.delayed_until_end_of_combat {
-        return Ok(EffectAst::DelayedUntilEndOfCombat {
+        return Ok(EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat {
             effects: vec![effect],
-        });
+        }));
     }
 
     Ok(effect)
@@ -699,12 +702,12 @@ fn parse_put_destination_choice(
     let EffectAst::SubjectVerb(left_subject_verb) = &left_effect else {
         return Ok(None);
     };
-    let SubjectVerbActionAst::MoveToZone { .. } = &left_subject_verb.action else {
+    let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { .. }) = &left_subject_verb.action else {
         return Ok(None);
     };
     let mut right_effect = left_effect.clone();
     if let EffectAst::SubjectVerb(subject_verb) = &mut right_effect
-        && let SubjectVerbActionAst::MoveToZone { zone, to_top, .. } = &mut subject_verb.action
+        && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { zone, to_top, .. }) = &mut subject_verb.action
     {
         *zone = right_zone;
         *to_top = right_to_top;
@@ -722,12 +725,12 @@ fn parse_put_destination_choice(
     Ok(Some(EffectAst::subject_verb(
         SubjectVerbRoleAst::Actor,
         PlayerAst::Implicit,
-        SubjectVerbActionAst::CreateTokenChoice {
+        SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenChoice {
             options: vec![
                 (left_display, Box::new(left_effect)),
                 (right_display, Box::new(right_effect)),
             ],
-        },
+        }),
     )))
 }
 

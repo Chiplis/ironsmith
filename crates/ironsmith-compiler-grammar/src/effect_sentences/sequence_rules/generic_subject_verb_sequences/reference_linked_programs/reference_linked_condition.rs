@@ -5,7 +5,7 @@ pub(crate) fn append_to_outer_if_result(
     followup: &mut Vec<EffectAst>,
 ) -> bool {
     let effects = match effect {
-        EffectAst::IfResult { effects, .. } | EffectAst::ResolvedIfResult { effects, .. } => {
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. }) | EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult { effects, .. }) => {
             effects
         }
         _ => return false,

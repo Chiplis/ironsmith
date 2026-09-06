@@ -1,4 +1,7 @@
 use crate::cards::builders::PredicateAst;
+use crate::cards::builders::TurnEventPredicateAst;
+use crate::cards::builders::SourcePredicateAst;
+use crate::cards::builders::PlayerPredicateAst;
 mod costs_replacements_and_permissions;
 mod leading_conditional_sentence_chain;
 pub use costs_replacements_and_permissions::*;
@@ -1899,7 +1902,7 @@ pub fn parse_removed_draft_leading_conditional_static_sentence_chain(
         };
         if !matches!(
             condition,
-            PredicateAst::PlayerRemovedDraftCardMatching { .. }
+            PredicateAst::Player(PlayerPredicateAst::PlayerRemovedDraftCardMatching { .. })
         ) {
             return Ok(None);
         }
@@ -2450,7 +2453,7 @@ fn static_condition_references_source_outside_battlefield(condition: &PredicateA
                     .as_ref()
                     .is_some_and(|zone| *zone != Zone::Battlefield)
         }
-        PredicateAst::SourceIsInZone(zone) => *zone != Zone::Battlefield,
+        PredicateAst::Source(SourcePredicateAst::SourceIsInZone(zone)) => *zone != Zone::Battlefield,
         PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
             static_condition_references_source_outside_battlefield(left)
                 || static_condition_references_source_outside_battlefield(right)
@@ -3097,7 +3100,7 @@ pub fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<StaticA
             keyword_static_lines::StaticTextMarkerKind::DoubleDamageToEnchantedPlayer => {
                 StaticAbility::double_damage_amount_replacement(
                     ObjectFilter::default(),
-                    Some(PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.bind())),
+                    Some(PlayerFilter::TaggedPlayer((crate::tag::CompilerReferenceTag::Enchanted.bind()).into())),
                     None,
                     "If a source would deal damage to enchanted player, it deals double that damage to that player instead.".to_string(),
                 )
@@ -3131,7 +3134,7 @@ pub fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<StaticA
 
     if is_attack_as_haste_unless_entered_this_turn_marker_line_lexed(tokens) {
         let condition = PredicateAst::Not(Box::new(
-            PredicateAst::ObjectEnteredBattlefieldThisTurn(ObjectFilter::source()),
+            PredicateAst::TurnEvents(TurnEventPredicateAst::ObjectEnteredBattlefieldThisTurn(ObjectFilter::source())),
         ));
         return Some(StaticAbility::new(
             GrantAbility::source(StaticAbility::can_attack_as_though_haste())
@@ -4174,7 +4177,7 @@ fn parse_damage_amount_replacement_target_filters(
         DamageReplacementTargetKind::AnyPlayer => Ok((Some(PlayerFilter::Any), None)),
         DamageReplacementTargetKind::EnchantedPlayer => Ok((
             Some(PlayerFilter::TaggedPlayer(
-                crate::tag::CompilerReferenceTag::Enchanted.bind(),
+                (crate::tag::CompilerReferenceTag::Enchanted.bind()).into(),
             )),
             None,
         )),

@@ -5,6 +5,8 @@
 //! Formerly a first-match ladder in `participant_scopes`; every reading runs;
 //! two different readings of one input are an ambiguity error.
 
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::ForEachEffectAst;
 use super::*;
 use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId, RuleMatch};
 use crate::registry::{
@@ -203,10 +205,10 @@ fn read_source_attacked_player(
     {
         let normalized = prepend_that_player_subject(source_attacked.effect_tokens);
         let effects = parse_maybe_effects(&normalized, false, true)?;
-        return Ok(Some(EffectAst::ForEachPlayersFiltered {
+        return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
             filter: PlayerFilter::AttackedBySourceThisTurn,
             effects,
-        }));
+        })));
     }
     Ok(None)
 }
@@ -238,13 +240,13 @@ fn read_who_clause(input: &ParticipantClause<'_>) -> Result<Option<EffectAst>, C
                 let branch_effects = parse_maybe_effects(effect_tokens, true, false)?;
                 return Ok(Some(wrap_players(
                     &iteration_filter,
-                    vec![EffectAst::Conditional {
-                        predicate: PredicateAst::PlayerTappedLandForManaThisTurn {
+                    vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                        predicate: PredicateAst::Player(PlayerPredicateAst::PlayerTappedLandForManaThisTurn {
                             player: PlayerAst::That,
-                        },
+                        }),
                         if_true: branch_effects,
                         if_false: Vec::new(),
-                    }],
+                    })],
                 )));
             }
             WhoClauseShape::Negated {
@@ -260,12 +262,12 @@ fn read_who_clause(input: &ParticipantClause<'_>) -> Result<Option<EffectAst>, C
                 }
                 let scoped_effect_tokens =
                     implicit_player_is_iterated.then(|| prepend_that_player_subject(effect_tokens));
-                return Ok(Some(EffectAst::ForEachPlayerDoesNot {
+                return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDoesNot {
                     effects: parse_effect_chain_inner(
                         scoped_effect_tokens.as_deref().unwrap_or(effect_tokens),
                     )?,
                     predicate: tagged_predicate(tagged_filter_tokens),
-                }));
+                })));
             }
             WhoClauseShape::DidThisWay {
                 effect_tokens,
@@ -277,11 +279,11 @@ fn read_who_clause(input: &ParticipantClause<'_>) -> Result<Option<EffectAst>, C
                         clause_text
                     )));
                 }
-                return Ok(Some(EffectAst::ForEachPlayerDid {
+                return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDid {
                     effects: parse_effect_chain_inner(effect_tokens)?,
                     predicate: tagged_predicate(tagged_filter_tokens),
                     result_predicate: IfResultPredicate::Did,
-                }));
+                })));
             }
             WhoClauseShape::DidAction {
                 effect_tokens,
@@ -302,11 +304,11 @@ fn read_who_clause(input: &ParticipantClause<'_>) -> Result<Option<EffectAst>, C
                 for effect in &mut effects {
                     bind_implicit_player_context(effect, player);
                 }
-                return Ok(Some(EffectAst::ForEachPlayerDid {
+                return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDid {
                     effects,
                     predicate: None,
                     result_predicate: IfResultPredicate::AcceptedChoice,
-                }));
+                })));
             }
         }
     }

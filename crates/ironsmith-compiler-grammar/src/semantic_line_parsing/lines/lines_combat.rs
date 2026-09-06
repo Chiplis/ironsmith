@@ -1,3 +1,4 @@
+use crate::cards::builders::StatChangeActionAst;
 use super::*;
 
 #[cfg(test)]
@@ -20,13 +21,13 @@ pub(super) fn generic_triggered_source_pump_unblockable_keeps_both_effects() {
             effects,
             [
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::Pump {
+                    action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
                         power: Value::Fixed(1),
                         toughness: Value::Fixed(0),
                         target: TargetAst::Source(_),
                         duration: Until::EndOfTurn,
                         ..
-                    },
+                    }),
                     ..
                 }),
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -70,10 +71,10 @@ pub(super) fn protected_battle_surface_binds_the_pre_lowering_damage_target_insi
     fn damage_filter(effect: &EffectAst) -> &ObjectFilter {
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::DealDamage {
+                SubjectVerbActionAst::Damage(DamageActionAst::DealDamage {
                     target: TargetAst::Object(filter, None, _),
                     ..
-                },
+                }),
             ..
         }) = effect
         else {
@@ -82,11 +83,11 @@ pub(super) fn protected_battle_surface_binds_the_pre_lowering_damage_target_insi
         filter
     }
 
-    let mut effects = vec![EffectAst::ForEachOpponent {
+    let mut effects = vec![EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
         effects: vec![battle_damage()],
-    }];
+    })];
     bind_protected_battle_iteration_in_effects(&mut effects, false);
-    let [EffectAst::ForEachOpponent { effects: nested }] = effects.as_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects: nested })] = effects.as_slice() else {
         panic!("expected the opponent loop to remain intact: {effects:#?}");
     };
     assert_eq!(

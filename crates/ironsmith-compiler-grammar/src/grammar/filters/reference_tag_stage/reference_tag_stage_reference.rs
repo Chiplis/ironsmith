@@ -320,7 +320,7 @@ pub(in super::super) fn parse_object_filter_inner(
         if start < end {
             let chosen_kind = exclusion.phrase.last().copied().unwrap_or("object");
             filter.tagged_constraints.push(TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::ChosenObjects.bind(),
+                tag: (crate::tag::CompilerReferenceTag::ChosenObjects.bind()).into(),
                 relation: TaggedOpbjectRelation::IsNotTaggedObject,
             });
             // For a direct `other than the chosen ...` exclusion this inert
@@ -701,7 +701,7 @@ pub(in super::super) fn parse_object_filter_inner(
     {
         filter.blocked = true;
         filter.blocked_by = Some(crate::filter::ObjectRef::Tagged(
-            crate::tag::CompilerReferenceTag::It.bind(),
+            (crate::tag::CompilerReferenceTag::It.bind()).into(),
         ));
     }
 
@@ -1630,7 +1630,7 @@ pub(in super::super) fn parse_object_filter_inner(
             // find that regression before re-adding the guard.
             "equipped" if !is_negated_word => {
                 filter.tagged_constraints.push(TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::Equipped.bind(),
+                    tag: (crate::tag::CompilerReferenceTag::Equipped.bind()).into(),
                     relation: TaggedOpbjectRelation::IsTaggedObject,
                 });
             }

@@ -1,5 +1,6 @@
 use super::*;
 use crate::cards::builders::PredicateAst;
+use crate::cards::builders::SourcePredicateAst;
 use crate::grammar::activation_restrictions as restriction_grammar;
 fn player_negated_restriction_subject(words: &[&str]) -> Option<PlayerFilter> {
     restriction_grammar::parse_player_negated_subject_words(words)
@@ -470,7 +471,7 @@ pub fn strip_static_restriction_condition(
                 Ok(condition) => condition,
                 Err(_) if kind == StaticRestrictionConditionKind::If => return Ok(None),
                 Err(_) if parse_source_attached_to_creature_condition_tokens(&condition_tokens) => {
-                    PredicateAst::SourceIsEquipped
+                    PredicateAst::Source(SourcePredicateAst::SourceIsEquipped)
                 }
                 Err(_) => {
                     return Err(CardTextError::ParseError(format!(
@@ -969,7 +970,7 @@ pub fn parse_negated_object_restriction_clause(
         })
     {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::DamagedThisWay.bind(),
+            tag: (crate::tag::CompilerReferenceTag::DamagedThisWay.bind()).into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
     }
@@ -1263,7 +1264,7 @@ pub fn ensure_it_tagged_constraint(filter: &mut ObjectFilter) {
         .any(|constraint| constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
     {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.bind(),
+            tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
     }

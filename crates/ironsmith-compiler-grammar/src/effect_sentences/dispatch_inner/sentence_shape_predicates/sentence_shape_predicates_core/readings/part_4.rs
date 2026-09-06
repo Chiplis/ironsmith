@@ -1,5 +1,8 @@
 //! Sentence readings 67–88, in rank order.
 
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::DelayedEffectAst;
 use super::super::*;
 use super::Sentence;
 
@@ -124,7 +127,7 @@ pub(super) fn read_for_each_mana_symbol_spent_effect(
             ))
             .map(Some);
         }
-        return Ok(Some(vec![EffectAst::RepeatEffects { count, effects }]));
+        return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::RepeatEffects { count, effects })]));
     }
     Ok(None)
 }
@@ -155,7 +158,7 @@ pub(super) fn read_for_each_spent_mana_effect(
             )))
             .map(Some);
         }
-        return Ok(Some(vec![EffectAst::RepeatEffects { count, effects }]));
+        return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::RepeatEffects { count, effects })]));
     }
     Ok(None)
 }
@@ -178,10 +181,10 @@ pub(super) fn read_for_each_object_effect(
                 ))
                 .map(Some);
             }
-            return Ok(Some(vec![EffectAst::RepeatEffects {
+            return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
                 count: count.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
                 effects,
-            }]));
+            })]));
         }
     }
     Ok(None)
@@ -206,14 +209,14 @@ pub(super) fn read_for_each_dynamic_target_effect(
         }
         let tag = crate::tag::CompilerReferenceTag::It.bind();
         return Ok(Some(vec![
-            EffectAst::ChooseObjects {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                 filter,
                 count: ChoiceCount::dynamic_x(),
                 count_value: None,
                 player: PlayerAst::You,
                 tag: tag.clone(),
-            },
-            EffectAst::ForEachTagged { tag, effects },
+            }),
+            EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, effects }),
         ]));
     }
     Ok(None)
@@ -234,7 +237,7 @@ pub(super) fn read_for_each_object_filter_effect(
             ))
             .map(Some);
         }
-        return Ok(Some(vec![EffectAst::ForEachObject { filter, effects }]));
+        return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachObject { filter, effects })]));
     }
     Ok(None)
 }
@@ -373,7 +376,7 @@ pub(super) fn read_end_of_combat_remainder(
             .map(Some);
         }
         let effects = parse_effect_sentence_lexed_inner(&remainder)?;
-        return Ok(Some(vec![EffectAst::DelayedUntilEndOfCombat { effects }]));
+        return Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat { effects })]));
     }
     Ok(None)
 }

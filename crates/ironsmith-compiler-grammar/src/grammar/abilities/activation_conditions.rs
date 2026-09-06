@@ -1,4 +1,4 @@
-use crate::cards::builders::{PlayerAst, PredicateAst};
+use crate::cards::builders::{PlayerAst, PredicateAst, PlayerPredicateAst, TurnEventPredicateAst};
 use winnow::combinator::{alt, eof};
 use winnow::prelude::*;
 
@@ -195,11 +195,11 @@ pub fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Option<Pred
         {
             return Some(PredicateAst::YouControl(filter));
         }
-        return Some(PredicateAst::PlayerHasAtLeast {
+        return Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast {
             player,
             filter,
             count,
-        });
+        }));
     }
     parse_land_subtype_control_condition(control_tokens)
 }
@@ -303,7 +303,7 @@ fn parse_source_entered_this_turn_condition(tokens: &[OwnedLexToken]) -> Option<
             source_words,
         )?)
     };
-    Some(PredicateAst::ObjectEnteredBattlefieldThisTurn(filter))
+    Some(PredicateAst::TurnEvents(TurnEventPredicateAst::ObjectEnteredBattlefieldThisTurn(filter)))
 }
 
 fn parse_activate_only_timing_marker(tokens: &[OwnedLexToken]) -> Option<ActivateOnlyTimingMarker> {
@@ -394,13 +394,13 @@ fn parse_graveyard_condition(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
         if descriptor_words.get(used..) != Some(&["or", "more", "cards"][..]) {
             return None;
         }
-        return Some(PredicateAst::PlayerHasAtLeast {
+        return Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast {
             player: PlayerAst::You,
             filter: ObjectFilter::default()
                 .in_zone(crate::zone::Zone::Graveyard)
                 .owned_by(PlayerFilter::You),
             count,
-        });
+        }));
     }
     Some(PredicateAst::CardInYourGraveyard {
         card_types,

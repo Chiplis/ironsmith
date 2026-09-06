@@ -1,3 +1,4 @@
+use crate::cards::builders::ForEachEffectAst;
 use super::super::super::dispatch_entry::{
     ConsultSentenceParts, consult_cast_effects, consult_stop_rule_is_single_match,
     leading_may_actor_to_player, parse_consult_cast_clause, parse_consult_traversal_sentence,
@@ -9,7 +10,7 @@ use crate::cards::builders::{
     LibraryBottomOrderAst, ObjectFilter, OwnedLexToken, PlayerAst, PredicateAst,
     ReturnControllerAst, SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst,
     SubjectVerbRoleAst, SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan, TriggerSpec,
-    ZoneReplacementDurationAst,
+    ZoneReplacementDurationAst, CounterActionAst, DamagePreventionActionAst, GrantActionAst, RevealLookActionAst, LifeResourceActionAst, StatChangeActionAst, StackActionAst, DelayedEffectAst, ObjectChoiceEffectAst, VoteEffectAst, ConditionalEffectAst, PermissionEffectAst,
 };
 use crate::effect::{EffectPredicate, Value};
 use crate::effect_sentences;
@@ -82,31 +83,31 @@ pub fn parse_draw_reveal_then_triggering_creature_mana_value_result(
 
     let drawn_tag = crate::tag::CompilerReferenceTag::DrawnRevealedCard.bind();
     let triggering_tag = crate::tag::CompilerReferenceTag::Triggering.bind();
-    let mana_value = Value::ManaValueOf(Box::new(ChooseSpec::Tagged(drawn_tag.clone())))
+    let mana_value = Value::ManaValueOf(Box::new(ChooseSpec::Tagged(drawn_tag.clone().into())))
         .with_surface_hint(ironsmith_core::ValueSurfaceHint::WhereXIs);
     let draw = EffectAst::subject_verb(
         SubjectVerbRoleAst::AffectedPlayer,
         PlayerAst::You,
-        SubjectVerbActionAst::Draw {
+        SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
             count: Value::Fixed(1),
-        },
+        }),
     );
     let pump = EffectAst::subject_verb(
         SubjectVerbRoleAst::Actor,
         PlayerAst::Implicit,
-        SubjectVerbActionAst::Pump {
+        SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
             power: mana_value.clone(),
             toughness: mana_value.clone(),
             target: TargetAst::Tagged(triggering_tag, None),
             duration: crate::effect::Until::EndOfTurn,
             condition: None,
             set_quantifier_surface: None,
-        },
+        }),
     );
     let lose_life = EffectAst::subject_verb(
         SubjectVerbRoleAst::AffectedPlayer,
         PlayerAst::You,
-        SubjectVerbActionAst::LoseLife { amount: mana_value },
+        SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount: mana_value }),
     );
 
     Ok(Some(vec![
@@ -251,12 +252,12 @@ pub fn parse_controller_defending_loot_then_greatest_mana_value_followup(
     if !matches!(
         followup.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::PutCounters {
+            action: SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
                 target: TargetAst::Source(_),
                 target_count: None,
                 distributed: false,
                 ..
-            },
+            }),
             ..
         })]
     ) {
@@ -267,15 +268,15 @@ pub fn parse_controller_defending_loot_then_greatest_mana_value_followup(
         PlayerFilter::Any,
         PlayerFilter::excluding(PlayerFilter::NotYou, PlayerFilter::Defending),
     );
-    let loot = EffectAst::ForEachPlayersFiltered {
+    let loot = EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
         filter: participants,
         effects: vec![
             EffectAst::subject_verb(
                 SubjectVerbRoleAst::AffectedPlayer,
                 PlayerAst::That,
-                SubjectVerbActionAst::Draw {
+                SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
                     count: Value::Fixed(1),
-                },
+                }),
             ),
             EffectAst::subject_verb_discard(
                 PlayerAst::That,
@@ -286,14 +287,14 @@ pub fn parse_controller_defending_loot_then_greatest_mana_value_followup(
                 None,
             ),
         ],
-    };
-    Ok(Some(vec![EffectAst::IfEffectResult {
+    });
+    Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::IfEffectResult {
         effect: Box::new(loot),
         predicate: EffectPredicate::PlayerAffectedObjectHasGreatestManaValue {
             player: PlayerFilter::You,
         },
         if_true: followup,
-    }]))
+    })]))
 }
 
 #[cfg(test)]
@@ -394,18 +395,18 @@ pub fn parse_participant_secret_object_choice_then_reveal_and_sacrifice(
     let object_choice = crate::effects::SecretObjectChoice {
         filter,
         count: ChoiceCount::exactly(1),
-        tag: tag.clone(),
+        tag: tag.clone().into(),
         reveal_after_choice: true,
     };
 
     Ok(Some(vec![
-        EffectAst::SecretChoiceStart {
+        EffectAst::Votes(VoteEffectAst::SecretChoiceStart {
             options: Vec::new(),
             participants: vec![PlayerFilter::You, PlayerFilter::target_opponent()],
             object_choice: Some(object_choice),
-        },
-        EffectAst::ForEachTagged {
-            tag,
+        }),
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+            tag: crate::tag::TagRef::of(tag),
             effects: vec![EffectAst::subject_verb_sacrifice(
                 PlayerAst::ItsController,
                 sacrifice_filter,
@@ -415,7 +416,7 @@ pub fn parse_participant_secret_object_choice_then_reveal_and_sacrifice(
                     None,
                 )),
             )],
-        },
+        }),
     ]))
 }
 
@@ -426,7 +427,7 @@ mod secret_object_choice_tests;
 fn look_at_top_cards_parts(effect: &EffectAst) -> Option<(PlayerAst, Value)> {
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         subject: SubjectVerbSubjectAst { player, .. },
-        action: SubjectVerbActionAst::LookAtTopCards { count, .. },
+        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { count, .. }),
     }) = effect
     else {
         return None;
@@ -437,7 +438,7 @@ fn look_at_top_cards_parts(effect: &EffectAst) -> Option<(PlayerAst, Value)> {
 fn top_cards_parts_with_reveal(effect: &EffectAst) -> Option<(PlayerAst, Value, bool)> {
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         subject: SubjectVerbSubjectAst { player, .. },
-        action: SubjectVerbActionAst::LookAtTopCards { count, reveal, .. },
+        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { count, reveal, .. }),
     }) = effect
     else {
         return None;
@@ -447,7 +448,7 @@ fn top_cards_parts_with_reveal(effect: &EffectAst) -> Option<(PlayerAst, Value, 
 
 pub(crate) fn tagged_library_candidate_filter(
     candidate: &TagKey,
-    excluded: &[TagKey],
+    excluded: &[crate::tag::TagRef],
 ) -> ObjectFilter {
     let mut filter = ObjectFilter::tagged(candidate.clone()).in_zone(Zone::Library);
     for tag in excluded {
@@ -479,7 +480,7 @@ pub(crate) fn move_tagged_to_looked_destination(
         effect_grammar::LookedCardDestinationShape::LibraryBottom => (Zone::Library, false),
     };
     EffectAst::subject_verb_move_to_zone(
-        TargetAst::Tagged(tag, None),
+        TargetAst::Tagged(crate::tag::TagRef::of(tag), None),
         zone,
         to_top,
         ReturnControllerAst::Preserve,
@@ -504,7 +505,7 @@ pub(crate) fn move_looked_partition_group(
         }
     };
     let mut effect = EffectAst::subject_verb_move_to_zone(
-        TargetAst::Tagged(tag, None),
+        TargetAst::Tagged(crate::tag::TagRef::of(tag), None),
         zone,
         to_top,
         ReturnControllerAst::Preserve,
@@ -540,25 +541,25 @@ fn compose_singleton_hand_partition(
         tagged_library_candidate_filter(&looked_tag, std::slice::from_ref(&hand_tag));
 
     vec![
-        EffectAst::subject_verb_look_at_top_cards(player, count, looked_tag),
-        EffectAst::ChooseTaggedObjectsInZone {
+        EffectAst::subject_verb_look_at_top_cards(player, count, crate::tag::TagRef::of(looked_tag)),
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter: hand_filter,
             count: ChoiceCount::exactly(1),
             player,
-            tag: hand_tag.clone(),
+            tag: crate::tag::TagRef::of(hand_tag.clone()),
             zone: Zone::Library,
-        },
+        }),
         EffectAst::subject_verb_tag_matching_objects(
             remainder_filter,
             vec![Zone::Library],
-            remainder_tag.clone(),
+            crate::tag::TagRef::of(remainder_tag.clone()),
         ),
         move_looked_partition_group(
-            hand_tag,
+            hand_tag.key.clone(),
             effect_grammar::LookedPartitionDestination::Hand,
             player,
         ),
-        move_looked_partition_group(remainder_tag, remainder_destination, player),
+        move_looked_partition_group(remainder_tag.key.clone(), remainder_destination, player),
     ]
 }
 
@@ -606,19 +607,19 @@ fn compose_distinct_three_way_looked_disposition(
     let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
         player,
         count,
-        candidate_tag.clone(),
+        crate::tag::TagRef::of(candidate_tag.clone()),
     )];
     for (index, tag) in chosen_tags.iter().enumerate() {
-        effects.push(EffectAst::ChooseTaggedObjectsInZone {
+        effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter: tagged_library_candidate_filter(&candidate_tag, &chosen_tags[..index]),
             count: ChoiceCount::exactly(1),
             player,
-            tag: tag.clone(),
+            tag: crate::tag::TagRef::of(tag.clone()),
             zone: Zone::Library,
-        });
+        }));
     }
     for (tag, destination) in chosen_tags.into_iter().zip(destinations) {
-        effects.push(move_tagged_to_looked_destination(tag, destination));
+        effects.push(move_tagged_to_looked_destination(tag.key.clone(), destination));
     }
     effects
 }
@@ -716,10 +717,10 @@ pub fn parse_reciprocal_creature_control_sequence(
         );
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::GrantAbilitiesAll {
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll {
                     set_quantifier_surface,
                     ..
-                },
+                }),
             ..
         }) = &mut haste
         {
@@ -778,25 +779,25 @@ pub(crate) fn wrap_optional_consult_effects(
 ) -> Vec<EffectAst> {
     let mut effects = Vec::new();
     if optional {
-        effects.push(EffectAst::May {
+        effects.push(EffectAst::Permissions(PermissionEffectAst::May {
             effects: parts.effects,
-        });
+        }));
     } else {
         effects.extend(parts.effects);
     }
     if gate_on_result || optional {
-        effects.push(EffectAst::IfResult {
+        effects.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,
             effects: followups,
-        });
+        }));
     } else {
         effects.extend(followups);
     }
     if gate_on_previous_result {
-        vec![EffectAst::IfResult {
+        vec![EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,
             effects,
-        }]
+        })]
     } else {
         effects
     }
@@ -843,7 +844,7 @@ pub fn parse_exile_face_down_pile_then_cloak(
     let pile_tag = helper_tag_for_tokens(first_tokens, "cloak_pile");
     let target_exile = EffectAst::TagAffected {
         effect: Box::new(EffectAst::subject_verb_exile(target, true)),
-        tag: pile_tag.clone(),
+        tag: crate::tag::TagRef::of(pile_tag.clone()),
     };
 
     Ok(Some(vec![
@@ -851,11 +852,11 @@ pub fn parse_exile_face_down_pile_then_cloak(
         EffectAst::subject_verb_exile_top_of_library_face_down(
             shape.library_owner,
             shape.library_count,
-            pile_tag.clone(),
+            crate::tag::TagRef::of(pile_tag.clone()),
         ),
         EffectAst::subject_verb_cloak_onto_battlefield(
             PlayerAst::You,
-            TargetAst::Tagged(pile_tag, None),
+            TargetAst::Tagged(crate::tag::TagRef::of(pile_tag), None),
             shape.enters_tapped,
             ReturnControllerAst::You,
             true,
@@ -938,16 +939,16 @@ pub fn parse_look_at_top_then_put_counted_hand_rest_bottom(
     let selected_filter = tagged_library_candidate_filter(&looked_tag, &[]);
 
     Ok(Some(vec![
-        EffectAst::subject_verb_look_at_top_cards(PlayerAst::You, count, looked_tag.clone()),
-        EffectAst::ChooseTaggedObjectsInZone {
+        EffectAst::subject_verb_look_at_top_cards(PlayerAst::You, count, crate::tag::TagRef::of(looked_tag.clone())),
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter: selected_filter,
             count: shape.count,
             player: PlayerAst::You,
-            tag: selected_tag.clone(),
+            tag: crate::tag::TagRef::of(selected_tag.clone()),
             zone: Zone::Library,
-        },
-        EffectAst::ForEachTagged {
-            tag: selected_tag.clone(),
+        }),
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+            tag: crate::tag::TagRef::of(selected_tag.clone()),
             effects: vec![EffectAst::subject_verb_move_to_zone(
                 TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                 Zone::Hand,
@@ -956,10 +957,10 @@ pub fn parse_look_at_top_then_put_counted_hand_rest_bottom(
                 false,
                 None,
             )],
-        },
+        }),
         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-            looked_tag,
-            Some(selected_tag),
+            crate::tag::TagRef::of(looked_tag),
+            Some(crate::tag::TagRef::of(selected_tag)),
             shape.remainder_order,
             PlayerAst::You,
         ),
@@ -1022,16 +1023,16 @@ pub fn parse_look_at_top_then_partition_selected_and_remainder(
     ) = (shape.selected_destination, shape.remainder_destination)
     {
         let effects = vec![
-            EffectAst::subject_verb_look_at_top_cards(library_owner, count, looked_tag.clone()),
-            EffectAst::ChooseTaggedObjectsInZone {
+            EffectAst::subject_verb_look_at_top_cards(library_owner, count, crate::tag::TagRef::of(looked_tag.clone())),
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
                 filter: selected_filter,
                 count: shape.selected_count,
                 player: PlayerAst::You,
-                tag: selected_tag.clone(),
+                tag: crate::tag::TagRef::of(selected_tag.clone()),
                 zone: Zone::Library,
-            },
-            EffectAst::ForEachTagged {
-                tag: selected_tag.clone(),
+            }),
+            EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+                tag: crate::tag::TagRef::of(selected_tag.clone()),
                 effects: vec![
                     EffectAst::subject_verb_move_to_zone(
                         TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
@@ -1043,19 +1044,19 @@ pub fn parse_look_at_top_then_partition_selected_and_remainder(
                     )
                     .with_library_order(Some(selected_order), PlayerAst::You),
                 ],
-            },
+            }),
             EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-                looked_tag,
-                Some(selected_tag),
+                crate::tag::TagRef::of(looked_tag),
+                Some(crate::tag::TagRef::of(selected_tag)),
                 remainder_order,
                 library_owner,
             ),
         ];
         return if gate_on_previous_result {
-            Ok(Some(vec![EffectAst::IfResult {
+            Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                 predicate: IfResultPredicate::Did,
                 effects,
-            }]))
+            })]))
         } else {
             Ok(Some(effects))
         };
@@ -1067,27 +1068,27 @@ pub fn parse_look_at_top_then_partition_selected_and_remainder(
         tagged_library_candidate_filter(&looked_tag, std::slice::from_ref(&selected_tag));
 
     let effects = vec![
-        EffectAst::subject_verb_look_at_top_cards(library_owner, count, looked_tag.clone()),
-        EffectAst::ChooseTaggedObjectsInZone {
+        EffectAst::subject_verb_look_at_top_cards(library_owner, count, crate::tag::TagRef::of(looked_tag.clone())),
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter: selected_filter,
             count: shape.selected_count,
             player: PlayerAst::You,
-            tag: selected_tag.clone(),
+            tag: crate::tag::TagRef::of(selected_tag.clone()),
             zone: Zone::Library,
-        },
+        }),
         EffectAst::subject_verb_tag_matching_objects(
             remainder_filter,
             vec![Zone::Library],
-            remainder_tag.clone(),
+            crate::tag::TagRef::of(remainder_tag.clone()),
         ),
-        move_looked_partition_group(selected_tag, shape.selected_destination, library_owner),
-        move_looked_partition_group(remainder_tag, shape.remainder_destination, library_owner),
+        move_looked_partition_group(selected_tag.key.clone(), shape.selected_destination, library_owner),
+        move_looked_partition_group(remainder_tag.key.clone(), shape.remainder_destination, library_owner),
     ];
     if gate_on_previous_result {
-        Ok(Some(vec![EffectAst::IfResult {
+        Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,
             effects,
-        }]))
+        })]))
     } else {
         Ok(Some(effects))
     }
@@ -1203,15 +1204,15 @@ fn parse_same_controller_targets_choose_sacrifice(
         vec![
             EffectAst::subject_verb_target_only(target),
             EffectAst::SnapshotLastObjectTag {
-                into: target_set_tag.clone(),
+                into: crate::tag::TagRef::of(target_set_tag.clone()),
             },
-            EffectAst::ChooseObjects {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                 filter: ObjectFilter::tagged(target_set_tag.clone()),
                 count: ChoiceCount::exactly(1),
                 count_value: None,
                 player: PlayerAst::ItsController,
-                tag: chosen_tag.clone(),
-            },
+                tag: crate::tag::TagRef::of(chosen_tag.clone()),
+            }),
             EffectAst::subject_verb_sacrifice(
                 PlayerAst::That,
                 ObjectFilter::tagged(chosen_tag.clone()),
@@ -1219,8 +1220,8 @@ fn parse_same_controller_targets_choose_sacrifice(
                 None,
             ),
         ],
-        target_set_tag,
-        chosen_tag,
+        target_set_tag.key.clone(),
+        chosen_tag.key.clone(),
     )))
 }
 
@@ -1243,80 +1244,80 @@ pub(crate) fn append_rest_action_after_choice(
     action: effect_grammar::RestActionShape,
 ) -> Option<Vec<EffectAst>> {
     match effect {
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter,
             tag,
             count,
             count_value,
             player,
-        } => {
+        }) => {
             let rest_filter = filter.clone().not_tagged(tag.clone());
             Some(vec![
-                EffectAst::ChooseObjects {
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                     filter,
                     tag,
                     count,
                     count_value,
                     player,
-                },
+                }),
                 rest_action_effect(action, rest_filter, player),
             ])
         }
-        EffectAst::ForEachPlayer { effects } => {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }) => {
             let [inner] = effects.as_slice() else {
                 return None;
             };
-            let EffectAst::ChooseObjects {
+            let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                 filter,
                 tag,
                 count,
                 count_value,
                 player,
-            } = inner.clone()
+            }) = inner.clone()
             else {
                 return None;
             };
             let rest_filter = filter.clone().not_tagged(tag.clone());
-            Some(vec![EffectAst::ForEachPlayer {
+            Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
                 effects: vec![
-                    EffectAst::ChooseObjects {
+                    EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                         filter,
                         tag,
                         count,
                         count_value,
                         player,
-                    },
+                    }),
                     rest_action_effect(action, rest_filter, player),
                 ],
-            }])
+            })])
         }
-        EffectAst::ForEachOpponent { effects } => {
+        EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }) => {
             let [inner] = effects.as_slice() else {
                 return None;
             };
-            let EffectAst::ChooseObjects {
+            let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                 filter,
                 tag,
                 count,
                 count_value,
                 player,
-            } = inner.clone()
+            }) = inner.clone()
             else {
                 return None;
             };
             let rest_filter = filter.clone().not_tagged(tag.clone());
-            Some(vec![EffectAst::ForEachOpponent {
+            Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
                 effects: vec![
-                    EffectAst::ChooseObjects {
+                    EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                         filter,
                         tag,
                         count,
                         count_value,
                         player,
-                    },
+                    }),
                     rest_action_effect(action, rest_filter, player),
                 ],
-            }])
+            })])
         }
         _ => None,
     }
@@ -1404,10 +1405,10 @@ pub fn graveyard_cast_with_exile_replacement(
                     Some(TextSpan::synthetic()),
                     None,
                 ))),
-                tag: chosen_tag.clone(),
+                tag: crate::tag::TagRef::of(chosen_tag.clone()),
             },
             EffectAst::subject_verb_grant_play_tagged_until_end_of_turn_from_current_zone_with_optional_surface(
-                chosen_tag,
+                crate::tag::TagRef::of(chosen_tag),
                 PlayerAst::You,
                 false,
                 shape.without_paying_mana_cost,
@@ -1438,13 +1439,13 @@ pub fn graveyard_cast_with_exile_replacement(
                 Some(TextSpan::synthetic()),
                 None,
             ))),
-            tag: chosen_tag.clone(),
+            tag: crate::tag::TagRef::of(chosen_tag.clone()),
         },
-        EffectAst::May {
+        EffectAst::Permissions(PermissionEffectAst::May {
             effects: vec![EffectAst::TagAffected {
                 effect: Box::new(
                     EffectAst::subject_verb_cast_tagged_with_additional_cost_and_mana_spend_mode(
-                        chosen_tag,
+                        crate::tag::TagRef::of(chosen_tag),
                         PlayerAst::You,
                         false,
                         false,
@@ -1454,10 +1455,10 @@ pub fn graveyard_cast_with_exile_replacement(
                         shape.mana_spend_mode,
                     ),
                 ),
-                tag: cast_spell_tag,
+                tag: crate::tag::TagRef::of(cast_spell_tag),
             }],
-        },
-        EffectAst::IfResult {
+        }),
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,
             effects: vec![EffectAst::subject_verb_register_future_zone_replacement(
                 replacement_filter,
@@ -1468,7 +1469,7 @@ pub fn graveyard_cast_with_exile_replacement(
                 crate::cards::builders::FutureZoneReplacementCausePolicyAst::Any,
                 false,
             )],
-        },
+        }),
     ]))
 }
 
@@ -1608,7 +1609,7 @@ pub fn parse_counter_spell_then_artifact_or_creature_enters_under_your_control(
     let [
         EffectAst::SubjectVerb(
             counter @ SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Counter { target },
+                action: SubjectVerbActionAst::Stack(StackActionAst::Counter { target }),
                 ..
             },
         ),
@@ -1638,11 +1639,11 @@ pub fn parse_counter_spell_then_artifact_or_creature_enters_under_your_control(
         ),
     ];
     Ok(Some(vec![
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: PredicateAst::TargetMatches(matching_spell),
             if_true: registrations,
             if_false: Vec::new(),
-        },
+        }),
         counter,
     ]))
 }
@@ -1670,7 +1671,7 @@ pub fn parse_filtered_future_exile_then_return_next_end_step(
             crate::cards::builders::FutureZoneReplacementCausePolicyAst::Any,
             true,
         ),
-        EffectAst::DelayedUntilNextEndStep {
+        EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
             player: PlayerFilter::Any,
             effects: vec![EffectAst::subject_verb_return_all_to_battlefield(
                 linked_filter,
@@ -1678,6 +1679,6 @@ pub fn parse_filtered_future_exile_then_return_next_end_step(
                 false,
                 ReturnControllerAst::Owner,
             )],
-        },
+        }),
     ]))
 }

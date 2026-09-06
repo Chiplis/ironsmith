@@ -1,3 +1,8 @@
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::ZoneMoveActionAst;
+use crate::cards::builders::LibraryActionAst;
+use crate::cards::builders::CounterActionAst;
 use super::*;
 use crate::effect_sentences::parse_artifact_enchantment_or_token_filter;
 use crate::grammar::effects as effect_grammar;
@@ -28,17 +33,17 @@ pub fn parse_sentence_each_player_reveals_top_count_put_permanents_onto_battlefi
     let iterated_target =
         TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), clause.span());
 
-    Ok(Some(vec![EffectAst::ForEachPlayer {
+    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
         effects: vec![
             EffectAst::subject_verb_look_at_top_cards(
                 PlayerAst::That,
                 count,
-                revealed_tag_key.clone(),
+                crate::tag::TagRef::of(revealed_tag_key.clone()),
             ),
-            EffectAst::subject_verb_reveal_tagged(revealed_tag_key.clone()),
-            EffectAst::ForEachTagged {
-                tag: revealed_tag_key,
-                effects: vec![EffectAst::Conditional {
+            EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(revealed_tag_key.clone())),
+            EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+                tag: crate::tag::TagRef::of(revealed_tag_key),
+                effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                     predicate: PredicateAst::ItMatches(shape.matching_filter),
                     if_true: vec![EffectAst::subject_verb_move_to_zone(
                         iterated_target.clone(),
@@ -56,10 +61,10 @@ pub fn parse_sentence_each_player_reveals_top_count_put_permanents_onto_battlefi
                         false,
                         None,
                     )],
-                }],
-            },
+                })],
+            }),
         ],
-    }]))
+    })]))
 }
 
 pub fn parse_return_then_do_same_for_subtypes_sentence(
@@ -126,21 +131,21 @@ pub fn parse_choose_then_do_same_for_filter_sentence(
         return Ok(None);
     }
 
-    let mut effects = vec![EffectAst::ChooseObjects {
+    let mut effects = vec![EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
         filter: base_filter.clone(),
         count,
         count_value: None,
         player,
         tag: tag.clone(),
-    }];
+    })];
     for filter in followup_filters {
-        effects.push(EffectAst::ChooseObjects {
+        effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter,
             count,
             count_value: None,
             player,
             tag: tag.clone(),
-        });
+        }));
     }
 
     Ok(Some(effects))
@@ -170,7 +175,7 @@ fn preserve_choose_clause_it_reference(references_prior_choice: bool, filter: &m
         .any(|constraint| constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
     {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.bind(),
+            tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
     }
@@ -190,13 +195,13 @@ pub fn parse_choose_then_choose_objects_sentence(
 
     preserve_choose_clause_it_reference(shape.head_references_prior_choice, &mut first_filter);
 
-    let first = EffectAst::ChooseObjects {
+    let first = EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
         filter: first_filter,
         count: first_count,
         count_value: None,
         player: first_player,
         tag: crate::tag::CompilerReferenceTag::It.bind(),
-    };
+    });
 
     let Some((mut second_player, mut second_filter, second_count)) =
         parse_choose_objects_clause_for_chain(SubjectVerbPrimitiveClause::new(shape.tail_tokens))?
@@ -221,13 +226,13 @@ pub fn parse_choose_then_choose_objects_sentence(
 
     Ok(Some(vec![
         first,
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter: second_filter,
             count: second_count,
             count_value: None,
             player: second_player,
             tag: crate::tag::CompilerReferenceTag::It.bind(),
-        },
+        }),
     ]))
 }
 
@@ -269,13 +274,13 @@ pub fn parse_sacrifice_any_number_sentence(
     let tag = crate::tag::CompilerReferenceTag::It.bind();
 
     let mut effects = vec![
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter,
             count: ChoiceCount::any_number(),
             count_value: None,
             player: PlayerAst::Implicit,
             tag: tag.clone(),
-        },
+        }),
         EffectAst::subject_verb_sacrifice_all(PlayerAst::Implicit, ObjectFilter::tagged(tag)),
     ];
     if let Some(tail_tokens) = shape.tail_tokens {
@@ -310,13 +315,13 @@ pub fn parse_sacrifice_one_or_more_sentence(
     let filter = sacrifice_choice_filter(parsed_filter);
     let tag = crate::tag::CompilerReferenceTag::It.bind();
     Ok(Some(vec![
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter,
             count: shape.count,
             count_value: None,
             player: PlayerAst::Implicit,
             tag: tag.clone(),
-        },
+        }),
         EffectAst::subject_verb_sacrifice_all(PlayerAst::Implicit, ObjectFilter::tagged(tag)),
     ]))
 }
@@ -416,13 +421,13 @@ pub fn parse_exile_then_shuffle_graveyard_into_library_sentence(
         matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Exile { .. },
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. }),
                 ..
             }) | EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::ExileAll { .. },
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { .. }),
                 ..
             }) | EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::ExileUntilSourceLeaves { .. },
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileUntilSourceLeaves { .. }),
                 ..
             })
         )
@@ -435,7 +440,7 @@ pub fn parse_exile_then_shuffle_graveyard_into_library_sentence(
         matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::ShuffleGraveyardIntoLibrary { .. },
+                action: SubjectVerbActionAst::Library(LibraryActionAst::ShuffleGraveyardIntoLibrary { .. }),
                 ..
             })
         )
@@ -522,7 +527,7 @@ fn head_is_single_return_to_hand(effects: &[EffectAst]) -> bool {
     matches!(
         effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ReturnToHand { .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { .. }),
             ..
         })
     )
@@ -549,7 +554,7 @@ pub fn parse_destroy_then_land_controller_graveyard_count_damage_sentence(
         matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Destroy { .. },
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { .. }),
                 ..
             })
         )
@@ -620,20 +625,20 @@ mod tests {
         assert!(matches!(
             effects.get(1),
             Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::PutCounters {
+                action: SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
                     counter_type: crate::CounterType::Named(name),
                     ..
-                },
+                }),
                 ..
             })) if name.as_str() == "memory"
         ));
         assert!(matches!(
             effects.first(),
             Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Exile {
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
                     target: TargetAst::WithCount(inner, _),
                     ..
-                },
+                }),
                 ..
             })) if matches!(
                 inner.as_ref(),

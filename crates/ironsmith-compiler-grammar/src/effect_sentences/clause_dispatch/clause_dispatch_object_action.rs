@@ -1,3 +1,4 @@
+use crate::cards::builders::ConditionalEffectAst;
 use super::*;
 
 /// Parse the coordinated conditional animation used by effects such as
@@ -82,16 +83,16 @@ pub(super) fn parse_conditional_become_pair_impl(
     let second_effect = parse_become_clause(shape.subject_tokens, second_body)?;
     Ok(Some(EffectAst::Sequence {
         effects: vec![
-            EffectAst::Conditional {
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: first_predicate,
                 if_true: vec![first_effect],
                 if_false: Vec::new(),
-            },
-            EffectAst::Conditional {
+            }),
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: second_predicate,
                 if_true: vec![second_effect],
                 if_false: Vec::new(),
-            },
+            }),
         ],
     }))
 }

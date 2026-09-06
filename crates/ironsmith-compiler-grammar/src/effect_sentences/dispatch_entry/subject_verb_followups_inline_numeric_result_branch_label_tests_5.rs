@@ -11,10 +11,10 @@ fn parsed_row(text: &str) -> EffectAst {
 #[test]
 fn exact_numeric_result_row_retains_its_authored_inner_label() {
     let effect = parsed_row("1 | Trapped! — You lose 3 life.");
-    let EffectAst::IfResult {
+    let EffectAst::Conditionals(ConditionalEffectAst::IfResult {
         predicate: IfResultPredicate::Value(crate::effect::Comparison::Equal(1)),
         effects,
-    } = effect
+    }) = effect
     else {
         panic!("expected exact numeric result predicate: {effect:#?}");
     };
@@ -28,7 +28,7 @@ fn exact_numeric_result_row_retains_its_authored_inner_label() {
 #[test]
 fn unlabeled_numeric_result_row_does_not_gain_a_label_wrapper() {
     let effect = parsed_row("1 | You lose 3 life.");
-    let EffectAst::IfResult { effects, .. } = effect else {
+    let EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. }) = effect else {
         panic!("expected numeric result branch: {effect:#?}");
     };
     assert!(

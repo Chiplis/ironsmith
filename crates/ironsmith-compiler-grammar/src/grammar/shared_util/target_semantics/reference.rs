@@ -396,7 +396,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     if matches_surface(&remaining_words, ENCHANTED_PLAYER_TARGET_PATTERN) {
         return Ok(wrap_target_count(
             TargetAst::Player(
-                PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.bind()),
+                PlayerFilter::TaggedPlayer((crate::tag::CompilerReferenceTag::Enchanted.bind()).into()),
                 target_span,
             ),
             target_count,

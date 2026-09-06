@@ -1,3 +1,6 @@
+use crate::cards::builders::SourcePredicateAst;
+use crate::cards::builders::StatChangeActionAst;
+use crate::cards::builders::GrantActionAst;
 use super::super::super::util::tokenize_line;
 use super::*;
 
@@ -14,12 +17,12 @@ fn source_tapped_keyword_grants_keep_typed_duration_and_condition() {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::GrantAbilitiesToTarget {
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                     target: TargetAst::Object(filter, ..),
                     duration,
                     condition,
                     ..
-                },
+                }),
             ..
         }),
     ] = effects.as_slice()
@@ -27,7 +30,7 @@ fn source_tapped_keyword_grants_keep_typed_duration_and_condition() {
         panic!("expected one targeted grant, got {effects:#?}");
     };
     assert_eq!(*duration, Until::SourceUntaps);
-    assert_eq!(*condition, Some(PredicateAst::SourceIsTapped));
+    assert_eq!(*condition, Some(PredicateAst::Source(SourcePredicateAst::SourceIsTapped)));
     assert_eq!(filter.controller, Some(PlayerFilter::You));
     assert!(filter.other);
 
@@ -36,10 +39,10 @@ fn source_tapped_keyword_grants_keep_typed_duration_and_condition() {
     assert!(matches!(
         dispatched.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::GrantAbilitiesToTarget {
+            action: SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                 duration: Until::SourceUntaps,
                 ..
-            },
+            }),
             ..
         })]
     ));
@@ -77,8 +80,8 @@ fn source_tapped_compound_pump_and_hexproof_share_the_typed_duration() {
             panic!("expected subject-verb effect, got {effect:#?}");
         };
         match action {
-            SubjectVerbActionAst::Pump { duration, .. }
-            | SubjectVerbActionAst::GrantAbilitiesToTarget { duration, .. } => {
+            SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { duration, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { duration, .. }) => {
                 assert_eq!(*duration, Until::SourceUntaps)
             }
             _ => panic!("unexpected compound effect: {effect:#?}"),

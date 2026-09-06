@@ -1,3 +1,4 @@
+use crate::cards::builders::ConditionalEffectAst;
 use super::*;
 use winnow::Parser;
 
@@ -52,7 +53,7 @@ pub fn parse_become_clause(
             crate::color::ColorSet::RED,
             crate::color::ColorSet::GREEN,
         ] {
-            effects.push(EffectAst::Conditional {
+            effects.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: PredicateAst::TaggedMatches(
                     crate::tag::CompilerReferenceTag::Triggering.bind(),
                     ObjectFilter::default().with_colors(colors),
@@ -65,7 +66,7 @@ pub fn parse_become_clause(
                     Until::Forever,
                 )],
                 if_false: Vec::new(),
-            });
+            }));
         }
         return Ok(EffectAst::Coordinated {
             effects,

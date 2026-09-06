@@ -888,7 +888,7 @@ pub(super) fn try_apply_attached_exclusion_phrases(
             drain_end += 1;
         }
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag,
+            tag: tag.key.clone(),
             relation: TaggedOpbjectRelation::IsNotTaggedObject,
         });
         all_words.drain(idx..drain_end);
@@ -1126,7 +1126,7 @@ fn apply_spell_filter_tagged_relations(filter: &mut ObjectFilter, words: &[&str]
 
     if shares_card_type && references_exiled_card {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::SourceExiled.bind(),
+            tag: (crate::tag::CompilerReferenceTag::SourceExiled.bind()).into(),
             relation: shared_type_relation(words),
         });
     }

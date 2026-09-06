@@ -1,3 +1,4 @@
+use crate::cards::builders::ForEachEffectAst;
 use winnow::Parser as _;
 
 use super::super::activation_and_restrictions::choice_object_clauses::{
@@ -23,7 +24,7 @@ use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, IfResultPredicate, LibraryConsultModeAst,
     LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst, SubjectVerbActionAst,
     SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst, TextSpan, Verb,
-    ZoneReplacementDurationAst,
+    ZoneReplacementDurationAst, GrantActionAst, LibraryActionAst, ZoneMoveActionAst, PermanentStateActionAst, RevealLookActionAst, DamageActionAst, ObjectChoiceEffectAst, ConditionalEffectAst, PermissionEffectAst,
 };
 use crate::effect::Value;
 use crate::effect_sentences;
@@ -215,7 +216,7 @@ fn parse_inline_look_exile_face_down_permission_bundle(
     };
 
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::LookAtTopCards { tag: look_tag, .. },
+        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { tag: look_tag, .. }),
         ..
     }) = &mut look_effect
     else {
@@ -223,11 +224,11 @@ fn parse_inline_look_exile_face_down_permission_bundle(
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::Exile {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
                 target: TargetAst::Tagged(exile_tag, _),
                 face_down: true,
                 ..
-            },
+            }),
         ..
     }) = &mut exile_effect
     else {
@@ -242,10 +243,10 @@ fn parse_inline_look_exile_face_down_permission_bundle(
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
                 tag: permission_tag,
                 ..
-            },
+            }),
         ..
     }) = &mut permission
     else {
@@ -253,9 +254,9 @@ fn parse_inline_look_exile_face_down_permission_bundle(
     };
 
     let linked_tag = helper_tag_for_tokens(tokens, "looked_exiled");
-    *look_tag = linked_tag.clone();
-    *exile_tag = linked_tag.clone();
-    *permission_tag = linked_tag;
+    *look_tag = crate::tag::TagRef::of(linked_tag.clone());
+    *exile_tag = crate::tag::TagRef::of(linked_tag.clone());
+    *permission_tag = crate::tag::TagRef::of(linked_tag);
 
     Ok(Some(vec![look_effect, exile_effect, permission]))
 }
@@ -280,7 +281,7 @@ fn parse_exile_top_library_then_play_bundle(
             && matches!(
                 prefix_effects.as_slice(),
                 [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::ShuffleLibrary,
+                    action: SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
                     ..
                 })]
             )
@@ -346,9 +347,9 @@ fn parse_exile_top_library_then_play_bundle(
         let collection_tag = helper_tag_for_tokens(exile_core, "exiled");
         let mut filter = ObjectFilter::default().in_zone(Zone::Library);
         filter.owner = Some(PlayerFilter::IteratedPlayer);
-        EffectAst::ForEachOpponent {
+        EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
             effects: vec![
-                EffectAst::ChooseObjectsTopOfLibrary {
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary {
                     filter,
                     count: ChoiceCount::exactly(count),
                     count_value: None,
@@ -356,19 +357,19 @@ fn parse_exile_top_library_then_play_bundle(
                     // to inspect the face-down cards. Choosing the sole top
                     // card also records that viewer for the subsequent exile.
                     player: PlayerAst::You,
-                    tag: chosen_tag.clone(),
-                },
+                    tag: crate::tag::TagRef::of(chosen_tag.clone()),
+                }),
                 EffectAst::TagAffected {
                     effect: Box::new(EffectAst::subject_verb_exile(
-                        TargetAst::Tagged(chosen_tag, None),
+                        TargetAst::Tagged(crate::tag::TagRef::of(chosen_tag), None),
                         true,
                     )),
                     // Accumulate all cards across the opponent loop so one
                     // trailing permission covers the complete collection.
-                    tag: collection_tag,
+                    tag: crate::tag::TagRef::of(collection_tag),
                 },
             ],
-        }
+        })
     } else {
         let Some(effect) = parse_exile_top_library_clause(&exile_tokens, exile_subject, false)
         else {
@@ -411,7 +412,7 @@ fn parse_exile_top_library_then_play_bundle(
             };
             let EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 subject,
-                action: SubjectVerbActionAst::LookAtObjects { filter },
+                action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects { filter }),
             }) = look
             else {
                 return Ok(None);
@@ -427,11 +428,11 @@ fn parse_exile_top_library_then_play_bundle(
             }
             permission.clone()
         }
-        EffectAst::MayByPlayer {
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
             player: PlayerAst::You,
             effects,
-        }
-        | EffectAst::May { effects }
+        })
+        | EffectAst::Permissions(PermissionEffectAst::May { effects })
             if face_down && effects.len() == 1 =>
         {
             effects.into_iter().next().expect("checked one effect")
@@ -441,21 +442,21 @@ fn parse_exile_top_library_then_play_bundle(
 
     let Some(tag) = (match &exile_effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-            SubjectVerbActionAst::ExileTopOfLibrary { tags, .. } => tags.first().cloned(),
+            SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { tags, .. }) => tags.first().cloned(),
             _ => None,
         },
-        EffectAst::ForEachOpponent { effects } => match effects.as_slice() {
+        EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }) => match effects.as_slice() {
             [
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action:
-                        SubjectVerbActionAst::ExileTopOfLibrary {
+                        SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
                             accumulated_tags, ..
-                        },
+                        }),
                     ..
                 }),
             ] => accumulated_tags.first().cloned(),
             [
-                EffectAst::ChooseObjectsTopOfLibrary { .. },
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary { .. }),
                 EffectAst::TagAffected { tag, .. },
             ] => Some(tag.clone()),
             _ => None,
@@ -469,27 +470,27 @@ fn parse_exile_top_library_then_play_bundle(
         let chosen_tag = helper_tag_for_tokens(&choice_tokens, "chosen_exiled");
         let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag,
+            tag: tag.key.clone(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
         (
             chosen_tag.clone(),
-            Some(EffectAst::ChooseTaggedObjectsInZone {
+            Some(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
                 filter,
                 count: ChoiceCount::exactly(1),
                 player: PlayerAst::You,
-                tag: chosen_tag,
+                tag: crate::tag::TagRef::of(chosen_tag),
                 zone: Zone::Exile,
-            }),
+            })),
         )
     } else {
-        (tag, None)
+        (crate::tag::TagRef::of(tag), None)
     };
 
     let permission_effect = match permission_effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
                     tag: _,
                     player,
                     allow_land,
@@ -500,12 +501,12 @@ fn parse_exile_top_library_then_play_bundle(
                     until_source_exiles_another,
                     max_plays,
                     surface,
-                },
+                }),
             ..
         }) => EffectAst::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
                 tag: permission_tag,
                 player,
                 allow_land,
@@ -516,17 +517,17 @@ fn parse_exile_top_library_then_play_bundle(
                 until_source_exiles_another,
                 max_plays,
                 surface,
-            },
+            }),
         ),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn {
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilYourNextTurn {
                     player,
                     allow_land,
                     until_next_end_step,
                     max_plays,
                     ..
-                },
+                }),
             ..
         }) => {
             if until_next_end_step {
@@ -549,7 +550,7 @@ fn parse_exile_top_library_then_play_bundle(
         }
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
                     player,
                     allow_land,
                     without_paying_mana_cost,
@@ -559,7 +560,7 @@ fn parse_exile_top_library_then_play_bundle(
                     spell_cost_increase,
                     lands_enter_tapped,
                     ..
-                },
+                }),
             ..
         }) => {
             if spell_cost_increase.is_some() || lands_enter_tapped {
@@ -642,15 +643,15 @@ fn parse_optional_result_exile_choice_play_bundle(
     let optional_effects = match optional_shape.actor {
         bundle_grammar::clause_dispatch_shapes::LeadingMayActorShape::Player(player) => {
             super::chain_carry::bind_implicit_player_context(&mut optional_effect, player);
-            vec![EffectAst::MayByPlayer {
+            vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
                 player,
                 effects: vec![optional_effect],
-            }]
+            })]
         }
         bundle_grammar::clause_dispatch_shapes::LeadingMayActorShape::Implicit => {
-            vec![EffectAst::May {
+            vec![EffectAst::Permissions(PermissionEffectAst::May {
                 effects: vec![optional_effect],
-            }]
+            })]
         }
     };
     let Some(linked_effects) = parse_exile_top_library_then_play_bundle(
@@ -663,10 +664,10 @@ fn parse_optional_result_exile_choice_play_bundle(
     };
 
     let mut effects = optional_effects;
-    effects.push(EffectAst::IfResult {
+    effects.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
         predicate: prefix.predicate,
         effects: linked_effects,
-    });
+    }));
     Ok(Some(effects))
 }
 
@@ -690,27 +691,27 @@ fn parse_hidden_exile_partition_permission_bundle(
 
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::LookAtTopCards { .. },
+            action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { .. }),
             ..
         }),
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             tag: selected_tag, ..
-        },
+        }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::Exile {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
                     target: TargetAst::Tagged(exile_tag, None),
                     face_down: true,
                     ..
-                },
+                }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
                     keep_tagged: Some(kept_tag),
                     ..
-                },
+                }),
             ..
         }),
     ] = effects.as_mut_slice()
@@ -722,29 +723,29 @@ fn parse_hidden_exile_partition_permission_bundle(
     }
 
     let linked_tag = helper_tag_for_tokens(partition_sentence, "exiled");
-    *selected_tag = linked_tag.clone();
-    *exile_tag = linked_tag.clone();
-    *kept_tag = linked_tag.clone();
+    *selected_tag = crate::tag::TagRef::of(linked_tag.clone());
+    *exile_tag = crate::tag::TagRef::of(linked_tag.clone());
+    *kept_tag = crate::tag::TagRef::of(linked_tag.clone());
 
     let Some(mut permission) = parse_cast_or_play_tagged_clause(permission_sentence)? else {
         return Ok(None);
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
                 tag,
                 player: PlayerAst::You,
                 allow_land: true,
                 without_paying_mana_cost: false,
                 filter: None,
                 ..
-            },
+            }),
         ..
     }) = &mut permission
     else {
         return Ok(None);
     };
-    *tag = linked_tag;
+    *tag = crate::tag::TagRef::of(linked_tag);
     effects.push(permission);
 
     Ok(Some(effects))
@@ -791,7 +792,7 @@ fn parse_choose_type_then_phase_out_bundle(
     let mut effects = effect_sentences::parse_effect_sentence_lexed(second_sentence)?;
     let [
         EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-            action: crate::cards::builders::SubjectVerbActionAst::PhaseOutAll { filter, .. },
+            action: crate::cards::builders::SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseOutAll { filter, .. }),
             ..
         }),
     ] = effects.as_mut_slice()
@@ -832,16 +833,16 @@ fn looks_like_source_leaves_return_followup_sentence(tokens: &[OwnedLexToken]) -
 fn promote_exile_effect_to_source_leaves(effect: EffectAst) -> Option<EffectAst> {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match subject_verb.action {
-            SubjectVerbActionAst::Exile {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
                 target,
                 face_down,
                 source_top_only: false,
                 ..
-            } => Some(
+            }) => Some(
                 EffectAst::subject_verb_exile_until_source_leaves(target, face_down)
                     .with_explicit_exile_return_surface(),
             ),
-            SubjectVerbActionAst::ExileAll { filter, face_down } => Some(
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { filter, face_down }) => Some(
                 EffectAst::subject_verb_exile_until_source_leaves(
                     TargetAst::Object(filter, None, None),
                     face_down,
@@ -850,17 +851,17 @@ fn promote_exile_effect_to_source_leaves(effect: EffectAst) -> Option<EffectAst>
             ),
             _ => None,
         },
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true,
             if_false,
-        } if if_false.is_empty() && if_true.len() == 1 => {
+        }) if if_false.is_empty() && if_true.len() == 1 => {
             let inner = promote_exile_effect_to_source_leaves(if_true.into_iter().next().unwrap())?;
-            Some(EffectAst::Conditional {
+            Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate,
                 if_true: vec![inner],
                 if_false,
-            })
+            }))
         }
         _ => None,
     }
@@ -924,7 +925,7 @@ fn parse_reveal_from_outside_game_or_choose_face_up_exile_to_hand(
 
     let chosen_tag = crate::tag::CompilerReferenceTag::OutsideGameOrExileSelected.bind();
     let effects = vec![
-        EffectAst::ChooseObjectsAcrossZones {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
             filter: choose_filter,
             count: ChoiceCount::exactly(1),
             count_value: None,
@@ -932,7 +933,7 @@ fn parse_reveal_from_outside_game_or_choose_face_up_exile_to_hand(
             tag: chosen_tag.clone(),
             zones: vec![Zone::OutsideGame, Zone::Exile],
             search_mode: None,
-        },
+        }),
         EffectAst::subject_verb_reveal_tagged(chosen_tag.clone()),
         EffectAst::subject_verb_move_to_zone(
             TargetAst::Tagged(chosen_tag, span_from_tokens(second)),
@@ -944,7 +945,7 @@ fn parse_reveal_from_outside_game_or_choose_face_up_exile_to_hand(
         ),
     ];
 
-    Ok(Some(vec![EffectAst::May { effects }]))
+    Ok(Some(vec![EffectAst::Permissions(PermissionEffectAst::May { effects })]))
 }
 
 fn parse_reveal_from_outside_game_to_hand(
@@ -964,7 +965,7 @@ fn parse_reveal_from_outside_game_to_hand(
 
     let wish_tag = crate::tag::CompilerReferenceTag::SearchedOutsideGame.bind();
     let effects = vec![
-        EffectAst::ChooseObjectsAcrossZones {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
             filter,
             count: ChoiceCount::up_to(1),
             count_value: None,
@@ -972,7 +973,7 @@ fn parse_reveal_from_outside_game_to_hand(
             tag: wish_tag.clone(),
             zones: vec![Zone::OutsideGame],
             search_mode: Some(crate::effect::SearchSelectionMode::Optional),
-        },
+        }),
         EffectAst::subject_verb_reveal_tagged(wish_tag.clone()),
         EffectAst::subject_verb_move_to_zone(
             TargetAst::Tagged(wish_tag, span_from_tokens(tokens)),
@@ -983,7 +984,7 @@ fn parse_reveal_from_outside_game_to_hand(
             None,
         ),
     ];
-    let mut outer = vec![EffectAst::May { effects }];
+    let mut outer = vec![EffectAst::Permissions(PermissionEffectAst::May { effects })];
     if shape.exile_source {
         outer.push(EffectAst::subject_verb_exile(
             TargetAst::Source(None),
@@ -1024,17 +1025,17 @@ fn parse_choose_objects_then_for_each_of_those_bundle(
         return Ok(None);
     }
 
-    let mut combined = vec![EffectAst::ChooseObjects {
+    let mut combined = vec![EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
         filter,
         count,
         count_value: None,
         player,
         tag: choose_tag.clone(),
-    }];
-    combined.push(EffectAst::ForEachTagged {
+    })];
+    combined.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
         tag: choose_tag,
         effects: loop_body_effects,
-    });
+    }));
     if let Some(third) = third {
         let trailing_effects = effect_sentences::parse_effect_sentence_lexed(third)?;
         if trailing_effects.is_empty() {
@@ -1091,7 +1092,7 @@ fn bind_prior_mixed_target_reference(target: &mut TargetAst, iteration: MixedTar
 fn bind_mixed_target_iteration_damage(effects: &mut [EffectAst], iteration: MixedTargetIteration) {
     for effect in effects {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::DealDamage { target, .. },
+            action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { target, .. }),
             ..
         }) = effect
         {
@@ -1168,23 +1169,23 @@ fn parse_choose_mixed_targets_then_for_each_bundle(
     let mut combined = vec![if includes_objects {
         EffectAst::TagAffected {
             effect: Box::new(declaration),
-            tag: object_targets_tag.clone(),
+            tag: crate::tag::TagRef::of(object_targets_tag.clone()),
         }
     } else {
         declaration
     }];
-    combined.push(EffectAst::ForEachPlayersFiltered {
+    combined.push(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
         // The mixed declaration above already made the target choice. This
         // is an anaphoric view over its player members, not a second target
         // declaration.
         filter: PlayerFilter::AliasedTarget(Box::new(player_filter)),
         effects: player_body,
-    });
+    }));
     if includes_objects {
-        combined.push(EffectAst::ForEachTagged {
-            tag: object_targets_tag,
+        combined.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+            tag: crate::tag::TagRef::of(object_targets_tag),
             effects: object_body,
-        });
+        }));
     }
     if let Some(third) = third {
         let mut trailing = effect_sentences::parse_effect_sentence_lexed(third)?;
@@ -1233,13 +1234,13 @@ fn parse_discard_reveal_choose_discard_chosen_bundle(
             Some(discarded_tag),
         ),
         EffectAst::subject_verb_reveal_hand(revealed_player),
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter: choose_filter,
             count: choose_count,
             count_value,
             player: chooser,
             tag: crate::tag::CompilerReferenceTag::It.bind(),
-        },
+        }),
         EffectAst::subject_verb_discard(
             PlayerAst::That,
             Value::Count(discarded_filter.clone()),
@@ -1301,20 +1302,20 @@ fn parse_selected_hand_double_choice_discard_bundle(
 
     Ok(Some(vec![
         EffectAst::subject_verb_reveal_hand(revealed_player),
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter: first_filter,
             count: first_count,
             count_value: None,
             player: PlayerAst::You,
-            tag: selected_tag.clone(),
-        },
-        EffectAst::ChooseObjects {
+            tag: crate::tag::TagRef::of(selected_tag.clone()),
+        }),
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter: second_filter,
             count: second_count,
             count_value: None,
             player: PlayerAst::You,
-            tag: selected_tag.clone(),
-        },
+            tag: crate::tag::TagRef::of(selected_tag.clone()),
+        }),
         EffectAst::subject_verb_discard(
             PlayerAst::That,
             Value::Count(discarded_filter.clone()),
@@ -1484,11 +1485,11 @@ fn parse_kicked_counter_mana_value_replacement_bundle(
         if filter.mana_value.as_ref() != Some(&crate::target::Comparison::LessThanOrEqual(limit)) {
             return None;
         }
-        Some(EffectAst::Conditional {
+        Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: PredicateAst::ItMatches(filter),
             if_true: vec![EffectAst::subject_verb_counter(target)],
             if_false: Vec::new(),
-        })
+        }))
     };
     let base = counter_if_matches(base_target, fact.base.limit, fact.base.filter)?;
     let kicked = counter_if_matches(kicked_target, fact.kicked.limit, fact.kicked.filter)?;
@@ -1507,7 +1508,7 @@ fn multi_zone_search_destination_effects(
 ) -> Vec<EffectAst> {
     let searched_tag = crate::tag::CompilerReferenceTag::SearchedMultiZone.bind();
     vec![
-        EffectAst::ChooseObjectsAcrossZones {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
             filter: shape.filter.clone(),
             count: shape.count,
             count_value: None,
@@ -1515,9 +1516,9 @@ fn multi_zone_search_destination_effects(
             tag: searched_tag.clone(),
             zones: shape.zones.clone(),
             search_mode: Some(shape.search_mode),
-        },
+        }),
         EffectAst::subject_verb_reveal_tagged(searched_tag.clone()),
-        EffectAst::ForEachTagged {
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
             tag: searched_tag.clone(),
             effects: vec![EffectAst::subject_verb_move_to_zone(
                 TargetAst::Tagged(searched_tag, None),
@@ -1527,11 +1528,11 @@ fn multi_zone_search_destination_effects(
                 false,
                 None,
             )],
-        },
+        }),
         EffectAst::subject_verb(
             SubjectVerbRoleAst::LibraryOwner,
             PlayerAst::You,
-            SubjectVerbActionAst::ShuffleLibrary,
+            SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
         ),
     ]
 }

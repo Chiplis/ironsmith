@@ -8,7 +8,7 @@ use crate::cards::builders::{
     ObjectRefAst, PlayerAst, PredicateAst, PreventNextTimeDamageSourceAst,
     PreventNextTimeDamageTargetAst, RetargetModeAst, ReturnControllerAst, SharedTypeConstraintAst,
     SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst, TriggerSpec,
-    TurnHistoryPredicateAst,
+    TurnHistoryPredicateAst, ZoneMoveActionAst,
 };
 use crate::color::{Color, ColorSet};
 use crate::cost::TotalCost;
@@ -1275,9 +1275,9 @@ pub fn lower_may_imprint_from_hand_effect(
     let EffectAst::SubjectVerb(subject_verb) = &effects[0] else {
         return Ok(None);
     };
-    let SubjectVerbActionAst::Exile {
+    let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
         target, face_down, ..
-    } = &subject_verb.action
+    }) = &subject_verb.action
     else {
         return Ok(None);
     };
@@ -1818,7 +1818,7 @@ pub fn waterbend_optional_total_cost(generic: u32) -> TotalCost {
         .in_zone(Zone::Battlefield);
         costs.push(crate::costs::Cost::effect(Effect::new(choose)));
         costs.push(crate::costs::Cost::effect(Effect::new(
-            crate::effects::TapEffect::with_spec(ChooseSpec::Tagged(tag.clone())),
+            crate::effects::TapEffect::with_spec(ChooseSpec::Tagged(tag.clone().into())),
         )));
         branches.push(TotalCost::from_costs(costs));
     }
@@ -2188,7 +2188,7 @@ fn apply_embedded_token_rules(
                         effects: crate::resolution::ResolutionProgram::from_effects(vec![
                             Effect::tag_triggering_damage_target(damaged_tag.clone()),
                             Effect::new(crate::effects::DestroyEffect::with_spec(
-                                ChooseSpec::Tagged(damaged_tag),
+                                ChooseSpec::Tagged(damaged_tag.key.clone()),
                             )),
                         ]),
                         choices: Vec::new(),

@@ -1,3 +1,26 @@
+use crate::cards::builders::TurnEventPredicateAst;
+use crate::cards::builders::PlayerPredicateAst;
+use crate::cards::builders::PermissionEffectAst;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::GameActionAst;
+use crate::cards::builders::ControlActionAst;
+use crate::cards::builders::TokenActionAst;
+use crate::cards::builders::StackActionAst;
+use crate::cards::builders::StatChangeActionAst;
+use crate::cards::builders::DamageActionAst;
+use crate::cards::builders::LifeResourceActionAst;
+use crate::cards::builders::RevealLookActionAst;
+use crate::cards::builders::PermanentStateActionAst;
+use crate::cards::builders::ZoneMoveActionAst;
+use crate::cards::builders::KeywordActionAst;
+use crate::cards::builders::CharacteristicActionAst;
+use crate::cards::builders::TurnStructureActionAst;
+use crate::cards::builders::LibraryActionAst;
+use crate::cards::builders::ManaActionAst;
+use crate::cards::builders::GrantActionAst;
+use crate::cards::builders::CounterActionAst;
 use crate::ability::AbilityKind;
 use crate::cards::builders::{
     CarryContext, ChooseOneModeAst, EffectAst, PlayerAst, PredicateAst, SubjectVerbActionAst,
@@ -59,7 +82,7 @@ fn trigger_tail_win_game_parses_without_terminal_punctuation() {
     assert!(matches!(
         effects.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::WinGame,
+            action: SubjectVerbActionAst::Game(GameActionAst::WinGame),
             ..
         })]
     ));
@@ -84,10 +107,10 @@ fn distributed_target_range_commas_stay_inside_the_counter_action() {
         matches!(
             &effects[0],
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::PutCounters {
+                action: SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
                     distributed: true,
                     ..
-                },
+                }),
                 ..
             })
         ),
@@ -97,7 +120,7 @@ fn distributed_target_range_commas_stay_inside_the_counter_action() {
         matches!(
             &effects[1],
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::GainLife { .. },
+                action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { .. }),
                 ..
             })
         ),
@@ -128,32 +151,32 @@ fn each_player_optional_hand_reveal_preserves_selected_collection() {
     .expect("each-player reveal should lex");
     let effects = parse_effect_chain_lexed(&tokens).expect("each-player reveal should parse");
     let [
-        EffectAst::ForEachPlayer {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
             effects: player_effects,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected one each-player loop: {effects:#?}");
     };
     let [
-        EffectAst::MayByPlayer {
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
             player: PlayerAst::That,
             effects: optional_effects,
-        },
+        }),
     ] = player_effects.as_slice()
     else {
         panic!("expected an iterated player's optional action: {player_effects:#?}");
     };
     let [
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter,
             count,
             player: PlayerAst::That,
             tag,
             ..
-        },
+        }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::RevealTagged { tag: reveal_tag },
+            action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTagged { tag: reveal_tag }),
             ..
         }),
     ] = optional_effects.as_slice()
@@ -178,18 +201,18 @@ fn coordinated_player_life_loss_then_random_reveal_keeps_the_random_choice() {
         .expect("coordinated random reveal should stay structurally typed");
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::LoseLife { .. },
+            action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { .. }),
             ..
         }),
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter,
             count,
             player: PlayerAst::That,
             tag,
             ..
-        },
+        }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::RevealTagged { tag: reveal_tag },
+            action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTagged { tag: reveal_tag }),
             ..
         }),
     ] = effects.as_slice()
@@ -273,21 +296,21 @@ fn for_each_object_payload_keeps_any_opponent_life_payment_inside_the_loop() {
     let effects =
         parse_effect_chain_lexed(&tokens).expect("for-each payment sentence should parse");
     let [
-        EffectAst::ForEachObject {
+        EffectAst::ForEach(ForEachEffectAst::ForEachObject {
             effects: iterated_effects,
             ..
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected one object iteration: {effects:#?}");
     };
     let [
-        EffectAst::UnlessPays {
+        EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
             player: PlayerAst::Opponent,
             effects: move_effects,
             cost,
             ..
-        },
+        }),
     ] = iterated_effects.as_slice()
     else {
         panic!("expected an opponent payment inside the iteration: {iterated_effects:#?}");
@@ -295,10 +318,10 @@ fn for_each_object_payload_keeps_any_opponent_life_payment_inside_the_loop() {
     assert!(matches!(
         move_effects.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::MoveToZone {
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                 zone: Zone::Hand,
                 ..
-            },
+            }),
             ..
         })]
     ));
@@ -352,8 +375,8 @@ fn optional_mana_payment_exports_the_result_across_the_followup_sentence() {
         matches!(
             prepared.annotated.effects.as_slice(),
             [first, second]
-                if matches!(&first.effect, EffectAst::May { .. } | EffectAst::MayByPlayer { .. })
-                    && matches!(&second.effect, EffectAst::ResolvedIfResult { effects, .. }
+                if matches!(&first.effect, EffectAst::Permissions(PermissionEffectAst::May { .. }) | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. }))
+                    && matches!(&second.effect, EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult { effects, .. })
                         if matches!(effects.as_slice(), [EffectAst::Coordinated { .. }]))
         ),
         "prepared optional-payment program should contain a resolved coordinated followup: {:#?}",
@@ -369,7 +392,7 @@ fn optional_mana_payment_exports_the_result_across_the_followup_sentence() {
     );
     assert!(matches!(
         &prepared.annotated.effects[1].effect,
-        EffectAst::ResolvedIfResult { effects, .. }
+        EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult { effects, .. })
             if matches!(effects.as_slice(), [EffectAst::Coordinated { .. }])
     ));
 }
@@ -401,11 +424,11 @@ fn leading_duration_scaled_target_then_pronoun_grant_keeps_both_actions() {
             coordinated.as_slice(),
             [
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::Pump { .. },
+                    action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { .. }),
                     ..
                 }),
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::GrantAbilitiesToTarget { .. },
+                    action: SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { .. }),
                     ..
                 }),
             ]
@@ -472,7 +495,7 @@ fn multicolor_source_animation_then_unblockable_keeps_both_typed_arms() {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::BecomeBasePtCreature {
+                SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
                     power,
                     toughness,
                     target,
@@ -481,7 +504,7 @@ fn multicolor_source_animation_then_unblockable_keeps_both_typed_arms() {
                     colors,
                     duration,
                     ..
-                },
+                }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -650,7 +673,7 @@ fn repeated_comma_then_chain_keeps_all_ordered_actions() {
         .effects()
         .map(|effect| match effect {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Scry { count },
+                action: SubjectVerbActionAst::KeywordActions(KeywordActionAst::Scry { count }),
                 ..
             }) => count,
             other => panic!("expected a typed scry action, got {other:#?}"),
@@ -712,7 +735,7 @@ fn repeated_comma_then_inside_each_player_keeps_every_ordered_boundary() {
     .expect("quantified repeated comma-then chain should lex");
     let effects = parse_effect_chain_lexed(&tokens)
         .expect("quantified repeated comma-then chain should parse completely");
-    let [EffectAst::ForEachPlayer { effects: nested }] = effects.as_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects: nested })] = effects.as_slice() else {
         panic!("expected one each-player program, got {effects:#?}");
     };
     let [EffectAst::Coordination(coordination)] = nested.as_slice() else {
@@ -746,11 +769,11 @@ fn sentence_dispatch_keeps_create_then_copy_as_two_typed_actions() {
             nested.as_slice(),
             [
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::CreateTokenWithMods { .. },
+                    action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { .. }),
                     ..
                 }),
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::CopySpell { .. },
+                    action: SubjectVerbActionAst::Stack(StackActionAst::CopySpell { .. }),
                     ..
                 }),
             ]
@@ -775,11 +798,11 @@ fn sentence_dispatch_keeps_create_then_copy_after_comma_normalization() {
         nested.as_slice(),
         [
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::CreateTokenWithMods { .. },
+                action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { .. }),
                 ..
             }),
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::CopySpell { .. },
+                action: SubjectVerbActionAst::Stack(StackActionAst::CopySpell { .. }),
                 ..
             }),
         ]
@@ -802,11 +825,11 @@ fn multi_sentence_dispatch_keeps_created_result_for_copy_retarget_followup() {
         sequence.as_slice(),
         [
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::CreateTokenWithMods { .. },
+                action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { .. }),
                 ..
             }),
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::CopySpell { .. },
+                action: SubjectVerbActionAst::Stack(StackActionAst::CopySpell { .. }),
                 ..
             }),
         ]
@@ -814,7 +837,7 @@ fn multi_sentence_dispatch_keeps_created_result_for_copy_retarget_followup() {
     assert!(matches!(
         retarget,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::RetargetStackObject { .. },
+            action: SubjectVerbActionAst::Stack(StackActionAst::RetargetStackObject { .. }),
             ..
         })
     ));
@@ -846,11 +869,11 @@ fn normalized_then_specialist_does_not_claim_a_noncopy_followup() {
         sequence.as_slice(),
         [
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::CreateTokenWithMods { .. },
+                action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { .. }),
                 ..
             }),
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Draw { .. },
+                action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { .. }),
                 ..
             }),
         ]
@@ -938,20 +961,20 @@ fn conditional_instead_chain_keeps_every_replacement_action() {
     assert!(
         matches!(
             effects.as_slice(),
-            [EffectAst::Conditional {
+            [EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 if_true,
                 ..
-            }] if matches!(
+            })] if matches!(
                 if_true.as_slice(),
                 [EffectAst::CommaThen { effects }] if matches!(
                     effects.as_slice(),
                     [
                         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                            action: SubjectVerbActionAst::Exile { .. },
+                            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. }),
                             ..
                         }),
                         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                            action: SubjectVerbActionAst::ReturnToHand { .. },
+                            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { .. }),
                             ..
                         }),
                     ]
@@ -1145,12 +1168,12 @@ fn paid_cost_count_reflexive_keeps_counter_and_dynamic_targets() {
     assert!(
         matches!(
             effects.as_slice(),
-            [EffectAst::WhenResult {
+            [EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
                 predicate: crate::cards::builders::IfResultPredicate::Value(
                     crate::effect::Comparison::GreaterThan(0)
                 ),
                 ..
-            }]
+            })]
         ),
         "{debug}"
     );
@@ -1201,7 +1224,7 @@ fn created_tokens_then_source_deals_where_x_keeps_both_actions() {
     assert!(matches!(
         created.effects.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::CreateTokenWithMods { .. },
+            action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { .. }),
             ..
         })]
     ));
@@ -1209,10 +1232,10 @@ fn created_tokens_then_source_deals_where_x_keeps_both_actions() {
         matches!(
             damage.effects.as_slice(),
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::DealDamageEqualToPower {
+                action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
                     source: crate::cards::builders::TargetAst::Source(_),
                     ..
-                },
+                }),
                 ..
             })]
         ),
@@ -1241,11 +1264,11 @@ fn unique_nested_program_keeps_its_authored_comma_then_surface() {
         .expect("nested comma-then surface should lex");
     let effects = preserve_coordinated_effect_chain_surface(
         &tokens,
-        vec![EffectAst::May {
+        vec![EffectAst::Permissions(PermissionEffectAst::May {
             effects: vec![EffectAst::SolveCase, EffectAst::SolveCase],
-        }],
+        })],
     );
-    let [EffectAst::May { effects: nested }] = effects.as_slice() else {
+    let [EffectAst::Permissions(PermissionEffectAst::May { effects: nested })] = effects.as_slice() else {
         panic!("expected one optional nested program, got {effects:#?}");
     };
     assert!(
@@ -1263,11 +1286,11 @@ fn ambiguous_conditional_branches_do_not_guess_a_comma_then_owner() {
         .expect("ambiguous conditional surface should lex");
     let effects = preserve_coordinated_effect_chain_surface(
         &tokens,
-        vec![EffectAst::Conditional {
+        vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: PredicateAst::ItIsNight,
             if_true: vec![EffectAst::SolveCase, EffectAst::SolveCase],
             if_false: vec![EffectAst::SolveCase, EffectAst::SolveCase],
-        }],
+        })],
     );
     let debug = format!("{effects:#?}");
     assert!(
@@ -1282,7 +1305,7 @@ fn multi_mode_choice_does_not_guess_a_comma_then_owner() {
         .expect("multi-mode surface should lex");
     let effects = preserve_coordinated_effect_chain_surface(
         &tokens,
-        vec![EffectAst::ChooseOneOf {
+        vec![EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf {
             modes: vec![
                 ChooseOneModeAst {
                     description: "First".to_string(),
@@ -1293,7 +1316,7 @@ fn multi_mode_choice_does_not_guess_a_comma_then_owner() {
                     effects: vec![EffectAst::SolveCase, EffectAst::SolveCase],
                 },
             ],
-        }],
+        })],
     );
     let debug = format!("{effects:#?}");
     assert!(
@@ -1320,10 +1343,10 @@ fn for_each_opponent_imperative_create_keeps_controller_as_actor() {
         matches!(
             direct_create.as_deref(),
             Some([EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::CreateTokenWithMods {
+                action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
                     count: Value::Fixed(2),
                     ..
-                },
+                }),
                 ..
             })])
         ),
@@ -1335,15 +1358,15 @@ fn for_each_opponent_imperative_create_keeps_controller_as_actor() {
     assert!(
         matches!(
             direct_for_each,
-            EffectAst::ForEachOpponent { ref effects }
+            EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { ref effects })
                 if matches!(
                     effects.as_slice(),
                     [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                        action: SubjectVerbActionAst::CreateTokenWithMods {
+                        action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
                             count: Value::Fixed(2),
                             player: PlayerAst::You,
                             ..
-                        },
+                        }),
                         ..
                     })]
                 )
@@ -1352,17 +1375,17 @@ fn for_each_opponent_imperative_create_keeps_controller_as_actor() {
     );
     let effects = parse_effect_sentence_lexed(&tokens)
         .expect("quantified imperative create should parse completely");
-    let [EffectAst::ForEachOpponent { effects: nested }] = effects.as_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects: nested })] = effects.as_slice() else {
         panic!("expected one quantified opponent loop, got {effects:#?}");
     };
     assert!(
         matches!(
             nested.as_slice(),
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::CreateTokenWithMods {
+                action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
                     player: PlayerAst::You,
                     ..
-                },
+                }),
                 ..
             })]
         ),
@@ -1376,17 +1399,17 @@ fn for_each_opponent_imperative_create_keeps_controller_as_actor() {
     .expect("explicit participant create should lex");
     let effects = parse_effect_sentence_lexed(&explicit)
         .expect("explicit participant create should parse completely");
-    let [EffectAst::ForEachOpponent { effects: nested }] = effects.as_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects: nested })] = effects.as_slice() else {
         panic!("expected one explicit opponent loop, got {effects:#?}");
     };
     assert!(
         matches!(
             nested.as_slice(),
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::CreateTokenWithMods {
+                action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
                     player: PlayerAst::That,
                     ..
-                },
+                }),
                 ..
             })]
         ),
@@ -1419,20 +1442,20 @@ fn repeated_explicit_may_clauses_keep_independent_choice_scopes() {
     assert!(
         matches!(
             first,
-            EffectAst::MayByPlayer {
+            EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
                 player: PlayerAst::You,
                 ..
-            }
+            })
         ),
         "{first:#?}"
     );
     assert!(
         matches!(
             second,
-            EffectAst::MayByPlayer {
+            EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
                 player: PlayerAst::You,
                 ..
-            }
+            })
         ),
         "{second:#?}"
     );
@@ -1483,10 +1506,10 @@ fn leading_may_choose_to_have_normalizes_both_causative_markers() {
         .expect("optional causative damage clause should parse completely");
 
     let [
-        EffectAst::MayByPlayer {
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
             player: PlayerAst::You,
             effects: optional,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected one player-owned optional action, got {effects:#?}");
@@ -1495,10 +1518,10 @@ fn leading_may_choose_to_have_normalizes_both_causative_markers() {
         matches!(
             optional.as_slice(),
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::DealDamageEqualToPower {
+                action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
                     source: TargetAst::Tagged(tag, _),
                     ..
-                },
+                }),
                 ..
             })] if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         ),
@@ -1514,10 +1537,10 @@ fn leading_may_causative_player_set_keeps_chooser_and_affected_set_distinct() {
         .expect("optional opponent life loss should parse completely");
 
     let [
-        EffectAst::MayByPlayer {
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
             player: PlayerAst::You,
             effects: optional,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected one player-owned optional action: {effects:#?}");
@@ -1525,7 +1548,7 @@ fn leading_may_causative_player_set_keeps_chooser_and_affected_set_distinct() {
     assert!(
         matches!(
             optional.as_slice(),
-            [EffectAst::ForEachOpponent { effects }]
+            [EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })]
                 if matches!(
                     effects.as_slice(),
                     [EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -1533,9 +1556,9 @@ fn leading_may_causative_player_set_keeps_chooser_and_affected_set_distinct() {
                             player: PlayerAst::That,
                             ..
                         },
-                        action: SubjectVerbActionAst::LoseLife {
+                        action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife {
                             amount: Value::Fixed(1)
-                        },
+                        }),
                     })]
                 )
         ),
@@ -1652,10 +1675,10 @@ fn effect_sentence_inner_preserves_coordinated_if_result_body() {
     let effects = parse_effect_sentence_inner_lexed(&tokens)
         .expect("Aetherstorm Roc result clause should parse through sentence dispatch");
     let [
-        EffectAst::IfResult {
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: crate::cards::builders::IfResultPredicate::Did,
             effects: conditional_effects,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected one if-result wrapper, got {effects:#?}");
@@ -1684,10 +1707,10 @@ fn hollow_specter_dependent_result_arms_stay_flat() {
     let effects = parse_effect_sentence_inner_lexed(&tokens)
         .expect("Hollow Specter result clause should parse through sentence dispatch");
     let [
-        EffectAst::IfResult {
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: crate::cards::builders::IfResultPredicate::Did,
             effects: conditional_effects,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected one if-result wrapper, got {effects:#?}");
@@ -1703,13 +1726,13 @@ fn hollow_specter_dependent_result_arms_stay_flat() {
     assert_eq!(boundary.dependency, EffectDependencyAst::Independent);
 
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::RevealCardsFromHand { tag, .. },
+        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealCardsFromHand { tag, .. }),
         ..
     }) = coordinated_effects[0]
     else {
         panic!("expected the first arm to reveal tagged hand cards: {coordination:#?}");
     };
-    let EffectAst::ChooseObjects { filter, .. } = coordinated_effects[1] else {
+    let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, .. }) = coordinated_effects[1] else {
         panic!("expected the second arm to choose from those cards: {coordination:#?}");
     };
     assert!(
@@ -1732,10 +1755,10 @@ fn moku_safe_existing_coordination_becomes_a_result_conjunction() {
     let effects = parse_effect_sentence_inner_lexed(&tokens)
         .expect("Moku result clause should parse through sentence dispatch");
     let [
-        EffectAst::IfResult {
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: crate::cards::builders::IfResultPredicate::Did,
             effects: conditional_effects,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected one if-result wrapper, got {effects:#?}");
@@ -1763,10 +1786,10 @@ fn ulalek_then_body_stays_an_ordinary_coordinated_specialist() {
     let effects = parse_effect_sentence_inner_lexed(&tokens)
         .expect("Ulalek result clause should parse through sentence dispatch");
     let [
-        EffectAst::IfResult {
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: crate::cards::builders::IfResultPredicate::Did,
             effects: conditional_effects,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected one if-result wrapper, got {effects:#?}");
@@ -1786,18 +1809,18 @@ fn ulalek_then_body_stays_an_ordinary_coordinated_specialist() {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::CopySpell {
+                SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
                     target: TargetAst::Object(spells, ..),
                     ..
-                },
+                }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::CopySpell {
+                SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
                     target: TargetAst::Object(abilities, ..),
                     ..
-                },
+                }),
             ..
         }),
     ] = coordinated.as_slice()
@@ -1822,10 +1845,10 @@ fn leading_if_result_scopes_every_coordinated_effect_arm() {
     let effects =
         parse_effect_chain_lexed(&tokens).expect("coordinated if-result clause should parse");
     let [
-        EffectAst::IfResult {
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: crate::cards::builders::IfResultPredicate::Did,
             effects: conditional_effects,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected one if-result wrapper, got {effects:#?}");
@@ -1844,10 +1867,10 @@ fn leading_when_result_scopes_every_coordinated_effect_arm() {
     let effects = parse_effect_chain_with_subject_verb_primitives_lexed(&tokens)
         .expect("coordinated when-result clause should parse through subject/verb dispatch");
     let [
-        EffectAst::WhenResult {
+        EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
             predicate: crate::cards::builders::IfResultPredicate::Did,
             effects: conditional_effects,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected one when-result wrapper, got {effects:#?}");
@@ -1869,10 +1892,10 @@ fn effect_sentence_inner_preserves_overseer_counter_grant_coordination() {
     let effects = parse_effect_sentence_inner_lexed(&tokens)
         .expect("Overseer-style result clause should parse through sentence dispatch");
     let [
-        EffectAst::WhenResult {
+        EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
             predicate: crate::cards::builders::IfResultPredicate::Did,
             effects: conditional_effects,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected one when-result wrapper, got {effects:#?}");
@@ -1907,10 +1930,10 @@ fn reflexive_result_preserves_leading_state_condition_around_counter_grant() {
     let effects = parse_effect_sentence_inner_lexed(&tokens)
         .expect("conditional reflexive result should parse through sentence dispatch");
     let [
-        EffectAst::WhenResult {
+        EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
             predicate: crate::cards::builders::IfResultPredicate::Did,
             effects: result_effects,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected one when-result wrapper, got {effects:#?}");
@@ -1997,7 +2020,7 @@ fn absolving_lammasu_one_clause_actions_keep_coordinated_surface() {
         coordination.effects().any(|effect| matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::GainLife { .. },
+                action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { .. }),
                 ..
             })
         )),
@@ -2007,7 +2030,7 @@ fn absolving_lammasu_one_clause_actions_keep_coordinated_surface() {
         coordination.effects().any(|effect| matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Suspect { .. },
+                action: SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { .. }),
                 ..
             })
         )),
@@ -2198,12 +2221,12 @@ fn implicit_draw_then_discard_keeps_discard_on_ability_controller() {
     };
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Draw { .. },
+            action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { .. }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             subject,
-            action: SubjectVerbActionAst::Discard { .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { .. }),
         }),
     ] = sequence.as_slice()
     else {
@@ -2230,7 +2253,7 @@ fn imperative_then_draw_does_not_inherit_a_quantified_player_subject() {
                     player: PlayerAst::Implicit,
                     ..
                 },
-                action: SubjectVerbActionAst::Draw { .. },
+                action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { .. }),
             })
         ),
         "an imperative draw remains the ability controller's action: {effect:#?}"
@@ -2291,18 +2314,18 @@ fn trailing_duration_applies_to_both_gain_and_loss_arms() {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::GrantAbilitiesToTarget {
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                     duration: first_duration,
                     ..
-                },
+                }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::RemoveAbilitiesFromTarget {
+                SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget {
                     duration: second_duration,
                     ..
-                },
+                }),
             ..
         }),
     ] = coordinated.as_slice()
@@ -2390,11 +2413,11 @@ fn paid_label_condition_routes_before_broad_ability_grant() {
     let effects = parse_effect_chain_lexed(&tokens)
         .expect("paid-label conditional must retain its typed gate");
     let [
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: PredicateAst::ThisSpellPaidLabel(label),
             if_true,
             if_false,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected one paid-label conditional: {effects:#?}");
@@ -2487,22 +2510,22 @@ fn trailing_duration_applies_to_ability_loss_before_type_change() {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::RemoveAbilitiesFromTarget {
+                SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget {
                     duration: first_duration,
                     ..
-                },
+                }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::SetCreatureSubtypes {
+                SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCreatureSubtypes {
                     duration: second_duration,
                     ..
-                }
-                | SubjectVerbActionAst::AddSubtypes {
+                })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes {
                     duration: second_duration,
                     ..
-                },
+                }),
             ..
         }),
     ] = coordinated.as_slice()
@@ -2531,7 +2554,7 @@ fn tap_then_next_untap_conjunction_keeps_coordinated_surface() {
         matches!(
             coordinated.first(),
             Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Tap { .. },
+                action: SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap { .. }),
                 ..
             }))
         ),
@@ -2623,11 +2646,11 @@ fn coordinated_tap_set_stays_one_antecedent_for_then_them() {
     };
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::TapAll { filter },
+            action: SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapAll { filter }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::GainControl { .. },
+            action: SubjectVerbActionAst::Control(ControlActionAst::GainControl { .. }),
             ..
         }),
     ] = sequence.as_slice()
@@ -2671,10 +2694,10 @@ fn conditional_named_source_tap_set_stays_one_antecedent() {
     assert!(
         matches!(
             effects.as_slice(),
-            [EffectAst::IfResult {
+            [EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                 predicate: crate::cards::builders::IfResultPredicate::ExplicitDidNot,
                 effects,
-            }] if matches!(
+            })] if matches!(
                 effects.as_slice(),
                 [EffectAst::CommaThen { effects }] if effects.len() == 2
             )
@@ -2695,15 +2718,15 @@ fn discard_up_to_two_then_draw_binds_the_actual_discard_outcome() {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::Discard {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard {
                     count: discard_count,
                     any_number,
                     ..
-                },
+                }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Draw { count: draw_count },
+            action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count: draw_count }),
             ..
         }),
     ] = sequence.as_slice()
@@ -2748,7 +2771,7 @@ fn targeted_discard_for_each_clauses_keep_dynamic_counts() {
                         player: PlayerAst::Target,
                         ..
                     },
-                action: SubjectVerbActionAst::Discard { count, .. },
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { count, .. }),
             }),
         ] = effects.as_slice()
         else {
@@ -2779,7 +2802,7 @@ fn congregate_targeted_gain_for_each_keeps_dynamic_amount() {
                     player: PlayerAst::Target,
                     ..
                 },
-            action: SubjectVerbActionAst::GainLife { amount },
+            action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount }),
         }),
     ] = effects.as_slice()
     else {
@@ -2812,7 +2835,7 @@ fn devouring_greed_targeted_loss_keeps_base_plus_scaled_sacrifice_count() {
                     player: PlayerAst::Target,
                     ..
                 },
-            action: SubjectVerbActionAst::LoseLife { amount },
+            action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount }),
         }),
     ] = effects.as_slice()
     else {
@@ -2869,18 +2892,18 @@ fn gain_toughness_lose_power_then_put_keeps_all_three_actions() {
     let sequence = coordination.effects().collect::<Vec<_>>();
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::GainLife { amount: _ },
+            action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount: _ }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::LoseLife { amount: _ },
+            action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount: _ }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::MoveToZone {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                     zone: Zone::Hand, ..
-                },
+                }),
             ..
         }),
     ] = sequence.as_slice()
@@ -2889,18 +2912,18 @@ fn gain_toughness_lose_power_then_put_keeps_all_three_actions() {
     };
 
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::GainLife {
+        action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife {
             amount: gain_amount,
-        },
+        }),
         ..
     }) = sequence[0]
     else {
         unreachable!();
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::LoseLife {
+        action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife {
             amount: lose_amount,
-        },
+        }),
         ..
     }) = sequence[1]
     else {
@@ -2979,7 +3002,7 @@ fn chain_entrypoint_accepts_nonverb_additional_phase_clause() {
         matches!(
             effects.as_slice(),
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::AdditionalPhases { .. },
+                action: SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalPhases { .. }),
                 ..
             })]
         ),
@@ -3004,7 +3027,7 @@ fn copy_then_gain_clause_keeps_the_explicit_gain_duration() {
         .iter()
         .find_map(|effect| match effect {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::GrantAbilitiesAll { duration, .. },
+                action: SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll { duration, .. }),
                 ..
             }) => Some(duration),
             _ => None,
@@ -3028,7 +3051,7 @@ fn leading_action_keeps_following_get_and_gain_on_one_shared_object_set() {
     let coordinated_effects = coordination.effects().collect::<Vec<_>>();
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Draw { .. },
+            action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { .. }),
             ..
         }),
         EffectAst::Coordination(shared_coordination),
@@ -3040,19 +3063,19 @@ fn leading_action_keeps_following_get_and_gain_on_one_shared_object_set() {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::PumpAll {
+                SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
                     filter: pump_filter,
                     ..
-                },
+                }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::GrantAbilitiesAll {
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll {
                     filter: grant_filter,
                     abilities,
                     ..
-                },
+                }),
             ..
         }),
     ] = shared_effects.as_slice()
@@ -3093,10 +3116,10 @@ fn trailing_if_keeps_relative_target_spell_controller_predicate() {
     assert!(
         matches!(
             effect,
-            EffectAst::TrailingIf {
+            EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
                 predicate: crate::cards::builders::PredicateAst::YouControlMoreCreaturesThanTargetSpellController,
                 ..
-            }
+            })
         ),
         "{effect:#?}"
     );
@@ -3112,14 +3135,14 @@ fn trailing_if_binds_its_mana_value_to_the_declared_object_target() {
 
     let effect = parse_effect_clause_with_trailing_if_lexed(&tokens)
         .expect("targeted conditional return should parse");
-    let EffectAst::TrailingIf {
+    let EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
         predicate:
             crate::cards::builders::PredicateAst::ValueComparison {
                 left: crate::effect::Value::ManaValueOf(spec),
                 ..
             },
         ..
-    } = effect
+    }) = effect
     else {
         panic!("expected a mana-value-gated return, got {effect:#?}");
     };
@@ -3151,13 +3174,13 @@ fn trailing_if_keeps_counter_action_outside_graveyard_history_predicate() {
 
     let effect = parse_effect_clause_with_trailing_if_lexed(&tokens)
         .expect("graveyard-history conditional should parse");
-    let EffectAst::TrailingIf { predicate, effects } = effect else {
+    let EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects }) = effect else {
         panic!("expected a trailing conditional, got {effect:#?}");
     };
     assert!(
         matches!(
             predicate,
-            PredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(_)
+            PredicateAst::TurnEvents(TurnEventPredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(_))
         ),
         "{predicate:#?}"
     );
@@ -3165,7 +3188,7 @@ fn trailing_if_keeps_counter_action_outside_graveyard_history_predicate() {
         matches!(
             effects.as_slice(),
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::PutCounters { .. },
+                action: SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { .. }),
                 ..
             })]
         ),
@@ -3191,12 +3214,12 @@ fn counter_then_anaphoric_destroy_battlefield_guard_scopes_to_destroy_target() {
     assert!(matches!(
         counter,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Counter { .. },
+            action: SubjectVerbActionAst::Stack(StackActionAst::Counter { .. }),
             ..
         })
     ));
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::Destroy { target, .. },
+        action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { target, .. }),
         ..
     }) = destroy
     else {
@@ -3245,7 +3268,7 @@ fn mass_destruction_trailing_source_power_condition_preempts_broad_destroy() {
     let effects = parse_effect_sentence_lexed(&tokens)
         .expect("conditional mass destruction should parse through sentence dispatch");
     let [
-        EffectAst::TrailingIf {
+        EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
             predicate:
                 PredicateAst::ValueComparison {
                     left: Value::PowerOf(source),
@@ -3253,7 +3276,7 @@ fn mass_destruction_trailing_source_power_condition_preempts_broad_destroy() {
                     right,
                 },
             effects,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected a typed source-power resolution gate, got {effects:#?}");
@@ -3270,7 +3293,7 @@ fn mass_destruction_trailing_source_power_condition_preempts_broad_destroy() {
     assert!(right.has_surface_hint(ironsmith_core::ValueSurfaceHint::ExactComparison));
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::DestroyAll { filter, .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { filter, .. }),
             ..
         }),
     ] = effects.as_slice()
@@ -3291,25 +3314,25 @@ fn trailing_if_dispatch_preserves_face_down_return_then_turn_procedure() {
 
     let effect = parse_effect_clause_with_trailing_if_lexed(&tokens)
         .expect("face-down return procedure should parse");
-    let EffectAst::TrailingIf { predicate, effects } = effect else {
+    let EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects }) = effect else {
         panic!("expected a resolution-time condition, got {effect:#?}");
     };
     assert_eq!(effects.len(), 2, "{effects:#?}");
     assert!(matches!(
         &effects[0],
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::MoveToZone {
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                 zone: Zone::Battlefield,
                 battlefield_face_down: true,
                 ..
-            },
+            }),
             ..
         })
     ));
     assert!(matches!(
         &effects[1],
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::TurnFaceUp { .. },
+            action: SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp { .. }),
             ..
         })
     ));
@@ -3329,15 +3352,15 @@ fn conditional_transform_keeps_the_control_threshold_as_a_resolution_gate() {
     let effects =
         parse_effect_chain_lexed(&tokens).expect("conditional transform should parse as a chain");
     let [
-        EffectAst::TrailingIf {
+        EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
             predicate:
-                crate::cards::builders::PredicateAst::PlayerHasAtLeast {
+                crate::cards::builders::PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast {
                     player,
                     filter,
                     count,
-                },
+                }),
             effects: gated_effects,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected a threshold-gated transform effect, got {effects:#?}");
@@ -3350,7 +3373,7 @@ fn conditional_transform_keeps_the_control_threshold_as_a_resolution_gate() {
         matches!(
             gated_effects.as_slice(),
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Transform { .. },
+                action: SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Transform { .. }),
                 ..
             })]
         ),
@@ -3377,10 +3400,10 @@ fn harness_chain_segment_uses_typed_keyword_action() {
         effects.as_slice(),
         [crate::cards::builders::EffectAst::SubjectVerb(
             SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::EmitKeywordAction {
+                action: SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction {
                     action: crate::events::KeywordActionKind::Harness,
                     amount: 1,
-                },
+                }),
                 ..
             }
         )]
@@ -3402,7 +3425,7 @@ fn source_linked_exile_reveal_keeps_nonpermanents_face_up_and_moves_only_permane
     let public_effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
         .expect("public effect-body entrypoint should preserve the typed sequence");
     assert_eq!(public_effects, effects);
-    let [EffectAst::ForEachPlayer { effects: nested }] = effects.as_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects: nested })] = effects.as_slice() else {
         panic!("expected per-player source-linked sequence, got {effects:#?}");
     };
     let nested = match nested.as_slice() {
@@ -3411,11 +3434,11 @@ fn source_linked_exile_reveal_keeps_nonpermanents_face_up_and_moves_only_permane
     };
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::TurnFaceUp { target },
+            action: SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp { target }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ReturnAllToBattlefield { filter, .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield { filter, .. }),
             ..
         }),
     ] = nested
@@ -3525,10 +3548,10 @@ fn effect_sentence_keeps_split_target_actor_and_optional_payment() {
     let effects = parse_effect_sentence_inner_lexed(&tokens)
         .expect("chain payment sentence should preserve its actor and optionality");
     let [
-        EffectAst::MayByPlayer {
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
             player: PlayerAst::ThatPlayerOrTargetController,
             effects: payment,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected a split-actor optional payment, got {effects:#?}");
@@ -3537,7 +3560,7 @@ fn effect_sentence_keeps_split_target_actor_and_optional_payment() {
         matches!(
             payment.as_slice(),
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::PayMana { .. },
+                action: SubjectVerbActionAst::Mana(ManaActionAst::PayMana { .. }),
                 ..
             })]
         ),
@@ -3556,10 +3579,10 @@ fn optional_source_copy_keeps_offer_and_source_subject() {
     let effects =
         parse_effect_sentence_lexed(&tokens).expect("optional source-copy sentence should parse");
     let [
-        EffectAst::MayByPlayer {
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
             player: PlayerAst::You,
             effects: optional,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected a typed optional source-copy offer, got {effects:#?}");
@@ -3567,10 +3590,10 @@ fn optional_source_copy_keeps_offer_and_source_subject() {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::BecomeCopy {
+                SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCopy {
                     target: TargetAst::Object(source, ..),
                     ..
-                },
+                }),
             ..
         }),
     ] = optional.as_slice()
@@ -3594,7 +3617,7 @@ fn leading_duration_named_source_copy_keeps_complete_exception_bundle() {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::BecomeCopy {
+                SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCopy {
                     duration,
                     name_override,
                     add_supertypes,
@@ -3603,7 +3626,7 @@ fn leading_duration_named_source_copy_keeps_complete_exception_bundle() {
                     granted_abilities,
                     set_base_power_toughness,
                     ..
-                },
+                }),
             ..
         }),
     ] = effects.as_slice()
@@ -3659,16 +3682,16 @@ fn top_cards_then_put_counted_into_hand_rest_graveyard_chain_parses() {
     match sequence.as_slice() {
         [
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::LookAtTopCards { .. },
+                action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { .. }),
                 ..
             }),
-            EffectAst::ChooseTaggedObjectsInZone {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
                 player,
                 count,
                 tag: hand_tag,
                 zone: Zone::Library,
                 ..
-            },
+            }),
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
                     SubjectVerbActionAst::TagMatchingObjects {
@@ -3680,20 +3703,20 @@ fn top_cards_then_put_counted_into_hand_rest_graveyard_chain_parses() {
             }),
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::MoveToZone {
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                         target: crate::cards::builders::TargetAst::Tagged(moved_hand_tag, _),
                         zone: Zone::Hand,
                         ..
-                    },
+                    }),
                 ..
             }),
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::MoveToZone {
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                         target: crate::cards::builders::TargetAst::Tagged(moved_remainder_tag, _),
                         zone: Zone::Graveyard,
                         ..
-                    },
+                    }),
                 ..
             }),
         ] => {
@@ -3703,7 +3726,7 @@ fn top_cards_then_put_counted_into_hand_rest_graveyard_chain_parses() {
             assert_eq!(moved_remainder_tag, remainder_tag);
             assert!(
                 filter.tagged_constraints.iter().any(|constraint| {
-                    &constraint.tag == hand_tag
+                    constraint.tag == hand_tag.key
                         && matches!(
                             constraint.relation,
                             crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
@@ -3730,7 +3753,7 @@ fn inline_looked_any_number_battlefield_move_preserves_tapped_entry() {
     let move_effect = sequence
         .iter()
         .find_map(|effect| match effect {
-            EffectAst::ForEachTagged { effects, .. } => effects.first(),
+            EffectAst::ForEach(ForEachEffectAst::ForEachTagged { effects, .. }) => effects.first(),
             _ => None,
         })
         .unwrap_or_else(|| {
@@ -3740,11 +3763,11 @@ fn inline_looked_any_number_battlefield_move_preserves_tapped_entry() {
         matches!(
             move_effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::MoveToZone {
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                     zone: Zone::Battlefield,
                     battlefield_tapped: true,
                     ..
-                },
+                }),
                 ..
             })
         ),
@@ -3766,7 +3789,7 @@ fn inline_mill_then_put_all_matching_uses_the_exact_milled_collection() {
     let [
         tagged_mill,
         EffectAst::SubjectVerb(tag_matching),
-        EffectAst::ForEachTagged { tag, effects },
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, effects }),
     ] = sequence.as_slice()
     else {
         panic!("expected tagged mill, exact matching capture, and tagged move: {sequence:#?}");
@@ -3787,16 +3810,16 @@ fn inline_mill_then_put_all_matching_uses_the_exact_milled_collection() {
     assert_eq!(zones, &[Zone::Graveyard]);
     assert_eq!(tag, matching_tag);
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag == *milled_tag
+        constraint.tag == **milled_tag
             && matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
     }));
     assert!(matches!(
         effects.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::MoveToZone {
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                 zone: Zone::Hand,
                 ..
-            },
+            }),
             ..
         })]
     ));
@@ -3825,10 +3848,10 @@ fn exile_then_shuffle_graveyard_chain_keeps_both_effects() {
         sequence.iter().any(|effect| matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::ExileAll {
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll {
                     face_down: true,
                     ..
-                },
+                }),
                 ..
             })
         )),
@@ -3839,7 +3862,7 @@ fn exile_then_shuffle_graveyard_chain_keeps_both_effects() {
             matches!(
                 effect,
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::ShuffleGraveyardIntoLibrary { .. },
+                    action: SubjectVerbActionAst::Library(LibraryActionAst::ShuffleGraveyardIntoLibrary { .. }),
                     ..
                 })
             )
@@ -3894,7 +3917,7 @@ fn complete_serial_keyword_damage_clause_has_one_semantic_owner() {
         .expect("sentence dispatcher should recognize serial keyword damage");
 
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::DealDamageEach { filter, .. },
+        action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { filter, .. }),
         ..
     }) = &direct
     else {
@@ -3975,7 +3998,7 @@ fn or_action_clause_accepts_an_explicit_source_gain_choice_branch() {
     let routed = parse_effect_sentence_lexed(&tokens)
         .expect("whole-sentence dispatch should preserve both choice branches");
     assert!(
-        matches!(routed.as_slice(), [EffectAst::UnlessAction { .. }]),
+        matches!(routed.as_slice(), [EffectAst::Conditionals(ConditionalEffectAst::UnlessAction { .. })]),
         "the broad gain parser must not consume the leading counter action: {routed:#?}"
     );
 
@@ -4003,11 +4026,11 @@ fn or_action_clause_reuses_the_primary_explicit_target_for_a_demonstrative_branc
     let parsed = super::parse_or_action_clause_lexed(&tokens)
         .expect("shared-target action choice should parse")
         .expect("outer action choice should be recognized");
-    let EffectAst::UnlessAction {
+    let EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
         effects,
         alternative,
         ..
-    } = parsed
+    }) = parsed
     else {
         panic!("expected a typed outer action choice");
     };
@@ -4035,13 +4058,13 @@ fn or_action_clause_reuses_the_primary_explicit_target_for_a_demonstrative_branc
 fn quantified_opponent_subject_uses_typed_fanout() {
     let tokens = lex_line("Each opponent draws a card.", 0).expect("fanout should lex");
     let effects = parse_effect_chain_lexed(&tokens).expect("fanout should parse");
-    let [EffectAst::ForEachOpponent { effects: nested }] = effects.as_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects: nested })] = effects.as_slice() else {
         panic!("expected opponent fanout, got {effects:#?}");
     };
     assert!(matches!(
         nested.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Draw { .. },
+            action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { .. }),
             ..
         })]
     ));
@@ -4051,13 +4074,13 @@ fn quantified_opponent_subject_uses_typed_fanout() {
 fn quantified_player_subject_uses_typed_fanout() {
     let tokens = lex_line("Each player gains 1 life.", 0).expect("fanout should lex");
     let effects = parse_effect_chain_lexed(&tokens).expect("fanout should parse");
-    let [EffectAst::ForEachPlayer { effects: nested }] = effects.as_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects: nested })] = effects.as_slice() else {
         panic!("expected player fanout, got {effects:#?}");
     };
     assert!(matches!(
         nested.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::GainLife { .. },
+            action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { .. }),
             ..
         })]
     ));
@@ -4077,9 +4100,9 @@ fn qualified_player_search_binds_both_library_owner_and_chooser() {
     };
     super::bind_implicit_player_context(effect, PlayerAst::That);
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::SearchLibrary {
+        action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
             chooser, player, ..
-        },
+        }),
         ..
     }) = effect
     else {
@@ -4108,15 +4131,15 @@ fn coordinated_that_player_search_carries_the_player_into_the_search() {
                     player: life_player,
                     ..
                 },
-            action: SubjectVerbActionAst::LoseLife { .. },
+            action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { .. }),
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::SearchLibrary {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
                     chooser,
                     player: library_player,
                     ..
-                },
+                }),
             ..
         }),
     ] = nested.as_slice()
@@ -4143,11 +4166,11 @@ fn imperative_search_does_not_inherit_a_leading_player() {
     };
     let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::SearchLibrary {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
                 chooser,
                 player: library_player,
                 ..
-            },
+            }),
         ..
     })) = nested.last()
     else {
@@ -4169,18 +4192,18 @@ fn quantified_player_across_zone_choice_stays_a_union() {
     )
     .expect("across-zone fanout should lex");
     let effects = parse_effect_chain_lexed(&tokens).expect("across-zone fanout should parse");
-    let [EffectAst::ForEachPlayer { effects: nested }] = effects.as_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects: nested })] = effects.as_slice() else {
         panic!("expected player fanout, got {effects:#?}");
     };
     let [
-        EffectAst::ChooseObjectsAcrossZones {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
             filter,
             count_value,
             zones,
             ..
-        },
+        }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Exile { .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. }),
             ..
         }),
     ] = nested.as_slice()
@@ -4238,9 +4261,9 @@ fn descent_into_madness_exact_body_does_not_collapse_the_zone_arms() {
         panic!("expected counter placement followed by player fanout, got {effects:#?}");
     };
     let [
-        EffectAst::ForEachPlayer {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
             effects: fanout_effects,
-        },
+        }),
     ] = fanout.effects.as_slice()
     else {
         panic!("expected counter placement followed by player fanout, got {effects:#?}");
@@ -4250,12 +4273,12 @@ fn descent_into_madness_exact_body_does_not_collapse_the_zone_arms() {
         effects => effects,
     };
     let [
-        EffectAst::ChooseObjectsAcrossZones {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
             filter,
             count_value: Some(count_value),
             zones,
             ..
-        },
+        }),
         _,
     ] = nested
     else {
@@ -4289,10 +4312,10 @@ fn quantified_other_player_subject_uses_not_you_filter() {
         lex_line("Each other player draws a card.", 0).expect("filtered fanout should lex");
     let effects = parse_effect_chain_lexed(&tokens).expect("filtered fanout should parse");
     let [
-        EffectAst::ForEachPlayersFiltered {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
             filter,
             effects: nested,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected filtered player fanout, got {effects:#?}");
@@ -4301,7 +4324,7 @@ fn quantified_other_player_subject_uses_not_you_filter() {
     assert!(matches!(
         nested.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Draw { .. },
+            action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { .. }),
             ..
         })]
     ));
@@ -4313,16 +4336,16 @@ fn quantified_other_player_may_stays_inside_filtered_fanout() {
         .expect("optional filtered fanout should lex");
     let effects = parse_effect_chain_lexed(&tokens).expect("optional filtered fanout should parse");
     let [
-        EffectAst::ForEachPlayersFiltered {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
             filter,
             effects: nested,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected filtered player fanout, got {effects:#?}");
     };
     assert_eq!(filter, &crate::target::PlayerFilter::NotYou);
-    assert!(matches!(nested.as_slice(), [EffectAst::May { .. }]));
+    assert!(matches!(nested.as_slice(), [EffectAst::Permissions(PermissionEffectAst::May { .. })]));
 }
 
 #[test]
@@ -4330,7 +4353,7 @@ fn quantified_shared_subject_chain_stays_in_one_fanout() {
     let tokens = lex_line("Each opponent draws a card and gains 2 life.", 0)
         .expect("shared-subject fanout should lex");
     let effects = parse_effect_chain_lexed(&tokens).expect("shared-subject fanout should parse");
-    let [EffectAst::ForEachOpponent { effects: nested }] = effects.as_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects: nested })] = effects.as_slice() else {
         panic!("expected one opponent fanout, got {effects:#?}");
     };
     let nested = match nested.as_slice() {
@@ -4342,14 +4365,14 @@ fn quantified_shared_subject_chain_stays_in_one_fanout() {
     assert!(matches!(
         nested[0],
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Draw { .. },
+            action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { .. }),
             ..
         })
     ));
     assert!(matches!(
         nested[1],
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::GainLife { .. },
+            action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { .. }),
             ..
         })
     ));
@@ -4366,10 +4389,10 @@ fn quantified_subject_tail_stays_nested_after_prior_actions() {
     let coordination = sole_typed_coordination(&effects);
     assert_eq!(coordination.kind, CoordinationKindAst::Sequence);
     fn contains_opponent_draw(effect: &EffectAst) -> bool {
-        if matches!(effect, EffectAst::ForEachOpponent { effects } if matches!(
+        if matches!(effect, EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }) if matches!(
             effects.as_slice(),
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Draw { .. },
+                action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { .. }),
                 ..
             })]
         )) {
@@ -4474,12 +4497,12 @@ fn base_pt_where_x_full_chains_keep_duration_and_binding_together() {
         let [
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::SetBasePowerToughness {
+                    SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness {
                         power,
                         toughness,
                         duration,
                         ..
-                    },
+                    }),
                 ..
             }),
         ] = control.programs[*program].effects.as_slice()
@@ -4685,18 +4708,18 @@ fn opponent_choice_before_exile_keeps_source_exclusion_and_shared_tag() {
     };
     let coordinated = coordination.effects().collect::<Vec<_>>();
     let [
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter,
             player: PlayerAst::Opponent,
             tag,
             ..
-        },
+        }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::Exile {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
                     target: TargetAst::Tagged(exile_tag, _),
                     ..
-                },
+                }),
             ..
         }),
     ] = coordinated.as_slice()
@@ -4725,13 +4748,13 @@ fn public_chain_keeps_source_exiled_bottom_random_destination() {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::MoveToZone {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                     zone: Zone::Library,
                     to_top: false,
                     library_order: Some(crate::cards::builders::LibraryBottomOrderAst::Random),
                     exiled_with_source_surface: Some(_),
                     ..
-                },
+                }),
             ..
         }),
     ] = effects.as_slice()

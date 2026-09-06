@@ -190,3 +190,14 @@ test("empty board space has no target instead of implicitly targeting player zer
     elementsFromPoint: () => [deadZone],
   }), null);
 });
+
+test("zone drops open the pile while expanded rows resolve to their specific card", () => {
+  const pile = {getAttribute:key=>({"data-zone-pile":"graveyard","data-zone-owner":"1"})[key]};
+  const row = {getAttribute:key=>key === "data-object-id" ? "42" : null};
+  const pileHit = {closest:selector=>selector === "[data-zone-pile][data-zone-owner]" ? pile : null};
+  const rowHit = {closest:selector=>selector === "[data-zone-card][data-object-id]" ? row : null};
+  const candidate = dropTargetCandidateFromElements([pileHit]);
+  assert.deepEqual(candidate,{kind:"zone",zone:"graveyard",playerId:"1"});
+  assert.equal(legalTargetForDropCandidate({kind:"targets",requirements:[{legal_targets:[{kind:"object",object:42}]}]},candidate),null);
+  assert.deepEqual(dropTargetCandidateFromElements([rowHit,pileHit]),{kind:"object",objectIds:[42]});
+});

@@ -22,13 +22,13 @@ fn assert_target_pump_and_must_be_blocked(text: &str, amount: i32) {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::Pump {
+                SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
                     power,
                     toughness,
                     target,
                     duration,
                     ..
-                },
+                }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -80,13 +80,13 @@ fn group_pump_and_must_be_blocked_reuse_the_same_filter() {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::PumpAll {
+                SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
                     filter: pump_filter,
                     power,
                     toughness,
                     duration,
                     ..
-                },
+                }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -120,12 +120,12 @@ fn target_grant_and_must_be_blocked_share_one_target() {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::GrantAbilitiesToTarget {
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                     target,
                     abilities,
                     duration,
                     ..
-                },
+                }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {

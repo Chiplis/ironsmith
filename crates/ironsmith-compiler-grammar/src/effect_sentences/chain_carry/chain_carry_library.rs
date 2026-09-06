@@ -5,7 +5,7 @@ pub(super) fn bind_adjacent_discard_count_draws(effects: &mut [EffectAst]) {
         matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Discard { .. },
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { .. }),
                 ..
             })
         )
@@ -13,7 +13,7 @@ pub(super) fn bind_adjacent_discard_count_draws(effects: &mut [EffectAst]) {
 
     fn bind_draw(effect: &mut EffectAst) {
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Draw { count },
+            action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count }),
             ..
         }) = effect
         else {
@@ -58,7 +58,7 @@ pub(super) fn bind_adjacent_implicit_draw_discard_subjects(
             &effects[index],
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 subject,
-                action: SubjectVerbActionAst::Draw { .. },
+                action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { .. }),
             }) if subject.player == PlayerAst::Implicit
         );
         if !draw_is_implicit {
@@ -66,7 +66,7 @@ pub(super) fn bind_adjacent_implicit_draw_discard_subjects(
         }
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             subject,
-            action: SubjectVerbActionAst::Discard { .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { .. }),
         }) = &mut effects[index + 1]
             && subject.player == PlayerAst::Implicit
         {
@@ -91,13 +91,13 @@ pub(super) fn is_revealed_this_way_scalar_reward(effect: &EffectAst) -> bool {
     matches!(
         effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::GainLife { .. }
-                | SubjectVerbActionAst::AddMana { .. }
-                | SubjectVerbActionAst::AddManaScaled { .. }
-                | SubjectVerbActionAst::AddManaAnyColor { .. }
-                | SubjectVerbActionAst::AddManaAnyOneColor { .. }
-                | SubjectVerbActionAst::AddManaChosenColor { .. }
-                | SubjectVerbActionAst::AddManaCommanderIdentity { .. },
+            action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddMana { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { .. }),
             ..
         })
     )

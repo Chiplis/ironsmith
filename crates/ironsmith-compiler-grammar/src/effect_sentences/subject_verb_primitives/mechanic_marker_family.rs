@@ -889,6 +889,10 @@ pub static POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX: LazyLock<LexRuleHintIn
 
 #[cfg(test)]
 mod tests {
+    use crate::cards::builders::TokenActionAst;
+    use crate::cards::builders::StatChangeActionAst;
+    use crate::cards::builders::CharacteristicActionAst;
+    use crate::cards::builders::LibraryActionAst;
     use super::*;
     use crate::model::ast::SubjectVerbSubjectAst;
     use crate::util::tokenize_line;
@@ -913,10 +917,10 @@ mod tests {
                             player: PlayerAst::You,
                             ..
                         },
-                        action: SubjectVerbActionAst::CreateTokenWithMods {
+                        action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
                             player: PlayerAst::You,
                             ..
-                        },
+                        }),
                         ..
                     }),
                     EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -924,10 +928,10 @@ mod tests {
                             player: PlayerAst::TargetOpponent,
                             ..
                         },
-                        action: SubjectVerbActionAst::CreateTokenWithMods {
+                        action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
                             player: PlayerAst::TargetOpponent,
                             ..
-                        },
+                        }),
                         ..
                     })
                 ]
@@ -968,11 +972,11 @@ mod tests {
                 effects.as_slice(),
                 [EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action:
-                        SubjectVerbActionAst::RemoveCardTypes {
+                        SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveCardTypes {
                             target: TargetAst::Source(_),
                             card_types,
                             duration: Until::EndOfTurn,
-                        },
+                        }),
                     ..
                 })] if card_types.as_slice() == [CardType::Creature]
             ),
@@ -993,11 +997,11 @@ mod tests {
                 effects.as_slice(),
                 [EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action:
-                        SubjectVerbActionAst::RemoveSubtypes {
+                        SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSubtypes {
                             target: TargetAst::Tagged(_, _),
                             subtypes,
                             duration: Until::Forever,
-                        },
+                        }),
                     ..
                 })] if subtypes.as_slice() == [crate::types::Subtype::Equipment]
             ),
@@ -1017,7 +1021,7 @@ mod tests {
             matches!(
                 effects.as_slice(),
                 [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::AddSubtypes { subtypes, .. },
+                    action: SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes { subtypes, .. }),
                     ..
                 })] if subtypes.as_slice() == [crate::types::Subtype::Equipment]
             ),
@@ -1038,14 +1042,14 @@ mod tests {
                 effects.as_slice(),
                 [EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action:
-                        SubjectVerbActionAst::BecomeBasePtCreature {
+                        SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
                             target: TargetAst::Tagged(_, _),
                             power: Value::Fixed(2),
                             toughness: Value::Fixed(2),
                             card_types,
                             subtypes,
                             ..
-                        },
+                        }),
                     ..
                 })] if card_types.contains(&CardType::Artifact)
                     && card_types.contains(&CardType::Creature)
@@ -1074,7 +1078,7 @@ mod tests {
         assert!(
             effects
                 .iter()
-                .all(|effect| matches!(effect, EffectAst::Conditional { .. })),
+                .all(|effect| matches!(effect, EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. }))),
             "{effects:#?}"
         );
 
@@ -1084,7 +1088,7 @@ mod tests {
         assert!(
             public_effects
                 .iter()
-                .all(|effect| matches!(effect, EffectAst::Conditional { .. })),
+                .all(|effect| matches!(effect, EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. }))),
             "{public_effects:#?}"
         );
     }
@@ -1109,7 +1113,7 @@ mod tests {
                 matches!(
                     effects.first(),
                     Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                        action: SubjectVerbActionAst::ShuffleObjectsIntoLibrary { .. },
+                        action: SubjectVerbActionAst::Library(LibraryActionAst::ShuffleObjectsIntoLibrary { .. }),
                         ..
                     }))
                 ),
@@ -1119,7 +1123,7 @@ mod tests {
                 effects.iter().all(|effect| !matches!(
                     effect,
                     EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                        action: SubjectVerbActionAst::ShuffleLibrary,
+                        action: SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
                         ..
                     })
                 )),
@@ -1148,7 +1152,7 @@ mod tests {
                         player: PlayerAst::ItsOwner,
                         ..
                     },
-                    action: SubjectVerbActionAst::ExileTopOfLibrary { .. },
+                    action: SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { .. }),
                 }))
             ),
             "the same-sentence `their library` follow-up must remain owner-correlated: {effects:#?}"

@@ -1,3 +1,5 @@
+use crate::cards::builders::PlayerPredicateAst;
+use crate::cards::builders::CounterActionAst;
 use super::*;
 use crate::lexer::lex_line;
 
@@ -35,30 +37,30 @@ fn conditional_instead_count_keeps_two_exact_optional_looked_partitions() {
     };
     assert!(matches!(
         predicate,
-        PredicateAst::PlayerGainedLifeThisTurnOrMore {
+        PredicateAst::Player(PlayerPredicateAst::PlayerGainedLifeThisTurnOrMore {
             player: PlayerAst::You,
             count: 1,
-        }
+        })
     ));
 
     let assert_branch = |branch: &[EffectAst], expected_count| {
         let [
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::LookAtTopCards {
+                    SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
                         tag: looked_tag, ..
-                    },
+                    }),
                 ..
             }),
-            EffectAst::May { effects: optional },
+            EffectAst::Permissions(PermissionEffectAst::May { effects: optional }),
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                    SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
                         tag,
                         keep_tagged: Some(keep_tagged),
                         order: LibraryBottomOrderAst::Random,
                         ..
-                    },
+                    }),
                 ..
             }),
         ] = branch
@@ -66,17 +68,17 @@ fn conditional_instead_count_keeps_two_exact_optional_looked_partitions() {
             panic!("expected look/may/exact-remainder branch: {branch:#?}");
         };
         let [
-            EffectAst::ChooseTaggedObjectsInZone {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
                 filter,
                 count,
                 tag: selected_tag,
                 zone: Zone::Library,
                 ..
-            },
-            EffectAst::ForEachTagged {
+            }),
+            EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
                 tag: revealed_tag, ..
-            },
-            EffectAst::ForEachTagged { tag: moved_tag, .. },
+            }),
+            EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag: moved_tag, .. }),
         ] = optional.as_slice()
         else {
             panic!("expected exact choose/reveal/move optional body: {optional:#?}");
@@ -87,7 +89,7 @@ fn conditional_instead_count_keeps_two_exact_optional_looked_partitions() {
         assert_eq!(tag, looked_tag);
         assert_eq!(keep_tagged, selected_tag);
         assert!(filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag == *looked_tag
+            constraint.tag == **looked_tag
                 && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
         }));
     };
@@ -151,22 +153,22 @@ fn two_optional_selections_leave_an_exact_three_tag_graveyard_complement() {
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::LookAtTopCards {
+            SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
                 tag: looked_tag,
                 reveal: true,
                 ..
-            },
+            }),
         ..
     }) = look
     else {
         panic!("expected public looked-card producer: {look:#?}");
     };
-    let EffectAst::ChooseTaggedObjectsInZone {
+    let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
         filter: battlefield_filter,
         tag: battlefield_tag,
         count: battlefield_count,
         ..
-    } = battlefield_choice
+    }) = battlefield_choice
     else {
         panic!("expected battlefield selection: {battlefield_choice:#?}");
     };
@@ -176,46 +178,46 @@ fn two_optional_selections_leave_an_exact_three_tag_graveyard_complement() {
             .tagged_constraints
             .iter()
             .any(|constraint| {
-                constraint.tag == *looked_tag
+                constraint.tag == **looked_tag
                     && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
             })
     );
     assert!(matches!(
         battlefield_move,
-        EffectAst::ForEachTagged { tag, effects }
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, effects })
             if tag == battlefield_tag
                 && effects.iter().any(|effect| matches!(
                     effect,
                     EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                        action: SubjectVerbActionAst::PutCounters {
+                        action: SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
                             counter_type: crate::object::CounterType::Indestructible,
                             ..
-                        },
+                        }),
                         ..
                     })
                 ))
     ));
-    let EffectAst::ChooseTaggedObjectsInZone {
+    let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
         filter: hand_filter,
         tag: hand_tag,
         count: hand_count,
         ..
-    } = hand_choice
+    }) = hand_choice
     else {
         panic!("expected hand selection: {hand_choice:#?}");
     };
     assert_eq!(*hand_count, ChoiceCount::up_to(1));
     assert!(hand_filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag == *looked_tag
+        constraint.tag == **looked_tag
             && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     }));
     assert!(hand_filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag == *battlefield_tag
+        constraint.tag == **battlefield_tag
             && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
     }));
     assert!(matches!(
         hand_move,
-        EffectAst::ForEachTagged { tag, .. } if tag == hand_tag
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, .. }) if tag == hand_tag
     ));
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
@@ -238,7 +240,7 @@ fn two_optional_selections_leave_an_exact_three_tag_graveyard_complement() {
             filter
                 .tagged_constraints
                 .iter()
-                .any(|constraint| { constraint.tag == *tag && constraint.relation == relation })
+                .any(|constraint| { constraint.tag == **tag && constraint.relation == relation })
         );
     }
     assert!(matches!(
@@ -300,52 +302,52 @@ fn your_turn_destination_branch_keeps_one_selected_card_and_one_remainder() {
         panic!("expected one selected-card destination program: {effects:#?}");
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::LookAtTopCards {
+        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
             tag: looked_tag, ..
-        },
+        }),
         ..
     }) = look
     else {
         panic!("expected looked-card producer: {look:#?}");
     };
-    let EffectAst::ChooseTaggedObjectsInZone {
+    let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
         filter,
         tag: selected_tag,
         count,
         ..
-    } = choose
+    }) = choose
     else {
         panic!("expected selected-card choice: {choose:#?}");
     };
     assert_eq!(*count, ChoiceCount::up_to(1));
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag == *looked_tag
+        constraint.tag == **looked_tag
             && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     }));
     assert!(matches!(
         reveal,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::RevealTagged { tag },
+            action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTagged { tag }),
             ..
         }) if tag == selected_tag
     ));
     assert!(matches!(
         conditional,
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: PredicateAst::YourTurn,
             ..
-        }
+        })
     ));
     assert!(matches!(
         remainder,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
                     tag,
                     keep_tagged: Some(keep_tagged),
                     order: LibraryBottomOrderAst::Random,
                     ..
-                },
+                }),
             ..
         }) if tag == looked_tag && keep_tagged == selected_tag
     ));
@@ -377,33 +379,33 @@ fn unfiltered_optional_exile_uses_one_tag_for_exile_remainder_and_permission() {
         panic!("expected looked/exiled/remainder/permission program: {effects:#?}");
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::LookAtTopCards {
+        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
             tag: looked_tag, ..
-        },
+        }),
         ..
     }) = look
     else {
         panic!("expected looked-card producer: {look:#?}");
     };
-    let EffectAst::ChooseTaggedObjectsInZone {
+    let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
         filter,
         tag: exiled_tag,
         ..
-    } = choose
+    }) = choose
     else {
         panic!("expected optional exiled-card selection: {choose:#?}");
     };
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag == *looked_tag
+        constraint.tag == **looked_tag
             && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     }));
     assert!(matches!(
         exile,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Exile {
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
                 target: TargetAst::Tagged(tag, _),
                 ..
-            },
+            }),
             ..
         }) if tag == exiled_tag
     ));
@@ -411,11 +413,11 @@ fn unfiltered_optional_exile_uses_one_tag_for_exile_remainder_and_permission() {
         remainder,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
                     tag,
                     keep_tagged: Some(keep_tagged),
                     ..
-                },
+                }),
             ..
         }) if tag == looked_tag && keep_tagged == exiled_tag
     ));
@@ -448,42 +450,42 @@ fn battlefield_grant_keeps_selected_tag_and_exact_looked_complement() {
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::LookAtTopCards {
+            SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
                 reveal: true,
                 tag: looked_tag,
                 ..
-            },
+            }),
         ..
     }) = look
     else {
         panic!("expected one public reveal producer: {look:#?}");
     };
-    let EffectAst::ChooseTaggedObjectsInZone {
+    let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
         filter,
         count,
         tag: selected_tag,
         ..
-    } = choose
+    }) = choose
     else {
         panic!("expected tagged looked-card choice: {choose:#?}");
     };
     assert_eq!(*count, ChoiceCount::up_to(1));
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag == *looked_tag
+        constraint.tag == **looked_tag
             && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     }));
     assert!(matches!(
         move_each,
-        EffectAst::ForEachTagged { tag, .. } if tag == selected_tag
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, .. }) if tag == selected_tag
     ));
     assert!(matches!(
         grant,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::GrantAbilitiesToTarget {
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                     target: TargetAst::Tagged(tag, None),
                     ..
-                },
+                }),
             ..
         }) if tag == selected_tag
     ));
@@ -491,7 +493,7 @@ fn battlefield_grant_keeps_selected_tag_and_exact_looked_complement() {
         remainder,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
                     tag,
                     keep_tagged: Some(keep_tagged),
                     order: LibraryBottomOrderAst::ChooserChooses,
@@ -499,7 +501,7 @@ fn battlefield_grant_keeps_selected_tag_and_exact_looked_complement() {
                         ironsmith_core::LibraryRemainderSurface::
                             RestOfCardsRevealedThisWay,
                     ..
-                },
+                }),
             ..
         }) if tag == looked_tag && keep_tagged == selected_tag
     ));
@@ -530,26 +532,26 @@ fn conditional_cardinality_branches_share_one_selected_tag_and_one_complement() 
     assert_eq!(effects.len(), 3);
 
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::LookAtTopCards {
+        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
             tag: looked_tag, ..
-        },
+        }),
         ..
     }) = &effects[0]
     else {
         panic!("expected explicit looked-card producer: {:?}", effects[0]);
     };
-    let EffectAst::Conditional {
+    let EffectAst::Conditionals(ConditionalEffectAst::Conditional {
         if_true, if_false, ..
-    } = &effects[1]
+    }) = &effects[1]
     else {
         panic!("expected cardinality conditional: {:?}", effects[1]);
     };
 
     let branch = |effects: &[EffectAst]| {
         let [
-            EffectAst::ChooseTaggedObjectsInZone {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
                 count, tag, filter, ..
-            },
+            }),
             EffectAst::MoveTaggedGroupToZone {
                 tag: moved_tag,
                 zone: Zone::Hand,
@@ -560,7 +562,7 @@ fn conditional_cardinality_branches_share_one_selected_tag_and_one_complement() 
         };
         assert_eq!(tag, moved_tag);
         assert!(filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag == *looked_tag
+            constraint.tag == **looked_tag
                 && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
         }));
         (*count, tag.clone())
@@ -573,12 +575,12 @@ fn conditional_cardinality_branches_share_one_selected_tag_and_one_complement() 
 
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+            SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
                 tag,
                 keep_tagged: Some(keep_tagged),
                 order,
                 ..
-            },
+            }),
         ..
     }) = &effects[2]
     else {
@@ -615,35 +617,35 @@ fn conditional_remainder_branches_share_the_looked_minus_selected_partition() {
         panic!("expected look/choose/move/conditional program: {effects:#?}");
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::LookAtTopCards {
+        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
             tag: looked_tag, ..
-        },
+        }),
         ..
     }) = look
     else {
         panic!("expected looked-card producer: {look:#?}");
     };
-    let EffectAst::ChooseTaggedObjectsInZone {
+    let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
         filter,
         count,
         tag: selected_tag,
         ..
-    } = choose
+    }) = choose
     else {
         panic!("expected selected Gate subset: {choose:#?}");
     };
     assert_eq!(*count, ChoiceCount::up_to(1));
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag == *looked_tag
+        constraint.tag == **looked_tag
             && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     }));
     assert!(matches!(
         move_selected,
-        EffectAst::ForEachTagged { tag, .. } if tag == selected_tag
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, .. }) if tag == selected_tag
     ));
-    let EffectAst::Conditional {
+    let EffectAst::Conditionals(ConditionalEffectAst::Conditional {
         if_true, if_false, ..
-    } = conditional
+    }) = conditional
     else {
         panic!("expected threshold disposition: {conditional:#?}");
     };
@@ -651,12 +653,12 @@ fn conditional_remainder_branches_share_the_looked_minus_selected_partition() {
         if_true.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::PutTaggedRemainderInZone {
+                SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderInZone {
                     tag,
                     keep_tagged,
                     zone: Zone::Hand,
                     ..
-                },
+                }),
             ..
         })] if tag == looked_tag && keep_tagged == selected_tag
     ));
@@ -664,12 +666,12 @@ fn conditional_remainder_branches_share_the_looked_minus_selected_partition() {
         if_false.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
                     tag,
                     keep_tagged: Some(keep_tagged),
                     order: LibraryBottomOrderAst::Random,
                     ..
-                },
+                }),
             ..
         })] if tag == looked_tag && keep_tagged == selected_tag
     ));
@@ -724,12 +726,12 @@ fn conditional_entry_modifier_keeps_one_looked_partition_program() {
         .expect("typed program should not error")
         .expect("conditional entry-counter partition should match");
     assert_eq!(effects.len(), 5, "{effects:#?}");
-    assert!(matches!(effects[2], EffectAst::ForEachTagged { .. }));
-    assert!(matches!(effects[3], EffectAst::Conditional { .. }));
+    assert!(matches!(effects[2], EffectAst::ForEach(ForEachEffectAst::ForEachTagged { .. })));
+    assert!(matches!(effects[3], EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. })));
     assert!(matches!(
         effects[4],
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary { .. },
+            action: SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary { .. }),
             ..
         })
     ));
@@ -760,9 +762,9 @@ fn optional_source_payment_does_not_replace_plural_looked_card_branches() {
         panic!("expected look/optional/two-branch program: {effects:#?}");
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::LookAtTopCards {
+        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
             tag: looked_tag, ..
-        },
+        }),
         ..
     }) = look
     else {
@@ -770,21 +772,21 @@ fn optional_source_payment_does_not_replace_plural_looked_card_branches() {
     };
     assert!(matches!(
         optional,
-        EffectAst::May { .. } | EffectAst::MayByPlayer { .. }
+        EffectAst::Permissions(PermissionEffectAst::May { .. }) | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. })
     ));
 
     let branch_target = |effect: &EffectAst, expected| {
-        let EffectAst::IfResult {
+        let EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate,
             effects: branch,
-        } = effect
+        }) = effect
         else {
             panic!("expected one move result branch: {effect:#?}");
         };
         assert_eq!(*predicate, expected);
         let [
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::MoveToZone { target, .. },
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { target, .. }),
                 ..
             }),
         ] = branch.as_slice()
@@ -834,30 +836,30 @@ fn intervening_sacrifice_does_not_replace_the_looked_candidate_pool() {
             .expect("Birthing Ritual shape should parse");
 
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::LookAtTopCards {
+        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
             tag: looked_tag, ..
-        },
+        }),
         ..
     }) = &effects[0]
     else {
         panic!("expected explicit looked-card producer: {:?}", effects[0]);
     };
-    let EffectAst::IfResult {
+    let EffectAst::Conditionals(ConditionalEffectAst::IfResult {
         predicate: IfResultPredicate::Did,
         effects: selection,
-    } = &effects[effects.len() - 2]
+    }) = &effects[effects.len() - 2]
     else {
         panic!("expected sacrifice-result gate: {effects:?}");
     };
     let [
-        EffectAst::ChooseTaggedObjectsInZone {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter,
             tag: selected_tag,
             count,
             zone,
             ..
-        },
-        EffectAst::ForEachTagged { tag: moved_tag, .. },
+        }),
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag: moved_tag, .. }),
     ] = selection.as_slice()
     else {
         panic!("expected selected subset and battlefield move: {selection:?}");
@@ -866,18 +868,18 @@ fn intervening_sacrifice_does_not_replace_the_looked_candidate_pool() {
     assert_eq!(*zone, Zone::Library);
     assert_eq!(selected_tag, moved_tag);
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag == *looked_tag
+        constraint.tag == **looked_tag
             && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     }));
 
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+            SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
                 tag,
                 keep_tagged: Some(keep_tagged),
                 order,
                 ..
-            },
+            }),
         ..
     }) = effects.last().expect("bottom complement")
     else {

@@ -4,6 +4,9 @@
 //! a first-match ladder in `resource`; every reading runs, resolved by rank
 //! while the overlaps are measured. The mana-pip payment is the fallback.
 
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::ManaActionAst;
+
 use super::*;
 use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId, RuleMatch};
 use crate::registry::{
@@ -255,13 +258,13 @@ fn read_repeated_tagged_mana_payment(
         } else {
             player
         };
-        return Ok(Some(EffectAst::ForEachTagged {
+        return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
             tag: crate::tag::CompilerReferenceTag::It.bind(),
             effects: vec![EffectAst::subject_verb_pay_mana(
                 payer,
                 ManaCost::from_pips(repeated.pip_groups),
             )],
-        }));
+        })));
     }
     Ok(None)
 }
@@ -287,11 +290,11 @@ fn read_mana_for_each_count(input: &PayClause<'_>) -> Result<Option<EffectAst>, 
             return Ok(Some(subject_verb_player_effect(
                 SubjectVerbRoleAst::AffectedPlayer,
                 player,
-                SubjectVerbActionAst::PayMana {
+                SubjectVerbActionAst::Mana(ManaActionAst::PayMana {
                     cost: ManaCost::from_symbols(vec![crate::mana::ManaSymbol::X]),
                     x_value: Some(count),
                     x_maximum: None,
-                },
+                }),
             )));
         }
     }

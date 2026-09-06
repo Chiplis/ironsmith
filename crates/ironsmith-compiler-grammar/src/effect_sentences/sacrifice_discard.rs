@@ -1,3 +1,4 @@
+use crate::cards::builders::ConditionalEffectAst;
 use super::*;
 use crate::effect_sentences::parse_artifact_enchantment_or_token_filter;
 use crate::effect_sentences::subject_verb_primitives::{
@@ -37,20 +38,20 @@ fn parse_trailing_discard_unless_predicate(
     let discard =
         EffectAst::subject_verb_discard(player, count, false, any_number, discard_filter, None);
 
-    Ok(Some(EffectAst::Conditional {
+    Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
         predicate: PredicateAst::Not(Box::new(predicate)),
         if_true: vec![discard],
         if_false: Vec::new(),
-    }))
+    })))
 }
 
 fn wrap_unless_escaped(effect: EffectAst, unless_escaped: bool) -> EffectAst {
     if unless_escaped {
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: PredicateAst::ThisSpellEscaped,
             if_true: Vec::new(),
             if_false: vec![effect],
-        }
+        })
     } else {
         effect
     }
@@ -61,7 +62,7 @@ fn triggering_same_mana_value_filter() -> ObjectFilter {
     filter
         .tagged_constraints
         .push(crate::target::TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::Triggering.bind(),
+            tag: (crate::tag::CompilerReferenceTag::Triggering.bind()).into(),
             relation: crate::target::TaggedOpbjectRelation::SameManaValueAsTagged,
         });
     filter

@@ -232,11 +232,11 @@ fn read_quest_counter_draw_replacement(
         return Ok(Some(vec![
             StaticAbilityAst::LabeledConditionalStaticAbility {
                 ability: Box::new(StaticAbilityAst::Static(ability)),
-                condition: PredicateAst::SourceHasCounterAtLeast {
+                condition: PredicateAst::Source(SourcePredicateAst::SourceHasCounterAtLeast {
                     counter_type: CounterType::Quest,
                     count: 6,
                     surface: crate::SourceCounterThresholdSurface::SourceHas,
-                },
+                }),
                 label: render_token_slice(tokens),
             },
         ]));
@@ -262,7 +262,7 @@ fn read_during_your_end_step(
             for ability in abilities {
                 conditioned.push(add_static_ability_ast_condition(
                     ability,
-                    PredicateAst::SourceControllersEndStep,
+                    PredicateAst::Source(SourcePredicateAst::SourceControllersEndStep),
                 )?);
             }
             return Ok(Some(conditioned));
@@ -291,20 +291,20 @@ fn read_must_be_blocked_if_able(
         let condition =
             if crate::word_primitives::parse_sequence_suffix(&condition_words, &["is", "equipped"])
             {
-                PredicateAst::SourceIsEquipped
+                PredicateAst::Source(SourcePredicateAst::SourceIsEquipped)
             } else if crate::word_primitives::parse_sequence_suffix(
                 &condition_words,
                 &["is", "enchanted"],
             ) {
-                PredicateAst::SourceIsEnchanted
+                PredicateAst::Source(SourcePredicateAst::SourceIsEnchanted)
             } else {
                 parse_static_condition_clause(spec.condition_tokens)?
             };
         if matches!(
             condition,
-            PredicateAst::SourceIsEquipped
-                | PredicateAst::SourceIsEnchanted
-                | PredicateAst::SourceIsMonstrous
+            PredicateAst::Source(SourcePredicateAst::SourceIsEquipped)
+                | PredicateAst::Source(SourcePredicateAst::SourceIsEnchanted)
+                | PredicateAst::Source(SourcePredicateAst::SourceIsMonstrous)
         ) {
             return Ok(Some(vec![StaticAbilityAst::ConditionalStaticAbility {
                 ability: Box::new(StaticAbilityAst::Static(StaticAbility::restriction(

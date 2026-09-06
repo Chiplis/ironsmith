@@ -1183,7 +1183,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
                     action,
                     player,
                     source_filter,
-                    object_tag,
+                    object_tag.key.clone(),
                     object_filter,
                 )
             } else {
@@ -1191,7 +1191,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
                     action,
                     player,
                     source_filter,
-                    object_tag,
+                    object_tag.key.clone(),
                     object_filter,
                 )
             }

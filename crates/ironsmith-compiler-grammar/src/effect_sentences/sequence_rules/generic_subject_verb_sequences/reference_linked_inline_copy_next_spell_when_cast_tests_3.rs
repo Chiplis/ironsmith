@@ -21,7 +21,7 @@ fn builds_one_shot_spell_cast_watcher_and_copies_that_spell() {
     )
     .expect("inverted delayed-copy wording should parse");
     let [
-        EffectAst::DelayedTriggerThisTurn {
+        EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
             trigger:
                 TriggerSpec::SpellCast {
                     filter: None,
@@ -32,7 +32,7 @@ fn builds_one_shot_spell_cast_watcher_and_copies_that_spell() {
             one_shot: true,
             until_end_of_combat: false,
             attach_to_previous_ability: false,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected one-shot spell watcher: {effects:#?}");
@@ -40,13 +40,13 @@ fn builds_one_shot_spell_cast_watcher_and_copies_that_spell() {
     assert!(matches!(
         delayed.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::CopySpell {
+            action: SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
                 target: TargetAst::Tagged(tag, None),
                 count: Value::Fixed(1),
                 player: PlayerAst::You,
                 may_choose_new_targets: true,
                 ..
-            },
+            }),
             ..
         })] if tag.as_str() == "triggering"
     ));

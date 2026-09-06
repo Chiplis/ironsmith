@@ -1,11 +1,12 @@
+use crate::cards::builders::ForEachEffectAst;
 use super::*;
 
 pub(super) fn primary_damage_source_from_effect(effect: &EffectAst) -> Option<TargetAst> {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-            SubjectVerbActionAst::DealDamage { .. } => Some(TargetAst::Source(None)),
-            SubjectVerbActionAst::DealDamageEqualToPower { source, .. }
-            | SubjectVerbActionAst::DealDistributedDamage { source, .. } => Some(source.clone()),
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { .. }) => Some(TargetAst::Source(None)),
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { source, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { source, .. }) => Some(source.clone()),
             _ => None,
         },
         _ => {
@@ -27,14 +28,14 @@ pub(super) fn replace_anaphoric_damage_source_in_effects(
     for effect in effects {
         match effect {
             EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
-                SubjectVerbActionAst::DealDamageEqualToPower {
+                SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
                     source: effect_source,
                     ..
-                }
-                | SubjectVerbActionAst::DealDistributedDamage {
+                })
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage {
                     source: effect_source,
                     ..
-                } if target_references_it(effect_source) => {
+                }) if target_references_it(effect_source) => {
                     *effect_source = source.clone();
                 }
                 _ => {}
@@ -53,21 +54,21 @@ pub(super) fn sole_damage_payload(effects: &[EffectAst]) -> Option<(Value, bool)
     match effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::DealDamage {
+                SubjectVerbActionAst::Damage(DamageActionAst::DealDamage {
                     amount,
                     unpreventable,
                     ..
-                }
-                | SubjectVerbActionAst::DealDamageEqualToPower {
+                })
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
                     amount,
                     unpreventable,
                     ..
-                },
+                }),
             ..
         }) => Some((amount.clone(), *unpreventable)),
         EffectAst::Sequence { effects }
         | EffectAst::SourceSentence { effects, .. }
-        | EffectAst::ForEachObject { effects, .. }
+        | EffectAst::ForEach(ForEachEffectAst::ForEachObject { effects, .. })
         | EffectAst::Coordinated { effects, .. } => sole_damage_payload(effects),
         _ => None,
     }
@@ -93,12 +94,12 @@ pub(super) fn normalize_anaphoric_damage_self_replacement(
     *effects = vec![EffectAst::subject_verb(
         SubjectVerbRoleAst::Actor,
         PlayerAst::Implicit,
-        SubjectVerbActionAst::DealDamageEqualToPower {
+        SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
             source: source.clone(),
             amount,
             target: target.clone(),
             unpreventable,
-        },
+        }),
     )];
     true
 }

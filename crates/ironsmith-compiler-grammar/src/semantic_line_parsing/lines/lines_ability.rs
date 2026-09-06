@@ -1,3 +1,6 @@
+use crate::cards::builders::SourcePredicateAst;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::DelayedEffectAst;
 use super::*;
 
 pub(super) fn parse_day_night_starts_day_static_chunk(tokens: &[OwnedLexToken]) -> Option<LineAst> {
@@ -46,19 +49,19 @@ pub(super) fn parse_static_line_impl(
                         .into(),
                 ),
                 LineAst::Statement {
-                    effects: vec![EffectAst::Conditional {
+                    effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                         predicate: PredicateAst::And(
-                            Box::new(PredicateAst::SourceWasCast),
+                            Box::new(PredicateAst::Source(SourcePredicateAst::SourceWasCast)),
                             Box::new(PredicateAst::Not(Box::new(
                                 PredicateAst::ThisSpellWasCastAtSorceryTiming,
                             ))),
                         ),
-                        if_true: vec![EffectAst::DelayedUntilNextCleanupStep {
+                        if_true: vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextCleanupStep {
                             player: PlayerFilter::Any,
                             effects: vec![sacrifice_source],
-                        }],
+                        })],
                         if_false: Vec::new(),
-                    }],
+                    })],
                 },
             ]),
             chosen_option,

@@ -1,3 +1,6 @@
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::ZoneMoveActionAst;
+use crate::cards::builders::ManaActionAst;
 use super::*;
 use crate::lexer::lex_line;
 use crate::model::ast::{SubjectVerbActionAst, SubjectVerbEffectAst};
@@ -43,13 +46,13 @@ fn any_number_sacrifice_keeps_a_comma_then_mana_followup() {
         panic!("expected chosen sacrifice and mana sequence");
     };
     let [
-        EffectAst::ChooseObjects { filter, tag, .. },
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, tag, .. }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::SacrificeAll { filter: sacrificed },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter: sacrificed }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::AddManaScaled { mana, amount },
+            action: SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled { mana, amount }),
             ..
         }),
     ] = effects.as_slice()
@@ -83,12 +86,12 @@ fn one_of_them_is_a_choice_from_the_referenced_set() {
 
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::Sacrifice {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice {
                 filter,
                 count,
                 target,
                 one_of_referenced_set,
-            },
+            }),
         ..
     }) = parsed
     else {
@@ -113,7 +116,7 @@ fn those_permanents_sacrifices_the_complete_referenced_set() {
         .expect("plural tagged-set sacrifice should parse");
 
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::SacrificeAll { filter },
+        action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter }),
         ..
     }) = parsed
     else {
@@ -139,7 +142,7 @@ fn sacrifice_all_keeps_a_terminal_nonbasic_qualifier_on_only_the_land_arm() {
     let parsed = parse_sacrifice(&tokens, Some(SubjectAst::Player(PlayerAst::That)), None)
         .expect("sacrifice-all clause should parse");
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::SacrificeAll { filter },
+        action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter }),
         ..
     }) = parsed
     else {
@@ -176,13 +179,13 @@ fn unit_fraction_rounded_up_sacrifice_chooses_the_exact_dynamic_set() {
     let [choose, sacrifice] = effects.as_slice() else {
         panic!("fractional sacrifice must have one choice and one consumer");
     };
-    let EffectAst::ChooseObjects {
+    let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
         filter,
         count,
         count_value: Some(count_value),
         player,
         tag,
-    } = choose
+    }) = choose
     else {
         panic!("fractional sacrifice must choose a dynamic object set");
     };
@@ -208,7 +211,7 @@ fn unit_fraction_rounded_up_sacrifice_chooses_the_exact_dynamic_set() {
 
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         subject,
-        action: SubjectVerbActionAst::SacrificeAll { filter: sacrificed },
+        action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter: sacrificed }),
     }) = sacrifice
     else {
         panic!("chosen set must feed the typed sacrifice consumer");
@@ -227,16 +230,16 @@ fn sacrifice_all_except_kept_count_chooses_count_minus_keep_set() {
         panic!("all-except sacrifice must lower to a chosen-set sequence");
     };
     let [
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter,
             count,
             count_value: Some(Value::Add(left, right)),
             player: PlayerAst::That,
             tag,
-        },
+        }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             subject,
-            action: SubjectVerbActionAst::SacrificeAll { filter: sacrificed },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter: sacrificed }),
         }),
     ] = effects.as_slice()
     else {

@@ -20,21 +20,21 @@ fn targeted_creature_leave_watcher_reuses_delayed_target_choice() {
     let chosen_tag = parsed
         .iter()
         .find_map(|effect| match effect {
-            EffectAst::ChooseObjects { tag, .. } => Some(tag),
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. }) => Some(tag),
             _ => None,
         })
         .expect("the target creature should be selected at resolution");
     let leave_filter = parsed
         .iter()
         .find_map(|effect| match effect {
-            EffectAst::DelayedTriggerThisTurn { trigger, .. } => leaves_filter(trigger),
+            EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn { trigger, .. }) => leaves_filter(trigger),
             _ => None,
         })
         .expect("the later sentence should register a leave watcher");
 
     assert!(
         leave_filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag == *chosen_tag
+            constraint.tag == **chosen_tag
                 && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
         }),
         "the leave watcher must be restricted to the chosen target: {parsed:#?}"

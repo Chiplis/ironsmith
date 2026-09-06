@@ -1,7 +1,7 @@
 use super::*;
 
 fn choice_players(effect: &EffectAst) -> Vec<PlayerAst> {
-    let EffectAst::ForEachPlayer { effects } = effect else {
+    let EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }) = effect else {
         panic!("expected per-player procedure: {effect:#?}");
     };
     let effects = match effects.as_slice() {
@@ -11,7 +11,7 @@ fn choice_players(effect: &EffectAst) -> Vec<PlayerAst> {
     effects
         .iter()
         .filter_map(|effect| match effect {
-            EffectAst::ChooseObjects { player, .. } => Some(*player),
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { player, .. }) => Some(*player),
             _ => None,
         })
         .collect()
@@ -43,15 +43,15 @@ fn paid_colors_can_replace_only_the_per_player_chooser() {
 
 #[test]
 fn chooser_rewrite_rejects_a_non_complement_procedure() {
-    let mut effect = EffectAst::ForEachPlayer {
-        effects: vec![EffectAst::ChooseObjects {
+    let mut effect = EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+        effects: vec![EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter: ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer),
             count: ChoiceCount::exactly(1),
             count_value: None,
             player: PlayerAst::That,
             tag: crate::tag::CompilerReferenceTag::Chosen.bind(),
-        }],
-    };
+        })],
+    });
     assert!(!rewrite_each_player_choice_complement_chooser(&mut effect));
     assert_eq!(choice_players(&effect), vec![PlayerAst::That]);
 }

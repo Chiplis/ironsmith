@@ -1,3 +1,5 @@
+use crate::cards::builders::StatChangeActionAst;
+use crate::cards::builders::GrantActionAst;
 use super::super::super::util::tokenize_line;
 use super::*;
 use crate::CardId;
@@ -80,13 +82,13 @@ fn additional_pump_and_ability_grant_are_both_present_in_semantic_ast() {
         match effect {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::PumpAll {
+                    SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
                         filter,
                         power,
                         toughness,
                         duration,
                         ..
-                    },
+                    }),
                 ..
             }) => Some((filter, power, toughness, duration)),
             EffectAst::Sequence { effects }
@@ -119,12 +121,12 @@ fn additional_pump_and_ability_grant_are_both_present_in_semantic_ast() {
         match effect {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::GrantAbilitiesAll {
+                    SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll {
                         filter,
                         abilities,
                         duration,
                         ..
-                    },
+                    }),
                 ..
             }) => Some((filter, abilities, duration)),
             EffectAst::Sequence { effects }

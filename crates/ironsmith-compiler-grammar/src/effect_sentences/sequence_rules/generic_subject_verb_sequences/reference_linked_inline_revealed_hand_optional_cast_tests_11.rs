@@ -18,20 +18,20 @@ fn optional_cast_chooses_from_the_exact_target_opponents_revealed_hand() {
         .expect("pair parser should not error")
         .expect("revealed-hand optional cast should match");
 
-    let [_, EffectAst::May { effects: optional }] = effects.as_slice() else {
+    let [_, EffectAst::Permissions(PermissionEffectAst::May { effects: optional })] = effects.as_slice() else {
         panic!("expected reveal plus one optional program: {effects:#?}");
     };
     let [
-        EffectAst::ChooseTaggedObjectsInZone {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter,
             count,
             player: PlayerAst::You,
             tag: chosen_tag,
             zone: Zone::Hand,
-        },
+        }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::CastTagged {
+                SubjectVerbActionAst::Stack(StackActionAst::CastTagged {
                     tag: cast_tag,
                     player: PlayerAst::You,
                     allow_land: false,
@@ -42,7 +42,7 @@ fn optional_cast_chooses_from_the_exact_target_opponents_revealed_hand() {
                     additional_mana_cost: None,
                     cost_reduction: None,
                     mana_spend_mode: ironsmith_core::value_model::ManaSpendMode::Normal,
-                },
+                }),
             ..
         }),
     ] = optional.as_slice()

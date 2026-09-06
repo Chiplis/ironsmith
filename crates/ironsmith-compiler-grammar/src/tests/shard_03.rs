@@ -1,4 +1,10 @@
 #![allow(unused_imports)]
+use crate::cards::builders::SourcePredicateAst;
+use crate::cards::builders::PlayerPredicateAst;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::GameActionAst;
+use crate::cards::builders::TokenActionAst;
 use super::shard_00::*;
 use super::shard_01::*;
 use super::shard_02::*;
@@ -731,11 +737,11 @@ pub(super) fn rewrite_typed_replacement_predicate_regression_shapes_preserve_sem
     let parsed = super::super::clause_support::parse_effect_sentences_lexed(&ocelot)
         .expect("conditional for-each copy should parse");
     let [
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true,
             if_false,
-        },
+        }),
     ] = parsed.as_slice()
     else {
         panic!("expected one conditional token-copy clause: {parsed:#?}");
@@ -743,12 +749,12 @@ pub(super) fn rewrite_typed_replacement_predicate_regression_shapes_preserve_sem
     assert!(
         matches!(
             predicate,
-            crate::cards::builders::PredicateAst::PlayerHasCitysBlessing { .. }
+            crate::cards::builders::PredicateAst::Player(PlayerPredicateAst::PlayerHasCitysBlessing { .. })
         ),
         "conditional token-copy clause must retain its city-blessing predicate: {parsed:#?}"
     );
     assert!(if_false.is_empty());
-    let [EffectAst::ForEachObject { filter, effects }] = if_true.as_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachObject { filter, effects })] = if_true.as_slice() else {
         panic!("expected object iteration under city-blessing predicate: {parsed:#?}");
     };
     assert!(filter.token);
@@ -758,8 +764,8 @@ pub(super) fn rewrite_typed_replacement_predicate_regression_shapes_preserve_sem
         [EffectAst::SubjectVerb(subject_verb)]
             if matches!(
                 &subject_verb.action,
-                SubjectVerbActionAst::CreateTokenCopy { .. }
-                    | SubjectVerbActionAst::CreateTokenCopyFromSource { .. }
+                SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. })
+                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { .. })
             )
     ));
 }
@@ -972,7 +978,7 @@ pub(super) fn rewrite_grammar_empty_library_draw_win_lowers_to_conditional_repla
         &replacement_effects[0],
         crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::WinGame,
+                action: crate::cards::builders::SubjectVerbActionAst::Game(GameActionAst::WinGame),
                 ..
             }
         )
@@ -1794,11 +1800,11 @@ pub(super) fn rewrite_grammar_tap_status_and_max_cards_helpers_match_keyword_sta
     for (text, expected) in [
         (
             "this creature is tapped",
-            crate::cards::builders::PredicateAst::SourceIsTapped,
+            crate::cards::builders::PredicateAst::Source(SourcePredicateAst::SourceIsTapped),
         ),
         (
             "this permanent is untapped",
-            crate::cards::builders::PredicateAst::SourceIsUntapped,
+            crate::cards::builders::PredicateAst::Source(SourcePredicateAst::SourceIsUntapped),
         ),
     ] {
         let tokens = lex_line(text, 0).expect("rewrite lexer should classify tap-status condition");
@@ -3946,7 +3952,7 @@ pub(super) fn rewrite_lexed_effect_sentence_routes_then_if_conditional_through_g
     assert_eq!(format!("{parsed:?}"), format!("{grammar:?}"));
     assert!(matches!(
         parsed.as_slice(),
-        [crate::cards::builders::EffectAst::Conditional { .. }]
+        [crate::cards::builders::EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. })]
     ));
 }
 
@@ -3971,18 +3977,18 @@ pub(super) fn rewrite_lexed_conditional_parser_routes_comma_clause_through_struc
 
     match parsed.as_slice() {
         [
-            crate::cards::builders::EffectAst::Conditional {
+            crate::cards::builders::EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: _,
                 if_true,
                 if_false,
-            },
+            }),
         ] => {
             assert!(if_false.is_empty());
             assert!(matches!(
                 if_true.as_slice(),
                 [crate::cards::builders::EffectAst::SubjectVerb(
                     crate::cards::builders::SubjectVerbEffectAst {
-                        action: crate::cards::builders::SubjectVerbActionAst::CreateTokenWithMods { .. },
+                        action: crate::cards::builders::SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { .. }),
                         ..
                     }
                 )]

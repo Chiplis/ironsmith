@@ -1,3 +1,11 @@
+use crate::cards::builders::PermissionEffectAst;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::VoteEffectAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::StackActionAst;
+use crate::cards::builders::DamageActionAst;
+use crate::cards::builders::LifeResourceActionAst;
+use crate::cards::builders::CharacteristicActionAst;
 use super::*;
 
 fn normalize_unless_cost_for_payer(cost: crate::cost::TotalCost) -> crate::cost::TotalCost {
@@ -108,7 +116,7 @@ fn bind_target_iteration_exclusion_in_attachment_counts(
 ) {
     for effect in effects {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Draw { count },
+            action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count }),
             ..
         }) = effect
         {
@@ -123,7 +131,7 @@ fn bind_target_iteration_exclusion_in_attachment_counts(
 fn sacrifice_all_tag_relation(effects: &[EffectAst]) -> Option<(TagKey, TaggedOpbjectRelation)> {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::SacrificeAll { filter },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter }),
             ..
         }),
     ] = effects
@@ -318,7 +326,7 @@ fn try_compile_for_each_object_become_copy_of_prior_choice(
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::BecomeCopy {
+                SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCopy {
                     target,
                     source,
                     duration,
@@ -335,7 +343,7 @@ fn try_compile_for_each_object_become_copy_of_prior_choice(
                     granted_abilities,
                     set_base_power_toughness,
                     copy_exception_surface,
-                },
+                }),
             ..
         }),
     ] = effects
@@ -384,7 +392,7 @@ fn try_compile_for_each_object_become_copy_of_prior_choice(
 
     let rewritten = EffectAst::subject_verb_become_copy(
         TargetAst::Object(target_filter, None, None),
-        TargetAst::Tagged(prior_choice_tag, source_reference_span),
+        TargetAst::Tagged(crate::tag::TagRef::of(prior_choice_tag), source_reference_span),
         duration.clone(),
         *preserve_source_abilities,
         name_override.clone(),
@@ -458,17 +466,17 @@ fn try_compile_for_each_object_as_damage_source(
     };
 
     let (source, amount, target, unpreventable) = match action {
-        SubjectVerbActionAst::DealDamageEqualToPower {
+        SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
             source,
             amount,
             target,
             unpreventable,
-        } => (Some(source), amount, target, unpreventable),
-        SubjectVerbActionAst::DealDamage {
+        }) => (Some(source), amount, target, unpreventable),
+        SubjectVerbActionAst::Damage(DamageActionAst::DealDamage {
             amount,
             target,
             unpreventable,
-        } if matches!(
+        }) if matches!(
             amount.unhinted(),
             Value::PowerOf(spec) | Value::ToughnessOf(spec)
                 if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
@@ -560,7 +568,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let compiled = match effect {
-        EffectAst::May { effects } => {
+        EffectAst::Permissions(PermissionEffectAst::May { effects }) => {
             if effects.is_empty() {
                 return Err(CardTextError::ParseError(
                     "empty may-effect branch is unsupported".to_string(),
@@ -592,7 +600,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             };
             (vec![effect], inner_choices)
         }
-        EffectAst::MayByPlayer { player, effects } => {
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, effects }) => {
             if effects.is_empty() {
                 return Err(CardTextError::ParseError(
                     "empty may-by-player effect branch is unsupported".to_string(),
@@ -650,16 +658,16 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             let effect = Effect::may_player(player_filter, inner_effects);
             (vec![effect], choices)
         }
-        EffectAst::AnyPlayerMay { players, effects } => {
+        EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay { players, effects }) => {
             if effects.is_empty() {
                 return Err(CardTextError::ParseError(
                     "empty any-player-may effect branch is unsupported".to_string(),
                 ));
             }
-            let offers = [EffectAst::MayByPlayer {
+            let offers = [EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
                 player: PlayerAst::That,
                 effects: effects.clone(),
-            }];
+            })];
             let (inner_effects, inner_choices) =
                 compile_effects_in_iterated_player_context(&offers, ctx, None)?;
             let effect = Effect::new(crate::effects::ForPlayersEffect {
@@ -670,18 +678,18 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             });
             (vec![effect], inner_choices)
         }
-        EffectAst::RepeatThisProcessMay => (
+        EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay) => (
             vec![Effect::new(crate::effects::RepeatProcessPromptEffect::new(
                 ironsmith_core::RepeatProcessPromptKind::MayRepeatAnyNumberOfTimes,
             ))],
             Vec::new(),
         ),
-        EffectAst::UnlessPays {
+        EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
             effects,
             player,
             cost,
             before_delayed_step,
-        } => {
+        }) => {
             // A trailing "unless they pay" attached to an each-player
             // instruction is evaluated separately for every iterated player.
             // Keep the payment inside the loop so `they` resolves against the
@@ -690,38 +698,38 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 && let [per_player] = effects.as_slice()
             {
                 let rewritten = match per_player {
-                    EffectAst::ForEachPlayer {
+                    EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
                         effects: per_player_effects,
-                    } => Some(EffectAst::ForEachPlayer {
-                        effects: vec![EffectAst::UnlessPays {
+                    }) => Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+                        effects: vec![EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
                             effects: per_player_effects.clone(),
                             player: *player,
                             cost: cost.clone(),
                             before_delayed_step: *before_delayed_step,
-                        }],
-                    }),
-                    EffectAst::ForEachOpponent {
+                        })],
+                    })),
+                    EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
                         effects: per_player_effects,
-                    } => Some(EffectAst::ForEachOpponent {
-                        effects: vec![EffectAst::UnlessPays {
+                    }) => Some(EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
+                        effects: vec![EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
                             effects: per_player_effects.clone(),
                             player: *player,
                             cost: cost.clone(),
                             before_delayed_step: *before_delayed_step,
-                        }],
-                    }),
-                    EffectAst::ForEachPlayersFiltered {
+                        })],
+                    })),
+                    EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
                         filter,
                         effects: per_player_effects,
-                    } => Some(EffectAst::ForEachPlayersFiltered {
+                    }) => Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
                         filter: filter.clone(),
-                        effects: vec![EffectAst::UnlessPays {
+                        effects: vec![EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
                             effects: per_player_effects.clone(),
                             player: *player,
                             cost: cost.clone(),
                             before_delayed_step: *before_delayed_step,
-                        }],
-                    }),
+                        })],
+                    })),
                     _ => None,
                 };
                 if let Some(rewritten) = rewritten {
@@ -730,20 +738,20 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             }
 
             if effects.len() == 1
-                && let EffectAst::ForEachObject {
+                && let EffectAst::ForEach(ForEachEffectAst::ForEachObject {
                     filter,
                     effects: per_object_effects,
-                } = &effects[0]
+                }) = &effects[0]
             {
-                let rewritten = EffectAst::ForEachObject {
+                let rewritten = EffectAst::ForEach(ForEachEffectAst::ForEachObject {
                     filter: filter.clone(),
-                    effects: vec![EffectAst::UnlessPays {
+                    effects: vec![EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
                         effects: per_object_effects.clone(),
                         player: *player,
                         cost: cost.clone(),
                         before_delayed_step: *before_delayed_step,
-                    }],
-                };
+                    })],
+                });
                 return Ok(Some(compile_effect(&rewritten, ctx)?));
             }
 
@@ -800,25 +808,25 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             });
             (vec![effect], choices)
         }
-        EffectAst::UnlessAction {
+        EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
             effects,
             alternative,
             player,
-        } => {
+        }) => {
             if effects.len() == 1
-                && let EffectAst::ForEachObject {
+                && let EffectAst::ForEach(ForEachEffectAst::ForEachObject {
                     filter,
                     effects: per_object_effects,
-                } = &effects[0]
+                }) = &effects[0]
             {
-                let rewritten = EffectAst::ForEachObject {
+                let rewritten = EffectAst::ForEach(ForEachEffectAst::ForEachObject {
                     filter: filter.clone(),
-                    effects: vec![EffectAst::UnlessAction {
+                    effects: vec![EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
                         effects: per_object_effects.clone(),
                         alternative: alternative.clone(),
                         player: *player,
-                    }],
-                };
+                    })],
+                });
                 return Ok(Some(compile_effect(&rewritten, ctx)?));
             }
 
@@ -865,7 +873,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             choices.extend(alt_choices);
             (vec![effect], choices)
         }
-        EffectAst::IfResult { predicate, effects } => {
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult { predicate, effects }) => {
             let condition = if crate::reference_resolution::if_result_predicate_is_searched_library(predicate) {
                 ctx.last_library_search_effect_id.or(ctx.last_effect_id)
             } else {
@@ -887,7 +895,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             let effect = Effect::if_then(condition, predicate, inner_effects);
             (vec![effect], inner_choices)
         }
-        EffectAst::WhenResult { predicate, effects } => {
+        EffectAst::Conditionals(ConditionalEffectAst::WhenResult { predicate, effects }) => {
             let condition = ctx.last_effect_id.ok_or_else(|| {
                 CardTextError::ParseError("missing prior effect for when clause".to_string())
             })?;
@@ -904,13 +912,13 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 Effect::reflexive_trigger(condition, predicate, inner_effects, inner_choices);
             (vec![effect], Vec::new())
         }
-        EffectAst::ForEachOpponent { effects } => {
+        EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }) => {
             let (inner_effects, inner_choices) =
                 compile_effects_in_iterated_player_context(effects, ctx, None)?;
             let effect = Effect::for_each_opponent(inner_effects);
             (vec![effect], inner_choices)
         }
-        EffectAst::ForEachPlayersFiltered { filter, effects } => {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { filter, effects }) => {
             let (inner_effects, inner_choices) =
                 compile_effects_in_iterated_player_context(effects, ctx, None)?;
             let effect = try_compile_simultaneous_each_player_scry(filter.clone(), &inner_effects)
@@ -929,11 +937,11 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             }
             (compiled, choices)
         }
-        EffectAst::ForEachPlayer { effects } => {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }) => {
             if let [
-                EffectAst::May {
+                EffectAst::Permissions(PermissionEffectAst::May {
                     effects: may_effects,
-                },
+                }),
             ] = effects.as_slice()
                 && let [EffectAst::Coordination(coordination)] = may_effects.as_slice()
                 && coordination.kind == crate::model::CoordinationKindAst::Sequence
@@ -943,18 +951,18 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 && let Some((followup_member, antecedent_members)) =
                     coordination.members.split_last()
                 && let [followup] = followup_member.effects.as_slice()
-                && matches!(followup, EffectAst::ForEachOpponentDoesNot { .. })
+                && matches!(followup, EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDoesNot { .. }))
             {
                 let antecedent_may_effects = antecedent_members
                     .iter()
                     .flat_map(|member| member.effects.iter().cloned())
                     .collect::<Vec<_>>();
                 if !antecedent_may_effects.is_empty() {
-                    let antecedent = EffectAst::ForEachPlayer {
-                        effects: vec![EffectAst::May {
+                    let antecedent = EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+                        effects: vec![EffectAst::Permissions(PermissionEffectAst::May {
                             effects: antecedent_may_effects,
-                        }],
-                    };
+                        })],
+                    });
                     if let Some((effects, choices)) =
                         compile_if_do_with_opponent_doesnt(&antecedent, followup, ctx)?
                     {
@@ -963,9 +971,9 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 }
             }
             if let [
-                EffectAst::May {
+                EffectAst::Permissions(PermissionEffectAst::May {
                     effects: may_effects,
-                },
+                }),
             ] = effects.as_slice()
                 && let [
                     EffectAst::CommaThen {
@@ -974,13 +982,13 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 ] = may_effects.as_slice()
                 && let Some((followup, antecedent_may_effects)) = comma_then_effects.split_last()
                 && !antecedent_may_effects.is_empty()
-                && matches!(followup, EffectAst::ForEachOpponentDoesNot { .. })
+                && matches!(followup, EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDoesNot { .. }))
             {
-                let antecedent = EffectAst::ForEachPlayer {
-                    effects: vec![EffectAst::May {
+                let antecedent = EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+                    effects: vec![EffectAst::Permissions(PermissionEffectAst::May {
                         effects: antecedent_may_effects.to_vec(),
-                    }],
-                };
+                    })],
+                });
                 if let Some((effects, choices)) =
                     compile_if_do_with_opponent_doesnt(&antecedent, followup, ctx)?
                 {
@@ -988,19 +996,19 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 }
             }
             if let [
-                EffectAst::May {
+                EffectAst::Permissions(PermissionEffectAst::May {
                     effects: may_effects,
-                },
+                }),
             ] = effects.as_slice()
                 && let Some((followup, antecedent_may_effects)) = may_effects.split_last()
                 && !antecedent_may_effects.is_empty()
-                && matches!(followup, EffectAst::ForEachOpponentDoesNot { .. })
+                && matches!(followup, EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDoesNot { .. }))
             {
-                let antecedent = EffectAst::ForEachPlayer {
-                    effects: vec![EffectAst::May {
+                let antecedent = EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+                    effects: vec![EffectAst::Permissions(PermissionEffectAst::May {
                         effects: antecedent_may_effects.to_vec(),
-                    }],
-                };
+                    })],
+                });
                 if let Some((effects, choices)) =
                     compile_if_do_with_opponent_doesnt(&antecedent, followup, ctx)?
                 {
@@ -1009,11 +1017,11 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             }
             if let Some((followup, antecedent_effects)) = effects.split_last()
                 && !antecedent_effects.is_empty()
-                && matches!(followup, EffectAst::ForEachOpponentDoesNot { .. })
+                && matches!(followup, EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDoesNot { .. }))
             {
-                let antecedent = EffectAst::ForEachPlayer {
+                let antecedent = EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
                     effects: antecedent_effects.to_vec(),
-                };
+                });
                 if let Some((effects, choices)) =
                     compile_if_do_with_opponent_doesnt(&antecedent, followup, ctx)?
                 {
@@ -1039,11 +1047,11 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             ));
             (vec![effect], Vec::new())
         }
-        EffectAst::ForEachTargetPlayers {
+        EffectAst::ForEach(ForEachEffectAst::ForEachTargetPlayers {
             count,
             filter,
             effects,
-        } => {
+        }) => {
             let target_spec = resolve_choose_spec_it_tag(
                 &ChooseSpec::target(ChooseSpec::Player(filter.clone())).with_count(*count),
                 &current_reference_env(ctx),
@@ -1071,7 +1079,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             }
             (vec![choose_targets, effect], choices)
         }
-        EffectAst::ForEachObject { filter, effects } => {
+        EffectAst::ForEach(ForEachEffectAst::ForEachObject { filter, effects }) => {
             if let Some(compiled) =
                 try_compile_for_each_object_become_copy_of_prior_choice(filter, effects, ctx)?
             {
@@ -1088,20 +1096,20 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             let effect = Effect::for_each(resolved_filter, inner_effects);
             (vec![effect], inner_choices)
         }
-        EffectAst::ForEachTagged { tag, effects } => {
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, effects }) => {
             let effective_tag = if let Some(concrete) = ctx
                 .snapshot_tag_aliases
                 .iter()
-                .find(|(alias, _)| alias == tag)
+                .find(|(alias, _)| *alias == tag.key)
                 .map(|(_, concrete)| concrete.clone())
             {
                 concrete
             } else if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                 ctx.last_object_tag
                     .clone()
-                    .unwrap_or_else(|| crate::tag::CompilerReferenceTag::It.bind())
+                    .unwrap_or_else(|| (crate::tag::CompilerReferenceTag::It.bind()).into())
             } else {
-                tag.clone()
+                tag.clone().into()
             };
 
             let (inner_effects, inner_choices) = compile_effects_in_iterated_player_context(
@@ -1112,11 +1120,11 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             let effect = Effect::for_each_tagged(effective_tag, inner_effects);
             (vec![effect], inner_choices)
         }
-        EffectAst::ForEachTaggedWithControllerAtLastBlockedBy {
+        EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy {
             tag,
             blocker_tag,
             effects,
-        } => {
+        }) => {
             let resolve_tag = |tag: &TagKey| {
                 ctx.snapshot_tag_aliases
                     .iter()
@@ -1142,9 +1150,9 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             let effective_tag = ctx
                 .snapshot_tag_aliases
                 .iter()
-                .find(|(alias, _)| alias == tag)
+                .find(|(alias, _)| *alias == tag.key)
                 .map(|(_, concrete)| concrete.clone())
-                .unwrap_or_else(|| tag.clone());
+                .unwrap_or_else(|| tag.clone().into());
             let effect = Effect::for_each_tagged(
                 effective_tag,
                 vec![Effect::move_to_zone(ChooseSpec::Iterated, *zone, false)],
@@ -1157,22 +1165,22 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             // earlier looked-at pool even after an intervening `ChooseObjects`
             // clobbers `last_object_tag`. Emits no runtime effect.
             if let Some(concrete) = ctx.last_object_tag.clone() {
-                ctx.snapshot_tag_aliases.retain(|(alias, _)| alias != into);
-                ctx.snapshot_tag_aliases.push((into.clone(), concrete));
+                ctx.snapshot_tag_aliases.retain(|(alias, _)| *alias != into.key);
+                ctx.snapshot_tag_aliases.push((into.clone().into(), concrete));
             }
             (Vec::new(), Vec::new())
         }
-        EffectAst::ForEachTaggedPlayer { tag, effects } => {
+        EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer { tag, effects }) => {
             let (inner_effects, inner_choices) =
                 compile_effects_in_iterated_player_context(effects, ctx, None)?;
             let effect = Effect::for_each_tagged_player(tag.clone(), inner_effects);
             (vec![effect], inner_choices)
         }
-        EffectAst::RepeatProcess {
+        EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
             effects,
             continue_effect_index,
             continue_predicate,
-        } => {
+        }) => {
             let (mut body_effects, choices, condition) = with_preserved_lowering_context(
                 ctx,
                 |_| {},
@@ -1202,22 +1210,22 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             compiled.push(effect);
             (compiled, choices)
         }
-        EffectAst::ForEachOpponentDoesNot { .. } => {
+        EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDoesNot { .. }) => {
             return Err(CardTextError::ParseError(
                 "for each opponent who doesn't must follow an opponent clause".to_string(),
             ));
         }
-        EffectAst::ForEachPlayerDoesNot { .. } => {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDoesNot { .. }) => {
             return Err(CardTextError::ParseError(
                 "for each player who doesn't must follow a player clause".to_string(),
             ));
         }
-        EffectAst::ForEachOpponentDid { .. } => {
+        EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDid { .. }) => {
             return Err(CardTextError::ParseError(
                 "for each opponent who ... this way must follow an opponent clause".to_string(),
             ));
         }
-        EffectAst::ForEachPlayerDid { .. } => {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDid { .. }) => {
             return Err(CardTextError::ParseError(
                 "for each player who ... this way must follow a player clause".to_string(),
             ));
@@ -1234,7 +1242,7 @@ fn single_cast_tagged_reference_tag(
 ) -> Result<Option<TagKey>, CardTextError> {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::CastTagged { tag, .. },
+            action: SubjectVerbActionAst::Stack(StackActionAst::CastTagged { tag, .. }),
             ..
         }),
     ] = effects
@@ -1248,7 +1256,7 @@ fn single_cast_tagged_reference_tag(
     if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
         return Ok(ctx.last_object_tag.clone());
     }
-    Ok(Some(tag.clone()))
+    Ok(Some(tag.clone().into()))
 }
 
 pub(super) fn try_compile_search_and_reorder_effect(
@@ -1256,7 +1264,7 @@ pub(super) fn try_compile_search_and_reorder_effect(
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let compiled = match effect {
-        EffectAst::VoteOption { option, effects } => {
+        EffectAst::Votes(VoteEffectAst::VoteOption { option, effects }) => {
             let mut option_effects_ast = effects.clone();
             force_implicit_vote_token_controller_you(&mut option_effects_ast);
             let (repeat_effects, repeat_choices) = compile_effects(&option_effects_ast, ctx)?;
@@ -1268,11 +1276,11 @@ pub(super) fn try_compile_search_and_reorder_effect(
                 repeat_choices,
             )
         }
-        EffectAst::SecretChoiceReveal => (Vec::new(), Vec::new()),
-        EffectAst::VoteStart { .. }
-        | EffectAst::VoteStartObjects { .. }
-        | EffectAst::VoteStartPlayers { .. }
-        | EffectAst::VoteExtra { .. } => {
+        EffectAst::Votes(VoteEffectAst::SecretChoiceReveal) => (Vec::new(), Vec::new()),
+        EffectAst::Votes(VoteEffectAst::VoteStart { .. })
+        | EffectAst::Votes(VoteEffectAst::VoteStartObjects { .. })
+        | EffectAst::Votes(VoteEffectAst::VoteStartPlayers { .. })
+        | EffectAst::Votes(VoteEffectAst::VoteExtra { .. }) => {
             return Err(CardTextError::ParseError(
                 "vote clauses must appear together".to_string(),
             ));

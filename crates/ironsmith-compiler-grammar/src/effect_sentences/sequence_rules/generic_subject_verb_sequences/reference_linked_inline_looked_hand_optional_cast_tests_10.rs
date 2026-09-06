@@ -26,7 +26,7 @@ fn looked_players_hand_optional_free_cast_keeps_zone_owner_and_may_semantics() {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::LookAtHand {
+                SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtHand {
                     target:
                         TargetAst::Player(
                             PlayerFilter::DamagedPlayer
@@ -35,16 +35,16 @@ fn looked_players_hand_optional_free_cast_keeps_zone_owner_and_may_semantics() {
                             | PlayerFilter::AliasedTarget(_),
                             _,
                         ),
-                },
+                }),
             ..
         }),
-        EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+        EffectAst::Permissions(PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
             player: PlayerAst::You,
             zone_owner: PlayerAst::That,
             filter,
             zone: Zone::Hand,
             payment: ironsmith_core::MayCastMatchingSpellPayment::WithoutPayingManaCost,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected looked hand plus typed optional hand cast: {effects:#?}");
@@ -68,16 +68,16 @@ fn public_two_sentence_route_keeps_looked_hand_cast_optional() {
             effects.as_slice(),
             [
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::LookAtHand { .. },
+                    action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtHand { .. }),
                     ..
                 }),
-                EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                EffectAst::Permissions(PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
                     player: PlayerAst::You,
                     zone_owner: PlayerAst::That,
                     filter,
                     zone: Zone::Hand,
                     payment: ironsmith_core::MayCastMatchingSpellPayment::WithoutPayingManaCost,
-                }
+                })
             ] if filter.zone == Some(Zone::Hand)
                 && filter.excluded_card_types == [CardType::Land]
         ),

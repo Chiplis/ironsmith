@@ -12,7 +12,7 @@ fn singular_return_result_gets_a_one_shot_enter_watcher() {
 
     let [
         EffectAst::SubjectVerb(first),
-        EffectAst::DelayedTriggerForDuration {
+        EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
             trigger:
                 crate::cards::builders::TriggerSpec::ThisEntersBattlefieldWithSurface {
                     surface: crate::target::SourceReferenceSurface::ThisPermanentType(surface),
@@ -22,20 +22,20 @@ fn singular_return_result_gets_a_one_shot_enter_watcher() {
             one_shot: true,
             duration: Until::Forever,
             ..
-        },
+        }),
     ] = parsed.as_slice()
     else {
         panic!("expected return followed by linked enter watcher: {parsed:#?}");
     };
     assert!(matches!(
         first.action,
-        SubjectVerbActionAst::ReturnToBattlefield { .. }
+        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { .. })
     ));
     assert_eq!(surface, "that permanent");
     assert!(matches!(
         effects.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ReturnToBattlefield { .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { .. }),
             ..
         })]
     ));
@@ -52,7 +52,7 @@ fn anaphor_and_singular_return_guards_reject_near_misses() {
         assert!(
             !parsed
                 .iter()
-                .any(|effect| matches!(effect, EffectAst::DelayedTriggerForDuration { .. })),
+                .any(|effect| matches!(effect, EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { .. }))),
             "near miss must not acquire linked delayed semantics: {parsed:#?}"
         );
     }

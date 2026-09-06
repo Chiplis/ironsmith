@@ -66,7 +66,7 @@ pub fn parse_transform_target_shape(tokens: &[OwnedLexToken]) -> TransformTarget
 pub fn source_spec_for_reference(source: CounterReferenceSource) -> crate::ChooseSpec {
     match source {
         CounterReferenceSource::TaggedIt => {
-            crate::ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.bind())
+            crate::ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into())
         }
         CounterReferenceSource::Source => crate::ChooseSpec::Source,
     }

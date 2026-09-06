@@ -1,3 +1,4 @@
+use crate::cards::builders::ObjectChoiceEffectAst;
 use super::*;
 
 pub(super) fn try_parse_chosen_type_behold_two_additional_cost(
@@ -73,7 +74,7 @@ pub(super) fn try_parse_chosen_type_behold_two_additional_cost(
         crate::model::CompilerCost::ValidatedEffect(Box::new(
             EffectAst::subject_verb_choose_creature_type(PlayerAst::You, Vec::new()),
         )),
-        crate::model::CompilerCost::ValidatedEffect(Box::new(EffectAst::ChooseObjects {
+        crate::model::CompilerCost::ValidatedEffect(Box::new(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter: ObjectFilter {
                 any_of: vec![battlefield, hand],
                 ..Default::default()
@@ -82,7 +83,7 @@ pub(super) fn try_parse_chosen_type_behold_two_additional_cost(
             count_value: None,
             player: PlayerAst::You,
             tag: crate::tag::CompilerReferenceTag::BeheldChosenType.bind(),
-        })),
+        }))),
     ]);
     let mut optional_cost = OptionalCost::custom(line.info.raw_line.trim(), total_cost);
     optional_cost.reference =
@@ -155,10 +156,10 @@ pub(super) fn specialize_modal_common_target_suffix(
             "unsupported modal common suffix in '{header_text}'"
         )));
     };
-    let SubjectVerbActionAst::ReturnToHand {
+    let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand {
         target: TargetAst::Object(common_filter, _, _),
         ..
-    } = &common.action
+    }) = &common.action
     else {
         return Err(CardTextError::ParseError(format!(
             "unsupported modal common target action in '{header_text}'"
@@ -182,7 +183,7 @@ pub(super) fn specialize_modal_common_target_suffix(
         };
 
         let mut specialized = common.clone();
-        let SubjectVerbActionAst::ReturnToHand { target, .. } = &mut specialized.action else {
+        let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. }) = &mut specialized.action else {
             unreachable!("common suffix action was validated above");
         };
         *target = TargetAst::Object(

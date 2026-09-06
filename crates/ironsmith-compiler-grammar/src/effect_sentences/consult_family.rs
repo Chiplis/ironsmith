@@ -1,3 +1,4 @@
+use crate::cards::builders::ForEachEffectAst;
 use winnow::Parser as _;
 use winnow::combinator::{alt, cut_err, dispatch, fail, opt, peek};
 use winnow::error::{ContextError, ErrMode, StrContext, StrContextValue};
@@ -14,7 +15,7 @@ use super::search_library::normalize_search_library_filter;
 use super::{find_verb, parse_effect_chain, parse_effect_sentence_lexed};
 use crate::cards::builders::{
     CardTextError, EffectAst, LibraryBottomOrderAst, LibraryConsultModeAst, ObjectFilter,
-    PlayerAst, PredicateAst, SubjectAst, TagKey, TargetAst,
+    PlayerAst, PredicateAst, SubjectAst, TagKey, TargetAst, ConditionalEffectAst, PermissionEffectAst,
 };
 use crate::effect::Value;
 use crate::grammar::effects as effect_grammar;
@@ -121,8 +122,8 @@ pub fn parse_consult_traversal_sentence(
             filter,
             stop_rule,
             max_exposed,
-            all_tag.clone(),
-            match_tag.clone(),
+            crate::tag::TagRef::of(all_tag.clone()),
+            crate::tag::TagRef::of(match_tag.clone()),
         )
     } else {
         EffectAst::subject_verb_consult_top_of_library(
@@ -130,15 +131,15 @@ pub fn parse_consult_traversal_sentence(
             mode,
             filter,
             stop_rule,
-            all_tag.clone(),
-            match_tag.clone(),
+            crate::tag::TagRef::of(all_tag.clone()),
+            crate::tag::TagRef::of(match_tag.clone()),
         )
     });
     Ok(Some(ConsultSentenceParts {
         effects,
         player,
-        all_tag,
-        match_tag,
+        all_tag: all_tag.key.clone(),
+        match_tag: match_tag.key.clone(),
     }))
 }
 
@@ -188,7 +189,7 @@ pub fn parse_consult_traversal_with_inline_followup(
             if let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
                 subject,
                 action:
-                    crate::cards::builders::SubjectVerbActionAst::ConsultTopOfLibrary { player, .. },
+                    crate::cards::builders::SubjectVerbActionAst::Library(crate::cards::builders::LibraryActionAst::ConsultTopOfLibrary { player, .. }),
             }) = effect
             {
                 // The consult action carries its library owner separately
@@ -199,7 +200,7 @@ pub fn parse_consult_traversal_with_inline_followup(
                 *player = PlayerAst::That;
             }
         }
-        effects = vec![EffectAst::ForEachOpponent { effects }];
+        effects = vec![EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })];
     }
     Ok(Some(effects))
 }
@@ -251,7 +252,7 @@ fn parse_typed_consult_damage_and_collection_disposition(
             .unwrap_or(parts.player);
     let disposition =
         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library_with_surface(
-            parts.all_tag.clone(),
+            crate::tag::TagRef::of(parts.all_tag.clone()),
             disposition
                 .exclude_current_reference
                 .then(|| crate::tag::CompilerReferenceTag::It.bind()),
@@ -297,8 +298,8 @@ fn bind_consult_it_relation_to_prefix_affected_object(
     if !matches!(
         prefix_effect,
         EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-            action: crate::cards::builders::SubjectVerbActionAst::Exile { .. }
-                | crate::cards::builders::SubjectVerbActionAst::MoveToZone { .. },
+            action: crate::cards::builders::SubjectVerbActionAst::ZoneMoves(crate::cards::builders::ZoneMoveActionAst::Exile { .. })
+                | crate::cards::builders::SubjectVerbActionAst::ZoneMoves(crate::cards::builders::ZoneMoveActionAst::MoveToZone { .. }),
             ..
         })
     ) {
@@ -309,11 +310,11 @@ fn bind_consult_it_relation_to_prefix_affected_object(
     let affected = prefix_effect.clone();
     *prefix_effect = EffectAst::TagAffected {
         effect: Box::new(affected),
-        tag: antecedent_tag.clone(),
+        tag: crate::tag::TagRef::of(antecedent_tag.clone()),
     };
     for constraint in &mut filter.tagged_constraints {
         if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
-            constraint.tag = antecedent_tag.clone();
+            constraint.tag = antecedent_tag.clone().into();
         }
     }
 }
@@ -340,8 +341,8 @@ fn apply_consult_prefix_player_surface(effects: &mut [EffectAst], player: Player
                 if subject_verb.subject.player == PlayerAst::Implicit
                     && matches!(
                         &subject_verb.action,
-                        crate::cards::builders::SubjectVerbActionAst::Exile { .. }
-                            | crate::cards::builders::SubjectVerbActionAst::MoveToZone { .. }
+                        crate::cards::builders::SubjectVerbActionAst::ZoneMoves(crate::cards::builders::ZoneMoveActionAst::Exile { .. })
+                            | crate::cards::builders::SubjectVerbActionAst::ZoneMoves(crate::cards::builders::ZoneMoveActionAst::MoveToZone { .. })
                     ) =>
             {
                 subject_verb.subject.player = player;
@@ -536,7 +537,7 @@ pub fn parse_if_declined_put_match_into_hand(
     }
 
     Some(vec![EffectAst::subject_verb_move_to_zone(
-        TargetAst::Tagged(match_tag, None),
+        TargetAst::Tagged(crate::tag::TagRef::of(match_tag), None),
         Zone::Hand,
         false,
         crate::cards::builders::ReturnControllerAst::Preserve,
@@ -567,14 +568,14 @@ pub fn consult_cast_effects(
             {
                 let grant = if matches!(clause.timing, ConsultCastTiming::UntilYourNextTurnEnd) {
                     EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
-                        match_tag.clone(),
+                        crate::tag::TagRef::of(match_tag.clone()),
                         clause.caster,
                         clause.allow_land,
                         false,
                     )
                 } else {
                     EffectAst::subject_verb_grant_play_tagged_until_end_of_turn_with_optional_surface(
-                        match_tag.clone(),
+                        crate::tag::TagRef::of(match_tag.clone()),
                         clause.caster,
                         clause.allow_land,
                         without_paying_mana_cost,
@@ -584,17 +585,17 @@ pub fn consult_cast_effects(
                 };
                 vec![grant]
             } else {
-                vec![EffectAst::MayByPlayer {
+                vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
                     player: clause.caster,
                     effects: vec![EffectAst::subject_verb_cast_tagged(
-                        match_tag.clone(),
+                        crate::tag::TagRef::of(match_tag.clone()),
                         clause.caster,
                         false,
                         false,
                         without_paying_mana_cost,
                         None,
                     )],
-                }]
+                })]
             }
         }
         ConsultCastCost::PayLifeEqualToManaValue => {
@@ -605,20 +606,20 @@ pub fn consult_cast_effects(
             }
             vec![
                 EffectAst::subject_verb_grant_play_tagged_until_end_of_turn_with_optional_surface(
-                    match_tag.clone(),
+                    crate::tag::TagRef::of(match_tag.clone()),
                     clause.caster,
                     false,
                     false,
                     false,
                     Some(clause.surface.clone()),
                 ),
-                EffectAst::subject_verb_grant_tagged_spell_alternative_cost_pay_life_by_mana_value_until_end_of_turn(match_tag.clone(), clause.caster),
+                EffectAst::subject_verb_grant_tagged_spell_alternative_cost_pay_life_by_mana_value_until_end_of_turn(crate::tag::TagRef::of(match_tag.clone()), clause.caster),
             ]
         }
     };
 
     if let Some(condition) = &clause.mana_value_condition {
-        cast_effects = vec![EffectAst::Conditional {
+        cast_effects = vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: PredicateAst::ValueComparison {
                 left: Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(match_tag))),
                 operator: condition.operator,
@@ -626,7 +627,7 @@ pub fn consult_cast_effects(
             },
             if_true: cast_effects,
             if_false: Vec::new(),
-        }]
+        })]
     }
 
     Ok(cast_effects)
@@ -752,6 +753,7 @@ pub fn parse_if_you_cant_sentence(
 
 #[cfg(test)]
 mod tests {
+    use crate::cards::builders::StackActionAst;
     use super::*;
     use crate::Subtype;
     use crate::lexer::lex_line;
@@ -786,7 +788,7 @@ mod tests {
                 parsed.effects
             );
         };
-        let crate::cards::builders::SubjectVerbActionAst::ConsultTopOfLibrary { filter, .. } =
+        let crate::cards::builders::SubjectVerbActionAst::Library(crate::cards::builders::LibraryActionAst::ConsultTopOfLibrary { filter, .. }) =
             &subject_verb.action
         else {
             panic!("expected consult action: {subject_verb:#?}");
@@ -823,7 +825,7 @@ mod tests {
                 parsed.effects
             );
         };
-        let crate::cards::builders::SubjectVerbActionAst::ConsultTopOfLibrary { filter, .. } =
+        let crate::cards::builders::SubjectVerbActionAst::Library(crate::cards::builders::LibraryActionAst::ConsultTopOfLibrary { filter, .. }) =
             &subject_verb.action
         else {
             panic!("expected consult action: {subject_verb:#?}");
@@ -851,7 +853,7 @@ mod tests {
             },
             EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
                 action:
-                    crate::cards::builders::SubjectVerbActionAst::ConsultTopOfLibrary { filter, .. },
+                    crate::cards::builders::SubjectVerbActionAst::Library(crate::cards::builders::LibraryActionAst::ConsultTopOfLibrary { filter, .. }),
                 ..
             }),
         ] = parsed.effects.as_slice()
@@ -874,7 +876,7 @@ mod tests {
 
         assert!(
             filter.tagged_constraints.iter().any(|constraint| {
-                constraint.tag == *antecedent_tag
+                constraint.tag == **antecedent_tag
                     && constraint.relation == TaggedOpbjectRelation::SharesCardType
             }),
             "expected consult relation to use the prefix's stable affected-object tag: {filter:#?}"
@@ -889,18 +891,18 @@ mod tests {
         )
         .expect("consult cast clause should lex");
         let clause = parse_consult_cast_clause(&tokens).expect("consult cast clause should parse");
-        let effects = consult_cast_effects(&clause, crate::tag::declared_key("consult_match"))
+        let effects = consult_cast_effects(&clause, crate::tag::declared_key("consult_match").into())
             .expect("consult cast clause should lower");
 
         assert!(matches!(
             effects.as_slice(),
-            [EffectAst::MayByPlayer {
+            [EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
                 player: PlayerAst::That,
                 effects,
-            }] if matches!(
+            })] if matches!(
                 effects.as_slice(),
                 [EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-                    action: crate::cards::builders::SubjectVerbActionAst::CastTagged { .. },
+                    action: crate::cards::builders::SubjectVerbActionAst::Stack(StackActionAst::CastTagged { .. }),
                     ..
                 })]
             )
@@ -918,12 +920,12 @@ mod tests {
             .expect("each-opponent consult should parse")
             .expect("each-opponent consult traversal");
 
-        let [EffectAst::ForEachOpponent { effects }] = effects.as_slice() else {
+        let [EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })] = effects.as_slice() else {
             panic!("expected one each-opponent loop: {effects:#?}");
         };
         let Some(EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
             subject,
-            action: crate::cards::builders::SubjectVerbActionAst::ConsultTopOfLibrary { player, .. },
+            action: crate::cards::builders::SubjectVerbActionAst::Library(crate::cards::builders::LibraryActionAst::ConsultTopOfLibrary { player, .. }),
         })) = effects.first()
         else {
             panic!("expected consult as the first loop action: {effects:#?}");

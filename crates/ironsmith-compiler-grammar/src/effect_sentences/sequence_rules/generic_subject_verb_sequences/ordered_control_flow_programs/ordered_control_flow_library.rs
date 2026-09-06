@@ -1,3 +1,4 @@
+use crate::cards::builders::ForEachEffectAst;
 use super::*;
 
 pub(super) fn parse_choose_from_looked_cards_for_each_filter(
@@ -52,10 +53,10 @@ pub fn parse_top_cards_choose_for_each_filter_one_battlefield_others_hand_rest_g
     let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
         player,
         count,
-        looked_tag.clone(),
+        crate::tag::TagRef::of(looked_tag.clone()),
     )];
     if reveal_top {
-        effects.push(EffectAst::subject_verb_reveal_tagged(looked_tag.clone()));
+        effects.push(EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(looked_tag.clone())));
     }
 
     for filter in choice_filters {
@@ -64,25 +65,25 @@ pub fn parse_top_cards_choose_for_each_filter_one_battlefield_others_hand_rest_g
         choose_filter
             .tagged_constraints
             .push(TaggedObjectConstraint {
-                tag: looked_tag.clone(),
+                tag: looked_tag.clone().into(),
                 relation: TaggedOpbjectRelation::IsTaggedObject,
             });
         choose_filter
             .tagged_constraints
             .push(TaggedObjectConstraint {
-                tag: chosen_tag.clone(),
+                tag: chosen_tag.clone().into(),
                 relation: TaggedOpbjectRelation::IsNotTaggedObject,
             });
-        effects.push(EffectAst::ChooseTaggedObjectsInZone {
+        effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter: choose_filter,
             // Each authored `a card with <keyword>` slot is mandatory when a
             // matching revealed card exists. Runtime choice bounds naturally
             // collapse exact-one to zero when that slot has no candidates.
             count: ChoiceCount::exactly(1),
             player,
-            tag: chosen_tag.clone(),
+            tag: crate::tag::TagRef::of(chosen_tag.clone()),
             zone: Zone::Library,
-        });
+        }));
     }
 
     let mut battlefield_filter = ObjectFilter::default();
@@ -90,29 +91,29 @@ pub fn parse_top_cards_choose_for_each_filter_one_battlefield_others_hand_rest_g
     battlefield_filter
         .tagged_constraints
         .push(TaggedObjectConstraint {
-            tag: chosen_tag.clone(),
+            tag: chosen_tag.clone().into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
-    effects.push(EffectAst::ChooseTaggedObjectsInZone {
+    effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
         filter: battlefield_filter,
         // "Put one of the chosen cards" is likewise mandatory whenever the
         // preceding keyword slots produced at least one card.
         count: ChoiceCount::exactly(1),
         player,
-        tag: battlefield_tag.clone(),
+        tag: crate::tag::TagRef::of(battlefield_tag.clone()),
         zone: Zone::Library,
-    });
+    }));
     effects.push(EffectAst::subject_verb_move_to_zone(
-        TargetAst::Tagged(battlefield_tag.clone(), None),
+        TargetAst::Tagged(crate::tag::TagRef::of(battlefield_tag.clone()), None),
         Zone::Battlefield,
         false,
         crate::cards::builders::ReturnControllerAst::Preserve,
         false,
         None,
     ));
-    effects.push(EffectAst::ForEachTagged {
-        tag: chosen_tag.clone(),
-        effects: vec![EffectAst::Conditional {
+    effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+        tag: crate::tag::TagRef::of(chosen_tag.clone()),
+        effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: PredicateAst::TaggedMatches(
                 crate::tag::CompilerReferenceTag::It.bind(),
                 ObjectFilter::tagged(battlefield_tag.clone()),
@@ -126,11 +127,11 @@ pub fn parse_top_cards_choose_for_each_filter_one_battlefield_others_hand_rest_g
                 false,
                 None,
             )],
-        }],
-    });
-    effects.push(EffectAst::ForEachTagged {
-        tag: looked_tag,
-        effects: vec![EffectAst::Conditional {
+        })],
+    }));
+    effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+        tag: crate::tag::TagRef::of(looked_tag),
+        effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: PredicateAst::TaggedMatches(
                 crate::tag::CompilerReferenceTag::It.bind(),
                 ObjectFilter::tagged(chosen_tag),
@@ -144,8 +145,8 @@ pub fn parse_top_cards_choose_for_each_filter_one_battlefield_others_hand_rest_g
                 false,
                 None,
             )],
-        }],
-    });
+        })],
+    }));
 
     Ok(Some(effects))
 }
@@ -191,13 +192,13 @@ pub fn parse_top_cards_for_each_card_type_among_spells_put_matching_into_hand_re
     let mut effects = vec![EffectAst::subject_verb_reveal_top_cards(
         player,
         count,
-        looked_tag.clone(),
+        crate::tag::TagRef::of(looked_tag.clone()),
     )];
     effects.extend(
         compose_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom(
             player,
-            looked_tag,
-            chosen_tag,
+            (looked_tag).into(),
+            (chosen_tag).into(),
             &[
                 CardType::Artifact,
                 CardType::Battle,
@@ -247,13 +248,13 @@ pub fn parse_top_cards_for_each_card_type_put_matching_into_hand_rest_bottom(
     let mut effects = vec![EffectAst::subject_verb_reveal_top_cards(
         player,
         count,
-        looked_tag.clone(),
+        crate::tag::TagRef::of(looked_tag.clone()),
     )];
     effects.extend(
         compose_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom(
             player,
-            looked_tag,
-            chosen_tag,
+            (looked_tag).into(),
+            (chosen_tag).into(),
             &[
                 CardType::Artifact,
                 CardType::Battle,
@@ -313,52 +314,52 @@ pub(crate) fn compose_choose_from_looked_cards_onto_battlefield_and_into_hand_re
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
     hand_filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: battlefield_tag.clone(),
+        tag: battlefield_tag.clone().into(),
         relation: TaggedOpbjectRelation::IsNotTaggedObject,
     });
 
     vec![
-        EffectAst::ChooseObjectsAcrossZones {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
             filter: battlefield_filter,
             count: ChoiceCount::up_to(1),
             count_value: None,
             player: chooser,
-            tag: battlefield_tag.clone(),
+            tag: crate::tag::TagRef::of(battlefield_tag.clone()),
             zones: vec![Zone::Library],
             search_mode: None,
-        },
+        }),
         EffectAst::TagAffected {
             effect: Box::new(EffectAst::subject_verb_put_onto_battlefield(
                 chooser,
-                TargetAst::Tagged(battlefield_tag, None),
+                TargetAst::Tagged(crate::tag::TagRef::of(battlefield_tag), None),
                 tapped,
                 ReturnControllerAst::Preserve,
             )),
-            tag: kept_tag.clone(),
+            tag: crate::tag::TagRef::of(kept_tag.clone()),
         },
-        EffectAst::ChooseObjectsAcrossZones {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
             filter: hand_filter,
             count: ChoiceCount::up_to(1),
             count_value: None,
             player: chooser,
-            tag: hand_tag.clone(),
+            tag: crate::tag::TagRef::of(hand_tag.clone()),
             zones: vec![Zone::Library],
             search_mode: None,
-        },
+        }),
         EffectAst::TagAffected {
             effect: Box::new(EffectAst::subject_verb_move_to_zone(
-                TargetAst::Tagged(hand_tag, None),
+                TargetAst::Tagged(crate::tag::TagRef::of(hand_tag), None),
                 Zone::Hand,
                 false,
                 ReturnControllerAst::Preserve,
                 false,
                 None,
             )),
-            tag: kept_tag.clone(),
+            tag: crate::tag::TagRef::of(kept_tag.clone()),
         },
         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-            looked_tag,
-            Some(kept_tag),
+            crate::tag::TagRef::of(looked_tag),
+            Some(crate::tag::TagRef::of(kept_tag)),
             order,
             chooser,
         ),
@@ -427,30 +428,30 @@ pub fn parse_look_at_top_reveal_match_put_rest_bottom(
     choose_filter
         .tagged_constraints
         .push(TaggedObjectConstraint {
-            tag: looked_tag.clone(),
+            tag: looked_tag.clone().into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
 
     let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
         player,
         count,
-        looked_tag.clone(),
+        crate::tag::TagRef::of(looked_tag.clone()),
     )];
-    effects.push(EffectAst::ChooseTaggedObjectsInZone {
+    effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
         filter: choose_filter,
         count: choice_count,
         player: chooser,
-        tag: chosen_tag.clone(),
+        tag: crate::tag::TagRef::of(chosen_tag.clone()),
         zone: Zone::Library,
-    });
-    effects.push(EffectAst::ForEachTagged {
-        tag: chosen_tag.clone(),
+    }));
+    effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+        tag: crate::tag::TagRef::of(chosen_tag.clone()),
         effects: vec![EffectAst::subject_verb_reveal_tagged(
             crate::tag::CompilerReferenceTag::It.bind(),
         )],
-    });
-    effects.push(EffectAst::ForEachTagged {
-        tag: chosen_tag.clone(),
+    }));
+    effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+        tag: crate::tag::TagRef::of(chosen_tag.clone()),
         effects: vec![
             EffectAst::subject_verb_move_to_zone(
                 TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
@@ -462,11 +463,11 @@ pub fn parse_look_at_top_reveal_match_put_rest_bottom(
             )
             .with_move_to_zone_target_reference_surface(selected_reference_surface),
         ],
-    });
+    }));
     effects.push(
         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-            looked_tag,
-            Some(chosen_tag),
+            crate::tag::TagRef::of(looked_tag),
+            Some(crate::tag::TagRef::of(chosen_tag)),
             order,
             chooser,
         ),

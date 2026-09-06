@@ -1,5 +1,5 @@
 use crate::effect::Value;
-use crate::host::{CardTextError, EffectAst, OwnedLexToken, PlayerAst, SubjectAst, TagKey};
+use crate::host::{CardTextError, EffectAst, OwnedLexToken, PlayerAst, SubjectAst, TagKey, ConditionalEffectAst};
 use crate::mana::ManaSymbol;
 use crate::target::ObjectFilter;
 
@@ -29,7 +29,7 @@ fn bind_revealed_this_way_count_to_last_object(value: Value) -> Value {
                 if constraint.tag.as_str()
                     == crate::tag::CompilerReferenceTag::PublicRevealed.as_str()
                 {
-                    constraint.tag = crate::tag::CompilerReferenceTag::It.bind();
+                    constraint.tag = (crate::tag::CompilerReferenceTag::It.bind()).into();
                 }
             }
             Value::Count(filter)
@@ -85,11 +85,11 @@ pub fn parse_add_mana(
                     clause_words.join(" ")
                 ))
             })?;
-        Ok(Some(EffectAst::Conditional {
+        Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true: vec![base_effect],
             if_false: Vec::new(),
-        }))
+        })))
     };
 
     if let Some(any_color_among) = parse_add_one_mana_any_color_among_filter(tokens)? {

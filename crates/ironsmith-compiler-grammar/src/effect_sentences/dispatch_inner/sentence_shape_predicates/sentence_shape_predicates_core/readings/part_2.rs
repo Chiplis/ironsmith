@@ -1,5 +1,7 @@
 //! Sentence readings 23–44, in rank order.
 
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::DelayedEffectAst;
 use super::super::*;
 use super::Sentence;
 
@@ -126,14 +128,14 @@ pub(super) fn read_leading_result_prefix(
             bind_numeric_result_counter_amounts(&mut trailing_effects);
         }
         let mut result = vec![match prefix.kind {
-            LeadingResultPrefixKind::If => EffectAst::IfResult {
+            LeadingResultPrefixKind::If => EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                 predicate: prefix.predicate,
                 effects: trailing_effects,
-            },
-            LeadingResultPrefixKind::When => EffectAst::WhenResult {
+            }),
+            LeadingResultPrefixKind::When => EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
                 predicate: prefix.predicate,
                 effects: trailing_effects,
-            },
+            }),
         }];
         super::super::super::super::preserve_leading_result_coordination_lexed(tokens, &mut result);
         return Ok(Some(result));
@@ -257,22 +259,22 @@ pub(super) fn read_delayed_schedule_sentence(
         }
         let delayed = match schedule.step {
             effect_grammar::delayed_sentence_shapes::DelayedScheduleStep::UntapStep => {
-                EffectAst::DelayedUntilNextUntapStep {
+                EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUntapStep {
                     player: schedule.player,
                     effects,
-                }
+                })
             }
             effect_grammar::delayed_sentence_shapes::DelayedScheduleStep::Upkeep => {
-                EffectAst::DelayedUntilNextUpkeep {
+                EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep {
                     player: schedule.player,
                     effects,
-                }
+                })
             }
             effect_grammar::delayed_sentence_shapes::DelayedScheduleStep::DrawStep => {
-                EffectAst::DelayedUntilNextDrawStep {
+                EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextDrawStep {
                     player: schedule.player,
                     effects,
-                }
+                })
             }
             effect_grammar::delayed_sentence_shapes::DelayedScheduleStep::MainPhase => {
                 let player = match schedule.player {
@@ -282,7 +284,7 @@ pub(super) fn read_delayed_schedule_sentence(
                     PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
                     _ => PlayerFilter::Any,
                 };
-                EffectAst::DelayedUntilNextMainPhase { player, effects }
+                EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextMainPhase { player, effects })
             }
             effect_grammar::delayed_sentence_shapes::DelayedScheduleStep::FirstMainPhase => {
                 let player = match schedule.player {
@@ -292,7 +294,7 @@ pub(super) fn read_delayed_schedule_sentence(
                     PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
                     _ => PlayerFilter::Any,
                 };
-                EffectAst::DelayedUntilNextFirstMainPhase { player, effects }
+                EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextFirstMainPhase { player, effects })
             }
             effect_grammar::delayed_sentence_shapes::DelayedScheduleStep::EndStep
                 if schedule.start_next_turn =>
@@ -304,7 +306,7 @@ pub(super) fn read_delayed_schedule_sentence(
                     PlayerAst::TargetOpponent => PlayerAst::TargetOpponent,
                     _ => PlayerAst::Any,
                 };
-                EffectAst::DelayedUntilEndStepOfExtraTurn { player, effects }
+                EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndStepOfExtraTurn { player, effects })
             }
             effect_grammar::delayed_sentence_shapes::DelayedScheduleStep::EndStep => {
                 let player = match schedule.player {
@@ -314,7 +316,7 @@ pub(super) fn read_delayed_schedule_sentence(
                     PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
                     _ => PlayerFilter::Any,
                 };
-                EffectAst::DelayedUntilNextEndStep { player, effects }
+                EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep { player, effects })
             }
         };
         return Ok(Some(vec![delayed]));

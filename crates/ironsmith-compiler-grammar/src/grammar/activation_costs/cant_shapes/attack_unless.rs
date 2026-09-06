@@ -5,6 +5,7 @@
 
 use crate::cards::builders::PlayerAst;
 use crate::cards::builders::PredicateAst;
+use crate::cards::builders::PlayerPredicateAst;
 use winnow::combinator::{alt, eof, opt, peek, repeat_till};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
@@ -538,7 +539,7 @@ fn parse_controller_control_requirement_inner(
         .at_least_count()
         .ok_or_else(|| primitives::backtrack_err("controller count", "minimum count"))?;
     let condition = if count > 1 || require_explicit_quantity {
-        PredicateAst::PlayerHasAtLeast {
+        PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast {
             // A subject with no context-free filter ("that player") kept its
             // old meaning here: this clause read it as "you".
             player: if parsed.player_filter.is_some() {
@@ -548,7 +549,7 @@ fn parse_controller_control_requirement_inner(
             },
             filter: parsed.filter,
             count,
-        }
+        })
     } else {
         PredicateAst::YouControl(parsed.filter)
     };

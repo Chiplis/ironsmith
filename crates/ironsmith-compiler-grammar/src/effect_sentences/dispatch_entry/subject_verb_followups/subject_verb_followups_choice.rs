@@ -1,7 +1,8 @@
+use crate::cards::builders::ForEachEffectAst;
 use super::*;
 
 pub(super) fn rewrite_each_player_choice_complement_chooser(effect: &mut EffectAst) -> bool {
-    let EffectAst::ForEachPlayer { effects } = effect else {
+    let EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }) = effect else {
         return false;
     };
     let effects = match effects.as_mut_slice() {
@@ -17,12 +18,12 @@ pub(super) fn rewrite_each_player_choice_complement_chooser(effect: &mut EffectA
 
     let mut keep_tag = None::<TagKey>;
     for choice in choices {
-        let EffectAst::ChooseObjects {
+        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter,
             player,
             tag,
             ..
-        } = choice
+        }) = choice
         else {
             return false;
         };
@@ -33,11 +34,11 @@ pub(super) fn rewrite_each_player_choice_complement_chooser(effect: &mut EffectA
             return false;
         }
         if let Some(expected) = keep_tag.as_ref() {
-            if expected != tag {
+            if *expected != tag.key {
                 return false;
             }
         } else {
-            keep_tag = Some(tag.clone());
+            keep_tag = Some(tag.clone().into());
         }
     }
     let Some(keep_tag) = keep_tag else {
@@ -47,7 +48,7 @@ pub(super) fn rewrite_each_player_choice_complement_chooser(effect: &mut EffectA
         sacrifice,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             subject: SubjectVerbSubjectAst { player: PlayerAst::That, .. },
-            action: SubjectVerbActionAst::SacrificeAll { filter },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter }),
             ..
         }) if filter.tagged_constraints.iter().any(|constraint| {
             constraint.tag == keep_tag
@@ -60,7 +61,7 @@ pub(super) fn rewrite_each_player_choice_complement_chooser(effect: &mut EffectA
 
     let choice_count = effects.len() - 1;
     for choice in effects.iter_mut().take(choice_count) {
-        let EffectAst::ChooseObjects { player, .. } = choice else {
+        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { player, .. }) = choice else {
             unreachable!("choice-complement shape was validated above");
         };
         *player = PlayerAst::You;

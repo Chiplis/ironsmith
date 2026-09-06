@@ -30,7 +30,7 @@ use super::{Verb, find_verb, parse_effect_chain, parse_effect_sentence_lexed};
 use crate::cards::builders::{
     CardTextError, EffectAst, GrantedAbilityAst, IfResultPredicate, KeywordAction, LineAst,
     ParsedAbility, PlayerAst, PredicateAst, ReferenceImports, StaticAbilityAst, SubjectAst,
-    SubjectVerbActionAst, SubjectVerbEffectAst, TagKey, TargetAst, TextSpan, TriggerSpec,
+    SubjectVerbActionAst, SubjectVerbEffectAst, TagKey, TargetAst, TextSpan, TriggerSpec, PermissionEffectAst, PlayerPredicateAst,
 };
 use crate::effect::{Until, Value};
 use crate::grammar::clause_support as clause_grammar;
@@ -207,7 +207,7 @@ fn append_shared_subject_pump_to_target(
 fn bind_shared_subject_characteristic_fallback(value: &Value) -> Value {
     let shared_target = || {
         Box::new(ChooseSpec::Tagged(
-            crate::tag::CompilerReferenceTag::It.bind(),
+            (crate::tag::CompilerReferenceTag::It.bind()).into(),
         ))
     };
     match value {
@@ -1156,37 +1156,37 @@ fn player_filter_for_gain_condition(player: PlayerAst) -> Option<PlayerAst> {
 
 fn condition_from_gain_trailing_predicate(predicate: PredicateAst) -> Option<PredicateAst> {
     Some(match predicate {
-        PredicateAst::PlayerControls { player, filter } => PredicateAst::PlayerControls {
+        PredicateAst::Player(PlayerPredicateAst::PlayerControls { player, filter }) => PredicateAst::Player(PlayerPredicateAst::PlayerControls {
             player: player_filter_for_gain_condition(player)?,
             filter,
-        },
-        PredicateAst::PlayerHasAtLeast {
+        }),
+        PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast {
             player,
             filter,
             count,
-        } => PredicateAst::PlayerHasAtLeast {
+        }) => PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast {
             player: player_filter_for_gain_condition(player)?,
             filter,
             count,
-        },
-        PredicateAst::PlayerControlsExactly {
+        }),
+        PredicateAst::Player(PlayerPredicateAst::PlayerControlsExactly {
             player,
             filter,
             count,
-        } => PredicateAst::PlayerControlsExactly {
+        }) => PredicateAst::Player(PlayerPredicateAst::PlayerControlsExactly {
             player: player_filter_for_gain_condition(player)?,
             filter,
             count,
-        },
-        PredicateAst::PlayerHasAtLeastWithDifferentPowers {
+        }),
+        PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeastWithDifferentPowers {
             player,
             filter,
             count,
-        } => PredicateAst::PlayerHasAtLeastWithDifferentPowers {
+        }) => PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeastWithDifferentPowers {
             player: player_filter_for_gain_condition(player)?,
             filter,
             count,
-        },
+        }),
         PredicateAst::And(left, right) => PredicateAst::And(
             Box::new(condition_from_gain_trailing_predicate(*left)?),
             Box::new(condition_from_gain_trailing_predicate(*right)?),
@@ -1877,7 +1877,7 @@ fn parse_gain_ability_sentence_inner(
         for effect in &mut effects {
             super::chain_carry::bind_implicit_player_context(effect, player);
         }
-        return Ok(Some(vec![EffectAst::MayByPlayer { player, effects }]));
+        return Ok(Some(vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, effects })]));
     }
 
     Ok(parse_gain_ability_sentence_with_subject(tokens, None)?

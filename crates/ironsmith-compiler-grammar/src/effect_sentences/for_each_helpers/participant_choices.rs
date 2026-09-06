@@ -1,3 +1,4 @@
+use crate::cards::builders::ForEachEffectAst;
 use super::*;
 
 /// Parse a participant-owned creature-type choice followed by another action.
@@ -65,7 +66,7 @@ pub(super) fn parse_participant_choice_complement_effects(
     let Some(effect) = super::super::parse_choice_complement_subject_verb(&full_clause)? else {
         return Ok(None);
     };
-    let EffectAst::ForEachPlayer { effects } = effect else {
+    let EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }) = effect else {
         return Ok(None);
     };
     Ok(Some(effects))

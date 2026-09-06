@@ -1,3 +1,4 @@
+use crate::cards::builders::SourcePredicateAst;
 use super::super::super::super::lexer::lex_line;
 use super::*;
 use crate::cards::builders::PredicateAst;
@@ -40,15 +41,15 @@ fn activation_conditions_preserve_existing_semantics() {
         parse_activation_condition_lexed(&lex(
             "Activate only if there are three or more brick counters on this artifact."
         )),
-        Some(PredicateAst::SourceHasCounterAtLeast {
+        Some(PredicateAst::Source(SourcePredicateAst::SourceHasCounterAtLeast {
             counter_type: crate::CounterType::Named(counter_name),
             count: 3,
             ..
-        }) if counter_name.as_str() == "brick"
+        })) if counter_name.as_str() == "brick"
     ));
     assert_eq!(
         parse_activation_condition_lexed(&lex("Activate only if this permanent is a creature.")),
-        Some(PredicateAst::SourceMatches(ObjectFilter::creature()))
+        Some(PredicateAst::Source(SourcePredicateAst::SourceMatches(ObjectFilter::creature())))
     );
 }
 
@@ -81,11 +82,11 @@ fn combined_once_and_owned_graveyard_threshold_keeps_both_constraints() {
         panic!("expected a typed conjunction: {parsed:#?}");
     };
     assert_eq!(*frequency, PredicateAst::MaxActivationsPerTurn(1));
-    let PredicateAst::PlayerHasAtLeast {
+    let PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast {
         player,
         filter,
         count,
-    } = *threshold
+    }) = *threshold
     else {
         panic!("expected an owned-graveyard cardinality condition: {threshold:#?}");
     };
@@ -113,7 +114,7 @@ fn activation_condition_composes_repeated_or_if_with_typed_source_and_basic_land
     let PredicateAst::Or(left, right) = parsed else {
         panic!("expected a typed disjunction");
     };
-    let PredicateAst::ObjectEnteredBattlefieldThisTurn(source_filter) = left.as_ref() else {
+    let PredicateAst::TurnEvents(TurnEventPredicateAst::ObjectEnteredBattlefieldThisTurn(source_filter)) = left.as_ref() else {
         panic!("expected source-entered-this-turn left branch, got {left:?}");
     };
     assert!(source_filter.source);
@@ -149,6 +150,6 @@ fn activation_condition_or_if_composition_reuses_existing_branch_parsers() {
     assert!(matches!(parsed, PredicateAst::Or(_, _)));
     assert!(matches!(
         parse_activation_condition_lexed(&lex("Activate only if you control a Plains or a Swamp.")),
-        Some(PredicateAst::PlayerHasAtLeast { .. }) | Some(PredicateAst::Or(_, _))
+        Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast { .. })) | Some(PredicateAst::Or(_, _))
     ));
 }

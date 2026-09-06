@@ -1,5 +1,6 @@
 //! Readers 1 of 2 of the registry in the parent module.
 
+use crate::cards::builders::ObjectChoiceEffectAst;
 use super::*;
 
 pub(super) fn read_revealed_remainder(
@@ -63,19 +64,19 @@ pub(super) fn read_tagged_battlefield_partition(
         let capture_collection = EffectAst::subject_verb_tag_matching_objects(
             collection_filter,
             vec![Zone::Library],
-            collection_tag.clone(),
+            crate::tag::TagRef::of(collection_tag.clone()),
         );
 
         let mut choose_filter = ObjectFilter::tagged(collection_tag.clone());
         choose_filter.zone = Some(Zone::Library);
         choose_filter.owner = Some(owner.clone());
-        let choose = EffectAst::ChooseTaggedObjectsInZone {
+        let choose = EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter: choose_filter,
             count: shape.count,
             player,
-            tag: chosen_tag.clone(),
+            tag: crate::tag::TagRef::of(chosen_tag.clone()),
             zone: Zone::Library,
-        };
+        });
 
         let mut chosen_filter = ObjectFilter::tagged(chosen_tag.clone());
         chosen_filter.zone = Some(Zone::Library);
@@ -99,7 +100,7 @@ pub(super) fn read_tagged_battlefield_partition(
         remainder_filter
             .tagged_constraints
             .push(TaggedObjectConstraint {
-                tag: chosen_tag,
+                tag: chosen_tag.key.clone(),
                 relation: TaggedOpbjectRelation::IsNotTaggedObject,
             });
         let remainder_controller = match shape.remainder_controller {
@@ -145,8 +146,8 @@ pub(super) fn read_from_among_them(
                 player,
                 filter,
                 shape.count,
-                looked_tag,
-                chosen_tag,
+                (looked_tag).into(),
+                (chosen_tag).into(),
                 Zone::Battlefield,
                 Zone::Hand,
             )
@@ -155,8 +156,8 @@ pub(super) fn read_from_among_them(
                 player,
                 filter,
                 shape.count,
-                looked_tag,
-                chosen_tag,
+                (looked_tag).into(),
+                (chosen_tag).into(),
                 Zone::Battlefield,
             )
         };
@@ -188,8 +189,8 @@ pub(super) fn read_from_among_hand_surface(
                     player,
                     filter,
                     shape.count,
-                    looked_tag,
-                    chosen_tag,
+                    (looked_tag).into(),
+                    (chosen_tag).into(),
                 ),
             }));
         }
@@ -197,8 +198,8 @@ pub(super) fn read_from_among_hand_surface(
             effects: EffectAst::compose_put_some_into_hand_rest_into_graveyard(
                 player,
                 crate::effect::ChoiceCount::exactly(1),
-                looked_tag,
-                chosen_tag,
+                crate::tag::TagRef::of(looked_tag),
+                crate::tag::TagRef::of(chosen_tag),
             ),
         }));
     }
@@ -234,8 +235,8 @@ pub(super) fn read_tagged_on_top_library(
             effects: EffectAst::compose_put_some_on_top_rest_on_bottom_of_library(
                 library_owner,
                 shape.count,
-                looked_tag,
-                chosen_tag,
+                crate::tag::TagRef::of(looked_tag),
+                crate::tag::TagRef::of(chosen_tag),
                 shape.bottom_order,
             ),
         }));

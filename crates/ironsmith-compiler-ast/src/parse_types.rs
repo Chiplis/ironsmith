@@ -73,7 +73,7 @@ pub enum LibraryBottomOrderAst {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[derive(TagKeyWalk)]
-pub enum ObjectRefAst<Tag = TagKey> {
+pub enum ObjectRefAst<Tag = crate::TagRef> {
     Tagged(Tag),
 }
 
@@ -154,7 +154,7 @@ pub enum ExchangeValueAst<
 pub enum TargetAst<
     PlayerFilter = crate::target::PlayerFilter,
     ObjectFilter = crate::target::ObjectFilter,
-    Tag = TagKey,
+    Tag = crate::TagRef,
 > {
     Source(#[tag_walk(skip)] Option<TextSpan>),
     AnyTarget(#[tag_walk(skip)] Option<TextSpan>),

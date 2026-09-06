@@ -1,8 +1,10 @@
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::DamagePreventionActionAst;
 use crate::ability::{Ability, AbilityKind};
 use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, EffectAst, KeywordAction, ParsedAbility, PredicateAst,
     StaticAbilityAst, SubjectVerbActionAst, SubjectVerbEffectAst, TagKey, TargetAst, TriggerSpec,
-    ZoneReplacementDurationAst,
+    ZoneReplacementDurationAst, CounterActionAst, GrantActionAst, ManaActionAst, LibraryActionAst, ReplacementActionAst, TurnStructureActionAst, CharacteristicActionAst, KeywordActionAst, ZoneMoveActionAst, PermanentStateActionAst, RevealLookActionAst, LifeResourceActionAst, DamageActionAst, StatChangeActionAst, StackActionAst, TokenActionAst, GameActionAst, DelayedEffectAst, ObjectChoiceEffectAst, VoteEffectAst, ConditionalEffectAst, PermissionEffectAst, SourcePredicateAst, TriggeringPredicateAst, TurnEventPredicateAst,
 };
 use crate::effect::{Condition, Effect, EffectMode, EventValueSpec, Value};
 use crate::filter::{ObjectFilter, ObjectRef};
@@ -76,15 +78,15 @@ pub fn replace_pending_removed_counter_metrics_with_x(effects: &mut [EffectAst])
     fn replace_effect(effect: &mut EffectAst) {
         if let EffectAst::SubjectVerb(subject_verb) = effect {
             match &mut subject_verb.action {
-                SubjectVerbActionAst::AddManaScaled { amount, .. }
-                | SubjectVerbActionAst::AddManaAnyColor { amount, .. }
-                | SubjectVerbActionAst::AddManaAnyOneColor { amount }
-                | SubjectVerbActionAst::AddManaChosenColor { amount, .. }
-                | SubjectVerbActionAst::AddManaFromLandCouldProduce { amount, .. }
-                | SubjectVerbActionAst::AddManaCommanderIdentity { amount }
-                | SubjectVerbActionAst::PutCounters { count: amount, .. }
-                | SubjectVerbActionAst::PutCounterChoice { count: amount, .. }
-                | SubjectVerbActionAst::PutCountersAll { count: amount, .. } => {
+                SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled { amount, .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { amount, .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { amount, .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce { amount, .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { amount })
+                | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { count: amount, .. })
+                | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice { count: amount, .. })
+                | SubjectVerbActionAst::Counters(CounterActionAst::PutCountersAll { count: amount, .. }) => {
                     replace_value(amount)
                 }
                 _ => {}
@@ -120,7 +122,7 @@ fn value_counts_creature_deaths(value: &Value) -> bool {
 
 fn predicate_counts_creature_deaths(predicate: &PredicateAst) -> bool {
     match predicate {
-        PredicateAst::CreatureDiedThisTurn | PredicateAst::CreatureDiedThisTurnOrMore(_) => true,
+        PredicateAst::TurnEvents(TurnEventPredicateAst::CreatureDiedThisTurn) | PredicateAst::TurnEvents(TurnEventPredicateAst::CreatureDiedThisTurnOrMore(_)) => true,
         PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
             predicate_counts_creature_deaths(left) || predicate_counts_creature_deaths(right)
         }
@@ -175,63 +177,63 @@ fn replace_creature_death_event_amounts(effects: &mut [EffectAst]) {
     fn replace_effect(effect: &mut EffectAst) {
         if let EffectAst::SubjectVerb(subject_verb) = effect {
             match &mut subject_verb.action {
-                SubjectVerbActionAst::Draw { count }
-                | SubjectVerbActionAst::Mill { count }
-                | SubjectVerbActionAst::ExileTopOfLibrary { count, .. }
-                | SubjectVerbActionAst::Scry { count }
-                | SubjectVerbActionAst::Surveil { count }
-                | SubjectVerbActionAst::Proliferate { count }
-                | SubjectVerbActionAst::Investigate { count }
-                | SubjectVerbActionAst::Discover { count }
-                | SubjectVerbActionAst::Fateseal { count }
-                | SubjectVerbActionAst::Populate { count, .. }
-                | SubjectVerbActionAst::Connive { count, .. }
-                | SubjectVerbActionAst::CreateTokenCopy { count, .. }
-                | SubjectVerbActionAst::CreateTokenCopyFromSource { count, .. }
-                | SubjectVerbActionAst::CreateTokenWithMods { count, .. }
-                | SubjectVerbActionAst::Incubate { amount: count, .. }
-                | SubjectVerbActionAst::Monstrosity { amount: count }
-                | SubjectVerbActionAst::LoseLife { amount: count }
-                | SubjectVerbActionAst::PayLife { amount: count }
-                | SubjectVerbActionAst::GainLife { amount: count }
-                | SubjectVerbActionAst::DealDamage { amount: count, .. }
-                | SubjectVerbActionAst::DealDamageEqualToPower { amount: count, .. }
-                | SubjectVerbActionAst::DealDistributedDamage { amount: count, .. }
-                | SubjectVerbActionAst::DealDamageEach { amount: count, .. }
-                | SubjectVerbActionAst::PreventDamage { amount: count, .. }
-                | SubjectVerbActionAst::PreventDamageEach { amount: count, .. }
-                | SubjectVerbActionAst::CopySpell { count, .. }
-                | SubjectVerbActionAst::PutCounters { count, .. }
-                | SubjectVerbActionAst::PutCounterChoice { count, .. }
-                | SubjectVerbActionAst::PutCountersAll { count, .. }
-                | SubjectVerbActionAst::RemoveUpToAnyCounters { amount: count, .. }
-                | SubjectVerbActionAst::RemoveCountersAll { amount: count, .. }
-                | SubjectVerbActionAst::Discard { count, .. }
-                | SubjectVerbActionAst::PoisonCounters { count }
-                | SubjectVerbActionAst::EnergyCounters { count }
-                | SubjectVerbActionAst::ExperienceCounters { count }
-                | SubjectVerbActionAst::TicketCounters { count }
-                | SubjectVerbActionAst::PayEnergy { amount: count }
-                | SubjectVerbActionAst::SetLifeTotal { amount: count }
-                | SubjectVerbActionAst::AddManaScaled { amount: count, .. }
-                | SubjectVerbActionAst::AddManaAnyColor { amount: count, .. }
-                | SubjectVerbActionAst::AddManaAnyOneColor { amount: count }
-                | SubjectVerbActionAst::AddManaChosenColor { amount: count, .. }
-                | SubjectVerbActionAst::AddManaFromLandCouldProduce { amount: count, .. }
-                | SubjectVerbActionAst::AddManaCommanderIdentity { amount: count }
-                | SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget {
+                SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count })
+                | SubjectVerbActionAst::Library(LibraryActionAst::Mill { count })
+                | SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { count, .. })
+                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Scry { count })
+                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Surveil { count })
+                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Proliferate { count })
+                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Investigate { count })
+                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Discover { count })
+                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fateseal { count })
+                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Populate { count, .. })
+                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Connive { count, .. })
+                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { count, .. })
+                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { count, .. })
+                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { count, .. })
+                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Incubate { amount: count, .. })
+                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { amount: count })
+                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount: count })
+                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayLife { amount: count })
+                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount: count })
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount: count, .. })
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { amount: count, .. })
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { amount: count, .. })
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount: count, .. })
+                | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage { amount: count, .. })
+                | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamageEach { amount: count, .. })
+                | SubjectVerbActionAst::Stack(StackActionAst::CopySpell { count, .. })
+                | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { count, .. })
+                | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice { count, .. })
+                | SubjectVerbActionAst::Counters(CounterActionAst::PutCountersAll { count, .. })
+                | SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters { amount: count, .. })
+                | SubjectVerbActionAst::Counters(CounterActionAst::RemoveCountersAll { amount: count, .. })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { count, .. })
+                | SubjectVerbActionAst::Counters(CounterActionAst::PoisonCounters { count })
+                | SubjectVerbActionAst::Counters(CounterActionAst::EnergyCounters { count })
+                | SubjectVerbActionAst::Counters(CounterActionAst::ExperienceCounters { count })
+                | SubjectVerbActionAst::Counters(CounterActionAst::TicketCounters { count })
+                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayEnergy { amount: count })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetLifeTotal { amount: count })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled { amount: count, .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { amount: count, .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount: count })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { amount: count, .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce { amount: count, .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { amount: count })
+                | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectNextDamageFromSourceToTarget {
                     amount: count,
                     ..
-                }
-                | SubjectVerbActionAst::LookAtTopCards { count, .. }
-                | SubjectVerbActionAst::MoveToLibraryNthFromTop {
+                })
+                | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { count, .. })
+                | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryNthFromTop {
                     position: count, ..
-                }
-                | SubjectVerbActionAst::AdditionalLandPlays { count, .. }
-                | SubjectVerbActionAst::HealDamage {
+                })
+                | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalLandPlays { count, .. })
+                | SubjectVerbActionAst::Damage(DamageActionAst::HealDamage {
                     amount: Some(count),
                     ..
-                } => replace_value(count),
+                }) => replace_value(count),
                 _ => {}
             }
         }
@@ -251,7 +253,7 @@ fn effects_have_creature_death_gate(effects: &[EffectAst]) -> bool {
     effects.iter().any(|effect| {
         let mut found = matches!(
             effect,
-            EffectAst::Conditional { predicate, .. }
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. })
                 if predicate_counts_creature_deaths(predicate)
         );
         for_each_nested_effects(effect, true, |nested| {
@@ -443,7 +445,7 @@ fn fuse_delayed_return_control_loss_sacrifice_followup(lowered: &mut LoweredEffe
         PlayerFilter::You,
     );
     let control_loss_schedule = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
-        returned_tag,
+        returned_tag.key.clone(),
         ironsmith_core::DelayedTriggerSpec::SourceControllerLosesControl {
             source_description: "this creature".to_string(),
         },
@@ -607,25 +609,25 @@ fn replace_it_target_with_filter(target: &mut TargetAst, filter: &ObjectFilter) 
 fn replace_it_object_followup_filter(effect: &mut EffectAst, filter: &ObjectFilter) -> bool {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
-            SubjectVerbActionAst::GrantAbilitiesAll {
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll {
                 filter: target_filter,
                 ..
-            }
-            | SubjectVerbActionAst::RemoveAbilitiesAll {
+            })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll {
                 filter: target_filter,
                 ..
-            }
-            | SubjectVerbActionAst::PumpAll {
+            })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
                 filter: target_filter,
                 ..
-            } if object_filter_is_it_reference(target_filter) => {
+            }) if object_filter_is_it_reference(target_filter) => {
                 *target_filter = filter.clone();
                 true
             }
-            SubjectVerbActionAst::GrantAbilitiesToTarget { target, .. }
-            | SubjectVerbActionAst::GrantToTarget { target, .. }
-            | SubjectVerbActionAst::RemoveAbilitiesFromTarget { target, .. }
-            | SubjectVerbActionAst::Pump { target, .. } => {
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { target, .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget { target, .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. }) => {
                 replace_it_target_with_filter(target, filter)
             }
             _ => false,
@@ -639,8 +641,8 @@ fn carry_all_object_sweep_filter_to_it_followups(effects: &mut [EffectAst]) {
     while idx + 1 < effects.len() {
         let filter = match &effects[idx] {
             EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-                SubjectVerbActionAst::PumpAll { filter, .. }
-                | SubjectVerbActionAst::ScalePowerToughnessAll { filter, .. } => filter.clone(),
+                SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll { filter, .. })
+                | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ScalePowerToughnessAll { filter, .. }) => filter.clone(),
                 _ => {
                     idx += 1;
                     continue;
@@ -692,10 +694,10 @@ fn preserve_counter_removed_this_way_damage_amount(effect: &mut EffectAst) {
 
     if let EffectAst::SubjectVerb(subject_verb) = effect {
         let amount = match &mut subject_verb.action {
-            SubjectVerbActionAst::DealDamage { amount, .. }
-            | SubjectVerbActionAst::DealDamageEqualToPower { amount, .. }
-            | SubjectVerbActionAst::DealDistributedDamage { amount, .. }
-            | SubjectVerbActionAst::DealDamageEach { amount, .. } => Some(amount),
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { amount, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { amount, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. }) => Some(amount),
             _ => None,
         };
         if let Some(amount) = amount
@@ -723,7 +725,7 @@ fn replace_it_count_with_event_count(effect: &mut EffectAst) {
     }
 
     if let EffectAst::SubjectVerb(subject_verb) = effect
-        && let SubjectVerbActionAst::PumpForEach { count, .. } = &mut subject_verb.action
+        && let SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach { count, .. }) = &mut subject_verb.action
         && is_it_count(count)
     {
         *count = Value::EventValue(EventValueSpec::Amount)
@@ -757,14 +759,14 @@ fn replace_exile_top_event_count_with_triggering_counter_count(effect: &mut Effe
     }
 
     if let EffectAst::SubjectVerb(subject_verb) = effect
-        && let SubjectVerbActionAst::ExileTopOfLibrary { count, .. } = &mut subject_verb.action
+        && let SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { count, .. }) = &mut subject_verb.action
         && matches!(
             count.unhinted(),
             Value::EventValue(EventValueSpec::Amount)
                 | Value::EventValue(EventValueSpec::LifeAmount)
         )
     {
-        *count = Value::CountersOn(Box::new(ChooseSpec::Tagged(ironsmith_compiler_semantic::tag::declared_key("triggering"))), None);
+        *count = Value::CountersOn(Box::new(ChooseSpec::Tagged(ironsmith_compiler_semantic::tag::declared_key("triggering").into())), None);
     }
 
     for_each_nested_effects_mut(effect, false, replace_in_effects);
@@ -846,26 +848,26 @@ fn bind_source_and_trigger_object_destroy_pair(effects: &mut [EffectAst], trigge
             && let [
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action:
-                        SubjectVerbActionAst::Destroy {
+                        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy {
                             target: TargetAst::Source(_),
                             no_regeneration: false,
                             ..
-                        },
+                        }),
                     ..
                 }),
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action:
-                        SubjectVerbActionAst::Destroy {
+                        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy {
                             target: TargetAst::Tagged(second_tag, _),
                             no_regeneration: false,
                             ..
-                        },
+                        }),
                     ..
                 }),
             ] = effects.as_mut_slice()
             && second_tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         {
-            *second_tag = tag.clone();
+            *second_tag = crate::tag::TagRef::of(tag.clone());
             return;
         }
         for_each_nested_effects_mut(effect, true, |nested| {
@@ -902,11 +904,11 @@ fn preserve_blocker_regeneration_followup_as_restriction(
     }
     let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::Destroy {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy {
                 target,
                 no_regeneration,
                 ..
-            },
+            }),
         ..
     })) = effects.last_mut()
     else {
@@ -942,7 +944,7 @@ fn bind_unblocked_trigger_attacker_combat_assignment(
 
     fn visit(effect: &mut EffectAst) {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::AssignNoCombatDamage { source, .. },
+            action: SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::AssignNoCombatDamage { source, .. }),
             ..
         }) = effect
             && let TargetAst::Object(filter, None, span) = source
@@ -1040,22 +1042,22 @@ fn preserve_copy_reference_kind_from_trigger(effects: &mut [EffectAst], trigger:
     let trigger_kind = triggering_stack_object_kind(trigger);
     for effect in effects {
         match effect {
-            EffectAst::DelayedTriggerThisTurn {
+            EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
                 trigger, effects, ..
-            }
-            | EffectAst::DelayedTriggerForDuration {
+            })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
                 trigger, effects, ..
-            } => {
+            }) => {
                 preserve_copy_reference_kind_from_trigger(effects, trigger);
                 continue;
             }
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::CopySpell {
+                    SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
                         target,
                         target_reference_kind,
                         ..
-                    },
+                    }),
                 ..
             }) if target_reference_kind.is_none()
                 && copy_target_is_triggering_stack_object(target) =>
@@ -1082,7 +1084,7 @@ fn spell_cast_trigger_caster(trigger: &TriggerSpec) -> Option<&PlayerFilter> {
 
 fn effect_copies_triggering_stack_object(effect: &EffectAst) -> bool {
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::CopySpell { target, .. },
+        action: SubjectVerbActionAst::Stack(StackActionAst::CopySpell { target, .. }),
         ..
     }) = effect
         && copy_target_is_triggering_stack_object(target)
@@ -1121,19 +1123,19 @@ fn bind_post_copy_cast_spell_exile_to_triggering_object(
         let mut count = usize::from(match effect {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::Exile {
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
                         target: TargetAst::Object(filter, _, _),
                         ..
-                    },
+                    }),
                 ..
             }) => filter == cast_spell,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::MoveToZone {
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                         target: TargetAst::Object(filter, _, _),
                         zone: Zone::Exile,
                         ..
-                    },
+                    }),
                 ..
             }) => filter == cast_spell,
             _ => false,
@@ -1156,7 +1158,7 @@ fn bind_post_copy_cast_spell_exile_to_triggering_object(
 
     fn rebind(effect: &mut EffectAst, cast_spell: &ObjectFilter) {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Exile { target, .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. }),
             ..
         }) = effect
             && matches!(target, TargetAst::Object(filter, _, _) if filter == cast_spell)
@@ -1166,11 +1168,11 @@ fn bind_post_copy_cast_spell_exile_to_triggering_object(
         }
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::MoveToZone {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                     target,
                     zone: Zone::Exile,
                     ..
-                },
+                }),
             ..
         }) = effect
             && matches!(target, TargetAst::Object(filter, _, _) if filter == cast_spell)
@@ -1200,16 +1202,16 @@ fn link_spell_cast_mana_spent_predicate(
 
     match predicate {
         PredicateAst::TargetSpellNoManaSpentToCast => PredicateAst::Not(Box::new(
-            PredicateAst::TriggeringSpellManaSpentToCastAtLeast {
+            PredicateAst::Triggering(TriggeringPredicateAst::TriggeringSpellManaSpentToCastAtLeast {
                 amount: 1,
                 symbol: None,
-            },
+            }),
         )),
         PredicateAst::ManaSpentToCastThisSpellAtLeast { amount, symbol } => {
-            PredicateAst::TriggeringSpellManaSpentToCastAtLeast { amount, symbol }
+            PredicateAst::Triggering(TriggeringPredicateAst::TriggeringSpellManaSpentToCastAtLeast { amount, symbol })
         }
         PredicateAst::ColoredManaSpentToCastThisSpellAtLeast(amount) => {
-            PredicateAst::TriggeringSpellColoredManaSpentToCastAtLeast(amount)
+            PredicateAst::Triggering(TriggeringPredicateAst::TriggeringSpellColoredManaSpentToCastAtLeast(amount))
         }
         PredicateAst::Not(inner) => PredicateAst::Not(Box::new(
             link_spell_cast_mana_spent_predicate(trigger, *inner),
@@ -1236,9 +1238,9 @@ fn link_spell_cast_mana_spent_predicates_in_effects(
 
     for effect in effects {
         match effect {
-            EffectAst::Conditional { predicate, .. }
-            | EffectAst::TrailingIf { predicate, .. }
-            | EffectAst::TrailingUnless { predicate, .. }
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. })
+            | EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, .. })
+            | EffectAst::Conditionals(ConditionalEffectAst::TrailingUnless { predicate, .. })
             | EffectAst::SelfReplacement { predicate, .. } => {
                 *predicate = link_spell_cast_mana_spent_predicate(trigger, predicate.clone());
             }
@@ -1333,7 +1335,7 @@ fn discard_filter_can_supply_demonstrative_noun(filter: Option<&ObjectFilter>, n
 
 fn terminal_discard_filter(effect: &EffectAst) -> Option<Option<ObjectFilter>> {
     if let EffectAst::SubjectVerb(subject_verb) = effect
-        && let SubjectVerbActionAst::Discard { filter, .. } = &subject_verb.action
+        && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { filter, .. }) = &subject_verb.action
     {
         return Some(filter.clone());
     }
@@ -1406,7 +1408,7 @@ fn resolve_typed_demonstrative_it(target: &mut TargetAst, tag: &crate::tag::TagK
         TargetAst::Tagged(current, _)
             if current.as_str() == crate::tag::CompilerReferenceTag::It.as_str() =>
         {
-            *current = tag.clone();
+            *current = crate::tag::TagRef::of(tag.clone());
             true
         }
         TargetAst::Object(filter, _, _) => {
@@ -1449,7 +1451,7 @@ fn bind_phase_step_trigger_untap_after_incompatible_discard(
                 trigger_tag: &TagKey,
             ) {
                 if let EffectAst::SubjectVerb(subject_verb) = effect
-                    && let SubjectVerbActionAst::Untap { target } = &mut subject_verb.action
+                    && let SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Untap { target }) = &mut subject_verb.action
                     && let Some(noun) = typed_demonstrative_noun(target)
                     && !discard_filter_can_supply_demonstrative_noun(discard_filter, noun)
                 {
@@ -1470,28 +1472,28 @@ fn bind_phase_step_trigger_untap_after_incompatible_discard(
 fn resolve_bare_it_effect_targets_to_source(effect: &mut EffectAst) {
     if let EffectAst::SubjectVerb(subject_verb) = effect {
         match &mut subject_verb.action {
-            SubjectVerbActionAst::ForEachCounterKindPutOrRemove {
+            SubjectVerbActionAst::Counters(CounterActionAst::ForEachCounterKindPutOrRemove {
                 target,
                 counter_source,
                 ..
-            } => {
+            }) => {
                 resolve_bare_it_target_to_source(target);
                 if let Some(counter_source) = counter_source {
                     resolve_bare_it_target_to_source(counter_source);
                 }
             }
-            SubjectVerbActionAst::PutCounters { target, .. }
-            | SubjectVerbActionAst::PutCounterChoice { target, .. }
-            | SubjectVerbActionAst::PutOrRemoveCounters { target, .. }
-            | SubjectVerbActionAst::RemoveUpToAnyCounters { target, .. }
-            | SubjectVerbActionAst::DoubleCountersOnTarget { target, .. } => {
+            SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target, .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice { target, .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutOrRemoveCounters { target, .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters { target, .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnTarget { target, .. }) => {
                 resolve_bare_it_target_to_source(target);
             }
-            SubjectVerbActionAst::MoveToZone {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                 target,
                 attached_to,
                 ..
-            } => {
+            }) => {
                 resolve_bare_it_target_to_source(target);
                 if let Some(attached_to) = attached_to {
                     resolve_bare_it_target_to_source(attached_to);
@@ -1502,8 +1504,8 @@ fn resolve_bare_it_effect_targets_to_source(effect: &mut EffectAst) {
     }
     if matches!(
         effect,
-        EffectAst::ForEachTagged { .. }
-            | EffectAst::ForEachTaggedWithControllerAtLastBlockedBy { .. }
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged { .. })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy { .. })
     ) {
         return;
     }
@@ -1537,12 +1539,12 @@ fn bind_stack_retargets_to_triggering_object(effects: &mut [EffectAst]) {
     fn visit(effect: &mut EffectAst) {
         if std::env::var("IRONSMITH_CHOICE_TRACE").is_ok()
             && let EffectAst::SubjectVerb(subject_verb) = &*effect
-            && let SubjectVerbActionAst::RetargetStackObject { target, .. } = &subject_verb.action
+            && let SubjectVerbActionAst::Stack(StackActionAst::RetargetStackObject { target, .. }) = &subject_verb.action
         {
             eprintln!("bind-stack-retarget: target={target:?}");
         }
         if let EffectAst::SubjectVerb(subject_verb) = effect
-            && let SubjectVerbActionAst::RetargetStackObject { target, .. } =
+            && let SubjectVerbActionAst::Stack(StackActionAst::RetargetStackObject { target, .. }) =
                 &mut subject_verb.action
             && matches!(
                 target,
@@ -1632,7 +1634,7 @@ fn bind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
         matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Exile { .. },
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. }),
                 ..
             })
         )
@@ -1710,7 +1712,7 @@ fn bind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
             }
             _ => {}
         }
-        if let EffectAst::ChooseObjects { tag, count, .. } = effect
+        if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, count, .. }) = effect
             && is_sentence_helper_exiled_collection_tag(tag)
         {
             let entry = helper_choices
@@ -1720,7 +1722,7 @@ fn bind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
             entry.1 |= count.max.is_none_or(|max| max > 1);
         }
         if let EffectAst::SubjectVerb(subject_verb) = effect
-            && let SubjectVerbActionAst::Exile { target, .. } = &subject_verb.action
+            && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. }) = &subject_verb.action
             && let Some(tag) = tagged_target_key(target)
             && let Some((choice_count, explicitly_plural)) = helper_choices.get(tag.as_str())
             && (*choice_count > 1 || *explicitly_plural)
@@ -1731,7 +1733,7 @@ fn bind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
             && is_sentence_helper_exiled_collection_tag(tag)
             && direct_exile(effect)
         {
-            *last_aggregate_exile = Some(tag.clone());
+            *last_aggregate_exile = Some(tag.clone().into());
         }
         for_each_nested_effects(effect, true, |nested| {
             for child in nested {
@@ -1765,7 +1767,7 @@ fn bind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
         }
         if let EffectAst::SubjectVerb(subject_verb) = effect {
             let replacement = match &subject_verb.action {
-                SubjectVerbActionAst::ReturnToBattlefield {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
                     target,
                     tapped,
                     transformed,
@@ -1775,7 +1777,7 @@ fn bind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
                     as_aura,
                     top_only,
                     ..
-                } if tagged_target_key(target).is_some_and(|target_tag| {
+                }) if tagged_target_key(target).is_some_and(|target_tag| {
                     target_tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
                         || target_tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                 }) && !*transformed
@@ -1784,13 +1786,13 @@ fn bind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
                     && count_value.is_none()
                     && as_aura.is_none() =>
                 {
-                    Some(SubjectVerbActionAst::ReturnAllToBattlefield {
+                    Some(SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield {
                         filter: ObjectFilter::tagged(tag.clone()).in_zone(Zone::Exile),
                         tapped: *tapped,
                         face_down: false,
                         controller: *controller,
                         verb_surface: ironsmith_core::MoveToZoneVerbSurface::Return,
-                    })
+                    }))
                 }
                 _ => None,
             };
@@ -1904,7 +1906,7 @@ fn stage_effects_from_normalized(
                 .as_ref()
                 .filter(|tag| tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
                 .cloned()
-                .unwrap_or_else(|| crate::tag::CompilerReferenceTag::Triggering.bind());
+                .unwrap_or_else(|| (crate::tag::CompilerReferenceTag::Triggering.bind()).into());
             prelude.insert(0, EffectPreludeTag::TriggeringObject(tag));
         }
         if let Some(default_prelude) = default_last_object_prelude {
@@ -1914,7 +1916,7 @@ fn stage_effects_from_normalized(
             prelude.insert(
                 0,
                 EffectPreludeTag::TriggeringSource(
-                    crate::tag::CompilerReferenceTag::TriggeringSource.bind(),
+                    (crate::tag::CompilerReferenceTag::TriggeringSource.bind()).into(),
                 ),
             );
         }
@@ -1926,7 +1928,7 @@ fn stage_effects_from_normalized(
             prelude.insert(
                 0,
                 EffectPreludeTag::TriggeringDamageTarget(
-                    crate::tag::CompilerReferenceTag::Damaged.bind(),
+                    (crate::tag::CompilerReferenceTag::Damaged.bind()).into(),
                 ),
             );
         }
@@ -1948,12 +1950,12 @@ fn stage_effects_from_normalized(
 fn source_sentence_followup_requires_shared_lowering(effect: &EffectAst) -> bool {
     matches!(
         effect,
-        EffectAst::ForEachOpponentDoesNot { .. }
-            | EffectAst::ForEachPlayerDoesNot { .. }
-            | EffectAst::ForEachOpponentDid { .. }
-            | EffectAst::ForEachPlayerDid { .. }
-            | EffectAst::VoteOption { .. }
-            | EffectAst::VoteExtra { .. }
+        EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDoesNot { .. })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDoesNot { .. })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDid { .. })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDid { .. })
+            | EffectAst::Votes(VoteEffectAst::VoteOption { .. })
+            | EffectAst::Votes(VoteEffectAst::VoteExtra { .. })
     )
 }
 
@@ -1967,20 +1969,20 @@ fn source_sentence_boundary_continues_repeat_process(
     if matches!(
         effects.get(boundary),
         Some(
-            EffectAst::RepeatThisProcess
-                | EffectAst::RepeatThisProcessOnce
-                | EffectAst::RepeatThisProcessMay
+            EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)
+                | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce)
+                | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay)
         )
     ) {
         return true;
     }
-    let Some(EffectAst::IfResult { effects, .. }) = effects.get(boundary) else {
+    let Some(EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. })) = effects.get(boundary) else {
         return false;
     };
     match effects.last() {
-        Some(EffectAst::RepeatThisProcess) => true,
+        Some(EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)) => true,
         Some(EffectAst::Coordinated { effects, .. }) => {
-            matches!(effects.last(), Some(EffectAst::RepeatThisProcess))
+            matches!(effects.last(), Some(EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)))
         }
         _ => false,
     }
@@ -1996,10 +1998,10 @@ fn collect_source_sentence_hand_pipeline_tags(effects: &[EffectAst], tags: &mut 
     for effect in effects {
         match effect {
             EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::RevealCardsFromHand { tag, .. },
+                action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealCardsFromHand { tag, .. }),
                 ..
             }) => push_unique_source_sentence_hand_tag(tags, tag),
-            EffectAst::ChooseObjects { filter, tag, .. }
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, tag, .. })
                 if filter.zone == Some(Zone::Hand)
                     || tags
                         .iter()
@@ -2018,9 +2020,9 @@ fn collect_source_sentence_hand_pipeline_tags(effects: &[EffectAst], tags: &mut 
 
 fn source_sentence_effect_consumes_hand_pipeline_tag(effect: &EffectAst, tag: &TagKey) -> bool {
     let directly_consumes = match effect {
-        EffectAst::ChooseObjects { filter, .. } => filter_references_tag(filter, tag.as_str()),
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, .. }) => filter_references_tag(filter, tag.as_str()),
         EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Discard { filter, .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { filter, .. }),
             ..
         }) => {
             effect_references_tag(effect, tag.as_str())
@@ -2077,10 +2079,10 @@ fn correlate_result_gated_hand_pipeline_followups(effects: &mut Vec<EffectAst>) 
     let mut index = 0usize;
     while index + 1 < effects.len() {
         let follows_gated_hand_pipeline = match &effects[index] {
-            EffectAst::IfResult {
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                 predicate: crate::cards::builders::IfResultPredicate::Did,
                 effects: branch,
-            } => {
+            }) => {
                 let mut hand_tags = Vec::new();
                 collect_source_sentence_hand_pipeline_tags(branch, &mut hand_tags);
                 hand_tags.iter().any(|tag| {
@@ -2095,9 +2097,9 @@ fn correlate_result_gated_hand_pipeline_followups(effects: &mut Vec<EffectAst>) 
         }
 
         let followup = effects.remove(index + 1);
-        let EffectAst::IfResult {
+        let EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             effects: branch, ..
-        } = &mut effects[index]
+        }) = &mut effects[index]
         else {
             unreachable!("the result-gated branch was checked above")
         };
@@ -2118,10 +2120,10 @@ fn source_sentence_boundary_splits_implicit_object_pipeline(
             effect,
             EffectAst::SelfReplacement { .. }
                 | EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::RegisterZoneReplacement {
+                    action: SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterZoneReplacement {
                         duration: ZoneReplacementDurationAst::OneShot,
                         ..
-                    },
+                    }),
                     ..
                 })
         ) {
@@ -2154,7 +2156,7 @@ fn flatten_top_level_source_sentences(
         for segment in source_segments {
             let end = offset.saturating_add(segment.effect_count);
             if segment.leading_then
-                && let [EffectAst::ForEachObject { filter, .. }] = &mut effects[offset..end]
+                && let [EffectAst::ForEach(ForEachEffectAst::ForEachObject { filter, .. })] = &mut effects[offset..end]
             {
                 filter.set_for_each_leading_then_surface(true);
             }
@@ -2167,18 +2169,18 @@ fn flatten_top_level_source_sentences(
             return;
         };
         match first {
-            EffectAst::VoteStart {
+            EffectAst::Votes(VoteEffectAst::VoteStart {
                 starting_with_controller,
                 ..
-            }
-            | EffectAst::VoteStartObjects {
+            })
+            | EffectAst::Votes(VoteEffectAst::VoteStartObjects {
                 starting_with_controller,
                 ..
-            }
-            | EffectAst::VoteStartPlayers {
+            })
+            | EffectAst::Votes(VoteEffectAst::VoteStartPlayers {
                 starting_with_controller,
                 ..
-            } => *starting_with_controller = true,
+            }) => *starting_with_controller = true,
             EffectAst::Sequence { effects }
             | EffectAst::CommaThen { effects }
             | EffectAst::Coordinated { effects, .. }
@@ -2244,10 +2246,10 @@ fn flatten_top_level_source_sentences(
                 effect,
                 EffectAst::SelfReplacement { .. }
                     | EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                        action: SubjectVerbActionAst::RegisterZoneReplacement {
+                        action: SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterZoneReplacement {
                             duration: ZoneReplacementDurationAst::OneShot,
                             ..
-                        },
+                        }),
                         ..
                     })
             ) {
@@ -2260,10 +2262,10 @@ fn flatten_top_level_source_sentences(
                         nested,
                         EffectAst::SelfReplacement { .. }
                             | EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                                action: SubjectVerbActionAst::RegisterZoneReplacement {
+                                action: SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterZoneReplacement {
                                     duration: ZoneReplacementDurationAst::OneShot,
                                     ..
-                                },
+                                }),
                                 ..
                             })
                     )
@@ -2389,13 +2391,13 @@ fn statement_terminal_needs_participant_result_export(effect: &EffectAst) -> boo
         match effect {
             EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) => matches!(
                 action,
-                SubjectVerbActionAst::DealDamage { .. }
-                    | SubjectVerbActionAst::DealDamageEach { .. }
-                    | SubjectVerbActionAst::DealDamageEqualToPower { .. }
-                    | SubjectVerbActionAst::DealDistributedDamage { .. }
+                SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { .. })
+                    | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { .. })
+                    | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { .. })
+                    | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { .. })
             ),
             EffectAst::TagAffected { effect, .. } => is_damage_aggregate_member(effect),
-            EffectAst::ForEachObject { effects, .. } | EffectAst::ForEachTagged { effects, .. } => {
+            EffectAst::ForEach(ForEachEffectAst::ForEachObject { effects, .. }) | EffectAst::ForEach(ForEachEffectAst::ForEachTagged { effects, .. }) => {
                 !effects.is_empty() && effects.iter().all(is_damage_aggregate_member)
             }
             _ => false,
@@ -2403,12 +2405,12 @@ fn statement_terminal_needs_participant_result_export(effect: &EffectAst) -> boo
     }
 
     match effect {
-        EffectAst::ForEachOpponent { .. }
-        | EffectAst::ForEachPlayersFiltered { .. }
-        | EffectAst::ForEachPlayer { .. }
-        | EffectAst::AnyPlayerMay { .. }
-        | EffectAst::ForEachTargetPlayers { .. }
-        | EffectAst::ForEachTaggedPlayer { .. } => true,
+        EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { .. })
+        | EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { .. })
+        | EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { .. })
+        | EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay { .. })
+        | EffectAst::ForEach(ForEachEffectAst::ForEachTargetPlayers { .. })
+        | EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer { .. }) => true,
         EffectAst::Coordinated { effects, .. }
             if effects.len() > 1 && effects.iter().all(is_damage_aggregate_member) =>
         {
@@ -2419,10 +2421,10 @@ fn statement_terminal_needs_participant_result_export(effect: &EffectAst) -> boo
         | EffectAst::SourceSentence { effects, .. }
         | EffectAst::Coordinated { effects, .. }
         | EffectAst::ResultBranchLabel { effects, .. }
-        | EffectAst::May { effects }
-        | EffectAst::MayByPlayer { effects, .. }
-        | EffectAst::TrailingIf { effects, .. }
-        | EffectAst::TrailingUnless { effects, .. } => effects
+        | EffectAst::Permissions(PermissionEffectAst::May { effects })
+        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. })
+        | EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { effects, .. })
+        | EffectAst::Conditionals(ConditionalEffectAst::TrailingUnless { effects, .. }) => effects
             .last()
             .is_some_and(statement_terminal_needs_participant_result_export),
         EffectAst::TagAffected { effect, .. } => {
@@ -2436,7 +2438,7 @@ fn effect_consumes_prior_damage_metric(effect: &EffectAst) -> bool {
     let direct = matches!(
         effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::GainLife { amount: value },
+            action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount: value }),
             ..
         }) if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::DamageDealt)
     );
@@ -2665,7 +2667,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
         matches!(
             effects,
             [EffectAst::SubjectVerb(subject_verb)]
-                if matches!(subject_verb.action, SubjectVerbActionAst::WinGame)
+                if matches!(subject_verb.action, SubjectVerbActionAst::Game(GameActionAst::WinGame))
         )
     }
 
@@ -2673,7 +2675,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
         predicate: PredicateAst,
     ) -> (Option<u32>, Option<PredicateAst>) {
         match predicate {
-            PredicateAst::YouAttackedWithExactlyNOtherCreaturesThisCombat(count) => {
+            PredicateAst::TurnEvents(TurnEventPredicateAst::YouAttackedWithExactlyNOtherCreaturesThisCombat(count)) => {
                 (Some(count), None)
             }
             PredicateAst::And(left, right) => {
@@ -2721,7 +2723,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
                 crate::tag::CompilerReferenceTag::Triggering.bind(),
                 filter,
             ),
-            PredicateAst::SourceMatches(filter)
+            PredicateAst::Source(SourcePredicateAst::SourceMatches(filter))
                 if filter.has_trailing_candidate_ability_condition_surface() =>
             {
                 PredicateAst::TaggedMatches(
@@ -2771,11 +2773,11 @@ pub fn stage_owned_triggered_effects_for_lowering(
             let EffectAst::SubjectVerb(subject_verb) = effect else {
                 continue;
             };
-            let SubjectVerbActionAst::DealDamageEqualToPower {
+            let SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
                 source: TargetAst::Source(_),
                 target: TargetAst::ObjectOrPlayer(object, player, _),
                 ..
-            } = &mut subject_verb.action
+            }) = &mut subject_verb.action
             else {
                 continue;
             };
@@ -2794,7 +2796,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
             if &object_domain != trigger_object || &*player != trigger_player {
                 continue;
             }
-            object.tagged_constraints[0].tag = crate::tag::CompilerReferenceTag::Damaged.bind();
+            object.tagged_constraints[0].tag = (crate::tag::CompilerReferenceTag::Damaged.bind()).into();
             *player = PlayerFilter::DamagedPlayer;
         }
     }
@@ -2835,7 +2837,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
     let body_it_binds_to_body_target = trigger_object_is_stack_object(&trigger)
         && matches!(
             normalized.as_slice(),
-            [EffectAst::Conditional { predicate, .. }]
+            [EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. })]
                 if predicate_requires_battlefield_state(predicate)
         );
     let mut intervening_if = match &trigger {
@@ -2847,11 +2849,11 @@ pub fn stage_owned_triggered_effects_for_lowering(
         _ => None,
     };
     let promote_body_condition = if normalized.len() == 1
-        && let EffectAst::Conditional {
+        && let EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true,
             if_false,
-        } = &normalized[0]
+        }) = &normalized[0]
         && if_false.is_empty()
         && !if_true.is_empty()
         && predicate_can_promote_to_intervening_if(predicate)
@@ -2875,9 +2877,9 @@ pub fn stage_owned_triggered_effects_for_lowering(
         false
     };
     let mut body_effects = if promote_body_condition {
-        let EffectAst::Conditional {
+        let EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate, if_true, ..
-        } = normalized
+        }) = normalized
             .pop()
             .expect("checked one promotable conditional effect")
         else {
@@ -2996,7 +2998,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
             // to the other attacker snapshot captured at trigger time.
             Some(crate::tag::CompilerReferenceTag::OtherAttacker.bind())
         } else {
-            default_trigger_last_object_tag(&trigger)
+            default_trigger_last_object_tag(&trigger).map(crate::tag::TagRef::of)
         };
         let default_prelude = default_tag
             .as_ref()
@@ -3018,7 +3020,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
             ..Default::default()
         },
         inferred_trigger_player_filter(&trigger),
-        default_last_object_tag,
+        default_last_object_tag.map(Into::into),
         default_last_object_prelude,
         true,
     )?;
@@ -3041,7 +3043,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
     {
         prepared.prelude.insert(
             0,
-            EffectPreludeTag::TriggeringObject(crate::tag::CompilerReferenceTag::Triggering.bind()),
+            EffectPreludeTag::TriggeringObject((crate::tag::CompilerReferenceTag::Triggering.bind()).into()),
         );
     }
 
@@ -3335,10 +3337,10 @@ pub fn apply_delayed_trigger_followup_statement_to_last_ability(
     if !effects.iter().any(|effect| {
         matches!(
             effect,
-            EffectAst::DelayedTriggerThisTurn {
+            EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
                 attach_to_previous_ability: true,
                 ..
-            }
+            })
         )
     }) {
         return Ok(false);
@@ -4880,10 +4882,10 @@ mod tests {
         assert!(matches!(
             &effects[1],
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Exile {
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
                     target: TargetAst::Tagged(tag, _),
                     ..
-                },
+                }),
                 ..
             }) if tag.as_str() == "triggering"
         ));
@@ -4899,10 +4901,10 @@ mod tests {
         assert!(matches!(
             &wrong_caster[1],
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Exile {
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
                     target: TargetAst::Object(filter, _, _),
                     ..
-                },
+                }),
                 ..
             }) if filter.cast_by == Some(PlayerFilter::Opponent)
         ));
@@ -4925,9 +4927,9 @@ mod tests {
                 .expect("attachment trigger should prepare");
         fn untap_reference_tag(effect: &EffectAst) -> Option<TagKey> {
             if let EffectAst::SubjectVerb(subject_verb) = effect
-                && let SubjectVerbActionAst::Untap {
+                && let SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Untap {
                     target: TargetAst::Object(filter, _, _),
-                } = &subject_verb.action
+                }) = &subject_verb.action
             {
                 return filter
                     .tagged_constraints
@@ -5208,7 +5210,7 @@ mod tests {
         replace_pending_removed_counter_metrics_with_x(&mut effects);
 
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::PutCounters { count, .. },
+            action: SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { count, .. }),
             ..
         }) = &effects[0]
         else {
@@ -5249,14 +5251,14 @@ mod tests {
             .expect("effect body should parse");
         let madness_filter = ObjectFilter::default()
             .with_alternative_cast(ironsmith_core::AlternativeCastKind::Madness);
-        let effects = vec![EffectAst::Conditional {
+        let effects = vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: PredicateAst::TaggedMatches(
                 crate::tag::CompilerReferenceTag::It.bind(),
                 madness_filter.clone(),
             ),
             if_true: body,
             if_false: Vec::new(),
-        }];
+        })];
 
         let (_, prepared) =
             stage_triggered_effects_for_lowering(trigger, &effects, ReferenceImports::default())
@@ -5405,21 +5407,21 @@ mod tests {
     fn flattened_vote_followups_keep_starting_with_controller_order() {
         let effects = vec![
             EffectAst::SourceSentence {
-                effects: vec![EffectAst::VoteStart {
+                effects: vec![EffectAst::Votes(VoteEffectAst::VoteStart {
                     options: vec!["time".to_string(), "money".to_string()],
                     secret: false,
                     starting_with_controller: false,
-                }],
+                })],
                 leading_then: false,
                 starting_with_controller: true,
             },
             EffectAst::SourceSentence {
-                effects: vec![EffectAst::VoteOption {
+                effects: vec![EffectAst::Votes(VoteEffectAst::VoteOption {
                     option: "time".to_string(),
                     effects: vec![EffectAst::Sequence {
                         effects: Vec::new(),
                     }],
-                }],
+                })],
                 leading_then: false,
                 starting_with_controller: false,
             },
@@ -5428,10 +5430,10 @@ mod tests {
         let (flattened, _) = flatten_top_level_source_sentences(effects.clone());
         assert!(matches!(
             flattened.first(),
-            Some(EffectAst::VoteStart {
+            Some(EffectAst::Votes(VoteEffectAst::VoteStart {
                 starting_with_controller: true,
                 ..
-            })
+            }))
         ));
 
         let prepared = stage_effects_for_lowering(&effects, ReferenceImports::default())
@@ -5458,10 +5460,10 @@ mod tests {
     fn flattened_leading_then_for_each_keeps_its_authored_connective_surface() {
         let effects = vec![
             EffectAst::SourceSentence {
-                effects: vec![EffectAst::ForEachObject {
+                effects: vec![EffectAst::ForEach(ForEachEffectAst::ForEachObject {
                     filter: ObjectFilter::creature(),
                     effects: Vec::new(),
-                }],
+                })],
                 leading_then: true,
                 starting_with_controller: false,
             },
@@ -5474,7 +5476,7 @@ mod tests {
 
         let (flattened, source_segments) = flatten_top_level_source_sentences(effects);
         assert!(source_segments.is_empty());
-        let [EffectAst::ForEachObject { filter, .. }] = flattened.as_slice() else {
+        let [EffectAst::ForEach(ForEachEffectAst::ForEachObject { filter, .. })] = flattened.as_slice() else {
             panic!("expected one flattened object iteration: {flattened:#?}");
         };
         assert!(filter.has_for_each_leading_then_surface());
@@ -5528,7 +5530,7 @@ mod tests {
                 ironsmith_compiler::effect_sentences::parse_effect_sentences_lexed(&tokens)
                     .expect("parse trailing-unless sentence");
             assert!(
-                matches!(effects.as_slice(), [EffectAst::TrailingUnless { .. }])
+                matches!(effects.as_slice(), [EffectAst::Conditionals(ConditionalEffectAst::TrailingUnless { .. })])
                     || matches!(
                         effects.as_slice(),
                         [EffectAst::ControlFlow(control)]

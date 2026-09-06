@@ -1,3 +1,4 @@
+use crate::cards::builders::ForEachEffectAst;
 use super::super::grammar::effects as search_grammar;
 use super::super::grammar::primitives as grammar;
 use super::super::lexer::{OwnedLexToken, split_lexed_sentences, token_word_refs};
@@ -11,7 +12,7 @@ use super::sentence_helpers::*;
 use crate::cards::builders::{
     CardTextError, CarryContext, ChoiceCount, EffectAst, LibraryBottomOrderAst,
     LibraryConsultModeAst, LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst,
-    SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst,
+    SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst, LibraryActionAst, RevealLookActionAst, ObjectChoiceEffectAst, ConditionalEffectAst, PermissionEffectAst,
 };
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::{CardType, Subtype};
@@ -46,7 +47,7 @@ fn bind_owner_subject_same_sentence_tail(
         && refers_to_their_library
         && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             subject,
-            action: SubjectVerbActionAst::ExileTopOfLibrary { .. } | SubjectVerbActionAst::RevealTop,
+            action: SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { .. }) | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTop),
         }) = effect
         && subject.player == PlayerAst::ItsController
     {
@@ -174,18 +175,18 @@ pub fn parse_shuffle_graveyard_into_library_sentence(
                 // executable per-player scope.
                 for trailing_effect in trailing_effects {
                     match trailing_effect {
-                        EffectAst::ForEachPlayer {
+                        EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
                             effects: mut trailing_player_effects,
-                        } => {
-                            if let Some(EffectAst::ForEachPlayer {
+                        }) => {
+                            if let Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
                                 effects: player_effects,
-                            }) = effects.last_mut()
+                            })) = effects.last_mut()
                             {
                                 player_effects.append(&mut trailing_player_effects);
                             } else {
-                                effects.push(EffectAst::ForEachPlayer {
+                                effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
                                     effects: trailing_player_effects,
-                                });
+                                }));
                             }
                         }
                         effect => effects.push(effect),
@@ -236,7 +237,7 @@ pub fn parse_shuffle_graveyard_into_library_sentence(
         };
     let wrap_optional = |effects: Vec<EffectAst>| -> Vec<EffectAst> {
         if optional_shuffle {
-            vec![EffectAst::MayByPlayer { player, effects }]
+            vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, effects })]
         } else {
             effects
         }
@@ -291,7 +292,7 @@ pub fn parse_shuffle_graveyard_into_library_sentence(
                 effects.push(EffectAst::subject_verb(
                     SubjectVerbRoleAst::LibraryOwner,
                     PlayerAst::ItsOwner,
-                    SubjectVerbActionAst::ShuffleLibrary,
+                    SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
                 ));
             }
             effects.push(EffectAst::subject_verb_shuffle_graveyard_into_library(
@@ -322,9 +323,9 @@ pub fn parse_shuffle_graveyard_into_library_sentence(
             );
         }
         if each_player_subject {
-            return append_trailing(vec![EffectAst::ForEachPlayer {
+            return append_trailing(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
                 effects: wrap_optional(effects),
-            }]);
+            })]);
         }
         return append_trailing(wrap_optional(effects));
     }
@@ -416,7 +417,7 @@ pub fn parse_shuffle_object_into_library_sentence(
     if matches!(subject, SubjectAst::Player(PlayerAst::ItsOwner))
         && shape.reference == search_grammar::SearchShuffleObjectReference::PluralTaggedReference
     {
-        return append_trailing(vec![EffectAst::ForEachTagged {
+        return append_trailing(vec![EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
             tag: crate::tag::CompilerReferenceTag::It.bind(),
             effects: vec![
                 EffectAst::subject_verb_move_to_zone(
@@ -433,10 +434,10 @@ pub fn parse_shuffle_object_into_library_sentence(
                 EffectAst::subject_verb(
                     SubjectVerbRoleAst::LibraryOwner,
                     PlayerAst::ItsOwner,
-                    SubjectVerbActionAst::ShuffleLibrary,
+                    SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
                 ),
             ],
-        }]);
+        })]);
     }
     let target = parse_target_phrase(target_tokens)?;
     let moves_all = shuffle_target_moves_all(target_tokens);
@@ -534,13 +535,13 @@ pub fn parse_target_player_exiles_creature_and_graveyard_sentence(
     graveyard_filter.owner = Some(subject_filter);
 
     Ok(Some(vec![
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter: creature_filter,
             count: ChoiceCount::exactly(1),
             count_value: None,
             player: subject_player,
             tag: crate::tag::CompilerReferenceTag::It.bind(),
-        },
+        }),
         EffectAst::subject_verb_exile(
             TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
             false,
@@ -576,7 +577,7 @@ pub fn parse_for_each_exiled_this_way_sentence(
         let revealed_tag = helper_tag_for_tokens(tokens, "revealed");
         let matched_tag = helper_tag_for_tokens(tokens, "chosen");
 
-        return Ok(Some(vec![EffectAst::ForEachTagged {
+        return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
             tag: crate::tag::CompilerReferenceTag::It.bind(),
             effects: vec![
                 EffectAst::subject_verb_consult_top_of_library(
@@ -584,11 +585,11 @@ pub fn parse_for_each_exiled_this_way_sentence(
                     LibraryConsultModeAst::Reveal,
                     filter,
                     LibraryConsultStopRuleAst::FirstMatch,
-                    revealed_tag.clone(),
-                    matched_tag.clone(),
+                    crate::tag::TagRef::of(revealed_tag.clone()),
+                    crate::tag::TagRef::of(matched_tag.clone()),
                 ),
                 EffectAst::subject_verb_move_to_zone(
-                    TargetAst::Tagged(matched_tag.clone(), None),
+                    TargetAst::Tagged(crate::tag::TagRef::of(matched_tag.clone()), None),
                     Zone::Battlefield,
                     false,
                     ReturnControllerAst::Preserve,
@@ -596,13 +597,13 @@ pub fn parse_for_each_exiled_this_way_sentence(
                     None,
                 ),
                 EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-                    revealed_tag,
-                    Some(matched_tag),
+                    crate::tag::TagRef::of(revealed_tag),
+                    Some(crate::tag::TagRef::of(matched_tag)),
                     LibraryBottomOrderAst::Random,
                     PlayerAst::Implicit,
                 ),
             ],
-        }]));
+        })]));
     }
 
     let effect_tokens = shape.effect_tokens.ok_or_else(|| {
@@ -625,32 +626,30 @@ pub fn parse_for_each_exiled_this_way_sentence(
             search_grammar::SearchExiledConsultFinish::Shuffle => EffectAst::subject_verb(
                 SubjectVerbRoleAst::LibraryOwner,
                 PlayerAst::ItsController,
-                SubjectVerbActionAst::ShuffleLibrary,
+                SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
             ),
             search_grammar::SearchExiledConsultFinish::PutRestOnBottom => {
                 EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-                    revealed_tag.clone(),
-                    Some(matched_tag.clone()),
+                    crate::tag::TagRef::of(revealed_tag.clone()),
+                    Some(crate::tag::TagRef::of(matched_tag.clone())),
                     LibraryBottomOrderAst::Random,
                     PlayerAst::ItsController,
                 )
             }
         };
-        return Ok(Some(vec![EffectAst::ForEachTagged {
-            tag: crate::tag::CompilerReferenceTag::SourceExiled
-                .as_str()
-                .into(),
+        return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+            tag: crate::tag::CompilerReferenceTag::SourceExiled.bind(),
             effects: vec![
                 EffectAst::subject_verb_consult_top_of_library(
                     PlayerAst::ItsController,
                     LibraryConsultModeAst::Reveal,
                     filter,
                     LibraryConsultStopRuleAst::FirstMatch,
-                    revealed_tag,
-                    matched_tag.clone(),
+                    crate::tag::TagRef::of(revealed_tag),
+                    crate::tag::TagRef::of(matched_tag.clone()),
                 ),
                 EffectAst::subject_verb_move_to_zone(
-                    TargetAst::Tagged(matched_tag, None),
+                    TargetAst::Tagged(crate::tag::TagRef::of(matched_tag), None),
                     Zone::Battlefield,
                     false,
                     ReturnControllerAst::Preserve,
@@ -659,7 +658,7 @@ pub fn parse_for_each_exiled_this_way_sentence(
                 ),
                 finish,
             ],
-        }]));
+        })]));
     }
     let effects = parse_effect_chain(effect_tokens)?;
     if effects.is_empty() {
@@ -670,19 +669,19 @@ pub fn parse_for_each_exiled_this_way_sentence(
     }
 
     let effects = if let Some(filter) = iterated_filter {
-        vec![EffectAst::Conditional {
+        vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: PredicateAst::ItMatchedLastKnown(filter),
             if_true: effects,
             if_false: Vec::new(),
-        }]
+        })]
     } else {
         effects
     };
 
-    Ok(Some(vec![EffectAst::ForEachTagged {
+    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
         tag: crate::tag::CompilerReferenceTag::It.bind(),
         effects,
-    }]))
+    })]))
 }
 
 #[cfg(test)]
@@ -707,18 +706,18 @@ pub fn parse_each_player_put_permanent_cards_exiled_with_source_sentence(
         CardType::Battle,
     ];
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: crate::tag::CompilerReferenceTag::SourceExiled.bind(),
+        tag: (crate::tag::CompilerReferenceTag::SourceExiled.bind()).into(),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
 
-    Ok(Some(vec![EffectAst::ForEachPlayer {
+    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
         effects: vec![EffectAst::subject_verb_put_all_onto_battlefield(
             filter,
             false,
             false,
             ReturnControllerAst::Owner,
         )],
-    }]))
+    })]))
 }
 
 pub fn parse_for_each_destroyed_this_way_sentence(
@@ -769,14 +768,14 @@ pub fn parse_for_each_destroyed_this_way_sentence(
         )));
     }
 
-    Ok(Some(vec![EffectAst::ForEachTagged {
+    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
         tag: crate::tag::CompilerReferenceTag::It.bind(),
-        effects: vec![EffectAst::Conditional {
+        effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: PredicateAst::ItMatchedLastKnown(filter),
             if_true: effects,
             if_false: Vec::new(),
-        }],
-    }]))
+        })],
+    })]))
 }
 
 #[cfg(test)]

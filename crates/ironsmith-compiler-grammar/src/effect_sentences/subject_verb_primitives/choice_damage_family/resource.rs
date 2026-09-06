@@ -1,3 +1,5 @@
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::LifeResourceActionAst;
 use super::*;
 
 pub fn parse_sentence_unless_pays(
@@ -90,10 +92,10 @@ pub fn parse_sentence_unless_pays(
             return Ok(None);
         };
         let target = parse_target_phrase(target_clause.tokens())?;
-        return Ok(Some(vec![EffectAst::ForEachOpponent {
+        return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
             effects: vec![
                 EffectAst::subject_verb_target_only(target),
-                EffectAst::UnlessAction {
+                EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
                     effects: vec![EffectAst::subject_verb_return_to_hand(
                         TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                         false,
@@ -101,14 +103,14 @@ pub fn parse_sentence_unless_pays(
                     alternative: vec![EffectAst::subject_verb(
                         SubjectVerbRoleAst::AffectedPlayer,
                         PlayerAst::You,
-                        SubjectVerbActionAst::Draw {
+                        SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
                             count: Value::Fixed(1),
-                        },
+                        }),
                     )],
                     player: PlayerAst::ItsController,
-                },
+                }),
             ],
-        }]));
+        })]));
     }
 
     let each_prefix = choice_shapes::parse_choice_damage_scope(&before_unless_clause.word_refs());
@@ -121,12 +123,12 @@ pub fn parse_sentence_unless_pays(
             && let Some(unless_effect) = try_build_unless(inner_effects, clause, unless_idx)?
         {
             let wrapper = match prefix_kind {
-                choice_shapes::ChoiceDamageScope::Opponent => EffectAst::ForEachOpponent {
+                choice_shapes::ChoiceDamageScope::Opponent => EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
                     effects: vec![unless_effect],
-                },
-                choice_shapes::ChoiceDamageScope::Player => EffectAst::ForEachPlayer {
+                }),
+                choice_shapes::ChoiceDamageScope::Player => EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
                     effects: vec![unless_effect],
-                },
+                }),
             };
             return Ok(Some(vec![wrapper]));
         }

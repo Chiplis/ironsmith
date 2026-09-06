@@ -1,6 +1,7 @@
+use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{
     CardTextError, EffectAst, KeywordAction, LineAst, PredicateAst, StaticAbilityAst,
-    SubjectVerbActionAst, TargetAst, TriggerSpec,
+    SubjectVerbActionAst, TargetAst, TriggerSpec, CounterActionAst, LifeResourceActionAst, DelayedEffectAst, ConditionalEffectAst, TurnEventPredicateAst,
 };
 use crate::effect::{ChoiceAggregateMetric, EventValueSpec, Value};
 use crate::target::{ObjectFilter, PlayerFilter};
@@ -48,7 +49,7 @@ const TWO_WORD_KEYWORD_ACTIONS: &[(&[&str], KeywordAction)] = &[
 fn predicate_counts_creatures_died_this_turn(predicate: &PredicateAst) -> bool {
     matches!(
         predicate,
-        PredicateAst::CreatureDiedThisTurn | PredicateAst::CreatureDiedThisTurnOrMore(_)
+        PredicateAst::TurnEvents(TurnEventPredicateAst::CreatureDiedThisTurn) | PredicateAst::TurnEvents(TurnEventPredicateAst::CreatureDiedThisTurnOrMore(_))
     )
 }
 
@@ -83,15 +84,15 @@ fn bind_creatures_died_condition_amounts(effects: &mut [EffectAst]) {
     for effect in effects {
         match effect {
             EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
-                SubjectVerbActionAst::GainLife { amount }
-                | SubjectVerbActionAst::PutCounters { count: amount, .. } => {
+                SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount })
+                | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { count: amount, .. }) => {
                     bind_event_amount_to_creatures_died_this_turn(amount);
                 }
                 _ => {}
             },
-            EffectAst::Conditional {
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 if_true, if_false, ..
-            } => {
+            }) => {
                 bind_creatures_died_condition_amounts(if_true);
                 bind_creatures_died_condition_amounts(if_false);
             }
@@ -296,7 +297,7 @@ fn attacked_player_filter_from_words(words: &[&str]) -> Option<(PlayerFilter, bo
             AttackedPlayerFilterKind::Any => (PlayerFilter::Any, true),
             AttackedPlayerFilterKind::AnyPlayerOrPlaneswalker => (PlayerFilter::Any, false),
             AttackedPlayerFilterKind::Enchanted => (
-                PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.bind()),
+                PlayerFilter::TaggedPlayer((crate::tag::CompilerReferenceTag::Enchanted.bind()).into()),
                 true,
             ),
             AttackedPlayerFilterKind::Opponent => (PlayerFilter::Opponent, true),
@@ -836,7 +837,7 @@ pub fn parse_linked_attack_group_combat_triggered_line_lexed(
             group_tag.clone(),
         ),
     );
-    effects.push(EffectAst::DelayedTriggerThisTurn {
+    effects.push(EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
         trigger: TriggerSpec::DealsCombatDamageToPlayer {
             source: ObjectFilter::tagged(group_tag),
             player,
@@ -845,7 +846,7 @@ pub fn parse_linked_attack_group_combat_triggered_line_lexed(
         one_shot: false,
         until_end_of_combat: true,
         attach_to_previous_ability: false,
-    });
+    }));
 
     Ok(Some(LineAst::Triggered {
         trigger,
@@ -929,12 +930,12 @@ fn parse_triggered_line_lexed_inner(tokens: &[OwnedLexToken]) -> Result<LineAst,
     if clause_grammar::parse_monstrous_damage_hand_trigger_tokens(tokens) {
         return Ok(LineAst::Triggered {
             trigger: TriggerSpec::ThisBecomesMonstrous,
-            effects: vec![EffectAst::ForEachOpponent {
+            effects: vec![EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
                 effects: vec![EffectAst::subject_verb_damage(
                     Value::CardsInHand(PlayerFilter::IteratedPlayer),
                     TargetAst::Player(PlayerFilter::IteratedPlayer, None),
                 )],
-            }],
+            })],
             max_triggers_per_turn: None,
         });
     }
@@ -1101,11 +1102,11 @@ fn parse_triggered_line_lexed_inner(tokens: &[OwnedLexToken]) -> Result<LineAst,
                 }
                 return Ok(LineAst::Triggered {
                     trigger,
-                    effects: vec![EffectAst::Conditional {
+                    effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                         predicate: spec.predicate,
                         if_true: effects,
                         if_false: Vec::new(),
-                    }],
+                    })],
                     max_triggers_per_turn,
                 });
             }
@@ -1487,6 +1488,7 @@ pub fn parse_static_ability_ast_line_lexed(
 
 #[cfg(test)]
 mod tests {
+    use crate::cards::builders::LibraryActionAst;
     use super::super::lexer::lex_line;
     use super::*;
 
@@ -1551,7 +1553,7 @@ mod tests {
             [EffectAst::SubjectVerb(subject_verb)]
                 if matches!(
                     &subject_verb.action,
-                    SubjectVerbActionAst::Mill { count }
+                    SubjectVerbActionAst::Library(LibraryActionAst::Mill { count })
                         if matches!(
                             count.unhinted(),
                             Value::EventValue(EventValueSpec::Amount)

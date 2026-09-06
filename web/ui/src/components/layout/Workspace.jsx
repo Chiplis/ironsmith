@@ -1,3 +1,4 @@
+import { zoneHasLegalTargets } from "@/lib/zone-piles";
 import { objectExistsInState } from "@/lib/inspector-selection";
 import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
@@ -1082,7 +1083,9 @@ export default function Workspace({
 
     queueMicrotask(() => {
       startTransition(() => {
-        showTransitionInspectorPreviews(animationFrame.previews);
+        showTransitionInspectorPreviews(animationFrame.previews.filter((preview) =>
+          !["graveyard", "exile"].includes(preview.toZone)
+        ));
       });
     });
   }, [
@@ -1503,6 +1506,16 @@ export default function Workspace({
         return;
       }
 
+      if (pendingCastTargetDrop.candidate?.kind === "zone") {
+        setPendingCastTargetDrop(null);
+        if (zoneHasLegalTargets(state, decision, pendingCastTargetDrop.candidate)) {
+          window.dispatchEvent(new CustomEvent("ironsmith:open-target-zone", {
+            detail: pendingCastTargetDrop.candidate,
+          }));
+        }
+        return;
+      }
+
       const currentCandidate = dropTargetCandidateAtPoint(
         pendingCastTargetDrop.x,
         pendingCastTargetDrop.y,
@@ -1526,7 +1539,7 @@ export default function Workspace({
       }));
     });
     return () => cancelAnimationFrame(frameId);
-  }, [cancelDecision, decision, pendingCastTargetDrop, state?.perspective]);
+  }, [cancelDecision, decision, pendingCastTargetDrop, state]);
 
   // Handle drag drop — if user drops on the battlefield area, dispatch the action
   useEffect(() => {
@@ -1541,7 +1554,8 @@ export default function Workspace({
           ? state.decision
           : ds.castIntent.targetDecision;
         const cancelCast = !candidate || (targetDecision?.kind === "targets"
-          && !legalTargetForDropCandidates(targetDecision, [candidate]));
+          && !legalTargetForDropCandidates(targetDecision, [candidate])
+          && !zoneHasLegalTargets(state, targetDecision, candidate));
         clearHover();
         if (cancelCast && ds.actions.length > 1) {
           // Provisional gestures have not started a cast in the engine yet.
@@ -1695,7 +1709,7 @@ export default function Workspace({
     endDrag,
     nonDesktopViewport,
     requestHandCardAction,
-    state?.decision,
+    state,
     triggerPriorityCardAction,
   ]);
 

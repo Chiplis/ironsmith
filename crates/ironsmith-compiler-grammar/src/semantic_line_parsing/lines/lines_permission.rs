@@ -1,3 +1,5 @@
+use crate::cards::builders::LibraryActionAst;
+use crate::cards::builders::GrantActionAst;
 use super::*;
 
 pub(super) fn exact_dynamic_exile_permission_bundle(
@@ -27,21 +29,21 @@ pub(super) fn exact_dynamic_exile_permission_bundle(
                     ..
                 },
             action:
-                SubjectVerbActionAst::ExileTopOfLibrary {
+                SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
                     count,
                     tags,
                     face_down: false,
                     ..
-                },
+                }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
                     tag,
                     allow_land: false,
                     ..
-                },
+                }),
             ..
         }),
     ] = effects.as_slice()

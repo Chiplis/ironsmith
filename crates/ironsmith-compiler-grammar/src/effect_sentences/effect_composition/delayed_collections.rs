@@ -1,3 +1,4 @@
+use crate::cards::builders::DelayedEffectAst;
 use super::*;
 
 pub(super) fn parse_exile_collection_each_upkeep_return_bundle(
@@ -20,10 +21,10 @@ pub(super) fn parse_exile_collection_each_upkeep_return_bundle(
     if !matches!(
         exile_effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ExileAll {
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll {
                 face_down: false,
                 ..
-            },
+            }),
             ..
         })
     ) {
@@ -38,18 +39,18 @@ pub(super) fn parse_exile_collection_each_upkeep_return_bundle(
     owned_exiled_filter
         .tagged_constraints
         .push(TaggedObjectConstraint {
-            tag: exiled_tag.clone(),
+            tag: exiled_tag.clone().into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
 
     let delayed_effects = vec![
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter: owned_exiled_filter,
             count: ChoiceCount::exactly(1),
             count_value: None,
             player: PlayerAst::Active,
             tag: chosen_tag.clone(),
-        },
+        }),
         EffectAst::subject_verb_return_to_battlefield(
             TargetAst::Tagged(chosen_tag, span_from_tokens(upkeep_sentence)),
             false,
@@ -62,13 +63,13 @@ pub(super) fn parse_exile_collection_each_upkeep_return_bundle(
 
     Ok(Some(vec![
         exile_effect.clone(),
-        EffectAst::DelayedTriggerForDuration {
+        EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
             trigger: crate::cards::builders::TriggerSpec::BeginningOfUpkeep(PlayerFilter::Any),
             effects: delayed_effects,
             one_shot: false,
             duration: crate::effect::Until::Forever,
             either_of_watched_objects: false,
             while_any_tagged_object_in_zone: Some((exiled_tag, Zone::Exile)),
-        },
+        }),
     ]))
 }

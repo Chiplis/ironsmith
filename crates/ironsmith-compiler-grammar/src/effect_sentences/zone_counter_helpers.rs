@@ -1,7 +1,8 @@
+use crate::cards::builders::ForEachEffectAst;
 use crate::cards::TextSpan;
 use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, OwnedLexToken, PlayerAst, PredicateAst, SubjectAst,
-    SubjectVerbActionAst, SubjectVerbEffectAst, TargetAst,
+    SubjectVerbActionAst, SubjectVerbEffectAst, TargetAst, CounterActionAst, ConditionalEffectAst,
 };
 use crate::effect::EventValueSpec;
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
@@ -222,7 +223,7 @@ fn parse_named_source_power_value(tokens: &[OwnedLexToken]) -> Option<Value> {
 fn target_from_counter_source_spec(spec: &ChooseSpec, span: Option<TextSpan>) -> Option<TargetAst> {
     match spec {
         ChooseSpec::Source => Some(TargetAst::Source(span)),
-        ChooseSpec::Tagged(tag) => Some(TargetAst::Tagged(tag.clone(), span)),
+        ChooseSpec::Tagged(tag) => Some(TargetAst::Tagged(crate::tag::TagRef::of(tag.clone()), span)),
         ChooseSpec::Target(inner) => target_from_counter_source_spec(inner, span),
         _ => None,
     }
@@ -240,7 +241,7 @@ pub fn merge_it_match_filter_into_target(target: &mut TargetAst, it_filter: &Obj
     if let TargetAst::Tagged(tag, span) = target {
         let mut filter = ObjectFilter::default();
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: tag.clone(),
+            tag: tag.clone().into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
         *target = TargetAst::Object(filter, *span, None);
@@ -298,10 +299,10 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
 
     let wrap_conditional = |effect: EffectAst| {
         if let Some(predicate) = trailing_predicate.clone() {
-            EffectAst::TrailingIf {
+            EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
                 predicate,
                 effects: vec![effect],
-            }
+            })
         } else {
             effect
         }
@@ -349,7 +350,7 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
         let mut predicate = trailing_predicate.clone();
         if let Some(PredicateAst::ItMatches(filter)) = predicate.as_ref()
             && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::PutOrRemoveCounters { target, .. },
+                action: SubjectVerbActionAst::Counters(CounterActionAst::PutOrRemoveCounters { target, .. }),
                 ..
             }) = &mut effect
             && merge_it_match_filter_into_target(target, filter)
@@ -357,11 +358,11 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
             predicate = None;
         }
         return Ok(if let Some(predicate) = predicate {
-            EffectAst::Conditional {
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate,
                 if_true: vec![effect],
                 if_false: Vec::new(),
-            }
+            })
         } else {
             effect
         });
@@ -390,11 +391,11 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
             false,
         );
         return Ok(if let Some(predicate) = predicate {
-            EffectAst::Conditional {
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate,
                 if_true: vec![effect],
                 if_false: Vec::new(),
-            }
+            })
         } else {
             effect
         });
@@ -444,11 +445,11 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
         count = count.with_surface_hint(ValueSurfaceHint::ForEach);
         let effect = EffectAst::subject_verb_put_counters(counter_type, count, target, None, false);
         return Ok(if let Some(predicate) = predicate {
-            EffectAst::Conditional {
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate,
                 if_true: vec![effect],
                 if_false: Vec::new(),
-            }
+            })
         } else {
             effect
         });
@@ -458,7 +459,7 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
         let target_spec = crate::model::ast::choose_spec_for_target(&target);
         count_value = Value::Add(
             Box::new(Value::PowerOf(Box::new(ChooseSpec::Tagged(
-                crate::tag::CompilerReferenceTag::It.bind(),
+                (crate::tag::CompilerReferenceTag::It.bind()).into(),
             )))),
             Box::new(Value::Scaled(
                 Box::new(Value::PowerOf(Box::new(target_spec))),
@@ -475,11 +476,11 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
     let effect =
         EffectAst::subject_verb_put_counters(counter_type, count_value, target, None, false);
     Ok(if let Some(predicate) = predicate {
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true: vec![effect],
             if_false: Vec::new(),
-        }
+        })
     } else {
         effect
     })
@@ -619,13 +620,13 @@ fn parse_transform_like(
         shapes::TransformTargetShape::ImplicitSource => Ok(action(TargetAst::Source(None))),
         shapes::TransformTargetShape::EachObject { filter_tokens } => {
             let filter = parse_object_filter(filter_tokens, false)?;
-            Ok(EffectAst::ForEachObject {
+            Ok(EffectAst::ForEach(ForEachEffectAst::ForEachObject {
                 filter,
                 effects: vec![action(TargetAst::Tagged(
                     crate::tag::CompilerReferenceTag::It.bind(),
                     span_from_tokens(tokens),
                 ))],
-            })
+            }))
         }
         shapes::TransformTargetShape::Source { surface } => {
             let span = span_from_tokens(tokens);

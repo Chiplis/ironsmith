@@ -1,3 +1,5 @@
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::CharacteristicActionAst;
 use super::*;
 
 pub(super) fn parse_copy_for_each_candidate_filter(
@@ -81,10 +83,10 @@ pub(crate) fn parse_copy_for_each_target_sentence(
         Vec::new(),
     );
     Ok(Some(if wrap_if_result {
-        EffectAst::IfResult {
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,
             effects: vec![effect],
-        }
+        })
     } else {
         effect
     }))
@@ -115,23 +117,23 @@ pub fn parse_for_each_tagged_copy_then_copy_targets_it(
         effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx + 1].lowered())?;
     let [
         retarget @ EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::RetargetStackObject { .. },
+            action: SubjectVerbActionAst::Stack(StackActionAst::RetargetStackObject { .. }),
             ..
         }),
     ] = second_effects.as_slice()
     else {
         return Ok(None);
     };
-    let for_each = EffectAst::ForEachTagged {
+    let for_each = EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
         tag: crate::tag::CompilerReferenceTag::It.bind(),
         effects: vec![copy_effect, retarget.clone()],
-    };
+    });
 
     Ok(Some(vec![if shape.wrap_if_result {
-        EffectAst::IfResult {
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,
             effects: vec![for_each],
-        }
+        })
     } else {
         for_each
     }]))
@@ -141,7 +143,7 @@ pub(crate) fn retarget_source_self_animate_effect(effect: EffectAst) -> EffectAs
     match effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::BecomeBasePtCreature {
+                SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
                     power,
                     toughness,
                     target,
@@ -157,7 +159,7 @@ pub(crate) fn retarget_source_self_animate_effect(effect: EffectAst) -> EffectAs
                     animation_duration_surface,
                     set_quantifier_surface,
                     duration,
-                },
+                }),
             ..
         }) => {
             let target = match target {
@@ -186,11 +188,11 @@ pub(crate) fn retarget_source_self_animate_effect(effect: EffectAst) -> EffectAs
             )
             .with_set_quantifier_surface(set_quantifier_surface)
         }
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true,
             if_false,
-        } => EffectAst::Conditional {
+        }) => EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true: if_true
                 .into_iter()
@@ -200,14 +202,14 @@ pub(crate) fn retarget_source_self_animate_effect(effect: EffectAst) -> EffectAs
                 .into_iter()
                 .map(retarget_source_self_animate_effect)
                 .collect(),
-        },
-        EffectAst::IfResult { predicate, effects } => EffectAst::IfResult {
+        }),
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult { predicate, effects }) => EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate,
             effects: effects
                 .into_iter()
                 .map(retarget_source_self_animate_effect)
                 .collect(),
-        },
+        }),
         other => other,
     }
 }
@@ -216,9 +218,9 @@ pub(super) fn contains_tagged_source_animation(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::BecomeBasePtCreature {
+                SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
                     target, duration, ..
-                },
+                }),
             ..
         }) => {
             let self_animate_target = matches!(
@@ -227,13 +229,13 @@ pub(super) fn contains_tagged_source_animation(effect: &EffectAst) -> bool {
             ) || matches!(target, TargetAst::Source(_));
             *duration == crate::effect::Until::EndOfTurn && self_animate_target
         }
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             if_true, if_false, ..
-        } => {
+        }) => {
             if_true.iter().any(contains_tagged_source_animation)
                 || if_false.iter().any(contains_tagged_source_animation)
         }
-        EffectAst::IfResult { effects, .. } => effects.iter().any(contains_tagged_source_animation),
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. }) => effects.iter().any(contains_tagged_source_animation),
         _ => false,
     }
 }

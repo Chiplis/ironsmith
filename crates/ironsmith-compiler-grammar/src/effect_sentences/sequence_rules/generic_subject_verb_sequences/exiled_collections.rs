@@ -1,8 +1,9 @@
+use crate::cards::builders::ForEachEffectAst;
 use super::super::SentenceInput;
 use crate::activation_and_restrictions::parse_may_cast_it_sentence;
 use crate::cards::builders::{
     CardTextError, EffectAst, LibraryBottomOrderAst, ObjectFilter, PlayerAst, ReturnControllerAst,
-    SubjectVerbActionAst, SubjectVerbEffectAst, TagKey, TargetAst,
+    SubjectVerbActionAst, SubjectVerbEffectAst, TagKey, TargetAst, LibraryActionAst, ZoneMoveActionAst, ObjectChoiceEffectAst,
 };
 use crate::effect::ChoiceCount;
 use crate::effect_sentences;
@@ -21,15 +22,15 @@ use winnow::Parser;
 fn exiled_top_collection_tag(effect: &EffectAst) -> Option<TagKey> {
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::ExileTopOfLibrary {
+            SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
                 tags,
                 accumulated_tags,
                 ..
-            },
+            }),
         ..
     }) = effect
     {
-        return tags.first().or_else(|| accumulated_tags.first()).cloned();
+        return tags.first().or_else(|| accumulated_tags.first()).cloned().map(Into::into);
     }
 
     let mut found = None;
@@ -68,14 +69,14 @@ fn tag_first_exile(effect: &mut EffectAst, tag: &TagKey) -> bool {
     if matches!(
         effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Exile { .. } | SubjectVerbActionAst::ExileAll { .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. }) | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { .. }),
             ..
         })
     ) {
         let exile = effect.clone();
         *effect = EffectAst::TagAffected {
             effect: Box::new(exile),
-            tag: tag.clone(),
+            tag: crate::tag::TagRef::of(tag.clone()),
         };
         return true;
     }
@@ -188,27 +189,27 @@ pub fn parse_exile_top_then_put_from_among_tokens(
         effects.push(EffectAst::subject_verb_tag_matching_objects(
             filter,
             vec![Zone::Exile],
-            chosen_tag.clone(),
+            crate::tag::TagRef::of(chosen_tag.clone()),
         ));
     } else {
-        effects.push(EffectAst::ChooseTaggedObjectsInZone {
+        effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter,
             count,
             player: chooser,
-            tag: chosen_tag.clone(),
+            tag: crate::tag::TagRef::of(chosen_tag.clone()),
             zone: Zone::Exile,
-        });
+        }));
     }
 
-    effects.push(EffectAst::ForEachTagged {
-        tag: chosen_tag,
+    effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+        tag: crate::tag::TagRef::of(chosen_tag),
         effects: vec![EffectAst::subject_verb_put_onto_battlefield(
             chooser,
             TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
             tapped,
             controller,
         )],
-    });
+    }));
     Ok(Some(effects))
 }
 
@@ -373,7 +374,7 @@ mod tests {
         effects
             .iter()
             .find_map(|effect| match effect {
-                EffectAst::ChooseTaggedObjectsInZone { filter, count, .. } => {
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { filter, count, .. }) => {
                     Some((filter, *count))
                 }
                 _ => None,

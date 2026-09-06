@@ -125,10 +125,10 @@ fn read_fixed_condition_shape(input: &CounterCondition<'_>) -> Option<PredicateA
     {
         match shape {
             EntersWithCounterConditionShape::AttackedThisTurn => {
-                return Some(PredicateAst::AttackedThisTurn);
+                return Some(PredicateAst::TurnEvents(TurnEventPredicateAst::AttackedThisTurn));
             }
             EntersWithCounterConditionShape::SourceWasCast => {
-                return Some(PredicateAst::SourceWasCast);
+                return Some(PredicateAst::Source(SourcePredicateAst::SourceWasCast));
             }
             EntersWithCounterConditionShape::ThisSpellWasKicked => {
                 return Some(PredicateAst::ThisSpellWasKicked);
@@ -137,22 +137,22 @@ fn read_fixed_condition_shape(input: &CounterCondition<'_>) -> Option<PredicateA
                 return Some(PredicateAst::ThisSpellEscaped);
             }
             EntersWithCounterConditionShape::CreatureDiedThisTurn => {
-                return Some(PredicateAst::CreatureDiedThisTurn);
+                return Some(PredicateAst::TurnEvents(TurnEventPredicateAst::CreatureDiedThisTurn));
             }
             EntersWithCounterConditionShape::OpponentLostLifeThisTurn => {
-                return Some(PredicateAst::OpponentLostLifeThisTurn);
+                return Some(PredicateAst::TurnEvents(TurnEventPredicateAst::OpponentLostLifeThisTurn));
             }
             EntersWithCounterConditionShape::PermanentLeftUnderYourControl => {
                 return Some(
-                    PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn {
+                    PredicateAst::TurnEvents(TurnEventPredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn {
                         surface:
                             crate::PermanentLeftBattlefieldControlSurface::LeftUnderYourControl,
-                    },
+                    }),
                 );
             }
             EntersWithCounterConditionShape::NotCastOrNoManaSpent => {
                 return Some(PredicateAst::Or(
-                    Box::new(PredicateAst::Not(Box::new(PredicateAst::SourceWasCast))),
+                    Box::new(PredicateAst::Not(Box::new(PredicateAst::Source(SourcePredicateAst::SourceWasCast)))),
                     Box::new(PredicateAst::Not(Box::new(
                         PredicateAst::ManaSpentToCastThisSpellAtLeast {
                             amount: 1,
@@ -182,10 +182,10 @@ fn read_you_cast_spells_this_turn(input: &CounterCondition<'_>) -> Option<Predic
     if let Some(amount) =
         parse_enters_with_counter_you_cast_spells_this_turn_condition_tokens(&condition_tokens)
     {
-        return Some(PredicateAst::PlayerCastSpellsThisTurnOrMore {
+        return Some(PredicateAst::Player(PlayerPredicateAst::PlayerCastSpellsThisTurnOrMore {
             player: PlayerAst::You,
             count: amount,
-        });
+        }));
     }
     None
 }

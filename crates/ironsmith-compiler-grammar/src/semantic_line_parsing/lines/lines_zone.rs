@@ -57,12 +57,12 @@ pub(super) fn exact_atomic_return_as_aura_bundle(
     let [EffectAst::SubjectVerb(aura_subject_verb)] = aura_effects.as_slice() else {
         return None;
     };
-    let SubjectVerbActionAst::BecomeAuraEnchantment {
+    let SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeAuraEnchantment {
         target,
         attachment_filter,
         granted_abilities,
         ..
-    } = &aura_subject_verb.action
+    }) = &aura_subject_verb.action
     else {
         return None;
     };
@@ -84,7 +84,7 @@ pub(super) fn exact_atomic_return_as_aura_bundle(
     let [EffectAst::SubjectVerb(return_subject_verb)] = effects.as_mut_slice() else {
         return None;
     };
-    let SubjectVerbActionAst::ReturnToBattlefield { as_aura, .. } = &mut return_subject_verb.action
+    let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { as_aura, .. }) = &mut return_subject_verb.action
     else {
         return None;
     };

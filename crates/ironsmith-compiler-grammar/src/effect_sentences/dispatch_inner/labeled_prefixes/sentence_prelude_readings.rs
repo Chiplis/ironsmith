@@ -7,6 +7,9 @@
 //! the overlaps are measured. The unsupported-sentence diagnosis and the
 //! sentence registries follow in the wrapper.
 
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::StackActionAst;
 use super::*;
 use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId, RuleMatch};
 use crate::registry::{
@@ -366,10 +369,10 @@ pub(super) fn read(input: &SentencePrelude<'_>) -> ParseOutcome<RuleMatch<Vec<Ef
 fn read_if_you_dont(input: &SentencePrelude<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
     if let Some(effects) = super::super::dispatch_entry::parse_if_you_dont_sentence(tokens)? {
-        return Ok(Some(vec![EffectAst::IfResult {
+        return Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: crate::cards::builders::IfResultPredicate::ExplicitDidNot,
             effects,
-        }]));
+        })]));
     }
     Ok(None)
 }
@@ -410,14 +413,14 @@ fn read_leading_result_prefix(
                 super::super::parse_effect_chain_inner_lexed(prefix.trailing_tokens)?
             };
         let mut result = vec![match prefix.kind {
-            LeadingResultPrefixKind::If => EffectAst::IfResult {
+            LeadingResultPrefixKind::If => EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                 predicate: prefix.predicate,
                 effects: trailing_effects,
-            },
-            LeadingResultPrefixKind::When => EffectAst::WhenResult {
+            }),
+            LeadingResultPrefixKind::When => EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
                 predicate: prefix.predicate,
                 effects: trailing_effects,
-            },
+            }),
         }];
         super::super::preserve_leading_result_coordination_lexed(tokens, &mut result);
         return Ok(Some(result));
@@ -640,14 +643,14 @@ fn read_late_leading_result_prefix(
         let trailing_effects =
             super::super::parse_effect_chain_inner_lexed(prefix.trailing_tokens)?;
         let mut result = vec![match prefix.kind {
-            LeadingResultPrefixKind::If => EffectAst::IfResult {
+            LeadingResultPrefixKind::If => EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                 predicate: prefix.predicate,
                 effects: trailing_effects,
-            },
-            LeadingResultPrefixKind::When => EffectAst::WhenResult {
+            }),
+            LeadingResultPrefixKind::When => EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
                 predicate: prefix.predicate,
                 effects: trailing_effects,
-            },
+            }),
         }];
         super::super::preserve_leading_result_coordination_lexed(tokens, &mut result);
         return Ok(Some(result));
@@ -711,19 +714,19 @@ fn read_cast_from_among_free(
         }
         let chosen = crate::tag::CompilerReferenceTag::ChosenCastFromAmong.bind();
         return Ok(Some(vec![
-            EffectAst::ChooseObjects {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                 filter,
                 count: ChoiceCount::exactly(1),
                 count_value: None,
                 player: PlayerAst::You,
                 tag: chosen.clone(),
-            },
+            }),
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 subject: crate::model::ast::SubjectVerbSubjectAst {
                     role: SubjectVerbRoleAst::Actor,
                     player: PlayerAst::You,
                 },
-                action: SubjectVerbActionAst::CastTagged {
+                action: SubjectVerbActionAst::Stack(StackActionAst::CastTagged {
                     tag: chosen,
                     player: PlayerAst::You,
                     allow_land: false,
@@ -734,7 +737,7 @@ fn read_cast_from_among_free(
                     additional_mana_cost: None,
                     cost_reduction: None,
                     mana_spend_mode: ironsmith_core::value_model::ManaSpendMode::Normal,
-                },
+                }),
             }),
         ]));
     }
@@ -750,19 +753,19 @@ fn read_cast_hand_free(
             .in_zone(Zone::Hand)
             .owned_by(PlayerFilter::You);
         return Ok(Some(vec![
-            EffectAst::ChooseObjects {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                 filter,
                 count: ChoiceCount::exactly(1),
                 count_value: None,
                 player: PlayerAst::You,
                 tag: chosen.clone(),
-            },
+            }),
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 subject: crate::model::ast::SubjectVerbSubjectAst {
                     role: SubjectVerbRoleAst::Actor,
                     player: PlayerAst::You,
                 },
-                action: SubjectVerbActionAst::CastTagged {
+                action: SubjectVerbActionAst::Stack(StackActionAst::CastTagged {
                     tag: chosen,
                     player: PlayerAst::You,
                     allow_land: false,
@@ -773,7 +776,7 @@ fn read_cast_hand_free(
                     additional_mana_cost: None,
                     cost_reduction: None,
                     mana_spend_mode: ironsmith_core::value_model::ManaSpendMode::Normal,
-                },
+                }),
             }),
         ]));
     }
@@ -976,7 +979,7 @@ fn read_cast_any_number_graveyard_free(
         filter.colors = Some(crate::color::ColorSet::from(crate::color::Color::Red));
         let tag = crate::tag::CompilerReferenceTag::ChosenCastFromGraveyard.bind();
         return Ok(Some(vec![
-            EffectAst::ChooseObjectsAcrossZones {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
                 filter,
                 count: ChoiceCount::any_number(),
                 count_value: None,
@@ -984,7 +987,7 @@ fn read_cast_any_number_graveyard_free(
                 tag: tag.clone(),
                 zones: vec![Zone::Graveyard],
                 search_mode: Some(crate::effect::SearchSelectionMode::Optional),
-            },
+            }),
             EffectAst::subject_verb_cast_tagged(tag, PlayerAst::You, false, false, true, None),
         ]));
     }

@@ -4,6 +4,8 @@
 //! intentionally run before preparation/lowering and never inspect Oracle
 //! text or token shapes.
 
+use crate::cards::builders::TriggeringPredicateAst;
+use crate::cards::builders::ConditionalEffectAst;
 use super::*;
 use crate::cards::builders::TriggerFrequencyPredicateAst;
 use crate::model::ast::TriggerIntroSurfaceAst;
@@ -253,16 +255,16 @@ fn link_spell_cast_mana_spent_predicate(
     fn retarget(predicate: PredicateAst) -> PredicateAst {
         match predicate {
             PredicateAst::TargetSpellNoManaSpentToCast => PredicateAst::Not(Box::new(
-                PredicateAst::TriggeringSpellManaSpentToCastAtLeast {
+                PredicateAst::Triggering(TriggeringPredicateAst::TriggeringSpellManaSpentToCastAtLeast {
                     amount: 1,
                     symbol: None,
-                },
+                }),
             )),
             PredicateAst::ManaSpentToCastThisSpellAtLeast { amount, symbol } => {
-                PredicateAst::TriggeringSpellManaSpentToCastAtLeast { amount, symbol }
+                PredicateAst::Triggering(TriggeringPredicateAst::TriggeringSpellManaSpentToCastAtLeast { amount, symbol })
             }
             PredicateAst::ColoredManaSpentToCastThisSpellAtLeast(amount) => {
-                PredicateAst::TriggeringSpellColoredManaSpentToCastAtLeast(amount)
+                PredicateAst::Triggering(TriggeringPredicateAst::TriggeringSpellColoredManaSpentToCastAtLeast(amount))
             }
             PredicateAst::Not(inner) => PredicateAst::Not(Box::new(retarget(*inner))),
             PredicateAst::And(left, right) => {
@@ -294,20 +296,20 @@ fn absorb_single_conditional_effect_into_trigger(
         return (trigger, Vec::new());
     };
     match effect {
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true,
             if_false,
-        } if if_false.is_empty() => {
+        }) if if_false.is_empty() => {
             let (trigger, predicate) = absorb_predicate_into_trigger(trigger, predicate);
             if let Some(predicate) = predicate {
                 (
                     trigger,
-                    vec![EffectAst::Conditional {
+                    vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                         predicate,
                         if_true,
                         if_false: Vec::new(),
-                    }],
+                    })],
                 )
             } else {
                 (trigger, if_true)

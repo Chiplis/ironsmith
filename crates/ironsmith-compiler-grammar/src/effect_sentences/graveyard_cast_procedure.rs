@@ -8,7 +8,7 @@
 
 use super::dispatch_entry::SentenceInput;
 use super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::graveyard_cast_with_exile_replacement;
-use crate::cards::builders::{IfResultPredicate, CardTextError, EffectAst};
+use crate::cards::builders::{IfResultPredicate, CardTextError, EffectAst, ConditionalEffectAst};
 use crate::grammar::effects::{self as effect_grammar, GraveyardCastReplacementShape};
 use crate::lexer::OwnedLexToken;
 
@@ -100,10 +100,10 @@ pub(super) fn finish(group: GraveyardCastGroup) -> Vec<EffectAst> {
         .flatten()
         .unwrap_or_default();
     if group.when_result {
-        vec![EffectAst::WhenResult {
+        vec![EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
             predicate: IfResultPredicate::Did,
             effects,
-        }]
+        })]
     } else {
         effects
     }

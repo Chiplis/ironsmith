@@ -22,7 +22,7 @@ fn keeps_selected_opponent_as_copier_and_new_target_chooser() {
     .expect("the exact two-sentence copy family should parse");
     let [
         EffectAst::SubjectVerb(target),
-        EffectAst::MayByPlayer { player, effects },
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, effects }),
     ] = effects.as_slice()
     else {
         panic!("expected a target declaration and opponent-scoped offer: {effects:#?}");
@@ -38,12 +38,12 @@ fn keeps_selected_opponent_as_copier_and_new_target_chooser() {
     assert!(matches!(
         effects.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::CopySpell {
+            action: SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
                 target: TargetAst::Tagged(tag, None),
                 player: PlayerAst::TargetOpponent,
                 may_choose_new_targets: true,
                 ..
-            },
+            }),
             ..
         })] if tag.as_str() == "triggering"
     ));

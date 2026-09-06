@@ -1,6 +1,9 @@
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::ForEachEffectAst;
 use super::*;
 use crate::CardType;
-use crate::cards::builders::{SubjectVerbActionAst, SubjectVerbEffectAst};
+use crate::cards::builders::{SubjectVerbActionAst, SubjectVerbEffectAst, LibraryActionAst};
 use crate::grammar::effects as effect_grammar;
 use crate::grammar::effects::control_copy_attach_shapes as cca_shapes;
 use crate::lexer::LexedClause;
@@ -17,9 +20,9 @@ pub fn parse_each_opponent_exiles_card_from_their_hand_or_permanent_they_control
             Some(Value::X),
         );
         return Some(match shape.group {
-            effect_grammar::EachPlayerExileGroup::Player => EffectAst::ForEachPlayer { effects },
+            effect_grammar::EachPlayerExileGroup::Player => EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }),
             effect_grammar::EachPlayerExileGroup::Opponent => {
-                EffectAst::ForEachOpponent { effects }
+                EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })
             }
         });
     }
@@ -162,16 +165,16 @@ fn exile_iterated_hand_cards_and_permanents(
     filter.any_of = vec![hand_card, permanent];
     let tag = helper_tag_for_tokens(tokens, "exiled");
     vec![
-        EffectAst::ChooseObjectsAcrossZones {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
             filter,
             count,
             count_value,
             player: PlayerAst::That,
-            tag: tag.clone(),
+            tag: crate::tag::TagRef::of(tag.clone()),
             zones: vec![Zone::Hand, Zone::Battlefield],
             search_mode: None,
-        },
-        EffectAst::subject_verb_exile(TargetAst::Tagged(tag, None), false),
+        }),
+        EffectAst::subject_verb_exile(TargetAst::Tagged(crate::tag::TagRef::of(tag), None), false),
     ]
 }
 
@@ -195,12 +198,12 @@ fn parse_exile_card_from_their_hand_or_permanent_they_control(
         crate::effect::ChoiceCount::exactly(1),
         None,
     );
-    if let Some(EffectAst::ChooseObjectsAcrossZones { player, .. }) = effects.first_mut() {
+    if let Some(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { player, .. })) = effects.first_mut() {
         *player = chooser;
     }
 
     Some(if wrap_for_each_opponent {
-        EffectAst::ForEachOpponent { effects }
+        EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })
     } else {
         EffectAst::Sequence { effects }
     })
@@ -435,7 +438,7 @@ pub fn parse_exile(
         let mut target = parse_target_phrase(target_tokens)?;
         apply_exile_subject_hand_owner_context(&mut target, subject);
         let plural_surface = cca_shapes::is_plural_tagged_object_reference(target_tokens);
-        return Ok(EffectAst::TrailingIf {
+        return Ok(EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
             predicate: spec.predicate,
             effects: vec![with_exile_actor(
                 if until_source_leaves {
@@ -447,7 +450,7 @@ pub fn parse_exile(
                 .with_move_to_zone_plural_surface_if(plural_surface),
                 subject,
             )],
-        });
+        }));
     } else if grammar::contains_word(tokens, "if") {
         return Err(CardTextError::ParseError(format!(
             "unsupported conditional exile clause (clause: '{}')",
@@ -531,7 +534,7 @@ pub fn parse_same_name_exile_hand_and_graveyard_clause(
     let mut filter = ObjectFilter::default();
     filter.owner = Some(owner);
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: crate::tag::CompilerReferenceTag::It.bind(),
+        tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
         relation: TaggedOpbjectRelation::SameNameAsTagged,
     });
     filter.any_of = [Zone::Hand, Zone::Graveyard]
@@ -837,7 +840,7 @@ fn parse_exile_dynamic_count_from_top_library_clause(
     Some(exile_top_library_effect(
         player,
         shape.count,
-        vec![helper_tag_for_tokens(&tag_tokens, "exiled")],
+        vec![helper_tag_for_tokens(&tag_tokens, "exiled").into()],
         Vec::new(),
         surface,
         face_down || shape.face_down,
@@ -855,16 +858,16 @@ fn exile_top_library_effect(
     let mut effect = EffectAst::subject_verb_exile_top_of_library_with_optional_surface(
         player,
         count,
-        tags,
-        accumulated_tags,
+        tags.into_iter().map(crate::tag::TagRef::of).collect(),
+        accumulated_tags.into_iter().map(crate::tag::TagRef::of).collect(),
         surface,
     );
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::ExileTopOfLibrary {
+            SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
                 face_down: effect_face_down,
                 ..
-            },
+            }),
         ..
     }) = &mut effect
     else {
@@ -883,33 +886,33 @@ pub fn parse_exile_top_library_clause(
     let shape = effect_grammar::parse_exile_top_library_shape(tokens, default_player)?;
     let tag_tokens = trim_commas(tokens);
     match shape.player {
-        effect_grammar::ExileLibraryPlayerShape::EachPlayer => Some(EffectAst::ForEachPlayer {
+        effect_grammar::ExileLibraryPlayerShape::EachPlayer => Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
             effects: vec![exile_top_library_effect(
                 PlayerAst::That,
                 shape.count,
                 Vec::new(),
-                vec![helper_tag_for_tokens(&tag_tokens, "exiled")],
+                vec![helper_tag_for_tokens(&tag_tokens, "exiled").into()],
                 None,
                 face_down,
             )],
-        }),
-        effect_grammar::ExileLibraryPlayerShape::EachOpponent => Some(EffectAst::ForEachOpponent {
+        })),
+        effect_grammar::ExileLibraryPlayerShape::EachOpponent => Some(EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
             effects: vec![exile_top_library_effect(
                 PlayerAst::That,
                 shape.count,
                 Vec::new(),
-                vec![helper_tag_for_tokens(&tag_tokens, "exiled")],
+                vec![helper_tag_for_tokens(&tag_tokens, "exiled").into()],
                 None,
                 face_down,
             )],
-        }),
+        })),
         effect_grammar::ExileLibraryPlayerShape::Player(player) => {
             let surface = (default_player != PlayerAst::Implicit && default_player == player)
                 .then_some(ironsmith_core::ExileTopLibrarySurface::LibraryOwnerAsActor);
             Some(exile_top_library_effect(
                 player,
                 shape.count,
-                vec![helper_tag_for_tokens(&tag_tokens, "exiled")],
+                vec![helper_tag_for_tokens(&tag_tokens, "exiled").into()],
                 Vec::new(),
                 surface,
                 face_down,
@@ -932,26 +935,26 @@ fn parse_exile_bottom_library_clause(
 
     let choose_and_exile = |player: PlayerAst, tag: TagKey| {
         vec![
-            EffectAst::ChooseObjectsBottomOfLibrary {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
                 filter: filter.clone(),
                 count: crate::effect::ChoiceCount::exactly(1),
                 count_value: None,
                 player,
-                tag: tag.clone(),
-            },
-            EffectAst::subject_verb_exile(TargetAst::Tagged(tag, None), face_down),
+                tag: crate::tag::TagRef::of(tag.clone()),
+            }),
+            EffectAst::subject_verb_exile(TargetAst::Tagged(crate::tag::TagRef::of(tag), None), face_down),
         ]
     };
 
     match shape.player {
-        effect_grammar::ExileLibraryPlayerShape::EachPlayer => Some(EffectAst::ForEachPlayer {
-            effects: choose_and_exile(PlayerAst::That, tag),
-        }),
-        effect_grammar::ExileLibraryPlayerShape::EachOpponent => Some(EffectAst::ForEachOpponent {
-            effects: choose_and_exile(PlayerAst::That, tag),
-        }),
+        effect_grammar::ExileLibraryPlayerShape::EachPlayer => Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+            effects: choose_and_exile(PlayerAst::That, tag.key.clone()),
+        })),
+        effect_grammar::ExileLibraryPlayerShape::EachOpponent => Some(EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
+            effects: choose_and_exile(PlayerAst::That, tag.key.clone()),
+        })),
         effect_grammar::ExileLibraryPlayerShape::Player(player) => Some(EffectAst::Sequence {
-            effects: choose_and_exile(player, tag),
+            effects: choose_and_exile(player, tag.key.clone()),
         }),
     }
 }
@@ -983,6 +986,7 @@ pub fn parse_target_player_graveyard_filter(tokens: &[OwnedLexToken]) -> Option<
 
 #[cfg(test)]
 mod tests {
+    use crate::cards::builders::ZoneMoveActionAst;
     use super::*;
     use crate::Subtype;
     use crate::lexer::lex_line;
@@ -996,7 +1000,7 @@ mod tests {
             .expect("attached exile bundle should parse")
             .expect("attached exile bundle should be recognized");
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ExileAllAttachedTo { filter, .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAllAttachedTo { filter, .. }),
             ..
         }) = effect
         else {
@@ -1014,11 +1018,11 @@ mod tests {
         let effect = parse_exile(&tokens, None).expect("plural demonstrative should parse");
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::Exile {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
                     target: TargetAst::Object(filter, ..),
                     target_plural_surface,
                     ..
-                },
+                }),
             ..
         }) = effect
         else {
@@ -1049,9 +1053,9 @@ mod tests {
                     ..
                 },
             action:
-                SubjectVerbActionAst::ExileTopOfLibrary {
+                SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
                     count, face_down, ..
-                },
+                }),
             ..
         }) = effect
         else {
@@ -1076,11 +1080,11 @@ mod tests {
 
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::ExileUntilSourceLeaves {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileUntilSourceLeaves {
                     target: TargetAst::Object(exiled_filter, Some(_), _),
                     leave_watcher: Some(TargetAst::Object(watcher_filter, Some(_), _)),
                     ..
-                },
+                }),
             ..
         }) = effect
         else {
@@ -1104,11 +1108,11 @@ mod tests {
 
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::ExileUntilSourceLeaves {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileUntilSourceLeaves {
                     target: TargetAst::Object(filter, Some(_), _),
                     duration: ironsmith_core::ExileUntilDuration::OpponentBecomesMonarch,
                     ..
-                },
+                }),
             ..
         }) = effect
         else {
@@ -1130,10 +1134,10 @@ mod tests {
 
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::Exile {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
                     target: TargetAst::WithCount(target, count),
                     ..
-                },
+                }),
             ..
         }) = effect
         else {
@@ -1157,7 +1161,7 @@ mod tests {
         .expect("collection should lex");
         let effect = parse_exile(&tokens, None).expect("collection should parse");
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ExileAll { filter, .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { filter, .. }),
             ..
         }) = effect
         else {

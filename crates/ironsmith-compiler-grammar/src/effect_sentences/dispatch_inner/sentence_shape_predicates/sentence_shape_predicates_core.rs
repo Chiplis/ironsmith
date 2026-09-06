@@ -1,3 +1,19 @@
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::ControlActionAst;
+use crate::cards::builders::TokenActionAst;
+use crate::cards::builders::StackActionAst;
+use crate::cards::builders::StatChangeActionAst;
+use crate::cards::builders::DamageActionAst;
+use crate::cards::builders::PermanentStateActionAst;
+use crate::cards::builders::ZoneMoveActionAst;
+use crate::cards::builders::KeywordActionAst;
+use crate::cards::builders::CharacteristicActionAst;
+use crate::cards::builders::ExchangeActionAst;
+use crate::cards::builders::LibraryActionAst;
+use crate::cards::builders::GrantActionAst;
+use crate::cards::builders::DamagePreventionActionAst;
+use crate::cards::builders::CounterActionAst;
 use super::*;
 
 #[inline(never)]
@@ -26,11 +42,11 @@ fn parse_complete_conditional_gain_ability(
     else {
         return Ok(None);
     };
-    Ok(Some(vec![EffectAst::Conditional {
+    Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
         predicate,
         if_true: effects,
         if_false: Vec::new(),
-    }]))
+    })]))
 }
 
 /// The sentence rule. Memoized per card: every distinct span is parsed once,
@@ -184,7 +200,7 @@ pub(super) fn parse_effect_sentence_lexed_inner_unstacked(
 fn search_followup_shuffle_player(effect: &EffectAst) -> Option<PlayerAst> {
     match effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::SearchLibrary { player, .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary { player, .. }),
             ..
         }) => Some(*player),
         _ => None,
@@ -197,7 +213,7 @@ fn normalize_search_followup_shuffles(effects: &mut [EffectAst]) {
             effects.get(idx),
             Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 subject,
-                action: SubjectVerbActionAst::ShuffleLibrary,
+                action: SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
             }))
                 if matches!(subject.player, PlayerAst::You | PlayerAst::Implicit)
         );
@@ -214,7 +230,7 @@ fn normalize_search_followup_shuffles(effects: &mut [EffectAst]) {
         if !matches!(search_player, PlayerAst::You | PlayerAst::Implicit)
             && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 subject,
-                action: SubjectVerbActionAst::ShuffleLibrary,
+                action: SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
             }) = &mut effects[idx]
         {
             subject.player = search_player;
@@ -244,26 +260,26 @@ pub(super) fn parse_effect_sentence_with_where_x_lexed(
         let (filter, count, count_value) = match effect {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::SearchLibrary {
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
                         filter,
                         count,
                         count_value,
                         ..
-                    },
+                    }),
                 ..
             }) => (filter, count, count_value),
-            EffectAst::ChooseObjects {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                 filter,
                 count,
                 count_value,
                 ..
-            }
-            | EffectAst::ChooseObjectsAcrossZones {
+            })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
                 filter,
                 count,
                 count_value,
                 ..
-            } => (filter, count, count_value),
+            }) => (filter, count, count_value),
             _ => return,
         };
 
@@ -348,62 +364,62 @@ pub(super) fn parse_effect_sentence_with_where_x_lexed(
             return;
         };
         match action {
-            SubjectVerbActionAst::Explore { target }
-            | SubjectVerbActionAst::Endure { target, .. }
-            | SubjectVerbActionAst::Connive { target, .. }
-            | SubjectVerbActionAst::ExchangeTextBoxes { target }
-            | SubjectVerbActionAst::Attach { target, .. }
-            | SubjectVerbActionAst::Unattach { object: target }
-            | SubjectVerbActionAst::ReturnToHand { target, .. }
-            | SubjectVerbActionAst::MayMoveToZone { target, .. }
-            | SubjectVerbActionAst::ReturnToBattlefield { target, .. }
-            | SubjectVerbActionAst::ExileUntilSourceLeaves { target, .. }
-            | SubjectVerbActionAst::MoveToZone { target, .. }
-            | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target }
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure { target, .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Connive { target, .. })
+            | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeTextBoxes { target })
+            | SubjectVerbActionAst::Control(ControlActionAst::Attach { target, .. })
+            | SubjectVerbActionAst::Control(ControlActionAst::Unattach { object: target })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MayMoveToZone { target, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { target, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileUntilSourceLeaves { target, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { target, .. })
+            | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice { target })
             | SubjectVerbActionAst::TargetOnly { target, .. }
-            | SubjectVerbActionAst::Pump { target, .. }
-            | SubjectVerbActionAst::SetBasePowerToughness { target, .. }
-            | SubjectVerbActionAst::BecomeBasePtCreature { target, .. }
-            | SubjectVerbActionAst::SetBasePower { target, .. }
-            | SubjectVerbActionAst::PumpForEach { target, .. }
-            | SubjectVerbActionAst::PumpByLastEffect { target, .. }
-            | SubjectVerbActionAst::AddCardTypes { target, .. }
-            | SubjectVerbActionAst::SetCardTypes { target, .. }
-            | SubjectVerbActionAst::RemoveCardTypes { target, .. }
-            | SubjectVerbActionAst::AddSubtypes { target, .. }
-            | SubjectVerbActionAst::RemoveSubtypes { target, .. }
-            | SubjectVerbActionAst::AddColors { target, .. }
-            | SubjectVerbActionAst::AddAllSubtypesOfFamily { target, .. }
-            | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { target, .. }
-            | SubjectVerbActionAst::BecomeBasicLandType { target, .. }
-            | SubjectVerbActionAst::SetColors { target, .. }
-            | SubjectVerbActionAst::MakeColorless { target, .. }
-            | SubjectVerbActionAst::BecomeBasicLandTypeChoice { target, .. }
-            | SubjectVerbActionAst::BecomeCreatureTypeChoice { target, .. }
-            | SubjectVerbActionAst::BecomeColorChoice { target, .. }
-            | SubjectVerbActionAst::GrantAbilitiesToTarget { target, .. }
-            | SubjectVerbActionAst::GrantToTarget { target, .. }
-            | SubjectVerbActionAst::RemoveAbilitiesFromTarget { target, .. }
-            | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { target, .. }
-            | SubjectVerbActionAst::RedirectNextTimeDamageToSource { target, .. }
-            | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { target, .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach { target, .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpByLastEffect { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddCardTypes { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCardTypes { target, .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveCardTypes { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes { target, .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSubtypes { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddColors { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddAllSubtypesOfFamily { target, .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAllSubtypesOfFamily { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasicLandType { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetColors { target, .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::MakeColorless { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasicLandTypeChoice { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCreatureTypeChoice { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { target, .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceToTarget { target, .. })
+            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectNextTimeDamageToSource { target, .. })
+            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
                 source: target,
-            }
-            | SubjectVerbActionAst::RetargetStackObject { target, .. }
-            | SubjectVerbActionAst::DealDamage { target, .. }
-            | SubjectVerbActionAst::DealDistributedDamage { target, .. }
-            | SubjectVerbActionAst::Tap { target }
-            | SubjectVerbActionAst::Untap { target } => {
+            })
+            | SubjectVerbActionAst::Stack(StackActionAst::RetargetStackObject { target, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { target, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { target, .. })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap { target })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Untap { target }) => {
                 bind_dynamic_target_count(target, replacement)
             }
-            SubjectVerbActionAst::Destroy { target, .. } => {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { target, .. }) => {
                 bind_dynamic_target_count(target, replacement)
             }
-            SubjectVerbActionAst::PutCounters {
+            SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
                 target,
                 target_count,
                 ..
-            } => {
+            }) => {
                 bind_dynamic_target_count(target, replacement);
                 if let Some(count) = target_count
                     .as_ref()
@@ -416,11 +432,11 @@ pub(super) fn parse_effect_sentence_with_where_x_lexed(
                         TargetAst::WithCountValue(Box::new(inner), count, replacement.clone());
                 }
             }
-            SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget {
+            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectNextDamageFromSourceToTarget {
                 protected_target,
                 destination_target,
                 ..
-            } => {
+            }) => {
                 if let Some(target) = protected_target {
                     bind_dynamic_target_count(target, replacement);
                 }
@@ -428,31 +444,31 @@ pub(super) fn parse_effect_sentence_with_where_x_lexed(
                     bind_dynamic_target_count(target, replacement);
                 }
             }
-            SubjectVerbActionAst::Fight {
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fight {
                 creature1,
                 creature2,
                 ..
-            }
-            | SubjectVerbActionAst::DealDamageEqualToPower {
+            })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
                 source: creature1,
                 target: creature2,
                 ..
-            }
-            | SubjectVerbActionAst::BecomeCopy {
+            })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCopy {
                 target: creature1,
                 source: creature2,
                 ..
-            } => {
+            }) => {
                 bind_dynamic_target_count(creature1, replacement);
                 bind_dynamic_target_count(creature2, replacement);
             }
-            SubjectVerbActionAst::CreateTokenCopyFromSource { source, .. } => {
+            SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { source, .. }) => {
                 bind_dynamic_target_count(source, replacement);
             }
-            SubjectVerbActionAst::CreateTokenWithMods {
+            SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
                 attached_to: Some(target),
                 ..
-            } => bind_dynamic_target_count(target, replacement),
+            }) => bind_dynamic_target_count(target, replacement),
             _ => {}
         }
     }

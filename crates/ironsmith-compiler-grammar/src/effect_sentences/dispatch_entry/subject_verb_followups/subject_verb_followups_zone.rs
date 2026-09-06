@@ -4,7 +4,7 @@ pub(super) fn is_singular_explicit_return_to_battlefield(effect: &EffectAst) -> 
     let EffectAst::SubjectVerb(subject_verb) = effect else {
         return false;
     };
-    let SubjectVerbActionAst::ReturnToBattlefield { target, .. } = &subject_verb.action else {
+    let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { target, .. }) = &subject_verb.action else {
         return false;
     };
     if !target_is_explicitly_chosen(target) {
@@ -22,7 +22,7 @@ pub(super) fn is_explicit_return_to_battlefield(effect: &EffectAst) -> bool {
     matches!(
         effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ReturnToBattlefield { target, .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { target, .. }),
             ..
         }) if target_is_explicitly_chosen(target)
     )
@@ -91,7 +91,7 @@ pub(super) fn post_rule_returned_permanent_enters(
     }
 
     let effects = std::mem::take(sentence_effects);
-    sentence_effects.push(EffectAst::DelayedTriggerForDuration {
+    sentence_effects.push(EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
         trigger: crate::cards::builders::TriggerSpec::ThisEntersBattlefieldWithSurface {
             surface: crate::target::SourceReferenceSurface::ThisPermanentType(
                 "that permanent".to_string(),
@@ -104,6 +104,6 @@ pub(super) fn post_rule_returned_permanent_enters(
         duration: Until::Forever,
         either_of_watched_objects: false,
         while_any_tagged_object_in_zone: None,
-    });
+    }));
     Ok(Some(PostParseFollowupResult::Annotated))
 }

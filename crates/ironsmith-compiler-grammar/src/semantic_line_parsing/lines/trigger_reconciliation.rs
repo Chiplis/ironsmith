@@ -1,3 +1,5 @@
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::DelayedEffectAst;
 use super::*;
 
 pub fn dynamic_zone_change_group_token_creation_from_authored_trigger(
@@ -31,10 +33,10 @@ pub fn dynamic_zone_change_group_token_creation_from_authored_trigger(
         let EffectAst::SubjectVerb(subject_verb) = &effect else {
             continue;
         };
-        let SubjectVerbActionAst::CreateTokenWithMods {
+        let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
             dynamic_power_toughness: Some((power, toughness)),
             ..
-        } = &subject_verb.action
+        }) = &subject_verb.action
         else {
             continue;
         };
@@ -70,7 +72,7 @@ pub(super) fn dynamic_static_ability_count_token_creation_from_authored_trigger(
         let EffectAst::SubjectVerb(subject_verb) = effect else {
             continue;
         };
-        let SubjectVerbActionAst::CreateTokenWithMods { count, .. } = &subject_verb.action else {
+        let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { count, .. }) = &subject_verb.action else {
             continue;
         };
         if matches!(count.unhinted(), Value::StaticAbilitiesAmong { .. }) {
@@ -274,18 +276,18 @@ pub fn end_of_combat_destroy_then_next_end_step_counter_program(
         None,
         false,
     );
-    Some(vec![EffectAst::DelayedUntilEndOfCombat {
+    Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat {
         effects: vec![
             destroy_other,
-            EffectAst::IfResult {
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                 predicate: crate::cards::builders::IfResultPredicate::PriorEffectResult(destroyed),
-                effects: vec![EffectAst::DelayedUntilNextEndStep {
+                effects: vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
                     player: PlayerFilter::Any,
                     effects: vec![counter_first],
-                }],
-            },
+                })],
+            }),
         ],
-    }])
+    })])
 }
 
 pub(super) fn recognize_authored_correlated_trigger_programs(

@@ -10,22 +10,22 @@ fn optional_self_exile_collects_a_real_aggregate_evidence_set() {
     let effects =
         parse_effect_sentences_lexed(&tokens).expect("collect-evidence procedure should parse");
     let [
-        EffectAst::May { effects: optional },
-        EffectAst::IfResult {
+        EffectAst::Permissions(PermissionEffectAst::May { effects: optional }),
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             effects: returned, ..
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected one optional procedure and linked return: {effects:#?}");
     };
     let [
-        EffectAst::ChooseObjectsWithAggregateConstraint {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
             filter,
             count,
             tag: evidence_tag,
             constraint,
             ..
-        },
+        }),
         EffectAst::TagAffected {
             tag: source_exiled_tag,
             ..
@@ -51,11 +51,11 @@ fn optional_self_exile_collects_a_real_aggregate_evidence_set() {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::ReturnToBattlefield {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
                     target,
                     tapped: true,
                     ..
-                },
+                }),
             ..
         }),
     ] = returned.as_slice()

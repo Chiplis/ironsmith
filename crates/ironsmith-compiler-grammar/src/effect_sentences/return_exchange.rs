@@ -1,3 +1,4 @@
+use crate::cards::builders::DelayedEffectAst;
 use super::*;
 use crate::cards::builders::SubjectVerbActionAst;
 use crate::effect_sentences::SubjectVerbPrimitiveClause;
@@ -80,17 +81,17 @@ pub fn wrap_return_with_delayed_timing(
     };
 
     match timing {
-        DelayedReturnTimingAst::NextEndStep(player) => EffectAst::DelayedUntilNextEndStep {
+        DelayedReturnTimingAst::NextEndStep(player) => EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
             player,
             effects: vec![effect],
-        },
-        DelayedReturnTimingAst::NextUpkeep(player) => EffectAst::DelayedUntilNextUpkeep {
+        }),
+        DelayedReturnTimingAst::NextUpkeep(player) => EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep {
             player,
             effects: vec![effect],
-        },
-        DelayedReturnTimingAst::EndOfCombat => EffectAst::DelayedUntilEndOfCombat {
+        }),
+        DelayedReturnTimingAst::EndOfCombat => EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat {
             effects: vec![effect],
-        },
+        }),
     }
 }
 

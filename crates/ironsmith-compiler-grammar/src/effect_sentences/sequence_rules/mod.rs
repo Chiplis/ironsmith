@@ -62,6 +62,12 @@ pub fn try_parse_document_program(
 
 #[cfg(test)]
 mod tests {
+    use crate::cards::builders::PermissionEffectAst;
+    use crate::cards::builders::ConditionalEffectAst;
+    use crate::cards::builders::ObjectChoiceEffectAst;
+    use crate::cards::builders::ForEachEffectAst;
+    use crate::cards::builders::RevealLookActionAst;
+    use crate::cards::builders::LibraryActionAst;
     use super::*;
     use crate::cards::builders::{IfResultPredicate, SubjectVerbActionAst, SubjectVerbEffectAst};
     use crate::{lex_line, split_lexed_sentences};
@@ -103,17 +109,17 @@ mod tests {
             );
         };
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::LookAtTopCards { tag: looked, .. },
+            action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { tag: looked, .. }),
             ..
         }) = look
         else {
             panic!("expected looked-card producer: {look:#?}");
         };
-        let EffectAst::ChooseTaggedObjectsInZone {
+        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter,
             tag: chosen,
             ..
-        } = choose
+        }) = choose
         else {
             panic!("expected looked-card selection: {choose:#?}");
         };
@@ -121,22 +127,22 @@ mod tests {
             filter
                 .tagged_constraints
                 .iter()
-                .any(|constraint| constraint.tag == *looked),
+                .any(|constraint| constraint.tag == **looked),
             "selection must consume the looked-card pool: {filter:#?}"
         );
         assert!(matches!(
             move_each,
-            EffectAst::ForEachTagged { tag, .. } if tag == chosen
+            EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, .. }) if tag == chosen
         ));
         assert!(matches!(
             remainder,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                    SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
                         tag,
                         keep_tagged: Some(keep_tagged),
                         ..
-                    },
+                    }),
                 ..
             }) if tag == looked && keep_tagged == chosen
         ));
@@ -164,10 +170,10 @@ mod tests {
         };
 
         let [
-            EffectAst::IfResult {
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                 predicate: IfResultPredicate::Did,
                 effects,
-            },
+            }),
         ] = matched.effects.as_slice()
         else {
             panic!(
@@ -179,25 +185,25 @@ mod tests {
             panic!("expected look/choose/move/remainder effects: {effects:#?}");
         };
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::LookAtTopCards { tag: looked, .. },
+            action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { tag: looked, .. }),
             ..
         }) = look
         else {
             panic!("expected a looked-card producer: {look:#?}");
         };
-        let EffectAst::ChooseTaggedObjectsInZone { tag: chosen, .. } = choose else {
+        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { tag: chosen, .. }) = choose else {
             panic!("expected a typed looked-card choice: {choose:#?}");
         };
-        assert!(matches!(move_each, EffectAst::ForEachTagged { tag, .. } if tag == chosen));
+        assert!(matches!(move_each, EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, .. }) if tag == chosen));
         assert!(matches!(
             remainder,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                action: SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
                     tag,
                     keep_tagged: Some(keep_tagged),
                     order: crate::cards::builders::LibraryBottomOrderAst::Random,
                     ..
-                },
+                }),
                 ..
             }) if tag == looked && keep_tagged == chosen
         ));
@@ -222,11 +228,11 @@ mod tests {
         assert_eq!(matched.consumed_sentences, 2);
 
         let [
-            EffectAst::RepeatProcess {
+            EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
                 effects,
                 continue_effect_index,
                 continue_predicate: IfResultPredicate::Did,
-            },
+            }),
         ] = matched.effects.as_slice()
         else {
             panic!(
@@ -247,9 +253,9 @@ mod tests {
         };
         assert!(matches!(
             effects.as_slice(),
-            [EffectAst::ForEachPlayer {
+            [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
                 effects: per_player,
-            }] if matches!(per_player.as_slice(), [EffectAst::May { .. }])
+            })] if matches!(per_player.as_slice(), [EffectAst::Permissions(PermissionEffectAst::May { .. })])
         ));
     }
 }

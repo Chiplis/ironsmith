@@ -1,10 +1,11 @@
+use crate::cards::builders::ForEachEffectAst;
 use super::super::lexer::{
     OwnedLexToken, TokenKind, parser_token_word_refs, token_word_refs, trim_lexed_commas,
 };
 use super::lex_chain_helpers::find_verb_lexed;
 use crate::cards::builders::{
     EffectAst, PlayerAst, ReturnControllerAst, SubjectVerbActionAst, SubjectVerbEffectAst, TagKey,
-    TargetAst, TextSpan,
+    TargetAst, TextSpan, ZoneMoveActionAst, ConditionalEffectAst,
 };
 use crate::effect::Value;
 use crate::target::ObjectFilter;
@@ -48,7 +49,7 @@ fn with_each_player_subject(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
 }
 
 fn single_each_player_effect(mut effects: Vec<EffectAst>) -> Option<EffectAst> {
-    let [EffectAst::ForEachPlayer { effects: nested }] = effects.as_mut_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects: nested })] = effects.as_mut_slice() else {
         return None;
     };
     (nested.len() == 1).then(|| nested.remove(0))
@@ -82,7 +83,7 @@ pub(super) fn parse_each_player_exile_sacrifice_return_exiled(
     if !matches!(
         first,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Exile { .. } | SubjectVerbActionAst::ExileAll { .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. }) | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { .. }),
             ..
         })
     ) {
@@ -98,8 +99,8 @@ pub(super) fn parse_each_player_exile_sacrifice_return_exiled(
     if !matches!(
         second,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Sacrifice { .. }
-                | SubjectVerbActionAst::SacrificeAll { .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { .. })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { .. }),
             ..
         })
     ) {
@@ -129,16 +130,16 @@ pub(super) fn parse_each_player_exile_sacrifice_return_exiled(
         ReturnControllerAst::Preserve,
     );
 
-    Ok(Some(vec![EffectAst::ForEachPlayer {
+    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
         effects: vec![
             EffectAst::TagAffected {
                 effect: Box::new(first),
-                tag: exiled_tag,
+                tag: crate::tag::TagRef::of(exiled_tag),
             },
             second,
             put_exiled,
         ],
-    }]))
+    })]))
 }
 
 /// Parse a coordinated instruction in which the controller and defending
@@ -172,7 +173,7 @@ pub(super) fn parse_controller_and_defending_player_discard_or_sacrifice(
     }
 
     fn player_choice(player: PlayerAst) -> EffectAst {
-        EffectAst::UnlessAction {
+        EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
             effects: vec![EffectAst::subject_verb_discard(
                 player,
                 Value::Fixed(1),
@@ -188,7 +189,7 @@ pub(super) fn parse_controller_and_defending_player_discard_or_sacrifice(
                 None,
             )],
             player,
-        }
+        })
     }
 
     let moved_tag = crate::tag::CompilerReferenceTag::JointDiscardOrSacrifice.bind();
@@ -306,6 +307,11 @@ fn explicit_player_action_after_boundary(
 
 #[cfg(test)]
 mod tests {
+    use crate::cards::builders::ForEachEffectAst;
+    use crate::cards::builders::LifeResourceActionAst;
+    use crate::cards::builders::ZoneMoveActionAst;
+    use crate::cards::builders::KeywordActionAst;
+    use crate::cards::builders::LibraryActionAst;
     use crate::cards::builders::{
         EffectAst, SubjectVerbActionAst, SubjectVerbEffectAst, TargetAst,
     };
@@ -411,13 +417,13 @@ mod tests {
             matches!(
                 coordinated.as_slice(),
                 [
-                    EffectAst::ForEachOpponent { effects: opponent_effects },
+                    EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects: opponent_effects }),
                     EffectAst::SubjectVerb(SubjectVerbEffectAst {
                         subject: crate::cards::builders::SubjectVerbSubjectAst {
                             player: crate::cards::builders::PlayerAst::You,
                             ..
                         },
-                        action: SubjectVerbActionAst::Scry { .. },
+                        action: SubjectVerbActionAst::KeywordActions(KeywordActionAst::Scry { .. }),
                     })
                 ] if opponent_effects.len() == 1
             ),
@@ -472,22 +478,22 @@ mod tests {
             matches!(
                 effects.as_slice(),
                 [
-                    EffectAst::ForEachPlayer { effects: mill },
-                    EffectAst::ForEachOpponent { effects: discard },
+                    EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects: mill }),
+                    EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects: discard }),
                     EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                        action: SubjectVerbActionAst::Draw { .. },
+                        action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { .. }),
                         ..
                     })
                 ] if matches!(
                     mill.as_slice(),
                     [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                        action: SubjectVerbActionAst::Mill { .. },
+                        action: SubjectVerbActionAst::Library(LibraryActionAst::Mill { .. }),
                         ..
                     })]
                 ) && matches!(
                     discard.as_slice(),
                     [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                        action: SubjectVerbActionAst::Discard { .. },
+                        action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { .. }),
                         ..
                     })]
                 )
@@ -513,14 +519,14 @@ mod tests {
 
     fn assert_player_sequence(effects: &[&EffectAst]) {
         assert!(
-            matches!(effects.first(), Some(EffectAst::ForEachOpponent { .. })),
+            matches!(effects.first(), Some(EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { .. }))),
             "{effects:#?}"
         );
         assert!(
             matches!(
                 effects.get(1),
                 Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::Draw { .. },
+                    action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { .. }),
                     ..
                 }))
             ),
@@ -530,7 +536,7 @@ mod tests {
             matches!(
                 effects.get(2),
                 Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::GainLife { .. },
+                    action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { .. }),
                     ..
                 }))
             ),
@@ -553,7 +559,7 @@ mod tests {
         );
         let effects =
             parse_effect_sentence_lexed(&tokens).expect("result-set sequence should parse");
-        let [EffectAst::ForEachPlayer { effects: nested }] = effects.as_slice() else {
+        let [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects: nested })] = effects.as_slice() else {
             panic!("expected one each-player sequence, got {effects:#?}");
         };
         let nested = match nested.as_slice() {
@@ -564,11 +570,11 @@ mod tests {
             EffectAst::TagAffected { tag, .. },
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::Sacrifice { .. } | SubjectVerbActionAst::SacrificeAll { .. },
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { .. }) | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { .. }),
                 ..
             }),
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::PutOntoBattlefield { target, .. },
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PutOntoBattlefield { target, .. }),
                 ..
             }),
         ] = nested
@@ -579,7 +585,7 @@ mod tests {
             panic!("expected an untargeted tagged-exile filter");
         };
         assert!(filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag == *tag
+            constraint.tag == **tag
                 && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
         }));
     }

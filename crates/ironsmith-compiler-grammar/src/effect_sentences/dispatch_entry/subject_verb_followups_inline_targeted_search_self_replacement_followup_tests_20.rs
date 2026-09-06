@@ -7,12 +7,12 @@ fn search_subjects(
     for effect in effects {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::SearchLibrary {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
                     filter,
                     chooser,
                     player,
                     ..
-                },
+                }),
             ..
         }) = effect
         {

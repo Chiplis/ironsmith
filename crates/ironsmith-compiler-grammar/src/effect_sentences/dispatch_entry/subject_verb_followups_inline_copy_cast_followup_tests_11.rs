@@ -16,7 +16,7 @@ fn delayed_copy_of_prior_exiled_card_keeps_cast_inside_trigger() {
         3,
         "cast follow-up escaped delayed trigger: {parsed:#?}"
     );
-    let EffectAst::DelayedTriggerThisTurn { effects, .. } = &parsed[2] else {
+    let EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn { effects, .. }) = &parsed[2] else {
         panic!("expected delayed combat-damage trigger: {parsed:#?}");
     };
     assert!(
@@ -59,11 +59,11 @@ fn immediate_exiled_card_cast_keeps_its_may_scope() {
     assert!(
         matches!(
             parsed.as_slice(),
-            [EffectAst::May { effects }]
+            [EffectAst::Permissions(PermissionEffectAst::May { effects })]
                 if matches!(
                     effects.as_slice(),
                     [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                        action: SubjectVerbActionAst::CastTagged { .. },
+                        action: SubjectVerbActionAst::Stack(StackActionAst::CastTagged { .. }),
                         ..
                     })]
                 )

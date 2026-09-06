@@ -1,6 +1,8 @@
 //! The pair kinds that are not fixed shapes: each reads its opening statement
 //! and the sentence completing it into a [`Pair`].
 
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::DelayedEffectAst;
 use super::*;
 
 pub(super) fn open_copy_for_each_target(
@@ -77,17 +79,17 @@ pub(super) fn open_delayed_upkeep_payment(
     };
     if let Some(shape) =
         sequence_grammar::parse_delayed_upkeep_payment_shape(sentence.lowered(), next.lowered()) {
-        return Ok(Some(Pair::DelayedUpkeepPayment(EffectAst::DelayedUntilNextUpkeep {
+        return Ok(Some(Pair::DelayedUpkeepPayment(EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep {
             player: crate::cards::builders::PlayerAst::You,
-            effects: vec![EffectAst::UnlessPays {
+            effects: vec![EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
                 effects: vec![EffectAst::subject_verb_lose_game(
                     crate::cards::builders::PlayerAst::You,
                 )],
                 player: crate::cards::builders::PlayerAst::You,
                 cost: ironsmith_core::TotalCost::mana(shape.mana),
                 before_delayed_step: false,
-            }],
-        })));
+            })],
+        }))));
     }
     Ok(None)
 }
@@ -170,7 +172,7 @@ pub(super) fn open_copy_next_spell_retarget(
             &crate::lexer::token_word_refs(next.lowered()),
             &["you", "may", "choose", "new", "targets", "for", "the", "copy"],
         ) {
-        return Ok(Some(Pair::CopyNextSpellRetarget(EffectAst::DelayedTriggerThisTurn {
+        return Ok(Some(Pair::CopyNextSpellRetarget(EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
             trigger: crate::cards::builders::TriggerSpec::SpellCast {
                 filter: None,
                 mana_source_filter: None,
@@ -192,7 +194,7 @@ pub(super) fn open_copy_next_spell_retarget(
             one_shot: true,
             until_end_of_combat: false,
             attach_to_previous_ability: false,
-        })));
+        }))));
     }
     Ok(None)
 }

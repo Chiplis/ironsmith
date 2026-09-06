@@ -1,3 +1,4 @@
+use crate::cards::builders::VoteEffectAst;
 use super::*;
 
 pub(super) fn parse_controller_sacrifice_consult_bundle(
@@ -19,7 +20,7 @@ pub(super) fn parse_controller_sacrifice_consult_bundle(
         let sacrificed_tag = helper_tag_for_tokens(tokens, "sacrificed");
         for constraint in &mut match_filter.tagged_constraints {
             if constraint.relation == TaggedOpbjectRelation::SharesCardType {
-                constraint.tag = sacrificed_tag.clone();
+                constraint.tag = sacrificed_tag.clone().into();
             }
         }
         match_filter.tagged_constraints.dedup();
@@ -43,18 +44,18 @@ pub(super) fn parse_controller_sacrifice_consult_bundle(
             EffectAst::subject_verb(
                 SubjectVerbRoleAst::LibraryOwner,
                 PlayerAst::ItsController,
-                SubjectVerbActionAst::ShuffleLibrary,
+                SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
             ),
         ];
         return Some(vec![
             EffectAst::TagAffected {
                 effect: Box::new(sacrifice),
-                tag: sacrificed_tag,
+                tag: crate::tag::TagRef::of(sacrificed_tag),
             },
-            EffectAst::IfResult {
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                 predicate: IfResultPredicate::Did,
                 effects: followups,
-            },
+            }),
         ]);
     }
 
@@ -79,7 +80,7 @@ pub(super) fn parse_controller_sacrifice_consult_bundle(
         EffectAst::subject_verb(
             SubjectVerbRoleAst::LibraryOwner,
             PlayerAst::ItsController,
-            SubjectVerbActionAst::ShuffleLibrary,
+            SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
         ),
     ])
 }
@@ -90,13 +91,13 @@ pub(super) fn parse_energy_pay_any_destroy_bundle(
     let shape = bundle_grammar::parse_energy_pay_any_destroy_tokens(tokens)?;
     Some(vec![
         EffectAst::subject_verb_energy_counters(PlayerAst::You, shape.energy),
-        EffectAst::MayByPlayer {
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
             player: PlayerAst::You,
             effects: vec![EffectAst::subject_verb_pay_any_energy(
                 PlayerAst::You,
                 shape.minimum_payment,
             )],
-        },
+        }),
         EffectAst::subject_verb_destroy_all(shape.filter),
     ])
 }
@@ -107,7 +108,7 @@ pub(super) fn parse_bid_life_for_control_bundle(
     let shape = bundle_grammar::parse_life_bid_shape(tokens)?;
     let target = crate::grammar::primitives::probe_shape(parse_target_phrase(shape.target))?;
 
-    Some(vec![EffectAst::BidLife {
+    Some(vec![EffectAst::Votes(VoteEffectAst::BidLife {
         target: target.clone(),
         starting_bid: 0,
         winner_effects: vec![EffectAst::subject_verb_gain_control(
@@ -115,5 +116,5 @@ pub(super) fn parse_bid_life_for_control_bundle(
             target,
             crate::effect::Until::Forever,
         )],
-    }])
+    })])
 }

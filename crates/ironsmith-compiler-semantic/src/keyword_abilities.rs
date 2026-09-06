@@ -8,7 +8,7 @@ use ironsmith_core::TotalCost;
 
 use crate::cards::builders::{
     EffectAst, PlayerAst, PredicateAst, SubjectVerbActionAst, SubjectVerbRoleAst, TargetAst,
-    TriggerSpec,
+    TriggerSpec, KeywordActionAst,
 };
 use crate::effect::Value;
 use crate::filter::PlayerFilter;
@@ -37,7 +37,7 @@ pub fn cumulative_upkeep_granted_ability(total_cost: TotalCost<CompilerCost>) ->
                 EffectAst::subject_verb(
                     SubjectVerbRoleAst::Actor,
                     PlayerAst::You,
-                    SubjectVerbActionAst::CumulativeUpkeep { cost: total_cost },
+                    SubjectVerbActionAst::KeywordActions(KeywordActionAst::CumulativeUpkeep { cost: total_cost }),
                 ),
             ]),
             choices: vec![],

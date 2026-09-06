@@ -1,3 +1,8 @@
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::LifeResourceActionAst;
+use crate::cards::builders::ZoneMoveActionAst;
+use crate::cards::builders::LibraryActionAst;
 fn subject_verb_player_resource_effect(
     role: SubjectVerbRoleAst,
     player: PlayerAst,
@@ -137,8 +142,8 @@ pub fn parse_effect_with_verb(
                 }
                 if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action:
-                        SubjectVerbActionAst::MoveToZone { target, .. }
-                        | SubjectVerbActionAst::ReturnToHand { target, .. },
+                        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { target, .. })
+                        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. }),
                     ..
                 }) = &mut effect
                 {
@@ -150,16 +155,16 @@ pub fn parse_effect_with_verb(
                                 tokens,
                                 "chosen",
                             );
-                        *target = TargetAst::Tagged(object_tag.clone(), None);
+                        *target = TargetAst::Tagged(crate::tag::TagRef::of(object_tag.clone()), None);
                         return Ok(EffectAst::Sequence {
                             effects: vec![
-                                EffectAst::ChooseObjects {
+                                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                                     filter,
                                     count,
                                     count_value,
                                     player: PlayerAst::Opponent,
-                                    tag: object_tag,
-                                },
+                                    tag: crate::tag::TagRef::of(object_tag),
+                                }),
                                 effect,
                             ],
                         });
@@ -280,7 +285,7 @@ fn parse_note(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
         return Ok(subject_verb_player_resource_effect(
             SubjectVerbRoleAst::Actor,
             PlayerAst::You,
-            SubjectVerbActionAst::NoteLifeTotal,
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::NoteLifeTotal),
         ));
     }
     Err(CardTextError::ParseError(format!(
@@ -371,12 +376,12 @@ pub fn parse_look(
                 None,
             ),
         ),
-        ResourceLookShape::EachPlayerHand => Ok(EffectAst::ForEachPlayer {
+        ResourceLookShape::EachPlayerHand => Ok(EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
             effects: vec![EffectAst::subject_verb_look_at_hand(TargetAst::Player(
                 PlayerFilter::IteratedPlayer,
                 None,
             ))],
-        }),
+        })),
         ResourceLookShape::Hand {
             player,
             surface_tokens,
@@ -446,13 +451,13 @@ pub fn parse_look(
         ResourceLookShape::TopCards { player, count } => Ok(
             EffectAst::subject_verb_look_at_top_cards(player, count, crate::tag::CompilerReferenceTag::It.bind()),
         ),
-        ResourceLookShape::EachPlayerTopCards { count } => Ok(EffectAst::ForEachPlayer {
+        ResourceLookShape::EachPlayerTopCards { count } => Ok(EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
             effects: vec![EffectAst::subject_verb_look_at_top_cards(
                 PlayerAst::That,
                 count,
                 crate::tag::CompilerReferenceTag::It.bind(),
             )],
-        }),
+        })),
     }
 }
 
@@ -509,7 +514,7 @@ pub fn parse_shuffle(
         return Ok(subject_verb_player_resource_effect(
             SubjectVerbRoleAst::LibraryOwner,
             player,
-            SubjectVerbActionAst::ShuffleLibrary,
+            SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
         ));
     }
 
@@ -524,7 +529,7 @@ pub fn parse_shuffle(
         ResourceShuffleShape::TaggedIntoLibrary {
             player: destination_player,
             to_bottom,
-        } => Ok(EffectAst::ForEachTagged {
+        } => Ok(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
             tag: crate::tag::CompilerReferenceTag::It.bind(),
             effects: vec![
                 EffectAst::subject_verb_move_to_zone(
@@ -538,21 +543,21 @@ pub fn parse_shuffle(
                 subject_verb_player_resource_effect(
                     SubjectVerbRoleAst::LibraryOwner,
                     destination_player,
-                    SubjectVerbActionAst::ShuffleLibrary,
+                    SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
                 ),
             ],
-        }),
+        })),
         ResourceShuffleShape::ShuffleLibrary {
             player: destination_player,
         } => Ok(subject_verb_player_resource_effect(
             SubjectVerbRoleAst::LibraryOwner,
             destination_player,
-            SubjectVerbActionAst::ShuffleLibrary,
+            SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
         )),
         ResourceShuffleShape::SimpleLibrary => Ok(subject_verb_player_resource_effect(
             SubjectVerbRoleAst::LibraryOwner,
             player,
-            SubjectVerbActionAst::ShuffleLibrary,
+            SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
         )),
     }
 }
@@ -606,7 +611,7 @@ fn add_chosen_name_constraint_to_target(
     match target {
         TargetAst::Object(filter, _, _) => {
             filter.tagged_constraints.push(TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::ChosenName.bind(),
+                tag: (crate::tag::CompilerReferenceTag::ChosenName.bind()).into(),
                 relation: TaggedOpbjectRelation::SameNameAsTagged,
             });
             filter.set_chosen_name_source_surface(Some(chosen_name_source));
@@ -684,10 +689,10 @@ mod counter_qualified_zone_move_tests {
         assert!(matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::MoveToZone {
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                     zone: Zone::Hand,
                     ..
-                },
+                }),
                 ..
             })
         ));

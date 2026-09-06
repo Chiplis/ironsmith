@@ -1,13 +1,21 @@
+use crate::cards::builders::PlayerPredicateAst;
+use crate::cards::builders::PermissionEffectAst;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::VoteEffectAst;
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::TokenActionAst;
+use crate::cards::builders::RandomActionAst;
 use super::*;
 
 fn tag_last_discard_in_effects(effects: &mut [EffectAst], tag: &TagKey) -> bool {
     for effect in effects.iter_mut().rev() {
         if let EffectAst::SubjectVerb(subject_verb) = effect
-            && let SubjectVerbActionAst::Discard {
+            && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard {
                 tag: discard_tag, ..
-            } = &mut subject_verb.action
+            }) = &mut subject_verb.action
         {
-            *discard_tag = Some(tag.clone());
+            *discard_tag = Some(crate::tag::TagRef::of(tag.clone()));
             return true;
         }
     }
@@ -19,12 +27,12 @@ fn bind_explicit_tag_to_player_tagged_predicate(
     tag: &TagKey,
 ) -> PredicateAst {
     let mut bound = predicate.clone();
-    if let PredicateAst::PlayerTaggedObjectMatches {
+    if let PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches {
         tag: predicate_tag, ..
-    } = &mut bound
+    }) = &mut bound
         && predicate_tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     {
-        *predicate_tag = tag.clone();
+        *predicate_tag = crate::tag::TagRef::of(tag.clone());
     }
     bound
 }
@@ -34,17 +42,17 @@ pub fn compile_if_do_with_opponent_doesnt(
     second: &EffectAst,
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
-    let EffectAst::ForEachOpponentDoesNot {
+    let EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDoesNot {
         effects: second_effects,
         predicate,
-    } = second
+    }) = second
     else {
         return Ok(None);
     };
 
-    if let EffectAst::ForEachOpponent {
+    if let EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
         effects: opponent_effects,
-    } = first
+    }) = first
     {
         if let Some(predicate) = predicate {
             let explicit_tag = ctx.next_tag("discarded");
@@ -54,20 +62,20 @@ pub fn compile_if_do_with_opponent_doesnt(
                     "missing discard antecedent for tagged opponent follow-up".to_string(),
                 ));
             }
-            let first_ast = EffectAst::ForEachOpponent {
+            let first_ast = EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
                 effects: tagged_opponent_effects,
-            };
+            });
             let (mut first_effects, mut choices) = compile_effect(&first_ast, ctx)?;
-            let followup = EffectAst::ForEachOpponent {
-                effects: vec![EffectAst::Conditional {
+            let followup = EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
+                effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                     predicate: bind_explicit_tag_to_player_tagged_predicate(
                         predicate,
                         &explicit_tag,
                     ),
                     if_true: Vec::new(),
                     if_false: second_effects.clone(),
-                }],
-            };
+                })],
+            });
             let (second_compiled, second_choices) = compile_effect(&followup, ctx)?;
             first_effects.extend(second_compiled);
             for choice in second_choices {
@@ -76,20 +84,20 @@ pub fn compile_if_do_with_opponent_doesnt(
             return Ok(Some((first_effects, choices)));
         }
         let mut merged_opponent_effects = opponent_effects.clone();
-        merged_opponent_effects.push(EffectAst::IfResult {
+        merged_opponent_effects.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::DidNot,
             effects: second_effects.clone(),
-        });
+        }));
 
-        let merged = EffectAst::ForEachOpponent {
+        let merged = EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
             effects: merged_opponent_effects,
-        };
+        });
         let (effects, choices) = compile_effect(&merged, ctx)?;
         return Ok(Some((effects, choices)));
     }
-    if let EffectAst::ForEachPlayer {
+    if let EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
         effects: player_effects,
-    } = first
+    }) = first
     {
         if let Some(predicate) = predicate {
             let explicit_tag = ctx.next_tag("discarded");
@@ -99,20 +107,20 @@ pub fn compile_if_do_with_opponent_doesnt(
                     "missing discard antecedent for tagged player follow-up".to_string(),
                 ));
             }
-            let first_ast = EffectAst::ForEachPlayer {
+            let first_ast = EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
                 effects: tagged_player_effects,
-            };
+            });
             let (mut first_effects, mut choices) = compile_effect(&first_ast, ctx)?;
-            let followup = EffectAst::ForEachOpponent {
-                effects: vec![EffectAst::Conditional {
+            let followup = EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
+                effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                     predicate: bind_explicit_tag_to_player_tagged_predicate(
                         predicate,
                         &explicit_tag,
                     ),
                     if_true: Vec::new(),
                     if_false: second_effects.clone(),
-                }],
-            };
+                })],
+            });
             let (second_compiled, second_choices) = compile_effect(&followup, ctx)?;
             first_effects.extend(second_compiled);
             for choice in second_choices {
@@ -120,9 +128,9 @@ pub fn compile_if_do_with_opponent_doesnt(
             }
             return Ok(Some((first_effects, choices)));
         }
-        let first_ast = EffectAst::ForEachPlayer {
+        let first_ast = EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
             effects: player_effects.clone(),
-        };
+        });
         let (mut first_effects, mut choices) = compile_effect(&first_ast, ctx)?;
         let id = if let Some(last) = first_effects.pop() {
             let id = ctx.next_effect_id();
@@ -145,24 +153,24 @@ pub fn compile_if_do_with_opponent_doesnt(
     }
 
     let (condition, first_effects) = match first {
-        EffectAst::IfResult {
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,
             effects,
-        } => (None, effects),
-        EffectAst::ResolvedIfResult {
+        }) => (None, effects),
+        EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult {
             condition,
             predicate: IfResultPredicate::Did,
             effects,
-        } => (Some(*condition), effects),
+        }) => (Some(*condition), effects),
         _ => return Ok(None),
     };
 
     if let Some(predicate) = predicate {
         let explicit_tag = ctx.next_tag("discarded");
         let mut tagged_first_effects = first_effects.clone();
-        let Some(EffectAst::ForEachOpponent {
+        let Some(EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
             effects: tagged_opponent_effects,
-        }) = tagged_first_effects.first_mut()
+        })) = tagged_first_effects.first_mut()
         else {
             return Ok(None);
         };
@@ -172,25 +180,25 @@ pub fn compile_if_do_with_opponent_doesnt(
             ));
         }
         let tagged_first = if let Some(condition) = condition {
-            EffectAst::ResolvedIfResult {
+            EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult {
                 condition,
                 predicate: IfResultPredicate::Did,
                 effects: tagged_first_effects,
-            }
+            })
         } else {
-            EffectAst::IfResult {
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                 predicate: IfResultPredicate::Did,
                 effects: tagged_first_effects,
-            }
+            })
         };
         let (mut first_compiled, mut choices) = compile_effect(&tagged_first, ctx)?;
-        let followup = EffectAst::ForEachOpponent {
-            effects: vec![EffectAst::Conditional {
+        let followup = EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
+            effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: bind_explicit_tag_to_player_tagged_predicate(predicate, &explicit_tag),
                 if_true: Vec::new(),
                 if_false: second_effects.clone(),
-            }],
-        };
+            })],
+        });
         let (second_compiled, second_choices) = compile_effect(&followup, ctx)?;
         first_compiled.extend(second_compiled);
         for choice in second_choices {
@@ -199,33 +207,33 @@ pub fn compile_if_do_with_opponent_doesnt(
         return Ok(Some((first_compiled, choices)));
     }
 
-    let Some(EffectAst::ForEachOpponent {
+    let Some(EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
         effects: opponent_effects,
-    }) = first_effects.first()
+    })) = first_effects.first()
     else {
         return Ok(None);
     };
 
     let mut merged_opponent_effects = opponent_effects.clone();
-    merged_opponent_effects.push(EffectAst::IfResult {
+    merged_opponent_effects.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
         predicate: IfResultPredicate::DidNot,
         effects: second_effects.clone(),
-    });
+    }));
 
-    let merged_effects = vec![EffectAst::ForEachOpponent {
+    let merged_effects = vec![EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
         effects: merged_opponent_effects,
-    }];
+    })];
     let merged = if let Some(condition) = condition {
-        EffectAst::ResolvedIfResult {
+        EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult {
             condition,
             predicate: IfResultPredicate::Did,
             effects: merged_effects,
-        }
+        })
     } else {
-        EffectAst::IfResult {
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,
             effects: merged_effects,
-        }
+        })
     };
 
     let (effects, choices) = compile_effect(&merged, ctx)?;
@@ -237,17 +245,17 @@ pub fn compile_if_do_with_player_doesnt(
     second: &EffectAst,
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
-    let EffectAst::ForEachPlayerDoesNot {
+    let EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDoesNot {
         effects: second_effects,
         predicate,
-    } = second
+    }) = second
     else {
         return Ok(None);
     };
 
-    if let EffectAst::ForEachPlayer {
+    if let EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
         effects: player_effects,
-    } = first
+    }) = first
     {
         if let Some(predicate) = predicate {
             let explicit_tag = ctx.next_tag("discarded");
@@ -257,20 +265,20 @@ pub fn compile_if_do_with_player_doesnt(
                     "missing discard antecedent for tagged player follow-up".to_string(),
                 ));
             }
-            let first_ast = EffectAst::ForEachPlayer {
+            let first_ast = EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
                 effects: tagged_player_effects,
-            };
+            });
             let (mut first_effects, mut choices) = compile_effect(&first_ast, ctx)?;
-            let followup = EffectAst::ForEachPlayer {
-                effects: vec![EffectAst::Conditional {
+            let followup = EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+                effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                     predicate: bind_explicit_tag_to_player_tagged_predicate(
                         predicate,
                         &explicit_tag,
                     ),
                     if_true: Vec::new(),
                     if_false: second_effects.clone(),
-                }],
-            };
+                })],
+            });
             let (second_compiled, second_choices) = compile_effect(&followup, ctx)?;
             first_effects.extend(second_compiled);
             for choice in second_choices {
@@ -279,37 +287,37 @@ pub fn compile_if_do_with_player_doesnt(
             return Ok(Some((first_effects, choices)));
         }
         let mut merged_player_effects = player_effects.clone();
-        merged_player_effects.push(EffectAst::IfResult {
+        merged_player_effects.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::DidNot,
             effects: second_effects.clone(),
-        });
+        }));
 
-        let merged = EffectAst::ForEachPlayer {
+        let merged = EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
             effects: merged_player_effects,
-        };
+        });
         let (effects, choices) = compile_effect(&merged, ctx)?;
         return Ok(Some((effects, choices)));
     }
 
     let (condition, first_effects) = match first {
-        EffectAst::IfResult {
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,
             effects,
-        } => (None, effects),
-        EffectAst::ResolvedIfResult {
+        }) => (None, effects),
+        EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult {
             condition,
             predicate: IfResultPredicate::Did,
             effects,
-        } => (Some(*condition), effects),
+        }) => (Some(*condition), effects),
         _ => return Ok(None),
     };
 
     if let Some(predicate) = predicate {
         let explicit_tag = ctx.next_tag("discarded");
         let mut tagged_first_effects = first_effects.clone();
-        let Some(EffectAst::ForEachPlayer {
+        let Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
             effects: tagged_player_effects,
-        }) = tagged_first_effects.first_mut()
+        })) = tagged_first_effects.first_mut()
         else {
             return Ok(None);
         };
@@ -319,25 +327,25 @@ pub fn compile_if_do_with_player_doesnt(
             ));
         }
         let tagged_first = if let Some(condition) = condition {
-            EffectAst::ResolvedIfResult {
+            EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult {
                 condition,
                 predicate: IfResultPredicate::Did,
                 effects: tagged_first_effects,
-            }
+            })
         } else {
-            EffectAst::IfResult {
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                 predicate: IfResultPredicate::Did,
                 effects: tagged_first_effects,
-            }
+            })
         };
         let (mut first_compiled, mut choices) = compile_effect(&tagged_first, ctx)?;
-        let followup = EffectAst::ForEachPlayer {
-            effects: vec![EffectAst::Conditional {
+        let followup = EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+            effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: bind_explicit_tag_to_player_tagged_predicate(predicate, &explicit_tag),
                 if_true: Vec::new(),
                 if_false: second_effects.clone(),
-            }],
-        };
+            })],
+        });
         let (second_compiled, second_choices) = compile_effect(&followup, ctx)?;
         first_compiled.extend(second_compiled);
         for choice in second_choices {
@@ -346,33 +354,33 @@ pub fn compile_if_do_with_player_doesnt(
         return Ok(Some((first_compiled, choices)));
     }
 
-    let Some(EffectAst::ForEachPlayer {
+    let Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
         effects: player_effects,
-    }) = first_effects.first()
+    })) = first_effects.first()
     else {
         return Ok(None);
     };
 
     let mut merged_player_effects = player_effects.clone();
-    merged_player_effects.push(EffectAst::IfResult {
+    merged_player_effects.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
         predicate: IfResultPredicate::DidNot,
         effects: second_effects.clone(),
-    });
+    }));
 
-    let merged_effects = vec![EffectAst::ForEachPlayer {
+    let merged_effects = vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
         effects: merged_player_effects,
-    }];
+    })];
     let merged = if let Some(condition) = condition {
-        EffectAst::ResolvedIfResult {
+        EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult {
             condition,
             predicate: IfResultPredicate::Did,
             effects: merged_effects,
-        }
+        })
     } else {
-        EffectAst::IfResult {
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,
             effects: merged_effects,
-        }
+        })
     };
 
     let (effects, choices) = compile_effect(&merged, ctx)?;
@@ -387,7 +395,7 @@ fn correlated_choice_result_predicate(
         && antecedent_effects.last().is_some_and(|effect| {
             matches!(
                 effect,
-                EffectAst::May { .. } | EffectAst::MayByPlayer { .. }
+                EffectAst::Permissions(PermissionEffectAst::May { .. }) | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. })
             )
         })
     {
@@ -404,28 +412,28 @@ pub fn compile_if_do_with_opponent_did(
     second: &EffectAst,
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
-    let EffectAst::ForEachOpponentDid {
+    let EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDid {
         effects: second_effects,
         predicate,
         result_predicate,
-    } = second
+    }) = second
     else {
         return Ok(None);
     };
 
-    if let EffectAst::ForEachOpponent {
+    if let EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
         effects: opponent_effects,
-    } = first
+    }) = first
     {
         if let Some(predicate) = predicate {
             let (mut first_effects, mut choices) = compile_effect(first, ctx)?;
-            let followup = EffectAst::ForEachOpponent {
-                effects: vec![EffectAst::Conditional {
+            let followup = EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
+                effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                     predicate: predicate.clone(),
                     if_true: second_effects.clone(),
                     if_false: Vec::new(),
-                }],
-            };
+                })],
+            });
             let (second_compiled, second_choices) = compile_effect(&followup, ctx)?;
             first_effects.extend(second_compiled);
             for choice in second_choices {
@@ -436,30 +444,30 @@ pub fn compile_if_do_with_opponent_did(
         let result_predicate =
             correlated_choice_result_predicate(result_predicate.clone(), opponent_effects);
         let mut merged_opponent_effects = opponent_effects.clone();
-        merged_opponent_effects.push(EffectAst::IfResult {
+        merged_opponent_effects.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: result_predicate,
             effects: second_effects.clone(),
-        });
+        }));
 
-        let merged = EffectAst::ForEachOpponent {
+        let merged = EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
             effects: merged_opponent_effects,
-        };
+        });
         let (effects, choices) = compile_effect(&merged, ctx)?;
         return Ok(Some((effects, choices)));
     }
-    if let EffectAst::ForEachPlayer {
+    if let EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
         effects: player_effects,
-    } = first
+    }) = first
     {
         if let Some(predicate) = predicate {
             let (mut first_effects, mut choices) = compile_effect(first, ctx)?;
-            let followup = EffectAst::ForEachOpponent {
-                effects: vec![EffectAst::Conditional {
+            let followup = EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
+                effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                     predicate: predicate.clone(),
                     if_true: second_effects.clone(),
                     if_false: Vec::new(),
-                }],
-            };
+                })],
+            });
             let (second_compiled, second_choices) = compile_effect(&followup, ctx)?;
             first_effects.extend(second_compiled);
             for choice in second_choices {
@@ -467,9 +475,9 @@ pub fn compile_if_do_with_opponent_did(
             }
             return Ok(Some((first_effects, choices)));
         }
-        let first_ast = EffectAst::ForEachPlayer {
+        let first_ast = EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
             effects: player_effects.clone(),
-        };
+        });
         let (mut first_effects, mut choices) = compile_effect(&first_ast, ctx)?;
         let id = if let Some(last) = first_effects.pop() {
             let id = ctx.next_effect_id();
@@ -498,27 +506,27 @@ pub fn compile_if_do_with_opponent_did(
     }
 
     let (condition, first_effects) = match first {
-        EffectAst::IfResult {
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,
             effects,
-        } => (None, effects),
-        EffectAst::ResolvedIfResult {
+        }) => (None, effects),
+        EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult {
             condition,
             predicate: IfResultPredicate::Did,
             effects,
-        } => (Some(*condition), effects),
+        }) => (Some(*condition), effects),
         _ => return Ok(None),
     };
 
     if let Some(predicate) = predicate {
         let (mut first_compiled, mut choices) = compile_effect(first, ctx)?;
-        let followup = EffectAst::ForEachOpponent {
-            effects: vec![EffectAst::Conditional {
+        let followup = EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
+            effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: predicate.clone(),
                 if_true: second_effects.clone(),
                 if_false: Vec::new(),
-            }],
-        };
+            })],
+        });
         let (second_compiled, second_choices) = compile_effect(&followup, ctx)?;
         first_compiled.extend(second_compiled);
         for choice in second_choices {
@@ -527,9 +535,9 @@ pub fn compile_if_do_with_opponent_did(
         return Ok(Some((first_compiled, choices)));
     }
 
-    let Some(EffectAst::ForEachOpponent {
+    let Some(EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
         effects: opponent_effects,
-    }) = first_effects.first()
+    })) = first_effects.first()
     else {
         return Ok(None);
     };
@@ -537,25 +545,25 @@ pub fn compile_if_do_with_opponent_did(
     let mut merged_opponent_effects = opponent_effects.clone();
     let result_predicate =
         correlated_choice_result_predicate(result_predicate.clone(), opponent_effects);
-    merged_opponent_effects.push(EffectAst::IfResult {
+    merged_opponent_effects.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
         predicate: result_predicate,
         effects: second_effects.clone(),
-    });
+    }));
 
-    let merged_effects = vec![EffectAst::ForEachOpponent {
+    let merged_effects = vec![EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
         effects: merged_opponent_effects,
-    }];
+    })];
     let merged = if let Some(condition) = condition {
-        EffectAst::ResolvedIfResult {
+        EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult {
             condition,
             predicate: IfResultPredicate::Did,
             effects: merged_effects,
-        }
+        })
     } else {
-        EffectAst::IfResult {
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,
             effects: merged_effects,
-        }
+        })
     };
 
     let (effects, choices) = compile_effect(&merged, ctx)?;
@@ -567,23 +575,23 @@ pub fn compile_if_do_with_player_did(
     second: &EffectAst,
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
-    let EffectAst::ForEachPlayerDid {
+    let EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDid {
         effects: second_effects,
         predicate,
         result_predicate,
-    } = second
+    }) = second
     else {
         return Ok(None);
     };
 
-    if let EffectAst::ForEachPlayer {
+    if let EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
         effects: player_effects,
-    } = first
+    }) = first
     {
         let is_face_only_coin_flip = matches!(
             player_effects.as_slice(),
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::FlipCoinFaceOnly,
+                action: SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly),
                 ..
             })]
         );
@@ -620,13 +628,13 @@ pub fn compile_if_do_with_player_did(
 
         if let Some(predicate) = predicate {
             let (mut first_effects, mut choices) = compile_effect(first, ctx)?;
-            let followup = EffectAst::ForEachPlayer {
-                effects: vec![EffectAst::Conditional {
+            let followup = EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+                effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                     predicate: predicate.clone(),
                     if_true: second_effects.clone(),
                     if_false: Vec::new(),
-                }],
-            };
+                })],
+            });
             let (second_compiled, second_choices) = compile_effect(&followup, ctx)?;
             first_effects.extend(second_compiled);
             for choice in second_choices {
@@ -637,27 +645,27 @@ pub fn compile_if_do_with_player_did(
         let result_predicate =
             correlated_choice_result_predicate(result_predicate.clone(), player_effects);
         let mut merged_player_effects = player_effects.clone();
-        merged_player_effects.push(EffectAst::IfResult {
+        merged_player_effects.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: result_predicate,
             effects: second_effects.clone(),
-        });
+        }));
 
-        let merged = EffectAst::ForEachPlayer {
+        let merged = EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
             effects: merged_player_effects,
-        };
+        });
         let (effects, choices) = compile_effect(&merged, ctx)?;
         return Ok(Some((effects, choices)));
     }
 
     if let Some(predicate) = predicate {
         let (mut first_compiled, mut choices) = compile_effect(first, ctx)?;
-        let followup = EffectAst::ForEachPlayer {
-            effects: vec![EffectAst::Conditional {
+        let followup = EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+            effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: predicate.clone(),
                 if_true: second_effects.clone(),
                 if_false: Vec::new(),
-            }],
-        };
+            })],
+        });
         let (second_compiled, second_choices) = compile_effect(&followup, ctx)?;
         first_compiled.extend(second_compiled);
         for choice in second_choices {
@@ -668,7 +676,7 @@ pub fn compile_if_do_with_player_did(
 
     if !matches!(
         first,
-        EffectAst::IfResult { .. } | EffectAst::ResolvedIfResult { .. }
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult { .. }) | EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult { .. })
     ) {
         let (mut first_effects, mut choices) = compile_effect(first, ctx)?;
         let id = if let Some(last) = first_effects.pop() {
@@ -698,21 +706,21 @@ pub fn compile_if_do_with_player_did(
     }
 
     let (condition, first_effects) = match first {
-        EffectAst::IfResult {
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,
             effects,
-        } => (None, effects),
-        EffectAst::ResolvedIfResult {
+        }) => (None, effects),
+        EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult {
             condition,
             predicate: IfResultPredicate::Did,
             effects,
-        } => (Some(*condition), effects),
+        }) => (Some(*condition), effects),
         _ => return Ok(None),
     };
 
-    let Some(EffectAst::ForEachPlayer {
+    let Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
         effects: player_effects,
-    }) = first_effects.first()
+    })) = first_effects.first()
     else {
         return Ok(None);
     };
@@ -720,25 +728,25 @@ pub fn compile_if_do_with_player_did(
     let mut merged_player_effects = player_effects.clone();
     let result_predicate =
         correlated_choice_result_predicate(result_predicate.clone(), player_effects);
-    merged_player_effects.push(EffectAst::IfResult {
+    merged_player_effects.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
         predicate: result_predicate,
         effects: second_effects.clone(),
-    });
+    }));
 
-    let merged_effects = vec![EffectAst::ForEachPlayer {
+    let merged_effects = vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
         effects: merged_player_effects,
-    }];
+    })];
     let merged = if let Some(condition) = condition {
-        EffectAst::ResolvedIfResult {
+        EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult {
             condition,
             predicate: IfResultPredicate::Did,
             effects: merged_effects,
-        }
+        })
     } else {
-        EffectAst::IfResult {
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,
             effects: merged_effects,
-        }
+        })
     };
 
     let (effects, choices) = compile_effect(&merged, ctx)?;
@@ -898,16 +906,16 @@ pub fn compile_result_followup(
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let (predicate, followup_effects, reflexive) = match second {
-        EffectAst::IfResult { predicate, effects } => (predicate.clone(), effects, false),
-        EffectAst::WhenResult { predicate, effects } => (predicate.clone(), effects, true),
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult { predicate, effects }) => (predicate.clone(), effects, false),
+        EffectAst::Conditionals(ConditionalEffectAst::WhenResult { predicate, effects }) => (predicate.clone(), effects, true),
         _ => return Ok(None),
     };
     if matches!(
         first,
-        EffectAst::IfResult { .. }
-            | EffectAst::WhenResult { .. }
-            | EffectAst::ResolvedIfResult { .. }
-            | EffectAst::ResolvedWhenResult { .. }
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult { .. })
+            | EffectAst::Conditionals(ConditionalEffectAst::WhenResult { .. })
+            | EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult { .. })
+            | EffectAst::Conditionals(ConditionalEffectAst::ResolvedWhenResult { .. })
     ) {
         return Ok(None);
     }
@@ -1180,7 +1188,7 @@ fn starting_with_controller_each_player_effects(effect: &EffectAst) -> Option<&[
     else {
         return None;
     };
-    let [EffectAst::ForEachPlayer { effects }] = effects.as_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })] = effects.as_slice() else {
         return None;
     };
     Some(effects)
@@ -1221,7 +1229,7 @@ pub fn compile_effects_in_iterated_player_context(
     if tagged_object.is_some() {
         // A tagged-object loop establishes `__it__`, but it does not replace
         // an outer player antecedent with an artificial iterated player.
-        iterated_frame.last_object_tag = Some(crate::tag::CompilerReferenceTag::It.bind());
+        iterated_frame.last_object_tag = Some((crate::tag::CompilerReferenceTag::It.bind()).into());
         iterated_frame.last_it_choice_is_set = false;
         iterated_frame.iterated_object = true;
     } else {
@@ -1264,7 +1272,7 @@ pub fn compile_effects_in_iterated_object_context(
     {
         iterated_frame.last_effect_id = None;
     }
-    iterated_frame.last_object_tag = Some(crate::tag::CompilerReferenceTag::It.bind());
+    iterated_frame.last_object_tag = Some((crate::tag::CompilerReferenceTag::It.bind()).into());
     iterated_frame.last_it_choice_is_set = false;
     iterated_frame.iterated_object = true;
 
@@ -1285,9 +1293,9 @@ pub fn force_implicit_vote_token_controller_you(effects: &mut [EffectAst]) {
         match effect {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::CreateTokenWithMods { player, .. }
-                    | SubjectVerbActionAst::CreateTokenCopy { player, .. }
-                    | SubjectVerbActionAst::CreateTokenCopyFromSource { player, .. },
+                    SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { player, .. })
+                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { player, .. })
+                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { player, .. }),
                 ..
             }) => {
                 if matches!(*player, PlayerAst::Implicit) {
@@ -1422,12 +1430,12 @@ fn vote_option_ast_uses_iterated_player_in_scope(
     let mut found = false;
     for effect in effects {
         if !iterated_player_bound
-            && let EffectAst::ChooseObjects { filter, player, .. }
-            | EffectAst::ChooseObjectsWithAggregateConstraint { filter, player, .. }
-            | EffectAst::ChooseObjectsBottomOfLibrary { filter, player, .. }
-            | EffectAst::ChooseObjectsTopOfLibrary { filter, player, .. }
-            | EffectAst::ChooseTaggedObjectsInZone { filter, player, .. }
-            | EffectAst::ChooseObjectsAcrossZones { filter, player, .. } = effect
+            && let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, player, .. })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { filter, player, .. })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { filter, player, .. })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary { filter, player, .. })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { filter, player, .. })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { filter, player, .. }) = effect
             && (matches!(*player, PlayerAst::That)
                 || object_filter_mentions_iterated_player(filter))
         {
@@ -1436,18 +1444,18 @@ fn vote_option_ast_uses_iterated_player_in_scope(
         let nested_player_bound = iterated_player_bound
             || matches!(
                 effect,
-                EffectAst::ForEachOpponent { .. }
-                    | EffectAst::ForEachPlayersFiltered { .. }
-                    | EffectAst::ForEachPlayer { .. }
-                    | EffectAst::ForEachTargetPlayers { .. }
-                    | EffectAst::ForEachOpponentDoesNot { .. }
-                    | EffectAst::ForEachPlayerDoesNot { .. }
-                    | EffectAst::ForEachOpponentDid { .. }
-                    | EffectAst::ForEachPlayerDid { .. }
-                    | EffectAst::ForEachTaggedPlayer { .. }
-                    | EffectAst::ForEachTagged { .. }
-                    | EffectAst::ForEachTaggedWithControllerAtLastBlockedBy { .. }
-                    | EffectAst::AnyPlayerMay { .. }
+                EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { .. })
+                    | EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { .. })
+                    | EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { .. })
+                    | EffectAst::ForEach(ForEachEffectAst::ForEachTargetPlayers { .. })
+                    | EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDoesNot { .. })
+                    | EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDoesNot { .. })
+                    | EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDid { .. })
+                    | EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDid { .. })
+                    | EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer { .. })
+                    | EffectAst::ForEach(ForEachEffectAst::ForEachTagged { .. })
+                    | EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy { .. })
+                    | EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay { .. })
             );
         for_each_nested_effects(effect, true, |nested| {
             if !found && vote_option_ast_uses_iterated_player_in_scope(nested, nested_player_bound)
@@ -1468,16 +1476,16 @@ fn vote_option_ast_uses_iterated_player(effects: &[EffectAst]) -> bool {
 
 fn vote_extra_amount(effect: &EffectAst) -> Option<(u32, bool)> {
     match effect {
-        EffectAst::VoteExtra { count, optional } => Some((*count, *optional)),
-        EffectAst::May { effects } => match effects.as_slice() {
-            [EffectAst::VoteExtra { count, .. }] => Some((*count, true)),
+        EffectAst::Votes(VoteEffectAst::VoteExtra { count, optional }) => Some((*count, *optional)),
+        EffectAst::Permissions(PermissionEffectAst::May { effects }) => match effects.as_slice() {
+            [EffectAst::Votes(VoteEffectAst::VoteExtra { count, .. })] => Some((*count, true)),
             _ => None,
         },
-        EffectAst::MayByPlayer {
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
             player: PlayerAst::You | PlayerAst::Implicit,
             effects,
-        } => match effects.as_slice() {
-            [EffectAst::VoteExtra { count, .. }] => Some((*count, true)),
+        }) => match effects.as_slice() {
+            [EffectAst::Votes(VoteEffectAst::VoteExtra { count, .. })] => Some((*count, true)),
             _ => None,
         },
         _ => None,
@@ -1513,18 +1521,18 @@ pub fn compile_vote_sequence(
     let Some(first) = effects.first() else {
         return Ok(None);
     };
-    if let EffectAst::SecretChoiceStart {
+    if let EffectAst::Votes(VoteEffectAst::SecretChoiceStart {
         options,
         participants,
         object_choice,
-    } = &first.effect
+    }) = &first.effect
     {
         let consumed = effects
             .iter()
             .enumerate()
             .skip(1)
             .filter_map(|(idx, annotated)| match &annotated.effect {
-                EffectAst::Conditional { predicate, .. }
+                EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. })
                     if is_secret_choice_related_predicate(predicate) =>
                 {
                     Some(idx + 1)
@@ -1561,35 +1569,35 @@ pub fn compile_vote_sequence(
     }
 
     let vote_start = match &first.effect {
-        EffectAst::VoteStart {
+        EffectAst::Votes(VoteEffectAst::VoteStart {
             options,
             secret,
             starting_with_controller,
-        } => Some((
+        }) => Some((
             Some(options.clone()),
             None,
             None,
             *secret,
             *starting_with_controller,
         )),
-        EffectAst::VoteStartObjects {
+        EffectAst::Votes(VoteEffectAst::VoteStartObjects {
             filter,
             count,
             secret,
             starting_with_controller,
-        } => Some((
+        }) => Some((
             None,
             Some((filter.clone(), *count)),
             None,
             *secret,
             *starting_with_controller,
         )),
-        EffectAst::VoteStartPlayers {
+        EffectAst::Votes(VoteEffectAst::VoteStartPlayers {
             filter,
             exclude_voter,
             secret,
             starting_with_controller,
-        } => Some((
+        }) => Some((
             None,
             None,
             Some((filter.clone(), *exclude_voter)),
@@ -1611,8 +1619,8 @@ pub fn compile_vote_sequence(
         .enumerate()
         .skip(1)
         .filter_map(|(idx, annotated)| match &annotated.effect {
-            EffectAst::VoteOption { .. } => Some(idx + 1),
-            EffectAst::Conditional { predicate, .. } if is_vote_related_predicate(predicate) => {
+            EffectAst::Votes(VoteEffectAst::VoteOption { .. }) => Some(idx + 1),
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. }) if is_vote_related_predicate(predicate) => {
                 Some(idx + 1)
             }
             effect if vote_extra_amount(effect).is_some() => Some(idx + 1),
@@ -1705,7 +1713,7 @@ pub fn compile_vote_sequence(
             ctx.force_auto_tag_object_targets || annotated.auto_tag_object_targets;
         match &annotated.effect {
             effect if vote_extra_amount(effect).is_some() => {}
-            EffectAst::VoteOption { option, effects } => {
+            EffectAst::Votes(VoteEffectAst::VoteOption { option, effects }) => {
                 let mut option_effects_ast = effects.clone();
                 force_implicit_vote_token_controller_you(&mut option_effects_ast);
                 let ast_uses_iterated_player =
@@ -1848,6 +1856,7 @@ pub fn target_context_prelude_for_filter(filter: &ObjectFilter) -> (Vec<Effect>,
 
 #[cfg(test)]
 mod typed_search_predicate_tests {
+    use crate::cards::builders::LifeResourceActionAst;
     use super::*;
 
     #[test]
@@ -1871,7 +1880,7 @@ mod typed_search_predicate_tests {
         );
         let mut controlled_creature = ObjectFilter::creature().in_zone(Zone::Battlefield);
         controlled_creature.controller = Some(PlayerFilter::IteratedPlayer);
-        let fanout = EffectAst::ForEachPlayer {
+        let fanout = EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
             effects: vec![
                 EffectAst::subject_verb_damage(
                     removed_count(),
@@ -1879,7 +1888,7 @@ mod typed_search_predicate_tests {
                 ),
                 EffectAst::subject_verb_damage_each(removed_count(), controlled_creature),
             ],
-        };
+        });
 
         let compiled = crate::compile_support::compile_statement_effects(&[removal, fanout])
             .expect("removed count should lower across both fanout frames");
@@ -1921,23 +1930,23 @@ mod typed_search_predicate_tests {
                     EffectAst::subject_verb(
                         SubjectVerbRoleAst::AffectedPlayer,
                         PlayerAst::You,
-                        SubjectVerbActionAst::Draw {
+                        SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
                             count: Value::Fixed(1),
-                        },
+                        }),
                     ),
                     EffectAst::subject_verb_flip_coin(PlayerAst::You),
                 ],
             },
-            EffectAst::IfResult {
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                 predicate: IfResultPredicate::Did,
                 effects: vec![EffectAst::subject_verb(
                     SubjectVerbRoleAst::AffectedPlayer,
                     PlayerAst::You,
-                    SubjectVerbActionAst::Draw {
+                    SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
                         count: Value::Fixed(1),
-                    },
+                    }),
                 )],
-            },
+            }),
         ];
 
         let compiled = crate::compile_support::compile_statement_effects(&effects)
@@ -1970,20 +1979,20 @@ mod typed_search_predicate_tests {
     #[test]
     fn each_player_face_result_uses_outer_player_counts_before_followup() {
         let effects = vec![
-            EffectAst::ForEachPlayer {
+            EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
                 effects: vec![EffectAst::subject_verb_flip_coin_face_only(PlayerAst::That)],
-            },
-            EffectAst::ForEachPlayerDid {
+            }),
+            EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDid {
                 effects: vec![EffectAst::subject_verb(
                     SubjectVerbRoleAst::AffectedPlayer,
                     PlayerAst::That,
-                    SubjectVerbActionAst::Draw {
+                    SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
                         count: Value::Fixed(1),
-                    },
+                    }),
                 )],
                 predicate: None,
                 result_predicate: IfResultPredicate::DidNot,
-            },
+            }),
         ];
 
         let compiled = crate::compile_support::compile_statement_effects(&effects)
@@ -2017,22 +2026,22 @@ mod typed_search_predicate_tests {
 
     #[test]
     fn repeat_process_ids_the_nested_terminal_clash() {
-        let process = EffectAst::RepeatProcess {
+        let process = EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
             effects: vec![EffectAst::Coordinated {
                 effects: vec![
                     EffectAst::subject_verb(
                         SubjectVerbRoleAst::AffectedPlayer,
                         PlayerAst::You,
-                        SubjectVerbActionAst::LoseLife {
+                        SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife {
                             amount: Value::Fixed(2),
-                        },
+                        }),
                     ),
                     EffectAst::subject_verb(
                         SubjectVerbRoleAst::AffectedPlayer,
                         PlayerAst::You,
-                        SubjectVerbActionAst::Draw {
+                        SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
                             count: Value::Fixed(2),
-                        },
+                        }),
                     ),
                     EffectAst::subject_verb_clash(ClashOpponentAst::Opponent),
                 ],
@@ -2041,7 +2050,7 @@ mod typed_search_predicate_tests {
             }],
             continue_effect_index: 0,
             continue_predicate: IfResultPredicate::WonClash,
-        };
+        });
 
         let compiled = crate::compile_support::compile_statement_effects(&[process])
             .expect("wrapped clash repeat process should lower");

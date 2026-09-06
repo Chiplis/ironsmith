@@ -1,4 +1,5 @@
 
+use crate::cards::builders::ControlActionAst;
 use super::*;
 use crate::IfResultPredicate;
 
@@ -79,7 +80,7 @@ fn for_each_mana_from_source_repeats_the_typed_effect() {
     )
     .expect("spent-mana sentence should lex");
     let effects = parse_effect_sentence_lexed(&tokens).expect("spent-mana sentence should parse");
-    let [EffectAst::RepeatEffects { count, effects }] = effects.as_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::RepeatEffects { count, effects })] = effects.as_slice() else {
         panic!("expected one typed repeat effect, got {effects:#?}");
     };
     assert!(count.has_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach));
@@ -104,7 +105,7 @@ fn for_each_repeated_mana_symbol_uses_a_divided_typed_count() {
     let tokens = crate::lexer::lex_line("For each {U}{U} spent to cast it, draw a card.", 0)
         .expect("mana-symbol sentence should lex");
     let effects = parse_effect_sentence_lexed(&tokens).expect("mana-symbol sentence should parse");
-    let [EffectAst::RepeatEffects { count, effects }] = effects.as_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::RepeatEffects { count, effects })] = effects.as_slice() else {
         panic!("expected one typed repeat effect, got {effects:#?}");
     };
     assert!(count.has_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach));
@@ -144,7 +145,7 @@ fn conditional_quoted_grant_keeps_the_outer_gain_semantics() {
         .expect("conditional quoted grant should lex");
     let effects =
         parse_effect_sentence_lexed(&tokens).expect("conditional quoted grant should parse");
-    let [EffectAst::Conditional { if_true, .. }] = effects.as_slice() else {
+    let [EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, .. })] = effects.as_slice() else {
         panic!("expected one typed conditional, got {effects:#?}");
     };
     let debug = format!("{if_true:#?}");
@@ -165,12 +166,12 @@ fn quoted_restriction_grant_keeps_trailing_defending_player_unless_payment() {
         .expect("quoted restriction gain should parse before the broad can't route");
 
     let [
-        EffectAst::UnlessPays {
+        EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
             effects: granted_effects,
             player: PlayerAst::Defending,
             cost,
             before_delayed_step: false,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected a defending-player unless payment, got {effects:#?}");
@@ -193,19 +194,19 @@ fn public_sentence_route_keeps_result_gated_unattach_delayed() {
         .expect("public sentence route should preserve the delayed action");
 
     let [
-        EffectAst::IfResult {
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,
             effects: gated,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected an outer result gate, got {effects:#?}");
     };
     let [
-        EffectAst::DelayedUntilNextEndStep {
+        EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
             player: PlayerFilter::Any,
             effects: delayed,
-        },
+        }),
     ] = gated.as_slice()
     else {
         panic!("expected a delayed next-end-step payload, got {gated:#?}");
@@ -214,7 +215,7 @@ fn public_sentence_route_keeps_result_gated_unattach_delayed() {
         matches!(
             delayed.as_slice(),
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Unattach { .. },
+                action: SubjectVerbActionAst::Control(ControlActionAst::Unattach { .. }),
                 ..
             })]
         ),

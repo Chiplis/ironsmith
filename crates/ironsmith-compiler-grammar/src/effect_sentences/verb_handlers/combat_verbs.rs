@@ -1,3 +1,4 @@
+use crate::cards::builders::DamageActionAst;
 use super::super::grammar::effects::combat_shapes as combat_grammar;
 use crate::recognition::{ParseOutcome, RuleId};
 use crate::registry::{
@@ -27,7 +28,7 @@ fn attach_tagged_filter(
     }
     filter.zone = Some(Zone::Battlefield);
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: crate::tag::CompilerReferenceTag::It.bind(),
+        tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
     Some(filter)
@@ -45,27 +46,27 @@ fn combat_player_damage_target_effect(
     target: combat_grammar::CombatPlayerDamageTargetShape,
 ) -> EffectAst {
     match target {
-        combat_grammar::CombatPlayerDamageTargetShape::EachPlayer => EffectAst::ForEachPlayer {
+        combat_grammar::CombatPlayerDamageTargetShape::EachPlayer => EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
             effects: vec![EffectAst::subject_verb_damage(
                 amount,
                 TargetAst::Player(PlayerFilter::IteratedPlayer, None),
             )],
-        },
+        }),
         combat_grammar::CombatPlayerDamageTargetShape::EachOtherPlayer => {
-            EffectAst::ForEachPlayersFiltered {
+            EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
                 filter: PlayerFilter::NotYou,
                 effects: vec![EffectAst::subject_verb_damage(
                     amount,
                     TargetAst::Player(PlayerFilter::IteratedPlayer, None),
                 )],
-            }
+            })
         }
-        combat_grammar::CombatPlayerDamageTargetShape::EachOpponent => EffectAst::ForEachOpponent {
+        combat_grammar::CombatPlayerDamageTargetShape::EachOpponent => EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
             effects: vec![EffectAst::subject_verb_damage(
                 amount,
                 TargetAst::Player(PlayerFilter::IteratedPlayer, None),
             )],
-        },
+        }),
         combat_grammar::CombatPlayerDamageTargetShape::EachOtherOpponent => {
             damage_each_other_opponent(amount)
         }
@@ -106,13 +107,13 @@ fn combat_simple_damage_target_ast(
 }
 
 fn damage_each_other_opponent(amount: Value) -> EffectAst {
-    EffectAst::ForEachPlayersFiltered {
+    EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
         filter: PlayerFilter::excluding(PlayerFilter::Opponent, PlayerFilter::DamagedPlayer),
         effects: vec![EffectAst::subject_verb_damage(
             amount,
             TargetAst::Player(PlayerFilter::IteratedPlayer, None),
         )],
-    }
+    })
 }
 
 fn damage_to_embedded_target_controller(
@@ -251,7 +252,7 @@ pub fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                     let mut aura_filter = ObjectFilter::permanent().in_zone(Zone::Battlefield);
                     aura_filter.subtypes.push(Subtype::Aura);
                     aura_filter.tagged_constraints.push(TaggedObjectConstraint {
-                        tag: crate::tag::CompilerReferenceTag::It.bind(),
+                        tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
                         relation: TaggedOpbjectRelation::AttachedToTaggedObject,
                     });
 
@@ -261,7 +262,7 @@ pub fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                         TaggedOpbjectRelation::IsNotTaggedObject,
                     ] {
                         destination.tagged_constraints.push(TaggedObjectConstraint {
-                            tag: crate::tag::CompilerReferenceTag::It.bind(),
+                            tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
                             relation,
                         });
                     }
@@ -358,7 +359,7 @@ pub fn parse_unattach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErr
         equipment_filter
             .tagged_constraints
             .push(TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::It.bind(),
+                tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
                 relation: TaggedOpbjectRelation::AttachedToTaggedObject,
             });
 
@@ -396,8 +397,8 @@ fn strip_terminal_unpreventable_damage_rider(tokens: &[OwnedLexToken]) -> &[Owne
 pub fn mark_damage_ast_unpreventable(effect: &mut EffectAst) {
     if let EffectAst::SubjectVerb(subject_verb) = effect {
         match &mut subject_verb.action {
-            SubjectVerbActionAst::DealDamage { unpreventable, .. }
-            | SubjectVerbActionAst::DealDamageEqualToPower { unpreventable, .. } => {
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { unpreventable, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { unpreventable, .. }) => {
                 *unpreventable = true;
             }
             _ => {}
@@ -473,12 +474,12 @@ fn parse_deal_damage_inner(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     let tokens = shape.body_tokens;
     let clause_words = crate::lexer::token_word_refs(tokens);
     if shape.direct_hand_size_each_opponent {
-        return Ok(EffectAst::ForEachOpponent {
+        return Ok(EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
             effects: vec![EffectAst::subject_verb_damage(
                 Value::CardsInHand(PlayerFilter::IteratedPlayer),
                 TargetAst::Player(PlayerFilter::IteratedPlayer, None),
             )],
-        });
+        }));
     }
     if shape.divided {
         if let Some((value, used)) = parse_value(tokens) {
@@ -512,12 +513,12 @@ fn parse_deal_damage_inner(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
 
     if shape.fallback_hand_size_each_opponent {
         let value = Value::CardsInHand(PlayerFilter::IteratedPlayer);
-        return Ok(EffectAst::ForEachOpponent {
+        return Ok(EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
             effects: vec![EffectAst::subject_verb_damage(
                 value,
                 TargetAst::Player(PlayerFilter::IteratedPlayer, None),
             )],
-        });
+        }));
     }
 
     Err(CardTextError::ParseError(format!(

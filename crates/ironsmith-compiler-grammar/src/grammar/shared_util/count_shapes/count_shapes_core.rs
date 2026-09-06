@@ -156,7 +156,7 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
             if is_tagged_counter_reference(reference) {
                 let value = Value::CountersOn(
                     Box::new(ChooseSpec::Tagged(
-                        crate::tag::CompilerReferenceTag::It.bind(),
+                        (crate::tag::CompilerReferenceTag::It.bind()).into(),
                     )),
                     parsed_counter_type,
                 );
@@ -430,7 +430,7 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
                     return Some((
                         Value::CountersOn(
                             Box::new(ChooseSpec::Tagged(
-                                crate::tag::CompilerReferenceTag::It.bind(),
+                                (crate::tag::CompilerReferenceTag::It.bind()).into(),
                             )),
                             Some(counter_type),
                         ),

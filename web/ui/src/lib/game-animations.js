@@ -1,3 +1,5 @@
+import { zonePileDestination } from "./zone-piles.js";
+
 const RUNTIME_EVENT_BATTLEFIELD_TRANSITION = "battlefield_transition";
 const RUNTIME_EVENT_EFFECT = "effect_event";
 
@@ -545,9 +547,20 @@ export function resolveGameAnimations({ previews, state, previousCardRects }) {
     ];
   }
 
+  // Keep the source dissolve/collapse, but converge each flight on its own
+  // owner's pile. A board wipe may have several owners and destinations.
+  const pileEffects = visualEffects.map((effect) => {
+    if (!effect.travelsToInspector) return effect;
+    const preview = annotatedPreviews.find((entry) => effect.id.endsWith(`:${entry.token}`));
+    const destination = zonePileDestination(preview);
+    if (!destination) return effect;
+    const token = `zone:${destination.playerId}:${destination.zone}`;
+    return { ...effect, targetToken: token, targetScope: "zone", groupId: token };
+  });
+
   return {
     previews: annotatedPreviews,
-    visualEffects,
+    visualEffects: pileEffects,
     runtimeEvents,
   };
 }

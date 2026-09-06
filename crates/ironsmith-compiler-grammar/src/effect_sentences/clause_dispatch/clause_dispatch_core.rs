@@ -1,3 +1,6 @@
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::ZoneMoveActionAst;
+use crate::cards::builders::LibraryActionAst;
 use super::*;
 
 use crate::recognition::ParseOutcome;
@@ -124,7 +127,7 @@ pub(super) fn parse_effect_clause_unstacked(
                 return Ok(EffectAst::subject_verb(
                     SubjectVerbRoleAst::Actor,
                     PlayerAst::ItsOwner,
-                    SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target },
+                    SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice { target }),
                 ));
             }
         }
@@ -372,7 +375,7 @@ pub(super) fn parse_effect_clause_unstacked(
         && (crate::word_primitives::parse_sequence_complete(&subject_words, &["they"])
             || authored_control_pronoun)
         && let EffectAst::SubjectVerb(subject_verb) = &mut effect
-        && let SubjectVerbActionAst::ReturnToHand { target, .. } = &mut subject_verb.action
+        && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. }) = &mut subject_verb.action
     {
         fn mark_iterated_actor_pronoun(target: &mut TargetAst) {
             match target {
@@ -388,16 +391,16 @@ pub(super) fn parse_effect_clause_unstacked(
         mark_iterated_actor_pronoun(target);
     }
     if let Some(filter) = for_each_subject_filter {
-        effect = EffectAst::ForEachObject {
+        effect = EffectAst::ForEach(ForEachEffectAst::ForEachObject {
             filter,
             effects: vec![effect],
-        };
+        });
     }
     if each_other_player {
-        effect = EffectAst::ForEachPlayersFiltered {
+        effect = EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
             filter: PlayerFilter::NotYou,
             effects: vec![effect],
-        };
+        });
     }
     Ok(effect)
 }

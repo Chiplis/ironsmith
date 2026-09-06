@@ -1,3 +1,9 @@
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::ChoiceActionAst;
+use crate::cards::builders::LifeResourceActionAst;
+use crate::cards::builders::ZoneMoveActionAst;
+use crate::cards::builders::LibraryActionAst;
+use crate::cards::builders::GrantActionAst;
 use super::*;
 use crate::CardType;
 use crate::lexer::lex_line;
@@ -95,7 +101,7 @@ fn explicit_they_control_return_keeps_relative_player_surface() {
     ))
     .expect("correlated player return should parse");
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::ReturnToHand { target, .. },
+        action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. }),
         ..
     }) = parsed
     else {
@@ -119,10 +125,10 @@ fn explicit_opponent_creature_type_choice_keeps_typed_chooser() {
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         subject,
         action:
-            SubjectVerbActionAst::ChooseCreatureType {
+            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType {
                 excluded_subtypes,
                 family: crate::types::SubtypeFamily::Creature,
-            },
+            }),
     }) = parsed
     else {
         panic!("expected typed creature-type choice, got {parsed:#?}");
@@ -170,9 +176,9 @@ fn turn_target_face_up_keeps_the_authored_target_filter() {
     .expect("turn-target-face-up clause should parse");
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::TurnFaceUp {
+            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp {
                 target: TargetAst::Object(filter, _, _),
-            },
+            }),
         ..
     }) = parsed
     else {
@@ -261,7 +267,7 @@ fn any_player_sacrifice_offer_keeps_sequential_player_semantics() {
         .expect("lex any-player sacrifice offer");
     let effect = parse_effect_clause(&tokens).expect("parse any-player sacrifice offer");
 
-    let EffectAst::AnyPlayerMay { players, effects } = effect else {
+    let EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay { players, effects }) = effect else {
         panic!("expected typed any-player offer, got {effect:#?}");
     };
     assert_eq!(players, PlayerFilter::Any);
@@ -277,16 +283,16 @@ fn any_player_sacrifice_offer_keeps_sequential_player_semantics() {
         matches!(
             sacrifice_steps.as_slice(),
             [
-                EffectAst::ChooseObjects {
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                     player: PlayerAst::That,
                     ..
-                },
+                }),
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     subject: crate::model::ast::SubjectVerbSubjectAst {
                         player: PlayerAst::That,
                         ..
                     },
-                    action: SubjectVerbActionAst::SacrificeAll { .. },
+                    action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { .. }),
                 })
             ]
         ),
@@ -300,7 +306,7 @@ fn any_opponent_sacrifice_offer_keeps_filtered_sequential_semantics() {
         .expect("lex any-opponent sacrifice offer");
     let effect = parse_effect_clause(&tokens).expect("parse any-opponent sacrifice offer");
 
-    let EffectAst::AnyPlayerMay { players, effects } = effect else {
+    let EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay { players, effects }) = effect else {
         panic!("expected typed filtered offer, got {effect:#?}");
     };
     assert_eq!(players, PlayerFilter::Opponent);
@@ -311,7 +317,7 @@ fn any_opponent_sacrifice_offer_keeps_filtered_sequential_semantics() {
                 player: PlayerAst::That,
                 ..
             },
-            action: SubjectVerbActionAst::Sacrifice { count: 1, .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { count: 1, .. }),
         })]
     ));
 }
@@ -322,7 +328,7 @@ fn any_player_half_life_payment_keeps_sequential_payer_relative_semantics() {
         .expect("lex any-player half-life offer");
     let effect = parse_effect_clause(&tokens).expect("parse any-player half-life offer");
 
-    let EffectAst::AnyPlayerMay { players, effects } = effect else {
+    let EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay { players, effects }) = effect else {
         panic!("expected typed any-player offer, got {effect:#?}");
     };
     assert_eq!(players, PlayerFilter::Any);
@@ -333,9 +339,9 @@ fn any_player_half_life_payment_keeps_sequential_payer_relative_semantics() {
                 player: PlayerAst::That,
                 ..
             },
-            action: SubjectVerbActionAst::PayLife {
+            action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayLife {
                 amount: Value::HalfLifeTotalRoundedUp(PlayerFilter::IteratedPlayer),
-            },
+            }),
         })]
     ));
 }
@@ -357,10 +363,10 @@ fn explicit_player_attach_clause_preserves_the_attachment_chooser() {
                     player: PlayerAst::That,
                     ..
                 },
-                action: SubjectVerbActionAst::Attach {
+                action: SubjectVerbActionAst::Control(ControlActionAst::Attach {
                     target: TargetAst::WithCount(_, count),
                     ..
-                },
+                }),
             }) if count.is_single()
         ),
         "explicit attach actor and counted destination must survive parsing: {effect:#?}"
@@ -395,7 +401,7 @@ fn optional_target_player_subject_declares_and_reuses_the_player_target() {
                     player: PlayerAst::That,
                     ..
                 },
-            action: SubjectVerbActionAst::Mill { .. },
+            action: SubjectVerbActionAst::Library(LibraryActionAst::Mill { .. }),
         }),
     ] = effects.as_slice()
     else {
@@ -454,7 +460,7 @@ fn targeted_graveyard_cast_permission_preserves_one_target_and_duration() {
             }),
             EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+                    SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
                         tag,
                         player,
                         allow_land,
@@ -464,7 +470,7 @@ fn targeted_graveyard_cast_permission_preserves_one_target_and_duration() {
                         free_cast_from_current_zone: _,
                         surface: _,
                         ..
-                    },
+                    }),
                 ..
             }),
         ] = effects.as_slice()
@@ -521,7 +527,7 @@ fn leading_may_chain_reaches_targeted_graveyard_cast_permission() {
                 ..
             }),
             EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn { .. },
+                action: SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn { .. }),
                 ..
             }),
         ]
@@ -535,11 +541,11 @@ fn plural_demonstrative_pump_preserves_tagged_set() {
     let effect = parse_effect_clause(&tokens).expect("plural tagged pump should parse");
     let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::Pump {
+            SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
                 target: TargetAst::Object(filter, ..),
                 set_quantifier_surface,
                 ..
-            },
+            }),
         ..
     }) = effect
     else {
@@ -562,7 +568,7 @@ fn plural_demonstrative_untap_preserves_typed_tagged_set() {
     let effect = parse_effect_clause(&tokens).expect("plural tagged untap should parse");
 
     let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::UntapAll { filter },
+        action: SubjectVerbActionAst::PermanentState(PermanentStateActionAst::UntapAll { filter }),
         ..
     }) = effect
     else {
@@ -580,7 +586,7 @@ fn each_other_player_subject_lowers_to_filtered_player_iteration() {
     let tokens = lex_line("Each other player loses X life.", 0).expect("lex clause");
     let effect = parse_effect_clause(&tokens).expect("each-other-player clause should parse");
 
-    let EffectAst::ForEachPlayersFiltered { filter, effects } = effect else {
+    let EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { filter, effects }) = effect else {
         panic!("expected filtered player iteration");
     };
     assert_eq!(filter, PlayerFilter::NotYou);
@@ -592,7 +598,7 @@ fn each_other_player_subject_lowers_to_filtered_player_iteration() {
                     player: PlayerAst::That,
                     ..
                 },
-                action: SubjectVerbActionAst::LoseLife { .. },
+                action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { .. }),
             }
         )]
     ));
@@ -645,12 +651,12 @@ fn explicit_target_damage_subject_owns_its_characteristic_and_controller() {
     let effect = parse_effect_clause(&tokens).expect("explicit damage-source clause should parse");
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::DealDamageEqualToPower {
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
                 source,
                 amount,
                 target,
                 ..
-            },
+            }),
         ..
     }) = effect
     else {
@@ -725,7 +731,7 @@ fn authored_duration_before_for_each_is_retained_on_the_count() {
         .expect("dynamic modifier should not error")
         .expect("dynamic modifier should parse");
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::PumpForEach { count, .. },
+        action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach { count, .. }),
         ..
     }) = effect
     else {
@@ -814,25 +820,25 @@ fn face_down_return_if_permanent_then_turn_stays_a_resolution_condition() {
         )
         .unwrap();
     let effect = parse_effect_clause(&tokens).expect("typed conditional return-turn clause");
-    let EffectAst::TrailingIf { predicate, effects } = effect else {
+    let EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects }) = effect else {
         panic!("expected non-promotable trailing condition, got {effect:#?}");
     };
     assert_eq!(effects.len(), 2);
     assert!(matches!(
         &effects[0],
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::MoveToZone {
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                 zone: Zone::Battlefield,
                 battlefield_face_down: true,
                 ..
-            },
+            }),
             ..
         })
     ));
     assert!(matches!(
         &effects[1],
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::TurnFaceUp { .. },
+            action: SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp { .. }),
             ..
         })
     ));

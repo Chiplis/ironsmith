@@ -1,3 +1,4 @@
+use crate::cards::builders::ConditionalEffectAst;
 use super::*;
 
 pub fn apply_explicit_intervening_if_to_triggered_chunk(
@@ -46,7 +47,7 @@ pub fn apply_explicit_intervening_if_to_triggered_chunk(
             }
             if matches!(
                 effects.as_slice(),
-                [EffectAst::Conditional { if_false, .. }] if if_false.is_empty()
+                [EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_false, .. })] if if_false.is_empty()
             ) {
                 Ok(LineAst::Triggered {
                     trigger,
@@ -56,11 +57,11 @@ pub fn apply_explicit_intervening_if_to_triggered_chunk(
             } else {
                 Ok(LineAst::Triggered {
                     trigger,
-                    effects: vec![EffectAst::Conditional {
+                    effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                         predicate,
                         if_true: effects,
                         if_false: Vec::new(),
-                    }],
+                    })],
                     max_triggers_per_turn,
                 })
             }
@@ -88,11 +89,11 @@ pub fn apply_explicit_intervening_if_to_triggered_chunk(
             if is_stack_object_targeting_predicate(&predicate) {
                 if let Some(effects_ast) = parsed.effects_ast.take() {
                     if let [
-                        EffectAst::Conditional {
+                        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                             predicate,
                             if_true,
                             if_false,
-                        },
+                        }),
                     ] = effects_ast.as_slice()
                         && if_false.is_empty()
                         && is_stack_object_targeting_predicate(predicate)
@@ -134,9 +135,9 @@ pub fn apply_explicit_intervening_if_to_triggered_chunk(
                 }
                 if let Some(effects_ast) = parsed.effects_ast.take() {
                     if let [
-                        EffectAst::Conditional {
+                        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                             if_true, if_false, ..
-                        },
+                        }),
                     ] = effects_ast.as_slice()
                         && if_false.is_empty()
                     {

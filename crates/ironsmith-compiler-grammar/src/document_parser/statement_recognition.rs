@@ -1131,6 +1131,8 @@ pub(super) fn parse_colon_nonactivation_statement_fallback(
 
 #[cfg(test)]
 mod tests {
+    use crate::cards::builders::ConditionalEffectAst;
+    use crate::cards::builders::DelayedEffectAst;
     use super::*;
 
     #[test]
@@ -1151,7 +1153,7 @@ mod tests {
             .expect("grouped conditional animation should parse as effects");
         assert!(matches!(
             effects.as_slice(),
-            [EffectAst::SubjectVerb(_), EffectAst::Conditional { predicate, .. }]
+            [EffectAst::SubjectVerb(_), EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. })]
                 if predicate.uses_implicit_object_reference()
         ));
     }
@@ -1171,11 +1173,11 @@ mod tests {
         assert_eq!(effects.len(), 2, "{effects:#?}");
         assert!(matches!(
             effects[1],
-            EffectAst::DelayedTriggerForDuration {
+            EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
                 one_shot: false,
                 while_any_tagged_object_in_zone: Some(_),
                 ..
-            }
+            })
         ));
     }
 }

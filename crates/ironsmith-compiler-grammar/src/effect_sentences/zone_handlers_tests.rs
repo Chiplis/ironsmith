@@ -1,3 +1,4 @@
+use crate::cards::builders::ZoneMoveActionAst;
 use super::*;
 use crate::activation_helpers::{parse_any_combination_mana_colors, parse_or_mana_color_choices};
 use crate::model::ast::{SubjectVerbActionAst, SubjectVerbEffectAst};
@@ -43,7 +44,7 @@ fn parse_sacrifice_strips_his_or_her_choice_suffix() {
     let effect = parse_sacrifice(&tokens, None, None).expect("sacrifice should parse");
 
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::Sacrifice { filter, count, .. },
+        action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { filter, count, .. }),
         ..
     }) = effect
     else {

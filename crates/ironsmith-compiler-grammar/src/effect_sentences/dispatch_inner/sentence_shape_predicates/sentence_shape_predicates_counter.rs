@@ -1,9 +1,10 @@
+use crate::cards::builders::CounterActionAst;
 use super::*;
 
 pub(super) fn bind_numeric_result_counter_amounts(effects: &mut [EffectAst]) {
     for effect in effects {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::PutCounters { count, .. },
+            action: SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { count, .. }),
             ..
         }) = effect
             && matches!(

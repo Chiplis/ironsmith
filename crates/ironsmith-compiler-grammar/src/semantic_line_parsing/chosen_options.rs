@@ -1,5 +1,6 @@
 use super::*;
 use crate::cards::builders::PredicateAst;
+use crate::cards::builders::SourcePredicateAst;
 
 /// What choosing this option means, as a predicate.
 ///
@@ -7,7 +8,7 @@ use crate::cards::builders::PredicateAst;
 /// option implies at resolution is not.
 pub fn condition_for_chosen_option(context: &ChosenOptionContext) -> PredicateAst {
     match context {
-        ChosenOptionContext::SourceOption(label) => PredicateAst::SourceChosenOption(label.clone()),
+        ChosenOptionContext::SourceOption(label) => PredicateAst::Source(SourcePredicateAst::SourceChosenOption(label.clone())),
         ChosenOptionContext::MaxSpeed => PredicateAst::ValueComparison {
             left: crate::effect::Value::Speed(PlayerFilter::You),
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
@@ -155,7 +156,7 @@ mod tests {
     fn chosen_option_conditions_consume_typed_contexts() {
         assert!(matches!(
             condition_for_chosen_option(&ChosenOptionContext::source_option("khans")),
-            PredicateAst::SourceChosenOption(option) if option == "khans"
+            PredicateAst::Source(SourcePredicateAst::SourceChosenOption(option)) if option == "khans"
         ));
         assert!(matches!(
             condition_for_chosen_option(&ChosenOptionContext::StationThreshold(5)),

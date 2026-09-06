@@ -1,3 +1,5 @@
+use crate::cards::builders::PermissionEffectAst;
+use crate::cards::builders::StackActionAst;
 use super::*;
 
 #[test]
@@ -130,7 +132,7 @@ pub(super) fn rewrite_copy_count_to_times_paid_label_rewrite(
 ) {
     for effect in effects {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::CopySpell { target, count, .. },
+            action: SubjectVerbActionAst::Stack(StackActionAst::CopySpell { target, count, .. }),
             ..
         }) = effect
             && let crate::cards::builders::TargetAst::Source(_) = target
@@ -159,7 +161,7 @@ pub(super) fn standard_gift_create_token_effect(
     EffectAst::subject_verb(
         SubjectVerbRoleAst::Actor,
         PlayerAst::Chosen,
-        SubjectVerbActionAst::CreateTokenWithMods {
+        SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
             name: name.to_string(),
             definition,
             count: crate::effect::Value::Fixed(1),
@@ -177,7 +179,7 @@ pub(super) fn standard_gift_create_token_effect(
             next_end_step_player: PlayerFilter::Any,
             granted_abilities: Vec::new(),
             ability_presentation: None,
-        },
+        }),
     )
 }
 
@@ -226,7 +228,7 @@ pub(super) fn try_lower_partner_with_tokens(
             trigger: TriggerSpec::ThisEntersBattlefield {
                 origin_condition: None,
             },
-            effects: vec![EffectAst::MayByPlayer {
+            effects: vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
                 player: PlayerAst::Target,
                 effects: vec![EffectAst::subject_verb_search_library(
                     filter,
@@ -245,7 +247,7 @@ pub(super) fn try_lower_partner_with_tokens(
                     false,
                     false,
                 )],
-            }],
+            })],
             max_triggers_per_turn: None,
         },
     ])))

@@ -193,10 +193,10 @@ fn value_from_stat_segment_shape(shape: ValueStatSegmentShape) -> Value {
     let choose_spec = match shape.subject {
         ValueStatSubjectShape::Source => ChooseSpec::Source,
         ValueStatSubjectShape::Tagged => {
-            ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.bind())
+            ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into())
         }
         ValueStatSubjectShape::Exploited => {
-            ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::Exploited.bind())
+            ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::Exploited.bind()).into())
         }
     };
     match shape.axis {
@@ -332,10 +332,10 @@ fn value_from_mana_value_segment_shape(shape: ValueManaValueSegmentShape) -> Val
     let choose_spec = match shape.subject {
         ValueManaValueSubjectShape::Source => ChooseSpec::Source,
         ValueManaValueSubjectShape::Tagged => {
-            ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.bind())
+            ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into())
         }
         ValueManaValueSubjectShape::TaggedPossessivePronoun => ChooseSpec::Tagged(
-            crate::tag::CompilerReferenceTag::It.bind(),
+            (crate::tag::CompilerReferenceTag::It.bind()).into(),
         )
         .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(
             crate::target::SourceReferenceSurface::ThisPermanentType("it".to_string()),

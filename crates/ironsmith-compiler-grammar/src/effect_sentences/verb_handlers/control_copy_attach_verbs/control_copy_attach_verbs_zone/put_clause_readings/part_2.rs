@@ -1,5 +1,7 @@
 //! Readers 2 of 2 of the registry in the parent module.
 
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::ObjectChoiceEffectAst;
 use super::*;
 
 pub(super) fn read_tagged_into_hand(
@@ -23,8 +25,8 @@ pub(super) fn read_tagged_into_hand(
                 effects: EffectAst::compose_put_some_into_hand_rest_on_bottom_of_library(
                     dest_player,
                     choice_count,
-                    looked_tag,
-                    chosen_tag,
+                    crate::tag::TagRef::of(looked_tag),
+                    crate::tag::TagRef::of(chosen_tag),
                     bottom_order,
                 ),
             }));
@@ -41,8 +43,8 @@ pub(super) fn read_tagged_into_hand(
                 effects: EffectAst::compose_put_some_into_hand_rest_into_graveyard(
                     dest_player,
                     choice_count,
-                    looked_tag,
-                    chosen_tag,
+                    crate::tag::TagRef::of(looked_tag),
+                    crate::tag::TagRef::of(chosen_tag),
                 ),
             }));
         }
@@ -288,8 +290,8 @@ pub(super) fn read_into_destination(
                         effects: EffectAst::compose_put_some_into_hand_rest_into_graveyard(
                             dest_player,
                             crate::effect::ChoiceCount::exactly(count as usize),
-                            looked_tag,
-                            chosen_tag,
+                            crate::tag::TagRef::of(looked_tag),
+                            crate::tag::TagRef::of(chosen_tag),
                         ),
                     }));
                 }
@@ -451,10 +453,10 @@ pub(super) fn read_onto_clause(input: &PutClause<'_>) -> Result<Option<EffectAst
                 effects: vec![primary_effect, rest_effect],
             };
             return Ok(Some(if let Some(predicate) = trailing_predicate {
-                EffectAst::TrailingIf {
+                EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
                     predicate,
                     effects: vec![effect],
-                }
+                })
             } else {
                 effect
             }));
@@ -518,15 +520,15 @@ pub(super) fn read_onto_clause(input: &PutClause<'_>) -> Result<Option<EffectAst
                     }
                 }
                 let tag = crate::util::helper_tag_for_tokens(target_tokens, "chosen");
-                let choose = EffectAst::ChooseObjects {
+                let choose = EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                     filter,
                     count,
                     count_value: None,
                     player: chooser,
-                    tag: tag.clone(),
-                };
+                    tag: crate::tag::TagRef::of(tag.clone()),
+                });
                 let move_chosen = EffectAst::subject_verb_move_to_zone_with_attacking(
-                    TargetAst::Tagged(tag, span_from_tokens(target_tokens)),
+                    TargetAst::Tagged(crate::tag::TagRef::of(tag), span_from_tokens(target_tokens)),
                     Zone::Battlefield,
                     false,
                     battlefield_controller,
@@ -540,10 +542,10 @@ pub(super) fn read_onto_clause(input: &PutClause<'_>) -> Result<Option<EffectAst
                     effects: vec![choose, move_chosen],
                 };
                 return Ok(Some(if let Some(predicate) = trailing_predicate {
-                    EffectAst::TrailingIf {
+                    EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
                         predicate,
                         effects: vec![effect],
-                    }
+                    })
                 } else {
                     effect
                 }));
@@ -585,10 +587,10 @@ pub(super) fn read_onto_clause(input: &PutClause<'_>) -> Result<Option<EffectAst
             )
             .with_exiled_with_source_surface(exiled_with_source_surface.clone());
             return Ok(Some(if let Some(predicate) = trailing_predicate {
-                EffectAst::TrailingIf {
+                EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
                     predicate,
                     effects: vec![effect],
-                }
+                })
             } else {
                 effect
             }));
@@ -632,10 +634,10 @@ pub(super) fn read_onto_clause(input: &PutClause<'_>) -> Result<Option<EffectAst
             cca_shapes::is_plural_tagged_object_reference(target_tokens),
         );
         return Ok(Some(if let Some(predicate) = trailing_predicate {
-            EffectAst::TrailingIf {
+            EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
                 predicate,
                 effects: vec![effect],
-            }
+            })
         } else {
             effect
         }));

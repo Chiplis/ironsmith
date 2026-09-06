@@ -2,7 +2,7 @@ use std::ops::ControlFlow;
 
 use crate::cost::TotalCost;
 use crate::effect::Value;
-use crate::model::ast::{EffectAst, PredicateAst, SubjectVerbActionAst};
+use crate::model::ast::{EffectAst, PredicateAst, SubjectVerbActionAst, KeywordActionAst, RandomActionAst, DelayedEffectAst, ForEachEffectAst, ObjectChoiceEffectAst, VoteEffectAst, ConditionalEffectAst, PermissionEffectAst};
 use crate::model::clauses::{
     ClauseActorAst, ClauseConditionAst, ClauseDurationAst, ClauseObjectAst, ClausePredicateAst,
     ClauseSubjectAst,
@@ -39,8 +39,8 @@ pub enum TerminalResultProducer {
 pub fn terminal_result_producer(effect: &EffectAst) -> Option<TerminalResultProducer> {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-            SubjectVerbActionAst::Clash { .. } => Some(TerminalResultProducer::Clash),
-            SubjectVerbActionAst::FlipCoin | SubjectVerbActionAst::FlipCoinFaceOnly => {
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash { .. }) => Some(TerminalResultProducer::Clash),
+            SubjectVerbActionAst::Random(RandomActionAst::FlipCoin) | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly) => {
                 Some(TerminalResultProducer::FlipCoin)
             }
             _ => None,
@@ -93,150 +93,150 @@ macro_rules! nested_effects_variants {
                 effects: $effects,
                 ..
             }
-            | EffectAst::UnlessPays {
+            | EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::TrailingUnless {
+            })
+            | EffectAst::Conditionals(ConditionalEffectAst::TrailingUnless {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::TrailingIf {
+            })
+            | EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::May { effects: $effects }
-            | EffectAst::MayByPlayer {
+            })
+            | EffectAst::Permissions(PermissionEffectAst::May { effects: $effects })
+            | EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::AnyPlayerMay {
+            })
+            | EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::ResolvedIfResult {
+            })
+            | EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::ResolvedWhenResult {
+            })
+            | EffectAst::Conditionals(ConditionalEffectAst::ResolvedWhenResult {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::IfResult {
+            })
+            | EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::WhenResult {
+            })
+            | EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::ForEachOpponent { effects: $effects }
-            | EffectAst::ForEachPlayersFiltered {
+            })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects: $effects })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::ForEachPlayer { effects: $effects }
-            | EffectAst::ForEachTargetPlayers {
+            })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects: $effects })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachTargetPlayers {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::ForEachObject {
+            })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachObject {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::ForEachTagged {
+            })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::ForEachTaggedWithControllerAtLastBlockedBy {
+            })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::ForEachOpponentDoesNot {
+            })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDoesNot {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::ForEachPlayerDoesNot {
+            })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDoesNot {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::ForEachOpponentDid {
+            })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDid {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::ForEachPlayerDid {
+            })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDid {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::ForEachTaggedPlayer {
+            })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::RepeatProcess {
+            })
+            | EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::RepeatEffects {
+            })
+            | EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::BidLife {
+            })
+            | EffectAst::Votes(VoteEffectAst::BidLife {
                 winner_effects: $effects,
                 ..
-            }
-            | EffectAst::DelayedUntilNextEndStep {
+            })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::DelayedUntilNextCleanupStep {
+            })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextCleanupStep {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::DelayedUntilNextUntapStep {
+            })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUntapStep {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::DelayedUntilNextUpkeep {
+            })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::DelayedUntilNextDrawStep {
+            })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextDrawStep {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::DelayedUntilNextMainPhase {
+            })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextMainPhase {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::DelayedUntilNextFirstMainPhase {
+            })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextFirstMainPhase {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::DelayedUntilEndStepOfExtraTurn {
+            })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndStepOfExtraTurn {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::DelayedUntilEndOfCombat { effects: $effects }
-            | EffectAst::DelayedTriggerThisTurn {
+            })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat { effects: $effects })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::DelayedTriggerForDuration {
+            })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::DelayedWhenLastObjectDiesThisTurn {
+            })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::DelayedWhenLastObjectLeavesBattlefield {
+            })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectLeavesBattlefield {
                 effects: $effects,
                 ..
-            }
-            | EffectAst::VoteOption {
+            })
+            | EffectAst::Votes(VoteEffectAst::VoteOption {
                 effects: $effects,
                 ..
-            }
+            })
             | EffectAst::ManaRestricted {
                 effects: $effects,
                 ..
@@ -260,73 +260,73 @@ pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::SourceSentence { .. } => {}
         EffectAst::Coordinated { .. } => {}
         EffectAst::ResultBranchLabel { .. } => {}
-        EffectAst::UnlessPays { .. } => {}
-        EffectAst::UnlessAction { .. } => {}
-        EffectAst::DelayedUntilNextEndStep { .. } => {}
-        EffectAst::DelayedUntilNextCleanupStep { .. } => {}
-        EffectAst::DelayedUntilNextUntapStep { .. } => {}
-        EffectAst::DelayedUntilNextUpkeep { .. } => {}
-        EffectAst::DelayedUntilNextDrawStep { .. } => {}
-        EffectAst::DelayedUntilNextMainPhase { .. } => {}
-        EffectAst::DelayedUntilNextFirstMainPhase { .. } => {}
-        EffectAst::DelayedUntilEndStepOfExtraTurn { .. } => {}
-        EffectAst::DelayedUntilEndOfCombat { .. } => {}
-        EffectAst::DelayedTriggerThisTurn { .. } => {}
-        EffectAst::DelayedTriggerForDuration { .. } => {}
-        EffectAst::DelayedWhenLastObjectDiesThisTurn { .. } => {}
-        EffectAst::DelayedWhenLastObjectLeavesBattlefield { .. } => {}
-        EffectAst::Conditional { .. } => {}
-        EffectAst::TrailingIf { .. } => {}
-        EffectAst::TrailingUnless { .. } => {}
+        EffectAst::Conditionals(ConditionalEffectAst::UnlessPays { .. }) => {}
+        EffectAst::Conditionals(ConditionalEffectAst::UnlessAction { .. }) => {}
+        EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep { .. }) => {}
+        EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextCleanupStep { .. }) => {}
+        EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUntapStep { .. }) => {}
+        EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep { .. }) => {}
+        EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextDrawStep { .. }) => {}
+        EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextMainPhase { .. }) => {}
+        EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextFirstMainPhase { .. }) => {}
+        EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndStepOfExtraTurn { .. }) => {}
+        EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat { .. }) => {}
+        EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn { .. }) => {}
+        EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { .. }) => {}
+        EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn { .. }) => {}
+        EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectLeavesBattlefield { .. }) => {}
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. }) => {}
+        EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { .. }) => {}
+        EffectAst::Conditionals(ConditionalEffectAst::TrailingUnless { .. }) => {}
         EffectAst::ManaRestricted { .. } => {}
         EffectAst::SelfReplacement { .. } => {}
-        EffectAst::ChooseObjects { .. } => {}
-        EffectAst::ChooseObjectsWithAggregateConstraint { .. } => {}
-        EffectAst::ChooseObjectsBottomOfLibrary { .. } => {}
-        EffectAst::ChooseObjectsTopOfLibrary { .. } => {}
-        EffectAst::ChooseTaggedObjectsInZone { .. } => {}
-        EffectAst::ChooseObjectsAcrossZones { .. } => {}
-        EffectAst::ChooseOneOf { .. } => {}
-        EffectAst::VillainousChoice { .. } => {}
-        EffectAst::IfEffectDidNotHappen { .. } => {}
-        EffectAst::IfEffectResult { .. } => {}
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { .. }) => {}
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { .. }) => {}
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { .. }) => {}
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary { .. }) => {}
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { .. }) => {}
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { .. }) => {}
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { .. }) => {}
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { .. }) => {}
+        EffectAst::Conditionals(ConditionalEffectAst::IfEffectDidNotHappen { .. }) => {}
+        EffectAst::Conditionals(ConditionalEffectAst::IfEffectResult { .. }) => {}
         EffectAst::TagAffected { .. } => {}
         EffectAst::DirectionalAdjacentPlayerControl { .. } => {}
-        EffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. } => {}
-        EffectAst::RepeatThisProcess => {}
-        EffectAst::RepeatThisProcessMay => {}
-        EffectAst::RepeatThisProcessOnce => {}
-        EffectAst::RepeatEffects { .. } => {}
-        EffectAst::May { .. } => {}
-        EffectAst::MayByPlayer { .. } => {}
-        EffectAst::AnyPlayerMay { .. } => {}
-        EffectAst::ResolvedIfResult { .. } => {}
-        EffectAst::ResolvedWhenResult { .. } => {}
-        EffectAst::IfResult { .. } => {}
-        EffectAst::WhenResult { .. } => {}
-        EffectAst::ForEachOpponent { .. } => {}
-        EffectAst::ForEachPlayersFiltered { .. } => {}
-        EffectAst::ForEachPlayer { .. } => {}
-        EffectAst::ForEachTargetPlayers { .. } => {}
-        EffectAst::ForEachObject { .. } => {}
-        EffectAst::ForEachTagged { .. } => {}
-        EffectAst::ForEachTaggedWithControllerAtLastBlockedBy { .. } => {}
+        EffectAst::Permissions(PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. }) => {}
+        EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess) => {}
+        EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay) => {}
+        EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce) => {}
+        EffectAst::ForEach(ForEachEffectAst::RepeatEffects { .. }) => {}
+        EffectAst::Permissions(PermissionEffectAst::May { .. }) => {}
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. }) => {}
+        EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay { .. }) => {}
+        EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult { .. }) => {}
+        EffectAst::Conditionals(ConditionalEffectAst::ResolvedWhenResult { .. }) => {}
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult { .. }) => {}
+        EffectAst::Conditionals(ConditionalEffectAst::WhenResult { .. }) => {}
+        EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { .. }) => {}
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { .. }) => {}
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { .. }) => {}
+        EffectAst::ForEach(ForEachEffectAst::ForEachTargetPlayers { .. }) => {}
+        EffectAst::ForEach(ForEachEffectAst::ForEachObject { .. }) => {}
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged { .. }) => {}
+        EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy { .. }) => {}
         EffectAst::MoveTaggedGroupToZone { .. } => {}
         EffectAst::SnapshotLastObjectTag { .. } => {}
-        EffectAst::ForEachOpponentDoesNot { .. } => {}
-        EffectAst::ForEachPlayerDoesNot { .. } => {}
-        EffectAst::ForEachOpponentDid { .. } => {}
-        EffectAst::ForEachPlayerDid { .. } => {}
-        EffectAst::ForEachTaggedPlayer { .. } => {}
-        EffectAst::RepeatProcess { .. } => {}
-        EffectAst::BidLife { .. } => {}
-        EffectAst::VoteStart { .. } => {}
-        EffectAst::SecretChoiceStart { .. } => {}
-        EffectAst::SecretChoiceReveal => {}
-        EffectAst::VoteStartObjects { .. } => {}
-        EffectAst::VoteStartPlayers { .. } => {}
-        EffectAst::VoteOption { .. } => {}
-        EffectAst::VoteExtra { .. } => {}
+        EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDoesNot { .. }) => {}
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDoesNot { .. }) => {}
+        EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDid { .. }) => {}
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDid { .. }) => {}
+        EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer { .. }) => {}
+        EffectAst::ForEach(ForEachEffectAst::RepeatProcess { .. }) => {}
+        EffectAst::Votes(VoteEffectAst::BidLife { .. }) => {}
+        EffectAst::Votes(VoteEffectAst::VoteStart { .. }) => {}
+        EffectAst::Votes(VoteEffectAst::SecretChoiceStart { .. }) => {}
+        EffectAst::Votes(VoteEffectAst::SecretChoiceReveal) => {}
+        EffectAst::Votes(VoteEffectAst::VoteStartObjects { .. }) => {}
+        EffectAst::Votes(VoteEffectAst::VoteStartPlayers { .. }) => {}
+        EffectAst::Votes(VoteEffectAst::VoteOption { .. }) => {}
+        EffectAst::Votes(VoteEffectAst::VoteExtra { .. }) => {}
     }
 }
 
@@ -337,27 +337,27 @@ pub fn for_each_nested_effects(
 ) {
     assert_effect_ast_variant_coverage(effect);
     match effect {
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             if_true, if_false, ..
-        }
+        })
         | EffectAst::SelfReplacement {
             if_true, if_false, ..
         } => {
             visit(if_true);
             visit(if_false);
         }
-        EffectAst::ChooseOneOf { modes } | EffectAst::VillainousChoice { modes, .. } => {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes }) | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
             for mode in modes {
                 visit(&mode.effects);
             }
         }
-        EffectAst::IfEffectDidNotHappen { effect, otherwise } => {
+        EffectAst::Conditionals(ConditionalEffectAst::IfEffectDidNotHappen { effect, otherwise }) => {
             visit(std::slice::from_ref(effect.as_ref()));
             visit(otherwise);
         }
-        EffectAst::IfEffectResult {
+        EffectAst::Conditionals(ConditionalEffectAst::IfEffectResult {
             effect, if_true, ..
-        } => {
+        }) => {
             visit(std::slice::from_ref(effect.as_ref()));
             visit(if_true);
         }
@@ -383,11 +383,11 @@ pub fn for_each_nested_effects(
         nested_effects_variants!(effects) => {
             visit(effects);
         }
-        EffectAst::UnlessAction {
+        EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
             effects,
             alternative,
             ..
-        } => {
+        }) => {
             visit(effects);
             if include_unless_action_alternative {
                 visit(alternative);
@@ -404,27 +404,27 @@ pub fn for_each_nested_effects_mut(
 ) {
     assert_effect_ast_variant_coverage(effect);
     match effect {
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             if_true, if_false, ..
-        }
+        })
         | EffectAst::SelfReplacement {
             if_true, if_false, ..
         } => {
             visit(if_true);
             visit(if_false);
         }
-        EffectAst::ChooseOneOf { modes } | EffectAst::VillainousChoice { modes, .. } => {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes }) | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
             for mode in modes {
                 visit(&mut mode.effects);
             }
         }
-        EffectAst::IfEffectDidNotHappen { effect, otherwise } => {
+        EffectAst::Conditionals(ConditionalEffectAst::IfEffectDidNotHappen { effect, otherwise }) => {
             visit(std::slice::from_mut(effect.as_mut()));
             visit(otherwise);
         }
-        EffectAst::IfEffectResult {
+        EffectAst::Conditionals(ConditionalEffectAst::IfEffectResult {
             effect, if_true, ..
-        } => {
+        }) => {
             visit(std::slice::from_mut(effect.as_mut()));
             visit(if_true);
         }
@@ -450,11 +450,11 @@ pub fn for_each_nested_effects_mut(
         nested_effects_variants!(effects) => {
             visit(effects);
         }
-        EffectAst::UnlessAction {
+        EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
             effects,
             alternative,
             ..
-        } => {
+        }) => {
             visit(effects);
             if include_unless_action_alternative {
                 visit(alternative);
@@ -482,27 +482,27 @@ pub fn for_each_nested_effect_vec_mut(
     ) {
         assert_effect_ast_variant_coverage(effect);
         match effect {
-            EffectAst::Conditional {
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 if_true, if_false, ..
-            }
+            })
             | EffectAst::SelfReplacement {
                 if_true, if_false, ..
             } => {
                 visit(if_true);
                 visit(if_false);
             }
-            EffectAst::ChooseOneOf { modes } | EffectAst::VillainousChoice { modes, .. } => {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes }) | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
                 for mode in modes {
                     visit(&mut mode.effects);
                 }
             }
-            EffectAst::IfEffectDidNotHappen { effect, otherwise } => {
+            EffectAst::Conditionals(ConditionalEffectAst::IfEffectDidNotHappen { effect, otherwise }) => {
                 walk(effect.as_mut(), include_unless_action_alternative, visit);
                 visit(otherwise);
             }
-            EffectAst::IfEffectResult {
+            EffectAst::Conditionals(ConditionalEffectAst::IfEffectResult {
                 effect, if_true, ..
-            } => {
+            }) => {
                 walk(effect.as_mut(), include_unless_action_alternative, visit);
                 visit(if_true);
             }
@@ -528,11 +528,11 @@ pub fn for_each_nested_effect_vec_mut(
             nested_effects_variants!(effects) => {
                 visit(effects);
             }
-            EffectAst::UnlessAction {
+            EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
                 effects,
                 alternative,
                 ..
-            } => {
+            }) => {
                 visit(effects);
                 if include_unless_action_alternative {
                     visit(alternative);
@@ -552,27 +552,27 @@ pub fn try_for_each_nested_effects_mut<E>(
 ) -> Result<(), E> {
     assert_effect_ast_variant_coverage(effect);
     match effect {
-        EffectAst::Conditional {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             if_true, if_false, ..
-        }
+        })
         | EffectAst::SelfReplacement {
             if_true, if_false, ..
         } => {
             visit(if_true)?;
             visit(if_false)?;
         }
-        EffectAst::ChooseOneOf { modes } | EffectAst::VillainousChoice { modes, .. } => {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes }) | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
             for mode in modes {
                 visit(&mut mode.effects)?;
             }
         }
-        EffectAst::IfEffectDidNotHappen { effect, otherwise } => {
+        EffectAst::Conditionals(ConditionalEffectAst::IfEffectDidNotHappen { effect, otherwise }) => {
             visit(std::slice::from_mut(effect.as_mut()))?;
             visit(otherwise)?;
         }
-        EffectAst::IfEffectResult {
+        EffectAst::Conditionals(ConditionalEffectAst::IfEffectResult {
             effect, if_true, ..
-        } => {
+        }) => {
             visit(std::slice::from_mut(effect.as_mut()))?;
             visit(if_true)?;
         }
@@ -598,11 +598,11 @@ pub fn try_for_each_nested_effects_mut<E>(
         nested_effects_variants!(effects) => {
             visit(effects)?;
         }
-        EffectAst::UnlessAction {
+        EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
             effects,
             alternative,
             ..
-        } => {
+        }) => {
             visit(effects)?;
             if include_unless_action_alternative {
                 visit(alternative)?;

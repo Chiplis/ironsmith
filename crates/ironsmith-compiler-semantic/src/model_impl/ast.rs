@@ -10,7 +10,7 @@ use crate::model::control_flow::CompilerControlFlowAst;
 use crate::model::coordination::CoordinationAst;
 use crate::model::resource_choice_clauses::{CompilerIterationAst, CompilerVoteAst};
 use crate::object::{AuraAttachmentFilter, CounterType};
-use crate::tag::TagKey;
+use crate::tag::TagRef;
 use crate::target::{ChooseSpec, ObjectFilter, ObjectRef, PlayerFilter, SourceReferenceSurface};
 use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
@@ -608,7 +608,7 @@ pub enum TriggerSpec {
         action: crate::events::KeywordActionKind,
         player: PlayerFilter,
         source_filter: ObjectFilter,
-        object_tag: crate::tag::TagKey,
+        object_tag: crate::tag::TagRef,
         object_filter: ObjectFilter,
         during_your_main_phase: bool,
     },

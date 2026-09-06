@@ -1,3 +1,4 @@
+use crate::cards::builders::SourcePredicateAst;
 use super::*;
 
 pub(super) fn source_remains_on_battlefield(input: &mut WordSliceInput<'_>) -> WResult<Until> {
@@ -61,6 +62,6 @@ pub fn parse_source_tapped_gain_duration_shape(
         start,
         len,
         duration: Until::SourceUntaps,
-        condition: Some(PredicateAst::SourceIsTapped),
+        condition: Some(PredicateAst::Source(SourcePredicateAst::SourceIsTapped)),
     })
 }

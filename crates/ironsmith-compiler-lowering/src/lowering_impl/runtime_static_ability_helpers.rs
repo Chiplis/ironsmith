@@ -374,7 +374,7 @@ pub fn exalted_triggered_ability() -> Ability {
             Effect::pump(
                 1,
                 1,
-                crate::target::ChooseSpec::Tagged(attacker_tag),
+                crate::target::ChooseSpec::Tagged(attacker_tag.key.clone()),
                 crate::effect::Until::EndOfTurn,
             ),
         ],
@@ -464,7 +464,7 @@ fn graveyard_return_counter_ability(
                 )),
                 Effect::new(
                     crate::effects::MoveToZoneEffect::new(
-                        crate::target::ChooseSpec::Tagged(ironsmith_compiler_semantic::tag::declared_key(return_tag)),
+                        crate::target::ChooseSpec::Tagged(ironsmith_compiler_semantic::tag::declared_key(return_tag).into()),
                         crate::zone::Zone::Battlefield,
                         true,
                     )

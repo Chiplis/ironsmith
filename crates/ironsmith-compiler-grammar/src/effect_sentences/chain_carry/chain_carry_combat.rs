@@ -1,13 +1,15 @@
+use crate::cards::builders::DamageActionAst;
+use crate::cards::builders::GrantActionAst;
 use super::*;
 
 pub(super) fn source_damage_then_gain_ability_actions(effects: &[EffectAst]) -> bool {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::DealDamageEqualToPower { source, .. },
+            action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { source, .. }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::GrantAbilitiesToTarget { target, .. },
+            action: SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { target, .. }),
             ..
         }),
     ] = effects
@@ -34,9 +36,9 @@ pub(super) fn append_shared_damage_player_operand(
     let amount = match effects.last() {
         Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::DealDamage { amount, .. }
-                | SubjectVerbActionAst::DealDamageEach { amount, .. }
-                | SubjectVerbActionAst::DealDamageEqualToPower { amount, .. },
+                SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount, .. })
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. })
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { amount, .. }),
             ..
         })) => amount.clone(),
         _ => return false,
@@ -66,19 +68,19 @@ pub fn collapse_token_copy_end_of_combat_exile_followup_lexed(
             (
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action:
-                        SubjectVerbActionAst::CreateTokenCopy { .. }
-                        | SubjectVerbActionAst::CreateTokenCopyFromSource { .. }
-                        | SubjectVerbActionAst::CreateTokenWithMods { .. },
+                        SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. })
+                        | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { .. })
+                        | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { .. }),
                     ..
                 }),
                 EffectAst::SubjectVerb(subject_verb),
             ) => match &subject_verb.action {
-                SubjectVerbActionAst::MoveToZone {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                     target,
                     zone: Zone::Exile,
                     ..
-                }
-                | SubjectVerbActionAst::Exile { target, .. } => {
+                })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. }) => {
                     target_is_generic_token_filter(target)
                 }
                 _ => false,
@@ -94,16 +96,16 @@ pub fn collapse_token_copy_end_of_combat_exile_followup_lexed(
         match &mut effects[idx] {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::CreateTokenCopy {
+                    SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
                         exile_at_end_of_combat,
                         exile_at_end_of_combat_reference_surface,
                         ..
-                    }
-                    | SubjectVerbActionAst::CreateTokenCopyFromSource {
+                    })
+                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
                         exile_at_end_of_combat,
                         exile_at_end_of_combat_reference_surface,
                         ..
-                    },
+                    }),
                 ..
             }) => {
                 *exile_at_end_of_combat = true;
@@ -112,10 +114,10 @@ pub fn collapse_token_copy_end_of_combat_exile_followup_lexed(
             }
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::CreateTokenWithMods {
+                    SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
                         exile_at_end_of_combat,
                         ..
-                    },
+                    }),
                 ..
             }) => {
                 *exile_at_end_of_combat = true;

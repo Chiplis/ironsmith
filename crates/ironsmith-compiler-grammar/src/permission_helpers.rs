@@ -1,3 +1,5 @@
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::GrantActionAst;
 use super::grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed;
 use super::grammar::permission_facts::{
     graveyard_source as permission_graveyard_facts,
@@ -14,7 +16,7 @@ use crate::effect::{Until, Value, ValueComparisonOperator};
 use crate::grammar::shared_util::value_semantics::{
     parse_value_prefix_lexed, starts_explicit_ordered_comparison,
 };
-use crate::host::{CardTextError, EffectAst, PlayerAst, PredicateAst, TagKey, TargetAst};
+use crate::host::{CardTextError, EffectAst, PlayerAst, PredicateAst, TagKey, TargetAst, ConditionalEffectAst, PermissionEffectAst};
 use crate::model::CompilerStaticAbilityCore as StaticAbility;
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::CardType;
@@ -366,7 +368,7 @@ fn parse_filtered_spells_from_among_tagged_tokens(
     mark_generic_spell_filter_nonland(&mut filter, fact.subject_tokens);
     Ok(Some((
         TaggedPermissionTarget {
-            tag: crate::tag::CompilerReferenceTag::It.bind(),
+            tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
             as_copy: false,
             max_plays: None,
             surface: tagged_permission_object_surface(fact.surface),
@@ -395,7 +397,7 @@ fn parse_spell_from_among_source_exiled_tokens(
     };
     Some((
         TaggedPermissionTarget {
-            tag: crate::tag::CompilerReferenceTag::SourceExiled.bind(),
+            tag: (crate::tag::CompilerReferenceTag::SourceExiled.bind()).into(),
             as_copy: false,
             max_plays: None,
             surface: Some(
@@ -574,7 +576,7 @@ fn parse_tagged_cast_or_play_target_tokens(
     };
     Some((
         TaggedPermissionTarget {
-            tag,
+            tag: tag.key.clone(),
             as_copy: fact.as_copy,
             max_plays: fact.max_plays,
             surface: tagged_permission_object_surface(fact.surface),
@@ -676,10 +678,10 @@ fn parse_revealed_top_library_permission_clause(
             ..
         }) if matches!(player, PlayerAst::You | PlayerAst::Implicit) => {
             if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
-                tag = crate::tag::CompilerReferenceTag::LastRevealed.bind();
+                tag = (crate::tag::CompilerReferenceTag::LastRevealed.bind()).into();
             }
             EffectAst::subject_verb_grant_play_tagged_until_end_of_turn_while_on_top_of_library(
-                tag,
+                crate::tag::TagRef::of(tag),
                 player,
                 allow_land,
                 without_paying_mana_cost,
@@ -751,7 +753,7 @@ fn build_temporary_tagged_permission_effect(
         )
     };
     let Some(mut filter) = filter else {
-        return grant(tag);
+        return grant(crate::tag::TagRef::of(tag));
     };
 
     // Both the ordinary play permission and the alternative-cost grant are
@@ -768,9 +770,9 @@ fn build_temporary_tagged_permission_effect(
             EffectAst::subject_verb_tag_matching_objects(
                 filter,
                 vec![Zone::Exile],
-                narrowed_tag.clone(),
+                crate::tag::TagRef::of(narrowed_tag.clone()),
             ),
-            grant(narrowed_tag),
+            grant(crate::tag::TagRef::of(narrowed_tag)),
         ],
     }
 }
@@ -969,7 +971,7 @@ fn parse_once_each_turn_top_library_cast_shares_source_exiled_type_permission(
 
     let mut filter = ObjectFilter::nonland();
     filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: crate::tag::CompilerReferenceTag::SourceExiled.bind(),
+        tag: (crate::tag::CompilerReferenceTag::SourceExiled.bind()).into(),
         relation: TaggedOpbjectRelation::SharesCardType,
     });
 
@@ -1036,7 +1038,7 @@ pub fn parse_permission_clause_spec_lexed(
             filter.owner = Some(PlayerFilter::You);
         }
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::SourceExiled.bind(),
+            tag: (crate::tag::CompilerReferenceTag::SourceExiled.bind()).into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
         let spec = crate::model::CompilerGrantSpecCore::new(
@@ -1526,7 +1528,7 @@ pub fn parse_until_your_next_turn_may_play_tagged_clause(
             Ok(Some(
                 if lifetime == PermissionLifetime::UntilYourNextEndStep {
                     EffectAst::subject_verb_grant_play_tagged_until_your_next_end_step(
-                        tag,
+                        crate::tag::TagRef::of(tag),
                         PlayerAst::You,
                         true,
                         mana_spend_mode,
@@ -1534,7 +1536,7 @@ pub fn parse_until_your_next_turn_may_play_tagged_clause(
                     .with_tagged_play_max_plays(max_plays)
                 } else {
                     EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
-                        tag,
+                        crate::tag::TagRef::of(tag),
                         PlayerAst::You,
                         true,
                         mana_spend_mode,
@@ -1674,9 +1676,9 @@ fn parse_any_number_free_cast_from_hand_clause(
     let mut filter = spec.filter;
     filter.zone = Some(Zone::Hand);
     filter.owner = Some(crate::target::PlayerFilter::You);
-    Ok(Some(EffectAst::ForEachObject {
+    Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachObject {
         filter,
-        effects: vec![EffectAst::May {
+        effects: vec![EffectAst::Permissions(PermissionEffectAst::May {
             effects: vec![EffectAst::subject_verb_cast_tagged(
                 crate::tag::CompilerReferenceTag::It.bind(),
                 lead.player,
@@ -1685,8 +1687,8 @@ fn parse_any_number_free_cast_from_hand_clause(
                 true,
                 None,
             )],
-        }],
-    }))
+        })],
+    })))
 }
 
 fn mana_value_filter_comparison(
@@ -1965,7 +1967,7 @@ fn parse_cast_with_tagged_mana_value_limit_clause_impl(
         filter
             .tagged_constraints
             .push(crate::filter::TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::It.bind(),
+                tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
                 relation: crate::filter::TaggedOpbjectRelation::ManaValueLteTagged,
             });
     } else if let (ValueComparisonOperator::Equal, Value::CountersOnSource(counter_type)) =
@@ -2052,7 +2054,7 @@ pub fn parse_cast_or_play_tagged_clause(
                         parse_tagged_permission_mana_value_condition_tokens(tail.condition_tokens)?;
                     let inner = if tail.lifetime == PermissionLifetime::Immediate {
                         EffectAst::subject_verb_cast_tagged(
-                            target_ref.tag.clone(),
+                            crate::tag::TagRef::of(target_ref.tag.clone()),
                             lead.player,
                             lead.allow_land,
                             target_ref.as_copy,
@@ -2061,14 +2063,14 @@ pub fn parse_cast_or_play_tagged_clause(
                         )
                     } else {
                         EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-                            target_ref.tag.clone(),
+                            crate::tag::TagRef::of(target_ref.tag.clone()),
                             PlayerAst::Implicit,
                             lead.allow_land,
                             true,
                             mana_spend_mode,
                         )
                     };
-                    Some(EffectAst::Conditional {
+                    Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                         predicate: PredicateAst::ValueComparison {
                             left: Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
                                 target_ref.tag.clone(),
@@ -2078,7 +2080,7 @@ pub fn parse_cast_or_play_tagged_clause(
                         },
                         if_true: vec![inner],
                         if_false: Vec::new(),
-                    })
+                    }))
                 },
             )
         });
@@ -2106,14 +2108,14 @@ pub fn parse_cast_or_play_tagged_clause(
                     Some(EffectAst::subject_verb_tag_matching_objects(
                         filter,
                         vec![Zone::Exile],
-                        narrowed_tag,
+                        crate::tag::TagRef::of(narrowed_tag),
                     )),
                 )
             } else {
-                (tag, None)
+                (crate::tag::TagRef::of(tag), None)
             };
             let cast = EffectAst::subject_verb_cast_tagged(
-                tag,
+                crate::tag::TagRef::of(tag),
                 player,
                 allow_land,
                 as_copy,
@@ -2123,10 +2125,10 @@ pub fn parse_cast_or_play_tagged_clause(
             let cast = if matches!(player, PlayerAst::Implicit | PlayerAst::You) {
                 cast
             } else {
-                EffectAst::MayByPlayer {
+                EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
                     player,
                     effects: vec![cast],
-                }
+                })
             };
             if let Some(narrowing) = narrowing {
                 Ok(Some(EffectAst::Sequence {
@@ -2176,7 +2178,7 @@ pub fn parse_cast_or_play_tagged_clause(
             Ok(Some(
                 if lifetime == PermissionLifetime::UntilYourNextEndStep {
                     EffectAst::subject_verb_grant_play_tagged_until_your_next_end_step(
-                        tag,
+                        crate::tag::TagRef::of(tag),
                         PlayerAst::Implicit,
                         allow_land,
                         mana_spend_mode,
@@ -2184,7 +2186,7 @@ pub fn parse_cast_or_play_tagged_clause(
                     .with_tagged_play_max_plays(max_plays)
                 } else {
                     EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
-                        tag,
+                        crate::tag::TagRef::of(tag),
                         PlayerAst::Implicit,
                         allow_land,
                         mana_spend_mode,
@@ -2242,7 +2244,7 @@ pub fn parse_cast_or_play_tagged_clause(
         {
             Ok(Some(
                 EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
-                    tag,
+                    crate::tag::TagRef::of(tag),
                     player,
                     allow_land,
                     without_paying_mana_cost,
@@ -2262,7 +2264,7 @@ pub fn parse_cast_or_play_tagged_clause(
             ..
         }) if player == PlayerAst::Implicit || player == PlayerAst::You => Ok(Some(
             EffectAst::subject_verb_grant_play_tagged_for_as_long_as_you_control_source(
-                tag,
+                crate::tag::TagRef::of(tag),
                 PlayerAst::Implicit,
                 allow_land,
                 mana_spend_mode,
@@ -2289,7 +2291,7 @@ mod source_exile_duration_tests {
         assert!(matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+                action: SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
                     allow_land: true,
                     surface: Some(ironsmith_core::GrantPlayTaggedSurface {
                         object: Some(
@@ -2298,7 +2300,7 @@ mod source_exile_duration_tests {
                         ..
                     }),
                     ..
-                },
+                }),
                 ..
             })
         ));
@@ -2311,7 +2313,7 @@ mod source_exile_duration_tests {
         let effect = parse_cast_or_play_tagged_clause(&tokens)
             .expect("permission parsing should not error")
             .expect("permission should parse");
-        let EffectAst::MayCastMatchingSpellWithoutPayingManaCost { filter, zone, .. } = effect
+        let EffectAst::Permissions(PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost { filter, zone, .. }) = effect
         else {
             panic!("expected one matching-spell cast permission: {effect:#?}");
         };
@@ -2321,7 +2323,7 @@ mod source_exile_duration_tests {
         assert_eq!(filter.tagged_constraints.len(), 1, "{filter:#?}");
         assert!(filter.union_surface.equal_or_lesser_mana_value());
         let constraint = &filter.tagged_constraints[0];
-        assert_eq!(constraint.tag, crate::tag::CompilerReferenceTag::It.bind());
+        assert_eq!(constraint.tag, crate::tag::CompilerReferenceTag::It.bind().into());
         assert_eq!(
             constraint.relation,
             crate::filter::TaggedOpbjectRelation::ManaValueLteTagged

@@ -1,16 +1,19 @@
-//! The reference ledger: where the grammar mints a string reference key, it
-//! also declares the symbol the key stands for. Minting happens deep in the
-//! effect grammar, far from any parse context, so the declarations queue in a
-//! thread-local ledger and the enclosing parse scope (a line, a nested
-//! ability, a modal mode) drains them into the symbol table when it closes.
-//! Item 6 of the repair order: `SymbolId` becomes the only semantic reference
-//! identity; this ledger is the step that gives every key a symbol.
+//! Where the grammar's reference keys become symbols.
+//!
+//! A reference scope is entered for the symbol scope a phase is working in
+//! (a line, the document). While it lives, every key the grammar mints binds
+//! immediately in that scope through `SymbolTable::bind_keyed`, which returns
+//! the existing symbol for a key already bound there; the mint's result is a
+//! `TagRef` carrying the symbol and the key. Outside any scope (unit tests,
+//! detached probes) mints bind in a thread-local default table, so two mints
+//! of one key in one scope-less run are the same symbol.
 
 use std::cell::{Cell, RefCell};
 
 use ironsmith_core::TagKey;
 
-use crate::model::symbols::{Cardinality, ObjectDomain, ReferenceRole, SymbolScopeId, SymbolTable};
+use crate::model::symbols::{Cardinality, ObjectDomain, ReferenceRole, SymbolId, SymbolScopeId, SymbolTable};
+use crate::tag_ref::TagRef;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MintedReference {
@@ -20,37 +23,62 @@ pub struct MintedReference {
     pub cardinality: Cardinality,
 }
 
-thread_local! {
-    static ACTIVE_SCOPES: Cell<usize> = const { Cell::new(0) };
-    static PENDING: RefCell<Vec<MintedReference>> = const { RefCell::new(Vec::new()) };
-    /// Open `observe` frames: every mint noted while a frame is open is copied
-    /// into it, deduplicated or not, so a memoized parse can replay its mints.
-    static OBSERVERS: RefCell<Vec<Vec<MintedReference>>> = const { RefCell::new(Vec::new()) };
+/// One entered reference scope: the table it binds into and the scope id.
+/// The pointer is valid while the guard that pushed the frame lives.
+#[derive(Clone, Copy)]
+struct Frame {
+    symbols: *const RefCell<SymbolTable>,
+    scope: SymbolScopeId,
 }
 
-/// Record that the grammar minted `key` for a reference of `role` over
-/// `domain`. Outside any reference scope (unit tests, detached probes) the
-/// mint is not recorded.
-pub fn note_minted(key: TagKey, role: ReferenceRole, domain: ObjectDomain, cardinality: Cardinality) {
+thread_local! {
+    static FRAMES: RefCell<Vec<Frame>> = const { RefCell::new(Vec::new()) };
+    /// Mints outside any scope bind here (root scope), so scope-less parses
+    /// and hand-built fixtures agree on symbols.
+    static DEFAULT: RefCell<SymbolTable> = RefCell::new(SymbolTable::default());
+    /// Open `observe` frames: every mint noted while a frame is open is copied
+    /// into it, so a memoized parse can replay its mints.
+    static OBSERVERS: RefCell<Vec<Vec<MintedReference>>> = const { RefCell::new(Vec::new()) };
+    static ACTIVE_SCOPES: Cell<usize> = const { Cell::new(0) };
+}
+
+/// Binds `key` for a reference of `role` over `domain` in the active scope
+/// (or the default table) and returns the symbol, as a `TagRef`.
+pub fn note_minted(key: TagKey, role: ReferenceRole, domain: ObjectDomain, cardinality: Cardinality) -> TagRef {
     OBSERVERS.with(|observers| {
         for frame in observers.borrow_mut().iter_mut() {
             frame.push(MintedReference { key: key.clone(), role, domain, cardinality });
         }
     });
-    if ACTIVE_SCOPES.with(|active| active.get()) == 0 {
-        return;
-    }
-    PENDING.with(|pending| {
-        let mut pending = pending.borrow_mut();
-        if !pending.iter().any(|minted| minted.key == key) {
-            pending.push(MintedReference { key, role, domain, cardinality });
+    let frame = FRAMES.with(|frames| frames.borrow().last().copied());
+    let symbol = match frame {
+        Some(frame) => {
+            // SAFETY: the frame was pushed by a live `ReferenceScopeGuard` that
+            // borrows the table for at least as long as the frame is on the stack.
+            let symbols = unsafe { &*frame.symbols };
+            symbols
+                .borrow_mut()
+                .bind_keyed(frame.scope, key.clone(), role, cardinality, domain)
+                .unwrap_or(SymbolId(u32::MAX))
         }
-    });
+        None => DEFAULT.with(|table| {
+            let mut table = table.borrow_mut();
+            let root = table.root_scope();
+            table
+                .bind_keyed(root, key.clone(), role, cardinality, domain)
+                .unwrap_or(SymbolId(u32::MAX))
+        }),
+    };
+    TagRef { symbol, key }
 }
 
-/// The pending mints, drained.
-/// Runs `compute` and returns, with its result, every mint it noted (in or out
-/// of a scope), so a cached result can `replay` them where it is reused.
+/// Whether a reference scope is open on this thread.
+pub fn in_scope() -> bool {
+    ACTIVE_SCOPES.with(|active| active.get()) > 0
+}
+
+/// Runs `compute` and returns, with its result, every mint it noted, so a
+/// cached result can `replay` them where it is reused.
 pub fn observe<T>(compute: impl FnOnce() -> T) -> (T, Vec<MintedReference>) {
     OBSERVERS.with(|observers| observers.borrow_mut().push(Vec::new()));
     let result = compute();
@@ -65,47 +93,29 @@ pub fn replay(minted: &[MintedReference]) {
     }
 }
 
-fn take_pending() -> Vec<MintedReference> {
-    PENDING.with(|pending| std::mem::take(&mut *pending.borrow_mut()))
-}
-
-/// A reference scope: while it lives, minted keys queue for `scope`; when it
-/// drops, they bind in `symbols` at `scope`.
+/// A reference scope: while it lives, minted keys bind in `scope` of `symbols`.
 pub struct ReferenceScopeGuard<'a> {
-    symbols: &'a RefCell<SymbolTable>,
-    scope: SymbolScopeId,
-    outer_pending: Vec<MintedReference>,
+    _symbols: &'a RefCell<SymbolTable>,
 }
 
 impl<'a> ReferenceScopeGuard<'a> {
     pub fn enter(symbols: &'a RefCell<SymbolTable>, scope: SymbolScopeId) -> Self {
+        FRAMES.with(|frames| frames.borrow_mut().push(Frame { symbols: symbols as *const _, scope }));
         ACTIVE_SCOPES.with(|active| active.set(active.get() + 1));
-        // mints queued by an enclosing scope stay with that scope
-        let outer_pending = take_pending();
-        Self { symbols, scope, outer_pending }
+        Self { _symbols: symbols }
     }
 }
 
 impl Drop for ReferenceScopeGuard<'_> {
     fn drop(&mut self) {
-        let minted = take_pending();
-        if let Ok(mut symbols) = self.symbols.try_borrow_mut() {
-            for reference in minted {
-                let _ = symbols.bind_keyed(
-                    self.scope,
-                    reference.key,
-                    reference.role,
-                    reference.cardinality,
-                    reference.domain,
-                );
-            }
-        }
-        PENDING.with(|pending| pending.borrow_mut().extend(std::mem::take(&mut self.outer_pending)));
+        FRAMES.with(|frames| {
+            frames.borrow_mut().pop();
+        });
         ACTIVE_SCOPES.with(|active| active.set(active.get().saturating_sub(1)));
     }
 }
 
-#[cfg(test)]
+#[cfg(test)]#[cfg(test)]
 mod tests {
     use super::*;
     use crate::symbols::SymbolScopeKind;
@@ -164,7 +174,7 @@ mod tests {
             let (key, role, domain, cardinality) = minted("__it__");
             note_minted(key.clone(), role, domain, cardinality);
             // Already pending for this scope: deduplicated there, still observed.
-            let ((), observed) = observe(|| note_minted(key, role, domain, cardinality));
+            let (_, observed) = observe(|| note_minted(key, role, domain, cardinality));
             observed
         };
         assert_eq!(minted_in_first.len(), 1);
@@ -181,9 +191,11 @@ mod tests {
     }
 
     #[test]
-    fn mints_outside_any_scope_are_not_recorded() {
+    fn mints_outside_any_scope_share_the_default_table() {
         let (key, role, domain, cardinality) = minted("__stray__");
-        note_minted(key, role, domain, cardinality);
-        assert!(take_pending().is_empty());
+        let first = note_minted(key.clone(), role, domain, cardinality);
+        let second = note_minted(key, role, domain, cardinality);
+        assert_eq!(first, second);
+        assert_eq!(first.key.as_str(), "__stray__");
     }
 }

@@ -1020,6 +1020,7 @@ fn build_zone_card_snapshot(
     ZoneCardSnapshot {
         id: object.id.0,
         stable_id: object.stable_id.0.0,
+        face_down: game.is_face_down(object.id),
         name: if visible {
             object.name.to_string()
         } else {
@@ -1459,6 +1460,7 @@ pub(super) struct HandCardSnapshot {
 pub(super) struct ZoneCardSnapshot {
     pub(super) id: u64,
     pub(super) stable_id: u64,
+    pub(super) face_down: bool,
     pub(super) name: String,
     pub(super) mana_cost: Option<String>,
     pub(super) oracle_text: String,

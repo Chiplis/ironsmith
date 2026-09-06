@@ -35,9 +35,9 @@ pub(super) fn standard_gift_effects(
         semantic_grammar::StandardGiftVariant::Card => vec![EffectAst::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             PlayerAst::Chosen,
-            SubjectVerbActionAst::Draw {
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
                 count: crate::effect::Value::Fixed(1),
-            },
+            }),
         )],
         semantic_grammar::StandardGiftVariant::Treasure => {
             vec![standard_gift_create_token_effect(

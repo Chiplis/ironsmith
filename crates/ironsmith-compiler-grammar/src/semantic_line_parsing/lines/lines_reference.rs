@@ -1,8 +1,10 @@
+use crate::cards::builders::PermissionEffectAst;
+use crate::cards::builders::StackActionAst;
 use super::*;
 
 pub(super) fn membership_predicate_for_iterated_object(tag: &TagKey) -> PredicateAst {
     PredicateAst::TaggedMatches(
-        tag.clone(),
+        crate::tag::TagRef::of(tag.clone()),
         ObjectFilter::default()
             .same_stable_id_as_tagged(crate::tag::CompilerReferenceTag::It.bind()),
     )
@@ -51,7 +53,7 @@ pub fn exact_target_same_name_graveyard_may_cast_bundle(
     filter
         .tagged_constraints
         .push(crate::target::TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::Triggering.bind(),
+            tag: (crate::tag::CompilerReferenceTag::Triggering.bind()).into(),
             relation: crate::target::TaggedOpbjectRelation::SameNameAsTagged,
         });
     filter.set_same_name_antecedent_surface(Some(ironsmith_core::SameNameAntecedentSurface::Spell));
@@ -59,18 +61,18 @@ pub fn exact_target_same_name_graveyard_may_cast_bundle(
     Some(vec![
         EffectAst::TagAffected {
             effect: Box::new(EffectAst::subject_verb_explicit_target_only(target)),
-            tag: target_tag.clone(),
+            tag: crate::tag::TagRef::of(target_tag.clone()),
         },
-        EffectAst::May {
+        EffectAst::Permissions(PermissionEffectAst::May {
             effects: vec![EffectAst::subject_verb_cast_tagged(
-                target_tag,
+                crate::tag::TagRef::of(target_tag),
                 PlayerAst::You,
                 false,
                 false,
                 false,
                 None,
             )],
-        },
+        }),
     ])
 }
 
@@ -127,12 +129,12 @@ pub fn exact_target_graveyard_any_type_may_cast_bundle(
     Some(vec![
         EffectAst::TagAffected {
             effect: Box::new(EffectAst::subject_verb_explicit_target_only(target)),
-            tag: target_tag.clone(),
+            tag: crate::tag::TagRef::of(target_tag.clone()),
         },
-        EffectAst::May {
+        EffectAst::Permissions(PermissionEffectAst::May {
             effects: vec![
                 EffectAst::subject_verb_cast_tagged_with_additional_cost_and_mana_spend_mode(
-                    target_tag,
+                    crate::tag::TagRef::of(target_tag),
                     PlayerAst::You,
                     false,
                     false,
@@ -142,7 +144,7 @@ pub fn exact_target_graveyard_any_type_may_cast_bundle(
                     ironsmith_core::value_model::ManaSpendMode::AnyType,
                 ),
             ],
-        },
+        }),
     ])
 }
 
@@ -161,9 +163,9 @@ pub(super) fn targeted_relative_graveyard_cast_keeps_target_player_and_any_type_
             effect: target_effect,
             tag: target_tag,
         },
-        EffectAst::May {
+        EffectAst::Permissions(PermissionEffectAst::May {
             effects: may_effects,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected explicit target followed by an optional cast: {effects:#?}");
@@ -185,11 +187,11 @@ pub(super) fn targeted_relative_graveyard_cast_keeps_target_player_and_any_type_
     assert!(matches!(
         may_effects.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::CastTagged {
+            action: SubjectVerbActionAst::Stack(StackActionAst::CastTagged {
                 tag,
                 mana_spend_mode: ironsmith_core::value_model::ManaSpendMode::AnyType,
                 ..
-            },
+            }),
             ..
         })] if tag == target_tag
     ));
@@ -220,9 +222,9 @@ pub(super) fn targeted_same_name_graveyard_cast_keeps_target_and_optional_normal
             effect: target_effect,
             tag: target_tag,
         },
-        EffectAst::May {
+        EffectAst::Permissions(PermissionEffectAst::May {
             effects: may_effects,
-        },
+        }),
     ] = parsed_effects
     else {
         panic!("expected targeted card followed by optional cast: {parsed_effects:#?}");
@@ -250,7 +252,7 @@ pub(super) fn targeted_same_name_graveyard_cast_keeps_target_and_optional_normal
     assert!(matches!(
         may_effects.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::CastTagged {
+            action: SubjectVerbActionAst::Stack(StackActionAst::CastTagged {
                 tag,
                 player: PlayerAst::You,
                 allow_land: false,
@@ -260,7 +262,7 @@ pub(super) fn targeted_same_name_graveyard_cast_keeps_target_and_optional_normal
                 cost_reduction: None,
                 mana_spend_mode: ironsmith_core::value_model::ManaSpendMode::Normal,
                 ..
-            },
+            }),
             ..
         })] if tag == target_tag
     ));
@@ -283,10 +285,10 @@ pub(super) fn atomic_return_as_aura_bundle_preempts_returned_object_static_split
     assert!(matches!(
         bundled.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ReturnToBattlefield {
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
                 as_aura: Some(as_aura),
                 ..
-            },
+            }),
             ..
         })] if as_aura.remove_all_abilities && as_aura.granted_abilities.len() == 1
     ));

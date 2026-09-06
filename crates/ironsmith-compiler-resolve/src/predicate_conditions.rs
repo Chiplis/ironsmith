@@ -7,7 +7,7 @@
 //! reach the same answer through it.
 
 use crate::cards::builders::TurnHistoryPredicateAst;
-use crate::cards::builders::{CardTextError, PredicateAst, TagKey};
+use crate::cards::builders::{CardTextError, PredicateAst, TagKey, PlayerPredicateAst, SourcePredicateAst, TriggeringPredicateAst, TurnEventPredicateAst};
 use crate::effect::{Condition, Value};
 use crate::filter::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::model::reference_state::ReferenceEnv;
@@ -29,7 +29,7 @@ pub fn resolve_condition_from_predicate(
     Ok(match predicate {
         PredicateAst::ItIsNight => Condition::ItIsNight,
         PredicateAst::FirstCombatPhaseOfTurn => Condition::FirstCombatPhaseOfTurn,
-        PredicateAst::SourceControllersMainPhase => Condition::SourceControllersMainPhase,
+        PredicateAst::Source(SourcePredicateAst::SourceControllersMainPhase) => Condition::SourceControllersMainPhase,
         PredicateAst::ItIsLandCard => {
             let mut filter = ObjectFilter {
                 zone: None,
@@ -50,7 +50,7 @@ pub fn resolve_condition_from_predicate(
                 Condition::TargetIsSoulbondPaired
             }
         }
-        PredicateAst::SourceChosenOption(option) => Condition::SourceChosenOption(option.clone()),
+        PredicateAst::Source(SourcePredicateAst::SourceChosenOption(option)) => Condition::SourceChosenOption(option.clone()),
         PredicateAst::ItMatches(filter) => {
             let mut resolved = filter.clone();
             // A same-name relation whose right-hand side is still the
@@ -124,24 +124,24 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::EnchantedPermanentAttackedOrBlockedSinceLastUpkeep => {
             Condition::EnchantedPermanentAttackedOrBlockedSinceLastUpkeep
         }
-        PredicateAst::SourceBlockedOrBecameBlockedSinceLastUpkeep => {
+        PredicateAst::Source(SourcePredicateAst::SourceBlockedOrBecameBlockedSinceLastUpkeep) => {
             Condition::SourceBlockedOrBecameBlockedSinceLastUpkeep
         }
-        PredicateAst::TriggeringObjectBecameTappedFirstTimeThisTurn => {
+        PredicateAst::Triggering(TriggeringPredicateAst::TriggeringObjectBecameTappedFirstTimeThisTurn) => {
             Condition::TriggeringObjectBecameTappedFirstTimeThisTurn
         }
-        PredicateAst::TriggeringObjectHadCountersPutFirstTimeThisTurn => {
+        PredicateAst::Triggering(TriggeringPredicateAst::TriggeringObjectHadCountersPutFirstTimeThisTurn) => {
             Condition::TriggeringObjectHadCountersPutFirstTimeThisTurn
         }
         PredicateAst::TargetObjectsHaveDifferentColorSets => {
             Condition::TargetObjectsHaveDifferentColorSets
         }
-        PredicateAst::PlayerTaggedObjectMatches {
+        PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches {
             player,
             tag,
             filter,
             mode,
-        } => {
+        }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             let resolved_tag = resolve_it_tag_key(tag, &refs)?;
             Condition::PlayerTaggedObjectMatches {
@@ -151,7 +151,7 @@ pub fn resolve_condition_from_predicate(
                 mode: *mode,
             }
         }
-        PredicateAst::PlayerControls { player, filter } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerControls { player, filter }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             let resolved = resolve_it_tag(filter, &refs)?;
             Condition::PlayerControls {
@@ -168,17 +168,15 @@ pub fn resolve_condition_from_predicate(
         }
         PredicateAst::NoVoteObjectsMatched { filter } => {
             Condition::Not(Box::new(Condition::TaggedObjectMatches(
-                crate::tag::CompilerReferenceTag::VotedObjects
-                    .as_str()
-                    .into(),
+                (crate::tag::CompilerReferenceTag::VotedObjects.bind()).into(),
                 resolve_it_tag(filter, &refs)?,
             )))
         }
-        PredicateAst::PlayerHasAtLeast {
+        PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast {
             player,
             filter,
             count,
-        } => {
+        }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             let resolved = resolve_it_tag(filter, &refs)?;
             Condition::PlayerHasAtLeast {
@@ -187,11 +185,11 @@ pub fn resolve_condition_from_predicate(
                 count: *count,
             }
         }
-        PredicateAst::PlayerControlsExactly {
+        PredicateAst::Player(PlayerPredicateAst::PlayerControlsExactly {
             player,
             filter,
             count,
-        } => {
+        }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             let resolved = resolve_it_tag(filter, &refs)?;
             Condition::PlayerControlsExactly {
@@ -200,11 +198,11 @@ pub fn resolve_condition_from_predicate(
                 count: *count,
             }
         }
-        PredicateAst::PlayerHasAtLeastWithDifferentPowers {
+        PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeastWithDifferentPowers {
             player,
             filter,
             count,
-        } => {
+        }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             let resolved = resolve_it_tag(filter, &refs)?;
             Condition::PlayerHasAtLeastWithDifferentPowers {
@@ -213,11 +211,11 @@ pub fn resolve_condition_from_predicate(
                 count: *count,
             }
         }
-        PredicateAst::PlayerControlsOrHasCardInGraveyard {
+        PredicateAst::Player(PlayerPredicateAst::PlayerControlsOrHasCardInGraveyard {
             player,
             control_filter,
             graveyard_filter,
-        } => {
+        }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             let mut resolved_control = resolve_it_tag(control_filter, &refs)?;
             resolved_control.zone = None;
@@ -233,11 +231,11 @@ pub fn resolve_condition_from_predicate(
                 }),
             )
         }
-        PredicateAst::PlayerOwnsCardNamedInZones {
+        PredicateAst::Player(PlayerPredicateAst::PlayerOwnsCardNamedInZones {
             player,
             name,
             zones,
-        } => {
+        }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerOwnsCardNamedInZones {
                 player,
@@ -245,7 +243,7 @@ pub fn resolve_condition_from_predicate(
                 zones: zones.clone(),
             }
         }
-        PredicateAst::PlayerControlsNo { player, filter } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerControlsNo { player, filter }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             let mut resolved = resolve_it_tag(filter, &refs)?;
             resolved.zone = None;
@@ -261,7 +259,7 @@ pub fn resolve_condition_from_predicate(
                 filter: resolved,
             }))
         }
-        PredicateAst::PlayerControlsMost { player, filter } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerControlsMost { player, filter }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             let mut resolved = resolve_it_tag(filter, &refs)?;
             resolved.zone = None;
@@ -270,7 +268,7 @@ pub fn resolve_condition_from_predicate(
                 filter: resolved,
             }
         }
-        PredicateAst::PlayerControlsMoreThanEachOtherPlayer { player, filter } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerControlsMoreThanEachOtherPlayer { player, filter }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             let mut resolved = resolve_it_tag(filter, &refs)?;
             resolved.zone = None;
@@ -279,7 +277,7 @@ pub fn resolve_condition_from_predicate(
                 filter: resolved,
             }
         }
-        PredicateAst::PlayerControlsMoreThanYou { player, filter } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerControlsMoreThanYou { player, filter }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             let mut resolved = resolve_it_tag(filter, &refs)?;
             resolved.zone = None;
@@ -295,27 +293,27 @@ pub fn resolve_condition_from_predicate(
                 filter: resolve_it_tag(filter, &refs)?,
             }
         }
-        PredicateAst::PlayerLifeAtMostHalfStartingLifeTotal { player } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerLifeAtMostHalfStartingLifeTotal { player }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerLifeAtMostHalfStartingLifeTotal { player }
         }
-        PredicateAst::PlayerLifeLessThanHalfStartingLifeTotal { player } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerLifeLessThanHalfStartingLifeTotal { player }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerLifeLessThanHalfStartingLifeTotal { player }
         }
-        PredicateAst::PlayerHasLessLifeThanYou { player } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerHasLessLifeThanYou { player }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHasLessLifeThanYou { player }
         }
-        PredicateAst::PlayerHasMoreLifeThanYou { player } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreLifeThanYou { player }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHasMoreLifeThanYou { player }
         }
-        PredicateAst::PlayerHasNoOpponentWithMoreLifeThan { player } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerHasNoOpponentWithMoreLifeThan { player }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHasNoOpponentWithMoreLifeThan { player }
         }
-        PredicateAst::PlayerHasMoreLifeThanEachOtherPlayer { player } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreLifeThanEachOtherPlayer { player }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHasMoreLifeThanEachOtherPlayer { player }
         }
@@ -328,58 +326,58 @@ pub fn resolve_condition_from_predicate(
             even: *even,
             display: display.clone(),
         },
-        PredicateAst::PlayerIsMonarch { player } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerIsMonarch { player }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerIsMonarch { player }
         }
-        PredicateAst::PlayerHasInitiative { player } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerHasInitiative { player }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHasInitiative { player }
         }
-        PredicateAst::PlayerHasCitysBlessing { player } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerHasCitysBlessing { player }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHasCitysBlessing { player }
         }
-        PredicateAst::SourceIsRingBearer { player } => {
+        PredicateAst::Source(SourcePredicateAst::SourceIsRingBearer { player }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::SourceIsRingBearer { player }
         }
-        PredicateAst::PlayerRingTemptedThisGameOrMore { player, count } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerRingTemptedThisGameOrMore { player, count }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerRingTemptedThisGameOrMore {
                 player,
                 count: *count,
             }
         }
-        PredicateAst::PlayerCompletedDungeon {
+        PredicateAst::Player(PlayerPredicateAst::PlayerCompletedDungeon {
             player,
             dungeon_name,
-        } => {
+        }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerCompletedDungeon {
                 player,
                 dungeon_name: dungeon_name.clone(),
             }
         }
-        PredicateAst::PlayerTappedLandForManaThisTurn { player } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerTappedLandForManaThisTurn { player }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerTappedLandForManaThisTurn { player }
         }
-        PredicateAst::PlayerGainedLifeThisTurnOrMore { player, count } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerGainedLifeThisTurnOrMore { player, count }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerGainedLifeThisTurnOrMore {
                 player,
                 count: *count,
             }
         }
-        PredicateAst::CreatureDiedThisTurnOrMore(count) => {
+        PredicateAst::TurnEvents(TurnEventPredicateAst::CreatureDiedThisTurnOrMore(count)) => {
             Condition::CreatureDiedThisTurnOrMore(*count)
         }
-        PredicateAst::CreatureDealtDamageBySourceDiedThisTurn {
+        PredicateAst::TurnEvents(TurnEventPredicateAst::CreatureDealtDamageBySourceDiedThisTurn {
             victim,
             damager,
             count,
-        } => Condition::CreatureDealtDamageBySourceDiedThisTurn {
+        }) => Condition::CreatureDealtDamageBySourceDiedThisTurn {
             victim: victim.clone(),
             damager: match damager {
                 DamageBySpec::ThisCreature => DamagedBySource::ThisCreature,
@@ -388,94 +386,94 @@ pub fn resolve_condition_from_predicate(
             },
             count: *count,
         },
-        PredicateAst::PlayerHadLandEnterBattlefieldThisTurn { player } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerHadLandEnterBattlefieldThisTurn { player }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHadLandEnterBattlefieldThisTurn { player }
         }
-        PredicateAst::PlayerDescendedThisTurn { player } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerDescendedThisTurn { player }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerDescendedThisTurn { player }
         }
-        PredicateAst::PlayerTaggedObjectEnteredBattlefieldThisTurn { player, tag } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectEnteredBattlefieldThisTurn { player, tag }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerTaggedObjectEnteredBattlefieldThisTurn {
                 player,
-                tag: tag.clone(),
+                tag: tag.clone().into(),
             }
         }
-        PredicateAst::PlayerControlsBasicLandTypesAmongLandsOrMore { player, count } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerControlsBasicLandTypesAmongLandsOrMore { player, count }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerControlsBasicLandTypesAmongLandsOrMore {
                 player,
                 count: *count,
             }
         }
-        PredicateAst::PlayerHasCardTypesInGraveyardOrMore { player, count } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerHasCardTypesInGraveyardOrMore { player, count }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHasCardTypesInGraveyardOrMore {
                 player,
                 count: *count,
             }
         }
-        PredicateAst::PlayerCardsInHandOrMore { player, count } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerCardsInHandOrMore { player, count }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerCardsInHandOrMore {
                 player,
                 count: *count as i32,
             }
         }
-        PredicateAst::PlayerCardsInHandOrFewer { player, count } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerCardsInHandOrFewer { player, count }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerCardsInHandOrFewer {
                 player,
                 count: *count as i32,
             }
         }
-        PredicateAst::PlayerCardsInHandAtTurnStartOrMore { player, count } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerCardsInHandAtTurnStartOrMore { player, count }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerCardsInHandAtTurnStartOrMore {
                 player,
                 count: *count as i32,
             }
         }
-        PredicateAst::PlayerCardsInHandAtTurnStartOrFewer { player, count } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerCardsInHandAtTurnStartOrFewer { player, count }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerCardsInHandAtTurnStartOrFewer {
                 player,
                 count: *count as i32,
             }
         }
-        PredicateAst::PlayerHasMoreCardsInHandThanYou { player } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreCardsInHandThanYou { player }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHasMoreCardsInHandThanYou { player }
         }
-        PredicateAst::PlayerHasMoreCardsInHandThanEachOtherPlayer { player } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreCardsInHandThanEachOtherPlayer { player }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHasMoreCardsInHandThanEachOtherPlayer { player }
         }
-        PredicateAst::PlayerHasPoisonCountersOrMore { player, count } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerHasPoisonCountersOrMore { player, count }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHasPoisonCountersOrMore {
                 player,
                 count: *count,
             }
         }
-        PredicateAst::PlayerCastSpellsThisTurnOrMore { player, count } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerCastSpellsThisTurnOrMore { player, count }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerCastSpellsThisTurnOrMore {
                 player,
                 count: *count,
             }
         }
-        PredicateAst::OpponentLostLifeThisTurn => Condition::OpponentLostLifeThisTurn,
-        PredicateAst::AnyPlayerLostLifeThisTurnOrMore { count } => {
+        PredicateAst::TurnEvents(TurnEventPredicateAst::OpponentLostLifeThisTurn) => Condition::OpponentLostLifeThisTurn,
+        PredicateAst::TurnEvents(TurnEventPredicateAst::AnyPlayerLostLifeThisTurnOrMore { count }) => {
             Condition::AnyPlayerLostLifeThisTurnOrMore { count: *count }
         }
-        PredicateAst::OpponentWasDealtDamageThisTurn => Condition::OpponentWasDealtDamageThisTurn,
+        PredicateAst::TurnEvents(TurnEventPredicateAst::OpponentWasDealtDamageThisTurn) => Condition::OpponentWasDealtDamageThisTurn,
         PredicateAst::YouHaveNoCardsInHand => {
             Condition::Not(Box::new(Condition::CardsInHandOrMore(1)))
         }
-        PredicateAst::PlayerWouldDrawCard { player } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerWouldDrawCard { player }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::Custom(match player {
                 PlayerFilter::You => "you_would_draw_card".into(),
@@ -483,7 +481,7 @@ pub fn resolve_condition_from_predicate(
                 _ => "player_would_draw_card".into(),
             })
         }
-        PredicateAst::PlayerWouldProliferate { player } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerWouldProliferate { player }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::Custom(match player {
                 PlayerFilter::You => "you_would_proliferate".into(),
@@ -491,7 +489,7 @@ pub fn resolve_condition_from_predicate(
                 _ => "player_would_proliferate".into(),
             })
         }
-        PredicateAst::PlayerWouldBeginExtraTurn { player } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerWouldBeginExtraTurn { player }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::Custom(match player {
                 PlayerFilter::Opponent => "opponent_would_begin_extra_turn".into(),
@@ -499,118 +497,118 @@ pub fn resolve_condition_from_predicate(
             })
         }
         PredicateAst::YourTurn => Condition::YourTurn,
-        PredicateAst::CreatureDiedThisTurn => Condition::CreatureDiedThisTurn,
-        PredicateAst::CreatureCardPutIntoYourGraveyardThisTurn => {
+        PredicateAst::TurnEvents(TurnEventPredicateAst::CreatureDiedThisTurn) => Condition::CreatureDiedThisTurn,
+        PredicateAst::TurnEvents(TurnEventPredicateAst::CreatureCardPutIntoYourGraveyardThisTurn) => {
             Condition::CreatureCardPutIntoYourGraveyardThisTurn
         }
-        PredicateAst::PermanentLeftBattlefieldThisTurn => {
+        PredicateAst::TurnEvents(TurnEventPredicateAst::PermanentLeftBattlefieldThisTurn) => {
             Condition::PermanentLeftBattlefieldThisTurn
         }
-        PredicateAst::NonlandPermanentLeftBattlefieldThisTurn => {
+        PredicateAst::TurnEvents(TurnEventPredicateAst::NonlandPermanentLeftBattlefieldThisTurn) => {
             Condition::NonlandPermanentLeftBattlefieldThisTurn
         }
-        PredicateAst::SpellWasWarpedThisTurn => Condition::SpellWasWarpedThisTurn,
-        PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn { surface } => {
+        PredicateAst::TurnEvents(TurnEventPredicateAst::SpellWasWarpedThisTurn) => Condition::SpellWasWarpedThisTurn,
+        PredicateAst::TurnEvents(TurnEventPredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn { surface }) => {
             Condition::PermanentLeftBattlefieldUnderYourControlThisTurn { surface: *surface }
         }
-        PredicateAst::ObjectEnteredBattlefieldThisTurn(filter) => {
+        PredicateAst::TurnEvents(TurnEventPredicateAst::ObjectEnteredBattlefieldThisTurn(filter)) => {
             Condition::ObjectEnteredBattlefieldThisTurn(filter.clone())
         }
-        PredicateAst::ObjectEnteredBattlefieldLastTurn(filter) => {
+        PredicateAst::TurnEvents(TurnEventPredicateAst::ObjectEnteredBattlefieldLastTurn(filter)) => {
             Condition::ObjectEnteredBattlefieldLastTurn(filter.clone())
         }
-        PredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter) => {
+        PredicateAst::TurnEvents(TurnEventPredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter)) => {
             Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter.clone())
         }
-        PredicateAst::SourceIsTapped => Condition::SourceIsTapped,
-        PredicateAst::SourceIsEquipped => Condition::SourceIsEquipped,
-        PredicateAst::SourceIsEnchanted => Condition::SourceIsEnchanted,
-        PredicateAst::SourceIsSaddled => Condition::SourceIsSaddled,
-        PredicateAst::SourceIsRenowned => Condition::SourceIsRenowned,
-        PredicateAst::SourceCrewedByExactly { count, filter } => Condition::SourceCrewedByExactly {
+        PredicateAst::Source(SourcePredicateAst::SourceIsTapped) => Condition::SourceIsTapped,
+        PredicateAst::Source(SourcePredicateAst::SourceIsEquipped) => Condition::SourceIsEquipped,
+        PredicateAst::Source(SourcePredicateAst::SourceIsEnchanted) => Condition::SourceIsEnchanted,
+        PredicateAst::Source(SourcePredicateAst::SourceIsSaddled) => Condition::SourceIsSaddled,
+        PredicateAst::Source(SourcePredicateAst::SourceIsRenowned) => Condition::SourceIsRenowned,
+        PredicateAst::Source(SourcePredicateAst::SourceCrewedByExactly { count, filter }) => Condition::SourceCrewedByExactly {
             count: *count,
             filter: filter.clone(),
         },
-        PredicateAst::SourceMatches(filter) => Condition::SourceMatches(filter.clone()),
+        PredicateAst::Source(SourcePredicateAst::SourceMatches(filter)) => Condition::SourceMatches(filter.clone()),
         PredicateAst::AttachedToSourceMatches(filter) => {
             Condition::AttachedToSourceMatches(filter.clone())
         }
-        PredicateAst::TriggeringObjectHadToAttackThisCombat => {
+        PredicateAst::Triggering(TriggeringPredicateAst::TriggeringObjectHadToAttackThisCombat) => {
             Condition::TriggeringObjectHadToAttackThisCombat
         }
-        PredicateAst::SourceHasNoCounter(counter_type) => {
+        PredicateAst::Source(SourcePredicateAst::SourceHasNoCounter(counter_type)) => {
             Condition::SourceHasNoCounter(*counter_type)
         }
-        PredicateAst::TriggeringObjectHadNoCounter(counter_type) => {
+        PredicateAst::Triggering(TriggeringPredicateAst::TriggeringObjectHadNoCounter(counter_type)) => {
             Condition::Not(Box::new(Condition::TriggeringObjectHadCounters {
                 counter_type: *counter_type,
                 min_count: 1,
             }))
         }
-        PredicateAst::TriggeringObjectHadCounterAtLeast {
+        PredicateAst::Triggering(TriggeringPredicateAst::TriggeringObjectHadCounterAtLeast {
             counter_type,
             count,
-        } => Condition::TriggeringObjectHadCounters {
+        }) => Condition::TriggeringObjectHadCounters {
             counter_type: *counter_type,
             min_count: *count,
         },
-        PredicateAst::SourceHasCounterAtLeast {
+        PredicateAst::Source(SourcePredicateAst::SourceHasCounterAtLeast {
             counter_type,
             count,
             surface,
-        } => Condition::SourceHasCounterAtLeast {
+        }) => Condition::SourceHasCounterAtLeast {
             counter_type: *counter_type,
             count: *count,
             surface: surface.clone(),
         },
-        PredicateAst::SourceHasCountersAtLeast(count) => {
+        PredicateAst::Source(SourcePredicateAst::SourceHasCountersAtLeast(count)) => {
             Condition::SourceHasCountersAtLeast(*count)
         }
-        PredicateAst::SourceHasAttachmentsMatching {
+        PredicateAst::Source(SourcePredicateAst::SourceHasAttachmentsMatching {
             filter,
             comparison,
             display,
-        } => Condition::CountComparison {
+        }) => Condition::CountComparison {
             count: crate::static_abilities::AnthemCountExpression::AttachedToSource(filter.clone()),
             comparison: *comparison,
             display: Some(display.clone()),
         },
-        PredicateAst::SourcePowerAtLeast(count) => Condition::SourcePowerAtLeast(*count),
-        PredicateAst::SourceDealtCombatDamageToPlayerThisTurn => {
+        PredicateAst::Source(SourcePredicateAst::SourcePowerAtLeast(count)) => Condition::SourcePowerAtLeast(*count),
+        PredicateAst::Source(SourcePredicateAst::SourceDealtCombatDamageToPlayerThisTurn) => {
             Condition::SourceDealtCombatDamageToPlayerThisTurn
         }
-        PredicateAst::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype }) => {
             Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn {
                 player: resolve_non_target_player_filter(*player, &refs)?,
                 subtype: *subtype,
             }
         }
-        PredicateAst::SourceAttackedThisTurn => Condition::SourceAttackedThisTurn,
-        PredicateAst::SourceSuspected => Condition::SourceSuspected,
-        PredicateAst::SourceCameUnderYourControlThisTurn => {
+        PredicateAst::Source(SourcePredicateAst::SourceAttackedThisTurn) => Condition::SourceAttackedThisTurn,
+        PredicateAst::Source(SourcePredicateAst::SourceSuspected) => Condition::SourceSuspected,
+        PredicateAst::Source(SourcePredicateAst::SourceCameUnderYourControlThisTurn) => {
             Condition::SourceCameUnderYourControlThisTurn
         }
-        PredicateAst::SourceAttackedOrBlockedThisTurn => Condition::SourceAttackedOrBlockedThisTurn,
-        PredicateAst::SourceInGraveyardWithCardsAbove { filter, count } => {
+        PredicateAst::Source(SourcePredicateAst::SourceAttackedOrBlockedThisTurn) => Condition::SourceAttackedOrBlockedThisTurn,
+        PredicateAst::Source(SourcePredicateAst::SourceInGraveyardWithCardsAbove { filter, count }) => {
             Condition::SourceInGraveyardWithCardsAbove {
                 filter: filter.clone(),
                 count: *count,
             }
         }
-        PredicateAst::SourceIsInZone(zone) => Condition::SourceIsInZone(*zone),
-        PredicateAst::YouAttackedThisTurn => Condition::AttackedThisTurn,
-        PredicateAst::YouAttackedWithNOrMoreCreaturesThisTurn(count) => {
+        PredicateAst::Source(SourcePredicateAst::SourceIsInZone(zone)) => Condition::SourceIsInZone(*zone),
+        PredicateAst::TurnEvents(TurnEventPredicateAst::YouAttackedThisTurn) => Condition::AttackedThisTurn,
+        PredicateAst::TurnEvents(TurnEventPredicateAst::YouAttackedWithNOrMoreCreaturesThisTurn(count)) => {
             Condition::AttackedWithNOrMoreCreaturesThisTurn(*count)
         }
-        PredicateAst::YouAttackedWithExactlyNOtherCreaturesThisCombat(count) => {
+        PredicateAst::TurnEvents(TurnEventPredicateAst::YouAttackedWithExactlyNOtherCreaturesThisCombat(count)) => {
             return Err(CardTextError::ParseError(format!(
                 "attack-count combat predicate should have been lowered into an exact attack trigger before condition compilation (count: {count})"
             )));
         }
-        PredicateAst::SourceWasCast => Condition::SourceWasCast,
+        PredicateAst::Source(SourcePredicateAst::SourceWasCast) => Condition::SourceWasCast,
         PredicateAst::ThisSpellWasCastAtSorceryTiming => Condition::ThisSpellWasCastAtSorceryTiming,
         PredicateAst::ThisSpellEscaped => Condition::ThisSpellEscaped,
-        PredicateAst::NoSpellsWereCastLastTurn => Condition::NoSpellsWereCastLastTurn,
+        PredicateAst::TurnEvents(TurnEventPredicateAst::NoSpellsWereCastLastTurn) => Condition::NoSpellsWereCastLastTurn,
         PredicateAst::YouHaveFullParty => Condition::YouHaveFullParty,
         PredicateAst::ThisSpellWasKicked => Condition::ThisSpellWasKicked,
         PredicateAst::ThisSpellPaidLabel(label) => Condition::ThisSpellPaidLabel(label.clone()),
@@ -625,12 +623,12 @@ pub fn resolve_condition_from_predicate(
         },
         PredicateAst::Bound(condition) => condition.as_ref().clone(),
         PredicateAst::YouControl(filter) => Condition::YouControl(filter.clone()),
-        PredicateAst::AttackedThisTurn => Condition::AttackedThisTurn,
-        PredicateAst::SourceAttackedBattleThisTurn => Condition::SourceAttackedBattleThisTurn,
-        PredicateAst::SourceIsSoulbondPaired => Condition::SourceIsSoulbondPaired,
+        PredicateAst::TurnEvents(TurnEventPredicateAst::AttackedThisTurn) => Condition::AttackedThisTurn,
+        PredicateAst::Source(SourcePredicateAst::SourceAttackedBattleThisTurn) => Condition::SourceAttackedBattleThisTurn,
+        PredicateAst::Source(SourcePredicateAst::SourceIsSoulbondPaired) => Condition::SourceIsSoulbondPaired,
         PredicateAst::LifeTotalOrLess(total) => Condition::LifeTotalOrLess(*total),
         PredicateAst::CardsInHandOrMore(count) => Condition::CardsInHandOrMore(*count),
-        PredicateAst::PlayerRolledResultThisTurn { player, result } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerRolledResultThisTurn { player, result }) => {
             Condition::PlayerRolledResultThisTurn {
                 player: resolve_non_target_player_filter(*player, &refs)?,
                 result: *result,
@@ -638,18 +636,18 @@ pub fn resolve_condition_from_predicate(
         }
         PredicateAst::TaggedObjectIsTopOfLibrary { tag, player } => {
             Condition::TaggedObjectIsTopOfLibrary {
-                tag: tag.clone(),
+                tag: tag.clone().into(),
                 player: resolve_non_target_player_filter(*player, &refs)?,
             }
         }
-        PredicateAst::SourceDevouredCreaturesOrMore(count) => {
+        PredicateAst::Source(SourcePredicateAst::SourceDevouredCreaturesOrMore(count)) => {
             Condition::SourceDevouredCreaturesOrMore(*count)
         }
         PredicateAst::XValueAtLeast(value) => Condition::XValueAtLeast(*value),
         PredicateAst::ColorsOfManaSpentToCastThisSpellOrMore(count) => {
             Condition::ColorsOfManaSpentToCastThisSpellOrMore(*count)
         }
-        PredicateAst::SourceControllersEndStep => Condition::SourceControllersEndStep,
+        PredicateAst::Source(SourcePredicateAst::SourceControllersEndStep) => Condition::SourceControllersEndStep,
         PredicateAst::YouHaveCardInHandMatching(filter) => {
             Condition::YouHaveCardInHandMatching(filter.clone())
         }
@@ -667,23 +665,23 @@ pub fn resolve_condition_from_predicate(
             comparison: comparison.clone(),
             display: display.clone(),
         },
-        PredicateAst::PlayerCommittedCrimeThisTurn { player } => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerCommittedCrimeThisTurn { player }) => {
             Condition::PlayerCommittedCrimeThisTurn {
                 player: resolve_non_target_player_filter(*player, &refs)?,
             }
         }
-        PredicateAst::PlayerRemovedDraftCardMatching {
+        PredicateAst::Player(PlayerPredicateAst::PlayerRemovedDraftCardMatching {
             player,
             filter,
             with_cards_named,
-        } => Condition::PlayerRemovedDraftCardMatching {
+        }) => Condition::PlayerRemovedDraftCardMatching {
             player: resolve_non_target_player_filter(*player, &refs)?,
             filter: filter.clone(),
             with_cards_named: with_cards_named.clone(),
         },
-        PredicateAst::SourceIsAttacking => Condition::SourceIsAttacking,
-        PredicateAst::SourceIsUntapped => Condition::SourceIsUntapped,
-        PredicateAst::SourceIsMonstrous => Condition::SourceIsMonstrous,
+        PredicateAst::Source(SourcePredicateAst::SourceIsAttacking) => Condition::SourceIsAttacking,
+        PredicateAst::Source(SourcePredicateAst::SourceIsUntapped) => Condition::SourceIsUntapped,
+        PredicateAst::Source(SourcePredicateAst::SourceIsMonstrous) => Condition::SourceIsMonstrous,
         PredicateAst::EquippedCreatureAttacking => Condition::EquippedCreatureAttacking,
         PredicateAst::EquippedCreatureTapped => Condition::EquippedCreatureTapped,
         PredicateAst::EquippedCreatureUntapped => Condition::EquippedCreatureUntapped,
@@ -717,7 +715,7 @@ pub fn resolve_condition_from_predicate(
             }
         },
         PredicateAst::TargetWasKicked => Condition::TargetWasKicked,
-        PredicateAst::ThisAbilityResolvedThisTurnExactly(count) => {
+        PredicateAst::TurnEvents(TurnEventPredicateAst::ThisAbilityResolvedThisTurnExactly(count)) => {
             Condition::ThisAbilityResolvedThisTurnExactly(*count)
         }
         PredicateAst::TargetSpellCastOrderThisTurn(order) => {
@@ -746,7 +744,7 @@ pub fn resolve_condition_from_predicate(
                 symbol: *symbol,
             }
         }
-        PredicateAst::TriggeringSpellManaSpentToCastAtLeast { amount, symbol } => {
+        PredicateAst::Triggering(TriggeringPredicateAst::TriggeringSpellManaSpentToCastAtLeast { amount, symbol }) => {
             Condition::TriggeringSpellManaSpentToCastAtLeast {
                 amount: *amount,
                 symbol: *symbol,
@@ -755,7 +753,7 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::ColoredManaSpentToCastThisSpellAtLeast(amount) => {
             Condition::ColoredManaSpentToCastThisSpellAtLeast(*amount)
         }
-        PredicateAst::TriggeringSpellColoredManaSpentToCastAtLeast(amount) => {
+        PredicateAst::Triggering(TriggeringPredicateAst::TriggeringSpellColoredManaSpentToCastAtLeast(amount)) => {
             Condition::TriggeringSpellColoredManaSpentToCastAtLeast(*amount)
         }
         PredicateAst::SnowManaOfAnySpellColorSpentToCastThisSpell => {

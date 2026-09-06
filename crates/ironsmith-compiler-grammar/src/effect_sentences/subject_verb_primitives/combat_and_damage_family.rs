@@ -1,3 +1,7 @@
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::StatChangeActionAst;
+use crate::cards::builders::GrantActionAst;
 use super::super::zone_handlers::parse_return;
 use super::*;
 use crate::grammar::effects::combat_damage_family_shapes as combat_shapes;
@@ -56,9 +60,9 @@ pub fn parse_sentence_pump_creature_type_of_choice(
         for effect in &mut gain_effects {
             if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::PumpAll { filter, .. }
-                    | SubjectVerbActionAst::GrantAbilitiesAll { filter, .. }
-                    | SubjectVerbActionAst::GrantAbilitiesChoiceAll { filter, .. },
+                    SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll { filter, .. })
+                    | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll { filter, .. })
+                    | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceAll { filter, .. }),
                 ..
             }) = effect
             {
@@ -472,17 +476,17 @@ pub fn parse_sentence_for_each_of_target_objects(
     }
 
     Ok(Some(vec![
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter,
             count,
             count_value: None,
             player: PlayerAst::Implicit,
             tag: crate::tag::CompilerReferenceTag::It.bind(),
-        },
-        EffectAst::ForEachTagged {
+        }),
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
             tag: crate::tag::CompilerReferenceTag::It.bind(),
             effects: per_target_effects,
-        },
+        }),
     ]))
 }
 
@@ -604,10 +608,10 @@ pub fn parse_sentence_transform_with_followup(
         parse_convert(transform_target_tokens)?
     };
     let transform = if let Some(condition) = trailing_if {
-        EffectAst::TrailingIf {
+        EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
             predicate: condition.predicate,
             effects: vec![transform],
-        }
+        })
     } else {
         transform
     };
@@ -742,6 +746,7 @@ pub(super) fn delayed_next_step_marker(
 
 #[cfg(test)]
 mod coordinated_return_tests {
+    use crate::cards::builders::ZoneMoveActionAst;
     use super::*;
     use crate::lexer::lex_line;
 
@@ -767,17 +772,17 @@ mod coordinated_return_tests {
         assert!(matches!(
             hand,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::ReturnToHand { .. },
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { .. }),
                 ..
             })
         ));
         assert!(matches!(
             battlefield,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::ReturnToBattlefield {
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
                     controller: ReturnControllerAst::You,
                     ..
-                },
+                }),
                 ..
             })
         ));
@@ -801,7 +806,7 @@ mod coordinated_return_tests {
         let [
             _,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::ReturnToHand { target, .. },
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. }),
                 ..
             }),
         ] = effects
@@ -831,7 +836,7 @@ mod coordinated_return_tests {
         assert!(effects.iter().all(|effect| matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::ReturnToBattlefield { .. },
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { .. }),
                 ..
             })
         )));

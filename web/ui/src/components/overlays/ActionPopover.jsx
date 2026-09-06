@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHoverActions } from "@/context/HoverContext";
 import { SymbolText } from "@/lib/mana-symbols";
@@ -134,10 +135,10 @@ export default function ActionPopover({
   const tailSize = 11;
   const yOrigin = placeAbove ? "100%" : "0%";
 
-  return (
+  return createPortal(
     <div
       ref={ref}
-      className="fixed z-[152]"
+      className="fixed z-[32000]"
       data-action-popover="true"
       data-action-count={actionGroups.length}
       style={{
@@ -266,6 +267,7 @@ export default function ActionPopover({
           transition: "transform 200ms ease, opacity 200ms ease",
         }}
       />
-    </div>
+    </div>,
+    document.body
   );
 }

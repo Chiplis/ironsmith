@@ -9,6 +9,9 @@ use crate::grammar::activated_lines::{
 use crate::grammar::leaf::parse_leaf_fixed_mana_output_tokens;
 use crate::lexer::render_token_slice;
 use crate::model::ast::SubjectVerbActionAst;
+use crate::model::ast::StatChangeActionAst;
+use crate::model::ast::LifeResourceActionAst;
+use crate::model::ast::ManaActionAst;
 use crate::util::SubjectAst;
 
 pub type ActivationRestrictionCompatWords<'a> = grammar::TokenWordView<'a>;
@@ -117,9 +120,9 @@ fn parse_direct_controller_sacrifice_draw_program(
     let draw = EffectAst::subject_verb(
         SubjectVerbRoleAst::AffectedPlayer,
         PlayerAst::ItsController,
-        SubjectVerbActionAst::Draw {
+        SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
             count: Value::Fixed(1),
-        },
+        }),
     );
     Ok(Some(vec![sacrifice, draw]))
 }
@@ -211,9 +214,9 @@ fn parse_direct_simple_effect_ability(
         EffectAst::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             PlayerAst::You,
-            SubjectVerbActionAst::Draw {
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
                 count: Value::Fixed(1),
-            },
+            }),
         )
     } else {
         return Ok(None);
@@ -709,12 +712,12 @@ fn replace_removed_counter_metric_with_x(effect: &mut EffectAst) {
 
     if let EffectAst::SubjectVerb(subject_verb) = effect {
         match &mut subject_verb.action {
-            SubjectVerbActionAst::AddManaScaled { amount, .. }
-            | SubjectVerbActionAst::AddManaAnyColor { amount, .. }
-            | SubjectVerbActionAst::AddManaAnyOneColor { amount }
-            | SubjectVerbActionAst::AddManaChosenColor { amount, .. }
-            | SubjectVerbActionAst::AddManaFromLandCouldProduce { amount, .. }
-            | SubjectVerbActionAst::AddManaCommanderIdentity { amount } => replace_value(amount),
+            SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { amount }) => replace_value(amount),
             _ => {}
         }
     }
@@ -746,13 +749,13 @@ fn activation_cost_removes_dynamic_counters(
 
 fn replace_counter_removed_pump_with_x(effect: &mut EffectAst) {
     if let EffectAst::SubjectVerb(subject_verb) = effect
-        && let SubjectVerbActionAst::PumpByLastEffect {
+        && let SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpByLastEffect {
             power,
             toughness,
             target,
             duration,
             includes_this_way,
-        } = &subject_verb.action
+        }) = &subject_verb.action
     {
         let basis = Value::X.with_surface_hint(if *includes_this_way {
             ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay
@@ -783,16 +786,16 @@ fn replace_counter_removed_pump_with_x(effect: &mut EffectAst) {
 pub fn mana_effect_contains_unbound_x(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-            SubjectVerbActionAst::AddManaScaled { amount, .. }
-            | SubjectVerbActionAst::AddManaAnyColor { amount, .. }
-            | SubjectVerbActionAst::AddManaAnyOneColor { amount }
-            | SubjectVerbActionAst::AddManaChosenColor { amount, .. }
-            | SubjectVerbActionAst::AddManaFromLandCouldProduce { amount, .. }
-            | SubjectVerbActionAst::AddManaCommanderIdentity { amount } => {
+            SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { amount }) => {
                 value_contains_unbound_x(amount)
             }
-            SubjectVerbActionAst::AddManaColorsAmong { .. }
-            | SubjectVerbActionAst::AddOneManaAnyColorAmong { .. } => false,
+            SubjectVerbActionAst::Mana(ManaActionAst::AddManaColorsAmong { .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddOneManaAnyColorAmong { .. }) => false,
             _ => false,
         },
         _ => {

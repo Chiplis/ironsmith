@@ -1,3 +1,4 @@
+use crate::cards::builders::ForEachEffectAst;
 use super::*;
 
 pub(super) fn parse_reveal_until_land_put_all_graveyard_bundle(
@@ -63,10 +64,10 @@ pub(super) fn parse_consult_then_put_matches_battlefield_rest_bottom_bundle(
     };
     let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::ConsultTopOfLibrary {
+            SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
                 mode: LibraryConsultModeAst::Reveal,
                 ..
-            },
+            }),
         ..
     })) = parts.effects.last()
     else {
@@ -81,7 +82,7 @@ pub(super) fn parse_consult_then_put_matches_battlefield_rest_bottom_bundle(
 
     let mut effects = parts.effects;
     effects.push(EffectAst::subject_verb_move_to_zone(
-        TargetAst::Tagged(parts.match_tag.clone(), None),
+        TargetAst::Tagged(crate::tag::TagRef::of(parts.match_tag.clone()), None),
         Zone::Battlefield,
         false,
         ReturnControllerAst::Preserve,
@@ -90,8 +91,8 @@ pub(super) fn parse_consult_then_put_matches_battlefield_rest_bottom_bundle(
     ));
     effects.push(
         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-            parts.all_tag,
-            Some(parts.match_tag),
+            crate::tag::TagRef::of(parts.all_tag),
+            Some(crate::tag::TagRef::of(parts.match_tag)),
             followup.order,
             parts.player,
         ),
@@ -101,8 +102,8 @@ pub(super) fn parse_consult_then_put_matches_battlefield_rest_bottom_bundle(
 }
 
 fn move_consult_tagged_group(tag: TagKey, zone: Zone, controller_you: bool) -> EffectAst {
-    EffectAst::ForEachTagged {
-        tag,
+    EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+        tag: crate::tag::TagRef::of(tag),
         effects: vec![EffectAst::subject_verb_move_to_zone(
             TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
             zone,
@@ -115,7 +116,7 @@ fn move_consult_tagged_group(tag: TagKey, zone: Zone, controller_you: bool) -> E
             false,
             None,
         )],
-    }
+    })
 }
 
 fn append_consult_remainder(
@@ -130,19 +131,19 @@ fn append_consult_remainder(
             effects.push(EffectAst::subject_verb(
                 SubjectVerbRoleAst::Actor,
                 PlayerAst::Implicit,
-                SubjectVerbActionAst::PutTaggedRemainderInZone {
-                    tag: all_tag,
-                    keep_tagged: keep_tag,
+                SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderInZone {
+                    tag: crate::tag::TagRef::of(all_tag),
+                    keep_tagged: crate::tag::TagRef::of(keep_tag),
                     zone: Zone::Graveyard,
                     surface: ironsmith_core::LibraryRemainderSurface::Rest,
-                },
+                }),
             ));
         }
         bundle_grammar::ConsultRemainderDispositionShape::LibraryBottom(order) => {
             effects.push(
                 EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-                    all_tag,
-                    Some(keep_tag),
+                    crate::tag::TagRef::of(all_tag),
+                    Some(crate::tag::TagRef::of(keep_tag)),
                     order,
                     player,
                 ),
@@ -152,7 +153,7 @@ fn append_consult_remainder(
             effects.push(EffectAst::subject_verb(
                 SubjectVerbRoleAst::LibraryOwner,
                 player,
-                SubjectVerbActionAst::ShuffleLibrary,
+                SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
             ));
         }
     }
@@ -197,22 +198,22 @@ fn lower_consult_repeated_move(
             EffectAst::subject_verb_tag_matching_objects(
                 union,
                 vec![Zone::Library],
-                moved_tag.clone(),
+                crate::tag::TagRef::of(moved_tag.clone()),
             ),
             EffectAst::subject_verb_tag_matching_objects(
                 first,
                 vec![Zone::Library],
-                first_tag.clone(),
+                crate::tag::TagRef::of(first_tag.clone()),
             ),
-            move_consult_tagged_group(first_tag, repeated.zone, false),
+            move_consult_tagged_group(first_tag.key.clone(), repeated.zone, false),
             EffectAst::subject_verb_tag_matching_objects(
                 second,
                 vec![Zone::Library],
-                second_tag.clone(),
+                crate::tag::TagRef::of(second_tag.clone()),
             ),
-            move_consult_tagged_group(second_tag, repeated.zone, false),
+            move_consult_tagged_group(second_tag.key.clone(), repeated.zone, false),
         ],
-        moved_tag,
+        moved_tag.key.clone(),
     ))
 }
 
@@ -242,19 +243,19 @@ pub fn parse_consult_disposition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<
                 let chosen_tag = helper_tag_for_tokens(&shape.consult_tokens, "consult_chosen");
                 let mut filter = ObjectFilter::tagged(parts.match_tag.clone());
                 filter.zone = Some(Zone::Library);
-                effects.push(EffectAst::ChooseObjects {
+                effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                     filter,
                     count: ChoiceCount::any_number(),
                     count_value: None,
                     player: PlayerAst::You,
-                    tag: chosen_tag.clone(),
-                });
+                    tag: crate::tag::TagRef::of(chosen_tag.clone()),
+                }));
                 effects.push(move_consult_tagged_group(
-                    chosen_tag.clone(),
+                    chosen_tag.clone().into(),
                     matched.zone,
                     matched.controller_you,
                 ));
-                chosen_tag
+                chosen_tag.key.clone()
             }
         },
         bundle_grammar::ConsultMiddleShape::RepeatedMove(repeated) => {
@@ -285,14 +286,14 @@ pub fn parse_consult_disposition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<
     );
     match leading_result {
         Some(prefix) => Some(vec![match prefix.kind {
-            crate::grammar::structure::LeadingResultPrefixKind::If => EffectAst::IfResult {
+            crate::grammar::structure::LeadingResultPrefixKind::If => EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                 predicate: prefix.predicate,
                 effects,
-            },
-            crate::grammar::structure::LeadingResultPrefixKind::When => EffectAst::WhenResult {
+            }),
+            crate::grammar::structure::LeadingResultPrefixKind::When => EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
                 predicate: prefix.predicate,
                 effects,
-            },
+            }),
         }]),
         None => Some(effects),
     }
@@ -305,13 +306,13 @@ pub(super) fn parse_reveal_repeated_disposition_bundle(
         fn collect(effect: &EffectAst, tags: &mut Vec<TagKey>) {
             if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::LookAtTopCards {
+                    SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
                         tag, reveal: true, ..
-                    },
+                    }),
                 ..
             }) = effect
             {
-                tags.push(tag.clone());
+                tags.push(tag.clone().into());
             }
             crate::model::visit::for_each_nested_effects(effect, true, |nested| {
                 for effect in nested {
@@ -345,7 +346,7 @@ pub(super) fn parse_reveal_repeated_disposition_bundle(
     // so transport that tag directly.
     let all_tag = revealed_top_collection_tag(&effects)?;
     effects.push(EffectAst::SnapshotLastObjectTag {
-        into: all_tag.clone(),
+        into: crate::tag::TagRef::of(all_tag.clone()),
     });
     let (mut repeated_effects, moved_tag) =
         lower_consult_repeated_move(shape.repeated, all_tag.clone(), &shape.reveal_tokens)?;

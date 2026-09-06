@@ -1,3 +1,5 @@
+use crate::cards::builders::TokenActionAst;
+use crate::cards::builders::StackActionAst;
 use super::*;
 
 /// Preserve an ordered token-creation/spell-copy pair after document
@@ -34,7 +36,7 @@ pub(super) fn parse_create_token_then_copy_spell_chain(
     if !matches!(
         &create_effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::CreateTokenWithMods { .. },
+            action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { .. }),
             ..
         })
     ) {
@@ -48,7 +50,7 @@ pub(super) fn parse_create_token_then_copy_spell_chain(
     if !matches!(
         copy_effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::CopySpell { .. },
+            action: SubjectVerbActionAst::Stack(StackActionAst::CopySpell { .. }),
             ..
         })
     ) {

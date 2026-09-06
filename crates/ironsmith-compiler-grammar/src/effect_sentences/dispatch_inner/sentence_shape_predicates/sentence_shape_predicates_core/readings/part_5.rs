@@ -1,5 +1,7 @@
 //! Sentence readings 89–103, in rank order.
 
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::CounterActionAst;
 use super::super::*;
 use super::Sentence;
 
@@ -55,12 +57,12 @@ pub(super) fn read_leading_if_conditional(
             ))
             .map(Some);
         };
-        if matches!(effects.as_slice(), [EffectAst::Conditional { .. }]) {
+        if matches!(effects.as_slice(), [EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. })]) {
             apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
             normalize_search_followup_shuffles(&mut effects);
             return Ok(Some(effects));
         }
-        if matches!(effects.as_slice(), [EffectAst::IfResult { .. }]) {
+        if matches!(effects.as_slice(), [EffectAst::Conditionals(ConditionalEffectAst::IfResult { .. })]) {
             super::super::super::super::preserve_leading_result_coordination_lexed(
                 tokens,
                 &mut effects,
@@ -243,7 +245,7 @@ pub(super) fn read_put_verb_dispatch(
         && matches!(
             &effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::PutOrRemoveCounters { .. },
+                action: SubjectVerbActionAst::Counters(CounterActionAst::PutOrRemoveCounters { .. }),
                 ..
             })
         )

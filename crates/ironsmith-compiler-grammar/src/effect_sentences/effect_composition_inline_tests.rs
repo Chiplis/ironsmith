@@ -1,3 +1,5 @@
+use crate::cards::builders::StackActionAst;
+use crate::cards::builders::ChoiceActionAst;
 use super::*;
 use crate::lexer::lex_line;
 
@@ -11,19 +13,19 @@ fn each_opponent_hand_exile_keeps_permission_tax_and_land_entry_linked() {
     let effects =
         parse_typed_effect_bundle_lexed(&tokens).expect("linked each-opponent hand exile bundle");
     let [
-        EffectAst::ForEachPlayersFiltered {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
             filter: PlayerFilter::Opponent,
             effects: per_player,
-        },
+        }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
                     tag: grant_tag,
                     player: PlayerAst::ItsOwner,
                     spell_cost_increase: Some(cost),
                     lands_enter_tapped: true,
                     ..
-                },
+                }),
             ..
         }),
     ] = effects.as_slice()
@@ -31,17 +33,17 @@ fn each_opponent_hand_exile_keeps_permission_tax_and_land_entry_linked() {
         panic!("expected correlated exile and constrained play grant: {effects:#?}");
     };
     let [
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             tag: chosen_tag,
             filter,
             ..
-        },
+        }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::Exile {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
                     target: TargetAst::Tagged(exile_tag, None),
                     ..
-                },
+                }),
             ..
         }),
     ] = per_player.as_slice()
@@ -56,11 +58,11 @@ fn each_opponent_hand_exile_keeps_permission_tax_and_land_entry_linked() {
 }
 
 fn conditional_mana_value_limit(effect: &EffectAst) -> Option<i32> {
-    let EffectAst::Conditional {
+    let EffectAst::Conditionals(ConditionalEffectAst::Conditional {
         predicate: PredicateAst::ItMatches(filter),
         if_true,
         if_false,
-    } = effect
+    }) = effect
     else {
         return None;
     };
@@ -68,9 +70,9 @@ fn conditional_mana_value_limit(effect: &EffectAst) -> Option<i32> {
         || !matches!(
             if_true.as_slice(),
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Counter {
+                action: SubjectVerbActionAst::Stack(StackActionAst::Counter {
                     target: TargetAst::Spell(_),
-                },
+                }),
                 ..
             })]
         )
@@ -98,11 +100,11 @@ fn per_player_type_choice_phase_out_keeps_one_shared_card_type() {
                     player: PlayerAst::That,
                     ..
                 },
-            action: SubjectVerbActionAst::ChooseCardType { options },
+            action: SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { options }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::PhaseOutAll { filter, .. },
+            action: SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseOutAll { filter, .. }),
             ..
         }),
     ] = effects.as_slice()
@@ -150,14 +152,14 @@ fn mixed_target_collection_reuses_one_complete_consult_procedure_per_target() {
             effect: declaration,
             tag: object_targets,
         },
-        EffectAst::ForEachPlayersFiltered {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
             filter: PlayerFilter::AliasedTarget(player_filter),
             effects: player_body,
-        },
-        EffectAst::ForEachTagged {
+        }),
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
             tag: tagged_targets,
             effects: object_body,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected one declaration and disjoint player/object loops: {effects:#?}");
@@ -219,27 +221,27 @@ fn mixed_target_collection_reuses_one_complete_consult_procedure_per_target() {
     assert!(matches!(
         player_consult,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ConsultTopOfLibrary { .. },
+            action: SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary { .. }),
             ..
         })
     ));
     assert!(matches!(
         player_damage,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::DealDamage {
+            action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamage {
                 target: TargetAst::Player(PlayerFilter::IteratedPlayer, _),
                 ..
-            },
+            }),
             ..
         })
     ));
     assert!(matches!(
         player_disposition,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+            action: SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
                 keep_tagged: None,
                 ..
-            },
+            }),
             ..
         })
     ));
@@ -249,27 +251,27 @@ fn mixed_target_collection_reuses_one_complete_consult_procedure_per_target() {
     assert!(matches!(
         object_consult,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ConsultTopOfLibrary { .. },
+            action: SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary { .. }),
             ..
         })
     ));
     assert!(matches!(
         object_damage,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::DealDamage {
+            action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamage {
                 target: TargetAst::Tagged(tag, _),
                 ..
-            },
+            }),
             ..
         }) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     ));
     assert!(matches!(
         object_disposition,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+            action: SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
                 keep_tagged: None,
                 ..
-            },
+            }),
             ..
         })
     ));
@@ -288,10 +290,10 @@ fn conditional_controller_sacrifice_consult_keeps_result_and_object_provenance()
             effect: sacrifice,
             tag: sacrificed_tag,
         },
-        EffectAst::IfResult {
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,
             effects: followups,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected tagged sacrifice and result-gated consult, got {effects:#?}");
@@ -299,28 +301,28 @@ fn conditional_controller_sacrifice_consult_keeps_result_and_object_provenance()
     assert!(matches!(
         sacrifice.as_ref(),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Sacrifice {
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice {
                 target: Some(_),
                 ..
-            },
+            }),
             ..
         })
     ));
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::ConsultTopOfLibrary {
+                SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
                     filter: match_filter,
                     ..
-                },
+                }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::MoveToZone { .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { .. }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ShuffleLibrary,
+            action: SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
             ..
         }),
     ] = followups.as_slice()
@@ -332,7 +334,7 @@ fn conditional_controller_sacrifice_consult_keeps_result_and_object_provenance()
             .tagged_constraints
             .iter()
             .filter(|constraint| {
-                constraint.tag == *sacrificed_tag
+                constraint.tag == **sacrificed_tag
                     && constraint.relation == TaggedOpbjectRelation::SharesCardType
             })
             .count(),
@@ -416,20 +418,20 @@ fn inline_exile_top_then_put_binds_the_exact_exiled_collection() {
         .expect("inline exile-top collection bundle should parse");
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ExileTopOfLibrary { count, tags, .. },
+            action: SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { count, tags, .. }),
             ..
         }),
-        EffectAst::ChooseTaggedObjectsInZone {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter,
             count: choice_count,
             tag: chosen_tag,
             zone,
             ..
-        },
-        EffectAst::ForEachTagged {
+        }),
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
             tag: loop_tag,
             effects: put_effects,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected exile/choose/put typed bundle, got {effects:#?}");
@@ -441,16 +443,16 @@ fn inline_exile_top_then_put_binds_the_exact_exiled_collection() {
     assert!(matches!(
         put_effects.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::PutOntoBattlefield {
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PutOntoBattlefield {
                 controller: ReturnControllerAst::You,
                 ..
-            },
+            }),
             ..
         })]
     ));
     assert!(filter.card_types.contains(&CardType::Creature));
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        tags.first() == Some(&constraint.tag)
+        tags.first() == Some(&crate::tag::TagRef::of(constraint.tag.clone()))
             && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     }));
 }
@@ -466,17 +468,17 @@ fn exile_top_bundle_preserves_source_exile_permission_duration() {
         .expect("source-exile-bounded permission bundle should parse");
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ExileTopOfLibrary { tags, .. },
+            action: SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { tags, .. }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
                     tag,
                     until_source_exiles_another: true,
                     surface: Some(surface),
                     ..
-                },
+                }),
             ..
         }),
     ] = effects.as_slice()
@@ -505,21 +507,21 @@ fn inline_exile_top_choose_one_rebinds_the_play_permission() {
         .expect("inline choose-one exile permission should parse");
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ExileTopOfLibrary { count, tags, .. },
+            action: SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { count, tags, .. }),
             ..
         }),
-        EffectAst::ChooseTaggedObjectsInZone {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter,
             count: choice_count,
             tag: chosen_tag,
             ..
-        },
+        }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
                     tag: permission_tag,
                     ..
-                },
+                }),
             ..
         }),
     ] = effects.as_slice()
@@ -530,7 +532,7 @@ fn inline_exile_top_choose_one_rebinds_the_play_permission() {
     assert_eq!(choice_count, &ChoiceCount::exactly(1));
     assert_eq!(chosen_tag, permission_tag);
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        tags.first() == Some(&constraint.tag)
+        tags.first() == Some(&crate::tag::TagRef::of(constraint.tag.clone()))
             && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     }));
 }
@@ -545,11 +547,11 @@ fn optional_result_exile_choice_rebinds_the_trailing_play_permission() {
     let effects = parse_typed_effect_bundle_lexed(&tokens)
         .expect("optional result-gated exile choice should parse as one linked bundle");
     let [
-        EffectAst::May { .. } | EffectAst::MayByPlayer { .. },
-        EffectAst::IfResult {
+        EffectAst::Permissions(PermissionEffectAst::May { .. }) | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. }),
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,
             effects: linked,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected optional action plus result-gated linked program, got {effects:#?}");
@@ -559,17 +561,17 @@ fn optional_result_exile_choice_rebinds_the_trailing_play_permission() {
             linked.as_slice(),
             [
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::ExileTopOfLibrary { count, .. },
+                    action: SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { count, .. }),
                     ..
                 }),
-                EffectAst::ChooseTaggedObjectsInZone { tag: chosen, .. },
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { tag: chosen, .. }),
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action:
-                        SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+                        SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
                             tag: permission,
                             surface: Some(surface),
                             ..
-                        },
+                        }),
                     ..
                 }),
             ] if count == &Value::Fixed(2)
@@ -594,18 +596,18 @@ fn shuffle_prefix_stays_in_the_exile_top_free_play_bundle() {
             effects.as_slice(),
             [
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::ShuffleLibrary,
+                    action: SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
                     ..
                 }),
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::ExileTopOfLibrary { .. },
+                    action: SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { .. }),
                     ..
                 }),
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+                    action: SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
                         without_paying_mana_cost: true,
                         ..
-                    },
+                    }),
                     ..
                 }),
             ]
@@ -624,28 +626,28 @@ fn selected_hand_double_choice_builds_distinct_filters_with_one_accumulating_tag
     let effects = parse_typed_effect_bundle_lexed(&tokens).expect("selected-hand bundle");
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::RevealHand,
+            action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealHand),
             ..
         }),
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter: first_filter,
             count: first_count,
             tag: first_tag,
             ..
-        },
-        EffectAst::ChooseObjects {
+        }),
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter: second_filter,
             count: second_count,
             tag: second_tag,
             ..
-        },
+        }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::Discard {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard {
                     count: Value::Count(discard_filter),
                     filter: Some(card_filter),
                     ..
-                },
+                }),
             ..
         }),
     ] = effects.as_slice()
@@ -669,7 +671,7 @@ fn selected_hand_double_choice_builds_distinct_filters_with_one_accumulating_tag
     for filter in [discard_filter, card_filter] {
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-                && &constraint.tag == first_tag
+                && constraint.tag == first_tag.key
         }));
     }
 }
@@ -683,19 +685,19 @@ fn each_opponent_top_card_permission_preserves_the_accumulated_collection() {
         .unwrap();
     let effects = parse_typed_effect_bundle_lexed(&tokens).expect("exile/permission bundle");
     let [
-        EffectAst::ForEachOpponent {
+        EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
             effects: exile_each,
-        },
+        }),
         permission,
     ] = effects.as_slice()
     else {
         panic!("expected each-opponent exile plus shared permission, got {effects:#?}");
     };
     let [
-        EffectAst::ChooseObjectsTopOfLibrary {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary {
             player: PlayerAst::You,
             ..
-        },
+        }),
         EffectAst::TagAffected {
             tag: collection_tag,
             ..
@@ -707,7 +709,7 @@ fn each_opponent_top_card_permission_preserves_the_accumulated_collection() {
     assert!(matches!(
         permission,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled { tag, .. },
+            action: SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled { tag, .. }),
             ..
         }) if tag == collection_tag
     ));
@@ -723,36 +725,36 @@ fn hidden_exile_partition_uses_one_tag_for_choice_remainder_and_permission() {
     let effects = parse_typed_effect_bundle_lexed(&tokens).expect("hidden-exile bundle");
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::LookAtTopCards { .. },
+            action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { .. }),
             ..
         }),
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             tag: selected_tag, ..
-        },
+        }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::Exile {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
                     target: TargetAst::Tagged(exile_tag, None),
                     face_down: true,
                     ..
-                },
+                }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
                     keep_tagged: Some(kept_tag),
                     ..
-                },
+                }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
                     tag: permission_tag,
                     allow_any_color_for_cast: ironsmith_core::value_model::ManaSpendMode::AnyColor,
                     ..
-                },
+                }),
             ..
         }),
     ] = effects.as_slice()
@@ -775,27 +777,27 @@ fn looked_hand_exile_permission_tax_stays_in_one_linked_program() {
     let effects = parse_typed_effect_bundle_lexed(&tokens).expect("linked hand-exile bundle");
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::LookAtHand { .. },
+            action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtHand { .. }),
             ..
         }),
-        EffectAst::MayByPlayer {
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
             player: PlayerAst::You,
             effects: optional_exile,
-        },
+        }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
                     tag: permission_tag,
                     ..
-                },
+                }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::GrantToTarget {
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget {
                     target: TargetAst::Tagged(tax_tag, None),
                     ..
-                },
+                }),
             ..
         }),
     ] = effects.as_slice()
@@ -803,19 +805,19 @@ fn looked_hand_exile_permission_tax_stays_in_one_linked_program() {
         panic!("expected one linked hand-exile program, got {effects:#?}");
     };
     let [
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter,
             player: PlayerAst::You,
             tag: choice_tag,
             ..
-        },
+        }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::Exile {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
                     target: TargetAst::Tagged(exile_tag, None),
                     face_down: false,
                     ..
-                },
+                }),
             ..
         }),
     ] = optional_exile.as_slice()
@@ -852,16 +854,16 @@ fn inline_mill_then_optional_filtered_return_keeps_one_milled_collection() {
             tag: milled_tag,
             effect: mill,
         },
-        EffectAst::ChooseTaggedObjectsInZone {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter,
             count,
             tag: chosen_tag,
             ..
-        },
-        EffectAst::ForEachTagged {
+        }),
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
             tag: moved_tag,
             effects: move_effects,
-        },
+        }),
     ] = effects.as_slice()
     else {
         panic!("expected linked mill, choice, and move program, got {effects:#?}");
@@ -870,9 +872,9 @@ fn inline_mill_then_optional_filtered_return_keeps_one_milled_collection() {
     assert!(matches!(
         mill.as_ref(),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Mill {
+            action: SubjectVerbActionAst::Library(LibraryActionAst::Mill {
                 count: Value::Fixed(3),
-            },
+            }),
             ..
         })
     ));
@@ -893,16 +895,16 @@ fn inline_mill_then_optional_filtered_return_keeps_one_milled_collection() {
         );
     }
     assert!(filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag == *milled_tag
+        constraint.tag == **milled_tag
             && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     }));
     assert!(matches!(
         move_effects.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::MoveToZone {
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                 zone: Zone::Hand,
                 ..
-            },
+            }),
             ..
         })]
     ));

@@ -1,3 +1,7 @@
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::ZoneMoveActionAst;
+use crate::cards::builders::ExchangeActionAst;
 use super::*;
 use crate::effect_sentences::parse_effect_sentence_lexed;
 use crate::lexer::lex_line;
@@ -13,10 +17,10 @@ fn public_effect_sentence_route_removes_the_return_verb_before_the_clause_parser
     assert!(matches!(
         effects.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ReturnToHand {
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand {
                 target: TargetAst::Source(_),
                 ..
-            },
+            }),
             ..
         })]
     ));
@@ -28,7 +32,7 @@ fn plural_return_back_reference_preserves_its_authored_pronoun() {
         .expect("lex plural return back-reference");
     let effect = parse_return(&tokens).expect("parse plural return back-reference");
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::ReturnToBattlefield { target, .. },
+        action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { target, .. }),
         ..
     }) = effect
     else {
@@ -50,12 +54,12 @@ fn return_to_hand_can_be_declined_by_target_opponents_life_payment() {
     let tokens = lex_line("it to your hand unless target opponent pays 3 life", 0)
         .expect("lex return-unless clause");
     let effect = parse_return(&tokens).expect("parse return-unless clause");
-    let EffectAst::UnlessPays {
+    let EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
         effects,
         player,
         cost,
         before_delayed_step,
-    } = effect
+    }) = effect
     else {
         panic!("expected a return wrapped in UnlessPays: {effect:#?}");
     };
@@ -66,7 +70,7 @@ fn return_to_hand_can_be_declined_by_target_opponents_life_payment() {
         matches!(
             effects.as_slice(),
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::ReturnToHand { .. },
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { .. }),
                 ..
             })]
         ),
@@ -91,9 +95,9 @@ fn parses_top_graveyard_card_as_a_top_only_return_choice() {
     let effect = parse_return(&tokens).expect("parse return clause");
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::ReturnToBattlefield {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
                 target, top_only, ..
-            },
+            }),
         ..
     }) = effect
     else {
@@ -116,9 +120,9 @@ fn preserves_explicit_controller_and_source_link_for_exiled_card_returns() {
     let effect = parse_return(&tokens).expect("parse return clause");
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::ReturnAllToBattlefield {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield {
                 filter, controller, ..
-            },
+            }),
         ..
     }) = effect
     else {
@@ -141,13 +145,13 @@ fn source_linked_return_tail_excludes_only_the_current_exile_result() {
     let effect = parse_return(&tokens).expect("parse source-linked return clause");
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::MoveToZone {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                 target: TargetAst::Object(filter, None, _),
                 zone: Zone::Battlefield,
                 all: true,
                 exiled_with_source_surface: Some(surface),
                 ..
-            },
+            }),
         ..
     }) = effect
     else {
@@ -185,10 +189,10 @@ fn exchange_target_preserves_joint_negative_owner_and_controller_predicates() {
     let effect = parse_exchange(&tokens, None).expect("parse heterogeneous exchange clause");
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::ExchangeControlHeterogeneous {
+            SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeControlHeterogeneous {
                 permanent2: TargetAst::Object(filter, Some(_), _),
                 ..
-            },
+            }),
         ..
     }) = effect
     else {
@@ -211,9 +215,9 @@ fn exchange_target_preserves_different_controller_set_constraint() {
     .expect("lex homogeneous exchange clause");
     let effect = parse_exchange(&tokens, None).expect("parse homogeneous exchange clause");
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::ExchangeControl {
+        action: SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeControl {
             filter, count: 2, ..
-        },
+        }),
         ..
     }) = effect
     else {
@@ -233,7 +237,7 @@ fn preserves_destination_first_surface_on_a_singular_graveyard_target() {
     .expect("lex destination-first return clause");
     let effect = parse_return(&tokens).expect("parse destination-first return clause");
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::ReturnToHand { target, .. },
+        action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. }),
         ..
     }) = effect
     else {
@@ -258,7 +262,7 @@ fn destination_first_return_preserves_branch_scoped_collection() {
         .expect("lex destination-first branch-scoped return clause");
     let effect = parse_return(&tokens).expect("parse branch-scoped return clause");
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::ReturnAllToHand { filter, .. },
+        action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand { filter, .. }),
         ..
     }) = effect
     else {
@@ -282,7 +286,7 @@ fn full_return_sentence_preserves_branch_scoped_collection() {
         parse_effect_sentence_lexed(&tokens).expect("parse full branch-scoped return sentence");
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ReturnAllToHand { filter, .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand { filter, .. }),
             ..
         }),
     ] = effects.as_slice()
@@ -304,12 +308,12 @@ fn each_player_destination_first_return_keeps_graveyard_history() {
         .expect("lex each-player historical return sentence");
     let effects =
         parse_effect_sentence_lexed(&tokens).expect("parse each-player historical return");
-    let [EffectAst::ForEachPlayer { effects }] = effects.as_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })] = effects.as_slice() else {
         panic!("expected an each-player return, got {effects:#?}");
     };
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ReturnAllToBattlefield { filter, .. },
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield { filter, .. }),
             ..
         }),
     ] = effects.as_slice()
@@ -349,7 +353,7 @@ fn return_for_each_discarded_card_repeats_from_exact_prior_effect() {
     )
     .expect("lex return-for-each clause");
     let effect = parse_return(&tokens).expect("parse return-for-each clause");
-    let EffectAst::RepeatEffects { count, effects } = effect else {
+    let EffectAst::ForEach(ForEachEffectAst::RepeatEffects { count, effects }) = effect else {
         panic!("expected repeated return effect");
     };
     assert_eq!(effects.len(), 1);

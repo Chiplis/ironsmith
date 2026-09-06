@@ -7,7 +7,7 @@ use winnow::token::any;
 use crate::cards::TextSpan;
 use crate::cards::builders::{
     CardTextError, EffectAst, IfResultPredicate, PlayerAst, PredicateAst, SubjectVerbActionAst,
-    SubjectVerbRoleAst,
+    SubjectVerbRoleAst, LifeResourceActionAst, PlayerPredicateAst, TurnEventPredicateAst,
 };
 use crate::effect::{Comparison, Value, ValueComparisonOperator};
 use crate::target::PlayerFilter;
@@ -702,16 +702,16 @@ fn parse_modeled_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
         };
         match relation.relation {
             PlayerLifeRelationAst::HasMoreLifeThanYou => {
-                Some(PredicateAst::PlayerHasMoreLifeThanYou { player })
+                Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreLifeThanYou { player }))
             }
             PlayerLifeRelationAst::HasLessLifeThanYou => {
-                Some(PredicateAst::PlayerHasLessLifeThanYou { player })
+                Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasLessLifeThanYou { player }))
             }
             PlayerLifeRelationAst::HasNoOpponentWithMoreLifeThan => {
-                Some(PredicateAst::PlayerHasNoOpponentWithMoreLifeThan { player })
+                Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasNoOpponentWithMoreLifeThan { player }))
             }
             PlayerLifeRelationAst::HasMoreLifeThanEachOtherPlayer => {
-                Some(PredicateAst::PlayerHasMoreLifeThanEachOtherPlayer { player })
+                Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreLifeThanEachOtherPlayer { player }))
             }
         }
     }
@@ -1220,7 +1220,7 @@ pub fn split_if_clause_lexed(
             };
             if !matches!(
                 predicate,
-                PredicateAst::ThisAbilityResolvedThisTurnExactly(_)
+                PredicateAst::TurnEvents(TurnEventPredicateAst::ThisAbilityResolvedThisTurnExactly(_))
             ) {
                 continue;
             }
@@ -1421,7 +1421,7 @@ fn parse_cards_in_hand_difference_draw_effect(
     predicate_tokens: &[OwnedLexToken],
     effect_tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
-    let PredicateAst::PlayerCardsInHandOrFewer { player, count } = predicate else {
+    let PredicateAst::Player(PlayerPredicateAst::PlayerCardsInHandOrFewer { player, count }) = predicate else {
         return None;
     };
     if !one_of_phrases_occurs(predicate_tokens, &[&["fewer", "than"], &["less", "than"]]) {
@@ -1463,7 +1463,7 @@ fn parse_cards_in_hand_difference_draw_effect(
     Some(vec![EffectAst::subject_verb(
         SubjectVerbRoleAst::AffectedPlayer,
         subject,
-        SubjectVerbActionAst::Draw { count: difference },
+        SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count: difference }),
     )])
 }
 

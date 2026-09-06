@@ -1,5 +1,8 @@
 //! Readings shard 2 of 4, in rank order.
 
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::LifeResourceActionAst;
 use super::super::*;
 use super::Clause;
 
@@ -52,9 +55,9 @@ pub(super) fn read_leading_may_additional_land_plays(
                 for effect in &mut effects {
                     bind_implicit_player_context(effect, player);
                 }
-                EffectAst::MayByPlayer { player, effects }
+                EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, effects })
             }
-            clause_grammar::LeadingMayActorShape::Implicit => EffectAst::May { effects },
+            clause_grammar::LeadingMayActorShape::Implicit => EffectAst::Permissions(PermissionEffectAst::May { effects }),
         }));
     }
     Ok(None)
@@ -209,9 +212,9 @@ pub(super) fn read_turn_target_face_up(
         return Ok(Some(EffectAst::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::You,
-            SubjectVerbActionAst::TurnFaceUp {
+            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp {
                 target: parse_target_phrase(shape.target_tokens)?,
-            },
+            }),
         )));
     }
     Ok(None)
@@ -451,12 +454,12 @@ pub(super) fn read_for_each_card_payment(
         filter
             .tagged_constraints
             .push(crate::target::TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::It.bind(),
+                tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
                 relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
             });
-        return Ok(Some(EffectAst::ForEachObject {
+        return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachObject {
             filter,
-            effects: vec![EffectAst::UnlessAction {
+            effects: vec![EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
                 effects: vec![EffectAst::subject_verb_move_to_zone(
                     TargetAst::Tagged(
                         crate::tag::CompilerReferenceTag::It.bind(),
@@ -471,13 +474,13 @@ pub(super) fn read_for_each_card_payment(
                 alternative: vec![EffectAst::subject_verb(
                     SubjectVerbRoleAst::AffectedPlayer,
                     PlayerAst::You,
-                    SubjectVerbActionAst::LoseLife {
+                    SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife {
                         amount: Value::Fixed(shape.life_amount as i32),
-                    },
+                    }),
                 )],
                 player: PlayerAst::You,
-            }],
-        }));
+            })],
+        })));
     }
     Ok(None)
 }
@@ -515,10 +518,10 @@ pub(super) fn read_opponent_return_choice(
     };
     if let Some(shape) = clause_grammar::parse_opponent_return_choice_shape(tokens) {
         let target = parse_target_phrase(shape.target_tokens)?;
-        return Ok(Some(EffectAst::ForEachOpponent {
+        return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
             effects: vec![
                 EffectAst::subject_verb_target_only(target),
-                EffectAst::UnlessAction {
+                EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
                     effects: vec![EffectAst::subject_verb_return_to_hand(
                         TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
                         false,
@@ -526,14 +529,14 @@ pub(super) fn read_opponent_return_choice(
                     alternative: vec![EffectAst::subject_verb(
                         SubjectVerbRoleAst::AffectedPlayer,
                         PlayerAst::You,
-                        SubjectVerbActionAst::Draw {
+                        SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
                             count: Value::Fixed(1),
-                        },
+                        }),
                     )],
                     player: PlayerAst::ItsController,
-                },
+                }),
             ],
-        }));
+        })));
     }
     Ok(None)
 }

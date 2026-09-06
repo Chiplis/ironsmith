@@ -315,7 +315,7 @@ mod tests {
             last_object_tag: Some(TagKey::from("that")),
             last_player_filter: Some("opponent".to_string()),
             source_object_antecedent: true,
-            recent_player_choice_tags: vec![crate::tag::CompilerReferenceTag::Chosen.bind()],
+            recent_player_choice_tags: vec![(crate::tag::CompilerReferenceTag::Chosen.bind()).into()],
             iterated_player: true,
             auto_tag_object_targets: false,
             force_auto_tag_object_targets: true,

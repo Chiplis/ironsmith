@@ -74,21 +74,21 @@ fn parse_triggering_object_had_counters_create_tokens(
     let mut create_effects = parse_effect_chain_lexed(&tokens[create_start..where_start])?;
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::CreateTokenWithMods { count, .. },
+            action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { count, .. }),
             ..
         }),
     ] = create_effects.as_mut_slice()
     else {
         return Ok(None);
     };
-    let triggering = ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind());
+    let triggering = ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::Triggering.bind()).into());
     *count = Value::CountersOn(Box::new(triggering.clone()), None).with_surface_hints([
         ironsmith_core::ValueSurfaceHint::WhereXIs,
         ironsmith_core::ValueSurfaceHint::TriggeringObjectCountersItHad,
     ]);
 
     if wrap_condition {
-        Ok(Some(EffectAst::Conditional {
+        Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: PredicateAst::ValueComparison {
                 left: Value::CountersOn(Box::new(triggering), None),
                 operator: ValueComparisonOperator::GreaterThanOrEqual,
@@ -96,7 +96,7 @@ fn parse_triggering_object_had_counters_create_tokens(
             },
             if_true: create_effects,
             if_false: Vec::new(),
-        }))
+        })))
     } else {
         Ok(create_effects.pop())
     }
@@ -142,14 +142,14 @@ fn parse_source_exiled_counted_return_remainder_to_owners_libraries(
         crate::grammar::primitives::probe_shape(super::zone_handlers::parse_return(return_tokens))?;
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
-            SubjectVerbActionAst::MoveToZone {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                 target: TargetAst::WithCount(inner, count),
                 zone: Zone::Battlefield,
                 battlefield_controller: crate::cards::builders::ReturnControllerAst::Owner,
                 exiled_with_source_surface: Some(surface),
                 all: false,
                 ..
-            },
+            }),
         ..
     }) = &return_effect
     else {
@@ -177,12 +177,12 @@ fn parse_source_exiled_counted_return_remainder_to_owners_libraries(
     let remainder = EffectAst::subject_verb(
         SubjectVerbRoleAst::Actor,
         PlayerAst::Implicit,
-        SubjectVerbActionAst::PutTaggedRemainderInZone {
+        SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderInZone {
             tag: crate::tag::CompilerReferenceTag::SourceExiled.bind(),
             keep_tagged: crate::tag::CompilerReferenceTag::ReturnedSourceExiled.bind(),
             zone: Zone::Library,
             surface: ironsmith_core::LibraryRemainderSurface::Rest,
-        },
+        }),
     );
     Some(vec![
         EffectAst::TagAffected {
@@ -260,13 +260,13 @@ impl GenericChoiceComplementProgram {
         if let Some(constraint) = self.aggregate_constraint {
             // The one choice happens before anything is kept; excluding the
             // kept would only read as "other".
-            effects.push(EffectAst::ChooseObjectsWithAggregateConstraint {
+            effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
                 filter: self.base_filter.clone(),
                 count: self.keep_count,
                 player: PlayerAst::That,
-                tag: self.keep_tag.clone(),
+                tag: crate::tag::TagRef::of(self.keep_tag.clone()),
                 constraint,
-            });
+            }));
         } else {
             // Each later slot of a party complement chooses among what earlier
             // slots did not keep. A single slot chooses before anything is
@@ -277,13 +277,13 @@ impl GenericChoiceComplementProgram {
                 if sequential_slots {
                     filter = filter.not_tagged(self.keep_tag.clone());
                 }
-                effects.push(EffectAst::ChooseObjects {
+                effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                     filter,
                     count: self.keep_count,
                     count_value: None,
                     player: PlayerAst::That,
-                    tag: self.keep_tag.clone(),
-                });
+                    tag: crate::tag::TagRef::of(self.keep_tag.clone()),
+                }));
             }
         }
         effects.push(EffectAst::subject_verb_sacrifice_all(
@@ -291,9 +291,9 @@ impl GenericChoiceComplementProgram {
             self.base_filter.not_tagged(self.keep_tag),
         ));
         match self.chooser_scope {
-            PlayerAst::Opponent => EffectAst::ForEachOpponent { effects },
-            PlayerAst::Any | PlayerAst::Implicit => EffectAst::ForEachPlayer { effects },
-            _ => EffectAst::ForEachPlayer { effects },
+            PlayerAst::Opponent => EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }),
+            PlayerAst::Any | PlayerAst::Implicit => EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }),
+            _ => EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }),
         }
     }
 }
@@ -365,13 +365,13 @@ impl GenericVoteProgram {
                 options,
                 secret,
                 starting_with_controller,
-            } => EffectAst::VoteStart {
+            } => EffectAst::Votes(VoteEffectAst::VoteStart {
                 options,
                 secret,
                 starting_with_controller,
-            },
-            Self::OptionEffects { option, effects } => EffectAst::VoteOption { option, effects },
-            Self::Extra { count, optional } => EffectAst::VoteExtra { count, optional },
+            }),
+            Self::OptionEffects { option, effects } => EffectAst::Votes(VoteEffectAst::VoteOption { option, effects }),
+            Self::Extra { count, optional } => EffectAst::Votes(VoteEffectAst::VoteExtra { count, optional }),
         }
     }
 }
@@ -1276,15 +1276,15 @@ pub fn parse_any_player_may_have_source_deal_damage(
         ),
     );
     if matches!(shape.player, PlayerAst::Any | PlayerAst::Opponent) {
-        Ok(Some(vec![EffectAst::AnyPlayerMay {
+        Ok(Some(vec![EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay {
             players: shape.player_filter,
             effects: vec![damage],
-        }]))
+        })]))
     } else {
-        Ok(Some(vec![EffectAst::MayByPlayer {
+        Ok(Some(vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
             player: shape.player,
             effects: vec![damage],
-        }]))
+        })]))
     }
 }
 
@@ -1296,9 +1296,9 @@ fn parse_branch_scoped_collection_subject_verb(
             return false;
         };
         let filter = match action {
-            SubjectVerbActionAst::ReturnAllToHand { filter, .. }
-            | SubjectVerbActionAst::DestroyAll { filter, .. }
-            | SubjectVerbActionAst::ExileAll { filter, .. } => filter,
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand { filter, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { filter, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { filter, .. }) => filter,
             _ => return false,
         };
         filter.any_of.len() >= 2 && filter.has_conjunctive_set_surface()
@@ -1331,6 +1331,12 @@ fn parse_branch_scoped_collection_subject_verb(
     is_conjunctive_collection(&effect).then_some((route, vec![effect]))
 }
 
+
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::VoteEffectAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::TokenActionAst;
+use crate::cards::builders::LibraryActionAst;
 use crate::recognition::ParseOutcome;
 #[path = "generic_subject_verb/top_level_readings.rs"]
 mod top_level_readings;
@@ -1638,7 +1644,7 @@ fn parse_destroy_attached_object_then_source_damage_to_controller(
         _ => unreachable!("attachment word was lexically constrained"),
     };
     if !filter.tagged_constraints.iter().any(|constraint| {
-        constraint.tag == attachment_tag
+        constraint.tag == attachment_tag.key.clone()
             && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
     }) {
         return Ok(None);
@@ -1648,7 +1654,7 @@ fn parse_destroy_attached_object_then_source_damage_to_controller(
     let damage = EffectAst::subject_verb_damage(
         Value::Fixed(amount),
         TargetAst::Player(
-            PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(attachment_tag)),
+            PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(attachment_tag.key.clone())),
             None,
         ),
     );
@@ -1994,20 +2000,20 @@ fn patch_creature_type_choice_effect(effect: &mut EffectAst) -> bool {
         return false;
     };
     match action {
-        SubjectVerbActionAst::PumpAll { filter, .. }
-        | SubjectVerbActionAst::GrantAbilitiesAll { filter, .. }
-        | SubjectVerbActionAst::GrantAbilitiesChoiceAll { filter, .. } => {
+        SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll { filter, .. })
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll { filter, .. })
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceAll { filter, .. }) => {
             filter.chosen_creature_type = true;
             true
         }
-        SubjectVerbActionAst::Pump {
+        SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
             target: TargetAst::Object(filter, _, _),
             ..
-        }
-        | SubjectVerbActionAst::GrantAbilitiesToTarget {
+        })
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
             target: TargetAst::Object(filter, _, _),
             ..
-        } => {
+        }) => {
             filter.chosen_creature_type = true;
             true
         }
@@ -2060,10 +2066,10 @@ fn parse_target_player_controls_get_subject_verb(
         else {
             return Ok(None);
         };
-        return Ok(Some(vec![EffectAst::TrailingIf {
+        return Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
             predicate: trailing_if.predicate,
             effects: program.lower(),
-        }]));
+        })]));
     }
 
     let Some(program) = parse_target_controlled_pump_program(tokens)? else {
@@ -2229,16 +2235,16 @@ pub fn parse_generic_top_cards_put_counted_into_hand_rest_graveyard_subject_verb
     let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
         player,
         count,
-        looked_tag.clone(),
+        crate::tag::TagRef::of(looked_tag.clone()),
     )];
     if reveal_top {
-        effects.push(EffectAst::subject_verb_reveal_tagged(looked_tag.clone()));
+        effects.push(EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(looked_tag.clone())));
     }
     effects.extend(EffectAst::compose_put_some_into_hand_rest_into_graveyard(
         chooser,
         crate::effect::ChoiceCount::exactly(put_count as usize),
-        looked_tag,
-        chosen_tag,
+        crate::tag::TagRef::of(looked_tag),
+        crate::tag::TagRef::of(chosen_tag),
     ));
     Some(effects)
 }
@@ -2281,10 +2287,10 @@ fn parse_generic_consult_reveal_until_put_all_revealed_into_hand_subject_verb(
     if !matches!(
         parts.effects.last(),
         Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ConsultTopOfLibrary {
+            action: SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
                 mode: crate::cards::builders::LibraryConsultModeAst::Reveal,
                 ..
-            },
+            }),
             ..
         }))
     ) {
@@ -2301,7 +2307,7 @@ fn parse_generic_consult_reveal_until_put_all_revealed_into_hand_subject_verb(
 
     let mut effects = parts.effects;
     effects.push(EffectAst::subject_verb_move_to_zone(
-        TargetAst::Tagged(parts.all_tag, None),
+        TargetAst::Tagged(crate::tag::TagRef::of(parts.all_tag), None),
         Zone::Hand,
         false,
         crate::cards::builders::ReturnControllerAst::Preserve,
@@ -2349,10 +2355,10 @@ fn parse_generic_consult_reveal_until_put_all_revealed_into_graveyard_subject_ve
     if !matches!(
         parts.effects.last(),
         Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ConsultTopOfLibrary {
+            action: SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
                 mode: crate::cards::builders::LibraryConsultModeAst::Reveal,
                 ..
-            },
+            }),
             ..
         }))
     ) {
@@ -2368,7 +2374,7 @@ fn parse_generic_consult_reveal_until_put_all_revealed_into_graveyard_subject_ve
 
     let mut effects = parts.effects;
     effects.push(EffectAst::subject_verb_move_to_zone(
-        TargetAst::Tagged(parts.all_tag, None),
+        TargetAst::Tagged(crate::tag::TagRef::of(parts.all_tag), None),
         Zone::Graveyard,
         false,
         crate::cards::builders::ReturnControllerAst::Preserve,
@@ -2399,7 +2405,7 @@ fn parse_generic_consult_reveal_until_subject_verb(
         matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::ConsultTopOfLibrary { .. },
+                action: SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary { .. }),
                 ..
             })
         )
@@ -2441,10 +2447,10 @@ pub(super) fn parse_generic_consult_reveal_until_battlefield_bottom_subject_verb
     if !matches!(
         parts.effects.last(),
         Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ConsultTopOfLibrary {
+            action: SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
                 mode: crate::cards::builders::LibraryConsultModeAst::Reveal,
                 ..
-            },
+            }),
             ..
         }))
     ) {
@@ -2471,7 +2477,7 @@ pub(super) fn parse_generic_consult_reveal_until_battlefield_bottom_subject_verb
     let mut effects = parts.effects;
     apply_lesser_mana_value_consult_constraint(&sentence_tokens, &mut effects);
     effects.push(EffectAst::subject_verb_move_to_zone(
-        TargetAst::Tagged(parts.match_tag.clone(), None),
+        TargetAst::Tagged(crate::tag::TagRef::of(parts.match_tag.clone()), None),
         Zone::Battlefield,
         false,
         crate::cards::builders::ReturnControllerAst::Preserve,
@@ -2485,8 +2491,8 @@ pub(super) fn parse_generic_consult_reveal_until_battlefield_bottom_subject_verb
         && !crate::word_primitives::sequence_occurs(&followup_words, &["rest", "of", "the"]);
     effects.push(
         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library_with_surface(
-            parts.all_tag,
-            Some(parts.match_tag),
+            crate::tag::TagRef::of(parts.all_tag),
+            Some(crate::tag::TagRef::of(parts.match_tag)),
             order,
             parts.player,
             if bare_rest {
@@ -2585,15 +2591,15 @@ fn parse_generic_each_player_exile_top_then_cast_any_number_subject_verb(
             crate::cards::builders::LibraryConsultModeAst::Exile,
             consult_filter,
             crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(Value::Fixed(1)),
-            exiled_tag.clone(),
-            consult_match_tag.clone(),
+            crate::tag::TagRef::of(exiled_tag.clone()),
+            crate::tag::TagRef::of(consult_match_tag.clone()),
         )]
     } else {
         vec![EffectAst::subject_verb_exile_top_of_library(
             PlayerAst::That,
             Value::Fixed(1),
             Vec::new(),
-            vec![exiled_tag.clone()],
+            vec![crate::tag::TagRef::of(exiled_tag.clone())],
         )]
     };
 
@@ -2607,12 +2613,12 @@ fn parse_generic_each_player_exile_top_then_cast_any_number_subject_verb(
     );
 
     Ok(Some(vec![
-        EffectAst::ForEachPlayer {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
             effects: exile_effects,
-        },
-        EffectAst::ForEachObject {
+        }),
+        EffectAst::ForEach(ForEachEffectAst::ForEachObject {
             filter: cast_filter,
-            effects: vec![EffectAst::May {
+            effects: vec![EffectAst::Permissions(PermissionEffectAst::May {
                 effects: vec![EffectAst::subject_verb_cast_tagged(
                     crate::tag::CompilerReferenceTag::It.bind(),
                     PlayerAst::You,
@@ -2621,8 +2627,8 @@ fn parse_generic_each_player_exile_top_then_cast_any_number_subject_verb(
                     true,
                     None,
                 )],
-            }],
-        },
+            })],
+        }),
     ]))
 }
 
@@ -2767,7 +2773,7 @@ fn apply_lesser_mana_value_consult_constraint(tokens: &[OwnedLexToken], effects:
         let EffectAst::SubjectVerb(subject_verb) = effect else {
             continue;
         };
-        let SubjectVerbActionAst::ConsultTopOfLibrary { filter, .. } = &mut subject_verb.action
+        let SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary { filter, .. }) = &mut subject_verb.action
         else {
             continue;
         };
@@ -2780,7 +2786,7 @@ fn apply_lesser_mana_value_consult_constraint(tokens: &[OwnedLexToken], effects:
                 constraint.relation,
                 TaggedOpbjectRelation::ManaValueLtTagged
             ) {
-                constraint.tag = crate::tag::CompilerReferenceTag::Sacrificed0.bind();
+                constraint.tag = (crate::tag::CompilerReferenceTag::Sacrificed0.bind()).into();
                 had_lesser_constraint = true;
             }
         }
@@ -2788,7 +2794,7 @@ fn apply_lesser_mana_value_consult_constraint(tokens: &[OwnedLexToken], effects:
             continue;
         }
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::Sacrificed0.bind(),
+            tag: (crate::tag::CompilerReferenceTag::Sacrificed0.bind()).into(),
             relation: TaggedOpbjectRelation::ManaValueLtTagged,
         });
     }
@@ -2909,7 +2915,7 @@ pub fn parse_choice_complement_subject_verb(
             GenericChoiceComplementProgram {
                 chooser_scope: shape.chooser,
                 base_filter: shape.filter,
-                keep_tag: crate::tag::CompilerReferenceTag::Keep.bind(),
+                keep_tag: (crate::tag::CompilerReferenceTag::Keep.bind()).into(),
                 keep_filters: shape.slot_filters,
                 keep_count: shape.count_per_slot,
                 aggregate_constraint: None,
@@ -2922,7 +2928,7 @@ pub fn parse_choice_complement_subject_verb(
             GenericChoiceComplementProgram {
                 chooser_scope: shape.chooser,
                 base_filter: shape.filter,
-                keep_tag: crate::tag::CompilerReferenceTag::Keep.bind(),
+                keep_tag: (crate::tag::CompilerReferenceTag::Keep.bind()).into(),
                 keep_filters: Vec::new(),
                 keep_count: shape.count,
                 aggregate_constraint: Some(shape.constraint),
@@ -2978,7 +2984,7 @@ pub fn parse_choice_complement_subject_verb(
                 GenericChoiceComplementProgram {
                     chooser_scope,
                     base_filter,
-                    keep_tag: crate::tag::CompilerReferenceTag::Keep.bind(),
+                    keep_tag: (crate::tag::CompilerReferenceTag::Keep.bind()).into(),
                     keep_filters: vec![ObjectFilter::default()],
                     keep_count,
                     aggregate_constraint: None,
@@ -3058,7 +3064,7 @@ pub fn parse_choice_complement_subject_verb(
         GenericChoiceComplementProgram {
             chooser_scope,
             base_filter,
-            keep_tag: crate::tag::CompilerReferenceTag::Keep.bind(),
+            keep_tag: (crate::tag::CompilerReferenceTag::Keep.bind()).into(),
             keep_filters,
             keep_count: ChoiceCount::exactly(1),
             aggregate_constraint: None,
@@ -3130,7 +3136,7 @@ pub fn parse_for_each_type_slot_choice_clause(
         if slot_filter.card_types.len() + slot_filter.subtypes.len() != 1 {
             return Ok(None);
         }
-        choices.push(EffectAst::ChooseObjects {
+        choices.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             // A multitype permanent may represent more than one slot. The
             // shared tag is an accumulating kept set for the later
             // complement action, not an exclusion from subsequent choices.
@@ -3139,7 +3145,7 @@ pub fn parse_for_each_type_slot_choice_clause(
             count_value: None,
             player: chooser,
             tag: keep_tag.clone(),
-        });
+        }));
     }
     if choices.len() < 2 {
         return Ok(None);
@@ -3155,13 +3161,13 @@ pub fn parse_triggered_spell_opponent_damage_subject_verb(
     };
     let triggering_spell =
         TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None);
-    Ok(Some(EffectAst::ForEachOpponent {
+    Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
         effects: vec![EffectAst::subject_verb_damage_with_source(
             triggering_spell,
             shape.amount,
             TargetAst::Player(PlayerFilter::IteratedPlayer, None),
         )],
-    }))
+    })))
 }
 
 fn choice_complement_choice_clause_from_word_order<'a>(
@@ -3176,10 +3182,10 @@ pub fn parse_vote_affinity_subject_verb(
     if let Some(shape) = effect_grammar::parse_voted_against_you_effects_shape(tokens) {
         let effect_tokens = trim_commas(shape.effect_tokens);
         let effects = parse_effect_chain_lexed(&effect_tokens)?;
-        return Ok(Some(vec![EffectAst::ForEachTaggedPlayer {
+        return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer {
             tag: crate::tag::CompilerReferenceTag::VotedAgainstYou.bind(),
             effects,
-        }]));
+        })]));
     }
     parse_you_and_each_opponent_voted_with_you_sentence(tokens)
 }
@@ -3275,7 +3281,7 @@ pub(super) fn parse_vote_reveal_sentence(tokens: &[OwnedLexToken]) -> Option<Eff
         .parse_full(LexedClause::new(tokens).trimmed())
         .is_some()
     {
-        return Some(EffectAst::SecretChoiceReveal);
+        return Some(EffectAst::Votes(VoteEffectAst::SecretChoiceReveal));
     }
     None
 }
@@ -3319,11 +3325,11 @@ pub(super) fn parse_secret_number_choice_vote_start(
         ));
     }
 
-    Ok(Some(EffectAst::SecretChoiceStart {
+    Ok(Some(EffectAst::Votes(VoteEffectAst::SecretChoiceStart {
         options,
         participants: vec![PlayerFilter::You, PlayerFilter::target_opponent()],
         object_choice: None,
-    }))
+    })))
 }
 
 const EXILE_COUNTED_FACE_DOWN_OBJECT_PHRASES: &[&[&str]] = &[

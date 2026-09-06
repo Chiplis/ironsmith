@@ -1,3 +1,4 @@
+use crate::cards::builders::ForEachEffectAst;
 use super::*;
 
 pub(super) fn opponent_filter(scope: ForEachParticipantScope) -> Option<PlayerFilter> {
@@ -59,12 +60,12 @@ pub(super) fn reanchor_other_player_copy_filter(
 
 pub(super) fn wrap_players(filter: &PlayerFilter, effects: Vec<EffectAst>) -> EffectAst {
     if *filter == PlayerFilter::Any {
-        EffectAst::ForEachPlayer { effects }
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })
     } else {
-        EffectAst::ForEachPlayersFiltered {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
             filter: filter.clone(),
             effects,
-        }
+        })
     }
 }
 
@@ -117,11 +118,11 @@ pub fn parse_for_each_target_players_clause(
         let normalized = prepend_that_player_subject(shape.effect_tokens);
         parse_maybe_effects(&normalized, true, false)?
     };
-    Ok(Some(EffectAst::ForEachTargetPlayers {
+    Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachTargetPlayers {
         count: shape.count,
         filter,
         effects,
-    }))
+    })))
 }
 
 use crate::recognition::ParseOutcome;

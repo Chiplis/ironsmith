@@ -653,7 +653,7 @@ pub fn parse_draw_counter_reference_shape(tokens: &[OwnedLexToken]) -> Option<Va
             &["those", "permanents"],
         ],
     ) {
-        ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.bind())
+        ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into())
     } else {
         let words = primitives::TokenWordView::new(reference_tokens).to_word_refs();
         source_choose_spec_for_surface(source_reference_surface_for_words(&words)?)

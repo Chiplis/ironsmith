@@ -1,3 +1,4 @@
+use crate::cards::builders::ObjectChoiceEffectAst;
 use super::*;
 
 fn mark_choose_effects_reveal(mut effects: Vec<Effect>) -> Vec<Effect> {
@@ -82,13 +83,13 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let compiled = match effect {
-        EffectAst::ChooseObjectsWithAggregateConstraint {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
             filter,
             count,
             player,
             tag,
             constraint,
-        } => {
+        }) => {
             let subject =
                 LoweredSubject::resolve_resolution_chooser(*player, ctx, true, true, false)?;
             let chooser = subject.clone_player_filter();
@@ -107,17 +108,17 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 )
                 .with_aggregate_constraint(constraint.clone()),
             ));
-            ctx.last_object_tag = Some(tag.clone());
+            ctx.last_object_tag = Some(tag.clone().into());
             ctx.last_player_filter = Some(chooser);
             (effects, subject.into_choices())
         }
-        EffectAst::ChooseObjects {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter,
             count,
             count_value,
             player,
             tag,
-        } => {
+        }) => {
             let subject = if *player == PlayerAst::That
                 && ctx.iterated_player
                 && let Some(chooser) = ctx.last_player_filter.clone()
@@ -210,7 +211,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                     resolved_filter,
                     *count,
                     count_value.clone(),
-                    tag.clone(),
+                    tag.clone().into(),
                     zones,
                     None,
                     false,
@@ -221,7 +222,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                     resolved_filter,
                     *count,
                     count_value.clone(),
-                    tag.clone(),
+                    tag.clone().into(),
                     Zone::Exile,
                 )
             } else if chooses_tagged_pool && let Some(choice_zone) = resolved_filter.zone {
@@ -230,7 +231,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                     resolved_filter,
                     *count,
                     count_value.clone(),
-                    tag.clone(),
+                    tag.clone().into(),
                     choice_zone,
                 )
             } else if chooses_tagged_pool {
@@ -239,7 +240,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                     resolved_filter,
                     *count,
                     count_value.clone(),
-                    tag.clone(),
+                    tag.clone().into(),
                     scoped_collection_zones(),
                     None,
                     false,
@@ -255,7 +256,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                     resolved_filter,
                     *count,
                     count_value.clone(),
-                    tag.clone(),
+                    tag.clone().into(),
                     choice_zone,
                 )
             };
@@ -266,19 +267,19 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str();
             if tag.as_str() != crate::tag::CompilerReferenceTag::ConditionCollectionChoice.as_str()
             {
-                ctx.last_object_tag = Some(tag.clone());
+                ctx.last_object_tag = Some(tag.clone().into());
             }
             record_exiled_collection_choice(ctx, tag, count);
             ctx.last_player_filter = Some(followup_player);
             (effects, choices)
         }
-        EffectAst::ChooseTaggedObjectsInZone {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter,
             count,
             player,
             tag,
             zone,
-        } => {
+        }) => {
             let subject =
                 LoweredSubject::resolve_resolution_chooser(*player, ctx, true, true, false)?;
             let followup_player = subject.clone_player_filter();
@@ -290,23 +291,23 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 resolved_filter,
                 *count,
                 None,
-                tag.clone(),
+                tag.clone().into(),
                 *zone,
             );
             ctx.last_it_choice_is_set =
                 tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str();
-            ctx.last_object_tag = Some(tag.clone());
+            ctx.last_object_tag = Some(tag.clone().into());
             record_exiled_collection_choice(ctx, tag, count);
             ctx.last_player_filter = Some(followup_player);
             (effects, choices)
         }
-        EffectAst::ChooseObjectsBottomOfLibrary {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
             filter,
             count,
             count_value,
             player,
             tag,
-        } => {
+        }) => {
             let subject =
                 LoweredSubject::resolve_resolution_chooser(*player, ctx, true, true, false)?;
             let chooser = subject.clone_player_filter();
@@ -326,18 +327,18 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             let effects = subject.prepend_target_prelude_if_needed(Effect::new(choose_effect));
             ctx.last_it_choice_is_set =
                 tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str();
-            ctx.last_object_tag = Some(tag.clone());
+            ctx.last_object_tag = Some(tag.clone().into());
             record_exiled_collection_choice(ctx, tag, count);
             ctx.last_player_filter = Some(chooser);
             (effects, subject.into_choices())
         }
-        EffectAst::ChooseObjectsTopOfLibrary {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary {
             filter,
             count,
             count_value,
             player,
             tag,
-        } => {
+        }) => {
             let subject =
                 LoweredSubject::resolve_resolution_chooser(*player, ctx, true, true, false)?;
             let chooser = subject.clone_player_filter();
@@ -357,12 +358,12 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             let effects = subject.prepend_target_prelude_if_needed(Effect::new(choose_effect));
             ctx.last_it_choice_is_set =
                 tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str();
-            ctx.last_object_tag = Some(tag.clone());
+            ctx.last_object_tag = Some(tag.clone().into());
             record_exiled_collection_choice(ctx, tag, count);
             ctx.last_player_filter = Some(chooser);
             (effects, subject.into_choices())
         }
-        EffectAst::ChooseObjectsAcrossZones {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
             filter,
             count,
             count_value,
@@ -370,7 +371,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             tag,
             zones,
             search_mode,
-        } => {
+        }) => {
             let subject = if *player == PlayerAst::Implicit {
                 // An imperative cross-zone choice (most notably "Search target
                 // player's library ...") is performed by the spell's
@@ -434,7 +435,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                         resolved_filter,
                         *count,
                         count_value.clone(),
-                        tag.clone(),
+                        tag.clone().into(),
                         Zone::Exile,
                     )
                 } else {
@@ -443,7 +444,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                         resolved_filter,
                         *count,
                         count_value.clone(),
-                        tag.clone(),
+                        tag.clone().into(),
                         zones.clone(),
                         *search_mode,
                         default_search,
@@ -451,7 +452,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 };
             ctx.last_it_choice_is_set =
                 tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str();
-            ctx.last_object_tag = Some(tag.clone());
+            ctx.last_object_tag = Some(tag.clone().into());
             ctx.last_player_filter = Some(followup_player);
             (effects, choices)
         }

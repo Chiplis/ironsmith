@@ -6,8 +6,8 @@ fn copy_count(effects: &[EffectAst]) -> Option<Value> {
     for effect in effects {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::CreateTokenCopy { count, .. }
-                | SubjectVerbActionAst::CreateTokenCopyFromSource { count, .. },
+                SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { count, .. })
+                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { count, .. }),
             ..
         }) = effect
         {
@@ -29,7 +29,7 @@ fn copy_count(effects: &[EffectAst]) -> Option<Value> {
 fn copy_source(effects: &[EffectAst]) -> Option<TargetAst> {
     for effect in effects {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::CreateTokenCopyFromSource { source, .. },
+            action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { source, .. }),
             ..
         }) = effect
         {

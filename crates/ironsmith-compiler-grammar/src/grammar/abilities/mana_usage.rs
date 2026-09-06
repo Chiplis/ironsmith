@@ -7,7 +7,7 @@ use crate::ability::{
     ManaSpendBonusCondition, ManaSpendGrantedKeyword, ManaUsageSubtypeRequirement,
 };
 use crate::cards::builders::{
-    EffectAst, PlayerAst, SubjectVerbActionAst, SubjectVerbRoleAst, TargetAst,
+    EffectAst, PlayerAst, SubjectVerbActionAst, SubjectVerbRoleAst, TargetAst, KeywordActionAst,
 };
 use crate::effect::Value;
 use crate::model::CompilerManaUsageRestriction as ManaUsageRestriction;
@@ -438,17 +438,17 @@ fn parse_generic_mana_transaction(tokens: &[OwnedLexToken]) -> Option<ManaUsageR
         EffectAst::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::You,
-            SubjectVerbActionAst::Scry {
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Scry {
                 count: Value::Fixed(1),
-            },
+            }),
         )
     } else if crate::word_primitives::sequence_occurs(&words, &["scry", "x"]) {
         EffectAst::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::You,
-            SubjectVerbActionAst::Scry {
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Scry {
                 count: Value::CommanderCastCount(PlayerFilter::You),
-            },
+            }),
         )
     } else if crate::word_primitives::sequence_occurs(&words, &["copy", "that", "spell"]) {
         EffectAst::subject_verb_copy_spell(

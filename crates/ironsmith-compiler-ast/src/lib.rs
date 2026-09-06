@@ -34,6 +34,8 @@ pub mod parse_types;
 pub mod restrictions;
 pub mod symbols;
 pub mod reference_ledger;
+pub mod tag_ref;
+pub use tag_ref::TagRef;
 
 pub use parse_context::*;
 pub use parse_types::*;

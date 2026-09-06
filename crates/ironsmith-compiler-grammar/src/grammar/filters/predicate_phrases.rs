@@ -1,3 +1,7 @@
+use crate::cards::builders::TurnEventPredicateAst;
+use crate::cards::builders::TriggeringPredicateAst;
+use crate::cards::builders::SourcePredicateAst;
+use crate::cards::builders::PlayerPredicateAst;
 use super::super::super::lexer::{
     LexedClause, OwnedLexToken, TokenKind, TokenWordView, render_token_slice, token_slice_first_is,
     trim_lexed_commas,
@@ -428,25 +432,25 @@ fn parse_source_zone_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst>
 
     let zone = relation.tail_clause;
     if surface::exact_any(zone, &[&["the", "battlefield"], &["battlefield"]]) {
-        return Some(PredicateAst::SourceIsInZone(Zone::Battlefield));
+        return Some(PredicateAst::Source(SourcePredicateAst::SourceIsInZone(Zone::Battlefield)));
     }
     if surface::exact(zone, &["your", "graveyard"]) {
-        return Some(PredicateAst::SourceIsInZone(Zone::Graveyard));
+        return Some(PredicateAst::Source(SourcePredicateAst::SourceIsInZone(Zone::Graveyard)));
     }
     if !is_source_card_reference_clause(source) {
         return None;
     }
     if surface::exact(zone, &["your", "hand"]) {
-        return Some(PredicateAst::SourceIsInZone(Zone::Hand));
+        return Some(PredicateAst::Source(SourcePredicateAst::SourceIsInZone(Zone::Hand)));
     }
     if surface::exact(zone, &["your", "library"]) {
-        return Some(PredicateAst::SourceIsInZone(Zone::Library));
+        return Some(PredicateAst::Source(SourcePredicateAst::SourceIsInZone(Zone::Library)));
     }
     if surface::exact(zone, &["exile"]) {
-        return Some(PredicateAst::SourceIsInZone(Zone::Exile));
+        return Some(PredicateAst::Source(SourcePredicateAst::SourceIsInZone(Zone::Exile)));
     }
     if surface::exact_any(zone, &[&["the", "command", "zone"], &["command", "zone"]]) {
-        return Some(PredicateAst::SourceIsInZone(Zone::Command));
+        return Some(PredicateAst::Source(SourcePredicateAst::SourceIsInZone(Zone::Command)));
     }
     None
 }
@@ -525,10 +529,10 @@ fn parse_source_graveyard_cards_above_predicate(
             "ordered-graveyard filter cannot carry a zone or player scope".to_string(),
         ));
     }
-    Ok(Some(PredicateAst::SourceInGraveyardWithCardsAbove {
+    Ok(Some(PredicateAst::Source(SourcePredicateAst::SourceInGraveyardWithCardsAbove {
         filter,
         count,
-    }))
+    })))
 }
 
 fn parse_outlaw_shorthand_filter(clause: LexedClause<'_>) -> Option<ObjectFilter> {
@@ -594,11 +598,11 @@ fn parse_source_attachment_count_predicate(
         ))
     })?;
 
-    Ok(Some(PredicateAst::SourceHasAttachmentsMatching {
+    Ok(Some(PredicateAst::Source(SourcePredicateAst::SourceHasAttachmentsMatching {
         filter,
         comparison,
         display: LexedClause::new(tokens).text(),
-    }))
+    })))
 }
 
 fn parse_attachment_count_filter_tokens(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
@@ -679,7 +683,7 @@ fn parse_source_identity_predicate(tokens: &[OwnedLexToken]) -> Option<Predicate
     if !object_filter_has_identity(&filter) {
         return None;
     }
-    let predicate = PredicateAst::SourceMatches(filter);
+    let predicate = PredicateAst::Source(SourcePredicateAst::SourceMatches(filter));
     Some(if negative {
         PredicateAst::Not(Box::new(predicate))
     } else {
@@ -781,7 +785,7 @@ pub fn parse_source_keyword_condition_filter(tokens: &[OwnedLexToken]) -> Option
 }
 
 fn parse_source_keyword_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    parse_source_keyword_condition_filter(tokens).map(PredicateAst::SourceMatches)
+    parse_source_keyword_condition_filter(tokens).map(|value| PredicateAst::Source(SourcePredicateAst::SourceMatches(value)))
 }
 
 fn parse_triggering_object_keyword_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -880,10 +884,10 @@ fn parse_half_starting_life_total_threshold_predicate(
     let player = parse_life_total_subject_clause(relation.subject_clause)?;
     match parse_half_starting_life_total_threshold_clause(relation.tail_clause)? {
         HalfStartingLifeThreshold::AtMost => {
-            Some(PredicateAst::PlayerLifeAtMostHalfStartingLifeTotal { player })
+            Some(PredicateAst::Player(PlayerPredicateAst::PlayerLifeAtMostHalfStartingLifeTotal { player }))
         }
         HalfStartingLifeThreshold::LessThan => {
-            Some(PredicateAst::PlayerLifeLessThanHalfStartingLifeTotal { player })
+            Some(PredicateAst::Player(PlayerPredicateAst::PlayerLifeLessThanHalfStartingLifeTotal { player }))
         }
     }
 }
@@ -989,7 +993,7 @@ fn source_power_at_least_from_amount_tokens(tokens: &[OwnedLexToken]) -> Option<
         return None;
     }
     let count = comparison_to_at_least_threshold(&comparison)?;
-    Some(PredicateAst::SourcePowerAtLeast(count))
+    Some(PredicateAst::Source(SourcePredicateAst::SourcePowerAtLeast(count)))
 }
 
 fn parse_source_simple_state_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -1058,7 +1062,7 @@ fn parse_source_crewed_by_exactly_predicate(
             render_token_slice(tokens)
         ))
     })?;
-    Ok(Some(PredicateAst::SourceCrewedByExactly { count, filter }))
+    Ok(Some(PredicateAst::Source(SourcePredicateAst::SourceCrewedByExactly { count, filter })))
 }
 
 fn parse_source_bare_state_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -1143,44 +1147,44 @@ fn source_state_predicate_from_clause(
 ) -> Option<PredicateAst> {
     if surface::exact(clause, &["tapped"]) {
         return if negative {
-            Some(PredicateAst::Not(Box::new(PredicateAst::SourceIsTapped)))
+            Some(PredicateAst::Not(Box::new(PredicateAst::Source(SourcePredicateAst::SourceIsTapped))))
         } else {
-            Some(PredicateAst::SourceIsTapped)
+            Some(PredicateAst::Source(SourcePredicateAst::SourceIsTapped))
         };
     }
     if surface::exact(clause, &["untapped"]) {
         return if negative {
-            Some(PredicateAst::SourceIsTapped)
+            Some(PredicateAst::Source(SourcePredicateAst::SourceIsTapped))
         } else {
-            Some(PredicateAst::Not(Box::new(PredicateAst::SourceIsTapped)))
+            Some(PredicateAst::Not(Box::new(PredicateAst::Source(SourcePredicateAst::SourceIsTapped))))
         };
     }
     if surface::exact(clause, &["equipped"]) {
         return if negative {
-            Some(PredicateAst::Not(Box::new(PredicateAst::SourceIsEquipped)))
+            Some(PredicateAst::Not(Box::new(PredicateAst::Source(SourcePredicateAst::SourceIsEquipped))))
         } else {
-            Some(PredicateAst::SourceIsEquipped)
+            Some(PredicateAst::Source(SourcePredicateAst::SourceIsEquipped))
         };
     }
     if surface::exact(clause, &["enchanted"]) {
         return if negative {
-            Some(PredicateAst::Not(Box::new(PredicateAst::SourceIsEnchanted)))
+            Some(PredicateAst::Not(Box::new(PredicateAst::Source(SourcePredicateAst::SourceIsEnchanted))))
         } else {
-            Some(PredicateAst::SourceIsEnchanted)
+            Some(PredicateAst::Source(SourcePredicateAst::SourceIsEnchanted))
         };
     }
     if surface::exact(clause, &["saddled"]) {
         return if negative {
-            Some(PredicateAst::Not(Box::new(PredicateAst::SourceIsSaddled)))
+            Some(PredicateAst::Not(Box::new(PredicateAst::Source(SourcePredicateAst::SourceIsSaddled))))
         } else {
-            Some(PredicateAst::SourceIsSaddled)
+            Some(PredicateAst::Source(SourcePredicateAst::SourceIsSaddled))
         };
     }
     if surface::exact(clause, &["renowned"]) {
         return if negative {
-            Some(PredicateAst::Not(Box::new(PredicateAst::SourceIsRenowned)))
+            Some(PredicateAst::Not(Box::new(PredicateAst::Source(SourcePredicateAst::SourceIsRenowned))))
         } else {
-            Some(PredicateAst::SourceIsRenowned)
+            Some(PredicateAst::Source(SourcePredicateAst::SourceIsRenowned))
         };
     }
     None
@@ -1239,7 +1243,7 @@ fn parse_source_has_counter_predicate(tokens: &[OwnedLexToken]) -> Option<Predic
         .is_some_and(|token| token_word_is(token, NO_WORD))
     {
         let counter_type = parse_terminal_counter_phrase(counter_clause.tokens().get(1..)?)??;
-        return Some(PredicateAst::SourceHasNoCounter(counter_type));
+        return Some(PredicateAst::Source(SourcePredicateAst::SourceHasNoCounter(counter_type)));
     }
     if predicate_quantity_prefix_tokens(counter_clause.tokens()).is_some() {
         return None;
@@ -1248,11 +1252,11 @@ fn parse_source_has_counter_predicate(tokens: &[OwnedLexToken]) -> Option<Predic
         return None;
     }
     let counter_type = parse_terminal_counter_phrase(counter_clause.tokens())??;
-    Some(PredicateAst::SourceHasCounterAtLeast {
+    Some(PredicateAst::Source(SourcePredicateAst::SourceHasCounterAtLeast {
         counter_type,
         count: 1,
         surface: crate::SourceCounterThresholdSurface::SourceHas,
-    })
+    }))
 }
 
 fn parse_source_doesnt_have_counter_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -1280,7 +1284,7 @@ fn parse_source_doesnt_have_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
     }
     let counter_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     let counter_type = parse_terminal_counter_phrase(counter_clause.tokens())??;
-    Some(PredicateAst::SourceHasNoCounter(counter_type))
+    Some(PredicateAst::Source(SourcePredicateAst::SourceHasNoCounter(counter_type)))
 }
 
 fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -1321,7 +1325,7 @@ fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
         return Some(PredicateAst::ValueComparison {
             left: Value::CountersOn(
                 Box::new(crate::target::ChooseSpec::Tagged(
-                    crate::tag::CompilerReferenceTag::It.bind(),
+                    (crate::tag::CompilerReferenceTag::It.bind()).into(),
                 )),
                 Some(counter_type),
             ),
@@ -1335,7 +1339,7 @@ fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
         _ => None,
     };
     if let Some(count) = source_count {
-        return Some(PredicateAst::SourceHasCounterAtLeast {
+        return Some(PredicateAst::Source(SourcePredicateAst::SourceHasCounterAtLeast {
             counter_type,
             count: crate::util::narrowed_u32(count)?,
             surface: if explicit_one_or_more && count == 1 {
@@ -1343,7 +1347,7 @@ fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
             } else {
                 crate::SourceCounterThresholdSurface::SourceHas
             },
-        });
+        }));
     }
     Some(PredicateAst::ValueComparison {
         left: Value::CountersOn(
@@ -1505,7 +1509,7 @@ fn parse_source_verbless_counted_counter_predicate(tokens: &[OwnedLexToken]) -> 
         let counter_type = parse_terminal_counter_phrase(counter_tokens)??;
         return Some(PredicateAst::ValueComparison {
             left: Value::CountersOn(
-                Box::new(crate::target::ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.bind())),
+                Box::new(crate::target::ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into())),
                 Some(counter_type),
             ),
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
@@ -1536,7 +1540,7 @@ fn parse_there_are_no_counters_on_source_predicate(
     }
     let counter_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     let counter_type = parse_terminal_counter_phrase(counter_clause.tokens())??;
-    Some(PredicateAst::SourceHasNoCounter(counter_type))
+    Some(PredicateAst::Source(SourcePredicateAst::SourceHasNoCounter(counter_type)))
 }
 
 fn parse_triggering_object_had_counter_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -1562,13 +1566,13 @@ fn parse_triggering_object_had_counter_predicate(tokens: &[OwnedLexToken]) -> Op
         .is_some_and(|token| token_word_is(token, NO_WORD))
     {
         let counter_type = parse_terminal_counter_phrase(counter_clause.tokens().get(1..)?)??;
-        return Some(PredicateAst::TriggeringObjectHadNoCounter(counter_type));
+        return Some(PredicateAst::Triggering(TriggeringPredicateAst::TriggeringObjectHadNoCounter(counter_type)));
     }
     if surface::exact_any(counter_clause, &[&["counter"], &["counters"]]) {
         return Some(PredicateAst::ValueComparison {
             left: Value::CountersOn(
                 Box::new(crate::target::ChooseSpec::Tagged(
-                    crate::tag::CompilerReferenceTag::Triggering.bind(),
+                    (crate::tag::CompilerReferenceTag::Triggering.bind()).into(),
                 )),
                 None,
             ),
@@ -1577,10 +1581,10 @@ fn parse_triggering_object_had_counter_predicate(tokens: &[OwnedLexToken]) -> Op
         });
     }
     let counter_type = parse_terminal_counter_phrase(counter_clause.tokens())??;
-    Some(PredicateAst::TriggeringObjectHadCounterAtLeast {
+    Some(PredicateAst::Triggering(TriggeringPredicateAst::TriggeringObjectHadCounterAtLeast {
         counter_type,
         count: 1,
-    })
+    }))
 }
 
 fn is_triggering_object_counter_subject_clause(clause: LexedClause<'_>) -> bool {
@@ -1690,7 +1694,7 @@ fn parse_basic_land_types_among_lands_predicate(
         ))
     })?;
     Ok(Some(
-        PredicateAst::PlayerControlsBasicLandTypesAmongLandsOrMore { player, count },
+        PredicateAst::Player(PlayerPredicateAst::PlayerControlsBasicLandTypesAmongLandsOrMore { player, count }),
     ))
 }
 
@@ -1732,13 +1736,13 @@ fn parse_there_are_source_counters_at_least_predicate(
     let count = comparison_to_at_least_threshold(&comparison)?;
     let counter_tail = counter_clause.tokens().get(used..)?;
     let Some(counter_type) = parse_terminal_counter_phrase(counter_tail)? else {
-        return Some(PredicateAst::SourceHasCountersAtLeast(count));
+        return Some(PredicateAst::Source(SourcePredicateAst::SourceHasCountersAtLeast(count)));
     };
-    Some(PredicateAst::SourceHasCounterAtLeast {
+    Some(PredicateAst::Source(SourcePredicateAst::SourceHasCounterAtLeast {
         counter_type,
         count,
         surface: crate::SourceCounterThresholdSurface::ThereAreOn(source_surface),
-    })
+    }))
 }
 
 fn is_exact_counter_on_source_tail_clause(clause: LexedClause<'_>) -> bool {
@@ -1791,12 +1795,12 @@ fn parse_source_exiled_with_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
     let counter = parse_terminal_counter_phrase_shape(counter_clause.tokens())?;
     let counter_type = counter.counter_type?;
     Some(PredicateAst::And(
-        Box::new(PredicateAst::SourceIsInZone(Zone::Exile)),
-        Box::new(PredicateAst::SourceHasCounterAtLeast {
+        Box::new(PredicateAst::Source(SourcePredicateAst::SourceIsInZone(Zone::Exile))),
+        Box::new(PredicateAst::Source(SourcePredicateAst::SourceHasCounterAtLeast {
             counter_type,
             count: counter.count,
             surface: crate::SourceCounterThresholdSurface::SourceHas,
-        }),
+        })),
     ))
 }
 
@@ -1808,9 +1812,9 @@ fn parse_source_is_your_ring_bearer_predicate(tokens: &[OwnedLexToken]) -> Optio
     if !is_your_ring_bearer_clause(relation.tail_clause) {
         return None;
     }
-    Some(PredicateAst::SourceIsRingBearer {
+    Some(PredicateAst::Source(SourcePredicateAst::SourceIsRingBearer {
         player: PlayerAst::You,
-    })
+    }))
 }
 
 fn is_this_source_clause(clause: LexedClause<'_>) -> bool {
@@ -1851,10 +1855,10 @@ fn parse_ring_has_tempted_you_this_game_predicate(
     if used != count_clause.tokens().len() {
         return None;
     }
-    Some(PredicateAst::PlayerRingTemptedThisGameOrMore {
+    Some(PredicateAst::Player(PlayerPredicateAst::PlayerRingTemptedThisGameOrMore {
         player: PlayerAst::You,
         count,
-    })
+    }))
 }
 
 fn parse_ring_bearer_temptation_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -2157,7 +2161,7 @@ fn parse_player_controls_zero_quantity_predicate(
                 TaggedOpbjectRelation::IsTaggedObject,
             );
         }
-        PredicateAst::PlayerControlsNo { player, filter }
+        PredicateAst::Player(PlayerPredicateAst::PlayerControlsNo { player, filter })
     });
     Some(result)
 }
@@ -2199,10 +2203,10 @@ fn parse_player_does_not_control_predicate(
         .is_some_and(|token| token_word_is_any(token, OTHER_OR_ANOTHER_WORDS));
     let result = parse_object_filter(object_clause.tokens(), other).map(|mut filter| {
         filter.controller = Some(PlayerFilter::You);
-        PredicateAst::PlayerControlsNo {
+        PredicateAst::Player(PlayerPredicateAst::PlayerControlsNo {
             player: PlayerAst::You,
             filter,
-        }
+        })
     });
     Some(result)
 }
@@ -2248,11 +2252,11 @@ fn parse_you_control_or_graveyard_predicate(
                 if graveyard_filter.owner.is_none() {
                     graveyard_filter.owner = Some(PlayerFilter::You);
                 }
-                PredicateAst::PlayerControlsOrHasCardInGraveyard {
+                PredicateAst::Player(PlayerPredicateAst::PlayerControlsOrHasCardInGraveyard {
                     player: PlayerAst::You,
                     control_filter,
                     graveyard_filter,
-                }
+                })
             })
         });
     Some(result)
@@ -2309,16 +2313,16 @@ fn parse_you_control_or_returned_to_hand_this_way_predicate(
                     ironsmith_core::PriorEffectAction::Returned,
                 ));
                 PredicateAst::Or(
-                    Box::new(PredicateAst::PlayerControls {
+                    Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerControls {
                         player: PlayerAst::You,
                         filter: control_filter,
-                    }),
-                    Box::new(PredicateAst::PlayerTaggedObjectMatches {
+                    })),
+                    Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches {
                         player: PlayerAst::You,
                         tag: crate::tag::CompilerReferenceTag::It.bind(),
                         filter: returned_filter,
                         mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
-                    }),
+                    })),
                 )
             })
         }),
@@ -2391,14 +2395,14 @@ fn parse_you_control_conjoined_predicate(
                 left_filter.controller = Some(PlayerFilter::You);
                 right_filter.controller = Some(PlayerFilter::You);
                 Ok(PredicateAst::And(
-                    Box::new(PredicateAst::PlayerControls {
+                    Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerControls {
                         player: PlayerAst::You,
                         filter: left_filter,
-                    }),
-                    Box::new(PredicateAst::PlayerControls {
+                    })),
+                    Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerControls {
                         player: PlayerAst::You,
                         filter: right_filter,
-                    }),
+                    })),
                 ))
             });
         return Some(shared_named_result);
@@ -2409,14 +2413,14 @@ fn parse_you_control_conjoined_predicate(
             left_filter.controller = Some(PlayerFilter::You);
             right_filter.controller = Some(PlayerFilter::You);
             PredicateAst::And(
-                Box::new(PredicateAst::PlayerControls {
+                Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerControls {
                     player: PlayerAst::You,
                     filter: left_filter,
-                }),
-                Box::new(PredicateAst::PlayerControls {
+                })),
+                Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerControls {
                     player: PlayerAst::You,
                     filter: right_filter,
-                }),
+                })),
             )
         })
     });
@@ -2544,29 +2548,29 @@ fn parse_player_controls_predicate(
     }
 
     if let Some(count) = exact_count {
-        return Ok(Some(PredicateAst::PlayerControlsExactly {
+        return Ok(Some(PredicateAst::Player(PlayerPredicateAst::PlayerControlsExactly {
             player,
             filter,
             count,
-        }));
+        })));
     }
     if let Some(count) = min_count
         && count > 1
     {
         if requires_different_powers {
-            return Ok(Some(PredicateAst::PlayerHasAtLeastWithDifferentPowers {
+            return Ok(Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeastWithDifferentPowers {
                 player,
                 filter,
                 count,
-            }));
+            })));
         }
-        return Ok(Some(PredicateAst::PlayerHasAtLeast {
+        return Ok(Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast {
             player,
             filter,
             count,
-        }));
+        })));
     }
-    Ok(Some(PredicateAst::PlayerControls { player, filter }))
+    Ok(Some(PredicateAst::Player(PlayerPredicateAst::PlayerControls { player, filter })))
 }
 
 fn predicate_from_control_condition(
@@ -2576,36 +2580,36 @@ fn predicate_from_control_condition(
         return predicate;
     }
     if let Some(count) = control_condition.exact_count() {
-        return PredicateAst::PlayerControlsExactly {
+        return PredicateAst::Player(PlayerPredicateAst::PlayerControlsExactly {
             player: control_condition.player,
             filter: control_condition.filter,
             count,
-        };
+        });
     }
     let Some(count) = control_condition.at_least_count() else {
-        return PredicateAst::PlayerControls {
+        return PredicateAst::Player(PlayerPredicateAst::PlayerControls {
             player: control_condition.player,
             filter: control_condition.filter,
-        };
+        });
     };
     if count > 1 {
         if control_condition.requires_different_powers {
-            return PredicateAst::PlayerHasAtLeastWithDifferentPowers {
+            return PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeastWithDifferentPowers {
                 player: control_condition.player,
                 filter: control_condition.filter,
                 count,
-            };
+            });
         }
-        return PredicateAst::PlayerHasAtLeast {
+        return PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast {
             player: control_condition.player,
             filter: control_condition.filter,
             count,
-        };
+        });
     }
-    PredicateAst::PlayerControls {
+    PredicateAst::Player(PlayerPredicateAst::PlayerControls {
         player: control_condition.player,
         filter: control_condition.filter,
-    }
+    })
 }
 
 fn predicate_for_each_global_greatest_power(
@@ -2665,7 +2669,7 @@ fn parse_this_ability_resolution_count_predicate(tokens: &[OwnedLexToken]) -> Op
     if let Some(counts) = ability_resolution_ordinal_disjunction_counts(clause) {
         let mut predicates = counts
             .into_iter()
-            .map(PredicateAst::ThisAbilityResolvedThisTurnExactly);
+            .map(|value| PredicateAst::TurnEvents(TurnEventPredicateAst::ThisAbilityResolvedThisTurnExactly(value)));
         let first = predicates.next()?;
         return Some(predicates.fold(first, |left, right| {
             PredicateAst::Or(Box::new(left), Box::new(right))
@@ -2674,7 +2678,7 @@ fn parse_this_ability_resolution_count_predicate(tokens: &[OwnedLexToken]) -> Op
 
     let count = ability_resolution_ordinal_count(clause)?;
 
-    Some(PredicateAst::ThisAbilityResolvedThisTurnExactly(count))
+    Some(PredicateAst::TurnEvents(TurnEventPredicateAst::ThisAbilityResolvedThisTurnExactly(count)))
 }
 
 fn ability_resolution_ordinal_disjunction_counts(clause: LexedClause<'_>) -> Option<Vec<u32>> {
@@ -2975,7 +2979,7 @@ fn parse_this_way_object_filter_clause(clause: LexedClause<'_>) -> Option<Object
             filter.set_explicit_card_noun(stripped_card_noun);
             if needs_chosen_name {
                 filter.tagged_constraints.push(TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::ChosenName.bind(),
+                    tag: (crate::tag::CompilerReferenceTag::ChosenName.bind()).into(),
                     relation: TaggedOpbjectRelation::SameNameAsTagged,
                 });
             }
@@ -2988,7 +2992,7 @@ fn parse_this_way_object_filter_clause(clause: LexedClause<'_>) -> Option<Object
             }
             if needs_chosen_name {
                 filter.tagged_constraints.push(TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::ChosenName.bind(),
+                    tag: (crate::tag::CompilerReferenceTag::ChosenName.bind()).into(),
                     relation: TaggedOpbjectRelation::SameNameAsTagged,
                 });
             }
@@ -3001,7 +3005,7 @@ fn parse_this_way_object_filter_clause(clause: LexedClause<'_>) -> Option<Object
             }
             if needs_chosen_name {
                 filter.tagged_constraints.push(TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::ChosenName.bind(),
+                    tag: (crate::tag::CompilerReferenceTag::ChosenName.bind()).into(),
                     relation: TaggedOpbjectRelation::SameNameAsTagged,
                 });
             }
@@ -3129,12 +3133,12 @@ fn parse_active_this_way_discard_predicate(
         return Ok(None);
     };
     filter.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Discarded));
-    Ok(Some(PredicateAst::PlayerTaggedObjectMatches {
+    Ok(Some(PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches {
         player,
         tag: crate::tag::CompilerReferenceTag::It.bind(),
         filter,
         mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
-    }))
+    })))
 }
 
 fn parse_negative_put_tagged_object_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -3174,12 +3178,12 @@ fn parse_negative_put_tagged_object_predicate(tokens: &[OwnedLexToken]) -> Optio
     let destination_clause = matched.capture_clause("destination", clause)?;
     let zone = tagged_put_destination_zone(destination_clause)?;
     Some(PredicateAst::Not(Box::new(
-        PredicateAst::PlayerTaggedObjectMatches {
+        PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches {
             player: PlayerAst::You,
             tag: crate::tag::CompilerReferenceTag::It.bind(),
             filter: ObjectFilter::default().in_zone(zone),
             mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
-        },
+        }),
     )))
 }
 
@@ -3275,12 +3279,12 @@ fn parse_active_this_way_battlefield_predicate(
     if filter.zone.is_none() {
         filter.zone = Some(Zone::Battlefield);
     }
-    Ok(Some(PredicateAst::PlayerTaggedObjectMatches {
+    Ok(Some(PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches {
         player: PlayerAst::You,
         tag: crate::tag::CompilerReferenceTag::It.bind(),
         filter,
         mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
-    }))
+    })))
 }
 
 fn parse_passive_this_way_battlefield_predicate(
@@ -4077,7 +4081,7 @@ fn parse_demonstrative_shares_predicate(tokens: &[OwnedLexToken]) -> Option<Pred
         _ => return None,
     };
     filter = filter.shares_color_with_tagged(crate::tag::CompilerReferenceTag::It.bind());
-    Some(PredicateAst::PlayerControls { player, filter })
+    Some(PredicateAst::Player(PlayerPredicateAst::PlayerControls { player, filter }))
 }
 
 fn contains_most_common_color_among_all_permanents_clause(tokens: &[OwnedLexToken]) -> bool {
@@ -4289,14 +4293,14 @@ fn parse_attacking_you_own_control_predicate(
     right_filter.attacking = true;
 
     Ok(Some(PredicateAst::And(
-        Box::new(PredicateAst::PlayerControls {
+        Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerControls {
             player: PlayerAst::You,
             filter: left_filter,
-        }),
-        Box::new(PredicateAst::PlayerControls {
+        })),
+        Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerControls {
             player: PlayerAst::You,
             filter: right_filter,
-        }),
+        })),
     )))
 }
 
@@ -4349,14 +4353,14 @@ fn parse_you_both_own_and_control_predicate(
     right_filter.owner = Some(PlayerFilter::You);
 
     Ok(Some(PredicateAst::And(
-        Box::new(PredicateAst::PlayerControls {
+        Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerControls {
             player: PlayerAst::You,
             filter: left_filter,
-        }),
-        Box::new(PredicateAst::PlayerControls {
+        })),
+        Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerControls {
             player: PlayerAst::You,
             filter: right_filter,
-        }),
+        })),
     )))
 }
 

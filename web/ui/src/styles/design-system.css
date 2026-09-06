@@ -102,6 +102,76 @@
   }
 }
 
+.has-zone-piles {
+  position: relative;
+  box-sizing: border-box;
+}
+
+.player-zone-piles {
+  position: absolute;
+  z-index: 25;
+  top: 8px;
+  right: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.zone-pile {
+  position: relative;
+  width: var(--zone-pile-width, 50px);
+  height: auto;
+  aspect-ratio: 63 / 88;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 4px;
+  background: var(--ui-surface-raised);
+  color: var(--ui-text-primary);
+  box-shadow: 2px 2px 0 #171614, 3px 3px 0 rgba(218, 188, 126, 0.25);
+  cursor: pointer;
+  transition: transform 180ms ease, border-color 180ms ease;
+}
+
+.zone-pile:hover, .zone-pile[aria-expanded="true"] { transform: translateY(-3px); }
+.zone-pile[data-has-targets="true"] { border-color: #fff; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85), 0 0 14px rgba(255, 255, 255, 0.65); }
+.zone-pile > img { width: 100%; height: 100%; object-fit: cover; }
+.zone-pile-placeholder { display: grid; place-items: center; height: 100%; color: var(--ui-text-muted); }
+.zone-pile-slot { position: relative; padding-top: 20px; }
+.zone-pile-slot:first-child { margin-top: -20px; }
+.zone-pile-label { position: absolute; top: 0; right: 0; height: 16px; color: var(--ui-text-secondary); white-space: nowrap; font-size: 10px; line-height: 16px; }
+
+.zone-pile-menu[data-slot="popover-content"] {
+  z-index: 180;
+  width: max-content;
+  max-width: var(--zone-strip-width);
+  padding: 0;
+  overflow: hidden;
+  background: var(--ui-surface-raised);
+  border-color: var(--ui-border-strong);
+  transform-origin: right center;
+  animation-duration: 220ms;
+}
+.zone-pile-menu[data-state="open"] { animation-name: zone-strip-expand; }
+@keyframes zone-strip-expand {
+  from { opacity: 0; clip-path: inset(0 0 0 100%); transform: translateX(8px); }
+  to { opacity: 1; clip-path: inset(0); transform: translateX(0); }
+}
+.zone-pile-card-list { display: flex; gap: 6px; max-width: 100%; overflow-x: auto; overflow-y: hidden; overscroll-behavior: contain; padding: 5px; scrollbar-width: thin; }
+.zone-pile-card-row { position: relative; flex: 0 0 var(--zone-strip-card-width, 72px); width: var(--zone-strip-card-width, 72px); aspect-ratio: 63 / 88; padding: 0; overflow: hidden; border: 1px solid transparent; border-radius: 3px; cursor: pointer; }
+.zone-pile-card-row > img, .zone-pile-card-row > .zone-pile-placeholder { width: 100%; height: 100%; object-fit: cover; }
+.zone-pile-card-row:hover, .zone-pile-card-row:focus-visible { border-color: var(--ui-border-strong); }
+.zone-pile-card-row[data-target-legal="true"] { border-color: #fff; box-shadow: 0 0 4px rgba(255, 255, 255, 0.7); }
+.zone-pile-card-row:disabled { opacity: 0.45; cursor: default; }
+@media (max-width: 900px) {
+  .zone-pile-label { font-size: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .zone-pile { transition: none; }
+  .zone-pile-menu[data-slot="popover-content"] { animation: none; }
+}
+
 .player-priority-hold {
   display: inline-flex;
   flex-shrink: 0;
@@ -2373,7 +2443,7 @@ select.stone-select.topbar-phase-perspective-select:disabled {
 }
 
 /* Interaction vectors must stay legible across every board and control
-   surface. The full card inspector is the sole layer allowed above them. */
+   surface. Inspectors, tooltips and action choices sit above them. */
 .action-arrow-overlay,
 .cast-intent-drag-arrow,
 .placement-drag-arrow {
@@ -3242,19 +3312,10 @@ button:disabled,
 [data-my-zone][data-tools-expanded="true"] { z-index: auto !important; }
 .my-zone-board-shell > .my-zone-stack-rail {
   position: absolute;
-  inset: 0 auto 0 0;
+  inset: var(--battlefield-objects-top, 12px) auto 0 0;
   width: clamp(188px, 18vw, 260px);
-  padding-top: 12px;
-}
-@media (min-width: 1024px) and (min-height: 700px) {
-  .my-zone-board-shell > .my-zone-stack-rail {
-    padding-top: 6px;
-  }
-  .table-shell[data-decision-strip-removed="true"]
-    [data-my-zone][data-header-hidden="true"]
-    .my-zone-board-shell > .my-zone-stack-rail {
-    padding-top: calc(var(--my-zone-battlefield-top-inset, 0px) + 6px);
-  }
+  height: auto;
+  padding: 0;
 }
 .my-zone-board-shell--with-stack { display: block; }
 .stack-flow-reveal { width: 100%; max-height: 100%; }
@@ -3552,4 +3613,12 @@ button:disabled,
 }
 .game-card.battlefield-token-card > .card-inspector-source-glow {
   border-radius: 50%;
+}
+
+/* The overlay leaves the battlefield clickable outside the stack. */
+[data-my-zone] .my-zone-board-shell > .my-zone-stack-rail {
+  pointer-events: none;
+}
+[data-my-zone] .my-zone-board-shell > .my-zone-stack-rail > * {
+  pointer-events: auto;
 }

@@ -53,7 +53,7 @@ fn parse_player_villainous_choice_statement(
             (PlayerFilter::target_opponent(), "target opponent")
         }
     };
-    let choice = EffectAst::VillainousChoice {
+    let choice = EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice {
         player,
         player_surface: Some(player_surface.to_string()),
         modes: vec![
@@ -66,11 +66,11 @@ fn parse_player_villainous_choice_statement(
                 effects: second_mode_effects,
             },
         ],
-    };
+    });
     Ok(Some(match shape.iteration {
         crate::grammar::semantic_lowering::VillainousChoicePlayerIteration::EachOpponent => {
             let body = if let Some(count) = shape.minimum_life_lost_this_turn {
-                vec![EffectAst::Conditional {
+                vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                     predicate: PredicateAst::ValueComparison {
                         left: Value::LifeLostThisTurn(PlayerFilter::IteratedPlayer),
                         operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
@@ -78,11 +78,11 @@ fn parse_player_villainous_choice_statement(
                     },
                     if_true: vec![choice],
                     if_false: Vec::new(),
-                }]
+                })]
             } else {
                 vec![choice]
             };
-            vec![EffectAst::ForEachOpponent { effects: body }]
+            vec![EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects: body })]
         }
         crate::grammar::semantic_lowering::VillainousChoicePlayerIteration::TargetOpponent => {
             vec![

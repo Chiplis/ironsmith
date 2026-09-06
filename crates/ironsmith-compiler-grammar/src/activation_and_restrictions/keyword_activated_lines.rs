@@ -1,3 +1,6 @@
+use crate::cards::builders::LifeResourceActionAst;
+use crate::cards::builders::ZoneMoveActionAst;
+use crate::cards::builders::KeywordActionAst;
 use super::*;
 use crate::grammar::activated_lines::{self as activated_line_grammar, ActivatedCyclingContext};
 use crate::grammar::keyword_activated_lines::{
@@ -91,9 +94,9 @@ pub fn parse_cycling_line_lexed(
         EffectAst::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             PlayerAst::You,
-            SubjectVerbActionAst::Draw {
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
                 count: Value::Fixed(1),
-            },
+            }),
         )
     };
 
@@ -181,7 +184,7 @@ pub fn parse_craft_line_lexed(
     let return_transformed = EffectAst::subject_verb(
         SubjectVerbRoleAst::Actor,
         PlayerAst::Implicit,
-        SubjectVerbActionAst::ReturnSourceTransformedFromExile,
+        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnSourceTransformedFromExile),
     );
     Ok(Some(ParsedAbility {
         ability: Ability {
@@ -461,7 +464,7 @@ pub fn parse_reconfigure_line_lexed(
                     EffectAst::subject_verb(
                         SubjectVerbRoleAst::Actor,
                         PlayerAst::Implicit,
-                        SubjectVerbActionAst::Reconfigure { target },
+                        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Reconfigure { target }),
                     ),
                 ]),
                 choices: vec![],

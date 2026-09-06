@@ -1,3 +1,5 @@
+use crate::cards::builders::LifeResourceActionAst;
+use crate::cards::builders::KeywordActionAst;
 pub fn parse_conditional_anthem_replacement_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
@@ -1038,9 +1040,9 @@ fn granted_object_ability_for_keyword_action(
                         EffectAst::subject_verb(
                             SubjectVerbRoleAst::AffectedPlayer,
                             PlayerAst::Defending,
-                            SubjectVerbActionAst::LoseLife {
+                            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife {
                                 amount: Value::Fixed(*amount as i32),
-                            },
+                            }),
                         ),
                     ]),
                     choices: Vec::new(),
@@ -1094,7 +1096,7 @@ fn color_filtered_grant_filter(mut filter: ObjectFilter, color: ColorSet) -> Obj
 fn source_color_condition(color: ColorSet) -> PredicateAst {
     let mut filter = ObjectFilter::source();
     filter.colors = Some(color);
-    PredicateAst::SourceMatches(filter)
+    PredicateAst::Source(SourcePredicateAst::SourceMatches(filter))
 }
 
 fn append_condition(condition: Option<PredicateAst>, next: PredicateAst) -> PredicateAst {
@@ -1259,7 +1261,7 @@ fn parsed_exploit_ability() -> ParsedAbility {
     let effect = EffectAst::subject_verb(
         SubjectVerbRoleAst::Actor,
         PlayerAst::You,
-        SubjectVerbActionAst::Exploit,
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Exploit),
     );
     let ability = Ability {
         kind: AbilityKind::Triggered(TriggeredAbility {
@@ -1485,7 +1487,7 @@ fn nonstatic_keyword_action_as_granted_object_ability(
                         EffectAst::subject_verb(
                             SubjectVerbRoleAst::Actor,
                             PlayerAst::You,
-                            SubjectVerbActionAst::Casualty { power },
+                            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Casualty { power }),
                         ),
                     ]),
                     choices: Vec::new(),
@@ -4639,7 +4641,7 @@ fn static_condition_family_consumes_typed_condition_shapes() {
         panic!("expected a typed conjunction");
     };
     assert_eq!(*left, PredicateAst::YourTurn);
-    assert_eq!(*right, PredicateAst::AttackedThisTurn);
+    assert_eq!(*right, PredicateAst::TurnEvents(TurnEventPredicateAst::AttackedThisTurn));
 
     let graveyard = crate::lexer::lex_line(
         "There are four or more card types among cards in your graveyard.",
@@ -4648,10 +4650,10 @@ fn static_condition_family_consumes_typed_condition_shapes() {
     .expect("graveyard condition should lex");
     assert_eq!(
         parse_static_condition_clause(&graveyard).expect("graveyard condition should parse"),
-        PredicateAst::PlayerHasCardTypesInGraveyardOrMore {
+        PredicateAst::Player(PlayerPredicateAst::PlayerHasCardTypesInGraveyardOrMore {
             player: PlayerAst::You,
             count: 4,
-        }
+        })
     );
 }
 
