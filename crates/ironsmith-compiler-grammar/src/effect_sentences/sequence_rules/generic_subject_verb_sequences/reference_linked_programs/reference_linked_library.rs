@@ -590,6 +590,7 @@ pub fn parse_consult_match_move_and_bottom_remainder(
     let effect_grammar::ConsultMoveBottomShape::MoveMatchAndBottom {
         zone,
         battlefield_tapped,
+        attached_to_tokens,
         order,
     } = shape
     else {
@@ -603,17 +604,16 @@ pub fn parse_consult_match_move_and_bottom_remainder(
             false,
             crate::cards::builders::ReturnControllerAst::Preserve,
             battlefield_tapped,
-            None,
+            attached_to_tokens.map(|(start, end)| crate::util::parse_target_phrase(&second_tokens[start..end])).transpose()?,
         ),
         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
             crate::tag::TagRef::of(parts.all_tag.clone()),
             Some(crate::tag::TagRef::of(parts.match_tag.clone())),
             order,
-            parts.player,
+            PlayerAst::That,
         ),
     ];
     Ok(Some(wrap_optional_consult_effects(
         parts, optional, followups, false, false,
     )))
 }
-

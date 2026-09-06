@@ -20,6 +20,12 @@ pub(super) fn parse_effect_clause_unstacked(
     } else {
         tokens
     };
+    if let Some(shape) = crate::grammar::effects::parse_shuffle_object_shape_lexed(tokens)
+        && shape.owner_subject_target_tokens.is_some()
+        && let Some(effects) = super::super::search_library::parse_shuffle_object_into_library_sentence(tokens)?
+    {
+        return Ok(EffectAst::Sequence { effects });
+    }
     let input = clause_readings::Clause {
         tokens,
         read_by_cache: Default::default(),
@@ -99,7 +105,13 @@ pub(super) fn parse_effect_clause_unstacked(
     // the general verb dispatch below.
     match verb {
         Verb::Counter => {
+            if let Some(entry) = tokens.windows(2).position(|pair| pair[0].is_word("enters") && pair[1].is_word("with"))
+                && crate::util::is_source_reference_words(&crate::lexer::token_word_refs(&tokens[..entry]))
+            {
+                return parse_put_counters(&tokens[entry + 2..]);
+            }
             if !subject_tokens.is_empty()
+                && !tokens.first().is_some_and(|token| token.is_any_word(&["if", "unless", "when", "whenever"]))
                 && contains_token_word(tokens, "on")
                 && let Ok(effect) = parse_put_counters(tokens)
             {

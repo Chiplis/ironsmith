@@ -1238,7 +1238,19 @@ fn subject_verb_grant_abilities_all_with_optional_condition(
     }
 }
 
+fn tagged_subject_target(tokens: &[OwnedLexToken]) -> TargetAst {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    if words.first() == Some(&"those") {
+        let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
+        filter.source_surface = Some(SourceReferenceSurface::ThisPermanentType(words.join(" ")));
+        TargetAst::Object(filter, None, span_from_tokens(tokens))
+    } else {
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span_from_tokens(tokens))
+    }
+}
+
 fn pronoun_set_quantifier_surface(words: &[&str]) -> Option<ironsmith_core::SetQuantifierSurface> {
+    if words.last() == Some(&"each") { return Some(ironsmith_core::SetQuantifierSurface::Each); }
     match words.first().copied() {
         Some("they" | "theyre" | "they're" | "they’re" | "them") => {
             Some(ironsmith_core::SetQuantifierSurface::They)
@@ -1466,6 +1478,9 @@ fn parse_simple_ability_modifier_clause_lexed(
     tokens: &[OwnedLexToken],
     losing: bool,
 ) -> Result<Option<EffectAst>, CardTextError> {
+    if tokens.first().is_some_and(|token| token.is_any_word(&["if", "unless", "instead"])) {
+        return Ok(None);
+    }
     if losing
         && let Some(effects) =
             super::chain_carry::parse_return_it_then_loses_all_abilities_lexed(tokens)?
@@ -1637,10 +1652,7 @@ fn parse_simple_ability_modifier_clause_lexed(
     let is_pronoun_subject = implied_it_subject || subject_shape.tagged_pronoun;
     if is_pronoun_subject {
         let set_quantifier_surface = pronoun_set_quantifier_surface(&subject_word_refs);
-        let target = TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.bind(),
-            span_from_lexed_tokens(subject_tokens),
-        );
+        let target = tagged_subject_target(subject_tokens);
         if losing {
             return Ok(Some(EffectAst::subject_verb_remove_abilities_from_target(
                 target, abilities, duration,
@@ -1773,6 +1785,9 @@ pub fn parse_gain_ability_sentence(
 fn parse_complete_simple_source_gain_ability_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if tokens.first().is_some_and(|token| token.is_any_word(&["if", "unless", "instead"])) {
+        return Ok(None);
+    }
     if gain_shapes::parse_gain_then_get_shape(tokens).is_some()
         || gain_shapes::parse_get_then_ability_shape(tokens).is_some()
     {
@@ -1818,10 +1833,7 @@ fn parse_complete_simple_source_gain_ability_sentence(
         if !subject_shape.pronoun && !subject_shape.demonstrative_object {
             return Ok(None);
         }
-        TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.bind(),
-            span_from_tokens(&subject_tokens),
-        )
+        tagged_subject_target(&subject_tokens)
     };
     let source_target = matches!(&target, TargetAst::Source(_))
         || matches!(&target, TargetAst::Object(filter, None, _) if filter.source);

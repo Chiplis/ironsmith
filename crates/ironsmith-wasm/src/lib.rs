@@ -2151,6 +2151,9 @@ struct ActionView {
     kind: String,
     object_id: Option<u64>,
     ability_index: Option<usize>,
+    /// None means affordability cannot be determined before making choices.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mana_payment_available: Option<bool>,
     from_zone: Option<String>,
     to_zone: Option<String>,
     drag_requires_targets: bool,

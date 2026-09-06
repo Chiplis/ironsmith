@@ -8,7 +8,7 @@ test('zone piles align, scroll, animate and require a separate target click', as
   await vite.listen();
   const browser = await chromium.launch();
   try {
-    const page = await browser.newPage({viewport:{width:1200,height:800}});
+    const page = await browser.newPage({viewport:{width:1000,height:800}});
     await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/zone-piles.html`);
     const pile = page.locator('[data-zone-pile="graveyard"]');
     await pile.waitFor();
@@ -39,7 +39,13 @@ test('zone piles align, scroll, animate and require a separate target click', as
     await page.waitForTimeout(300);
     const menuBox = await menu.boundingBox();
     const fieldBox = await page.locator('.has-zone-piles').boundingBox();
-    assert.ok(Math.abs(menuBox.x - fieldBox.x) <= 2);
+    assert.ok(Math.abs(menuBox.x - fieldBox.x) <= 2, JSON.stringify({menuBox,fieldBox,pileBox}));
+    const representative = menu.locator('[data-object-id="20"]');
+    assert.equal(await representative.count(), 1);
+    const representativeBox = await representative.boundingBox();
+    assert.ok(Math.abs(representativeBox.x - pileBox.x) < 1);
+    assert.ok(Math.abs(representativeBox.y - pileBox.y) < 1);
+    assert.equal(await pile.evaluate(el => getComputedStyle(el).opacity), '0');
     const expandedCard = await page.locator('.zone-pile-card-row').first().boundingBox();
     assert.ok(Math.abs(expandedCard.width - pileBox.width) < 1);
     assert.ok(expandedCard.width < cardBox.width);
@@ -47,7 +53,7 @@ test('zone piles align, scroll, animate and require a separate target click', as
     assert.equal(rowBoxes[0].y,rowBoxes[1].y);
     assert.ok(rowBoxes[1].x > rowBoxes[0].x);
     assert.equal(await menu.evaluate(el=>getComputedStyle(el).animationDuration),'0.22s');
-    assert.deepEqual(await page.locator('.zone-pile-card-row').evaluateAll(rows=>rows.slice(0,3).map(row=>row.dataset.objectId)),['20','19','18']);
+    assert.deepEqual(await page.locator('.zone-pile-card-row').evaluateAll(rows=>rows.slice(0,3).map(row=>row.dataset.objectId)),['19','18','17']);
     assert.ok(await page.locator('.zone-pile-card-list').evaluate(el=>el.scrollWidth>el.clientWidth));
     assert.equal(await page.locator('.zone-pile-card-row:disabled').count(),19);
     await page.locator('.zone-pile-card-row[data-object-id="20"]').click();
@@ -135,5 +141,40 @@ test('cast choices portal above inspector and an open zone list and remain click
     assert.ok(await choices.evaluate(el=>Number(getComputedStyle(el).zIndex)>Number(getComputedStyle(document.querySelector('.zone-pile-menu')).zIndex)));
     await choices.locator('[role=button]').first().click();
     assert.equal(await page.locator('output').textContent(),'cast');
+  } finally { await browser.close(); await vite.close(); }
+});
+
+test('zone card inspectors leave the clicked card and expanded strip uncovered', async () => {
+  const vite = await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});
+  await vite.listen();
+  const browser = await chromium.launch();
+  try {
+    for (const viewport of [{width:1200,height:800}, {width:600,height:800}, {width:600,height:400}]) {
+      const page = await browser.newPage({viewport});
+      await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/zone-piles.html`);
+      for (const [zone, ids] of [['graveyard', ['20','19','18']], ['exile', ['31']]]) {
+        await page.locator(`[data-zone-pile="${zone}"]`).click();
+        for (const id of ids) {
+          const card = page.locator(`[data-zone-card="${zone}"][data-object-id="${id}"]`);
+          await card.click();
+          const preview = page.locator(`[data-card-hover-preview][data-preview-object-id="${id}"][data-visible="true"]`);
+          await preview.waitFor();
+          await page.waitForTimeout(300);
+          const cardBox = await card.boundingBox();
+          const stripBox = await page.locator('.zone-pile-menu').boundingBox();
+          const previewBox = await preview.boundingBox();
+          assert.ok(previewBox.width > 50 && previewBox.height > 50);
+          assert.ok(previewBox.y >= stripBox.y + stripBox.height || previewBox.y + previewBox.height <= stripBox.y,
+            JSON.stringify({viewport,zone,id,previewBox,stripBox}));
+          assert.ok(previewBox.x >= 0 && previewBox.x + previewBox.width <= viewport.width + 1);
+          assert.ok(previewBox.y >= 0 && previewBox.y + previewBox.height <= viewport.height + 1);
+          assert.ok(await card.evaluate((el, point) => el.contains(document.elementFromPoint(point.x, point.y)),
+            {x:cardBox.x + cardBox.width / 2,y:cardBox.y + cardBox.height / 2}));
+        }
+        await page.keyboard.press('Escape');
+        await page.locator('.zone-pile-menu').waitFor({state:'hidden'});
+      }
+      await page.close();
+    }
   } finally { await browser.close(); await vite.close(); }
 });

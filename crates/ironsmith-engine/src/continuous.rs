@@ -554,6 +554,8 @@ impl Modification {
             ironsmith_core::CompiledContinuousModification::RemoveCardTypes(card_types) => {
                 Self::RemoveCardTypes(card_types)
             }
+            ironsmith_core::CompiledContinuousModification::AddSupertypes(supertypes) => Self::AddSupertypes(supertypes),
+            ironsmith_core::CompiledContinuousModification::SetName(name) => Self::SetName(name),
             ironsmith_core::CompiledContinuousModification::RemoveSupertypes(supertypes) => {
                 Self::RemoveSupertypes(supertypes)
             }

@@ -131,10 +131,11 @@
   color: var(--ui-text-primary);
   box-shadow: 2px 2px 0 #171614, 3px 3px 0 rgba(218, 188, 126, 0.25);
   cursor: pointer;
-  transition: transform 180ms ease, border-color 180ms ease;
+  transition: border-color 180ms ease;
 }
 
-.zone-pile:hover, .zone-pile[aria-expanded="true"] { transform: translateY(-3px); }
+.zone-pile:hover { border-color: var(--ui-text-primary); }
+.zone-pile[aria-expanded="true"] { opacity: 0; }
 .zone-pile[data-has-targets="true"] { border-color: #fff; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85), 0 0 14px rgba(255, 255, 255, 0.65); }
 .zone-pile > img { width: 100%; height: 100%; object-fit: cover; }
 .zone-pile-placeholder { display: grid; place-items: center; height: 100%; color: var(--ui-text-muted); }
@@ -146,7 +147,10 @@
   z-index: 180;
   width: max-content;
   max-width: var(--zone-strip-width);
-  padding: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 5px;
   overflow: hidden;
   background: var(--ui-surface-raised);
   border-color: var(--ui-border-strong);
@@ -155,10 +159,11 @@
 }
 .zone-pile-menu[data-state="open"] { animation-name: zone-strip-expand; }
 @keyframes zone-strip-expand {
-  from { opacity: 0; clip-path: inset(0 0 0 100%); transform: translateX(8px); }
-  to { opacity: 1; clip-path: inset(0); transform: translateX(0); }
+  from { clip-path: inset(0 0 0 calc(100% - var(--zone-strip-card-width) - 12px)); }
+  to { clip-path: inset(0); }
 }
-.zone-pile-card-list { display: flex; gap: 6px; max-width: 100%; overflow-x: auto; overflow-y: hidden; overscroll-behavior: contain; padding: 5px; scrollbar-width: thin; }
+.zone-pile-card-list:empty { display: none; }
+.zone-pile-card-list { min-width: 0; display: flex; gap: 6px; max-width: 100%; overflow-x: auto; overflow-y: hidden; overscroll-behavior: contain; padding: 0; scrollbar-width: thin; }
 .zone-pile-card-row { position: relative; flex: 0 0 var(--zone-strip-card-width, 72px); width: var(--zone-strip-card-width, 72px); aspect-ratio: 63 / 88; padding: 0; overflow: hidden; border: 1px solid transparent; border-radius: 3px; cursor: pointer; }
 .zone-pile-card-row > img, .zone-pile-card-row > .zone-pile-placeholder { width: 100%; height: 100%; object-fit: cover; }
 .zone-pile-card-row:hover, .zone-pile-card-row:focus-visible { border-color: var(--ui-border-strong); }
@@ -293,21 +298,22 @@
   width: 100%;
   box-sizing: border-box;
   overflow: hidden;
-  border: clamp(5px, 1.45cqw, 8px) solid #111314;
+  border: 1px solid rgba(8, 9, 10, 0.9);
   border-radius: 4.9% / 3.5%;
-  padding: clamp(4px, 1cqw, 6px);
-  background:
-    linear-gradient(135deg, var(--card-frame-edge-light), var(--card-frame-edge) 28%, #292a29 72%, var(--card-frame-edge-light));
+  padding: 2px;
+  background: #101112;
   box-shadow:
-    0 0 0 2px rgba(var(--card-preview-accent-rgb, 212, 164, 74), 0.72),
-    0 0 24px rgba(var(--card-preview-accent-rgb, 212, 164, 74), 0.28),
+    0 0 0 1px color-mix(in srgb, var(--card-frame-edge-light) 42%, transparent),
+    0 0 18px color-mix(in srgb, var(--card-frame-edge-light) 24%, transparent),
+    0 0 38px color-mix(in srgb, var(--card-frame-edge-light) 12%, transparent),
     0 26px 48px rgba(0, 0, 0, 0.64);
 }
 
 .floating-card-preview[data-locked="true"] .interactive-card-frame {
   box-shadow:
-    0 0 0 3px rgba(var(--card-preview-accent-rgb, 212, 164, 74), 0.9),
-    0 0 34px rgba(var(--card-preview-accent-rgb, 212, 164, 74), 0.42),
+    0 0 0 1px color-mix(in srgb, var(--card-frame-edge-light) 62%, transparent),
+    0 0 22px color-mix(in srgb, var(--card-frame-edge-light) 32%, transparent),
+    0 0 44px color-mix(in srgb, var(--card-frame-edge-light) 16%, transparent),
     0 28px 52px rgba(0, 0, 0, 0.7);
 }
 
@@ -345,14 +351,11 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  border: 1px solid rgba(22, 22, 20, 0.78);
+  border: 0;
   border-radius: 999px;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--card-frame-bar-light) 94%, white), var(--card-frame-bar) 78%, color-mix(in srgb, var(--card-frame-bar) 76%, black));
-  box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.58),
-    inset 0 -1px 2px rgba(0, 0, 0, 0.28),
-    0 1px 2px rgba(0, 0, 0, 0.54);
+  box-shadow: none;
 }
 
 .interactive-card-frame__title-row {
@@ -411,11 +414,11 @@
   width: 100%;
   aspect-ratio: 626 / 457;
   overflow: hidden;
-  border: clamp(2px, 0.7cqw, 4px) solid rgba(18, 19, 18, 0.92);
+  border: 0;
   background: #191b1b;
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.16),
-    0 2px 4px rgba(0, 0, 0, 0.56);
+    0 0 clamp(4px, 1.4cqw, 8px) rgba(0, 0, 0, 0.48),
+    0 clamp(2px, 0.8cqw, 5px) clamp(6px, 2cqw, 12px) rgba(0, 0, 0, 0.65);
 }
 
 .interactive-card-frame__art::after {
@@ -447,9 +450,9 @@
   position: absolute;
   z-index: 2;
   bottom: clamp(5px, 1.6cqw, 9px);
-  left: clamp(5px, 1.6cqw, 9px);
-  min-width: clamp(42px, 12cqw, 58px);
-  border: 2px solid rgba(17, 18, 17, 0.9);
+  right: clamp(5px, 1.6cqw, 9px);
+  min-width: clamp(38px, 10.5cqw, 52px);
+  border: 1px solid rgba(17, 18, 17, 0.85);
   border-radius: 999px;
   padding: 3px 9px 2px;
   background:
@@ -479,13 +482,17 @@
 }
 
 .interactive-card-frame__zone {
+  position: absolute;
+  z-index: 2;
+  top: clamp(5px, 1.6cqw, 9px);
+  right: clamp(5px, 1.6cqw, 9px);
   max-width: 36%;
   flex: none;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--card-frame-accent) 64%, black);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 999px;
   padding: 3px 6px 2px;
-  background: rgba(21, 22, 21, 0.82);
+  background: rgba(21, 22, 21, 0.64);
   color: #f0eadb;
   font-size: clamp(7px, 2.1cqw, 10px);
   font-weight: 850;
@@ -532,7 +539,7 @@
     linear-gradient(150deg, var(--card-frame-paper), var(--card-frame-paper-deep));
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.22),
-    inset 0 0 12px rgba(54, 45, 34, 0.2);
+    inset 0 0 8px rgba(54, 45, 34, 0.1);
   scrollbar-color: color-mix(in srgb, var(--card-frame-accent) 70%, #383838) transparent;
   scrollbar-width: thin;
 }
@@ -542,6 +549,14 @@
   min-height: 100%;
   flex-direction: column;
   gap: clamp(6px, 1.8cqw, 10px);
+}
+
+.interactive-card-frame__rules-body > .inspector-flavor-text {
+  margin-top: auto;
+  box-sizing: border-box;
+  min-width: 0;
+  flex-shrink: 0;
+  overflow-wrap: anywhere;
 }
 
 .interactive-card-frame__rule {
@@ -3185,23 +3200,24 @@ button:disabled,
 
 
 @font-face {
-  font-family: "MPlantin";
-  src: url("../assets/fonts/MPlantin.ttf") format("truetype");
-  font-weight: 400;
+  font-family: "Beleren";
+  src: url("../assets/fonts/Beleren2016-Bold.woff") format("woff");
+  font-weight: 700;
   font-style: normal;
   font-display: swap;
 }
 
+.game-card,
 .ironsmith-inspector-shell,
 .hover-art-stage,
 .interactive-card-frame-stage {
-  --ironsmith-ui-font: "MPlantin", Georgia, serif;
-  --font-heading: "MPlantin", Georgia, serif;
+  --ironsmith-ui-font: "Beleren", Georgia, serif;
+  --font-heading: "Beleren", Georgia, serif;
 }
 
-:is(.ironsmith-inspector-shell, .hover-art-stage, .interactive-card-frame-stage),
-:is(.ironsmith-inspector-shell, .hover-art-stage, .interactive-card-frame-stage) :not(svg):not(svg *) {
-  font-family: "MPlantin", Georgia, serif !important;
+:is(.game-card, .ironsmith-inspector-shell, .hover-art-stage, .interactive-card-frame-stage),
+:is(.game-card, .ironsmith-inspector-shell, .hover-art-stage, .interactive-card-frame-stage) :not(svg):not(svg *) {
+  font-family: var(--card-rules-font, "Beleren", Georgia, serif) !important;
 }
 
 /* Remove stacked decorative rules around the battlefield decision area. */

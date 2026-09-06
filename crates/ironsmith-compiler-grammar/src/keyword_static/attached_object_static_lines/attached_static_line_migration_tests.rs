@@ -645,3 +645,11 @@ fn attached_land_reset_lowers_loss_and_each_quoted_mana_ability() {
         .expect("attached land reset should be claimed by the public static registry");
     assert_eq!(dispatched.len(), 4, "{dispatched:#?}");
 }
+
+#[test]
+fn attached_subtype_setting_without_stat_or_ability_tail_is_static() {
+    let tokens = crate::lexer::lex_line("enchanted creature is a demon spirit.", 0).unwrap();
+    assert!(crate::grammar::attached_object_static_lines::parse_attached_transform_tokens(&tokens).is_some(), "shape: {tokens:#?}");
+    let abilities = parse_attached_type_transform_line(&tokens).unwrap().expect("static subtype rule");
+    assert!(format!("{abilities:?}").contains("SetCreatureSubtypes"));
+}

@@ -1471,6 +1471,27 @@ pub(super) fn try_apply_dealt_damage_this_turn_clause(
     all_words: &mut Vec<&str>,
     segment_tokens: &mut Vec<OwnedLexToken>,
 ) -> bool {
+    for (prefix, combat_only) in [
+        (&["that", "dealt", "combat", "damage", "to"][..], true),
+        (&["that", "dealt", "damage", "to"][..], false),
+    ] {
+        if let Some(start) = crate::word_primitives::parse_sequence_start(all_words, prefix)
+            && let Some((player, used)) = parse_player_relation_subject(&all_words[start + prefix.len()..], &PlayerFilter::IteratedPlayer)
+            && all_words.get(start + prefix.len() + used..start + prefix.len() + used + 2) == Some(&["this", "turn"][..])
+        {
+            let end = start + prefix.len() + used + 2;
+            let phrase = all_words[start..end].to_vec();
+            filter.dealt_damage_to_player_this_turn = Some(player);
+            filter.dealt_damage_to_player_this_turn_combat_only = combat_only;
+            let view = crate::lexer::TokenWordView::new(segment_tokens);
+            let segment_words = view.to_word_refs();
+            if let Some(offset) = crate::word_primitives::parse_sequence_start(&segment_words, &phrase)
+                && let Some(range) = view.token_span_for_words(offset, offset + phrase.len())
+            { segment_tokens.drain(range); }
+            all_words.drain(start..end);
+            return true;
+        }
+    }
     const ACTIVE_PHRASE: &[&str] = &["that", "dealt", "damage", "this", "turn"];
     let Some(word_start) = crate::word_primitives::parse_sequence_start(all_words, ACTIVE_PHRASE)
     else {

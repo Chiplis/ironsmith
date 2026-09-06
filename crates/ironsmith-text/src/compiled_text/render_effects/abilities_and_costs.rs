@@ -1203,7 +1203,7 @@ pub(crate) fn describe_ability(
             if let Some(rendered) = describe_oath_of_ghouls_triggered_ability(triggered) {
                 return vec![format!("Triggered ability {index}: {rendered}")];
             }
-            if let Some(rendered) = describe_flurry_copy_exile_suspend_triggered_ability(triggered)
+            if let Some(rendered) = describe_copy_exile_with_counters_suspend_triggered_ability(triggered)
             {
                 return vec![format!("Triggered ability {index}: {rendered}")];
             }
@@ -2772,37 +2772,6 @@ pub(super) fn describe_reveal_from_hand_or_pay_mode_cost(
 }
 
 pub(crate) fn describe_alternative_costs(costs: &[crate::costs::Cost]) -> String {
-    if costs.len() == 2
-        && let Some(choose) = costs[0]
-            .effect_ref()
-            .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
-        && let Some(return_to_hand) = costs[1]
-            .effect_ref()
-            .and_then(|effect| effect.downcast_ref::<crate::effects::ReturnToHandEffect>())
-        && let Some(filter) = match &return_to_hand.spec {
-            // A payment written as an authored cost keeps its chosen object
-            // directly; a targeted return wraps the same filter.
-            ChooseSpec::Object(filter) => Some(filter),
-            ChooseSpec::Target(inner) => match inner.as_ref() {
-                ChooseSpec::Object(filter) => Some(filter),
-                _ => None,
-            },
-            _ => None,
-        }
-    {
-        let references_chosen = filter.tagged_constraints.len() == 1
-            && filter.tagged_constraints[0].tag == choose.tag
-            && filter.tagged_constraints[0].relation
-                == crate::filter::TaggedOpbjectRelation::IsTaggedObject;
-        if references_chosen {
-            let mut described = choose.filter.clone();
-            if described.zone == Some(Zone::Battlefield) {
-                described.zone = None;
-            }
-            return format!("return {} to its owner's hand", described.description());
-        }
-    }
-
     if costs.iter().any(|cost| {
         cost.effect_ref()
             .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())

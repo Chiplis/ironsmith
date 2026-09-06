@@ -25,6 +25,22 @@ use super::chain_carry::{parse_effect_chain, parse_effect_chain_inner, remove_fi
 use super::conditionals::parse_for_each_doesnt_control_lose_game;
 use super::dispatch_entry::replace_unbound_x_in_effects_anywhere;
 
+fn has_independent_participant_continuation(tokens: &[OwnedLexToken]) -> bool {
+    // The consequence after "who can't, ..." belongs to the quantified
+    // failure clause even when it names a different actor explicitly.
+    if for_each_shapes::parse_participant_clause_shape(tokens)
+        .is_some_and(|shape| for_each_shapes::parse_who_clause_shape(shape.inner_tokens).is_some())
+    { return false; }
+    use crate::grammar::effects::{coordination, typed_clause_heads::ClauseActorHeadAst};
+    matches!(coordination::recognize_coordination(tokens),
+        crate::recognition::ParseOutcome::Match(plan)
+            if plan.value.members.iter().skip(1).any(|member| member.head.is_some_and(|head|
+                matches!(head.actor, ClauseActorHeadAst::Controller | ClauseActorHeadAst::Player)
+                    && !member.tokens.first().is_some_and(|token| token.is_word("that"))
+            ))
+    )
+}
+
 fn prepend_that_player_life_total_subject(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     if !for_each_shapes::starts_life_total_becomes(tokens) {
         return tokens.to_vec();
@@ -380,7 +396,7 @@ fn bind_implicit_choose_chooser(effects: &mut [EffectAst], chooser: PlayerAst) {
             EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { player, .. })
             | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { player, .. })
             | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { player, .. })
-            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary { player, .. })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone { player, .. })
             | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { player, .. })
             | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { player, .. })
                 if matches!(*player, PlayerAst::Implicit) =>
@@ -414,7 +430,7 @@ fn stabilize_standalone_participant_choice_tag(
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { tag, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { tag, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary { tag, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone { tag, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { tag, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { tag, .. }) => tag,
         _ => return,
@@ -611,7 +627,7 @@ fn bind_quantified_participant_actor(effects: &mut [EffectAst]) {
             EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { player, .. })
             | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { player, .. })
             | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { player, .. })
-            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary { player, .. })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone { player, .. })
             | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { player, .. })
             | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { player, .. }) => {
                 if matches!(*player, PlayerAst::Implicit | PlayerAst::You) {

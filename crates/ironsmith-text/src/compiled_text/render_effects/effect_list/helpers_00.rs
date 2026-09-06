@@ -2278,6 +2278,15 @@ pub(crate) fn describe_consult_reveal_put_battlefield_then_bottom(
         ),
     };
 
+    if matches!(consult.player, PlayerFilter::ControllerOf(_) | PlayerFilter::AliasedControllerOf(_))
+        && player_filters_refer_to_same_player(&consult.player, &bottom.player)
+    {
+        let order = match bottom.order {
+            crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
+            crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => " in any order",
+        };
+        return Some(format!("{player} {consult_verb} cards from the top of their library until they {pronoun_consult_verb} {stop_text}. The player puts {moved_phrase} onto the battlefield{tapped_suffix} and the rest on the bottom of their library{order}"));
+    }
     if player == "you" {
         Some(format!(
             "{} cards from the top of {library_owner} library until {pronoun} {pronoun_consult_verb} {stop_text}. Put {moved_phrase} onto the battlefield{tapped_suffix} and the rest on the bottom of {library_owner} library{order_text}",
@@ -4151,6 +4160,10 @@ pub(crate) fn describe_target_players_each_effects(effects: &[&Effect]) -> Optio
             unwrap_basic_tag_wrappers(effect).downcast_ref::<crate::effects::ForPlayersEffect>()?;
         if for_players.filter != PlayerFilter::Target(Box::new(target_filter.clone())) {
             return None;
+        }
+        if let Some(body) = describe_chosen_sacrifice_and_life_body(for_players) {
+            clauses.push(body);
+            continue;
         }
         for inner in &for_players.effects {
             let text = describe_effect(inner);
@@ -6218,7 +6231,7 @@ pub(in crate::compiled_text) fn describe_each_player_exile_sacrifice_return_resu
     }
 
     let for_players =
-        unwrap_render_wrappers(effect).downcast_ref::<crate::effects::ForPlayersEffect>()?;
+        structural_unwrap_render_wrappers(effect).downcast_ref::<crate::effects::ForPlayersEffect>()?;
     if for_players.filter != PlayerFilter::Any
         || for_players.starting_with_controller
         || for_players.stop_after_first_happened
@@ -6227,7 +6240,7 @@ pub(in crate::compiled_text) fn describe_each_player_exile_sacrifice_return_resu
     }
     let per_player_effects = if let [effect] = for_players.effects.as_slice()
         && let Some(sequence) =
-            unwrap_tag_wrappers(effect).downcast_ref::<crate::effects::SequenceEffect>()
+            structural_unwrap_render_wrappers(effect).downcast_ref::<crate::effects::SequenceEffect>()
         && matches!(
             sequence.surface,
             ironsmith_core::SequenceSurface::CommaThen
@@ -6241,7 +6254,7 @@ pub(in crate::compiled_text) fn describe_each_player_exile_sacrifice_return_resu
         return None;
     };
 
-    let exile = unwrap_tag_wrappers(exile_effect).downcast_ref::<crate::effects::ExileEffect>()?;
+    let exile = structural_unwrap_render_wrappers(exile_effect).downcast_ref::<crate::effects::ExileEffect>()?;
     let (ChooseSpec::All(exile_filter) | ChooseSpec::Object(exile_filter)) = exile.spec.base()
     else {
         return None;
@@ -6252,12 +6265,12 @@ pub(in crate::compiled_text) fn describe_each_player_exile_sacrifice_return_resu
         return None;
     }
 
-    let sacrifice = sacrifice_view(unwrap_tag_wrappers(sacrifice_effect))?;
+    let sacrifice = sacrifice_view(structural_unwrap_render_wrappers(sacrifice_effect))?;
     if sacrifice.player != &PlayerFilter::IteratedPlayer {
         return None;
     }
 
-    let returned = unwrap_tag_wrappers(return_effect);
+    let returned = structural_unwrap_render_wrappers(return_effect);
     let exact_return =
         if let Some(move_to_zone) = returned.downcast_ref::<crate::effects::MoveToZoneEffect>() {
             if move_to_zone.zone != Zone::Battlefield
@@ -6288,6 +6301,18 @@ pub(in crate::compiled_text) fn describe_each_player_exile_sacrifice_return_resu
                     put_onto_battlefield.target.base(),
                     ChooseSpec::Tagged(tag) if wrapper_contains_tag(exile_effect, tag)
                 )
+        } else if let Some(returned) = returned.downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>() {
+            let mut remainder = returned.filter.clone();
+            let matching_pool = remainder.zone == Some(Zone::Exile)
+                && remainder.tagged_constraints.len() == 1
+                && remainder.tagged_constraints[0].relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && wrapper_contains_tag(exile_effect, &remainder.tagged_constraints[0].tag);
+            remainder.zone = None;
+            remainder.tagged_constraints.clear();
+            remainder.union_surface = Default::default();
+            matching_pool && remainder == ObjectFilter::default()
+                && !returned.tapped && !returned.face_down
+                && returned.battlefield_controller == crate::effects::BattlefieldController::Owner
         } else {
             false
         };

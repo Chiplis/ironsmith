@@ -30,7 +30,7 @@ use super::clause_pattern_helpers::extract_subject_player;
 use super::conditionals::parse_mana_symbol_group;
 pub use super::zone_counter_helpers::{
     apply_exile_subject_hand_owner_context, apply_exile_subject_owner_context,
-    parse_half_starting_life_total_value, split_until_opponent_becomes_monarch_tail,
+    parse_half_starting_life_total_value, parse_starting_life_total_value, split_until_opponent_becomes_monarch_tail,
     split_until_source_leaves_tail, split_until_target_leaves_tail,
 };
 use crate::grammar::shared_util::value_semantics::parse_equal_to_number_of_filter_value;

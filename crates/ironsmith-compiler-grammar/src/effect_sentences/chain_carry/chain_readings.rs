@@ -960,7 +960,9 @@ fn read_player_may(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, CardText
                 .copy_exception
                 .is_some()
             });
-        let mut effects = if has_copy_exception {
+        let mut effects = if let Some(effect) = super::super::dispatch_entry::parse_complete_become_statement(&stripped)? {
+            vec![effect]
+        } else if has_copy_exception {
             super::super::parse_effect_sentence_lexed(&stripped)?
         } else {
             parse_effect_chain_lexed(&stripped)?
@@ -1128,6 +1130,58 @@ fn read_coordinated_and_segments(
     input: &Chain<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
+    // A non-actor participant prefix scopes the whole coordinated body.
+    // Keep its per-player object reference inside that one iteration.
+    if for_each_shapes::parse_participant_clause_shape(tokens)
+        .is_some_and(|shape| !shape.participant_is_actor)
+    {
+        if let Some(effect) = super::super::parse_for_each_opponent_clause(tokens)? {
+            return Ok(Some(vec![effect]));
+        }
+        if let Some(effect) = super::super::parse_for_each_player_clause(tokens)? {
+            return Ok(Some(vec![effect]));
+        }
+    }
+    // A shown hand is a zone antecedent, distinct from the object antecedent
+    // in a following same-name restriction. Expand only the bound zone phrase.
+    if let Some(hand) = tokens.windows(3).position(|w| w[0].is_any_word(&["reveal", "reveals"])
+        && w[1].is_word("their") && w[2].is_word("hand"))
+        && let Some(from) = tokens[hand + 3..].windows(2).position(|w| w[0].is_word("from") && w[1].is_word("it"))
+    {
+        let from = hand + 3 + from;
+        if tokens[hand + 3..from].iter().any(|token| token.is_any_word(&["exile", "exiles"])) {
+            let mut expanded = tokens[..from + 1].to_vec();
+            expanded.extend(crate::lexer::synthetic_word_tokens(&["their", "hand"]));
+            expanded.extend_from_slice(&tokens[from + 2..]);
+            let mut effects = parse_effect_chain_inner_lexed(&expanded)?;
+            let alias = crate::util::helper_tag_for_tokens(tokens, "name_antecedent_before_hand");
+            fn pin_named_antecedent(effect: &mut EffectAst, alias: &crate::tag::TagKey, pinned: &mut bool) {
+                if let EffectAst::SubjectVerb(subject) = effect
+                    && let crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
+                        crate::cards::builders::ZoneMoveActionAst::ExileAll { filter, .. }) = &mut subject.action
+                    && filter.union_surface.same_name_antecedent().is_some()
+                {
+                    for constraint in &mut filter.tagged_constraints {
+                        if constraint.relation == crate::target::TaggedOpbjectRelation::SameNameAsTagged
+                            && constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                        {
+                            constraint.tag = alias.clone();
+                            *pinned = true;
+                        }
+                    }
+                }
+                for_each_nested_effects_mut(effect, true, |nested| {
+                    for child in nested { pin_named_antecedent(child, alias, pinned); }
+                });
+            }
+            let mut pinned = false;
+            for effect in &mut effects { pin_named_antecedent(effect, &alias, &mut pinned); }
+            if pinned {
+                effects.insert(0, EffectAst::SnapshotLastObjectTag { into: crate::tag::TagRef::of(alias) });
+            }
+            return Ok(Some(effects));
+        }
+    }
     let split_segments = split_effect_chain_on_and_lexed(tokens);
     let executable_heads = split_segments
         .iter()

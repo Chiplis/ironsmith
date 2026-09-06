@@ -1949,7 +1949,10 @@ pub(super) fn describe_for_each_iterated_source_damage(
         return None;
     }
 
-    let mut source_filter = describe_damage_fanout_filter(&for_each.filter)?;
+    let mut source_filter = describe_damage_fanout_filter(&for_each.filter).or_else(|| {
+        describe_for_each_tagged_this_way_subject(&for_each.filter)
+            .and_then(|subject| subject.strip_prefix("For each ").map(str::to_string))
+    })?;
     if for_each.filter.power.is_some()
         && matches!(for_each.filter.controller, Some(PlayerFilter::You))
         && let Some((subject, power_clause)) = source_filter.split_once(" you control with power")
@@ -2424,7 +2427,7 @@ pub(super) fn describe_lose_life_then_create_shared_dynamic_branch(
 pub(super) fn describe_inline_token_creation_choice(
     choose: &crate::effects::ChooseModeEffect,
 ) -> Option<String> {
-    if choose.modes.len() != 2
+    if choose.modes.len() < 2
         || !matches!(&choose.chooser, None | Some(PlayerFilter::You))
         || choose.min != Value::Fixed(1)
         || choose.max != Value::Fixed(1)
@@ -2440,10 +2443,9 @@ pub(super) fn describe_inline_token_creation_choice(
         || choose.conditional_mode_range.is_some()
         || !choose.mode_additional_mana_costs.is_empty()
         || choose.mode_point_costs.iter().any(|cost| *cost != 1)
-        || choose
-            .modes
-            .iter()
-            .any(|mode| !mode.source_text.trim().is_empty())
+        || !choose.common_prefix_effects.is_empty()
+        || choose.common_suffix_effect_count != 0
+        || (choose.chooser.is_none() && choose.modes.iter().any(|mode| !mode.source_text.trim().is_empty()))
     {
         return None;
     }
@@ -2455,21 +2457,22 @@ pub(super) fn describe_inline_token_creation_choice(
             let [effect] = mode.effects.as_slice() else {
                 return None;
             };
-            let create = unwrap_basic_tag_wrappers(effect)
+            let create = structural_unwrap_render_wrappers(effect)
                 .downcast_ref::<crate::effects::CreateTokenEffect>()?;
             (create.count == Value::Fixed(1))
                 .then(|| describe_compact_create_token(create))
                 .flatten()
         })
         .collect::<Option<Vec<_>>>()?;
-    let [first, second] = clauses.as_slice() else {
-        return None;
-    };
-
     ["Create ", "You create "].into_iter().find_map(|prefix| {
-        let first = first.strip_prefix(prefix)?;
-        let second = second.strip_prefix(prefix)?;
-        Some(format!("{prefix}{first} or {second}"))
+        let items = clauses.iter().map(|clause| clause.strip_prefix(prefix))
+            .collect::<Option<Vec<_>>>()?;
+        if let [first, second] = items.as_slice() {
+            Some(format!("{prefix}{first} or {second}"))
+        } else {
+            let (last, preceding) = items.split_last()?;
+            Some(format!("{prefix}your choice of {}, or {last}", preceding.join(", ")))
+        }
     })
 }
 
@@ -5777,6 +5780,8 @@ pub(super) fn describe_inline_pt_modifier_choice(
         || choose_mode.allow_repeat
         || choose_mode.allow_repeated_modes
         || choose_mode.random
+        || !choose_mode.common_prefix_effects.is_empty()
+        || choose_mode.spree
         || !matches!(choose_mode.chooser.as_ref(), None | Some(PlayerFilter::You))
         || choose_mode
             .modes
@@ -5786,14 +5791,29 @@ pub(super) fn describe_inline_pt_modifier_choice(
         return None;
     }
 
+    if let ([left], [right]) = (choose_mode.modes[0].effects.as_slice(), choose_mode.modes[1].effects.as_slice())
+        && let (Some(left), Some(right)) = (
+            left.downcast_ref::<crate::effects::SetBasePowerToughnessEffect>(),
+            right.downcast_ref::<crate::effects::SetBasePowerToughnessEffect>(),
+        )
+        && left.target == right.target && left.duration == right.duration
+    {
+        return Some(format!("have {}'s base power and toughness become {}/{} or {}/{} {}",
+            describe_choose_spec(&left.target), describe_value(&left.power), describe_value(&left.toughness),
+            describe_value(&right.power), describe_value(&right.toughness), describe_until(&left.duration)));
+    }
+
     fn extract(
         mode: &crate::effect::EffectMode,
-    ) -> Option<(&crate::effects::ApplyContinuousEffect, &Value, &Value)> {
+    ) -> Option<(&crate::effects::ApplyContinuousEffect, &Value, &Value, bool)> {
         let [effect] = mode.effects.as_slice() else {
             return None;
         };
         let apply = unwrap_basic_tag_wrappers(effect)
             .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+        if let Some(crate::continuous::Modification::SetPowerToughness { power, toughness, sublayer: crate::continuous::PtSublayer::Setting }) = apply.modification.as_ref()
+            && apply.additional_modifications.is_empty() && apply.runtime_modifications.is_empty()
+        { return Some((apply, power, toughness, true)); }
         let [
             crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
                 power,
@@ -5803,13 +5823,15 @@ pub(super) fn describe_inline_pt_modifier_choice(
         else {
             return None;
         };
-        Some((apply, power, toughness))
+        Some((apply, power, toughness, false))
     }
 
-    let (first, first_power, first_toughness) = extract(&choose_mode.modes[0])?;
-    let (second, second_power, second_toughness) = extract(&choose_mode.modes[1])?;
+    let (first, first_power, first_toughness, first_sets) = extract(&choose_mode.modes[0])?;
+    let (second, second_power, second_toughness, second_sets) = extract(&choose_mode.modes[1])?;
     let mut first_shape = first.clone();
     let mut second_shape = second.clone();
+    if first_sets != second_sets { return None; }
+    if first_sets { first_shape.modification = None; second_shape.modification = None; }
     first_shape.runtime_modifications.clear();
     second_shape.runtime_modifications.clear();
     if first_shape != second_shape {
@@ -5817,6 +5839,11 @@ pub(super) fn describe_inline_pt_modifier_choice(
     }
 
     let (target, plural) = describe_apply_continuous_target(first);
+    if first_sets {
+        let tail = describe_apply_continuous_tail(first).map(|tail| format!(" {tail}")).unwrap_or_default();
+        return Some(format!("have {target}'s base power and toughness become {}/{} or {}/{}{tail}",
+            describe_value(first_power), describe_value(first_toughness), describe_value(second_power), describe_value(second_toughness)));
+    }
     let verb = if plural { "get" } else { "gets" };
     let first_pt = format!(
         "{}/{}",

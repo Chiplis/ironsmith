@@ -24,6 +24,18 @@ pub fn predicate_object_filter_antecedent(predicate: &PredicateAst) -> Option<Ob
         // "if enchanted creature is untapped, tap it": the tagged condition
         // subject is the antecedent for "it" in the body effects.
         PredicateAst::TaggedMatches(tag, _) => Some(ObjectFilter::tagged(tag.clone())),
+        PredicateAst::TurnHistory(crate::cards::builders::TurnHistoryPredicateAst::AnotherOpponentControlsPotentialTarget { filter }) => {
+            let mut candidates = filter.clone();
+            candidates.controller = Some(crate::filter::PlayerFilter::Opponent);
+            let mut targetability = ironsmith_core::TargetabilityConstraint::by_stack_object(
+                crate::filter::ObjectRef::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind().into()),
+            );
+            targetability.exclude_current_target_controllers = true;
+            candidates.could_be_targeted_by = Some(targetability);
+            candidates.source_surface = Some(ironsmith_core::SourceReferenceSurface::ThisPermanentType("those permanents".to_owned()));
+            candidates.set_one_of_tagged_set_surface(true);
+            Some(candidates)
+        },
         PredicateAst::And(left, right) => match (
             predicate_object_filter_antecedent(left),
             predicate_object_filter_antecedent(right),

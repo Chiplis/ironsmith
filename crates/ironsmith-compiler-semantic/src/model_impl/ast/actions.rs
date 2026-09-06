@@ -1271,6 +1271,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("set_quantifier_surface", set_quantifier_surface)
                 .finish(),
             Self::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
+                name_override, add_supertypes, remove_all_abilities,
                 power,
                 toughness,
                 target,
@@ -1288,6 +1289,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 duration,
             }) => f
                 .debug_struct("BecomeBasePtCreature")
+                .field("name_override", name_override)
+                .field("add_supertypes", add_supertypes)
+                .field("remove_all_abilities", remove_all_abilities)
                 .field("power", power)
                 .field("toughness", toughness)
                 .field("target", target)

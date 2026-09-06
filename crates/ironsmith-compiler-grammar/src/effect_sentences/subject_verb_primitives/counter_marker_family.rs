@@ -139,7 +139,7 @@ fn retarget_it_effect_for_counter_followup(effect: &mut EffectAst, source_target
     }
 }
 
-fn parse_put_counter_choice_sequence(
+pub fn parse_put_counter_choice_sequence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = counter_shapes::parse_put_counter_choice_tokens(clause.tokens()) else {
@@ -345,6 +345,11 @@ pub fn parse_gets_then_fights_sentence(
     let Some(shape) = counter_shapes::parse_gets_then_fights_tokens(clause.tokens()) else {
         return Ok(None);
     };
+    // A later player's optional fight is a separate action with its own
+    // control-flow envelope, not part of the preceding pump amount.
+    if shape.pump_tokens.iter().any(|token| token.is_word("may")) {
+        return Ok(None);
+    }
     let pump_effect = parse_effect_clause(shape.pump_tokens)?;
     if !is_pump_like_effect(&pump_effect) {
         return Ok(None);

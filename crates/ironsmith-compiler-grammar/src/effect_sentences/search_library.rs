@@ -352,7 +352,7 @@ pub fn parse_shuffle_graveyard_into_library_sentence(
     } else {
         EffectAst::subject_verb_shuffle_objects_into_library(shuffle_player, target)
     };
-    append_trailing(vec![shuffle])
+    append_trailing(wrap_optional(vec![shuffle]))
 }
 
 pub fn parse_shuffle_object_into_library_sentence(

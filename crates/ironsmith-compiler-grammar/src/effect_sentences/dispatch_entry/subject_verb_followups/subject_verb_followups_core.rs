@@ -84,7 +84,9 @@ pub(super) fn post_rule_numeric_result_branch_label(
     let [EffectAst::Conditionals(ConditionalEffectAst::IfResult { predicate, effects })] = sentence_effects.as_mut_slice() else {
         return Ok(None);
     };
-    if predicate != &prefix.predicate || effects.is_empty() {
+    if predicate != &prefix.predicate || effects.is_empty()
+        || matches!(effects.as_slice(), [EffectAst::ResultBranchLabel { .. }])
+    {
         return Ok(None);
     }
     let nested = std::mem::take(effects);

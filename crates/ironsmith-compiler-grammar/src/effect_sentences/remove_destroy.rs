@@ -4,6 +4,7 @@ use crate::cards::builders::ObjectChoiceEffectAst;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::DelayedEffectAst;
 use super::*;
+use crate::cards::builders::{SubjectVerbEffectAst, SubjectVerbActionAst, ZoneMoveActionAst};
 use crate::effect::ChoiceCount;
 use crate::grammar::effects::remove_destroy_shapes as shapes;
 use crate::util::{
@@ -316,6 +317,34 @@ fn lower_destroy_all_shape(shape: shapes::DestroyAllShape<'_>) -> Result<EffectA
 }
 
 pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    // A shared destroy verb can govern independently quantified targets;
+    // type alternatives inside either target remain inside that target.
+    for (and_index, token) in tokens.iter().enumerate() {
+        if !token.is_word("and") { continue; }
+        let left = &tokens[..and_index];
+        let right = &tokens[and_index + 1..];
+        if left.iter().filter(|token| token.is_word("target")).count() != 1
+            || right.iter().filter(|token| token.is_word("target")).count() != 1
+            || right.iter().any(|token| token.is_any_word(&["destroy", "exile", "return", "draw", "gain", "gains", "lose", "loses"]))
+        { continue; }
+        let operand = |tokens: &[OwnedLexToken]| -> Result<EffectAst, CardTextError> {
+            if let Some(choice) = crate::grammar::choices::parse_possessive_object_choice_tokens(tokens)
+                && choice.actor == crate::grammar::choices::PossessiveObjectChoiceActor::Opponent
+            {
+                return Ok(EffectAst::Sequence { effects: vec![
+                    EffectAst::subject_verb_explicit_target_only_for_chooser(parse_target_phrase(&choice.object_tokens)?, PlayerAst::Opponent),
+                    EffectAst::subject_verb_destroy(TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None)),
+                ] });
+            }
+            Ok(EffectAst::subject_verb_destroy(parse_target_phrase(tokens)?))
+        };
+        let first = operand(left)?;
+        let second = operand(right)?;
+        return Ok(EffectAst::Coordinated {
+            effects: vec![first, second],
+            leading_duration: false, result_conjunction: false,
+        });
+    }
     let original_clause = crate::lexer::token_word_refs(tokens).join(" ");
     if crate::word_primitives::parse_sequence_complete(
         &crate::lexer::token_word_refs(tokens),
@@ -359,7 +388,15 @@ pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
                 "unsupported combat-history destroy clause (clause: '{original_clause}')"
             )));
         }
-        shapes::DestroyClauseKind::All(all_shape) => lower_destroy_all_shape(all_shape)?,
+        shapes::DestroyClauseKind::All(all_shape) => {
+            let mut effect = lower_destroy_all_shape(all_shape)?;
+            if tokens.first().is_some_and(|token| token.is_word("each"))
+                && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { filter, .. }), ..
+                }) = &mut effect
+            { filter.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Each)); }
+            effect
+        },
         shapes::DestroyClauseKind::UnlessTargetSetPredicate {
             target_tokens,
             predicate,

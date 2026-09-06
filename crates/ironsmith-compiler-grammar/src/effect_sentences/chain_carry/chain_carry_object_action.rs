@@ -8,6 +8,7 @@ pub(super) fn parse_tap_those_then_unattach_equipment_lexed(
     }
 
     let mut tapped_filter = ObjectFilter::creature();
+    tapped_filter.source_surface = Some(ironsmith_core::SourceReferenceSurface::ThisPermanentType("those creatures".into()));
     tapped_filter.zone = Some(Zone::Battlefield);
     tapped_filter
         .tagged_constraints

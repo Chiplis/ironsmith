@@ -2004,6 +2004,15 @@ fn object_could_be_targeted_by(
         return false;
     };
 
+    if constraint.exclude_current_target_controllers {
+        let Some(candidate) = game.object(object_id) else { return false; };
+        let controller = game.controller_of(candidate);
+        if entry.targets.iter().any(|target| match target {
+            crate::game_state::Target::Object(id) => game.object(*id).is_some_and(|object| game.controller_of(object) == controller),
+            _ => false,
+        }) { return false; }
+    }
+
     effects_for_stack_entry(game, entry).iter().any(|effect| {
         let Some(spec) = effect.0.get_target_spec() else {
             return false;
@@ -3149,7 +3158,10 @@ impl ObjectFilterExt for ObjectFilter {
             let dealt_damage_to_matching_player = game.players.iter().any(|player| {
                 player.is_in_game()
                     && player_filter.matches_player(player.id, ctx)
-                    && game.source_dealt_damage_to_player_this_turn(object.id, player.id)
+                    && game.turn_store.turn_history.source_dealt_damage_to_player_this_turn_matching(
+                        object.id, Some(object.stable_id), player.id,
+                        self.dealt_damage_to_player_this_turn_combat_only,
+                    )
             });
             if !dealt_damage_to_matching_player {
                 return false;
@@ -5656,7 +5668,7 @@ impl ObjectFilterExt for ObjectFilter {
                         .push("with the same mana value as another tagged object".to_string());
                 }
                 TaggedOpbjectRelation::ManaValueLteTagged => {
-                    if self.union_surface.equal_or_lesser_mana_value() {
+                    if self.union_surface.equal_or_lesser_mana_value() && constraint.tag.as_str() != "triggering" {
                         post_noun_qualifiers.push("with equal or lesser mana value".to_string());
                     } else if constraint.tag.as_str() == "triggering" {
                         post_noun_qualifiers
@@ -6684,7 +6696,8 @@ impl ObjectFilterExt for ObjectFilter {
         }
         if let Some(player) = &self.dealt_damage_to_player_this_turn {
             parts.push(format!(
-                "that dealt damage to {} this turn",
+                "that dealt {}damage to {} this turn",
+                if self.dealt_damage_to_player_this_turn_combat_only { "combat " } else { "" },
                 describe_player_filter(player)
             ));
         }

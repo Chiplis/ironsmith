@@ -1672,7 +1672,7 @@ fn advance_reference_frame_for_effect(
             player,
             ..
         })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary {
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone {
             filter,
             tag,
             player,
@@ -2015,6 +2015,11 @@ fn advance_reference_frame_for_effect(
             // bind to that stable alias rather than to an implementation tag
             // introduced while lowering the nested action.
             frame.last_object_tag = Some(tag.clone().into());
+            if is_object_memory_producer_for_action(effect, PriorEffectAction::Exiled) {
+                let alias = crate::tag::CompilerReferenceTag::ExiledThisWay.key();
+                frame.snapshot_tag_aliases.retain(|(existing, _)| existing != &alias);
+                frame.snapshot_tag_aliases.push((alias, tag.key.clone()));
+            }
         }
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)
         | EffectAst::SolveCase
@@ -2037,6 +2042,13 @@ fn advance_reference_frame_for_effect(
         | EffectAst::Votes(VoteEffectAst::VoteExtra { .. }) => {}
     }
 
+    if is_object_memory_producer_for_action(effect, PriorEffectAction::Exiled)
+        && let Some(tag) = frame.last_object_tag.clone()
+    {
+        let alias = crate::tag::CompilerReferenceTag::ExiledThisWay.key();
+        frame.snapshot_tag_aliases.retain(|(existing, _)| existing != &alias);
+        frame.snapshot_tag_aliases.push((alias, tag));
+    }
     Ok(())
 }
 
@@ -2278,7 +2290,7 @@ fn resolve_direct_choice_filter_references(
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { filter, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { filter, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary { filter, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone { filter, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { filter, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { filter, .. }) => filter,
         _ => return Ok(()),
@@ -2561,7 +2573,7 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
         ),
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary { .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone { .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { .. }) => true,
         EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })
         | EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { effects, .. })
@@ -2801,7 +2813,7 @@ fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectA
             effect,
             EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { .. })
                 | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { .. })
-                | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary { .. })
+                | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone { .. })
                 | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { .. })
                 | EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action: SubjectVerbActionAst::TargetOnly { .. },
@@ -2897,6 +2909,15 @@ fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectA
                 | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllDamageToTarget { .. })
                 | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter { .. })
                 | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllDamageFromSourceFilter { .. })
+        ),
+        PriorEffectAction::PutIntoGraveyard => matches!(
+            producer_action,
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { .. })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { .. })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { .. })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { .. })
+                | SubjectVerbActionAst::Library(LibraryActionAst::Mill { .. })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { zone: crate::zone::Zone::Graveyard, .. })
         ),
         PriorEffectAction::PutOntoBattlefield => matches!(
             producer_action,
@@ -3067,7 +3088,7 @@ fn visit_effect_values(effect: &EffectAst, visit: &mut impl FnMut(&Value)) {
         }
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { count_value, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { count_value, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary { count_value, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone { count_value, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { count_value, .. }) => {
             if let Some(count_value) = count_value {
                 visit(count_value);
@@ -4105,7 +4126,7 @@ fn resolve_effect_result_values_in_fields(
         },
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { count_value, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { count_value, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary { count_value, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone { count_value, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { count_value, .. }) => {
             if let Some(count_value) = count_value.as_mut() {
                 resolve_effect_result_value(count_value, state)?;

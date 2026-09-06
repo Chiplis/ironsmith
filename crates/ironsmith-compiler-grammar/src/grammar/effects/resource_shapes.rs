@@ -23,6 +23,7 @@ pub enum ResourceLookHandFollowup {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ResourceLookShape<'a> {
+    Tagged,
     PlayTaggedWhileExiled,
     Hand {
         player: PlayerAst,
@@ -45,6 +46,7 @@ pub enum ResourceLookShape<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResourceShuffleShape {
+    HandIntoLibrary { player: PlayerAst },
     TaggedIntoLibrary { player: PlayerAst, to_bottom: bool },
     ShuffleLibrary { player: PlayerAst },
     SimpleLibrary,
@@ -463,6 +465,9 @@ pub fn parse_resource_look_shape<'a>(
         clause = trimmed(rest);
     }
 
+    if exact_unit(clause, tagged_reference) {
+        return Some(ResourceLookShape::Tagged);
+    }
     if exact_unit(clause, play_tagged_while_exiled) {
         return Some(ResourceLookShape::PlayTaggedWhileExiled);
     }

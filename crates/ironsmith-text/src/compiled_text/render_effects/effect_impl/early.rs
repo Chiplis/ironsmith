@@ -29,6 +29,23 @@
         return String::new();
     }
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
+            && let Some(text) = describe_hand_reveal_and_same_actor_exile(&sequence.effects)
+        { return text; }
+        if let Some(compact) = describe_exile_with_counters_then_gain_suspend(&sequence.effects) {
+            return compact;
+        }
+        if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
+            && let [exile, counters] = sequence.effects.as_slice()
+            && describe_source_exile_with_counters_pair(exile, counters).is_some()
+            && let Some(put) = put_counters_effect_for_source(counters)
+        {
+            return format!("{} and put {} on it", describe_effect(exile).trim_end_matches('.'),
+                describe_put_counter_phrase(&put.amount, put.counter_type));
+        }
+        if let Some(compact) = describe_reciprocal_power_damage(&sequence.effects) {
+            return compact;
+        }
         if matches!(
             sequence.surface,
             ironsmith_core::SequenceSurface::CommaThen
@@ -38,7 +55,8 @@
             if let Some((compact, consumed)) = describe_looked_card_selected_partition(&refs)
                 && consumed == refs.len()
             {
-                return compact;
+                return compact.replacen(". Put ", ", then put ", 1)
+                    .replacen("one of them", "one of those cards", 1);
             }
         }
         if let Some(compact) =
@@ -238,9 +256,50 @@
     {
         return text;
     }
+    if let Some(apply) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        && let crate::continuous::EffectTarget::Filter(filter) = &apply.target
+        && filtered_exiled_collection_ability(filter, true) == Some("suspend")
+        && apply.until == Until::Forever && apply.condition.is_none()
+        && apply.runtime_modifications.is_empty() && apply.target_spec.is_none()
+    {
+        let modifications = apply.modification.iter().chain(apply.additional_modifications.iter()).collect::<Vec<_>>();
+        if modifications.len() == 2 && modifications.into_iter().all(modification_adds_suspend_exile_trigger) {
+            return "Each card exiled this way that doesn't have suspend gains suspend".to_string();
+        }
+    }
     if let Some(for_each) = effect.downcast_ref::<crate::effects::ForEachObject>() {
+        if let [inner] = for_each.effects.as_slice()
+            && let Some(put) = unwrap_basic_tag_wrappers(inner).downcast_ref::<crate::effects::PutCountersEffect>()
+            && matches!(put.target.base(), ChooseSpec::Iterated)
+            && !put.distributed && put.target_count.is_none()
+            && let Some(marker) = filtered_exiled_collection_ability(&for_each.filter, false)
+        {
+            return format!("Put {} on each of those cards that has {marker}",
+                describe_put_counter_phrase(&put.amount, put.counter_type));
+        }
         if let Some(compact) = describe_for_each_optional_free_cast_any_number(for_each) {
             return compact;
+        }
+        if let [inner] = for_each.effects.as_slice()
+            && let Some(remove) = unwrap_basic_tag_wrappers(inner).downcast_ref::<crate::effects::RemoveCountersEffect>()
+            && matches!(remove.target.base(), ChooseSpec::Iterated)
+        {
+            let phrase = describe_remove_counter_phrase(&remove.count, remove.counter_type, &remove.target);
+            if let Value::CountersOn(spec, Some(counter)) = remove.count.unhinted()
+                && matches!(spec.base(), ChooseSpec::Iterated) && *counter == remove.counter_type
+                && for_each.filter.zone == Some(Zone::Battlefield)
+            {
+                let mut filter = for_each.filter.clone();
+                filter.zone = None;
+                return format!("Remove {phrase} from all {}", pluralize_noun_phrase(&describe_for_each_filter(&filter)));
+            }
+            let mut filter = for_each.filter.clone();
+            let noun = if filter.zone == Some(Zone::Exile) && filter.owner == Some(PlayerFilter::You) {
+                filter.zone = None;
+                filter.owner = None;
+                format!("{} you own in exile", describe_for_each_filter(&filter))
+            } else { describe_for_each_filter(&filter) };
+            return format!("Remove {phrase} from each {noun}");
         }
         // Some plural copy statements lower through a ForEach wrapper even
         // though the contained continuous effect already targets the same
@@ -447,7 +506,9 @@
                     "{} that became a creature this way",
                     describe_for_each_filter(&antecedent)
                 )
-            } else if this_way_back_reference_filter(&for_each.filter) {
+            } else if this_way_back_reference_filter(&for_each.filter)
+                || matches!(&for_each.filter.source_surface, Some(crate::target::SourceReferenceSurface::ThisPermanentType(noun)) if noun == "them")
+            {
                 "of them".to_string()
             } else {
                 describe_for_each_filter(&for_each.filter)
@@ -698,6 +759,10 @@
         return "Ascend".to_string();
     }
     if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
+        if let Some(compact) = describe_for_players_choose_types_then_sacrifice_rest(for_players)
+            .or_else(|| describe_for_players_choice_complement(for_players)) {
+            return compact;
+        }
         if for_players.filter == PlayerFilter::Opponent
             && !for_players.starting_with_controller
             && !for_players.stop_after_first_happened
@@ -1126,6 +1191,15 @@
         );
     }
     if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
+        if choose.chooser == PlayerFilter::You && choose.count.is_single()
+            && choose.filter.has_one_of_tagged_set_surface() && !choose.is_search && !choose.reveal
+        {
+            let referent = match &choose.filter.source_surface {
+                Some(crate::target::SourceReferenceSurface::ThisPermanentType(noun)) if noun.starts_with("those ") => noun.as_str(),
+                _ => "them",
+            };
+            return format!("Choose one of {referent}");
+        }
         let chooser = describe_player_filter(&choose.chooser);
         let choose_verb = player_verb(&chooser, "choose", "chooses");
         let search_like = choose.is_search
@@ -2504,7 +2578,9 @@
                 subject = "this creature".to_string();
             } else if subject == "it" && !has_explicit_source_surface {
                 subject = "that creature".to_string();
-            } else if subject.eq_ignore_ascii_case("target creature") {
+            } else if (subject.starts_with("target ") && subject.split_whitespace().any(|word| word == "creature"))
+                || (with_source.source.is_target() && matches!(with_source.source.base(), ChooseSpec::Object(filter) if filter.card_types == [CardType::Creature]))
+            {
                 // The targeting happened in an earlier clause; this is a
                 // back-reference ("That creature deals ...").
                 subject = "that creature".to_string();
@@ -2749,7 +2825,9 @@
                 subject = "this creature".to_string();
             } else if subject == "it" {
                 subject = "that creature".to_string();
-            } else if subject.eq_ignore_ascii_case("target creature") {
+            } else if (subject.starts_with("target ") && subject.split_whitespace().any(|word| word == "creature"))
+                || (source.is_target() && matches!(source.base(), ChooseSpec::Object(filter) if filter.card_types == [CardType::Creature]))
+            {
                 // Back-reference to an already-targeted creature.
                 subject = "that creature".to_string();
             }
@@ -2963,7 +3041,23 @@
                 }
                 _ => None,
             };
-            let source = capitalize_first(&describe_choose_spec(&distributed.source));
+            let referenced_power_noun = match (distributed.amount.unhinted(), distributed.source.base()) {
+                (Value::PowerOf(spec), ChooseSpec::Object(filter)) => {
+                    if let ChooseSpec::Tagged(tag) = spec.base()
+                        && filter.card_types.len() == 1
+                        && matches!(filter.zone, None | Some(Zone::Battlefield))
+                    {
+                        let mut identity = filter.clone();
+                        identity.zone = None;
+                        identity.card_types.clear();
+                        (identity == ObjectFilter::tagged(tag.clone()))
+                            .then(|| filter.card_types[0].name().to_ascii_lowercase())
+                    } else { None }
+                }
+                _ => None,
+            };
+            let source = referenced_power_noun.as_ref().map(|noun| format!("That {noun}"))
+                .unwrap_or_else(|| capitalize_first(&describe_choose_spec(&distributed.source)));
             let chooser = if matches!(
                 &distributed.chooser,
                 PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)
@@ -2973,7 +3067,7 @@
             } else {
                 describe_player_filter(&distributed.chooser)
             };
-            let (amount, where_clause) = if correlated_power_source.is_some() {
+            let (amount, where_clause) = if correlated_power_source.is_some() || referenced_power_noun.is_some() {
                 ("damage equal to its power".to_string(), String::new())
             } else if let Some(where_x) = describe_where_x_basis(&distributed.amount)
             {
@@ -6012,6 +6106,11 @@
             .die_text
             .clone()
             .unwrap_or_else(|| format!("d{}", roll_die.sides));
+        let die_text = if die_text == format!("{}-sided die", roll_die.sides) {
+            small_number_word(roll_die.sides)
+                .map(|number| format!("{number}-sided die"))
+                .unwrap_or(die_text)
+        } else { die_text };
         if player == "you" {
             return format!("Roll a {die_text}");
         }

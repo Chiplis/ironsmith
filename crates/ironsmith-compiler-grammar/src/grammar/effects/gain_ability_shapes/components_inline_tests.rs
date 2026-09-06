@@ -42,3 +42,17 @@ fn parses_component_choice_and_source_shapes() {
     .unwrap();
     assert!(parse_simple_gain_ability_shape(&life_gain).is_none());
 }
+
+#[test]
+fn a_quoted_ability_owns_its_internal_duration() {
+    for (text, expected) in [
+        ("It gains \"Whenever this creature attacks, it gains haste until end of turn.\"", Until::Forever),
+        ("It gains \"Whenever this creature attacks, it gains haste until end of turn.\" until your next turn", Until::YourNextTurn),
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let shape = parse_simple_gain_ability_shape(&tokens).unwrap();
+        assert!(shape.complete);
+        assert_eq!(shape.duration, expected);
+        assert!(crate::lexer::token_word_refs(shape.ability_tokens).ends_with(&["until", "end", "of", "turn"]));
+    }
+}

@@ -1050,6 +1050,7 @@ pub(crate) fn count_filter_needs_battlefield_surface(filter: &ObjectFilter, subj
         && !subject.contains(" in ")
         && !subject.contains(" on ")
         && !filter.attacking
+        && !filter.attacked_this_turn
         && !filter.nonattacking
         && !filter.blocking
         && !filter.nonblocking
@@ -2076,6 +2077,13 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             }
         }
         ChooseSpec::Target(inner) => {
+            if let ChooseSpec::Object(filter) = inner.as_ref()
+                && filter.tagged_constraints.iter().any(|constraint|
+                    constraint.tag.as_str() == ironsmith_core::SOURCE_EXILED_TAG
+                    && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
+            {
+                return format!("target {}", strip_indefinite_article(&describe_object_filter_with_fixed_pt_shorthand(filter)));
+            }
             if let ChooseSpec::Object(filter) = inner.as_ref()
                 && filter.has_x_in_cost
             {
@@ -4427,6 +4435,7 @@ pub(crate) fn describe_prior_effect_action(
         crate::effect::PriorEffectAction::PhasedOut => "phased out",
         crate::effect::PriorEffectAction::Prevented => "prevented",
         crate::effect::PriorEffectAction::PutOntoBattlefield => "put onto the battlefield",
+        crate::effect::PriorEffectAction::PutIntoGraveyard => "put into a graveyard",
         crate::effect::PriorEffectAction::Removed => "removed",
         crate::effect::PriorEffectAction::Returned => "returned",
         crate::effect::PriorEffectAction::Revealed => "revealed",
@@ -4705,7 +4714,8 @@ pub(crate) fn describe_explicit_where_x_surface(value: &Value) -> Option<&'stati
     if value.has_surface_hint(ValueSurfaceHint::EnergyPaidThisWay) {
         return Some("the amount of {E} paid this way");
     }
-    if value.has_surface_hint(ValueSurfaceHint::PriorEffectResult) {
+    if value.has_surface_hint(ValueSurfaceHint::PriorEffectResult)
+        && !matches!(value.unhinted(), Value::Add(_, _)) {
         return Some("the result");
     }
     if value.has_surface_hint(ValueSurfaceHint::ManaValueOfPermanentExiledThisWay) {
@@ -5000,6 +5010,7 @@ fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
             pluralize_noun_phrase(&describe_for_each_filter(filter)),
             describe_player_filter(player)
         ),
+        TurnHistoryCount::PlayersAttackedThisCombat(player) => format!("the number of players {} attacked this combat", describe_player_filter(player)),
         TurnHistoryCount::OpponentsAttacked(player) => match player {
             PlayerFilter::You => "the number of opponents you attacked this turn".to_string(),
             _ => format!(
@@ -5070,6 +5081,7 @@ fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
                 describe_player_filter(player)
             ),
         },
+        TurnHistoryCount::DamageDealtBySource => "the amount of damage dealt by it this turn".to_string(),
         TurnHistoryCount::DamageDealtToSource => {
             "the amount of damage dealt to it this turn".to_string()
         }
@@ -5257,7 +5269,8 @@ pub(crate) fn describe_value(value: &Value) -> String {
             if hints.contains(&ironsmith_core::ValueSurfaceHint::ThatPlayerPossessive) {
                 return describe_value(value).replace("their hand", "that player's hand");
             }
-            if hints.contains(&ironsmith_core::ValueSurfaceHint::PriorEffectResult) {
+            if hints.contains(&ironsmith_core::ValueSurfaceHint::PriorEffectResult)
+                && !matches!(value.unhinted(), Value::Add(_, _)) {
                 return "the result".to_string();
             }
             if hints.contains(
@@ -5691,6 +5704,8 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::PowerOf(spec) => {
             if let Some(kind) = spec.sacrificed_object_kind() {
                 format!("the sacrificed {}'s power", kind.noun())
+            } else if spec.source_reference_surface().is_some() {
+                format!("{} power", describe_possessive_choose_spec(spec))
             } else if let ChooseSpec::Tagged(tag) = spec.base()
                 && tag.as_str() == crate::tag::SOURCE_EXILED_TAG
             {
@@ -5702,6 +5717,8 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::ToughnessOf(spec) => {
             if let Some(kind) = spec.sacrificed_object_kind() {
                 format!("the sacrificed {}'s toughness", kind.noun())
+            } else if spec.source_reference_surface().is_some() {
+                format!("{} toughness", describe_possessive_choose_spec(spec))
             } else if let ChooseSpec::Tagged(tag) = spec.base()
                 && tag.as_str() == crate::tag::SOURCE_EXILED_TAG
             {
@@ -6074,8 +6091,9 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 source.push_str(" source");
             }
             format!(
-                "the amount of mana from {} spent to cast {}",
+                "the amount of mana from {} spent to {} {}",
                 with_indefinite_article(&source),
+                reference.payment_verb(),
                 reference.text()
             )
         }

@@ -199,7 +199,14 @@ fn sacrificed_object_kind(words: &[&str]) -> Option<SacrificedObjectKind> {
     }
 }
 
-fn with_sacrificed_object_surface(value: Value, words: &[&str]) -> Value {
+fn with_sacrificed_object_surface(mut value: Value, words: &[&str]) -> Value {
+    if words.contains(&"exiled") {
+        if let Value::PowerOf(spec) | Value::ToughnessOf(spec) | Value::ManaValueOf(spec) = &mut value {
+            **spec = (**spec).clone().with_surface_hint(crate::target::ChooseSpecSurfaceHint::SourceReference(
+                crate::target::SourceReferenceSurface::ThisPermanentType("the exiled card".to_string()),
+            ));
+        }
+    }
     match sacrificed_object_kind(words) {
         Some(kind) => value.with_surface_hint(ValueSurfaceHint::SacrificedObject(kind)),
         None => value,

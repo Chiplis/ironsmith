@@ -246,6 +246,7 @@ fn counter_followup<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLexToken
 }
 
 pub fn parse_exile_return_same_shape(tokens: &[OwnedLexToken]) -> Option<ExileReturnSameShape<'_>> {
+    if crate::lexer::split_lexed_sentences(tokens).len() > 1 { return None; }
     let tokens = trim_lexed_commas(tokens);
     let tokens = primitives::parse_prefix(tokens, primitives::phrase(&["you", "may"]))
         .map(|(_, rest)| rest)

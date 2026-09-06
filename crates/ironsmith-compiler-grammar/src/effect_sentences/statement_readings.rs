@@ -60,6 +60,12 @@ pub(super) const STATEMENT_REGISTRY: RuleId = RuleId::new("statement-reading-reg
 /// The readings, in the order they were ranked.
 const STATEMENT_READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("owner-subject-shuffle"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_owner_subject_shuffle(input)),
+    },
+    Reading {
         id: RuleId::new("conditional-inline-looked-card-partition"),
         head: HeadDiscriminator::Any,
         admits: |input| {
@@ -468,6 +474,7 @@ fn read_complete_compound_gain(
     input: &Statement<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let sentence = input.sentence;
+    if split_leading_result_prefix_lexed(sentence).is_some() { return Ok(None); }
     if let Some(effects) = parse_complete_compound_gain_statement(sentence)? {
         return Ok(Some(effects));
     }
@@ -485,6 +492,10 @@ fn read_simple_gain_ability(
     if let Some(shape) =
         effect_grammar::gain_ability_shapes::parse_simple_gain_ability_shape(sentence)
         && shape.complete
+        && !shape.subject_tokens.first().is_some_and(|token| token.is_any_word(
+            &["if", "unless", "when", "whenever", "at", "as", "then", "instead"]
+        ))
+        && !shape.subject_tokens.iter().any(|token| token.is_any_word(&["has", "have", "get", "gets"]))
         && super::lex_chain_helpers::split_effect_chain_on_and_lexed(sentence).len() == 1
         && super::lex_chain_helpers::split_segments_on_comma_then_lexed(vec![sentence]).len() == 1
         && let Some(effects) = super::gain_ability::parse_gain_ability_sentence(sentence)?
@@ -494,6 +505,7 @@ fn read_simple_gain_ability(
     Ok(None)
 }
 fn read_trailing_if_clause(input: &Statement<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if split_leading_result_prefix_lexed(input.sentence).is_some() { return Ok(None); }
     // Two conditions joined by "and" are the conditional damage pair's; a run of them is the keyword bundle's.
     if input.sentence.iter().filter(|token| token.is_word("if")).count() >= 2 {
         return Ok(None);
@@ -567,6 +579,11 @@ fn read_complete_simple_subject_verb(
     Ok(None)
 }
 fn read_for_each_player(input: &Statement<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(effects) = super::subject_verb_primitives::parse_sentence_each_player_may_reveal_selected_cards_in_their_hand(
+        super::SubjectVerbPrimitiveClause::new(input.sentence),
+    )? {
+        return Ok(Some(effects));
+    }
     // A choice complement ("each player chooses ... then sacrifices the rest") is the complement statement's.
     if super::dispatch_inner::is_choice_complement_shape(input.sentence) {
         return Ok(None);
@@ -608,7 +625,50 @@ fn read_complete_simple_mill(
     }
     Ok(None)
 }
+fn read_owner_subject_shuffle(input: &Statement<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(shape) = effect_grammar::parse_shuffle_object_shape_lexed(input.sentence) else {
+        return Ok(None);
+    };
+    if shape.owner_subject_target_tokens.is_none()
+        && !matches!(crate::util::parse_subject(shape.subject_tokens),
+            crate::cards::builders::SubjectAst::Player(crate::cards::builders::PlayerAst::ItsOwner))
+    { return Ok(None); }
+    super::search_library::parse_shuffle_object_into_library_sentence(input.sentence)
+}
 fn read_return_clause(input: &Statement<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if !input.sentence.first().is_some_and(|token| token.is_word("return")) {
+        return Ok(None);
+    }
+
+    if let Some(effects) = super::parse_same_name_target_fanout_sentence(input.sentence)? {
+        return Ok(Some(effects));
+    }
+    if super::lex_chain_helpers::split_effect_chain_on_and_lexed(input.sentence).len() > 1 {
+        return Ok(None);
+    }
+
+    if let Some(effects) = super::dispatch_inner::parse_target_relative_combat_set_sentence(input.sentence)? {
+        return Ok(Some(effects));
+    }
+    if let Some(effects) = crate::effect_sentences::zone_handlers::parse_return_with_event_timing(input.sentence)? {
+        return Ok(Some(effects));
+    }
+    if let crate::recognition::ParseOutcome::Match(plan) = effect_grammar::coordination::recognize_coordination(input.sentence)
+        && plan.value.boundaries.iter().zip(plan.value.members.iter().skip(1)).any(|(boundary, member)|
+            matches!(boundary.operator, crate::model::CoordinationOperatorAst::Or | crate::model::CoordinationOperatorAst::And)
+                && (super::find_verb(member.tokens).is_some_and(|(_, index)| index == 0)
+                    || member.head.is_some_and(|head| matches!(head.actor,
+                        effect_grammar::typed_clause_heads::ClauseActorHeadAst::Controller
+                        | effect_grammar::typed_clause_heads::ClauseActorHeadAst::Player
+                        | effect_grammar::typed_clause_heads::ClauseActorHeadAst::Reference)))) {
+        return Ok(None);
+    }
+    if effect_grammar::dispatch_entry_shapes::parse_where_x_usage_shape_tokens(input.sentence).is_some() {
+        return Ok(None);
+    }
+    if super::lex_chain_helpers::has_authored_comma_then_surface_lexed(input.sentence) {
+        return Ok(None);
+    }
     // A statement with a delayed timing suffix is the delayed statement's.
     if crate::grammar::effects::delayed_step_shapes::parse_delayed_timing_marker_shape(input.sentence)
         .is_some_and(|marker| marker.start_word != 0) {
@@ -624,6 +684,9 @@ fn read_return_clause(input: &Statement<'_>) -> Result<Option<Vec<EffectAst>>, C
         .is_some_and(|token| token.is_word("return"))
         && effect_grammar::parse_return_clause_shape(sentence).is_some()
     {
+        if let Some(effects) = super::parse_sentence_return_with_counters_on_it_lexed(sentence)? {
+            return Ok(Some(effects));
+        }
         if let Some(effects) =
             super::subject_verb_primitives::parse_sentence_return_multiple_targets(
                 SubjectVerbPrimitiveClause::new(sentence),
@@ -636,6 +699,21 @@ fn read_return_clause(input: &Statement<'_>) -> Result<Option<Vec<EffectAst>>, C
     Ok(None)
 }
 fn read_exile_single_segment(input: &Statement<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if !input.sentence.first().is_some_and(|token| token.is_word("exile")) {
+        return Ok(None);
+    }
+
+    if let Some(effects) = super::parse_same_name_target_fanout_sentence(input.sentence)? {
+        return Ok(Some(effects));
+    }
+    if super::lex_chain_helpers::split_effect_chain_on_and_lexed(input.sentence).len() > 1 {
+        return Ok(None);
+    }
+    // Some continuations (such as meld) have their own grammar rather than
+    // a generic chain verb. An authored boundary still rules out one exile.
+    if super::lex_chain_helpers::has_authored_comma_then_surface_lexed(input.sentence) {
+        return Ok(None);
+    }
     // A statement with a delayed timing suffix ("... at end of combat") is the delayed statement's.
     if crate::grammar::effects::delayed_step_shapes::parse_delayed_timing_marker_shape(input.sentence)
         .is_some_and(|marker| marker.start_word != 0) {
@@ -649,6 +727,9 @@ fn read_exile_single_segment(input: &Statement<'_>) -> Result<Option<Vec<EffectA
     if sentence.first().is_some_and(|token| token.is_word("exile"))
         && super::lex_chain_helpers::split_segments_on_comma_then_lexed(vec![sentence]).len() == 1
     {
+        if let Some(effects) = super::parse_sentence_exile_source_with_counters_lexed(sentence)? {
+            return Ok(Some(effects));
+        }
         if effect_grammar::parse_exile_each_target_type_shape(sentence).is_some() {
             return super::parse_exile_up_to_one_each_target_type_sentence(sentence);
         }
@@ -674,8 +755,12 @@ fn read_complete_quantified_discard(
     Ok(None)
 }
 fn read_tap(input: &Statement<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if effect_grammar::dispatch_entry_shapes::parse_where_x_usage_shape_tokens(input.sentence).is_some() {
+        return Ok(None);
+    }
     // A tap coordinated with another action is not a bare tap statement.
-    if super::lex_chain_helpers::split_effect_chain_on_and_lexed(input.sentence).len() > 1 {
+    if super::lex_chain_helpers::has_authored_comma_then_surface_lexed(input.sentence)
+        || super::lex_chain_helpers::split_effect_chain_on_and_lexed(input.sentence).len() > 1 {
         return Ok(None);
     }
     let sentence = input.sentence;
@@ -700,41 +785,50 @@ fn read_cant_effect(input: &Statement<'_>) -> Result<Option<Vec<EffectAst>>, Car
 fn read_leading_result_prefix(
     input: &Statement<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    // A statement with a trailing condition is the conditional statement's.
-    if crate::grammar::structure::split_trailing_if_clause_lexed(input.sentence).is_some() {
-        return Ok(None);
+    let Some(prefix) = split_leading_result_prefix_lexed(input.sentence) else { return Ok(None); };
+    if crate::grammar::structure::split_leading_numeric_result_prefix_lexed(input.sentence).is_some() {
+        let label = crate::grammar::document_shapes::parse_statement_label_split_tokens(prefix.trailing_tokens);
+        let body = label.map_or(prefix.trailing_tokens, |label| label.body_tokens);
+        let mut effects = super::parse_effect_sentence_lexed(body)?;
+        if let Some(label) = label {
+            effects = vec![EffectAst::ResultBranchLabel {
+                label: crate::lexer::render_token_slice(label.label_tokens).trim().to_string(),
+                effects,
+            }];
+        }
+        return Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+            predicate: prefix.predicate, effects,
+        })]));
     }
-    let sentence = input.sentence;
-    // A reflexive/result clause may itself begin with a state condition.
-    // The verb-first shortcut below can see a later `gains` inside that
-    // consequence and discard both the condition and an earlier counter
-    // action. Route grammar-proven nested conditionals through the full
-    // sentence parser, which preserves the result wrapper and the inner
-    // typed control-flow program.
-    if let Some(prefix) = split_leading_result_prefix_lexed(sentence) {
-        if effect_grammar::split_conditional_sentence_family_head_lexed(prefix.trailing_tokens)
-            .is_some()
-        {
-            return super::dispatch_inner::parse_effect_sentence_inner_lexed(sentence).map(Some);
-        }
-        if let Some(effect) =
-            super::clause_pattern_helpers::parse_verb_first_clause(prefix.trailing_tokens)?
-        {
-            return Ok(Some(vec![match prefix.kind {
-                LeadingResultPrefixKind::If => EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-                    predicate: prefix.predicate,
-                    effects: vec![effect],
-                }),
-                LeadingResultPrefixKind::When => EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
-                    predicate: prefix.predicate,
-                    effects: vec![effect],
-                }),
-            }]));
-        }
+    // A nested condition belongs to the result's consequence. Searching for
+    // a later verb would discard that condition and the result envelope.
+    if prefix.trailing_tokens.first().is_some_and(|token| token.is_any_word(&["if", "unless"])) {
+        return super::dispatch_inner::parse_effect_sentence_inner_lexed(input.sentence).map(Some);
+    }
+    if let Some(effect) = super::clause_pattern_helpers::parse_verb_first_clause(prefix.trailing_tokens)? {
+        return Ok(Some(vec![match prefix.kind {
+            LeadingResultPrefixKind::If => EffectAst::Conditionals(ConditionalEffectAst::IfResult { predicate: prefix.predicate, effects: vec![effect] }),
+            LeadingResultPrefixKind::When => EffectAst::Conditionals(ConditionalEffectAst::WhenResult { predicate: prefix.predicate, effects: vec![effect] }),
+        }]));
     }
     Ok(None)
 }
+
 fn read_destroy_single_segment(input: &Statement<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(effects) = super::parse_same_name_target_fanout_sentence(input.sentence)? {
+        return Ok(Some(effects));
+    }
+    if let Some(effects) = super::parse_shared_color_target_fanout_sentence(input.sentence)? {
+        return Ok(Some(effects));
+    }
+    if super::lex_chain_helpers::split_effect_chain_on_and_lexed(input.sentence).len() > 1 {
+        return Ok(None);
+    }
+    // The sentence composer binds the local X definition into target filters
+    // and target counts before lowering. The destroy leaf alone cannot do so.
+    if effect_grammar::dispatch_entry_shapes::parse_where_x_usage_shape_tokens(input.sentence).is_some() {
+        return Ok(None);
+    }
     // A statement with a trailing condition is the conditional statement's.
     if crate::grammar::structure::split_trailing_if_clause_lexed(input.sentence).is_some() {
         return Ok(None);

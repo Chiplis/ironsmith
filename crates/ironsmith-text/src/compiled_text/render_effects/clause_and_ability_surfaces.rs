@@ -4604,12 +4604,16 @@ pub(super) fn describe_shared_target_end_of_turn_modifications(
         let clause = clause
             .strip_prefix("It ")
             .or_else(|| clause.strip_prefix("it "))
+            .or_else(|| clause.strip_prefix("Each of them "))
+            .or_else(|| clause.strip_prefix("each of them "))
+            .or_else(|| clause.strip_prefix("They "))
+            .or_else(|| clause.strip_prefix("they "))
             .unwrap_or(&clause);
         let clause = clause
             .strip_prefix("gains can attack ")
             .map(|tail| format!("can attack {tail}"))
             .unwrap_or_else(|| clause.to_string());
-        let clause = if target.count().is_any_number() {
+        let clause = if target.count().max != Some(1) {
             [
                 ("gains ", "gain "),
                 ("gets ", "get "),
@@ -7632,13 +7636,13 @@ pub(crate) fn describe_tagged_target_then_power_damage(
     tagged: &crate::effects::TaggedEffect,
     deal: &crate::effects::DealDamageEffect,
 ) -> Option<String> {
-    let target_only = tagged
-        .effect
+    let target_only = structural_unwrap_render_wrappers(&tagged.effect)
         .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
-    let Value::PowerOf(source_spec) = &deal.amount else {
+    if target_only.explicit_declaration || target_only.chooser.is_some() { return None; }
+    let Value::PowerOf(source_spec) = deal.amount.unhinted() else {
         return None;
     };
-    let source_tag = match source_spec.as_ref() {
+    let source_tag = match source_spec.unhinted() {
         ChooseSpec::Tagged(tag) => tag,
         _ => return None,
     };
@@ -7676,10 +7680,10 @@ pub(crate) fn describe_tagged_target_then_power_damage(
     ))
 }
 
-pub(super) fn describe_execute_power_damage_from_tag<'a>(
-    effect: &'a Effect,
+pub(super) fn describe_execute_power_damage_from_tag(
+    effect: &Effect,
     source_tag: &crate::TagKey,
-) -> Option<&'a crate::effects::DealDamageEffect> {
+) -> Option<crate::effects::DealDamageEffect> {
     let effect = structural_unwrap_render_wrappers(effect);
     let with_source = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()?;
     let ChooseSpec::Tagged(tag) = with_source.source.unhinted() else {
@@ -7688,17 +7692,18 @@ pub(super) fn describe_execute_power_damage_from_tag<'a>(
     if tag.as_str() != source_tag.as_str() {
         return None;
     }
-    let deal = with_source
-        .effect
-        .downcast_ref::<crate::effects::DealDamageEffect>()?;
+    let mut deal = structural_unwrap_render_wrappers(&with_source.effect)
+        .downcast_ref::<crate::effects::DealDamageEffect>()?.clone();
     let Value::PowerOf(power_source) = deal.amount.unhinted() else {
         return None;
     };
-    let ChooseSpec::Tagged(power_tag) = power_source.unhinted() else {
-        return None;
-    };
-    if power_tag.as_str() != source_tag.as_str() {
-        return None;
+    match power_source.unhinted() {
+        ChooseSpec::Source => {
+            // ExecuteWithSource binds both the damage source and its power.
+            deal.amount = Value::PowerOf(Box::new(ChooseSpec::Tagged(source_tag.clone())));
+        }
+        ChooseSpec::Tagged(power_tag) if power_tag.as_str() == source_tag.as_str() => {}
+        _ => return None,
     }
     Some(deal)
 }
@@ -7983,6 +7988,35 @@ pub(crate) fn describe_target_power_damage_to_other_and_self(
         "{subject} {verb} X damage to {} and X damage to itself, where X is its power",
         describe_choose_spec(&other_damage.target)
     ))
+}
+
+pub(crate) fn describe_reciprocal_power_damage(effects: &[Effect]) -> Option<String> {
+    let [first, capture, declaration, second] = effects else { return None; };
+    let (Some(first_source), first_damage) = damage_with_source_view(first)? else { return None; };
+    let (Some(second_source), second_damage) = damage_with_source_view(second)? else { return None; };
+    let declared_tag = wrapped_effect_tag(declaration)?;
+    let declaration = structural_unwrap_render_wrappers(declaration)
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    let capture = structural_unwrap_render_wrappers(capture)
+        .downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    if !matches!(declaration.target.base(), ChooseSpec::Object(filter) if filter.card_types == [CardType::Creature])
+        || capture.filter != ObjectFilter::source()
+        || declaration.target != first_damage.target
+        || !matches!(second_source.base(), ChooseSpec::Tagged(tag) if tag == declared_tag)
+        || !matches!(second_damage.target.base(), ChooseSpec::Tagged(tag) if tag == &capture.tag)
+        || first_damage.unpreventable || second_damage.unpreventable
+        || first_damage.source_is_combat || second_damage.source_is_combat
+    { return None; }
+    fn own_power(value: &Value, source: &ChooseSpec) -> bool {
+        matches!(value.unhinted(), Value::PowerOf(spec) if spec.base() == source.base() || matches!(spec.base(), ChooseSpec::Source))
+    }
+    if !own_power(&first_damage.amount, first_source) || !own_power(&second_damage.amount, second_source) { return None; }
+    let subject = match first_source.base() {
+        ChooseSpec::Source => "This permanent".to_string(),
+        ChooseSpec::Tagged(tag) if tag.as_str() == "triggering" => "It".to_string(),
+        _ => return None,
+    };
+    Some(format!("{subject} deals damage equal to its power to {} and that creature deals damage equal to its power to this permanent", describe_choose_spec(&first_damage.target)))
 }
 
 pub(crate) fn cleanup_decompiled_text(text: &str) -> String {
@@ -12380,7 +12414,7 @@ pub(super) fn describe_triggered_resolution_text(
     effects = rewrite_damage_phrases_for_permanent_abilities(
         &effects,
         resolution_subject,
-        rewrite_it_deals,
+        rewrite_it_deals && triggering_reference_damage_source_count(&triggered.effects).is_none(),
     );
     effects = rewrite_triggering_source_damage_subject(triggered, effects);
     effects = rewrite_self_attack_damage_subject(triggered, effects, subject);
@@ -13719,28 +13753,14 @@ pub(super) fn describe_oath_of_ghouls_triggered_ability(
     )
 }
 
-pub(super) fn describe_flurry_copy_exile_suspend_triggered_ability(
+pub(super) fn describe_copy_exile_with_counters_suspend_triggered_ability(
     triggered: &crate::ability::TriggeredAbility,
 ) -> Option<String> {
-    if !matches!(
-        triggered.presentation_label.as_ref(),
-        Some(PresentationLabel::AbilityWord(label)) if label.eq_ignore_ascii_case("Flurry")
-    ) || triggered.intervening_if.is_some()
-        || !triggered.choices.is_empty()
-    {
+    if triggered.intervening_if.is_some() || !triggered.choices.is_empty() {
         return None;
     }
-    let spell_cast = triggered
-        .trigger
-        .downcast_ref::<crate::triggers::SpellCastTrigger>()?;
-    if spell_cast.caster != PlayerFilter::You
-        || spell_cast.during_turn.is_some()
-        || spell_cast.min_spells_this_turn.is_some()
-        || spell_cast.exact_spells_this_turn != Some(2)
-        || spell_cast.from_not_hand
-    {
-        return None;
-    }
+    let spell_cast = triggered.trigger.downcast_ref::<crate::triggers::SpellCastTrigger>()?;
+    if spell_cast.caster != PlayerFilter::You { return None; }
     let (tag_effect, copy_effect, move_effect, put_effect, conditional_effect) = match triggered
         .effects
         .segments
@@ -13815,7 +13835,7 @@ pub(super) fn describe_flurry_copy_exile_suspend_triggered_ability(
         return None;
     };
     if put.counter_type != CounterType::Time
-        || put.amount.unhinted() != &Value::Fixed(4)
+        || !matches!(put.amount.unhinted(), Value::Fixed(count) if *count > 0)
         || put.target_count.is_some()
         || put.distributed
         || !(counter_target_tag == tag || counter_target_tag.as_str() == "__source_exiled__")
@@ -13836,10 +13856,11 @@ pub(super) fn describe_flurry_copy_exile_suspend_triggered_ability(
         return None;
     }
 
-    Some(
-        "Flurry — Whenever you cast your second spell each turn, copy it, then exile the spell you cast with four time counters on it. If it doesn't have suspend, it gains suspend"
-            .to_string(),
-    )
+    let trigger = describe_trigger_surface_with_frequency(triggered, None, "this creature");
+    let counters = describe_put_counter_phrase(&put.amount, put.counter_type);
+    Some(apply_triggered_presentation_label(triggered, format!(
+        "{trigger}, copy it, then exile the spell you cast with {counters} on it. If it doesn't have suspend, it gains suspend"
+    )))
 }
 
 #[cfg(test)]
@@ -13847,6 +13868,14 @@ mod flurry_copy_exile_suspend_tests {
     use super::*;
 
     const LINE: &str = "Flurry — Whenever you cast your second spell each turn, copy it, then exile the spell you cast with four time counters on it. If it doesn't have suspend, it gains suspend.";
+
+    #[test]
+    fn copy_exile_renderer_uses_the_actual_trigger_and_counter_amount() {
+        let text = LINE.replace("second", "third").replace("four", "six").replace("Flurry — ", "");
+        let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Copy Exile Probe")
+            .card_types(vec![CardType::Creature]).parse_text(&text).unwrap();
+        assert_eq!(crate::compiled_text::compiled_text_lines(&definition), [text]);
+    }
 
     #[test]
     fn migrated_two_segment_route_rejoins_only_with_the_ordered_surface() {
@@ -13866,7 +13895,7 @@ mod flurry_copy_exile_suspend_tests {
             panic!("expected spell-cast trigger");
         };
         assert_eq!(
-            describe_flurry_copy_exile_suspend_triggered_ability(triggered).as_deref(),
+            describe_copy_exile_with_counters_suspend_triggered_ability(triggered).as_deref(),
             Some(LINE.trim_end_matches('.'))
         );
 
@@ -13877,7 +13906,7 @@ mod flurry_copy_exile_suspend_tests {
         let mut sequence = sequence.clone();
         sequence.surface = ironsmith_core::SequenceSurface::Coordinated;
         changed.effects.segments[0].default_effects[1] = Effect::new(sequence);
-        assert!(describe_flurry_copy_exile_suspend_triggered_ability(&changed).is_none());
+        assert!(describe_copy_exile_with_counters_suspend_triggered_ability(&changed).is_none());
     }
 
     #[test]
@@ -14670,7 +14699,7 @@ pub(super) fn describe_triggered_inline_ability(
     if let Some(rendered) = describe_oath_of_ghouls_triggered_ability(triggered) {
         return rendered;
     }
-    if let Some(rendered) = describe_flurry_copy_exile_suspend_triggered_ability(triggered) {
+    if let Some(rendered) = describe_copy_exile_with_counters_suspend_triggered_ability(triggered) {
         return rendered;
     }
     if let Some(rendered) = describe_convoke_cast_damage_opponents_and_protected_battles(triggered)
@@ -15370,6 +15399,13 @@ pub(super) fn describe_trigger_intervening_condition(
     triggered: &crate::ability::TriggeredAbility,
     self_subject: Option<&str>,
 ) -> String {
+    if matches!(condition, Condition::SourceIsInZone(Zone::Battlefield)) {
+        if triggered.trigger.downcast_ref::<crate::triggers::ZoneChangeTrigger>().is_some_and(|entry| entry.this_object && entry.to == crate::triggers::zone_changes::ZonePattern::Specific(Zone::Battlefield)) {
+            return "it's on the battlefield".to_owned();
+        }
+        return format!("{} is on the battlefield", self_subject.unwrap_or("this object"));
+    }
+
     if matches!(
         condition,
         Condition::TriggeringObjectBecameTappedFirstTimeThisTurn

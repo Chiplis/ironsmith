@@ -13,6 +13,9 @@ pub enum CharacteristicActionAst {
         set_quantifier_surface: Option<ironsmith_core::SetQuantifierSurface>,
     },
     BecomeBasePtCreature {
+        name_override: Option<String>,
+        add_supertypes: Vec<Supertype>,
+        remove_all_abilities: bool,
         power: Value,
         toughness: Value,
         target: TargetAst,

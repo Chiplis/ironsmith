@@ -132,6 +132,7 @@ mod for_each_player_readings;
 pub fn parse_for_each_player_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    if has_independent_participant_continuation(tokens) { return Ok(None); }
     let Some(outer) = for_each_shapes::parse_participant_clause_shape(tokens) else {
         return Ok(None);
     };

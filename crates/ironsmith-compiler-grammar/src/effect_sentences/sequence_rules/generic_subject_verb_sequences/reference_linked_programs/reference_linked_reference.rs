@@ -141,52 +141,14 @@ pub fn parse_for_each_tagged_copy_then_copy_targets_it(
 
 pub(crate) fn retarget_source_self_animate_effect(effect: EffectAst) -> EffectAst {
     match effect {
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
-                    power,
-                    toughness,
-                    target,
-                    card_types,
-                    subtypes,
-                    subtype_families,
-                    colors,
-                    abilities,
-                    granted_abilities,
-                    preserve_other_types,
-                    type_retention_surface,
-                    animation_pt_surface,
-                    animation_duration_surface,
-                    set_quantifier_surface,
-                    duration,
-                }),
-            ..
-        }) => {
-            let target = match target {
-                TargetAst::Tagged(tag, span)
-                    if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() =>
-                {
-                    TargetAst::Source(span)
-                }
-                target => target,
-            };
-            EffectAst::subject_verb_become_base_pt_creature(
-                power,
-                toughness,
-                target,
-                card_types,
-                subtypes,
-                subtype_families,
-                colors,
-                abilities,
-                granted_abilities,
-                preserve_other_types,
-                type_retention_surface,
-                animation_pt_surface,
-                animation_duration_surface,
-                duration,
-            )
-            .with_set_quantifier_surface(set_quantifier_surface)
+        EffectAst::SubjectVerb(mut subject) => {
+            if let SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature { target, .. }) = &mut subject.action
+                && let TargetAst::Tagged(tag, span) = target
+                && tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+            {
+                *target = TargetAst::Source(*span);
+            }
+            EffectAst::SubjectVerb(subject)
         }
         EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,

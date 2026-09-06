@@ -13,6 +13,13 @@ pub fn compile_delayed_trigger_spec(
     trigger: &TriggerSpec,
 ) -> Result<ironsmith_core::DelayedTriggerSpec, CardTextError> {
     match trigger {
+        TriggerSpec::ConditionQualified { trigger, condition, surface } => Ok(
+            ironsmith_core::DelayedTriggerSpec::ConditionQualified {
+                trigger: Box::new(compile_delayed_trigger_spec(trigger)?),
+                condition: compile_condition_from_predicate_ast(condition, &mut EffectLoweringContext::new(), &None)?,
+                surface: surface.clone(),
+            }
+        ),
         TriggerSpec::WithIntro { trigger, .. } => compile_delayed_trigger_spec(trigger),
         TriggerSpec::BeginningOfUpkeep(player) => Ok(
             ironsmith_core::DelayedTriggerSpec::BeginningOfUpkeep(player.clone()),
@@ -109,7 +116,7 @@ pub fn compile_delayed_trigger_spec(
             },
         ),
         TriggerSpec::ThisDies => Ok(ironsmith_core::DelayedTriggerSpec::ThisDies),
-        TriggerSpec::ThisLeavesBattlefield => {
+        TriggerSpec::ThisLeavesBattlefield | TriggerSpec::ThisLeavesBattlefieldWithSurface(_) => {
             Ok(ironsmith_core::DelayedTriggerSpec::ThisLeavesBattlefield)
         }
         TriggerSpec::ThisAttacksAndIsntBlocked => {
@@ -487,7 +494,23 @@ fn compile_duration_scoped_delayed_trigger(
     while_any_tagged_object_in_zone: &Option<(TagKey, Zone)>,
     ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
-    let (delayed_effects, _delayed_choices) = compile_trigger_effects(Some(trigger), effects)?;
+    if let TriggerSpec::ConditionQualified { trigger, condition, surface } = trigger_without_intro(trigger) {
+        let (compiled, choices) = compile_duration_scoped_delayed_trigger(trigger, effects, one_shot,
+            duration, either_of_watched_objects, while_any_tagged_object_in_zone, ctx)?;
+        let [effect] = compiled.as_slice() else { unreachable!("delayed registration is one effect"); };
+        let mut schedule = effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>().unwrap().clone();
+        schedule.trigger = ironsmith_core::DelayedTriggerSpec::ConditionQualified {
+            trigger: Box::new(schedule.trigger),
+            condition: compile_condition_from_predicate_ast(condition, ctx, &None)?,
+            surface: surface.clone(),
+        };
+        return Ok((vec![Effect::new(schedule)], choices));
+    }
+    let lowered = compile_trigger_effects_with_imports(Some(trigger), effects, &ReferenceImports {
+        last_object_tag: ctx.last_object_tag.clone(),
+        ..Default::default()
+    })?;
+    let delayed_effects = lowered.effects.to_vec();
     let refs = current_reference_env(ctx);
     let mut watched_tag = None;
     let mut watched_filter = None;
@@ -495,6 +518,34 @@ fn compile_duration_scoped_delayed_trigger(
     let mut watch_all_object_targets = false;
 
     let delayed_trigger = match trigger_without_intro(trigger) {
+        TriggerSpec::Attacks(filter) => {
+            let resolved = resolve_it_tag(filter, &refs)?;
+            if let Some(tag) = watch_tag_from_filter(&resolved) {
+                watched_tag = Some(tag);
+                // Evaluate attack restrictions when the attack happens, not
+                // while registering a watcher before attackers are declared.
+                let mut event_filter = resolved;
+                event_filter.tagged_constraints.clear();
+                event_filter.source = true;
+                ironsmith_core::DelayedTriggerSpec::Attacks(event_filter)
+            } else {
+                ironsmith_core::DelayedTriggerSpec::Attacks(resolved)
+            }
+        }
+        TriggerSpec::Dies(filter) => {
+            let resolved = resolve_it_tag(filter, &refs)?;
+            if let Some(tag) = watch_tag_from_filter(&resolved) {
+                watched_tag = Some(tag);
+                watched_filter = Some(resolved);
+                ironsmith_core::DelayedTriggerSpec::Dies(ObjectFilter::source())
+            } else {
+                ironsmith_core::DelayedTriggerSpec::Dies(resolved)
+            }
+        }
+        TriggerSpec::ThisLeavesBattlefield | TriggerSpec::ThisLeavesBattlefieldWithSurface(_) => {
+            watch_ability_source = true;
+            ironsmith_core::DelayedTriggerSpec::ThisLeavesBattlefield
+        }
         TriggerSpec::ThisEntersBattlefieldWithSurface {
             surface: crate::target::SourceReferenceSurface::ThisPermanentType(surface),
             subject_number,
@@ -620,7 +671,7 @@ fn compile_duration_scoped_delayed_trigger(
         delayed = delayed.with_either_of_watched_objects_surface();
     }
     if let Some((tag, zone)) = while_any_tagged_object_in_zone {
-        delayed = delayed.while_any_tagged_object_in_zone(tag.clone(), *zone);
+        delayed = delayed.while_any_tagged_object_in_zone(resolve_it_tag_key(tag, &refs)?, *zone);
     }
     delayed = apply_delayed_trigger_duration(delayed, duration)?.with_leading_duration_surface();
 
@@ -820,6 +871,11 @@ pub(super) fn try_compile_timing_and_control_effect(
             until_end_of_combat,
             attach_to_previous_ability,
         }) => {
+            if matches!(trigger_without_intro(trigger), TriggerSpec::ConditionQualified { .. }) {
+                return compile_duration_scoped_delayed_trigger(trigger, effects, *one_shot,
+                    &if *until_end_of_combat { Until::EndOfCombat } else { Until::EndOfTurn },
+                    false, &None, ctx).map(Some);
+            }
             let (mut delayed_effects, _delayed_choices) =
                 compile_trigger_effects(Some(trigger), effects)?;
             fuse_next_cast_entry_counter_body(trigger, *one_shot, &mut delayed_effects);

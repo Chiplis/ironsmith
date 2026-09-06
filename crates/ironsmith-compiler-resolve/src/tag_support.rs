@@ -81,7 +81,7 @@ fn effect_ast_values_any(effect: &EffectAst, predicate: impl Fn(&Value) -> bool 
             count_value: Some(value),
             ..
         })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary {
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone {
             count_value: Some(value),
             ..
         })
@@ -116,7 +116,7 @@ fn collect_effect_produced_tags(effect: &EffectAst, tags: &mut Vec<TagKey>) {
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { tag, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { tag, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary { tag, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone { tag, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { tag, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { tag, .. })
         | EffectAst::TagAffected { tag, .. } => push_unique_tag(tags, tag),
@@ -591,6 +591,7 @@ fn effect_tagged_filter(effect: &EffectAst) -> Option<&ObjectFilter> {
 
 pub fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
     assert_effect_ast_variant_coverage(effect);
+    if delayed_trigger_references_tag(effect, tag) { return true; }
     if tag == "triggering_source"
         && matches!(
             effect,
@@ -1332,7 +1333,7 @@ pub fn effect_references_event_derived_amount(effect: &EffectAst) -> bool {
             count_value: Some(count_value),
             ..
         })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary {
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone {
             count_value: Some(count_value),
             ..
         })
@@ -1505,6 +1506,8 @@ pub fn effect_references_its_controller(effect: &EffectAst) -> bool {
 
 pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
     assert_effect_ast_variant_coverage(effect);
+    if matches!(effect, EffectAst::SnapshotLastObjectTag { .. }) { return true; }
+    if delayed_trigger_references_tag(effect, crate::tag::CompilerReferenceTag::It.as_str()) { return true; }
     if direct_effect_targets_reference_tag(effect, crate::tag::CompilerReferenceTag::It.as_str()) {
         return true;
     }
@@ -1751,6 +1754,14 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
             references
         }
     }
+}
+
+fn delayed_trigger_references_tag(effect: &EffectAst, key: &str) -> bool {
+    let (EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn { trigger, .. })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { trigger, .. })) = effect else { return false; };
+    let mut found = false;
+    ironsmith_core::tag::TagKeyWalk::for_each_tag_key(trigger, &mut |tag| found |= tag.as_str() == key);
+    found
 }
 
 fn predicate_uses_implicit_it_reference(predicate: &PredicateAst) -> bool {

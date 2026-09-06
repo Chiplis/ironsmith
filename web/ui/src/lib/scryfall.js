@@ -313,7 +313,54 @@ function imageUrlFromImageUris(imageUris, version = "normal") {
   );
 }
 
+const imageFlavorTextCache = new Map();
+const imageFlavorTextRequests = new Map();
+
+function cacheImageFlavorText(card, known = true) {
+  if (!card) return;
+  if (known || Object.hasOwn(card, "flavor_text")) {
+    for (const url of Object.values(card.image_uris || {})) {
+      if (url) imageFlavorTextCache.set(String(url), String(card.flavor_text || "").trim());
+    }
+  }
+  for (const face of card.card_faces || card.faces || []) {
+    cacheImageFlavorText(face, known);
+  }
+}
+
+// Resolve by the displayed image, since flavor text varies between printings
+// and between the faces of a double-faced card.
+export async function resolveScryfallFlavorText(imageUrl) {
+  if (imageFlavorTextCache.has(imageUrl)) return imageFlavorTextCache.get(imageUrl);
+  if (imageFlavorTextRequests.has(imageUrl)) return imageFlavorTextRequests.get(imageUrl);
+  const match = String(imageUrl || "").match(
+    /^https:\/\/cards\.scryfall\.io\/[^?#]+\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.[a-z]+(?:\?.*)?$/i
+  );
+  if (!match) return "";
+  const request = (async () => {
+    const response = await fetchScryfallApiJson(`https://api.scryfall.com/cards/${match[1]}`);
+    if (!response.ok) throw new Error(`Flavor text fetch failed: HTTP ${response.status}`);
+    cacheImageFlavorText(await response.json());
+    // CDN query parameters can change without changing the printing or face.
+    const path = imageUrl.split("?")[0];
+    for (const [url, text] of imageFlavorTextCache) {
+      if (url.split("?")[0] === path) {
+        imageFlavorTextCache.set(imageUrl, text);
+        return text;
+      }
+    }
+    return "";
+  })();
+  imageFlavorTextRequests.set(imageUrl, request);
+  try {
+    return await request;
+  } finally {
+    imageFlavorTextRequests.delete(imageUrl);
+  }
+}
+
 function cacheResolvedImageUrls(cardName, card, printPreference = null) {
+  cacheImageFlavorText(card);
   const imageUris = card?.image_uris
     || (Array.isArray(card?.card_faces)
       ? card.card_faces.find((face) => face?.image_uris)?.image_uris
@@ -344,6 +391,7 @@ function localScryfallPayloadForName(payload, cardName) {
 
 function cacheLocalScryfallPayload(cardName, payload) {
   const scryfall = localScryfallPayloadForName(payload, cardName);
+  cacheImageFlavorText(scryfall, false);
   cacheImageUris(cardName, scryfall?.image_uris);
 }
 
@@ -772,5 +820,21 @@ export async function fetchScryfallLocalizedCardTranslation(cardName, locale) {
     });
 
   localizedCardTranslationCache.set(cacheKey, request);
+  return request;
+}
+
+// Typography follows the displayed printing, including retro reprints.
+const printingMetadataRequests = new Map();
+export function resolveScryfallPrintingMetadata(imageUrl) {
+  const id = String(imageUrl || '').match(/^https:\/\/cards\.scryfall\.io\/[^?#]+\/([0-9a-f-]{36})\.[a-z]+(?:\?.*)?$/i)?.[1];
+  if (!id) return Promise.resolve(null);
+  if (printingMetadataRequests.has(id)) return printingMetadataRequests.get(id);
+  const request = fetchScryfallApiJson(`https://api.scryfall.com/cards/${id}`)
+    .then(async response => {
+      if (!response.ok) throw new Error('Printing metadata unavailable');
+      return response.json();
+    }).catch(() => { printingMetadataRequests.delete(id); return null; });
+  printingMetadataRequests.set(id, request);
+  if (printingMetadataRequests.size > 96) printingMetadataRequests.delete(printingMetadataRequests.keys().next().value);
   return request;
 }

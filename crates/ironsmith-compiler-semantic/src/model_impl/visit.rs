@@ -283,7 +283,7 @@ pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { .. }) => {}
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { .. }) => {}
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { .. }) => {}
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary { .. }) => {}
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone { .. }) => {}
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { .. }) => {}
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { .. }) => {}
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { .. }) => {}

@@ -78,6 +78,7 @@ pub struct CombatDividedEqualShape<'a> {
 #[derive(Debug, Clone, Copy)]
 pub struct CombatDamageToTargetEqualShape<'a> {
     pub target_tokens: &'a [OwnedLexToken],
+    pub amount_clause_tokens: &'a [OwnedLexToken],
     pub amount_is_event_result: bool,
     pub target_is_each_or_all: bool,
 }
@@ -342,6 +343,7 @@ pub fn parse_combat_damage_to_target_equal_shape_lexed(
     }
     Some(CombatDamageToTargetEqualShape {
         target_tokens,
+        amount_clause_tokens: &tokens[equal_idx..],
         amount_is_event_result: exact_phrase(trim_lexed_commas(after_equal), &[&["the", "result"]]),
         target_is_each_or_all: primitives::parse_prefix(
             target_tokens,

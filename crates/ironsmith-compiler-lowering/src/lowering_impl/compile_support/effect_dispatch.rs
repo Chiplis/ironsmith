@@ -794,7 +794,11 @@ fn target_is_bare_it(target: &TargetAst) -> bool {
     match target {
         TargetAst::Tagged(tag, _) => tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str(),
         TargetAst::Object(filter, _, _) => {
-            filter == &ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key())
+            {
+                let mut identity = filter.clone();
+                identity.source_surface = None;
+                identity == ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key())
+            }
         }
         TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
             target_is_bare_it(inner)
@@ -929,12 +933,15 @@ fn compile_effect_inner(
             choices,
         ));
     }
-    if let EffectAst::SourceSentence { effects, .. } = effect {
+    if let EffectAst::SourceSentence { effects, leading_then, .. } = effect {
         // SourceSentence is compiler-only provenance used to keep one Oracle
         // sentence together while references are resolved. It has no
         // separate runtime effect; lower its typed children in order.
         let (mut effects, choices) = compile_effects(effects, ctx)?;
         preserve_nested_result_value_links(&mut effects);
+        if *leading_then {
+            return Ok((vec![Effect::new(crate::effects::SequenceEffect::sentence_leading_then(effects))], choices));
+        }
         return Ok((effects, choices));
     }
     if let EffectAst::ResultBranchLabel { label, effects } = effect {
@@ -1742,7 +1749,11 @@ fn try_compile_plain_all_move_to_nonbattlefield_zone(
         return Ok(None);
     }
 
-    let (spec, choices) = resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+    let (spec, choices) = if *all && let TargetAst::Object(filter, _, _) = target {
+        (ChooseSpec::All(resolve_it_tag(filter, &current_reference_env(ctx))?), Vec::new())
+    } else {
+        resolve_target_spec_with_choices(target, &current_reference_env(ctx))?
+    };
     let spec = if *all {
         match spec {
             ChooseSpec::Object(filter) => ChooseSpec::All(filter),

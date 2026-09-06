@@ -601,6 +601,7 @@ fn build_counter_spec(
                 BattlefieldEntryCounterSurface::IfObjectEntersThisWay
             } else if amount
                 .has_surface_hint(ironsmith_core::ValueSurfaceHint::CounterFollowupSeparateSentence)
+                && !producer_selects_single_object(producer)
             {
                 BattlefieldEntryCounterSurface::EachOfThemEnters
             } else if producer_is_delayed(producer) {

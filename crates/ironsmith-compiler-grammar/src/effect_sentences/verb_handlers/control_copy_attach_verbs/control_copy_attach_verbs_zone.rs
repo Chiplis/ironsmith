@@ -23,7 +23,15 @@ pub fn parse_put_into_hand(
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
     let clause_words = crate::lexer::token_word_refs(tokens);
-    let exiled_with_source_surface = parse_exiled_with_source_move_surface(authored_tokens);
+    // The subject/verb dispatcher may already have consumed `put`. Preserve
+    // the same source-linked move wording on both entry paths.
+    let exiled_with_source_surface = parse_exiled_with_source_move_surface(authored_tokens)
+        .or_else(|| {
+            parse_exiled_with_source_move_surface_inner(
+                tokens,
+                Some(ironsmith_core::ExiledWithSourceMoveVerbSurface::Put),
+            )
+        });
     let input = put_clause_readings::PutClause {
         tokens,
         player,

@@ -110,6 +110,8 @@ const CARD_TYPE_LIST_NOUNS: &[&str] = &[
 const NONVERB_EFFECT_HEAD_WORDS: &[&str] = &[
     "double",
     "distribute",
+    "venture",
+    "ventures",
     "copy",
     "copies",
     "support",
@@ -385,6 +387,13 @@ pub fn preserve_and_reason(
         && first_word(remaining).is_some_and(is_zone_word)
     {
         return Some(AndPreservation::ExchangeZones);
+    }
+    if starts_any(current, &[&["return"]]) && primitives::contains_word(current, "target")
+        && starts_any(remaining, &[&["target"], &["up"]])
+        && primitives::contains_word(remaining, "from")
+        && !contains_any(current, &["hand", "hands", "battlefield"])
+    {
+        return Some(AndPreservation::SharedSubject);
     }
     if is_card_type_list_boundary(current, remaining) {
         return Some(AndPreservation::CardTypeList);
@@ -876,10 +885,10 @@ fn is_card_type_list_boundary(current: &[OwnedLexToken], remaining: &[OwnedLexTo
         return false;
     }
     let current_last_type = last_non_quantifier_word(current).is_some_and(is_card_type_word);
-    current_last_type
-        && contains_any(current, CARD_TYPE_WORDS)
-        && (primitives::find_prefix(current, || primitives::comma().void()).is_some()
-            || contains_any(current, &["or", "and/or"]))
+    // A two-member type list has no earlier comma or "or". Its shared
+    // card/spell/permanent noun still proves one object operand, including
+    // relative clauses such as "cards ... that were put there this turn".
+    current_last_type && contains_any(current, CARD_TYPE_WORDS)
 }
 
 /// Preserve the final conjunction in a serial creature-subtype subject.

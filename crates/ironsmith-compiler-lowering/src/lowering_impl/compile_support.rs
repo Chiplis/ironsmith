@@ -749,6 +749,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
                     bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
                 }
                 TurnHistoryCount::TokensCreated(player)
+                | TurnHistoryCount::PlayersAttackedThisCombat(player)
                 | TurnHistoryCount::OpponentsAttacked(player)
                 | TurnHistoryCount::PlayersDiscarded(player)
                 | TurnHistoryCount::PlayersDealtDamage(player)
@@ -780,7 +781,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
                     bind_relative_iterated_player_filter_to_player_filter(player, player_filter);
                     bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
                 }
-                TurnHistoryCount::DamageDealtToSource => {}
+                TurnHistoryCount::DamageDealtToSource | TurnHistoryCount::DamageDealtBySource => {}
             }
         }
         Value::CreaturesDiedThisTurnControlledBy(player)

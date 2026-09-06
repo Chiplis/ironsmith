@@ -844,7 +844,7 @@ pub(crate) fn describe_source_reference_surface_text(
                 "this saga" => "this Saga".to_string(),
                 "this siege" => "this Siege".to_string(),
                 "this vehicle" => "this Vehicle".to_string(),
-                _ => surface.display_text(),
+                _ => surface.display_text().trim_end_matches('.').to_string(),
             }
         }
         _ => surface.display_text(),
@@ -2524,9 +2524,14 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
         Some(crate::continuous::Modification::SetCardTypes(card_types)) => (card_types, true),
         _ => return None,
     };
-    if !card_types.contains(&CardType::Creature) || !effect.runtime_modifications.is_empty() {
+    let removes_all_abilities = !effect.runtime_modifications.is_empty()
+        && effect.runtime_modifications.iter().all(|modification| matches!(modification,
+            crate::effects::continuous::RuntimeModification::RemoveAllAbilities));
+    if !card_types.contains(&CardType::Creature) || (!effect.runtime_modifications.is_empty() && !removes_all_abilities) {
         return None;
     }
+    let mut name_override = None;
+    let mut supertypes = Vec::new();
 
     let mut power = None;
     let mut toughness = None;
@@ -2537,6 +2542,8 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
     let mut has_conditioned_quoted_ability = false;
     for modification in &effect.additional_modifications {
         match modification {
+            crate::continuous::Modification::SetName(name) => name_override = Some(name),
+            crate::continuous::Modification::AddSupertypes(types) => supertypes.extend(types.iter().copied()),
             crate::continuous::Modification::SetPowerToughness {
                 power: candidate_power,
                 toughness: candidate_toughness,
@@ -2708,6 +2715,7 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
     preserves_land_types = preserves_land_types || target_text.eq_ignore_ascii_case("this land");
 
     let mut descriptor = Vec::new();
+    descriptor.extend(supertypes.iter().map(|supertype| supertype.to_string().to_lowercase()));
     if let Some(colors) = colors {
         descriptor.push(describe_token_color_words(colors, false));
     }
@@ -2753,7 +2761,7 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
         matches!(target_lower.as_str(), "it" | "this" | "this permanent")
             && effect.type_retention_surface.is_none()
             && !preserves_land_types;
-    let redundant_creature_noun = !subtypes.is_empty()
+    let redundant_creature_noun = name_override.is_none() && !subtypes.is_empty()
         && extra_card_types.is_empty()
         && (target_lower.contains("creature") || pronoun_creature_backref)
         && (pronoun_creature_backref
@@ -2919,6 +2927,12 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
     } else {
         return None;
     };
+    if let Some(name) = name_override {
+        text.push_str(&format!(" named {}", capitalize_first(name)));
+    }
+    if removes_all_abilities {
+        text.push_str(if plural_target { " and lose all abilities" } else { " and loses all abilities" });
+    }
     if !ability_text.is_empty() {
         let ability_connector = if text.contains(" with base power and toughness ")
             || text.contains(" with power and toughness each equal to ")
@@ -5354,6 +5368,7 @@ fn describe_prior_result_active_action(action: crate::effect::PriorEffectAction)
         crate::effect::PriorEffectAction::PhasedOut => "phase out",
         crate::effect::PriorEffectAction::Prevented => "prevent",
         crate::effect::PriorEffectAction::PutOntoBattlefield => "put onto the battlefield",
+        crate::effect::PriorEffectAction::PutIntoGraveyard => "put into a graveyard",
         crate::effect::PriorEffectAction::Removed => "remove",
         crate::effect::PriorEffectAction::Returned => "return",
         crate::effect::PriorEffectAction::Revealed => "reveal",
@@ -5422,6 +5437,11 @@ fn describe_prior_effect_result_surface(
             && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
     });
     filter.set_prior_effect_action_surface(None);
+    // Casting describes a spell on the stack, including typed spells.
+    if surface.action == crate::effect::PriorEffectAction::Cast {
+        filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
+        filter.zone = Some(Zone::Stack);
+    }
     let base = if filter.stack_kind == Some(crate::filter::StackObjectKind::Spell)
         && filter.zone.is_none()
         && filter.card_types.is_empty()
@@ -5486,12 +5506,16 @@ fn describe_prior_effect_result_surface(
         return format!("{actor} {action} {object} this way");
     }
 
+    if surface.put_into_exile_surface && surface.action == crate::effect::PriorEffectAction::Exiled {
+        let verb = if surface.quantifier == crate::effect::PriorEffectResultQuantifier::OneOrMore { "are" } else { "is" };
+        return format!("{object} {verb} put into exile this way");
+    }
     let copula = match (
         surface.action,
         surface.quantifier == crate::effect::PriorEffectResultQuantifier::OneOrMore,
     ) {
-        (crate::effect::PriorEffectAction::PutOntoBattlefield, false) => "is",
-        (crate::effect::PriorEffectAction::PutOntoBattlefield, true) => "are",
+        (crate::effect::PriorEffectAction::PutOntoBattlefield | crate::effect::PriorEffectAction::PutIntoGraveyard, false) => "is",
+        (crate::effect::PriorEffectAction::PutOntoBattlefield | crate::effect::PriorEffectAction::PutIntoGraveyard, true) => "are",
         (_, false) => "was",
         (_, true) => "were",
     };

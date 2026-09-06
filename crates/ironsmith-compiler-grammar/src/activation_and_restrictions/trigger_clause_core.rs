@@ -973,6 +973,8 @@ const THIS_WAY_EXACT_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["thi
 const SHARED_SUBJECT_ETB_OR_COMBAT_DAMAGE_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
         & [
+            &["or", "deal", "combat", "damage"],
+            &["or", "deals", "combat", "damage"],
             &["the", "battlefield", "or", "deal", "combat", "damage"],
             &["the", "battlefield", "or", "deals", "combat", "damage"],
         ]

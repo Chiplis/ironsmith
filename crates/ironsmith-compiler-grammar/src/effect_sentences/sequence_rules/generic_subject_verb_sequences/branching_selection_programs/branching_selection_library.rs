@@ -361,10 +361,13 @@ pub(crate) fn compose_look_at_top_may_put_onto_battlefield_or_into_hand_rest_bot
     chooser: PlayerAst,
     mut battlefield_filter: ObjectFilter,
     tapped: bool,
+    order: crate::cards::builders::LibraryBottomOrderAst,
 ) -> Vec<EffectAst> {
     let looked_tag = helper_tag_for_tokens(look_tokens, if reveal { "revealed" } else { "looked" });
     let battlefield_tag = helper_tag_for_tokens(choose_tokens, "chosen");
-    let hand_tag = helper_tag_for_tokens(choose_tokens, "chosen_hand");
+    // Only one branch selects a card. Both publish the same chosen set so
+    // the remainder excludes exactly that selection.
+    let hand_tag = battlefield_tag.clone();
 
     battlefield_filter.zone = Some(Zone::Library);
     battlefield_filter
@@ -378,21 +381,6 @@ pub(crate) fn compose_look_at_top_may_put_onto_battlefield_or_into_hand_rest_bot
     hand_filter.zone = Some(Zone::Library);
 
     let it = || TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None);
-    let mut in_battlefield_choice_filter = ObjectFilter::default();
-    in_battlefield_choice_filter
-        .tagged_constraints
-        .push(TaggedObjectConstraint {
-            tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
-            relation: TaggedOpbjectRelation::SameStableId,
-        });
-    let mut in_hand_choice_filter = ObjectFilter::default();
-    in_hand_choice_filter
-        .tagged_constraints
-        .push(TaggedObjectConstraint {
-            tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
-            relation: TaggedOpbjectRelation::SameStableId,
-        });
-
     let mut look =
         EffectAst::subject_verb_look_at_top_cards(look_player, count, crate::tag::TagRef::of(looked_tag.clone()));
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -443,28 +431,12 @@ pub(crate) fn compose_look_at_top_may_put_onto_battlefield_or_into_hand_rest_bot
                 }),
             ],
         }),
-        EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
-            tag: crate::tag::TagRef::of(looked_tag),
-            effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-                predicate: PredicateAst::TaggedMatches(
-                    crate::tag::TagRef::of(battlefield_tag),
-                    in_battlefield_choice_filter,
-                ),
-                if_true: Vec::new(),
-                if_false: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-                    predicate: PredicateAst::TaggedMatches(crate::tag::TagRef::of(hand_tag), in_hand_choice_filter),
-                    if_true: Vec::new(),
-                    if_false: vec![EffectAst::subject_verb_move_to_zone(
-                        it(),
-                        Zone::Library,
-                        false,
-                        ReturnControllerAst::Preserve,
-                        false,
-                        None,
-                    )],
-                })],
-            })],
-        }),
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            crate::tag::TagRef::of(looked_tag),
+            Some(crate::tag::TagRef::of(battlefield_tag)),
+            order,
+            look_player,
+        ),
     ]
 }
 

@@ -1719,7 +1719,8 @@ pub fn with_where_x_surface_hints(mut value: Value, binding_tokens: &[OwnedLexTo
         value.unhinted(),
         Value::TotalPower(_) | Value::TotalToughness(_) | Value::TotalManaValue(_)
     );
-    value = value.with_surface_hint(ValueSurfaceHint::WhereXIs);
+    value = value.without_surface_hint(ValueSurfaceHint::EqualTo)
+        .with_surface_hint(ValueSurfaceHint::WhereXIs);
     if counts_objects_with_an_ability
         && words
             .iter()
@@ -2799,7 +2800,16 @@ fn parse_effect_sentences_from_sentence_inputs(
         );
         preserve_plural_counter_antecedent(&parse_plan.tokens, &mut sentence_effects);
         let sentence_words = crate::lexer::token_word_refs(&parse_plan.tokens);
-        if crate::word_primitives::sequence_occurs(&sentence_words, &["then"]) {
+        let counter_verb = sentence_words.iter().position(|word| matches!(*word, "put" | "distribute"));
+        let counter_follows_then = counter_verb.map_or_else(
+            || sentence_words.contains(&"then"),
+            |verb| sentence_words[..verb].iter().rev()
+                .find(|word| matches!(**word, "then" | "and"))
+                // With no preceding connector, retain a trailing "then"
+                // joining the counter placement to its following action.
+                .map_or_else(|| sentence_words.contains(&"then"), |word| *word == "then"),
+        );
+        if counter_follows_then {
             annotate_counter_followup_surface(
                 &mut sentence_effects,
                 ValueSurfaceHint::CounterFollowupThen,
@@ -3447,6 +3457,9 @@ pub(super) fn parse_each_player_coin_face_sequence(
 fn parse_complete_simple_draw_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    if effect_grammar::for_each_shapes::parse_participant_clause_shape(tokens).is_some() {
+        return Ok(None);
+    }
     // `You may draw ... if ...` has a permission envelope outside the
     // trailing condition. The standalone draw shortcut otherwise parses
     // `you may` as an ordinary subject and silently drops the optionality.
@@ -3470,6 +3483,11 @@ fn parse_complete_simple_draw_sentence(
     }) else {
         return Ok(None);
     };
+    if tokens[..draw_idx].iter().any(|token| token.kind == TokenKind::Comma
+        || token.is_any_word(&["if", "unless", "when", "whenever", "until", "then", "may"]))
+    {
+        return Ok(None);
+    }
     let subject = if draw_idx == 0 {
         None
     } else {
@@ -3586,6 +3604,9 @@ pub(crate) fn parse_complete_simple_subject_verb_sentence(
 pub(super) fn parse_complete_simple_mill_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    if effect_grammar::for_each_shapes::parse_participant_clause_shape(tokens).is_some() {
+        return Ok(None);
+    }
     // "N target players each mill" is the target-players loop's.
     if effect_grammar::for_each_shapes::parse_for_each_target_players_shape(tokens)
         .is_some_and(|shape| crate::util::parse_target_phrase(shape.target_tokens).is_ok())
@@ -3618,6 +3639,7 @@ pub(super) fn parse_complete_simple_mill_sentence(
     if super::lex_chain_helpers::has_authored_comma_then_surface_lexed(tokens)
         || super::lex_chain_helpers::split_segments_on_comma_then_lexed(vec![tokens]).len() > 1
         || super::lex_chain_helpers::split_effect_chain_on_and_lexed(tokens).len() > 1
+        || super::lex_chain_helpers::split_segments_on_comma_effect_head_lexed(vec![tokens]).len() > 1
     {
         return Ok(None);
     }
@@ -3627,6 +3649,11 @@ pub(super) fn parse_complete_simple_mill_sentence(
     }) else {
         return Ok(None);
     };
+    if tokens[..mill_idx].iter().any(|token| token.kind == TokenKind::Comma
+        || token.is_any_word(&["may", "if", "unless", "when", "whenever", "then"]))
+    {
+        return Ok(None);
+    }
     let subject = if mill_idx == 0 {
         None
     } else {
@@ -4046,6 +4073,18 @@ fn parse_complete_serial_create_statement(
 pub(crate) fn parse_complete_create_statement(
     sentence: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if effect_grammar::delayed_step_shapes::parse_delayed_timing_marker_shape(sentence)
+        .is_some_and(|marker| marker.start_word > 0)
+    {
+        return Ok(None);
+    }
+    // A verb inside a granted ability belongs to the quoted rule, not to
+    // this statement's actor. Keep the enclosing grant intact.
+    if let Some(create_idx) = sentence.iter().position(|token| token.is_any_word(&["create", "creates"]))
+        && (sentence[..create_idx].iter().filter(|token| token.kind == TokenKind::Quote).count() % 2 == 1
+            || sentence[..create_idx].iter().any(|token| token.is_any_word(&["choose", "chooses"]))) {
+        return Ok(None);
+    }
     // A die-roll row ("10—20 | Create ...") is the result-prefix statement's; read alone, the range was lost.
     if crate::grammar::structure::split_leading_numeric_result_prefix_lexed(
         crate::util::trim_edge_punctuation_tokens(sentence),
@@ -4208,10 +4247,17 @@ pub(crate) fn parse_complete_create_statement(
         } else {
             crate::util::parse_subject(&parse_tokens[..verb_idx])
         };
-        (
-            super::creation_handlers::parse_create(&parse_tokens[verb_idx..], Some(subject))?,
-            quantified_opponents,
-        )
+        let created = super::creation_handlers::parse_create(&parse_tokens[verb_idx..], Some(subject))?;
+        let created = if !quantified_opponents
+            && let Some(owner) = crate::grammar::effects::become_shapes::parse_controller_owner_subject_tokens(&parse_tokens[..verb_idx])
+            && !matches!(&owner.target, TargetAst::Tagged(tag, _) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
+            && !matches!(&owner.target, TargetAst::Object(filter, ..) if filter.tagged_constraints.iter().any(|constraint|
+                constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                    || constraint.tag.as_str() == crate::tag::CompilerReferenceTag::Triggering.as_str()))
+        {
+            EffectAst::Sequence { effects: vec![EffectAst::subject_verb_target_only(owner.target), created] }
+        } else { created };
+        (created, quantified_opponents)
     };
 
     let mut effects = vec![parsed];
@@ -4239,7 +4285,10 @@ pub(super) fn parse_complete_quantified_discard_statement(
     if effect_grammar::for_each_shapes::parse_participant_clause_shape(sentence).is_some() {
         return Ok(None);
     }
-    let Some((verb, verb_idx)) = super::find_verb(sentence) else {
+    let Some((verb, verb_word_idx)) = super::find_verb(sentence) else {
+        return Ok(None);
+    };
+    let Some(verb_idx) = crate::lexer::TokenWordView::new(sentence).map_word_to_token_start(verb_word_idx) else {
         return Ok(None);
     };
     if verb_idx == 0 || !matches!(verb, super::chain_carry::Verb::Discard) {
@@ -4265,9 +4314,20 @@ pub(super) fn parse_complete_quantified_discard_statement(
 }
 
 #[inline(never)]
-pub(super) fn parse_complete_get_pump_statement(
+pub(crate) fn parse_complete_get_pump_statement(
     sentence: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    if sentence.first().is_some_and(|token| token.is_any_word(&["if", "unless", "instead"])) {
+        return Ok(None);
+    }
+    if effect_grammar::clause_primitive_shapes::parse_combat_requirement_shape(sentence).is_some() {
+        return Ok(None);
+    }
+    // A comma-then continuation belongs to the effect-chain reader, which
+    // preserves both the pump and the following action.
+    if super::lex_chain_helpers::has_explicit_comma_then_boundary_lexed(sentence) {
+        return Ok(None);
+    }
     // A pump coordinated with an ability grant is the compound gain statement's.
     if effect_grammar::gain_ability_shapes::parse_get_then_ability_shape(sentence).is_some()
         || effect_grammar::gain_ability_shapes::parse_gain_then_get_shape(sentence).is_some()
@@ -4284,7 +4344,10 @@ pub(super) fn parse_complete_get_pump_statement(
     {
         return Ok(None);
     }
-    let Some((verb, verb_idx)) = super::find_verb(sentence) else {
+    let Some((verb, verb_word_idx)) = super::find_verb(sentence) else {
+        return Ok(None);
+    };
+    let Some(verb_idx) = crate::lexer::TokenWordView::new(sentence).map_word_to_token_start(verb_word_idx) else {
         return Ok(None);
     };
     if verb_idx == 0
@@ -4315,6 +4378,15 @@ pub(super) fn parse_complete_get_pump_statement(
 pub(super) fn parse_complete_become_statement(
     sentence: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    if super::chain_carry::parse_leading_player_may_lexed(sentence).is_some() {
+        return Ok(None);
+    }
+    if effect_grammar::dispatch_entry_shapes::parse_where_x_usage_shape_tokens(sentence).is_some() {
+        return Ok(None);
+    }
+    if effect_grammar::gain_ability_shapes::parse_simple_gain_ability_shape(sentence).is_some() {
+        return Ok(None);
+    }
     // "can't become ..." is the can't statement's.
     if crate::lexer::parser_token_word_refs(sentence)
         .iter()
@@ -4329,7 +4401,10 @@ pub(super) fn parse_complete_become_statement(
         // not to an object target named by the words before `becomes`.
         return Ok(None);
     }
-    let Some((verb, verb_idx)) = super::find_verb(sentence) else {
+    let Some((verb, verb_word_idx)) = super::find_verb(sentence) else {
+        return Ok(None);
+    };
+    let Some(verb_idx) = crate::lexer::TokenWordView::new(sentence).map_word_to_token_start(verb_word_idx) else {
         return Ok(None);
     };
     if verb_idx == 0
@@ -4351,6 +4426,36 @@ pub(super) fn parse_complete_become_statement(
 pub(super) fn parse_complete_compound_gain_statement(
     sentence: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if crate::grammar::structure::split_leading_numeric_result_prefix_lexed(sentence).is_some() {
+        return Ok(None);
+    }
+    if sentence.first().is_some_and(|token| token.is_word("instead"))
+        || effect_grammar::split_conditional_sentence_family_head_lexed(sentence).is_some() {
+        return Ok(None);
+    }
+    // Independently conditioned modifiers retain one predicate per member.
+    // Taking the final trailing-if as the whole sentence's envelope would
+    // accidentally require both conditions for the first modifier.
+    if sentence.iter().filter(|token| token.is_word("if")).count() > 1
+        && let ParseOutcome::Match(matched) = effect_grammar::coordination::recognize_coordination(sentence)
+        && matched.value.members.len() > 1
+    {
+        let plan = matched.value;
+        let mut members = Vec::new();
+        for member in &plan.members {
+            let Some(trailing) = crate::grammar::structure::split_trailing_if_clause_lexed(member.tokens) else {
+                return Ok(None);
+            };
+            if !super::find_verb(trailing.leading_tokens).is_some_and(|(verb, _)| matches!(verb,
+                crate::cards::builders::Verb::Get | crate::cards::builders::Verb::Gain | crate::cards::builders::Verb::Lose
+            )) { return Ok(None); }
+            let effects = super::parse_effect_sentence_lexed(trailing.leading_tokens)?;
+            members.push(EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
+                predicate: trailing.predicate, effects,
+            }));
+        }
+        return Ok(plan.into_ast(members).map(|coordination| vec![EffectAst::Coordination(coordination)]));
+    }
     if let Some(trailing_if) = crate::grammar::structure::split_trailing_if_clause_lexed(sentence)
         && (effect_grammar::gain_ability_shapes::parse_get_then_ability_shape(
             trailing_if.leading_tokens,
@@ -4370,6 +4475,9 @@ pub(super) fn parse_complete_compound_gain_statement(
     }
     if effect_grammar::gain_ability_shapes::parse_get_then_ability_shape(sentence).is_none()
         && effect_grammar::gain_ability_shapes::parse_gain_then_get_shape(sentence).is_none()
+        && !effect_grammar::gain_ability_shapes::parse_simple_gain_ability_shape(sentence)
+            .is_some_and(|shape| effect_grammar::gain_ability_shapes::subject_contains_gain_base_pt(
+                &crate::lexer::parser_token_word_refs(shape.subject_tokens)))
     {
         return Ok(None);
     }
@@ -4444,6 +4552,11 @@ pub(super) fn parse_flat_independent_statements(
     let authored_comma_then = sentences
         .iter()
         .any(|sentence| super::lex_chain_helpers::has_authored_comma_then_surface_lexed(sentence));
+    if sentences.len() > 1 && authored_comma_then {
+        // Coordination belongs to its source sentence. The boundary-aware
+        // composer must retain it rather than extending it over the document.
+        return Ok(None);
+    }
     let statements =
         super::lex_chain_helpers::split_segments_on_comma_then_lexed(sentences.to_vec());
     if statements.len() < 2 {
@@ -4671,9 +4784,7 @@ fn parse_composable_typed_statements(
             {
                 return Ok(None);
             }
-            vec![super::zone_counter_helpers::parse_put_counters(
-                plan.body_tokens,
-            )?]
+            parse_single_put_counters_effect_chain(plan.body_tokens)?
         };
 
         Ok(plan
@@ -4782,6 +4893,7 @@ fn parse_composable_typed_statements(
         let statement_words = crate::lexer::parser_token_word_refs(statement_tokens);
         if statement_words.first() == Some(&"put")
             && crate::word_primitives::sequence_occurs(&statement_words, &["counter"])
+            && super::zone_counter_helpers::has_counter_placement_head(statement_tokens)
         {
             let comma_then = LexedClause::new(statement_tokens).split_comma_then();
             let effect = if let Some((head, tail)) = comma_then {
@@ -4916,6 +5028,9 @@ pub(crate) fn parse_complete_composable_fight_program(
 fn parse_direct_typed_coordination(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if effect_grammar::for_each_shapes::parse_participant_clause_shape(tokens).is_some() {
+        return Ok(None);
+    }
     let plan = match effect_grammar::coordination::recognize_coordination(tokens) {
         crate::recognition::ParseOutcome::Match(matched) => matched.value,
         crate::recognition::ParseOutcome::NoMatch => return Ok(None),
@@ -4943,7 +5058,10 @@ fn parse_direct_typed_coordination(
     let mut effects = Vec::with_capacity(plan.members.len());
     for member in &plan.members {
         let member_tokens = crate::util::trim_edge_punctuation_tokens(member.tokens);
-        let Some((verb, verb_idx)) = super::find_verb(member_tokens) else {
+        let Some((verb, verb_word_idx)) = super::find_verb(member_tokens) else {
+            return Ok(None);
+        };
+        let Some(verb_idx) = crate::lexer::TokenWordView::new(member_tokens).map_word_to_token_start(verb_word_idx) else {
             return Ok(None);
         };
         let subject =
@@ -5018,6 +5136,11 @@ pub(super) fn parse_single_put_counters_effect_chain(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    if super::lex_chain_helpers::has_authored_comma_then_surface_lexed(tokens)
+        || super::lex_chain_helpers::split_effect_chain_on_and_lexed(tokens).len() > 1
+    {
+        return super::parse_effect_sentences_lexed(tokens);
+    }
     if !tokens.first().is_some_and(|token| token.is_word("put"))
         || !tokens
             .iter()
@@ -7178,6 +7301,87 @@ pub fn mark_last_destroy_creature_destroyed_this_way_surface(effects: &mut [Effe
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn participant_actions_keep_the_opponent_iteration() {
+        for text in ["Each opponent draws a card.", "Each opponent discards a card and loses 2 life."] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let effects = super::parse_effect_sentences_lexed(&tokens).unwrap();
+            assert!(format!("{effects:?}").contains("ForEachOpponent"), "{text}: {effects:#?}");
+        }
+    }
+
+    #[test]
+    fn coordinated_modifiers_keep_independent_trailing_conditions() {
+        for text in [
+            "Creatures your opponents control get -1/-0 until end of turn if {U} was spent to cast this spell, and creatures you control get +1/+0 until end of turn if {R} was spent to cast this spell.",
+            "Creatures your opponents control lose flying until end of turn if {G} was spent to cast this spell, and creatures you control gain flying until end of turn if {U} was spent to cast this spell.",
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let effects = super::parse_effect_sentences_lexed(&tokens).unwrap();
+            assert!(matches!(effects.as_slice(), [crate::cards::builders::EffectAst::Coordination(_)]), "{effects:#?}");
+        }
+    }
+
+    #[test]
+    fn dynamic_pump_does_not_consume_a_later_optional_fight() {
+        let tokens = crate::lexer::lex_line("Choose up to one target creature you don't control with flying. This creature gets +X/+0 until end of turn, where X is the number of creature cards in your graveyard, then you may have this creature fight that creature.", 0).unwrap();
+        let effects = super::parse_effect_sentences_lexed(&tokens).unwrap();
+        let debug = format!("{effects:#?}");
+        assert!(debug.contains("Fight"), "{debug}");
+        assert!(debug.contains("May"), "{debug}");
+    }
+
+    #[test]
+    fn optional_viewed_card_fallback_preserves_remainder_order() {
+        for (order, expected) in [("in a random order", "Random"), ("in any order", "ChooserChooses")] {
+            let text = format!("Look at the top five cards of your library. You may put a creature card from among them onto the battlefield tapped. If you don't, put a card from among them into your hand. Put the rest on the bottom of your library {order}.");
+            let tokens = crate::lexer::lex_line(&text, 0).unwrap();
+            let effects = super::parse_effect_sentences_lexed(&tokens).unwrap();
+            let debug = format!("{effects:#?}");
+            assert!(debug.contains("PutTaggedRemainderOnBottomOfLibrary"), "{debug}");
+            assert!(debug.contains(expected), "{debug}");
+        }
+    }
+
+    #[test]
+    fn return_sequence_keeps_the_discard_followup() {
+        for text in [
+            "Return target permanent to its owner's hand, then that player discards two cards.",
+            "Return target creature card from your graveyard to your hand, then discard a card.",
+        ] {
+        let tokens = crate::lexer::lex_line(
+            text, 0,
+        ).unwrap();
+        let effects = super::parse_effect_sentences_lexed(&tokens).unwrap();
+        let debug = format!("{effects:#?}");
+        assert!(debug.contains("Return"), "{debug}");
+        assert!(debug.contains("Discard"), "{debug}");
+        }
+    }
+
+    #[test]
+    fn conditional_counter_document_keeps_the_otherwise_branch() {
+        let tokens = crate::lexer::lex_line(
+            "If this creature is suspected, put two +1/+1 counters on it. Otherwise, suspect it.", 0,
+        ).unwrap();
+        let effects = super::parse_effect_sentences_lexed(&tokens).unwrap();
+        let debug = format!("{effects:#?}");
+        assert!(debug.contains("PutCounters"), "{debug}");
+        assert!(debug.contains("action: Suspect("), "{debug}");
+    }
+
+    #[test]
+    fn complete_pump_defers_to_a_following_action() {
+        let tokens = crate::lexer::lex_line(
+            "This creature gets +2/+1 until end of turn, then scry 2.", 0,
+        ).unwrap();
+        assert!(super::parse_complete_get_pump_statement(&tokens).unwrap().is_none());
+        let effects = super::parse_effect_sentences_lexed(&tokens).unwrap();
+        let debug = format!("{effects:#?}");
+        assert!(debug.contains("Pump"), "{debug}");
+        assert!(debug.contains("Scry"), "{debug}");
+    }
+
     use crate::cards::builders::TurnEventPredicateAst;
     use crate::cards::builders::SourcePredicateAst;
     use crate::cards::builders::PermissionEffectAst;
@@ -10157,7 +10361,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             count_value,
             ..
         })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary {
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone {
             filter,
             count,
             count_value,
@@ -11654,6 +11858,7 @@ pub fn try_apply_token_copy_followup(
                     has_haste,
                     enters_tapped,
                     enters_attacking,
+                    entry_tapped_attacking_followup,
                     attack_target_player_or_planeswalker_controlled_by,
                     attack_target_player_only,
                     exile_at_end_of_combat,
@@ -11669,6 +11874,7 @@ pub fn try_apply_token_copy_followup(
                     has_haste,
                     enters_tapped,
                     enters_attacking,
+                    entry_tapped_attacking_followup,
                     attack_target_player_or_planeswalker_controlled_by,
                     attack_target_player_only,
                     exile_at_end_of_combat,
@@ -11688,11 +11894,13 @@ pub fn try_apply_token_copy_followup(
                     TokenCopyFollowup::EnterTappedAndAttacking => {
                         *enters_tapped = true;
                         *enters_attacking = true;
+                        *entry_tapped_attacking_followup = true;
                         true
                     }
                     TokenCopyFollowup::EnterTappedAndAttackingThatPlayer => {
                         *enters_tapped = true;
                         *enters_attacking = true;
+                        *entry_tapped_attacking_followup = true;
                         *attack_target_player_or_planeswalker_controlled_by = Some(PlayerAst::That);
                         *attack_target_player_only = true;
                         true

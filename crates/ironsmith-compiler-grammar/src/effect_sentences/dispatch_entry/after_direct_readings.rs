@@ -287,6 +287,10 @@ fn read_simple_gain_ability(
         && let Some(shape) =
             effect_grammar::gain_ability_shapes::parse_simple_gain_ability_shape(tokens)
         && shape.complete
+        && !shape.subject_tokens.first().is_some_and(|token| token.is_any_word(
+            &["if", "unless", "when", "whenever", "at", "as", "then", "instead"]
+        ))
+        && !shape.subject_tokens.iter().any(|token| token.is_any_word(&["has", "have", "get", "gets"]))
         && !crate::word_primitives::sequence_occurs(
             &crate::lexer::parser_token_word_refs(tokens),
             &["as", "long", "as"],

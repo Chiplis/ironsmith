@@ -94,6 +94,8 @@ pub(super) fn filter_keyword_constraint_for_words(
         // example, `Mutate {4}{B}`), while ObjectFilter marker matching is
         // deliberately word-aware.  Keep the semantic marker cost-agnostic.
         Some(Marker("mutate"))
+    } else if permission_shapes::exact_words(words, &["suspend"]) {
+        Some(Marker("suspend"))
     } else if permission_shapes::exact_words(words, &["toxic"]) {
         Some(Marker("toxic"))
     } else if permission_shapes::exact_words(words, &["doctor's", "companion"])

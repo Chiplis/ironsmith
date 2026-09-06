@@ -1923,6 +1923,9 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
+                name_override: None,
+                add_supertypes: Vec::new(),
+                remove_all_abilities: false,
                 power,
                 toughness,
                 target,

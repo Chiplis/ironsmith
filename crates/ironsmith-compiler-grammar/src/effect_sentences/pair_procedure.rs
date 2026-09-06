@@ -134,6 +134,12 @@ struct Shape {
 /// and equal readings are one; two readings that disagree are an ambiguity.
 const PAIR_SHAPES: &[Shape] = &[
     Shape {
+        id: RuleId::new("top-zone-choice-complement"),
+        head: HeadDiscriminator::words(&["target", "you"]),
+        consumed: 2,
+        read: |sentences, idx| statements(sentences, idx, parse_top_zone_choice_complement(sentences, idx)),
+    },
+    Shape {
         id: RuleId::new("participant-loot"),
         head: HeadDiscriminator::words(&["you"]),
         consumed: 2,
@@ -682,4 +688,53 @@ pub(super) fn finish(group: PairGroup) -> Vec<EffectAst> {
         | Pair::OpponentsSacrificeOrDiscardDamage(effects)
         | Pair::FixedShape(effects) => effects,
     }
+}
+
+/// A choice inside a bounded ordered-zone pool, followed by two dispositions.
+/// Capture the pool before either move so the complement cannot accidentally
+/// include older cards in the graveyard.
+fn parse_top_zone_choice_complement(
+    sentences: &[SentenceInput], idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::cards::builders::ObjectChoiceEffectAst;
+    use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
+    let Some(first) = sentences.get(idx) else { return Ok(None); };
+    let Some(second) = sentences.get(idx + 1) else { return Ok(None); };
+    let words = crate::lexer::token_word_refs(first.lowered());
+    let (chooser, head) = if words.starts_with(&["target", "opponent", "chooses"]) {
+        (PlayerAst::TargetOpponent, 3)
+    } else if words.starts_with(&["target", "player", "chooses"]) {
+        (PlayerAst::Target, 3)
+    } else if words.starts_with(&["you", "choose"]) {
+        (PlayerAst::You, 2)
+    } else { return Ok(None); };
+    let tail = &words[head..];
+    if tail.len() != 9 || tail[..4] != ["one", "of", "the", "top"]
+        || tail[5..] != ["cards", "of", "your", "graveyard"] { return Ok(None); }
+    let Some(amount) = crate::util::parse_number_word_u32(tail[4]) else { return Ok(None); };
+    let followup = crate::lexer::token_word_refs(second.lowered());
+    if !crate::word_primitives::parse_any_sequence_complete(&followup, &[
+        &["exile", "that", "card", "and", "put", "the", "other", "one", "into", "your", "hand"],
+        &["exile", "that", "card", "and", "put", "the", "rest", "into", "your", "hand"],
+    ]) { return Ok(None); }
+    let pool = helper_tag_for_tokens(first.lowered(), "ordered_zone_pool");
+    let chosen = helper_tag_for_tokens(first.lowered(), "chosen_from_pool");
+    let mut remainder = ObjectFilter::tagged(crate::tag::TagRef::of(pool.clone()));
+    remainder.zone = Some(Zone::Graveyard);
+    remainder.tagged_constraints.push(TaggedObjectConstraint {
+        tag: chosen.clone().into(), relation: TaggedOpbjectRelation::IsNotTaggedObject,
+    });
+    Ok(Some(vec![
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone {
+            filter: ObjectFilter::default().in_zone(Zone::Graveyard).owned_by(PlayerFilter::You),
+            count: ChoiceCount::exactly(amount as usize), count_value: None,
+            player: PlayerAst::You, tag: crate::tag::TagRef::of(pool.clone()),
+        }),
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+            filter: ObjectFilter::tagged(crate::tag::TagRef::of(pool)), count: ChoiceCount::exactly(1),
+            player: chooser, tag: crate::tag::TagRef::of(chosen.clone()), zone: Zone::Graveyard,
+        }),
+        EffectAst::subject_verb_move_to_zone(TargetAst::Tagged(crate::tag::TagRef::of(chosen), None), Zone::Exile, false, ReturnControllerAst::Preserve, false, None),
+        EffectAst::subject_verb_move_to_zone(TargetAst::Object(remainder, None, None), Zone::Hand, false, ReturnControllerAst::Preserve, false, None),
+    ]))
 }

@@ -339,6 +339,11 @@ fn read_each_player_may_discard_hand_and_draw(document: &Document<'_>) -> Result
     Ok(None)
 }
 fn read_conditional_put_counters(document: &Document<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // This reader owns one conditional counter statement. Later sentences
+    // (including Otherwise) belong to the document's control-flow composer.
+    if document.sentences.len() != 1 {
+        return Ok(None);
+    }
     let tokens = document.tokens;
     if effect_grammar::split_conditional_sentence_family_head_lexed(tokens).is_some() {
             let words = crate::lexer::parser_token_word_refs(tokens);
@@ -601,6 +606,28 @@ fn read_for_each_participant(document: &Document<'_>) -> Result<Option<Vec<Effec
     let [sentence] = sentences.as_slice() else {
         return Ok(None);
     };
+    if let Some(effects) = super::subject_verb_primitives::parse_sentence_each_player_may_reveal_selected_cards_in_their_hand(
+        SubjectVerbPrimitiveClause::new(sentence),
+    )? {
+        return Ok(Some(effects));
+    }
+    // An explicitly named actor after a coordination boundary starts a new
+    // participant scope. Let chain composition keep it outside this loop.
+    if !(sentence.first().is_some_and(|token| token.is_word("for"))
+        && sentence.iter().any(|token| token.is_word("who")))
+        && let crate::recognition::ParseOutcome::Match(plan) =
+        effect_grammar::coordination::recognize_coordination(sentence)
+        && plan.value.members.iter().skip(1).any(|member| {
+            member.head.is_some_and(|head| matches!(
+                head.actor,
+                effect_grammar::typed_clause_heads::ClauseActorHeadAst::Controller
+                    | effect_grammar::typed_clause_heads::ClauseActorHeadAst::Player
+                    | effect_grammar::typed_clause_heads::ClauseActorHeadAst::Iterated
+            ))
+        })
+    {
+        return Ok(None);
+    }
     // A choice complement ("each player chooses ... then sacrifices the rest") is the complement statement's.
     if super::dispatch_inner::is_choice_complement_shape(sentence) {
         return Ok(None);

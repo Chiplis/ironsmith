@@ -348,11 +348,7 @@ fn parse_activated_line_with_raw_remaining(
             )
             && shape.kind == crate::grammar::effects::chain_splitting::ChainVerbKind::Get
         {
-            crate::effect_sentences::parse_get_pump_clause(
-                shape.subject_tokens,
-                shape.action_tokens,
-                trimmed_effect_tokens,
-            )?
+            crate::effect_sentences::parse_complete_get_pump_statement(trimmed_effect_tokens)?
         } else {
             None
         }

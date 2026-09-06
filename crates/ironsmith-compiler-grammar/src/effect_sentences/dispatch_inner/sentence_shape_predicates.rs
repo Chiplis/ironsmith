@@ -318,7 +318,7 @@ fn parse_attack_or_block_then_prohibition_sentence(
 /// creature target in the same sentence. A plain `blocking`/`blocked` filter
 /// only describes combat status; it cannot preserve which combat the target
 /// participates in.
-fn parse_target_relative_combat_set_sentence(
+pub(super) fn parse_target_relative_combat_set_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words = crate::lexer::token_word_refs(tokens);

@@ -581,6 +581,17 @@ pub(super) fn recognize_static_line(
 ) -> Result<Option<RecognizedStaticLine>, CardTextError> {
     let normalized = line.info.normalized.normalized.as_str();
     let parse_tokens = rewrite_keyword_dash_parse_tokens(&line.tokens);
+    if (parse_tokens.iter().any(|token| token.kind == TokenKind::Quote)
+        || crate::grammar::attached_object_static_lines::parse_attached_transform_tokens(&parse_tokens)
+            .is_some_and(|shape| shape.ability_tokens.is_none()))
+        && let Some(abilities) = crate::keyword_static::parse_attached_type_transform_line(&parse_tokens)? {
+        return Ok(Some(RecognizedStaticLine {
+            info: line.info.clone(),
+            parse_tokens,
+            chosen_option: None,
+            parsed: Some(Box::new(crate::cards::builders::LineAst::StaticAbilities(abilities))),
+        }));
+    }
     if super::super::grammar::effects::clause_pattern_shapes::parse_keyword_mechanic_tokens(
         &parse_tokens,
     )

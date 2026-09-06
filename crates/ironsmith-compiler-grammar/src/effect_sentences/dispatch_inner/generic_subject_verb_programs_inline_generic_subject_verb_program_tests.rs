@@ -1501,9 +1501,8 @@ fn conditional_another_target_gets_then_gains_preserves_source_exclusion() {
             0,
         )
         .expect("conditional another-target sentence should lex");
-    let effects = parse_target_gets_then_gains_subject_verb(&tokens)
-        .expect("conditional another-target parser should not error")
-        .expect("conditional another-target parser should match");
+    let effects = crate::effect_sentences::parse_effect_sentence_lexed(&tokens)
+        .expect("conditional another-target statement should parse");
     let debug = format!("{effects:?}");
 
     assert!(debug.contains("other: true"), "{debug}");

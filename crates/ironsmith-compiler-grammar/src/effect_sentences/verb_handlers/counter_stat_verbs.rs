@@ -1057,6 +1057,18 @@ pub fn parse_life_amount_from_trailing(
         ));
     }
 
+    // An authored X binding owns the amount before broader proportional
+    // readers. Preserve that binding's surface on the resolved value.
+    if value_contains_unbound_x(base_amount)
+        && trailing.first().is_some_and(|token| token.is_word("where"))
+        && let Some(value) = parse_value_binding_clause(trailing)
+    {
+        let binding = crate::effect_sentences::dispatch_entry::with_where_x_surface_hints(value, trailing);
+        return Ok(Some(replace_unbound_x_with_value(
+            base_amount.clone(), &binding, &crate::lexer::token_word_refs(trailing).join(" "),
+        )?));
+    }
+
     if let Some(dynamic) = parse_dynamic_cost_modifier_value(trailing)?
         && let Some(multiplier) = match base_amount {
             Value::Fixed(value) => Some(*value),

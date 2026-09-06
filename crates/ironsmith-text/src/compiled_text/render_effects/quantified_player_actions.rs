@@ -97,7 +97,11 @@ pub(super) fn describe_each_player_shuffle_hand_and_graveyard_then_draw(
     {
         return None;
     }
-    let [shuffle_effect, draw_effect] = for_players.effects.as_slice() else {
+    let body = if let [effect] = for_players.effects.as_slice()
+        && let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
+        && sequence.surface == ironsmith_core::SequenceSurface::CommaThen
+    { sequence.effects.as_slice() } else { for_players.effects.as_slice() };
+    let [shuffle_effect, draw_effect] = body else {
         return None;
     };
     let shuffle = unwrap_basic_tag_wrappers(shuffle_effect)
@@ -145,7 +149,7 @@ pub(super) fn describe_for_players_coordinated_actions(
             if effect
                 .downcast_ref::<crate::effects::SequenceEffect>()
                 .is_some_and(|sequence| {
-                    sequence.surface == ironsmith_core::SequenceSurface::RepeatedCommaThen
+                    matches!(sequence.surface, ironsmith_core::SequenceSurface::CommaThen | ironsmith_core::SequenceSurface::RepeatedCommaThen)
                 })
     );
     let rendered = describe_for_players_iterated_action_sequence(for_players)?;

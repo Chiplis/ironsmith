@@ -29,7 +29,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds }) {
       const anchor = trigger.getBoundingClientRect();
       const field = battlefield.getBoundingClientRect();
       const cardWidth = anchor.width;
-      setStripBounds({ width: Math.max(0, anchor.left - Math.max(field.left, 8) - 10), cardWidth });
+      setStripBounds({ width: Math.max(0, anchor.right - Math.max(field.left, 8) + 6), cardWidth });
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -39,7 +39,8 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds }) {
     return () => { observer.disconnect(); window.removeEventListener("resize", measure); };
   }, [open]);
   const cards = zonePileCards(player, zone);
-  const topCard = cards.find(isFaceUpZoneCard);
+  const topCard = cards.find(isFaceUpZoneCard) || cards[0];
+  const remainingCards = cards.filter((card) => card !== topCard);
   const label = zone === "graveyard" ? "Graveyard" : "Exile";
   const count = zone === "graveyard" ? (player.graveyard_size ?? cards.length) : cards.length;
   const decision = state?.decision?.kind === "targets" ? state.decision
@@ -68,6 +69,22 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds }) {
     return () => window.removeEventListener("ironsmith:open-target-zone", openTargetZone);
   }, [player.id, player.index, zone]);
 
+  const renderCard = (card) => {
+    const legal = canChoose && isLegal(card);
+    const disabled = (choosingTarget || choosingObject) && !legal;
+    return <button type="button" key={card.id} className="zone-pile-card-row"
+      aria-label={card.name || "Face-down card"}
+      data-object-id={card.id} data-zone-card={zone}
+      data-target-legal={legal ? "true" : undefined} disabled={disabled}
+      onClick={(event) => {
+        if (castIntent && state?.decision?.kind !== "targets") return;
+        onCardClick?.(event, card);
+        if (choosingTarget || choosingObject) setOpen(false);
+      }}>
+      <ZoneArt card={card} />
+    </button>;
+  };
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <div className="zone-pile-slot">
@@ -83,7 +100,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds }) {
         </button>
       </PopoverTrigger>
       </div>
-      <PopoverContent className="zone-pile-menu" side="left" align="start" sideOffset={10} avoidCollisions={false}
+      <PopoverContent className="zone-pile-menu" side="left" align="start" sideOffset={-(stripBounds.cardWidth + 6)} alignOffset={-6} avoidCollisions={false}
         style={{ "--zone-strip-width": `${stripBounds.width}px`, "--zone-strip-card-width": `${stripBounds.cardWidth}px` }}
         aria-label={`${player.name}'s ${label}`}
         onOpenAutoFocus={(event) => { if (castIntent) event.preventDefault(); }}
@@ -94,22 +111,9 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds }) {
             event.currentTarget.scrollLeft += event.deltaY;
           }
         }}>
-          {cards.map((card) => {
-            const legal = canChoose && isLegal(card);
-            const disabled = (choosingTarget || choosingObject) && !legal;
-            return <button type="button" key={card.id} className="zone-pile-card-row"
-              aria-label={card.name || "Face-down card"}
-              data-object-id={card.id} data-zone-card={zone}
-              data-target-legal={legal ? "true" : undefined} disabled={disabled}
-              onClick={(event) => {
-                if (castIntent && state?.decision?.kind !== "targets") return;
-                onCardClick?.(event, card);
-                if (choosingTarget || choosingObject) setOpen(false);
-              }}>
-              <ZoneArt card={card} />
-            </button>;
-          })}
+          {remainingCards.map(renderCard)}
         </div>
+        {topCard ? renderCard(topCard) : <div className="zone-pile-card-row"><ZoneArt /></div>}
       </PopoverContent>
     </Popover>
   );

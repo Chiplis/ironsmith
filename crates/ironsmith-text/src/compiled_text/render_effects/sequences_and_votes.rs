@@ -1814,6 +1814,31 @@ pub(super) fn apply_grants_inline_ability_until_eot(
     ))
 }
 
+pub(super) fn describe_target_and_shared_color_pt_change(effects: &[Effect]) -> Option<String> {
+    let visible = effects.iter().filter(|effect| structural_unwrap_render_wrappers(effect)
+        .downcast_ref::<crate::effects::TagMatchingObjectsEffect>().is_none()).collect::<Vec<_>>();
+    let [first_effect, second_effect] = visible.as_slice() else { return None; };
+    let first = structural_unwrap_render_wrappers(first_effect).downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    let second = structural_unwrap_render_wrappers(second_effect).downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    let target = first.target_spec.as_ref()?;
+    if !is_radiance_target_creature_spec(target) || first.until != second.until
+        || first.condition.is_some() || second.condition.is_some()
+        || first.modification.is_some() || second.modification.is_some()
+        || !first.additional_modifications.is_empty() || !second.additional_modifications.is_empty()
+        || first.runtime_modifications != second.runtime_modifications
+    { return None; }
+    let [crate::effects::continuous::RuntimeModification::ModifyPowerToughness { power, toughness }] = first.runtime_modifications.as_slice() else { return None; };
+    let crate::continuous::EffectTarget::Filter(filter) = &second.target else { return None; };
+    let tag = shared_color_other_creature_filter(filter)?;
+    if wrapped_effect_tag(first_effect)? != tag { return None; }
+    let mut plain = filter.clone();
+    plain.tagged_constraints.clear();
+    plain.set_explicit_card_type_noun(None);
+    if plain != ObjectFilter::creature() { return None; }
+    Some(format!("Radiance — Target creature and each other creature that shares a color with it get {}/{} {}",
+        describe_signed_value(power), describe_signed_value(toughness), describe_until(&first.until)))
+}
+
 pub(super) fn describe_target_and_shared_color_inline_ability_grant(
     effects: &[Effect],
 ) -> Option<String> {
@@ -5189,7 +5214,12 @@ pub(super) fn describe_library_consult_selection_with_cards(filter: &ObjectFilte
             selection = format!("a nonland card with {rest}");
         }
     }
-    describe_search_selection_with_cards(&selection)
+    let selection = describe_search_selection_with_cards(&selection);
+    if selection.ends_with(" card") {
+        with_indefinite_article(&selection)
+    } else {
+        selection
+    }
 }
 
 /// A cast trigger already supplies the comparison object for "lesser mana
@@ -6678,6 +6708,10 @@ pub(super) fn player_filters_refer_to_same_player(
         return true;
     }
     match (left, right) {
+        (PlayerFilter::ControllerOf(left), PlayerFilter::AliasedControllerOf(right))
+        | (PlayerFilter::AliasedControllerOf(left), PlayerFilter::ControllerOf(right))
+        | (PlayerFilter::OwnerOf(left), PlayerFilter::AliasedOwnerOf(right))
+        | (PlayerFilter::AliasedOwnerOf(left), PlayerFilter::OwnerOf(right)) => left == right,
         (PlayerFilter::Target(inner), other)
         | (other, PlayerFilter::Target(inner))
         | (PlayerFilter::AliasedTarget(inner), other)

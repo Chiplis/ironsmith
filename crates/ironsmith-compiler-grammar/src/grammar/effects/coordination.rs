@@ -240,7 +240,11 @@ fn bind_singular_damage_source_to_ability_source(effect: &mut crate::cards::buil
                 return;
             }
             TargetAst::Object(filter, None, span)
-                if *filter == ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()) =>
+                if {
+                let mut identity = filter.clone();
+                identity.source_surface = None;
+                identity == ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind())
+            } =>
             {
                 *source = TargetAst::Source(*span);
                 return;
@@ -759,8 +763,8 @@ fn classify_boundary<'a>(
         return None;
     }
     if candidate.operator == CoordinationOperatorAst::Or
-        && before.last().is_some_and(token_is_card_type_noun)
-        && after.first().is_some_and(token_is_card_type_noun)
+        && before.last().is_some_and(|token| token_is_card_type_noun(token) || token.as_word().and_then(crate::util::parse_subtype_word).is_some())
+        && after.first().is_some_and(|token| token_is_card_type_noun(token) || token.as_word().and_then(crate::util::parse_subtype_word).is_some())
     {
         // A card-type union is one object operand even when a later action
         // follows in the same sentence. Do not let the typed clause-head

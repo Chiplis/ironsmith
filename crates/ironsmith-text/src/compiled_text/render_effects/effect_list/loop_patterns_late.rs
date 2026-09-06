@@ -1223,22 +1223,9 @@
         if idx + 1 < filtered.len()
             && let Some(tagged) = filtered[idx].downcast_ref::<crate::effects::TaggedEffect>()
             && let Some(deal) = filtered[idx + 1]
-                .downcast_ref::<crate::effects::DealDamageEffect>()
-                .or_else(|| {
-                    filtered[idx + 1]
-                        .downcast_ref::<crate::effects::TaggedEffect>()
-                        .and_then(|tagged| {
-                            tagged
-                                .effect
-                                .downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
-                        })
-                        .and_then(|with_source| {
-                            with_source
-                                .effect
-                                .downcast_ref::<crate::effects::DealDamageEffect>()
-                        })
-                })
-            && let Some(compact) = describe_tagged_target_then_power_damage(tagged, deal)
+                .downcast_ref::<crate::effects::DealDamageEffect>().cloned()
+                .or_else(|| describe_execute_power_damage_from_tag(filtered[idx + 1], &tagged.tag))
+            && let Some(compact) = describe_tagged_target_then_power_damage(tagged, &deal)
         {
             parts.push(compact);
             idx += 2;
@@ -2358,8 +2345,6 @@
             && let Some((battlefield_move_id, battlefield_move)) =
                 for_each_tagged_for_compaction(filtered[idx + 2])
             && let Some(if_not_moved) = filtered[idx + 3].downcast_ref::<crate::effects::IfEffect>()
-            && let Some(rest) =
-                filtered[idx + 4].downcast_ref::<crate::effects::ForEachTaggedEffect>()
             && let Some(compact) =
                 describe_look_at_top_then_may_put_battlefield_else_hand_rest_bottom(
                     look_at_top,
@@ -2367,7 +2352,7 @@
                     battlefield_move_id,
                     battlefield_move,
                     if_not_moved,
-                    rest,
+                    filtered[idx + 4],
                 )
         {
             parts.push(compact);

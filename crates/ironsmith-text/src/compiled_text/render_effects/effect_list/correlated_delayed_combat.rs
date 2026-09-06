@@ -60,7 +60,12 @@ pub(in crate::compiled_text) fn describe_quantified_tap_goad_then_watch_set(
         return None;
     }
 
-    let goad = goad_effect.downcast_ref::<crate::effects::GoadEffect>()?;
+    let (goad_action, watched_tag) = if let Some(tagged) = goad_effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        (tagged.effect.as_ref(), &tagged.tag)
+    } else {
+        (goad_effect, &tagged_tap.tag)
+    };
+    let goad = goad_action.downcast_ref::<crate::effects::GoadEffect>()?;
     let ChooseSpec::Object(goad_filter) = goad.target.base() else {
         return None;
     };
@@ -79,8 +84,8 @@ pub(in crate::compiled_text) fn describe_quantified_tap_goad_then_watch_set(
     if schedule.one_shot
         || schedule.duration != ironsmith_core::DelayedTriggerDuration::UntilControllerNextTurn
         || !schedule.leading_duration_surface
-        || schedule.target_tag.as_ref() != Some(&tagged_tap.tag)
-        || !filter_is_tagged_as(watched_filter, tagged_tap.tag.as_str())
+        || schedule.target_tag.as_ref() != Some(watched_tag)
+        || !filter_is_tagged_as(watched_filter, watched_tag.as_str())
         || damage.player != PlayerFilter::Any
     {
         return None;

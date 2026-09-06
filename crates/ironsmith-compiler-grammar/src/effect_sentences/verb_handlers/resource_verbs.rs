@@ -366,6 +366,8 @@ pub fn parse_look(
             ))
         })?;
     match shape {
+        ResourceLookShape::Tagged => Ok(EffectAst::subject_verb_look_at_target(TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.bind(), span_from_tokens(tokens)))),
         ResourceLookShape::PlayTaggedWhileExiled => Ok(
             EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
                 crate::tag::CompilerReferenceTag::It.bind(),
@@ -526,6 +528,12 @@ pub fn parse_shuffle(
             ))
         })?;
     match shape {
+        ResourceShuffleShape::HandIntoLibrary { player } => {
+            let owner = crate::grammar::effects::zone_counter_shapes::player_filter_for_half_reference(player)
+                .ok_or_else(|| CardTextError::ParseError("unsupported hand owner in shuffle".to_string()))?;
+            Ok(EffectAst::subject_verb_shuffle_all_objects_into_library(player,
+                TargetAst::Object(ObjectFilter::default().in_zone(Zone::Hand).owned_by(owner), span_from_tokens(tokens), None)))
+        }
         ResourceShuffleShape::TaggedIntoLibrary {
             player: destination_player,
             to_bottom,

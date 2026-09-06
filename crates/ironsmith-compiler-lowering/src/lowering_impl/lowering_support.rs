@@ -1300,7 +1300,11 @@ fn resolve_bare_it_target_to_source(target: &mut TargetAst) {
             *target = TargetAst::Source(*span);
         }
         TargetAst::Object(filter, span, _)
-            if *filter == ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()) =>
+            if {
+                let mut identity = filter.clone();
+                identity.source_surface = None;
+                identity == ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key())
+            } =>
         {
             *target = TargetAst::Source(*span);
         }
@@ -2155,10 +2159,11 @@ fn flatten_top_level_source_sentences(
         let mut offset = 0usize;
         for segment in source_segments {
             let end = offset.saturating_add(segment.effect_count);
-            if segment.leading_then
-                && let [EffectAst::ForEach(ForEachEffectAst::ForEachObject { filter, .. })] = &mut effects[offset..end]
-            {
-                filter.set_for_each_leading_then_surface(true);
+            if segment.leading_then {
+                if let [EffectAst::ForEach(ForEachEffectAst::ForEachObject { filter, .. })] = &mut effects[offset..end] {
+                    filter.set_for_each_leading_then_surface(true);
+
+                }
             }
             offset = end;
         }

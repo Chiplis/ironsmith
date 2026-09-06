@@ -97,6 +97,7 @@ pub enum PriorEffectAction {
     PhasedOut,
     Prevented,
     PutOntoBattlefield,
+    PutIntoGraveyard,
     Removed,
     Returned,
     Revealed,
@@ -349,10 +350,9 @@ pub enum ValueSurfaceHint {
     SacrificedObject(SacrificedObjectKind),
 }
 
-/// Authored reference used after "spent to cast" in a mana-spent count.
-///
-/// This is presentation metadata only; all variants resolve against the
-/// current spell's recorded mana payment.
+/// Payment action and authored reference in a mana-spent count.
+/// Spell references use the spell's recorded payment; `ThisAbility` uses
+/// only the resolving activation's payment, never the source's casting cost.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[derive(TagKeyWalk)]
@@ -361,14 +361,20 @@ pub enum ManaSpentCastReferenceSurface {
     #[default]
     ThisSpell,
     ThisCreature,
+    ThisAbility,
 }
 
 impl ManaSpentCastReferenceSurface {
+    pub const fn payment_verb(self) -> &'static str {
+        match self { Self::ThisAbility => "activate", _ => "cast" }
+    }
+
     pub const fn text(self) -> &'static str {
         match self {
             Self::It => "it",
             Self::ThisSpell => "this spell",
             Self::ThisCreature => "this creature",
+            Self::ThisAbility => "this ability",
         }
     }
 }
@@ -438,6 +444,8 @@ pub enum TurnHistoryCount {
     },
     /// Distinct opposing players attacked by matching players this turn.
     OpponentsAttacked(PlayerFilter),
+    /// Distinct players attacked by the selected player since this combat began.
+    PlayersAttackedThisCombat(PlayerFilter),
     /// Distinct matching players who discarded one or more cards this turn.
     PlayersDiscarded(PlayerFilter),
     /// Distinct matching players who were dealt damage this turn.
@@ -467,6 +475,8 @@ pub enum TurnHistoryCount {
     /// The total damage dealt to the source object this turn. Stable object
     /// identity keeps the count valid after the source changes zones.
     DamageDealtToSource,
+    /// Total combat and noncombat damage actually dealt by the resolving source this turn.
+    DamageDealtBySource,
     /// Spells matching the filter cast by matching players this turn.  The
     /// origin switch supports Paradox-style "from anywhere other than your
     /// hand" counts without pretending origin is a current-zone property.

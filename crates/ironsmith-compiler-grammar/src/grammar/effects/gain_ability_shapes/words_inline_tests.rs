@@ -26,3 +26,8 @@ fn gain_subject_start_prefers_complete_optional_count_prefix() {
         0
     );
 }
+
+#[test]
+fn optional_count_before_other_is_part_of_the_target_subject() {
+    assert_eq!(find_gain_real_subject_start(&["up", "to", "one", "other", "target", "creature"], 6), 0);
+}

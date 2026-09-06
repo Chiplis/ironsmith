@@ -16,7 +16,9 @@ pub fn parse_sacrifice(
             |shape| shape.actor == crate::grammar::choices::PossessiveObjectChoiceActor::Opponent,
         );
     let clause_shape = sacrifice_discard_grammar::parse_sacrifice_clause_shape(tokens);
-    let tokens = crate::util::trim_edge_punctuation_tokens(clause_shape.body_tokens);
+    let choice_body = crate::grammar::choices::parse_possessive_object_choice_tokens(clause_shape.body_tokens);
+    let tokens = crate::util::trim_edge_punctuation_tokens(
+        choice_body.as_ref().map(|choice| choice.object_tokens.as_slice()).unwrap_or(clause_shape.body_tokens));
     let normalized_words = crate::lexer::token_word_refs(tokens);
     let unless_escaped = matches!(
         clause_shape.unless_kind,

@@ -74,7 +74,8 @@ fn normalize_choice_from_last_exiled_collection(
 
     filter.zone = Some(Zone::Exile);
     filter.controller = None;
-    filter.owner = None;
+    // Ownership remains meaningful in exile, including choices restricted
+    // to the active player's cards from a shared exiled collection.
     true
 }
 
@@ -332,7 +333,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             ctx.last_player_filter = Some(chooser);
             (effects, subject.into_choices())
         }
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone {
             filter,
             count,
             count_value,
@@ -344,7 +345,8 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             let chooser = subject.clone_player_filter();
             let mut resolved_filter =
                 subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?;
-            resolved_filter.zone = Some(Zone::Library);
+            let zone = resolved_filter.zone.unwrap_or(Zone::Library);
+            resolved_filter.zone = Some(zone);
             let mut choose_effect = crate::effects::ChooseObjectsEffect::new(
                 resolved_filter,
                 *count,
@@ -352,9 +354,9 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 tag.clone(),
             )
             .with_count_value_opt(count_value.clone())
-            .in_zone(Zone::Library)
+            .in_zone(zone)
             .top_only();
-            choose_effect.description = "Choose top library card".to_string();
+            choose_effect.description = "Choose top zone cards".to_string();
             let effects = subject.prepend_target_prelude_if_needed(Effect::new(choose_effect));
             ctx.last_it_choice_is_set =
                 tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str();

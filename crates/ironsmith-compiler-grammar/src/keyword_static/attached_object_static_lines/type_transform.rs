@@ -48,10 +48,9 @@ pub fn parse_attached_type_transform_line(
             crate::slice_primitives::push_unique(&mut add_subtypes, subtype);
             continue;
         }
-        return Err(CardTextError::ParseError(format!(
-            "unsupported attached transform descriptor '{}' (clause: '{}')",
-            word, line_text
-        )));
+        // A descriptor outside this type/color grammar belongs to another
+        // static reading (for example, a supertype plus a modifier).
+        return Ok(None);
     }
 
     let mut out = Vec::new();

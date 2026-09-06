@@ -203,67 +203,50 @@ pub fn parse_each_player_shuffle_reveal_then_put_revealed_types_bottom(
     ) else {
         return Ok(None);
     };
-    let mut battlefield_filter = parse_object_filter_lexed(shape.battlefield_filter_tokens, false)?;
-    battlefield_filter.zone = None;
-
-    if let Some(extra_tokens) = shape.extra_filter_tokens {
-        let extra_filter = parse_object_filter_lexed(extra_tokens, false)?;
-        for card_type in extra_filter.card_types {
-            crate::slice_primitives::push_unique(&mut battlefield_filter.card_types, card_type);
-        }
-        for subtype in extra_filter.subtypes {
-            crate::slice_primitives::push_unique(&mut battlefield_filter.subtypes, subtype);
-        }
+    let mut battlefield_filters = vec![parse_object_filter_lexed(shape.battlefield_filter_tokens, false)?];
+    if let Some(extra) = shape.extra_filter_tokens {
+        battlefield_filters.push(parse_object_filter_lexed(extra, false)?);
     }
-
-    if battlefield_filter.card_types.is_empty() && battlefield_filter.subtypes.is_empty() {
+    if battlefield_filters.iter().any(|filter| filter.card_types.is_empty() && filter.subtypes.is_empty()) {
         return Ok(None);
     }
-
     let revealed_tag = crate::tag::CompilerReferenceTag::EachPlayerRevealedThisWay.bind();
     let mut shuffled_filter = ObjectFilter::permanent_card();
     shuffled_filter.zone = Some(Zone::Battlefield);
     shuffled_filter.owner = Some(PlayerFilter::IteratedPlayer);
-    let iterated = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None);
-
-    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
-        effects: vec![
-            EffectAst::subject_verb_shuffle_all_objects_into_library(
-                PlayerAst::That,
-                TargetAst::Object(shuffled_filter, None, None),
-            ),
-            EffectAst::subject_verb_reveal_top_cards(
-                PlayerAst::That,
-                Value::PendingEffectMetric {
-                    source: ironsmith_core::EffectMetricSource::Outcome,
-                    metric: ironsmith_core::EffectMetric::Count,
-                },
-                revealed_tag.clone(),
-            ),
-            EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
-                tag: revealed_tag,
-                effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-                    predicate: PredicateAst::ItMatches(battlefield_filter),
-                    if_true: vec![EffectAst::subject_verb_move_to_zone(
-                        iterated.clone(),
-                        Zone::Battlefield,
-                        false,
-                        ReturnControllerAst::Owner,
-                        false,
-                        None,
-                    )],
-                    if_false: vec![EffectAst::subject_verb_move_to_zone(
-                        iterated,
-                        Zone::Library,
-                        false,
-                        ReturnControllerAst::Preserve,
-                        false,
-                        None,
-                    )],
-                })],
-            }),
-        ],
-    })]))
+    let mut effects = vec![
+        EffectAst::subject_verb_shuffle_all_objects_into_library(
+            PlayerAst::That, TargetAst::Object(shuffled_filter, None, None),
+        ),
+        EffectAst::subject_verb_reveal_top_cards(
+            PlayerAst::That,
+            Value::PendingEffectMetric {
+                source: ironsmith_core::EffectMetricSource::Outcome,
+                metric: ironsmith_core::EffectMetric::Count,
+            }, revealed_tag.clone(),
+        ),
+    ];
+    // Each category is a separate printed action. A later category sees
+    // only cards still in the library, so overlapping types cannot move a
+    // permanent again and enchantments enter after the earlier group.
+    for mut filter in battlefield_filters {
+        filter.zone = Some(Zone::Library);
+        filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+            tag: revealed_tag.key.clone(),
+            relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+        });
+        effects.push(EffectAst::subject_verb_move_all_to_zone(
+            TargetAst::Object(filter, None, None), Zone::Battlefield, false,
+            ReturnControllerAst::Owner, false, None,
+        ));
+    }
+    let mut remainder = ObjectFilter::tagged(revealed_tag.key.clone());
+    remainder.zone = Some(Zone::Library);
+    effects.push(EffectAst::subject_verb_move_all_to_zone(
+        TargetAst::Object(remainder, None, None), Zone::Library, false,
+        ReturnControllerAst::Preserve, false, None,
+    ));
+    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })]))
 }
 
 /// Keep a destroy set and its authored no-regeneration rider as one action.

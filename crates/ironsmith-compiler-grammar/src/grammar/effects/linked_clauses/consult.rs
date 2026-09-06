@@ -36,6 +36,7 @@ pub enum ConsultMoveBottomShape {
     MoveMatchAndBottom {
         zone: Zone,
         battlefield_tapped: bool,
+        attached_to_tokens: Option<(usize, usize)>,
         order: LibraryBottomOrderAst,
     },
 }
@@ -91,6 +92,9 @@ const BATTLEFIELD_TAPPED_PREFIXES: &[&[&str]] = &[
     ],
 ];
 const BATTLEFIELD_PREFIXES: &[&[&str]] = &[
+    &["the", "player", "puts", "that", "card", "onto", "the", "battlefield"],
+    &["that", "player", "puts", "that", "card", "onto", "the", "battlefield"],
+    &["they", "put", "that", "card", "onto", "the", "battlefield"],
     &["put", "that", "card", "onto", "the", "battlefield"],
     &["put", "it", "onto", "the", "battlefield"],
     &["put", "that", "card", "onto", "battlefield"],
@@ -137,6 +141,11 @@ fn is_put_those_cards_then_shuffle_revealed_remainder(tokens: &[OwnedLexToken]) 
 }
 
 pub fn parse_consult_move_bottom_shape(tokens: &[OwnedLexToken]) -> Option<ConsultMoveBottomShape> {
+    // An explicit attach action is a separate instruction between the move
+    // and the remainder, not an entry modifier consumed by this shape.
+    if tokens.iter().any(|token| token.is_any_word(&["attach", "attaches"])) {
+        return None;
+    }
     let special = is_put_those_cards_then_shuffle_revealed_remainder(tokens)
         || (starts_sequence(tokens, &[&["put", "all"]])
             && contains_sequence_phrase(tokens, &[&["cards", "revealed", "this", "way"]])
@@ -161,9 +170,19 @@ pub fn parse_consult_move_bottom_shape(tokens: &[OwnedLexToken]) -> Option<Consu
     if !contains_sequence_word(tokens, "rest") && !contains_sequence_word(tokens, "other") {
         return None;
     }
+    let attached_to_tokens = if let Some(attached) = tokens.iter().position(|token| token.is_word("attached")) {
+        if zone != Zone::Battlefield || !tokens.get(attached + 1)?.is_word("to") { return None; }
+        let start = attached + 2;
+        let end = tokens[start..].iter().position(|token| {
+            token.kind == TokenKind::Comma || token.is_any_word(&["then", "and"])
+        })? + start;
+        if end == start { return None; }
+        Some((start, end))
+    } else { None };
     Some(ConsultMoveBottomShape::MoveMatchAndBottom {
         zone,
         battlefield_tapped,
+        attached_to_tokens,
         order: parse_bottom_order(tokens)?,
     })
 }
@@ -204,15 +223,14 @@ pub fn parse_conditional_consult_shape(
 }
 
 pub fn is_consult_move_all_to_graveyard_shape(tokens: &[OwnedLexToken]) -> bool {
-    starts_sequence(
-        tokens,
-        &[
-            &["put", "all"],
-            &["puts", "all"],
-            &["that", "player", "puts", "all"],
-        ],
-    ) && contains_sequence_phrase(tokens, &[&["revealed", "this", "way"]])
-        && contains_sequence_word(tokens, "graveyard")
+    // This reading moves the entire traversed collection. A restricted
+    // subset or a trailing remainder disposition needs the full procedure.
+    matches_complete_content_sequence(tokens, &[
+        &["put", "all", "cards", "revealed", "this", "way", "into", "your", "graveyard"],
+        &["put", "all", "cards", "revealed", "this", "way", "into", "their", "graveyard"],
+        &["puts", "all", "cards", "revealed", "this", "way", "into", "their", "graveyard"],
+        &["that", "player", "puts", "all", "cards", "revealed", "this", "way", "into", "their", "graveyard"],
+    ])
 }
 
 pub fn is_consult_hand_others_graveyard_shape(tokens: &[OwnedLexToken]) -> bool {

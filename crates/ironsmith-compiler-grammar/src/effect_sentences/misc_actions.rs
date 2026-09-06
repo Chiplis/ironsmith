@@ -125,7 +125,7 @@ pub fn parse_become(
 
     let amount = parse_value(tokens)
         .map(|(value, _)| value)
-        .or_else(|| parse_half_starting_life_total_value(tokens, player))
+        .or_else(|| parse_starting_life_total_value(tokens, player))
         .ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "missing life total amount (clause: '{}')",

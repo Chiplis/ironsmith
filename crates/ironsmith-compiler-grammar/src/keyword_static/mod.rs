@@ -828,6 +828,16 @@ fn static_ability_rule_head_discriminator(rule_id: RuleId) -> StaticAbilityLineH
 mod registry_head_hint_tests {
     use super::*;
 
+    #[test]
+    fn conjoined_type_animation_reaches_the_full_static_parser() {
+        let tokens = crate::lexer::lex_line(
+            "All Forests and all Saprolings are 2/2 green Saproling creatures and Forest lands in addition to their other types.", 0,
+        ).unwrap();
+        assert!(parse_all_are_pt_color_type_addition_line(&tokens).unwrap().is_some());
+        assert!(registry_result(&tokens).unwrap().is_some());
+        assert!(parse_static_ability_ast_line_lexed(&tokens).unwrap().is_some());
+    }
+
     fn registry_result(
         tokens: &[OwnedLexToken],
     ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {

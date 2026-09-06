@@ -531,6 +531,7 @@ pub(super) fn compile_become_base_pt_creature_action(
     ctx: &mut EffectLoweringContext,
 ) -> Result<EffectCompileOutcome, CardTextError> {
     let SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
+        name_override, add_supertypes, remove_all_abilities,
         power,
         toughness,
         target,
@@ -584,6 +585,15 @@ pub(super) fn compile_become_base_pt_creature_action(
             sublayer: crate::continuous::PtSublayer::Setting,
         })
         .resolve_set_pt_values_at_resolution();
+        if let Some(name) = name_override {
+            apply = apply.with_additional_modification(crate::continuous::Modification::SetName(name.clone()));
+        }
+        if !add_supertypes.is_empty() {
+            apply = apply.with_additional_modification(crate::continuous::Modification::AddSupertypes(add_supertypes.clone()));
+        }
+        if *remove_all_abilities {
+            apply = apply.with_additional_runtime_modification(crate::effects::continuous::RuntimeModification::RemoveAllAbilities);
+        }
         if let Some(colors) = colors {
             apply = apply
                 .with_additional_modification(crate::continuous::Modification::SetColors(*colors));
@@ -1610,6 +1620,12 @@ pub(super) fn compile_subject_verb_middle(
             };
             let (mut spec, mut choices) = if let Some(spec) = revealed_target {
                 (spec, Vec::new())
+            } else if *all && let TargetAst::Object(filter, _, _) = target {
+                // A collection's zone is an eligibility restriction, including
+                // when its members came from a tag and some have since moved.
+                // Resolving it as a bare tagged reference would discard that
+                // restriction before the all-objects movement executes.
+                (ChooseSpec::All(resolve_it_tag(filter, &current_reference_env(ctx))?), Vec::new())
             } else {
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?
             };
@@ -2910,6 +2926,7 @@ pub(super) fn compile_subject_verb_middle(
             player: action_player,
             enters_tapped,
             enters_attacking,
+            entry_tapped_attacking_followup,
             attack_target_player_or_planeswalker_controlled_by,
             attack_target_player_only,
             half_power_toughness_round_up,
@@ -2947,6 +2964,7 @@ pub(super) fn compile_subject_verb_middle(
                 count,
                 player_filter,
             );
+            effect.entry_tapped_attacking_followup = *entry_tapped_attacking_followup;
             if *enters_tapped {
                 effect = effect.enters_tapped(true);
             }
@@ -3050,6 +3068,7 @@ pub(super) fn compile_subject_verb_middle(
             player: action_player,
             enters_tapped,
             enters_attacking,
+            entry_tapped_attacking_followup,
             attack_target_player_or_planeswalker_controlled_by,
             attack_target_player_only,
             half_power_toughness_round_up,
@@ -3111,6 +3130,7 @@ pub(super) fn compile_subject_verb_middle(
             };
             let mut effect =
                 crate::effects::CreateTokenCopyEffect::new(source_spec, count, player_filter);
+            effect.entry_tapped_attacking_followup = *entry_tapped_attacking_followup;
             if *enters_tapped {
                 effect = effect.enters_tapped(true);
             }

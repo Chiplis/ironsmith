@@ -420,7 +420,7 @@ pub(super) fn dragonspark_reactor_reuses_first_damage_amount_for_second_target()
         "{debug}"
     );
     assert_eq!(
-        compact
+        compact.replace("SurfaceHinted{spec:", "")
             .matches("ExecuteWithSourceEffect{source:Source")
             .count(),
         2,

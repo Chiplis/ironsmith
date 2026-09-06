@@ -81,12 +81,13 @@ pub fn parse_carried_conditional_anthem_grant_line(
         shape.base_toughness,
         None,
     );
-    let additional = fixed_anthem_clause(
+    let mut additional = fixed_anthem_clause(
         subject.clone(),
         shape.additional_power,
         shape.additional_toughness,
         Some(condition.clone()),
     );
+    additional.additional_surface = tokens.iter().any(|token| token.is_word("additional"));
     let mut result = vec![
         build_anthem_static_ability(&base).into(),
         build_anthem_static_ability(&additional).into(),
@@ -3263,6 +3264,11 @@ pub fn parse_has_base_power_and_granted_ability_static_line(
 pub fn parse_filter_has_granted_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if crate::grammar::primitives::parse_prefix(tokens,
+        crate::grammar::primitives::phrase(&["during", "your", "end", "step"])).is_some()
+    {
+        return Ok(None);
+    }
     {
         // This production owns one complete static line. Multi-sentence
         // statement groups (a resolution step followed by a token's quoted
@@ -3307,6 +3313,11 @@ pub fn parse_filter_has_granted_ability_line(
     // `have`, but it is a comparison inside the permission rather than a
     // subject-to-ability grant.  Once either complete conditional permission
     // grammar proves the line, keep it outside this broad `has`/`have` family.
+    if anthem_grant_grammar::parse_plain_no_defender_shape(tokens).is_some()
+        || crate::keyword_static::parse_attacked_player_can_attack_as_though_no_defender_line(tokens)?.is_some()
+    {
+        return Ok(None);
+    }
     if let Ok(Some(_)) = parse_as_long_as_condition_can_attack_as_though_no_defender_line(tokens) {
         return Ok(None);
     }

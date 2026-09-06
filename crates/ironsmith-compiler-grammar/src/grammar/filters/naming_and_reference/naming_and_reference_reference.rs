@@ -409,6 +409,9 @@ pub(in super::super) fn apply_reference_and_tag_stage(
             relation: TaggedOpbjectRelation::SameManaValueAsTagged,
         });
     }
+    if has_equal_or_lesser_mana_value {
+        filter.union_surface = filter.union_surface.with_equal_or_lesser_mana_value(true);
+    }
     if has_lte_mana_value_as_tagged
         && (references_it_for_mana_value || has_equal_or_lesser_mana_value)
     {

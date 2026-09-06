@@ -489,6 +489,24 @@ pub(super) fn compile_subject_verb_late(
 
             let mut effects = Vec::new();
             let mut damage_source_spec = source_spec.clone();
+            // `this creature` still names the resolving ability's source
+            // when another object deals damage. Capture it before the
+            // execution wrapper temporarily changes the damage source.
+            if matches!(damage_target_spec.base(), ChooseSpec::Source)
+                && !matches!(damage_source_spec.base(), ChooseSpec::Source)
+            {
+                let original_source = ctx.next_tag("damage_recipient_source");
+                effects.push(Effect::new(crate::effects::TagMatchingObjectsEffect::new(
+                    ObjectFilter::source(), original_source.clone(),
+                )));
+                let mut hints = damage_target_spec.surface_hints().to_vec();
+                if hints.is_empty() {
+                    hints.push(crate::target::ChooseSpecSurfaceHint::SourceReference(
+                        crate::target::SourceReferenceSurface::ThisPermanentType("this source".into()),
+                    ));
+                }
+                damage_target_spec = ChooseSpec::Tagged(original_source.into()).with_surface_hints(hints);
+            }
             let per_target_source_spec = if source == target {
                 ChooseSpec::Iterated
             } else {

@@ -2103,9 +2103,10 @@ pub fn resolve_value(
             Ok(source_obj.mana_spent_to_cast.amount(*symbol) as i32)
         }
 
-        Value::ManaFromSourceSpentToCastThisSpell { source_filter, .. } => {
+        Value::ManaFromSourceSpentToCastThisSpell { source_filter, reference, .. } => {
             let tag = ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG;
             let snapshots = ctx.get_tagged_all(tag).map(Vec::as_slice).or_else(|| {
+                if *reference == ironsmith_core::ManaSpentCastReferenceSurface::ThisAbility { return None; }
                 game.object(ctx.source)
                     .and_then(|source_obj| source_obj.cast_tagged_objects.get(tag))
                     .map(Vec::as_slice)

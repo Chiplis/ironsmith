@@ -476,6 +476,7 @@ fn parse_effect_sentences_preserving_source_boundaries_general(
     let mut parse_sentences = sentences.clone();
     let mut stripped_participant_ordering = false;
     if let Some(first) = parse_sentences.first_mut()
+        && crate::effect_sentences::parse_vote_subject_verb(first)?.is_none()
         && let Some((_, remainder)) = crate::grammar::primitives::strip_lexed_prefix_phrases(
             first,
             &[&["starting", "with", "you"]],

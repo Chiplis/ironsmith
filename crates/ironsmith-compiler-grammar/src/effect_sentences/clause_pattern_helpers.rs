@@ -1286,6 +1286,9 @@ pub fn parse_prevent_all_damage_clause(
 pub fn parse_can_attack_as_though_no_defender_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    if crate::keyword_static::parse_attacked_player_can_attack_as_though_no_defender_line(tokens)?.is_some() {
+        return Ok(None);
+    }
     let Some(subject_tokens) = clause_shapes::parse_can_attack_no_defender_subject_tokens(tokens)
     else {
         return Ok(None);

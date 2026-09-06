@@ -2124,6 +2124,12 @@ pub(super) fn run_statement_probe_line_family(
     {
         return ParseOutcome::NoMatch;
     }
+    if matches!(crate::keyword_static::parse_attached_type_transform_line(&ctx.line.tokens), Ok(Some(_))) {
+        return ParseOutcome::NoMatch;
+    }
+    if matches!(crate::keyword_static::parse_plain_can_attack_as_though_no_defender_line(&ctx.line.tokens), Ok(Some(_))) {
+        return ParseOutcome::NoMatch;
+    }
     let prefer_statement_before_static =
         super::super::grammar::structure::classify_statement_line_family_lexed(&ctx.line.tokens)
             .is_some_and(|family| {

@@ -28,12 +28,12 @@ pub enum ObjectChoiceEffectAst {
         player: PlayerAst,
         tag: TagRef,
     },
-    /// Choose from the top boundary of a library while retaining an explicit
+    /// Choose from the top boundary of the filter's ordered zone while retaining an explicit
     /// chooser. This composes the existing runtime `ChooseObjectsEffect`
     /// `top_only` capability with later tagged zone moves, which is required
     /// for face-down exile procedures where `ExileTopOfLibraryEffect` (always
     /// public) is not the correct primitive.
-    ChooseObjectsTopOfLibrary {
+    ChooseObjectsTopOfZone {
         filter: ObjectFilter,
         count: ChoiceCount,
         count_value: Option<Value>,

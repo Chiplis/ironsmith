@@ -825,8 +825,18 @@ pub(super) fn describe_iterated_player_search_effects(effects: &[Effect]) -> Opt
         next += 1;
     }
 
-    let for_each = structural_unwrap_render_wrappers(effects.get(next)?)
-        .downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let move_effect = structural_unwrap_render_wrappers(effects.get(next)?);
+    let direct_move;
+    let for_each = if let Some(for_each) = move_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>() {
+        for_each
+    } else {
+        let movement = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+        if !matches!(movement.target.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag) { return None; }
+        direct_move = crate::effects::ForEachTaggedEffect {
+            tag: choose.tag.clone(), effects: vec![move_effect.clone()], controller_at_last_blocked_by: None,
+        };
+        &direct_move
+    };
     next += 1;
 
     let shuffle = if let Some(effect) = effects.get(next) {
@@ -5281,9 +5291,69 @@ pub(super) fn describe_for_players_iterated_action_sequence(
     Some(format!("{subject} {body}"))
 }
 
+/// A choice followed by sacrificing its exact complement. The tag relation
+/// and the counted filter prove "the rest" without using source prose.
+pub(super) fn describe_for_players_choice_complement(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    if for_players.starting_with_controller || for_players.stop_after_first_happened {
+        return None;
+    }
+    let [choice, sacrifice] = for_players.effects.as_slice() else { return None; };
+    let choice = choice.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let sacrifice = sacrifice.downcast_ref::<crate::effects::zones::SacrificePlayerEffect>()?;
+    if choice.chooser != PlayerFilter::IteratedPlayer
+        || choice.filter.one_per_card_type
+        || sacrifice.player != PlayerFilter::IteratedPlayer
+        || choice.filter.controller != Some(PlayerFilter::IteratedPlayer)
+        || choice.filter.zone != Some(Zone::Battlefield)
+        || choice.zone != Some(Zone::Battlefield)
+        || choice.is_search || choice.reveal || choice.top_only || choice.bottom_only
+        || !choice.additional_zones.is_empty() || choice.aggregate_constraint.is_some()
+        || choice.count_value.is_some()
+        || !matches!(&sacrifice.count, Value::Count(filter) if filter == &sacrifice.filter)
+    {
+        return None;
+    }
+    let mut complement = choice.filter.clone();
+    complement.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+        tag: choice.tag.clone(),
+        relation: crate::filter::TaggedOpbjectRelation::IsNotTaggedObject,
+    });
+    if complement != sacrifice.filter { return None; }
+    let subject = describe_for_players_subject(&for_players.filter)?;
+    if subject == "You" { return None; }
+    let mut selection = choice.clone();
+    selection.filter.controller = None;
+    let selection = describe_choose_selection(&selection);
+    Some(format!("{subject} chooses {selection} they control, then sacrifices the rest"))
+}
+
 #[cfg(test)]
 mod repeated_quantified_action_tests {
     use super::*;
+
+    #[test]
+    fn choice_complement_requires_the_exact_sacrificed_set() {
+        let filter = ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer);
+        let choice = crate::effects::ChooseObjectsEffect::new(
+            filter.clone(), crate::effect::ChoiceCount::exactly(2),
+            PlayerFilter::IteratedPlayer, "selected",
+        ).in_zone(Zone::Battlefield);
+        let complement = filter.not_tagged("selected");
+        let sacrifice = crate::effects::zones::SacrificePlayerEffect::new(
+            complement.clone(), Value::Count(complement), PlayerFilter::IteratedPlayer,
+        );
+        let mut loop_effect = crate::effects::ForPlayersEffect::new(
+            PlayerFilter::Opponent, vec![Effect::new(choice), Effect::new(sacrifice)],
+        );
+        assert_eq!(describe_for_players_choice_complement(&loop_effect).as_deref(),
+            Some("Each opponent chooses two creatures they control, then sacrifices the rest"));
+        loop_effect.effects[1] = Effect::new(crate::effects::zones::SacrificePlayerEffect::new(
+            ObjectFilter::creature(), Value::Fixed(1), PlayerFilter::IteratedPlayer,
+        ));
+        assert!(describe_for_players_choice_complement(&loop_effect).is_none());
+    }
 
     #[test]
     fn repeated_comma_then_keeps_every_authored_boundary() {

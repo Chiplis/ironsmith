@@ -1,0 +1,49 @@
+@font-face { font-family: "Goudy Medieval"; src: url('../assets/fonts/GoudyMedieval.ttf') format('truetype'); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Matrix"; src: url('../assets/fonts/Matrix.ttf') format('truetype'); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Matrix"; src: url('../assets/fonts/Matrix-Bold.ttf') format('truetype'); font-weight: 700; font-display: swap; }
+@font-face { font-family: "Matrix Small Caps"; src: url('../assets/fonts/Matrix-BoldSmallCaps.ttf') format('truetype'); font-weight: 700; font-display: swap; }
+@font-face { font-family: "Beleren Small Caps"; src: url('../assets/fonts/Beleren-SmallCaps.ttf') format('truetype'); font-weight: 700; font-display: swap; }
+@font-face { font-family: "MPlantin"; src: url('../assets/fonts/MPlantin.ttf') format('truetype'); font-weight: 400; font-display: swap; }
+@font-face { font-family: "MPlantin"; src: url('../assets/fonts/MPlantin-Italic.ttf') format('truetype'); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "MPlantin"; src: url('../assets/fonts/Plantin-Semibold.otf') format('opentype'); font-weight: 600 900; font-display: swap; }
+[data-card-era] .interactive-card-frame__title,
+[data-card-era] .interactive-card-frame__title :not(svg):not(svg *) {
+  font-family: var(--card-title-font) !important;
+  font-weight: var(--card-title-weight);
+}
+[data-card-era] .interactive-card-frame__type,
+[data-card-era] .interactive-card-frame__type :not(svg):not(svg *) {
+  font-family: var(--card-type-font) !important;
+  font-weight: var(--card-type-weight);
+}
+[data-card-era] .interactive-card-frame__art-stats,
+[data-card-era] .interactive-card-frame__art-stats :not(svg):not(svg *) {
+  font-family: var(--card-stats-font) !important;
+  font-weight: var(--card-stats-weight);
+}
+[data-card-era] .interactive-card-frame__rule-line,
+[data-card-era] .interactive-card-frame__rule-line :not(svg):not(svg *) {
+  font-family: var(--card-rules-font) !important;
+  font-weight: 400;
+}
+
+[data-card-era] [data-card-title] {
+  font-family: var(--card-title-font) !important;
+  font-weight: var(--card-title-weight);
+}
+[data-card-era] [data-card-type],
+[data-card-era] [data-card-type] :not(svg):not(svg *) {
+  font-family: var(--card-type-font) !important;
+  font-weight: var(--card-type-weight);
+}
+
+/* Printed glyph heights become font sizes using the loaded face's ink metrics. */
+[data-card-era] .interactive-card-frame__title {
+  font-size: clamp(12px, var(--sampled-title-font-size, 4.35cqw), 22px);
+}
+[data-card-era] .interactive-card-frame__type {
+  font-size: clamp(10px, var(--sampled-type-font-size, 3.05cqw), 18px);
+}
+[data-card-era] .interactive-card-frame__rule-line {
+  font-size: clamp(11px, var(--sampled-rules-font-size, 3.575cqw), 16.5px);
+}

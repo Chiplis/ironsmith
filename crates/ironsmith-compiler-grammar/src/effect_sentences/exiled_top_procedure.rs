@@ -223,7 +223,11 @@ pub(super) fn continue_with(
                 return Ok(false);
             };
             let chosen = chosen.clone();
-            group.effects.extend(partition);
+            if sentence.lowered().first().is_some_and(|token| token.is_word("then")) {
+                group.effects.push(EffectAst::SourceSentence { effects: partition, leading_then: true, starting_with_controller: false });
+            } else {
+                group.effects.extend(partition);
+            }
             group.statements = Statements::Cast {
                 chosen,
                 partitioned: true,

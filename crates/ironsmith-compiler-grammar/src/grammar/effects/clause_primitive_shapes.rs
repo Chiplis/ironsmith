@@ -354,6 +354,9 @@ fn target_shape(tokens: &[OwnedLexToken], allow_self: bool) -> PowerDamageTarget
 pub fn parse_power_damage_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PowerDamageShape<'_>>, CardTextError> {
+    if tokens.iter().filter(|token| token.is_any_word(&["deal", "deals"])).count() > 1 {
+        return Ok(None);
+    }
     if primitives::find_prefix(tokens, || primitives::kw("divided").void()).is_some() {
         return Ok(None);
     }
@@ -366,7 +369,9 @@ pub fn parse_power_damage_shape(
         return Ok(None);
     };
     let source_tokens = trim_shape_edges(source_tokens);
-    if source_tokens.is_empty() {
+    if source_tokens.is_empty()
+        || super::chain_splitting::has_authored_comma_then_surface_tokens(source_tokens)
+    {
         return Ok(None);
     }
     let after_deal = trim_shape_edges(after_deal);

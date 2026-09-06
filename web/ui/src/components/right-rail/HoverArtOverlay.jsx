@@ -1,6 +1,12 @@
+import "@/styles/card-typography.css";
+import useCardTypography from "@/hooks/useCardTypography";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
+import useCardFrameColors from "@/hooks/useCardFrameColors";
+import "@/styles/card-frame-colors.css";
 import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
+import useScryfallFlavorText from "@/hooks/useScryfallFlavorText";
+import useInspectorPaymentActions from "@/hooks/useInspectorPaymentActions";
 import { ManaCostIcons, SymbolText } from "@/lib/mana-symbols";
 import { getPlayerAccent } from "@/lib/player-colors";
 import { getVisibleStackObjects } from "@/lib/stack-targets";
@@ -94,7 +100,8 @@ function stripInspectorAbilityPrefixes(text = "") {
 function normalizeAbilityMatchText(text = "") {
   return stripInspectorAbilityPrefixes(text)
     .toLowerCase()
-    .replace(/\{[^}]+\}/g, " ")
+    // Mana symbols distinguish otherwise identical abilities (e.g. dual lands).
+    .replace(/\{([^}]+)\}/g, " $1 ")
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -181,6 +188,7 @@ function measureOracleBodyHeightAtFullFont(body, width) {
   clone.style.top = "0";
   clone.style.width = `${width}px`;
   clone.style.maxWidth = "none";
+  clone.style.fontFamily = getComputedStyle(body).fontFamily;
   for (const line of clone.querySelectorAll(".inspector-oracle-line")) {
     line.style.fontSize = `${INSPECTOR_RULES_FONT_SIZE}px`;
   }
@@ -252,6 +260,19 @@ function InspectorMetadataBlock({
           {line}
         </div>
       ))}
+    </div>
+  );
+}
+
+function InspectorFlavorText({ text, style, className }) {
+  if (!text) return null;
+  return (
+    <div
+      className={cn("inspector-flavor-text inspector-oracle-line mt-2 border-t border-current/20 pt-2 italic whitespace-pre-line", className)}
+      style={style}
+      aria-label="Flavor text"
+    >
+      {text}
     </div>
   );
 }
@@ -705,6 +726,7 @@ export default function HoverArtOverlay({
   onInteractiveAction = null,
 }) {
   const { state, game, playerAccentOverrides } = useGame();
+  const paymentActions = useInspectorPaymentActions(game, state, interactiveActions);
   const { locale, t } = useI18n();
   const debugInspector = inspectorVariant === "debug";
   const compactTopbarLayout = compact && compactLayout === "topbar";
@@ -766,7 +788,6 @@ export default function HoverArtOverlay({
   const [fontMeasureVersion, setFontMeasureVersion] = useState(0);
   const [renderedRulesWidth, setRenderedRulesWidth] = useState(null);
   const [translatedCardText, setTranslatedCardText] = useState(null);
-  const inspectorMeasureFont = '"MPlantin", Georgia, serif';
   const detailsObjectIdNum = useMemo(
     () => resolveObjectDetailsId(state, objectIdNum),
     [objectIdNum, state]
@@ -802,24 +823,7 @@ export default function HoverArtOverlay({
     };
   }, [game, detailsObjectIdNum, detailsObjectIdKey, detailsCache, state]);
 
-  useEffect(() => {
-    if (typeof document === "undefined" || !document.fonts?.load) return undefined;
 
-    let cancelled = false;
-    Promise.all([
-      document.fonts.load(`${INSPECTOR_RULES_FONT_SIZE}px ${inspectorMeasureFont}`),
-      document.fonts.load(`800 ${INSPECTOR_TITLE_FONT_SIZE}px ${inspectorMeasureFont}`),
-      document.fonts.load(`600 ${INSPECTOR_METADATA_FONT_SIZE}px ${inspectorMeasureFont}`),
-    ])
-      .catch(() => null)
-      .finally(() => {
-        if (!cancelled) setFontMeasureVersion((version) => version + 1);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [inspectorMeasureFont]);
 
   const details = detailsObjectIdKey ? (detailsCache[detailsObjectIdKey]?.value ?? null) : null;
   const cardSnapshot = useMemo(
@@ -909,7 +913,8 @@ export default function HoverArtOverlay({
       .map((badge) => String(badge || "").trim())
       .filter((badge) => badge && !HIDDEN_TYPE_LINE_BADGES.has(badge))
     : [];
-  const zoneLine = formatInspectorZoneLabel(details?.zone || previewZoneLine || hoveredStackObject?.zone, t);
+  const inspectorZone = String(details?.zone || previewZoneLine || hoveredStackObject?.zone || "").trim();
+  const zoneLine = formatInspectorZoneLabel(inspectorZone, t);
   const countersLine = useMemo(
     () => formatInspectorCounterLine(normalizedCounters),
     [normalizedCounters]
@@ -940,12 +945,34 @@ export default function HoverArtOverlay({
   ]);
   const artObjectName = stableLinkedObjectName || objectName;
   const imageUrl = useScryfallImageUrl(artObjectName, "art_crop");
+  const typography = useCardTypography(imageUrl);
+  const inspectorMeasureFont = typography.rules;
+  useEffect(() => {
+    if (typeof document === "undefined" || !document.fonts?.load) return undefined;
+
+    let cancelled = false;
+    Promise.all([
+      document.fonts.load(`${INSPECTOR_RULES_FONT_SIZE}px ${inspectorMeasureFont}`),
+      document.fonts.load(`${typography.titleWeight} ${INSPECTOR_TITLE_FONT_SIZE}px ${typography.title}`),
+      document.fonts.load(`${typography.titleWeight} ${INSPECTOR_METADATA_FONT_SIZE}px ${typography.type}`),
+    ])
+      .catch(() => null)
+      .finally(() => {
+        if (!cancelled) setFontMeasureVersion((version) => version + 1);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [inspectorMeasureFont, typography]);
+  const cardFrameColors = useCardFrameColors(imageUrl, isCardFrameMode, !/\bland\b/i.test(String(typeLine || "").split(/[—–]/)[0]));
   // Forget past failures whenever the art URL changes so a transient network
   // error doesn't blacklist a card's art for the whole session.
   if (failedImageUrl != null && failedImageUrl !== imageUrl) {
     setFailedImageUrl(null);
   }
   const imageErrored = !!imageUrl && failedImageUrl === imageUrl;
+  const flavorText = useScryfallFlavorText(imageErrored ? "" : imageUrl);
   const topStackObject = visibleStackObjects[0] || null;
   const detailCompiledText = Array.isArray(details?.compiled_text) ? details.compiled_text : null;
   const detailAbilities = Array.isArray(details?.abilities) ? details.abilities : null;
@@ -1088,8 +1115,8 @@ export default function HoverArtOverlay({
       : []
   ), [displayRulesText]);
   const interactiveRuleLineActions = useMemo(
-    () => matchInteractiveActionsToRulesLines(displayRulesLines, interactiveActions),
-    [displayRulesLines, interactiveActions]
+    () => matchInteractiveActionsToRulesLines(displayRulesLines, paymentActions),
+    [displayRulesLines, paymentActions]
   );
   const activatedRuleLineIndices = useMemo(
     () => new Set(activatedAbilityLineIndices(displayRulesLines)),
@@ -1098,7 +1125,7 @@ export default function HoverArtOverlay({
   const displayObjectName = activeCardTranslation?.name || baseDisplayObjectName;
   const displayTypeLine = activeCardTranslation?.typeLine || baseDisplayTypeLine;
   const displayTypeLineBadges = debugInspector ? [] : typeLineBadges;
-  const displayZoneLine = debugInspector ? null : zoneLine;
+  const displayZoneLine = debugInspector || inspectorZone.toLowerCase() === "battlefield" ? null : zoneLine;
   const displayCountersLine = debugInspector ? null : countersLine;
   const displayManaCost = debugInspector ? null : manaCost;
   const displayStatsText = debugInspector || transitionTitle ? null : statsText;
@@ -1131,8 +1158,9 @@ export default function HoverArtOverlay({
       debugInspector ? "debug" : "normal",
       showCompiledText ? "compiled" : "oracle",
       displayRulesText,
+      flavorText,
     ].join("|"),
-    [debugInspector, displayRulesText, objectIdKey, showCompiledText]
+    [debugInspector, displayRulesText, flavorText, objectIdKey, showCompiledText]
   );
   const inspectorScaleSessionKey = useMemo(
     () => (
@@ -1145,9 +1173,11 @@ export default function HoverArtOverlay({
           transitionTitle || "",
           metadataText || "",
           displayRulesText,
+          typography.era,
+          flavorText,
         ].join("|")
     ),
-    [compact, displayMode, displayRulesText, displayStatsText, metadataText, objectIdKey, transitionTitle]
+    [compact, displayMode, displayRulesText, displayStatsText, typography.era, flavorText, metadataText, objectIdKey, transitionTitle]
   );
   const inspectorTitleScaleSessionKey = useMemo(
     () => (
@@ -1158,10 +1188,11 @@ export default function HoverArtOverlay({
           displayMode,
           compact ? "compact" : "expanded",
           displayObjectName || "",
+          typography.era,
           groupedCardCount,
         ].join("|")
     ),
-    [compact, displayMode, displayObjectName, groupedCardCount, objectIdKey]
+    [compact, displayMode, displayObjectName, groupedCardCount, objectIdKey, typography.era]
   );
   const ruleLineWidths = useMemo(() => {
     if (displayRulesLines.length === 0 || typeof document === "undefined") return [];
@@ -1210,13 +1241,13 @@ export default function HoverArtOverlay({
     if (!ctx) return null;
 
     const titleFontSize = compact ? COMPACT_INSPECTOR_TITLE_FONT_SIZE : INSPECTOR_TITLE_FONT_SIZE;
-    ctx.font = `800 ${titleFontSize}px ${inspectorMeasureFont}`;
+    ctx.font = `${typography.titleWeight} ${titleFontSize}px ${typography.title}`;
     const nameWidth = displayObjectName
       ? measureInspectorTextWidth(ctx, displayObjectName)
       : 0;
 
     const metadataFontSize = titleFontSize * 0.5;
-    ctx.font = `600 ${metadataFontSize}px ${inspectorMeasureFont}`;
+    ctx.font = `${typography.titleWeight} ${metadataFontSize}px ${typography.type}`;
     const metadataLines = [
       ...displayTopLeftDetailLines,
       ...displayTopLeftZoneLines,
@@ -1248,6 +1279,7 @@ export default function HoverArtOverlay({
     fontMeasureVersion,
     hasTopLeftInlineMetadata,
     inspectorMeasureFont,
+    typography,
   ]);
   const preferredInlineWidth = null;
   const availableInspectorWidthNum = Number(availableInspectorWidth);
@@ -2309,6 +2341,8 @@ export default function HoverArtOverlay({
         clone.style.width = "max-content";
         clone.style.maxWidth = "none";
         clone.style.whiteSpace = "nowrap";
+        clone.style.fontFamily = getComputedStyle(textNode).fontFamily;
+        clone.style.fontWeight = getComputedStyle(textNode).fontWeight;
         // Measure at the unscaled font size; measuring at the current scale
         // feeds the shrunken width back into the preferred-width loop.
         clone.style.fontSize = `${INSPECTOR_RULES_FONT_SIZE}px`;
@@ -2362,12 +2396,22 @@ export default function HoverArtOverlay({
 
   if (isCardFrameMode) {
     const frameTone = inspectorCardFrameTone(displayManaCost, displayTypeLine);
-    const useArtFrame = showImageBackdrop
+    const useArtFrame = !cardFrameColors && showImageBackdrop
       && ["colorless", "land", "artifact"].includes(frameTone);
     return (
       <div
         className="interactive-card-frame-stage absolute inset-0 z-30 pointer-events-auto"
         data-card-frame-tone={frameTone}
+        data-card-colors={cardFrameColors ? "sampled" : undefined}
+        data-whole-title={cardFrameColors?.["--whole-title-image"] ? "true" : undefined}
+        data-whole-type={cardFrameColors?.["--whole-type-image"] ? "true" : undefined}
+        data-whole-rules={cardFrameColors?.["--whole-rules-image"] ? "true" : undefined}
+        data-rules-bottom={cardFrameColors?.["--rules-bottom-middle"] ? "sampled" : undefined}
+        data-type-panel={cardFrameColors?.["--type-panel-kind"] || undefined}
+        data-title-panel={cardFrameColors?.["--title-panel-kind"] || undefined}
+        data-art-title-rails={cardFrameColors?.["--art-title-rails"] ? "true" : undefined}
+        style={{ ...cardFrameColors, ...typography.style }}
+        data-card-era={typography.era}
         data-card-frame-art={useArtFrame ? "true" : undefined}
         data-zone-transition-token={transientPreview?.token || undefined}
       >
@@ -2414,6 +2458,9 @@ export default function HoverArtOverlay({
               ) : (
                 <div className="interactive-card-frame__art-fallback" aria-hidden="true" />
               )}
+              {displayZoneLine && (
+                <span className="interactive-card-frame__zone">{displayZoneLine}</span>
+              )}
               {displayStatsText && (
                 <div className="interactive-card-frame__art-stats">{displayStatsText}</div>
               )}
@@ -2423,9 +2470,6 @@ export default function HoverArtOverlay({
               <span className="interactive-card-frame__type">
                 {displayTypeLine || "Card"}
               </span>
-              {displayZoneLine && (
-                <span className="interactive-card-frame__zone">{displayZoneLine}</span>
-              )}
             </div>
 
             {displayTypeLineBadges.length > 0 && (
@@ -2437,13 +2481,18 @@ export default function HoverArtOverlay({
             )}
 
             <div className="interactive-card-frame__rules" aria-label={displayObjectName ? `Rules text for ${displayObjectName}` : "Card rules text"}>
-              {displayRulesLines.length > 0 ? (
+              {displayRulesLines.length > 0 || flavorText ? (
                 <div className="interactive-card-frame__rules-body">
                   {displayRulesLines.map((line, lineIndex) => {
                     const lineActions = interactiveRuleLineActions.get(lineIndex) || [];
-                    const action = lineActions[0] || null;
+                    const action = lineActions.find((candidate) => candidate.mana_payment_available !== false)
+                      || lineActions[0]
+                      || null;
                     const isActivatedAbility = action != null || activatedRuleLineIndices.has(lineIndex);
-                    const canActivate = action != null && typeof onInteractiveAction === "function";
+                    const canActivate = action != null
+                      && !action.payment_pending
+                      && action.mana_payment_available !== false
+                      && typeof onInteractiveAction === "function";
                     const content = (
                       <SymbolText
                         text={line}
@@ -2477,6 +2526,7 @@ export default function HoverArtOverlay({
                       </div>
                     );
                   })}
+                  <InspectorFlavorText text={flavorText} className="interactive-card-frame__rule-line" />
                 </div>
               ) : (
                 <div className="interactive-card-frame__rules-empty">
@@ -2507,7 +2557,8 @@ export default function HoverArtOverlay({
           inspectorShaderReveal && inspectorShaderRevealScope === "inspector" && "hover-art-stage--shader-reveal-inspector"
         )}
         data-zone-transition-token={transientPreview?.token || undefined}
-        style={inspectorShaderRevealStyle}
+        style={{ ...inspectorShaderRevealStyle, ...typography.style }}
+      data-card-era={typography.era}
       >
         <div className="absolute inset-0 bg-[radial-gradient(92%_92%_at_50%_14%,rgba(188,150,92,0.28),rgba(8,13,20,0)_62%),linear-gradient(180deg,rgba(16,12,9,0.96),rgba(8,7,7,0.98))]" />
         <div className="absolute inset-[10px] overflow-hidden rounded-none border border-[rgba(177,145,98,0.38)] bg-[rgba(16,12,10,0.94)] shadow-[0_0_0_1px_rgba(196,164,112,0.12),0_0_28px_rgba(156,118,62,0.18),0_28px_52px_rgba(0,0,0,0.48)]">
@@ -2626,7 +2677,8 @@ export default function HoverArtOverlay({
         inspectorShaderReveal && inspectorShaderRevealScope === "inspector" && "hover-art-stage--shader-reveal-inspector"
       )}
       data-zone-transition-token={transientPreview?.token || undefined}
-      style={inspectorShaderRevealStyle}
+      style={{ ...inspectorShaderRevealStyle, ...typography.style }}
+      data-card-era={typography.era}
     >
       <div className="absolute inset-0 bg-[radial-gradient(120%_84%_at_50%_18%,rgba(188,150,92,0.16),rgba(6,11,18,0)_52%),linear-gradient(180deg,rgba(16,12,9,0.94),rgba(7,8,9,0.98))]" />
       {showImageBackdrop && (
@@ -2666,13 +2718,13 @@ export default function HoverArtOverlay({
                             x{groupedCardCount}
                           </span>
                         )}
-                        <span>{displayObjectName}</span>
+                        <span data-card-title>{displayObjectName}</span>
                       </span>
                       </div>
                     )}
                     {hasTopLeftInlineMetadata && (
                       <div ref={headerMetadataRef} className="flex min-w-0 shrink items-start overflow-visible pt-[1px]">
-                        <div ref={headerMetadataContentRef} className="flex w-max max-w-none flex-col items-start gap-0.5">
+                        <div ref={headerMetadataContentRef} data-card-type className="flex w-max max-w-none flex-col items-start gap-0.5">
                           <InspectorMetadataBlock
                             lines={displayTopLeftDetailLines}
                             className={cn(
@@ -2713,7 +2765,7 @@ export default function HoverArtOverlay({
                   </div>
                 )}
               </div>
-              {displayRulesLines.length > 0 && (
+              {(displayRulesLines.length > 0 || flavorText) && (
                 <div
                   className={cn(
                     "min-h-0 max-w-full flex-1 self-start overflow-hidden bg-transparent px-2.5 py-1 text-left",
@@ -2735,6 +2787,7 @@ export default function HoverArtOverlay({
                           style={rulesTextStyle}
                         />
                       ))}
+                      <InspectorFlavorText text={flavorText} style={rulesTextStyle} />
                     </div>
                   </div>
                 </div>
@@ -2796,7 +2849,7 @@ export default function HoverArtOverlay({
                                 x{groupedCardCount}
                               </span>
                             )}
-                            <span>{displayObjectName}</span>
+                            <span data-card-title>{displayObjectName}</span>
                           </span>
                         </div>
                       )}
@@ -2807,7 +2860,7 @@ export default function HoverArtOverlay({
                       )}
                       {hasTopLeftInlineMetadata && (
                         <div ref={headerMetadataRef} className="flex min-w-0 flex-1 self-center items-start overflow-hidden">
-                          <div ref={headerMetadataContentRef} className="flex w-full min-w-0 flex-col items-start gap-0.5">
+                          <div ref={headerMetadataContentRef} data-card-type className="flex w-full min-w-0 flex-col items-start gap-0.5">
                             <InspectorMetadataBlock
                               lines={displayTopLeftDetailLines}
                               className={cn(
@@ -2937,7 +2990,7 @@ export default function HoverArtOverlay({
               key={rulesRenderKey}
               ref={oracleScrollRef}
               className="inspector-oracle-scroll h-full overflow-y-auto pointer-events-auto overscroll-contain touch-pan-y"
-              tabIndex={displayRulesLines.length > 0 ? 0 : undefined}
+              tabIndex={displayRulesLines.length > 0 || flavorText ? 0 : undefined}
               aria-label={displayObjectName ? `Rules text for ${displayObjectName}` : "Card rules text"}
             >
               <div ref={oracleContainerRef} className={oracleContainerClass} style={resolvedOracleContainerStyle}>
@@ -2950,9 +3003,14 @@ export default function HoverArtOverlay({
                     <div className="space-y-0.5">
                       {displayRulesLines.map((line, lineIndex) => {
                         const lineActions = interactiveRuleLineActions.get(lineIndex) || [];
-                        const action = lineActions[0] || null;
+                        const action = lineActions.find((candidate) => candidate.mana_payment_available !== false)
+                          || lineActions[0]
+                          || null;
                         const isActivatedAbility = action != null || activatedRuleLineIndices.has(lineIndex);
-                        const canActivate = action != null && typeof onInteractiveAction === "function";
+                        const canActivate = action != null
+                          && !action.payment_pending
+                          && action.mana_payment_available !== false
+                          && typeof onInteractiveAction === "function";
                         const content = (
                           <SymbolText
                             text={line}
@@ -3003,6 +3061,7 @@ export default function HoverArtOverlay({
                       })}
                     </div>
                   )}
+                  <InspectorFlavorText text={flavorText} style={rulesTextStyle} />
                 </div>
               </div>
             </div>

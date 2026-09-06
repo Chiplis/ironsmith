@@ -125,12 +125,19 @@ pub(in crate::compiled_text) fn describe_shared_actor_token_creation_list(
         if rendered.contains(". ") {
             return None;
         }
-        let (subject, item) = rendered.split_once(" creates ")?;
+        let (subject, item) = if let Some(item) = rendered.strip_prefix("Create ") {
+            ("Create".to_string(), item)
+        } else if let Some(item) = rendered.strip_prefix("You create ") {
+            ("You create".to_string(), item)
+        } else {
+            let (subject, item) = rendered.split_once(" creates ")?;
+            (format!("{subject} creates"), item)
+        };
         if subject.is_empty() || item.is_empty() {
             return None;
         }
         if let Some(expected) = &shared_subject {
-            if expected != subject {
+            if expected != &subject {
                 return None;
             }
         } else {
@@ -140,7 +147,7 @@ pub(in crate::compiled_text) fn describe_shared_actor_token_creation_list(
     }
 
     Some(format!(
-        "{} creates {}",
+        "{} {}",
         shared_subject?,
         join_with_and(&token_items)
     ))

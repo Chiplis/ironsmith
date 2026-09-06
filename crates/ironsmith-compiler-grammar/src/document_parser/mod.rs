@@ -1471,6 +1471,19 @@ fn source_alias_occurrence_is_rules_term_lexed(
         .then(|| pieces.get(start_word).map(|piece| piece.text))
         .flatten();
 
+    // A keyword used as the object of has/gains is an ability, even if a
+    // card happens to share its name. Keep named object references elsewhere.
+    if matches!(previous_word, Some("has" | "have" | "gain" | "gains" | "lose" | "loses" | "with")) {
+        let ability_tokens = crate::lexer::synthetic_word_tokens(
+            pieces[start_word..end_word].iter().map(|piece| piece.text),
+        );
+        if parse_ability_line_lexed(&ability_tokens).is_some()
+            || matched_word.is_some_and(crate::activation_and_restrictions::keyword_action_costs::is_known_keyword_action_head)
+        {
+            return true;
+        }
+    }
+
     (matched_word == Some("control")
         && matches!(previous_word, Some("gain" | "gains" | "lose" | "loses"))
         && next_word == Some("of"))
@@ -2209,7 +2222,9 @@ fn split_trigger_sentence_chunks_rewrite_lexed(
         let sentence_is_delayed_followup =
             is_delayed_when_that_dies_this_turn_followup_sentence(sentence_tokens)
                 || is_delayed_when_that_leaves_battlefield_followup_sentence(sentence_tokens)
-                || is_delayed_next_end_step_followup_sentence(sentence_tokens);
+                || is_delayed_next_end_step_followup_sentence(sentence_tokens)
+                || effect_grammar::delayed_sentence_shapes::parse_delayed_this_turn_shape(sentence_tokens)
+                    .is_some_and(|shape| shape.references_previous_creature);
         let sentence_is_attack_group_followup =
             is_attack_group_combat_damage_followup_sentence(sentence_tokens);
         if !current.is_empty()
@@ -3280,6 +3295,12 @@ pub fn recognize_document_with_context(
                     source_line: line.info.display_line_index,
                 });
                 let _line_references = line_context.reference_scope();
+                // Numeric result rows belong to the preceding die-roll
+                // instruction, even when their body contains a gain clause.
+                if document_grammar::parse_numeric_result_prefix_tokens(&line.info.source_tokens).is_some() {
+                    idx = dispatch_remaining_preprocessed_line(line_context, preprocessed, idx, line, allow_unsupported, &mut lines)?;
+                    continue;
+                }
                 if try_push_complete_typed_static_line(line, &mut lines)? {
                     idx += 1;
                     continue;
@@ -3693,6 +3714,18 @@ fn try_push_complete_typed_static_line(
 /// gain; the quoted-gain fast path declines them all alike, whatever the
 /// order.
 const QUOTED_GAIN_DECLINES: &[fn(&PreprocessedLine) -> Result<bool, CardTextError>] = &[
+    |line| {
+        let outer = line.tokens.iter().take_while(|token| token.kind != TokenKind::Quote);
+        Ok(outer.clone().any(|token| token.is_any_word(&["has", "have"]))
+            && matches!(recognize_static_line(line), Ok(Some(_))))
+    },
+    // A continuous animation owns its characteristics and quoted grant as
+    // one static bundle, including any turn condition on the affected set.
+    |line| {
+        Ok(crate::keyword_static::parse_filter_is_pt_creature_in_addition_and_has_line(
+            &line.tokens,
+        )?.is_some())
+    },
     // a labeled body reaches labeled-line dispatch first
     |line| {
         Ok(split_label_prefix_lexed(&line.info.source_tokens).is_some()
@@ -3703,7 +3736,8 @@ const QUOTED_GAIN_DECLINES: &[fn(&PreprocessedLine) -> Result<bool, CardTextErro
     // a permanent anthem owns its trailing quoted grants
     |line| {
         Ok(
-            crate::keyword_static::parse_anthem_with_trailing_segments_line(&line.tokens)?
+            crate::keyword_static::parse_anthem_and_keyword_line(&line.tokens)?.is_some()
+                || crate::keyword_static::parse_anthem_with_trailing_segments_line(&line.tokens)?
                 .is_some(),
         )
     },
@@ -3735,6 +3769,12 @@ fn try_push_complete_typed_quoted_gain_statement(
     line: &PreprocessedLine,
     lines: &mut Vec<RecognizedLine>,
 ) -> Result<bool, CardTextError> {
+    let Some(quote) = line.tokens.iter().position(|token| token.kind == TokenKind::Quote) else {
+        return Ok(false);
+    };
+    if line.tokens[..quote].iter().any(|token| token.kind == TokenKind::Colon) {
+        return Ok(false);
+    }
     for declines in QUOTED_GAIN_DECLINES {
         if declines(line)? {
             return Ok(false);
@@ -3783,6 +3823,11 @@ fn try_push_complete_typed_statement(
     line: &PreprocessedLine,
     lines: &mut Vec<RecognizedLine>,
 ) -> Result<bool, CardTextError> {
+    if document_grammar::parse_numeric_result_prefix_tokens(&line.info.source_tokens).is_some() {
+        // Result rows belong to the preceding roll table, even when their
+        // bodies also contain complete standalone effect sentences.
+        return Ok(false);
+    }
     if line_starts_with_trigger_intro_tokens(&line.tokens) {
         // Typed effect leaves may recognize verbs inside a trigger's result
         // clause. The complete line still belongs to triggered-line dispatch;
@@ -3790,9 +3835,10 @@ fn try_push_complete_typed_statement(
         // a bogus target phrase and prevents the proven comma split.
         return Ok(false);
     }
-    if split_activation_text_tokens_lexed(&line.tokens)
-        .is_some_and(|(cost_tokens, _)| looks_like_activation_cost_prefix(&cost_tokens))
-    {
+    // Colon-bearing lines need their full activation or modal envelope.
+    // Numeric loyalty costs and keyword-labeled costs need not look like a
+    // bare mana payment before their owning line family normalizes them.
+    if split_activation_text_tokens_lexed(&line.tokens).is_some() {
         return Ok(false);
     }
     // The early typed-statement front door runs before the ordinary
@@ -3800,6 +3846,17 @@ fn try_push_complete_typed_statement(
     // understand permanent anthem text, but that must remain a battlefield
     // static ability rather than a one-shot resolution program.
     let typed_persistent_anthem =
+        crate::keyword_static::parse_enchanted_land_is_chosen_type_line(&line.tokens)?.is_some()
+            || crate::keyword_static::parse_enchanted_creature_has_line(&line.tokens)?.is_some()
+            ||
+        (line.tokens.iter().take_while(|token| token.kind != TokenKind::Quote)
+            .any(|token| token.is_any_word(&["has", "have"]))
+            && matches!(recognize_static_line(line), Ok(Some(_))))
+            ||
+        crate::keyword_static::parse_attacked_player_can_attack_as_though_no_defender_line(&line.tokens)?.is_some()
+            ||
+        crate::keyword_static::parse_plain_can_attack_as_though_no_defender_line(&line.tokens)?.is_some()
+            ||
         crate::keyword_static::parse_anthem_with_trailing_segments_line(&line.tokens)?.is_some()
             || super::grammar::anthem_grants::parse_anthem_modifier_head(&line.tokens)
                 .is_some_and(|head| !head.has_target && !head.temporary);
@@ -4285,6 +4342,20 @@ fn rewrite_line_normalized(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn quoted_gain_shortcut_does_not_claim_continuous_bundles() {
+        for text in [
+            "Enchanted creature gets +2/+2 and has \"Whenever this creature attacks, draw a card.\"",
+            "During your turn, each non-Equipment artifact and non-Aura enchantment you control with mana value 3 or greater is a 5/5 Elemental creature in addition to its other types and has haste and \"Whenever this creature deals combat damage to a player, draw a card.\"",
+        ] {
+            let line = single_preprocessed_line(text);
+            let mut lines = Vec::new();
+            assert!(!super::try_push_complete_typed_quoted_gain_statement(&line, &mut lines).unwrap(), "{text}");
+            assert!(lines.is_empty());
+            assert!(super::recognize_static_line(&line).unwrap().is_some(), "{text}");
+        }
+    }
+
     use crate::cards::builders::TurnEventPredicateAst;
     use crate::cards::builders::SourcePredicateAst;
     use crate::cards::builders::KeywordActionAst;
@@ -6488,6 +6559,28 @@ mod tests {
             "the sentence compositor owns the complete target/fanout/conditional program"
         );
         assert!(lines.is_empty());
+    }
+
+    #[test]
+    fn quoted_attached_transform_survives_document_preprocessing() {
+        let card = CardBuilder::new(CardId::from_raw(1), "Attached Transformation Probe")
+            .card_types(vec![CardType::Enchantment]);
+        let text = "Enchanted permanent is a Treasure artifact with \"{T}, Sacrifice this artifact: Add one mana of any color,\" and it loses all other abilities.";
+        let preprocessed = preprocess_document(card, text).unwrap();
+        let Some(PreprocessedItem::Line(line)) = preprocessed.items.first() else { panic!("expected a line"); };
+        assert!(crate::keyword_static::parse_attached_type_transform_line(&line.tokens).unwrap().is_some(), "prepared tokens: {:#?}", line.tokens);
+        assert!(recognize_static_line(line).unwrap().is_some());
+    }
+
+    #[test]
+    fn leading_then_condition_survives_statement_recognition() {
+        let line = single_preprocessed_line("Then if you control three or more creatures with different powers, draw a card.");
+        let (effects, trace) = crate::parse_trace::capture(|| crate::effect_sentences::parse_effect_sentences_lexed(&line.tokens).unwrap());
+        let debug = format!("{effects:#?}");
+        assert!(debug.contains("ControlFlow") || debug.contains("Conditionals"), "{debug}\n{}", trace.render());
+        let statement = recognize_statement_line(&line).unwrap().unwrap();
+        let debug = format!("{statement:#?}");
+        assert!(!matches!(statement.parsed_effects.as_deref(), Some([crate::cards::builders::EffectAst::SubjectVerb(_)])), "{debug}");
     }
 
     #[test]

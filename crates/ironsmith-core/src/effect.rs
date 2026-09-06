@@ -317,6 +317,9 @@ pub enum PriorEffectResultQuantifier {
 #[derive(TagKeyWalk)]
 pub struct PriorEffectResultSurface {
     pub action: PriorEffectAction,
+    /// Authored present-tense zone-change wording for an exile result gate.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub put_into_exile_surface: bool,
     pub filter: ObjectFilter,
     pub actor: PriorEffectResultActor,
     pub quantifier: PriorEffectResultQuantifier,
@@ -340,6 +343,7 @@ impl PriorEffectResultSurface {
     ) -> Self {
         Self {
             action,
+            put_into_exile_surface: false,
             filter,
             actor,
             quantifier,
@@ -523,6 +527,13 @@ pub enum RetargetMode {
 #[derive(Debug, Clone, PartialEq)]
 #[derive(TagKeyWalk)]
 pub enum DelayedTriggerSpec {
+    /// An event-time condition qualifies the delayed event matcher, rather
+    /// than becoming an intervening condition checked again on resolution.
+    ConditionQualified {
+        trigger: Box<DelayedTriggerSpec>,
+        condition: crate::value_model::Condition,
+        surface: String,
+    },
     AsPermanentsUntap {
         player: PlayerFilter,
         source_must_be_controlled: bool,
@@ -4617,6 +4628,8 @@ pub struct CreateTokenCopyEffect<A> {
     /// records the subject of a separate post-create haste sentence.
     pub haste_followup_reference_surface: Option<TokenCopyReferenceSurface>,
     pub enters_attacking: bool,
+    /// The entry state was authored as a separate token-followup sentence.
+    pub entry_tapped_attacking_followup: bool,
     pub attack_target_mode: Option<CopyAttackTargetMode>,
     pub exile_at_end_of_combat: bool,
     pub exile_at_end_of_combat_reference_surface: Option<TokenCopyReferenceSurface>,
@@ -4661,6 +4674,7 @@ impl<A> CreateTokenCopyEffect<A> {
             has_haste: false,
             haste_followup_reference_surface: None,
             enters_attacking: false,
+            entry_tapped_attacking_followup: false,
             attack_target_mode: None,
             exile_at_end_of_combat: false,
             exile_at_end_of_combat_reference_surface: None,

@@ -1081,6 +1081,18 @@ fn compact_ascii_numeric_range(token: &OwnedLexToken) -> Option<(i32, i32)> {
 pub fn split_trailing_if_clause_lexed<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<TrailingIfClauseSpec<'a>> {
+    // A leading conditional may have an introductory "then" or ability
+    // label; those words are not an effect preceding a trailing predicate.
+    if super::effects::split_conditional_sentence_family_head_lexed(tokens).is_some() {
+        return None;
+    }
+    if tokens.iter().filter(|token| token.is_word("if")).count() > 1
+        && let crate::recognition::ParseOutcome::Match(matched) = super::effects::coordination::recognize_coordination(tokens)
+        && matched.value.members.len() > 1
+        && matched.value.members.iter().all(|member| member.tokens.iter().any(|token| token.is_word("if")))
+    {
+        return None;
+    }
     split_trailing_predicate_clause_lexed(tokens, "if")
 }
 

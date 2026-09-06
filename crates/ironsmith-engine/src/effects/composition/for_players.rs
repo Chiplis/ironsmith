@@ -452,6 +452,10 @@ impl EffectExecutor for ForPlayersEffect {
                 players.len()
             ];
             let mut loop_local_tags = std::collections::HashSet::<crate::tag::TagKey>::new();
+            // A later printed action can reference the outcome of an earlier
+            // action for this same player ("reveal that many"). Keep those
+            // bindings per player just like the affected-object collections.
+            let mut effect_outcomes_by_player = vec![ctx.effect_outcomes.clone(); players.len()];
 
             for unit in units {
                 let mut prepared: Vec<(
@@ -498,6 +502,7 @@ impl EffectExecutor for ForPlayersEffect {
                             &loop_local_tags,
                         );
                     }
+                    ctx.effect_outcomes = effect_outcomes_by_player[player_index].clone();
                     let pre_player_tagged_objects = ctx.tagged_objects.clone();
                     ctx.with_temp_iterated_player(Some(player_id), |ctx| {
                         for &effect_index in &unit {
@@ -524,6 +529,7 @@ impl EffectExecutor for ForPlayersEffect {
                         }
                         Ok::<(), ExecutionError>(())
                     })?;
+                    effect_outcomes_by_player[player_index] = ctx.effect_outcomes.clone();
                     if unit_has_mutating_effect {
                         capture_player_tagged_object_deltas(
                             &pre_player_tagged_objects,
@@ -550,11 +556,13 @@ impl EffectExecutor for ForPlayersEffect {
                             );
                         }
                         ctx.tagged_objects = prepared_tagged_objects.clone();
+                        ctx.effect_outcomes = effect_outcomes_by_player[player_index].clone();
                         active_commit_player = Some(player_index);
                     }
                     let proposal_baseline = prepared_tagged_objects.clone();
                     match proposal.commit(game, ctx) {
                         Ok(outcome) => {
+                            effect_outcomes_by_player[player_index] = ctx.effect_outcomes.clone();
                             capture_player_tagged_object_deltas(
                                 &proposal_baseline,
                                 &ctx.tagged_objects,

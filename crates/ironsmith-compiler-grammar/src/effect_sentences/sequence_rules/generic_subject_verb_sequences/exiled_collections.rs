@@ -450,10 +450,9 @@ mod tests {
         assert!(debug.contains("IsNotTaggedObject"), "{debug}");
         assert!(debug.contains("zone: Hand"), "{debug}");
         assert!(debug.contains("zone: Library"), "{debug}");
-        assert!(
-            debug.contains("order: Some(\n                    Random"),
-            "{debug}"
-        );
+        let compact_debug: String = debug.chars().filter(|ch| !ch.is_whitespace()).collect();
+        assert!(compact_debug.contains("order:Some(Random"), "{debug}");
+        assert!(debug.contains("leading_then: true"), "{debug}");
     }
 
     #[test]

@@ -694,7 +694,7 @@ fn each_opponent_top_card_permission_preserves_the_accumulated_collection() {
         panic!("expected each-opponent exile plus shared permission, got {effects:#?}");
     };
     let [
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone {
             player: PlayerAst::You,
             ..
         }),

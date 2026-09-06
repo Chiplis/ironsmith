@@ -113,13 +113,33 @@ function objectFamilyIds(state, objectId) {
   return ids;
 }
 
+function zonePreviewPosition(source, size) {
+  const rect = source.getBoundingClientRect();
+  const strip = source.closest(".zone-pile-menu")?.getBoundingClientRect() || rect;
+  const margin = 8;
+  const gap = 12;
+  const below = Math.max(0, window.innerHeight - margin - strip.bottom - gap);
+  const above = Math.max(0, strip.top - gap - margin);
+  const placeBelow = below >= size.height || below >= above;
+  const availableHeight = placeBelow ? below : above;
+  const height = Math.min(size.height, availableHeight, (window.innerWidth - margin * 2) * 88 / 63);
+  const width = height * 63 / 88;
+  return {
+    left: Math.max(margin, Math.min(window.innerWidth - margin - width, rect.left + (rect.width - width) / 2)),
+    top: placeBelow ? strip.bottom + gap : strip.top - gap - height,
+    right: "auto",
+    height: `${height}px`,
+  };
+}
+
 function previewPosition(objectId, size) {
   if (objectId == null || typeof document === "undefined" || typeof window === "undefined") return null;
-  const candidates = Array.from(document.querySelectorAll(".game-card[data-object-id]"))
+  const candidates = Array.from(document.querySelectorAll(".game-card[data-object-id], [data-zone-card][data-object-id]"))
     .filter((element) => element.getAttribute("data-object-id") === String(objectId));
   const source = candidates.find((element) => element.classList.contains("battlefield-row-card"))
     || candidates[0];
   if (!source) return null;
+  if (source.hasAttribute("data-zone-card")) return zonePreviewPosition(source, size);
 
   const rect = source.getBoundingClientRect();
   const margin = 8;

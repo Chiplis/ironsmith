@@ -626,6 +626,7 @@ pub fn parse_deal_damage_to_target_equal_to_clause(
     else {
         return Ok(None);
     };
+    let amount_tokens = shape.amount_clause_tokens;
     let clause_words = crate::lexer::token_word_refs(tokens);
     let mut candidates = Vec::new();
     let span = span_from_tokens(tokens);
@@ -652,13 +653,13 @@ pub fn parse_deal_damage_to_target_equal_to_clause(
     };
     add_candidate(
         "damage-amount-relative-aggregate",
-        parse_equal_to_aggregate_filter_value(tokens),
+        parse_equal_to_aggregate_filter_value(amount_tokens),
     );
-    let object_count = parse_equal_to_number_of_filter_value(tokens);
+    let object_count = parse_equal_to_number_of_filter_value(amount_tokens);
     add_candidate("damage-amount-object-count", object_count.clone());
     add_candidate(
         "damage-amount-devotion",
-        parse_devotion_value_from_add_clause(tokens)?,
+        parse_devotion_value_from_add_clause(amount_tokens)?,
     );
     add_candidate(
         "damage-amount-event-result",
@@ -666,7 +667,7 @@ pub fn parse_deal_damage_to_target_equal_to_clause(
             .amount_is_event_result
             .then_some(Value::EventValue(EventValueSpec::Amount)),
     );
-    let fixed_plus_history = parse_fixed_plus_turn_history_value(tokens);
+    let fixed_plus_history = parse_fixed_plus_turn_history_value(amount_tokens);
     // The plain `equal to the number of <filter>` shape and the summed
     // `equal to <n> plus <history>` shape each own their complete amount
     // phrase; the dynamic cost-modifier grammar recovers fragments of the
@@ -676,7 +677,7 @@ pub fn parse_deal_damage_to_target_equal_to_clause(
     if fixed_plus_history.is_none() && object_count.is_none() {
         add_candidate(
             "damage-amount-dynamic-cost-modifier",
-            parse_dynamic_cost_modifier_value(tokens)?,
+            parse_dynamic_cost_modifier_value(amount_tokens)?,
         );
     }
     add_candidate("damage-amount-fixed-plus-turn-history", fixed_plus_history);
@@ -694,7 +695,7 @@ pub fn parse_deal_damage_to_target_equal_to_clause(
     // cannot compete with a relationship-, aggregate-, event-, devotion-, or
     // cost-specific amount proven by the registry above.
     let amount = specific_amount
-        .or_else(|| parse_add_mana_equal_amount_value(tokens))
+        .or_else(|| parse_add_mana_equal_amount_value(amount_tokens))
         .ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "missing damage amount (clause: '{}')",

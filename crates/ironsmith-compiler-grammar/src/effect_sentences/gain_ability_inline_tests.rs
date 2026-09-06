@@ -709,6 +709,16 @@ fn leading_duration_demonstrative_base_pt_then_gains_keyword_parses() {
         .expect("leading-duration base-pt then gains clause should parse")
         .expect("leading-duration base-pt then gains clause should produce effects");
 
+    let full = crate::effect_sentences::parse_effect_sentences_lexed(&tokens).expect("full sentence route");
+    assert!(format!("{full:?}").contains("SetBasePowerToughness"), "{full:#?}");
+    let document = tokenize_line("Untap another target creature you control. Until end of turn, that creature has base power and toughness 4/4 and gains indestructible.", 0);
+    let parts = crate::lexer::split_lexed_sentences(&document);
+    let isolated = parse_gain_ability_sentence(parts[1]).unwrap().unwrap();
+    assert!(format!("{isolated:?}").contains("SetBasePowerToughness"), "isolated: {isolated:#?}");
+    let complete = crate::effect_sentences::dispatch_entry::parse_complete_compound_gain_statement(parts[1]).unwrap();
+    assert!(complete.is_some(), "compound shape rejected");
+    let full_document = crate::effect_sentences::parse_effect_sentences_lexed(&document).unwrap();
+    assert!(format!("{full_document:?}").contains("SetBasePowerToughness"), "{full_document:#?}");
     let debug = format!("{effects:?}").to_ascii_lowercase();
     assert!(
         string_contains(&debug, "setbasepowertoughness")
@@ -1440,4 +1450,18 @@ fn this_creature_keyword_grant_targets_only_the_ability_source() {
         ))
     );
     assert_eq!(abilities, &[KeywordAction::Indestructible.into()]);
+}
+
+#[test]
+fn conditional_instead_grant_preserves_the_target_count() {
+    for text in [
+        "Any number of target creatures you control gain indestructible until end of turn.",
+        "If this spell was kicked, instead any number of target creatures you control gain indestructible until end of turn.",
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let effects = super::super::parse_effect_chain_lexed(&tokens).unwrap();
+        let debug = format!("{effects:#?}");
+        assert!(debug.contains("WithCount"), "{text}: {debug}");
+        assert!(!debug.contains("GrantAbilitiesAll"), "{text}: {debug}");
+    }
 }

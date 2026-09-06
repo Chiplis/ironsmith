@@ -183,11 +183,14 @@ impl ObjectRef {
 #[derive(TagKeyWalk)]
 pub struct TargetabilityConstraint {
     pub stack_object: ObjectRef,
+    /// Restrict candidates to controllers different from the spell's current object targets.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub exclude_current_target_controllers: bool,
 }
 
 impl TargetabilityConstraint {
     pub fn by_stack_object(stack_object: ObjectRef) -> Self {
-        Self { stack_object }
+        Self { stack_object, exclude_current_target_controllers: false }
     }
 }
 
@@ -1987,6 +1990,9 @@ pub struct ObjectFilter {
     /// object at any earlier point in the game.
     pub was_dealt_damage_by_source_this_game: bool,
     pub dealt_damage_to_player_this_turn: Option<PlayerFilter>,
+    /// Restrict that history relation to combat damage from this exact object.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub dealt_damage_to_player_this_turn_combat_only: bool,
     pub drawn_this_turn: bool,
     pub power: Option<Comparison>,
     pub power_parity: Option<ParityRequirement>,
@@ -4109,7 +4115,7 @@ impl ObjectFilter {
                         .push("with the same mana value as another tagged object".to_string());
                 }
                 TaggedOpbjectRelation::ManaValueLteTagged => {
-                    if self.union_surface.equal_or_lesser_mana_value() {
+                    if self.union_surface.equal_or_lesser_mana_value() && constraint.tag.as_str() != "triggering" {
                         post_noun_qualifiers.push("with equal or lesser mana value".to_string());
                     } else if constraint.tag.as_str() == "triggering" {
                         post_noun_qualifiers
@@ -5257,7 +5263,8 @@ impl ObjectFilter {
         }
         if let Some(player) = &self.dealt_damage_to_player_this_turn {
             parts.push(format!(
-                "that dealt damage to {} this turn",
+                "that dealt {}damage to {} this turn",
+                if self.dealt_damage_to_player_this_turn_combat_only { "combat " } else { "" },
                 describe_player_filter(player)
             ));
         }

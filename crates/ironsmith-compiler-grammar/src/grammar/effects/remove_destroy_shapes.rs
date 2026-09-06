@@ -223,7 +223,7 @@ pub fn parse_remove_clause_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<RemoveClauseShape<'_>, RemoveShapeError> {
     let tokens = trim_shape_edges(tokens);
-    if exact_tokens(tokens, &["all", "of", "them"]) {
+    if exact_tokens(tokens, &["all", "of", "them"]) || exact_tokens(tokens, &["those", "counters"]) {
         return Ok(RemoveClauseShape::AllOfThem);
     }
 

@@ -811,6 +811,8 @@ pub(crate) fn interpret_trigger_model(
 impl super::Trigger {
     pub fn from_delayed_trigger_spec(spec: ironsmith_core::DelayedTriggerSpec) -> Self {
         match spec {
+            ironsmith_core::DelayedTriggerSpec::ConditionQualified { trigger, condition, surface } =>
+                Self::condition_qualified(Self::from_delayed_trigger_spec(*trigger), condition, surface, false),
             ironsmith_core::DelayedTriggerSpec::AsPermanentsUntap {
                 player,
                 source_must_be_controlled,

@@ -914,10 +914,28 @@ fn preserve_combat_role_disjunction(filter: &mut ObjectFilter, tokens: &[OwnedLe
     filter.set_union_connective(ObjectFilterUnionConnective::Or);
 }
 
+/// The noun after `same name as` describes the comparison object, not
+/// the selected objects. Parse the two operands independently.
+fn parse_terminal_same_name_filter(tokens: &[OwnedLexToken], other: bool) -> Result<Option<ObjectFilter>, CardTextError> {
+    let trimmed = crate::util::trim_edge_punctuation_tokens(tokens);
+    let Ok(Some(reference)) = crate::grammar::effects::fanout_shapes::parse_same_name_reference_span(trimmed) else { return Ok(None); };
+    if reference.start == 0 || reference.end != trimmed.len() { return Ok(None); }
+    let words = parser_token_word_refs(&trimmed[reference.start..reference.end]);
+    let Some(surface) = words.last().and_then(|word| ironsmith_core::SameNameAntecedentSurface::from_noun(word)) else { return Ok(None); };
+    let mut filter = parse_object_filter(&trimmed[..reference.start], other)?;
+    filter.set_same_name_antecedent_surface(Some(surface));
+    filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+        tag: crate::tag::CompilerReferenceTag::It.bind().into(),
+        relation: TaggedOpbjectRelation::SameNameAsTagged,
+    });
+    Ok(Some(filter))
+}
+
 pub fn parse_object_filter(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some(filter) = parse_terminal_same_name_filter(tokens, other)? { return Ok(filter); }
     if let Some((base_tokens, card_name)) = split_drafted_color_qualifier_tokens(tokens) {
         let mut filter = parse_object_filter_inner(&base_tokens, other)?;
         filter.colors_chosen_while_drafting_named = Some(card_name);
@@ -1084,6 +1102,7 @@ pub fn parse_object_filter_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some(filter) = parse_terminal_same_name_filter(tokens, other)? { return Ok(filter); }
     if let Some((base_tokens, card_name)) = split_drafted_color_qualifier_tokens(tokens) {
         let mut filter = parse_object_filter_lexed_inner(&base_tokens, other)?;
         filter.colors_chosen_while_drafting_named = Some(card_name);
@@ -2952,5 +2971,18 @@ mod tests {
                         crate::object::CounterType::Time,
                     ))
         }));
+    }
+}
+
+#[cfg(test)]
+mod same_name_operand_tests {
+    #[test]
+    fn comparison_creature_does_not_constrain_the_selected_tokens() {
+        let tokens = crate::lexer::lex_line("tokens with the same name as that creature", 0).unwrap();
+        for filter in [super::parse_object_filter(&tokens, false).unwrap(), super::parse_object_filter_lexed(&tokens, false).unwrap()] {
+            assert!(filter.token);
+            assert!(filter.card_types.is_empty(), "{filter:#?}");
+            assert!(filter.tagged_constraints.iter().any(|constraint| constraint.relation == crate::target::TaggedOpbjectRelation::SameNameAsTagged));
+        }
     }
 }

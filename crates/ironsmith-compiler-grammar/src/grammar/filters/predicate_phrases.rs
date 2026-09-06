@@ -424,6 +424,12 @@ fn is_source_card_reference_clause(clause: LexedClause<'_>) -> bool {
 }
 
 fn parse_source_zone_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    if let Some(relation) = parse_copula_relation_clauses(tokens)
+        && is_source_reference_clause(relation.subject_clause)
+        && surface::exact(relation.tail_clause, &["exiled"])
+    {
+        return Some(PredicateAst::Source(SourcePredicateAst::SourceIsInZone(Zone::Exile)));
+    }
     let relation = parse_prepositional_copula_relation_clauses(tokens, &["in", "on"])?;
     let source = relation.subject_clause;
     if !is_source_reference_clause(source) {
@@ -3967,7 +3973,10 @@ fn parse_demonstrative_keyword_predicate(tokens: &[OwnedLexToken]) -> Option<Pre
     let clause = LexedClause::new(tokens);
     let atoms = [
         WinnowSequence::subject("reference", WinnowCaptureKind::WordCount(1)),
-        WinnowSequence::action("action", WinnowCaptureKind::OneOf(&["has", "have"])),
+        WinnowSequence::action("action", WinnowCaptureKind::OneOfPhrase(&[
+            &["has"], &["have"], &["doesnt", "have"], &["doesn't", "have"],
+            &["does", "not", "have"],
+        ])),
         WinnowSequence::object("keyword", WinnowCaptureKind::Rest),
     ];
     let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
@@ -3980,7 +3989,13 @@ fn parse_demonstrative_keyword_predicate(tokens: &[OwnedLexToken]) -> Option<Pre
     }
     let mut filter = ObjectFilter::default();
     apply_filter_keyword_constraint(&mut filter, constraint, false);
-    Some(PredicateAst::ItMatches(filter))
+    let action = matched.capture_clause_by_role(WinnowCaptureRole::Action, clause)?;
+    let predicate = PredicateAst::ItMatches(filter);
+    Some(if surface::exact_any(action, &[&["has"], &["have"]]) {
+        predicate
+    } else {
+        PredicateAst::Not(Box::new(predicate))
+    })
 }
 
 fn parse_demonstrative_shares_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {

@@ -32,6 +32,7 @@ const WORKER_METHODS = [
   "loadDecks",
   "loadDemoDecks",
   "objectDetails",
+  "inspectorActions",
   "previewCustomCard",
   "previewCastTargets",
   "previewCryptoRequirements",

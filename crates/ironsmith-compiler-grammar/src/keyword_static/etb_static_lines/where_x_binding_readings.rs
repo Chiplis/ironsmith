@@ -504,7 +504,8 @@ fn read_tagged_mana_value_reference(input: &BindingClause<'_>) -> Option<Value> 
         .and_then(|tail| etb_grammar::parse_tagged_mana_value_reference_tokens(tail.tokens()))
     {
         let tag = match reference {
-            EtbTaggedManaValueReference::ExiledCard | EtbTaggedManaValueReference::ThatCard => {
+            EtbTaggedManaValueReference::ExiledCard => crate::tag::CompilerReferenceTag::SourceExiled,
+            EtbTaggedManaValueReference::ThatCard => {
                 crate::tag::CompilerReferenceTag::It
             }
             EtbTaggedManaValueReference::TriggeringSpell => {

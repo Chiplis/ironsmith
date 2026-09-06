@@ -1265,7 +1265,15 @@ pub(crate) fn parse_get_pump_clause(
             EffectAst::subject_verb_pump_all(filter, power, toughness, duration)
         }
     };
-    if demonstrative_set_surface
+    let authored_quantifier = if demonstrative_set_surface {
+        Some(ironsmith_core::SetQuantifierSurface::Those)
+    } else if subject_tokens.first().is_some_and(|token| token.is_word("all")) {
+        Some(ironsmith_core::SetQuantifierSurface::All)
+    } else if subject_tokens.first().is_some_and(|token| token.is_word("each"))
+        || subject_tokens.last().is_some_and(|token| token.is_word("each")) {
+        Some(ironsmith_core::SetQuantifierSurface::Each)
+    } else { None };
+    if let Some(authored_quantifier) = authored_quantifier
         && let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
@@ -1279,7 +1287,7 @@ pub(crate) fn parse_get_pump_clause(
             ..
         }) = &mut effect
     {
-        *set_quantifier_surface = Some(ironsmith_core::SetQuantifierSurface::Those);
+        *set_quantifier_surface = Some(authored_quantifier);
     }
     Ok(Some(effect))
 }

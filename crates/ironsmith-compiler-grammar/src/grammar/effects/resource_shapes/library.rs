@@ -10,6 +10,16 @@ pub fn parse_resource_shuffle_shape(
     {
         let target = trimmed(&clause[..into_idx]);
         let normalized_destination = without_articles(trimmed(after_into));
+        let target_words = crate::lexer::token_word_refs(target);
+        if matches!(target_words.as_slice(), ["your", "hand"] | ["their", "hand"] | ["his", "or", "her", "hand"])
+            && let Some((destination_player, rest)) = primitives::parse_prefix(&normalized_destination, destination)
+            && trimmed(rest).is_empty()
+        {
+            let source_player = if target_words.first() == Some(&"your") { PlayerAst::You } else { default_player };
+            if resolve_destination(destination_player, default_player) == source_player {
+                return Some(ResourceShuffleShape::HandIntoLibrary { player: source_player });
+            }
+        }
         if exact_unit(target, tagged_reference)
             && let Some((destination_player, rest)) =
                 primitives::parse_prefix(&normalized_destination, destination)

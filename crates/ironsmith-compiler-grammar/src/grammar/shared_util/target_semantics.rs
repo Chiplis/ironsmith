@@ -142,7 +142,7 @@ fn explicit_player_exclusion(words: &[&str]) -> Option<PlayerFilter> {
     Some(PlayerFilter::excluding(base, excluded))
 }
 
-fn sacrificed_object_kind(words: &[&str]) -> Option<SacrificedObjectKind> {
+pub(crate) fn sacrificed_object_kind(words: &[&str]) -> Option<SacrificedObjectKind> {
     let words = if crate::word_primitives::first_is_any(words, &["the", "a", "an"]) {
         &words[1..]
     } else {

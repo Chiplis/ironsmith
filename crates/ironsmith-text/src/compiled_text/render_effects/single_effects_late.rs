@@ -196,7 +196,6 @@ pub(super) fn describe_collection_scoped_each_upkeep_return(
 ) -> Option<String> {
     let (duration_tag, duration_zone) = schedule.while_any_tagged_object_in_zone.as_ref()?;
     if *duration_zone != Zone::Exile
-        || duration_tag.as_str() != crate::tag::SOURCE_EXILED_TAG
         || schedule.one_shot
         || schedule.start_next_turn
         || schedule.until_end_of_turn
@@ -210,10 +209,8 @@ pub(super) fn describe_collection_scoped_each_upkeep_return(
     }
 
     let effects = schedule.effects.flattened_default_effects();
-    let choose = effects.iter().find_map(|effect| {
-        structural_unwrap_render_wrappers(effect)
-            .downcast_ref::<crate::effects::ChooseObjectsEffect>()
-    })?;
+    let [choice_effect, move_effect] = effects else { return None; };
+    let choose = structural_unwrap_render_wrappers(choice_effect).downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     if choose.chooser != PlayerFilter::Active
         || choose.count.min != 1
         || choose.count.max != Some(1)
@@ -231,9 +228,7 @@ pub(super) fn describe_collection_scoped_each_upkeep_return(
         return None;
     }
 
-    let return_effect = effects.iter().find_map(|effect| {
-        structural_unwrap_render_wrappers(effect).downcast_ref::<crate::effects::MoveToZoneEffect>()
-    })?;
+    let return_effect = structural_unwrap_render_wrappers(move_effect).downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     if return_effect.zone != Zone::Battlefield
         || return_effect.verb_surface != ironsmith_core::MoveToZoneVerbSurface::Return
         || return_effect.battlefield_controller != crate::effects::BattlefieldController::Owner

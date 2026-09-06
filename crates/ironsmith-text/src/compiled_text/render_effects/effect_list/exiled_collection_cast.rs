@@ -420,7 +420,7 @@ pub(super) fn describe_exiled_collection_program(effects: &[Effect]) -> Option<S
         cast_surface,
     ];
     if !tail.is_empty() {
-        let (remainder_surface, remainder_exiled, remainder_selected) = if let Some(view) =
+        let (mut remainder_surface, remainder_exiled, remainder_selected) = if let Some(view) =
             exiled_collection_partition_view(tail)
         {
             view
@@ -463,6 +463,14 @@ pub(super) fn describe_exiled_collection_program(effects: &[Effect]) -> Option<S
         };
         if remainder_exiled != *exiled_tag || remainder_selected != choice.tag {
             return None;
+        }
+        // With a single optional selection, the exact tagged complement is
+        // naturally "the rest". Multi-card casting keeps the explicit set.
+        if choice.count.max == Some(1)
+            && !choice.count.dynamic_x
+            && remainder_surface == "Put the exiled cards not cast this way on the bottom of your library in a random order"
+        {
+            remainder_surface = "Then put the rest on the bottom of your library in a random order".to_string();
         }
         parts.push(remainder_surface);
     }
@@ -659,7 +667,7 @@ mod tests {
 
             assert_eq!(
                 crate::compiled_text::compiled_text_lines(&definition),
-                vec![oracle.to_string()],
+                vec![oracle],
                 "{name}",
             );
         }

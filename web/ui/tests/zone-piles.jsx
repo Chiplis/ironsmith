@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import { GameContext } from "../src/context/GameContext.shared";
 import { DragProvider, useDragActions, useDragState } from "../src/context/DragContext";
 import { HoverProvider } from "../src/context/HoverContext";
+import FloatingCardPreview from "../src/components/right-rail/FloatingCardPreview";
+import { I18nProvider } from "../src/i18n/I18nContext";
 import ActionPopover from "../src/components/overlays/ActionPopover";
 import PlayerZonePiles from "../src/components/board/PlayerZonePiles";
 import "../src/index.css";
@@ -25,8 +27,9 @@ function Fixture() {
   const [selected, setSelected] = useState(null);
   const cards = Array.from({length:20}, (_, i) => ({ id:20-i, name:i % 2 ? "Island" : "Plains" }));
   const player = {id:0, name:"Alice", graveyard_size:cards.length, graveyard_cards:cards, exile_cards:[{id:30,name:"Hidden card",face_down:true}, {id:31,name:"Swamp"}]};
-  const state = {perspective:0,decision:targeting?{kind:"targets",player:0}:{kind:"priority",player:0}};
+  const state = {players:[player], perspective:0,decision:targeting?{kind:"targets",player:0}:{kind:"priority",player:0}};
   return <GameContext.Provider value={{state}}>
+    {!actionsOpen && <FloatingCardPreview pinnedObjectId={targeting ? null : selected} />}
     <button onClick={() => setActionsOpen(true)}>Show cast choices</button>
     {actionsOpen && <div style={{position:"relative",zIndex:1,transform:"translateZ(0)"}}>
       <div className="floating-card-preview" style={{position:"fixed",inset:0}} />
@@ -47,4 +50,4 @@ function Fixture() {
     </div>
   </GameContext.Provider>;
 }
-createRoot(document.getElementById("root")).render(<HoverProvider><DragProvider><Fixture /></DragProvider></HoverProvider>);
+createRoot(document.getElementById("root")).render(<I18nProvider><HoverProvider><DragProvider><Fixture /></DragProvider></HoverProvider></I18nProvider>);

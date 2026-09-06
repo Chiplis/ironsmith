@@ -4,6 +4,15 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if words.is_empty() {
         return None;
     }
+    let offset = usize::from(words.first() == Some(&"the"));
+    if permission_shapes::starts_at_words(words, offset, &["number", "of", "players", "you", "attacked", "this", "combat"]) {
+        return Some((Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::PlayersAttackedThisCombat(PlayerFilter::You)), offset + 7));
+    }
+    if permission_shapes::starts_at_words(words, offset, &["amount", "of", "mana", "spent", "to", "cast", "this"])
+        && words.get(offset + 7).is_some_and(|word| matches!(*word, "spell" | "creature" | "artifact" | "enchantment" | "permanent"))
+    {
+        return Some((Value::ManaSpentToCastThisSpell, offset + 8));
+    }
     if let Some(devotion) = parse_devotion_value_words(words) {
         return Some(devotion);
     }
@@ -449,9 +458,9 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     }
     if let Some(used) = prefix_len(words, EXILED_MANA_VALUE_PREFIXES) {
         return Some((
-            Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
+            with_sacrificed_object_surface(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
                 (crate::tag::CompilerReferenceTag::SourceExiled.bind()).into(),
-            ))),
+            ))), &words[..used]),
             used,
         ));
     }

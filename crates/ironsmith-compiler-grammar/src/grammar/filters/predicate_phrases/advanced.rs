@@ -157,6 +157,23 @@ fn parse_turn_history_intervening_predicate(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
+    let words = clause.word_refs();
+    if let Some(dealt) = crate::word_primitives::parse_sequence_start(&words, &["has", "dealt"])
+        && words.ends_with(&["damage", "this", "turn"])
+        && let Some(source) = clause.between_word_range(0, dealt)
+        && matches!(crate::util::parse_target_phrase(source.tokens()),
+            Ok(crate::cards::builders::TargetAst::Source(_))
+            | Ok(crate::cards::builders::TargetAst::Object(ObjectFilter { source: true, .. }, ..)))
+        && let Some(quantity) = clause.between_word_range(dealt + 2, words.len() - 3)
+        && let Ok((comparison, used)) = parse_quantity_comparison_prefix(quantity.tokens(), false, false, "source damage total")
+        && used == quantity.tokens().len()
+        && let Some((operator, amount)) = crate::util::comparison_to_value_comparison_operator(comparison)
+    {
+        return Ok(Some(PredicateAst::ValueComparison {
+            left: Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::DamageDealtBySource),
+            operator, right: Value::Fixed(amount),
+        }));
+    }
 
     if let Some(predicate) = parse_cast_or_activated_from_zone_this_turn_predicate(tokens)
         .or_else(|| parse_single_zone_action_this_turn_predicate(tokens))
@@ -2677,13 +2694,15 @@ fn parse_mana_from_source_spent_to_cast_shape(tokens: &[OwnedLexToken]) -> Optio
         &[
             &["was", "spent", "to", "cast"],
             &["were", "spent", "to", "cast"],
+            &["was", "spent", "to", "activate"],
+            &["were", "spent", "to", "activate"],
         ],
     )?;
-    if spent_idx <= mana_idx + 2
-        || !crate::word_primitives::parse_any_sequence_complete(
-            &words[spent_idx + 4..],
-            &[&["it"], &["that", "spell"], &["this", "spell"]],
-        )
+    let activation = words.get(spent_idx + 3) == Some(&"activate");
+    let valid_reference = if activation { &words[spent_idx + 4..] == ["this", "ability"] }
+        else { crate::word_primitives::parse_any_sequence_complete(
+            &words[spent_idx + 4..], &[&["it"], &["that", "spell"], &["this", "spell"]]) };
+    if spent_idx <= mana_idx + 2 || !valid_reference
     {
         return None;
     }
@@ -2712,7 +2731,7 @@ fn parse_mana_from_source_spent_to_cast_shape(tokens: &[OwnedLexToken]) -> Optio
         left: Value::ManaFromSourceSpentToCastThisSpell {
             source_filter,
             include_source_noun: false,
-            reference: ironsmith_core::ManaSpentCastReferenceSurface::It,
+            reference: if activation { ironsmith_core::ManaSpentCastReferenceSurface::ThisAbility } else { ironsmith_core::ManaSpentCastReferenceSurface::It },
         },
         operator: ValueComparisonOperator::GreaterThanOrEqual,
         right: Value::Fixed(amount as i32),
@@ -3036,10 +3055,13 @@ pub(super) fn parse_tagged_exiled_predicate(tokens: &[OwnedLexToken]) -> Option<
     if !is_exiled_zone_clause(zone_clause) {
         return None;
     }
-    Some(PredicateAst::TaggedMatches(
-        crate::tag::CompilerReferenceTag::It.bind(),
-        ObjectFilter::default().in_zone(Zone::Exile),
-    ))
+    let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
+    let subject = subject_clause.word_refs();
+    if subject.contains(&"cards") {
+        filter.set_plural_pronoun_reference_surface(true);
+        filter.union_surface = filter.union_surface.with_one_or_more(subject.first() == Some(&"any"));
+    }
+    Some(PredicateAst::TaggedMatches(crate::tag::CompilerReferenceTag::It.bind(), filter))
 }
 
 pub(super) fn parse_tagged_state_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -3170,8 +3192,7 @@ pub(super) fn parse_tagged_wasnt_blocking_shape(tokens: &[OwnedLexToken]) -> Opt
         if !is_blocking_state_clause(state_clause) {
             continue;
         }
-        return Some(PredicateAst::TaggedMatches(
-            crate::tag::CompilerReferenceTag::It.bind(),
+        return Some(PredicateAst::ItMatchedLastKnown(
             ObjectFilter {
                 nonblocking: true,
                 ..Default::default()
@@ -3327,7 +3348,7 @@ pub(super) fn parse_tagged_historical_identity_shape(
     {
         return None;
     }
-    let filter = crate::grammar::primitives::probe_shape(parse_object_filter(
+    let mut filter = crate::grammar::primitives::probe_shape(parse_object_filter(
         descriptor_clause.tokens(),
         false,
     ))
@@ -3336,6 +3357,7 @@ pub(super) fn parse_tagged_historical_identity_shape(
     if !object_filter_has_identity(&filter) {
         return None;
     }
+    filter.set_demonstrative_antecedent_surface(demonstrative_antecedent_surface(subject_clause.tokens()));
     Some(PredicateAst::ItMatchedLastKnown(filter))
 }
 

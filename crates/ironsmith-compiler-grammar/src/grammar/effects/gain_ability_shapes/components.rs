@@ -132,9 +132,24 @@ pub fn parse_simple_gain_ability_shape(
 ) -> Option<SimpleGainAbilityShape<'_>> {
     let (gain_token_idx, _, _) = primitives::find_prefix(tokens, || gain_verb)?;
     let subject_tokens = tokens.get(..gain_token_idx)?;
+    if subject_tokens.iter().filter(|token| token.kind == TokenKind::Quote).count() % 2 != 0 {
+        return None;
+    }
     let after_gain_tokens = tokens.get(gain_token_idx + 1..)?;
     let after_gain_view = TokenWordView::new(after_gain_tokens);
     let after_gain_words = after_gain_view.to_word_refs();
+    if after_gain_tokens.first().is_some_and(|token| token.kind == crate::lexer::TokenKind::Quote) {
+        let close = after_gain_tokens.iter().enumerate().skip(1)
+            .find(|(_, token)| token.kind == crate::lexer::TokenKind::Quote)?.0;
+        let tail_words = crate::lexer::token_word_refs(&after_gain_tokens[close + 1..]);
+        let tail_duration = parse_simple_ability_duration_shape(&tail_words);
+        return Some(SimpleGainAbilityShape {
+            subject_tokens,
+            ability_tokens: &after_gain_tokens[..=close],
+            duration: tail_duration.as_ref().map(|shape| shape.duration.clone()).unwrap_or(Until::Forever),
+            complete: tail_words.is_empty() || tail_duration.is_some_and(|shape| shape.start == 0 && shape.len == tail_words.len()),
+        });
+    }
     // `gain` also heads resource and control effects. Those clauses are not
     // ability grants, even when a preceding coordinated action makes the
     // suffix look like a complete standalone phrase.

@@ -820,6 +820,11 @@ fn parse_union_subject_keyword_grants(
 pub fn parse_granted_keyword_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    // A full characteristic-setting bundle owns its type, color and P/T
+    // together; interpreting only a descriptor as a grant loses that bundle.
+    if crate::grammar::static_keyword_facts::type_and_color::parse_power_toughness_type_addition_tokens(tokens).is_some() {
+        return Ok(None);
+    }
     let granted_line_words = crate::lexer::parser_token_word_refs(tokens);
     if (crate::word_primitives::parse_sequence_prefix(&granted_line_words, &["as", "long", "as"])
         || crate::word_primitives::sequence_occurs(&granted_line_words, &["in", "addition", "to"]))

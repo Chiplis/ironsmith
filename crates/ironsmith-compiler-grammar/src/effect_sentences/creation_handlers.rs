@@ -1232,7 +1232,7 @@ pub fn parse_create(
 ) -> Result<EffectAst, CardTextError> {
     // Capture the authored actor before imperative/chain normalization can
     // turn an implicit create action into the same semantic `PlayerAst::You`.
-    let actor_surface_explicit = matches!(subject, Some(SubjectAst::Player(PlayerAst::You)));
+    let actor_surface_explicit = matches!(subject, Some(SubjectAst::Player(PlayerAst::You | PlayerAst::ItsOwner | PlayerAst::ItsController)));
     let authored_dynamic_count = if let Some(binding) =
         crate::grammar::effects::dispatch_entry_shapes::parse_where_x_usage_shape_tokens(tokens)
     {
@@ -1533,6 +1533,7 @@ pub fn parse_create(
                             enters_tapped,
                             enters_attacking,
                             attack_target_player_or_planeswalker_controlled_by,
+                            entry_tapped_attacking_followup: false,
                             attack_target_player_only: false,
                             half_power_toughness_round_up: half_pt,
                             has_haste,
@@ -1574,6 +1575,7 @@ pub fn parse_create(
                     enters_tapped,
                     enters_attacking,
                     attack_target_player_or_planeswalker_controlled_by,
+                    entry_tapped_attacking_followup: false,
                     attack_target_player_only: false,
                     half_power_toughness_round_up: half_pt,
                     has_haste,
@@ -1655,15 +1657,9 @@ pub fn parse_create(
                     tail_tokens.len()
                 };
                 definition_tokens.extend_from_slice(&tail_tokens[raw_tail_start..raw_tail_end]);
-                let raw_tail = render_token_slice(&tail_tokens[raw_tail_start..raw_tail_end])
-                    .trim()
-                    .to_string();
-                let prefix = normalize_token_name(&name_words);
-                raw_name_override = Some(if prefix.is_empty() {
-                    raw_tail
-                } else {
-                    format!("{prefix} {raw_tail}")
-                });
+                // Keep rules in the blueprint without treating their text
+                // as an explicit token name. Only an authored name overrides
+                // the name derived from the token's subtypes.
             }
             if include_end > 0 {
                 name_words.extend(with_words[..include_end].iter().copied());
@@ -1944,46 +1940,52 @@ fn direct_token_creation_alternative_separator(tokens: &[OwnedLexToken]) -> Opti
 /// to that blueprint. A separator is accepted only when both sides contain a
 /// complete token head; ordinary keyword conjunctions therefore do not
 /// become separate create actions.
-fn direct_token_creation_conjunction_separator(tokens: &[OwnedLexToken]) -> Option<usize> {
+fn direct_token_creation_conjunction_separator(tokens: &[OwnedLexToken]) -> Option<(usize, usize)> {
+    if token_word_refs(tokens).get(..3) == Some(&["your", "choice", "of"][..]) {
+        return None;
+    }
     let mut inside_quotes = false;
-    let mut candidates = Vec::new();
     for (idx, token) in tokens.iter().enumerate() {
-        if token.kind == TokenKind::Quote {
-            inside_quotes = !inside_quotes;
-            continue;
-        }
-        if !inside_quotes && token.is_word("and") {
-            candidates.push(idx);
+        if token.kind == TokenKind::Quote { inside_quotes = !inside_quotes; continue; }
+        if inside_quotes || !(token.kind == TokenKind::Comma || token.is_word("and")) { continue; }
+        let mut next = idx + 1;
+        if tokens.get(next).is_some_and(|token| token.is_word("and")) { next += 1; }
+        let left = trim_commas(&tokens[..idx]);
+        let right = trim_commas(&tokens[next..]);
+        // A new creation operand starts with its own count, article, or
+        // creation verb. A color conjunction belongs to the current blueprint.
+        let starts_operand = right.first().is_some_and(|token|
+            token.is_any_word(&["a", "an", "x", "that", "twice", "create", "creates"]))
+            || crate::grammar::leaf::parse_leaf_number_prefix_tokens(&right).is_some();
+        if starts_operand && creation_grammar::parse_create_head_tokens(&left).is_some()
+            && creation_grammar::parse_create_head_tokens(&right).is_some() {
+            return Some((idx, next));
         }
     }
-
-    candidates.into_iter().rev().find(|separator| {
-        let left_tokens = trim_commas(&tokens[..*separator]);
-        let right_tokens = trim_commas(&tokens[*separator + 1..]);
-        !left_tokens.is_empty()
-            && !right_tokens.is_empty()
-            && !right_tokens
-                .first()
-                .is_some_and(|token| token.kind == TokenKind::Quote)
-            && creation_grammar::parse_create_head_tokens(&left_tokens).is_some()
-            && creation_grammar::parse_create_head_tokens(&right_tokens).is_some()
-    })
+    None
 }
 
 fn parse_direct_token_creation_conjunction(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Option<EffectAst> {
-    let separator = direct_token_creation_conjunction_separator(tokens)?;
+    let (separator, next) = direct_token_creation_conjunction_separator(tokens)?;
     let left_tokens = trim_commas(&tokens[..separator]);
-    let right_tokens = trim_commas(&tokens[separator + 1..]);
+    let right_tokens = trim_commas(&tokens[next..]);
     let first = crate::grammar::primitives::probe_shape(parse_create(&left_tokens, subject))?;
     let second = crate::grammar::primitives::probe_shape(parse_create(&right_tokens, subject))?;
+    let mut effects = vec![first];
+    match second {
+        EffectAst::Coordination(program) if program.kind == crate::model::CoordinationKindAst::Conjunction => {
+            effects.extend(program.members.into_iter().flat_map(|member| member.effects));
+        }
+        other => effects.push(other),
+    }
     let coordination = creation_grammar::coordination::coordination_from_effects(
         crate::model::CoordinationKindAst::Conjunction,
         crate::model::CoordinationOperatorAst::And,
         crate::model::EffectOrderingAst::Unordered,
-        vec![first, second],
+        effects,
     )?;
     Some(EffectAst::Coordination(coordination))
 }
@@ -2415,6 +2417,35 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(names, ["Food", "Treasure"]);
         assert!(modes.iter().all(|mode| mode.description.is_empty()));
+    }
+
+    #[test]
+    fn serial_token_blueprints_keep_their_own_stats_and_colors() {
+        fn collect(effect: &EffectAst, result: &mut Vec<(i32, i32)>) {
+            match effect {
+                EffectAst::Coordination(program) => {
+                    for member in &program.members {
+                        for effect in &member.effects { collect(effect, result); }
+                    }
+                }
+                EffectAst::SubjectVerb(effect) => {
+                    let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { definition, .. }) = &effect.action else {
+                        panic!("expected token creation: {effect:#?}");
+                    };
+                    let crate::model::token_definition::TokenDefinitionSpec::Creature(creature) = definition else {
+                        panic!("expected creature blueprint: {definition:#?}");
+                    };
+                    assert_eq!(creature.colors.count(), 2);
+                    result.push(creature.power_toughness);
+                }
+                _ => panic!("unexpected token program: {effect:#?}"),
+            }
+        }
+        let tokens = lex_line("Create a 2/3 white and blue Bird creature token with flying, a 4/5 black and red Spirit creature token, and a 6/7 green and white Beast creature token.", 0).unwrap();
+        let parsed = parse_create(&tokens, None).unwrap();
+        let mut stats = Vec::new();
+        collect(&parsed, &mut stats);
+        assert_eq!(stats, [(2, 3), (4, 5), (6, 7)]);
     }
 
     #[test]

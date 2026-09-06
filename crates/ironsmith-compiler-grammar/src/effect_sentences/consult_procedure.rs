@@ -642,6 +642,7 @@ pub(super) fn continue_with(
                 ConsultMoveBottomShape::MoveMatchAndBottom {
                     zone,
                     battlefield_tapped,
+                    attached_to_tokens,
                     order,
                 } => {
                     group.followups.push(EffectAst::subject_verb_move_to_zone(
@@ -650,14 +651,14 @@ pub(super) fn continue_with(
                         false,
                         ReturnControllerAst::Preserve,
                         battlefield_tapped,
-                        None,
+                        attached_to_tokens.map(|(start, end)| crate::util::parse_target_phrase(&tokens[start..end])).transpose()?,
                     ));
                     group.followups.push(
                         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
                             crate::tag::TagRef::of(all_tag),
                             Some(crate::tag::TagRef::of(match_tag)),
                             order,
-                            player,
+                            PlayerAst::That,
                         ),
                     );
                 }

@@ -1303,6 +1303,9 @@ pub fn parse_anaphoric_object_deals_damage_clause(
         TargetAst::Source(span_from_tokens(source_tokens))
     } else {
         let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
+        if crate::word_primitives::parse_sequence_complete(source_words, &["it"]) {
+            filter.source_surface = Some(crate::target::SourceReferenceSurface::ThisPermanentType("it".to_string()));
+        }
         if crate::word_primitives::parse_sequence_complete(source_words, &["that", "land"]) {
             // Identity remains the typed trigger-object constraint while the
             // authored demonstrative is explicit rendering provenance.
@@ -1363,6 +1366,9 @@ pub fn parse_deal_damage_equal_to_power_clause(
     let Some(shape) = clause_shapes::parse_power_damage_shape(tokens)? else {
         return Ok(None);
     };
+    if super::find_verb(shape.source_tokens).is_some() {
+        return Ok(None);
+    }
     let source = if shape.source_is_tagged {
         TargetAst::Tagged(
             crate::tag::CompilerReferenceTag::It.bind(),
@@ -1514,9 +1520,15 @@ fn bind_iterated_source_possessive_characteristic(value: Value) -> Value {
 }
 
 pub fn parse_fight_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+    if super::chain_carry::parse_leading_player_may_lexed(tokens).is_some() {
+        return Ok(None);
+    }
     let Some(shape) = clause_shapes::parse_fight_shape(tokens) else {
         return Ok(None);
     };
+    if shape.left_tokens.is_some_and(|left| left.iter().any(|token| token.is_word("may"))) {
+        return Ok(None);
+    }
     let clause_text = LexedClause::new(tokens).text();
     if shape.right_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(

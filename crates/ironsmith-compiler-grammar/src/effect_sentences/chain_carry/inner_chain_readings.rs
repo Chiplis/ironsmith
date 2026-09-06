@@ -68,6 +68,14 @@ pub(super) const REGISTRY: RuleId = RuleId::new("inner-chain-registry");
 /// The readings, in the order they were ranked.
 const READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("return-coordinated-objects"),
+        head: HeadDiscriminator::Any,
+        admits: |input| input.tokens.first().is_some_and(|token| token.is_word("return"))
+            && !super::super::lex_chain_helpers::has_authored_comma_then_surface_lexed(input.tokens),
+        read: |input| input.outcome(super::super::subject_verb_primitives::parse_sentence_return_multiple_targets(
+            super::super::SubjectVerbPrimitiveClause::new(input.tokens))),
+    },
+    Reading {
         id: RuleId::new("sacrifice-it-next-end-step"),
         head: HeadDiscriminator::Any,
         admits: |_| true,

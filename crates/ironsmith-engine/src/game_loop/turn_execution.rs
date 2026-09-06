@@ -168,6 +168,14 @@ pub(super) fn generate_damage_triggers(
             trigger_events.push(damage_event);
             trigger_events.extend(life_loss_event);
         }
+        // Delayed triggers ("whenever that creature deals combat damage to a
+        // player this turn") watch these events too; the simultaneous path
+        // only consults abilities on objects.
+        for event in &trigger_events {
+            for trigger in crate::triggers::check_delayed_triggers(game, event) {
+                trigger_queue.add(trigger);
+            }
+        }
         queue_triggers_for_simultaneous_events(game, trigger_queue, trigger_events);
         game.clear_combat_damage_player_batch_hits();
         game.clear_combat_damage_object_batch_hits();
@@ -184,7 +192,7 @@ pub(super) fn generate_damage_triggers(
             &mut damage_batch_groups,
         );
         if let Some(life_loss_event) = life_loss_event {
-            queue_triggers_from_event(game, trigger_queue, life_loss_event, false);
+            queue_triggers_from_event(game, trigger_queue, life_loss_event, true);
         }
 
         if let DamageEventTarget::Player(player_id) = event.target
@@ -215,7 +223,9 @@ fn queue_incremental_combat_damage_event(
     damage_batch_groups: &mut std::collections::HashMap<DamageBatchTriggerKey, Vec<usize>>,
 ) {
     let mut candidates = TriggerQueue::new();
-    queue_triggers_from_event(game, &mut candidates, event, false);
+    // Include delayed triggers: a scheduled "deals combat damage" watcher fires
+    // from this event like any ability on an object.
+    queue_triggers_from_event(game, &mut candidates, event, true);
 
     // A single event may legitimately match multiple identical ability
     // instances on the same object. Delay publishing their group indices until

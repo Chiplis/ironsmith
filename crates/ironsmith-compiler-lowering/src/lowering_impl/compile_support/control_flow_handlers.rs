@@ -1433,7 +1433,7 @@ fn vote_option_ast_uses_iterated_player_in_scope(
             && let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, player, .. })
             | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { filter, player, .. })
             | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { filter, player, .. })
-            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary { filter, player, .. })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone { filter, player, .. })
             | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { filter, player, .. })
             | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { filter, player, .. }) = effect
             && (matches!(*player, PlayerAst::That)

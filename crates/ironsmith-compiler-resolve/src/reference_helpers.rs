@@ -715,6 +715,16 @@ pub fn resolve_it_tag(
         // is the stable identity needed by the follow-up move.
         resolved.zone = None;
     }
+    if filter.prior_effect_action_surface() == Some(ironsmith_core::PriorEffectAction::Exiled)
+        && let Some((_, exiled)) = refs.snapshot_tag_aliases.iter()
+            .find(|(alias, _)| alias == &crate::tag::CompilerReferenceTag::ExiledThisWay.key())
+    {
+        for constraint in &mut resolved.tagged_constraints {
+            if constraint.tag == crate::tag::CompilerReferenceTag::It.key() {
+                constraint.tag = exiled.clone();
+            }
+        }
+    }
     let revealed_collection_tag = (filter.prior_effect_action_surface()
         == Some(ironsmith_core::PriorEffectAction::Revealed))
     .then(|| {
@@ -816,9 +826,13 @@ pub fn resolve_it_tag(
             false
         });
 
+        let mut identity = resolved.clone();
+        identity.source_surface = None;
+        let identity_is_unqualified = identity == ObjectFilter::default();
+
         if saw_it_constraint
             && refs.has_source_object_antecedent()
-            && resolved == ObjectFilter::default()
+            && identity_is_unqualified
         {
             resolved.source = true;
             return Ok(resolved);
@@ -836,14 +850,14 @@ pub fn resolve_it_tag(
             return Ok(resolved);
         }
         if saw_it_constraint
-            && resolved == ObjectFilter::default()
+            && identity_is_unqualified
             && let Some(player_filter) = refs.known_last_player_filter().cloned()
         {
             resolved.zone = Some(Zone::Hand);
             resolved.owner = Some(as_followup_player_alias(player_filter));
             return Ok(resolved);
         }
-        if saw_it_constraint && resolved == ObjectFilter::default() {
+        if saw_it_constraint && identity_is_unqualified {
             resolved.source = true;
             return Ok(resolved);
         }
@@ -889,6 +903,13 @@ pub fn resolve_it_tag_key(tag: &TagKey, refs: &ReferenceEnv) -> Result<TagKey, C
         .find(|(alias, _)| alias == tag)
     {
         return Ok(concrete.clone());
+    }
+    if tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str() {
+        // A local exile result can supply this reference; an unrelated event
+        // object cannot replace the source's persistent linked exile set.
+        return Ok(refs.known_last_object_tag()
+            .filter(|known| is_exiled_collection_reference_tag(known.as_str()))
+            .cloned().unwrap_or_else(|| tag.clone()));
     }
     if tag.as_str() == crate::tag::CompilerReferenceTag::AdditionalCostObject.as_str() {
         return refs.known_last_object_tag().cloned().ok_or_else(|| {
@@ -938,6 +959,7 @@ pub fn object_filter_as_tagged_reference(filter: &ObjectFilter) -> Option<TagKey
     bare.tagged_constraints.clear();
     bare.zone = None;
     bare.token = false;
+    bare.source_surface = None;
     if bare == ObjectFilter::default() {
         Some(constraint.tag.clone())
     } else {
@@ -1140,7 +1162,8 @@ pub fn resolve_choose_spec_it_tag(
                     resolved.source_surface.clone(),
                 ))
             } else if let Some(tag) = object_filter_as_tagged_reference(&resolved) {
-                Ok(ChooseSpec::Tagged(tag))
+                let identity = resolve_choose_spec_it_tag(&ChooseSpec::Tagged(tag), refs)?;
+                Ok(source_reference_hinted_spec(identity, resolved.source_surface.clone()))
             } else {
                 Ok(ChooseSpec::Object(resolved))
             }
@@ -1294,6 +1317,9 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
                         filter: resolve_it_tag(filter, refs)?,
                     }
                 }
+                TurnHistoryCount::PlayersAttackedThisCombat(player) => TurnHistoryCount::PlayersAttackedThisCombat(
+                    resolve_contextual_player_filter(player, refs)?,
+                ),
                 TurnHistoryCount::OpponentsAttacked(player) => TurnHistoryCount::OpponentsAttacked(
                     resolve_contextual_player_filter(player, refs)?,
                 ),
@@ -1329,6 +1355,7 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
                     TurnHistoryCount::Descended(resolve_contextual_player_filter(player, refs)?)
                 }
                 TurnHistoryCount::DamageDealtToSource => TurnHistoryCount::DamageDealtToSource,
+                TurnHistoryCount::DamageDealtBySource => TurnHistoryCount::DamageDealtBySource,
                 TurnHistoryCount::SpellsCast {
                     player,
                     filter,
@@ -1839,6 +1866,24 @@ mod tests {
             ordinary.tagged_constraints[0].tag.as_str(),
             "__sentence_helper_consult_match_l0_s0_e7"
         );
+    }
+
+    #[test]
+    fn typed_exile_reference_survives_an_intervening_sacrifice() {
+        let exiled = TagKey::from("exiled_pool");
+        let sacrificed = TagKey::from("sacrificed_later");
+        let refs = ReferenceEnv {
+            last_object_tag: RefState::Known(sacrificed.clone()),
+            snapshot_tag_aliases: vec![(crate::tag::CompilerReferenceTag::ExiledThisWay.key(), exiled.clone())],
+            ..ReferenceEnv::default()
+        };
+        let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()).in_zone(Zone::Exile);
+        filter.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Exiled));
+        let resolved = resolve_it_tag(&filter, &refs).unwrap();
+        assert_eq!(resolved.tagged_constraints[0].tag, exiled);
+        assert_eq!(resolved.zone, Some(Zone::Exile));
+        filter.set_prior_effect_action_surface(None);
+        assert_eq!(resolve_it_tag(&filter, &refs).unwrap().tagged_constraints[0].tag, sacrificed);
     }
 
     #[test]

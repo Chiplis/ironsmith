@@ -4079,3 +4079,15 @@ pub(super) fn activated_cost_objects_seed_typed_resolution_references() {
     );
     assert!(discarded_debug.contains("ManaValueOf"), "{discarded_debug}");
 }
+
+#[test]
+fn entry_or_damage_trigger_preserves_both_events() {
+    for text in [
+        "Whenever this creature enters or deals combat damage to a player",
+        "Whenever this creature enters the battlefield or deals combat damage to a player",
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let trigger = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).unwrap();
+        assert!(matches!(trigger, crate::cards::builders::TriggerSpec::Either(_, _)), "{trigger:?}");
+    }
+}

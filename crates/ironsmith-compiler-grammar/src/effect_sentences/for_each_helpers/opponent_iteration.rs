@@ -19,6 +19,7 @@ mod for_each_opponent_readings;
 pub fn parse_for_each_opponent_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    if has_independent_participant_continuation(tokens) { return Ok(None); }
     // Voter-relative opponent sets are already represented by an event-
     // populated player tag. Recognize that typed set before the ordinary
     // quantified-opponent path wraps it in a second loop, which would apply

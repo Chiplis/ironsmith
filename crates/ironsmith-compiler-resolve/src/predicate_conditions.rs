@@ -63,7 +63,7 @@ pub fn resolve_condition_from_predicate(
                 constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                     && constraint.relation == TaggedOpbjectRelation::SameNameAsTagged
             });
-            if !is_same_name_comparison_set && resolved.zone != Some(Zone::Stack) {
+            if !is_same_name_comparison_set && resolved.zone == Some(Zone::Battlefield) {
                 resolved.zone = None;
             }
             if let Some(tag) = saved_last_tag.clone() {

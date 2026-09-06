@@ -462,6 +462,8 @@ fn non_named_token<'a>(input: &mut LexStream<'a>) -> WResult<()> {
 
 fn token_name_boundary<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     alt((
+        (primitives::comma(), primitives::kw("where")).void(),
+        primitives::kw("where").void(),
         primitives::kw("with").void(),
         primitives::kw("that").void(),
         primitives::kw("which").void(),

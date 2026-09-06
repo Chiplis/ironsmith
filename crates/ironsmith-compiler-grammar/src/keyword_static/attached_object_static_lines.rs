@@ -1031,7 +1031,8 @@ pub fn parse_enchanted_creature_has_line(
         else {
             continue;
         };
-        let Some(parsed) = parse_attached_granted_activated_line(&activated_tokens)? else {
+        let Some(parsed) = parse_attached_granted_activated_line(&activated_tokens)?
+            .or(parse_attached_granted_triggered_line(&activated_tokens)?) else {
             continue;
         };
         grants.push(StaticAbilityAst::AttachedObjectAbilityGrant {

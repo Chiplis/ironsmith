@@ -661,6 +661,9 @@ fn is_plural_tagged_result_followup_tokens(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn is_trigger_result_followup_line(line: &PreprocessedLine) -> bool {
+    if super::document_grammar::parse_numeric_result_prefix_tokens(&line.tokens).is_some() {
+        return true;
+    }
     if structure::split_leading_result_prefix_lexed(&line.tokens).is_some() {
         return true;
     }

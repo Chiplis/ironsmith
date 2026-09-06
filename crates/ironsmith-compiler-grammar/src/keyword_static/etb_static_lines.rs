@@ -233,7 +233,7 @@ pub fn parse_enters_with_counters_line(
     if token_slice_first_is(tail, "on") {
         tail = &tail[1..];
     }
-    if token_slice_first_is(tail, "it") {
+    if tail.first().is_some_and(|token| token.is_any_word(&["it", "her", "him", "them"])) {
         tail = &tail[1..];
     } else if tail
         .first()
@@ -907,6 +907,15 @@ pub fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Option<Value
             (EtbSourceStatFallback::TriggeringSpell, _) => return None,
         }
     };
+    let reference_words = reference_words.iter().map(|word|
+        match crate::grammar::leaf::strip_leaf_source_possessive_suffix(word) {
+            "creatures" => "creature", "artifacts" => "artifact",
+            "enchantments" => "enchantment", "permanents" => "permanent", other => other,
+        }
+    ).collect::<Vec<_>>();
+    let value = if let Some(kind) = crate::grammar::shared_util::target_semantics::sacrificed_object_kind(&reference_words) {
+        value.with_surface_hint(ValueSurfaceHint::SacrificedObject(kind))
+    } else { value };
     Some(if parsed.as_this_ability_resolves {
         value.with_surface_hint(ValueSurfaceHint::AsThisAbilityResolves)
     } else {

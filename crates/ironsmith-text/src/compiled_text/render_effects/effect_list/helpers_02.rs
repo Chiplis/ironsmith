@@ -725,7 +725,7 @@ pub(crate) fn render_consult_reveal_put_hand_then_bottom(effects: &[&Effect]) ->
     } else {
         "reveals"
     };
-    let selection = describe_search_selection_with_cards(&consult.filter.description());
+    let selection = describe_library_consult_selection_with_cards(&consult.filter);
     let stop_text = match &consult.stop_rule {
         crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => {
             with_indefinite_article(&selection)
@@ -839,14 +839,14 @@ pub(crate) fn render_consult_reveal_put_hand_rest_exile(effects: &[&Effect]) -> 
         return None;
     }
 
-    let consult = effects[0].downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
+    let consult = unwrap_render_wrappers(effects[0]).downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
     if consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Reveal {
         return None;
     }
 
     consult_match_move_to_zone(effects[1], consult, Zone::Hand)?;
 
-    let remainder = effects[2].downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let remainder = unwrap_render_wrappers(effects[2]).downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
     if remainder.tag != consult.all_tag {
         return None;
     }
@@ -899,7 +899,7 @@ pub(crate) fn render_consult_reveal_put_hand_rest_exile(effects: &[&Effect]) -> 
     } else {
         "reveals"
     };
-    let selection = describe_search_selection_with_cards(&consult.filter.description());
+    let selection = describe_library_consult_selection_with_cards(&consult.filter);
     let stop_text = match &consult.stop_rule {
         crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => selection.clone(),
         crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => {
@@ -912,7 +912,7 @@ pub(crate) fn render_consult_reveal_put_hand_rest_exile(effects: &[&Effect]) -> 
 
     if player == "you" {
         Some(format!(
-            "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}, put that card into your hand, and exile all other cards revealed this way"
+            "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}. Put that card into your hand and exile all other cards revealed this way"
         ))
     } else {
         Some(format!(

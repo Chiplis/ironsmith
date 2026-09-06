@@ -349,7 +349,7 @@ fn parse_exile_top_library_then_play_bundle(
         filter.owner = Some(PlayerFilter::IteratedPlayer);
         EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
             effects: vec![
-                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary {
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone {
                     filter,
                     count: ChoiceCount::exactly(count),
                     count_value: None,
@@ -456,7 +456,7 @@ fn parse_exile_top_library_then_play_bundle(
                 }),
             ] => accumulated_tags.first().cloned(),
             [
-                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfLibrary { .. }),
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone { .. }),
                 EffectAst::TagAffected { tag, .. },
             ] => Some(tag.clone()),
             _ => None,
@@ -469,6 +469,7 @@ fn parse_exile_top_library_then_play_bundle(
     let (permission_tag, inline_choice_effect) = if let Some(choice_tokens) = inline_choice_tokens {
         let chosen_tag = helper_tag_for_tokens(&choice_tokens, "chosen_exiled");
         let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
+        filter.set_one_of_tagged_set_surface(true);
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: tag.key.clone(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
@@ -875,16 +876,12 @@ fn parse_exile_then_source_leaves_return_bundle(
         return Ok(None);
     }
 
-    let first_effects = effect_sentences::parse_effect_sentence_lexed(first_sentence)?;
-    let [first_effect] = first_effects.as_slice() else {
+    let mut effects = effect_sentences::parse_effect_sentence_lexed(first_sentence)?;
+    let Some(delayed) = crate::effect_sentences::zone_handlers::parse_return_with_event_timing(second_sentence)? else {
         return Ok(None);
     };
-    let Some(rewritten_first_effect) = promote_exile_effect_to_source_leaves(first_effect.clone())
-    else {
-        return Ok(None);
-    };
-
-    Ok(Some(vec![rewritten_first_effect]))
+    effects.extend(delayed);
+    Ok(Some(effects))
 }
 
 fn parse_reveal_from_outside_game_or_choose_face_up_exile_to_hand(

@@ -244,6 +244,33 @@
     }
 
     #[test]
+    fn source_exiled_put_retains_surface_after_verb_dispatch() {
+        for clause in [
+            "Put each card exiled with it into its owner's hand.",
+            "Put all cards exiled with this artifact into their owner's hand.",
+            "Put a card exiled with this creature into its owner's hand.",
+        ] {
+            let tokens = crate::lexer::lex_line(clause, 0).expect("lex source-linked put");
+            let expected = parse_exiled_with_source_move_surface(&tokens)
+                .expect("authored source-linked surface");
+            for input in [&tokens[..], &tokens[1..]] {
+                let effect = parse_put_into_hand(input, None).expect("parse put entry path");
+                let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+                        exiled_with_source_surface: Some(surface),
+                        zone: Zone::Hand,
+                        ..
+                    }),
+                    ..
+                }) = effect else {
+                    panic!("source-linked surface was lost: {effect:#?}");
+                };
+                assert_eq!(surface, expected);
+            }
+        }
+    }
+
+    #[test]
     fn singular_source_exiled_move_preserves_exactly_one_choice() {
         let tokens = crate::lexer::lex_line(
             "Put a card exiled with this creature into its owner's hand.",

@@ -71,6 +71,9 @@ fn parse_effect_sentence_lexed_uncached(
     if let Some(effects) = super::super::parse_complete_create_statement(tokens)? {
         return Ok(effects);
     }
+    if let Some(effects) = crate::effect_sentences::dispatch_entry::parse_complete_compound_gain_statement(tokens)? {
+        return Ok(effects);
+    }
     if let Some(effects) = parse_complete_conditional_gain_ability(tokens)? {
         return Ok(effects);
     }

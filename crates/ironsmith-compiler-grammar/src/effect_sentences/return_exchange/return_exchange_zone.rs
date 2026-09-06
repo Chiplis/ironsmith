@@ -117,6 +117,7 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
         })
         .transpose()?;
 
+    let mut choice_prefix = Vec::new();
     let effect = match shape.target {
         crate::grammar::effects::ReturnTargetShape::PairedSourceAndExiled { source_subtype } => {
             let mut source_filter = ObjectFilter::source();
@@ -424,6 +425,9 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
             back_reference,
             top_only,
         } => {
+            let choice = crate::grammar::choices::parse_possessive_object_choice_tokens(&target_tokens)
+                .filter(|choice| choice.actor == crate::grammar::choices::PossessiveObjectChoiceActor::Opponent);
+            let target_tokens = choice.as_ref().map(|choice| choice.object_tokens.clone()).unwrap_or(target_tokens);
             if !destination.excluded_subtypes.is_empty() {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported return exception on non-return-all clause (clause: '{clause_text}')"
@@ -473,6 +477,27 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
             if dynamic_count {
                 target =
                     TargetAst::WithCount(Box::new(target), crate::effect::ChoiceCount::dynamic_x());
+            }
+            if choice.is_some() && target_tokens.iter().any(|token| token.is_word("target")) {
+                choice_prefix.push(EffectAst::subject_verb_explicit_target_only_for_chooser(target, PlayerAst::Opponent));
+                target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None);
+            } else if choice.is_some() {
+                let (inner, count) = match target {
+                    TargetAst::WithCount(inner, count) => (*inner, count),
+                    target => (target, crate::effect::ChoiceCount::exactly(1)),
+                };
+                let TargetAst::Object(filter, _, _) = inner else {
+                    return Err(CardTextError::ParseError("opponent choice requires an object filter".into()));
+                };
+                let tag = crate::util::helper_tag_for_tokens(tokens, "returned_choice");
+                choice_prefix.push(EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseObjects {
+                    filter,
+                    count,
+                    count_value: count_value.clone(),
+                    player: PlayerAst::Opponent,
+                    tag: crate::tag::TagRef::of(tag.clone()),
+                }));
+                target = TargetAst::Tagged(crate::tag::TagRef::of(tag), None);
             }
             set_return_destination_first_surface(&mut target, destination_first);
             match destination.zone {
@@ -591,5 +616,11 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
         // owner filter remains the executable identity of "their".
         filter.set_enters_under_controller_surface(true);
     }
-    Ok(wrap_return_with_delayed_timing(effect, delayed_timing))
+    let effect = wrap_return_with_delayed_timing(effect, delayed_timing);
+    if choice_prefix.is_empty() {
+        Ok(effect)
+    } else {
+        choice_prefix.push(effect);
+        Ok(EffectAst::Sequence { effects: choice_prefix })
+    }
 }

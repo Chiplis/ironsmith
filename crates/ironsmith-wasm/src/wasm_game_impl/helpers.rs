@@ -38,12 +38,138 @@ pub(super) fn build_action_view(
         kind: kind.to_string(),
         object_id: source_visible.then_some(object_id).flatten(),
         ability_index,
+        mana_payment_available: None,
         from_zone: source_visible.then_some(from_zone).flatten(),
         to_zone: source_visible.then_some(to_zone).flatten(),
         drag_requires_targets: source_visible && drag_requires_targets,
         drag_requires_modes: source_visible && drag_requires_modes,
         action_ref: priority_action_ref(action),
     }
+}
+
+fn activation_mana_payment_available(
+    game: &GameState,
+    payer: PlayerId,
+    action: &LegalAction,
+) -> Option<bool> {
+    use ironsmith::ability::AbilityKind;
+    use ironsmith::mana_payment::{
+        ManaPaymentFailure, ManaPaymentRequest, plan_first_mana_payment,
+    };
+
+    let (LegalAction::ActivateAbility {
+        source,
+        ability_index,
+    }
+    | LegalAction::ActivateManaAbility {
+        source,
+        ability_index,
+    }) = action
+    else {
+        return None;
+    };
+    let characteristics = game.current_characteristics(*source)?;
+    let AbilityKind::Activated(activated) = &characteristics.abilities.get(*ability_index)?.kind
+    else {
+        return None;
+    };
+
+    fn check_cost(
+        game: &GameState,
+        payer: PlayerId,
+        source: ObjectId,
+        cost: &ironsmith::cost::TotalCost,
+        minimum_x: u32,
+    ) -> Option<bool> {
+        match cost.kind() {
+            ironsmith_core::TotalCostKind::OneOf(branches) => {
+                let mut unknown = false;
+                for branch in branches {
+                    match check_cost(game, payer, source, branch, minimum_x) {
+                        Some(true) => return Some(true),
+                        None => unknown = true,
+                        Some(false) => {}
+                    }
+                }
+                if unknown { None } else { Some(false) }
+            }
+            ironsmith_core::TotalCostKind::All(costs) => {
+                if costs
+                    .iter()
+                    .any(|cost| cost.dynamic_mana_cost_ref().is_some())
+                {
+                    return None;
+                }
+                // Combine components: the same mana must not pay two costs.
+                let pips = costs
+                    .iter()
+                    .filter_map(|cost| cost.mana_cost_ref())
+                    .flat_map(|cost| cost.pips().iter().cloned())
+                    .collect::<Vec<_>>();
+                if pips.is_empty() {
+                    return Some(true);
+                }
+                let mut request = ManaPaymentRequest::new(
+                    payer,
+                    source,
+                    ironsmith::costs::PaymentReason::ActivateAbility,
+                    ironsmith::mana::ManaCost::from_pips(pips),
+                )
+                .with_x(minimum_x)
+                .with_spend_policy(game.mana_spend_policy(payer, Some(source)));
+                request.allow_black_life = game.player_can_pay_black_with_life_for_reason(
+                    payer,
+                    Some(source),
+                    request.reason,
+                );
+                if costs.iter().any(|cost| cost.requires_tap()) {
+                    request.preferences.excluded_sources.push(source);
+                }
+                match plan_first_mana_payment(game, &request) {
+                    Ok(_) => Some(true),
+                    Err(ManaPaymentFailure::NoLegalPlan) => Some(false),
+                    // A bounded search stopping early is not proof of impossibility.
+                    Err(_) => None,
+                }
+            }
+        }
+    }
+
+    let cost = ironsmith::decision::calculate_effective_activation_total_cost(
+        game,
+        payer,
+        *source,
+        &activated.mana_cost,
+    );
+    let available = check_cost(
+        game,
+        payer,
+        *source,
+        &cost,
+        activated.activation_x_minimum(),
+    );
+    if available != Some(false) {
+        return available;
+    }
+    // A target-dependent discount cannot be priced before targets are chosen.
+    // Leave these actions available instead of treating an estimate as failure.
+    for object in game.objects_in_deterministic_order() {
+        if let Some(current) = game.current_characteristics(object.id) {
+            for ability in &current.abilities {
+                if let AbilityKind::Static(static_ability) = &ability.kind
+                    && static_ability
+                        .activated_ability_cost_reduction()
+                        .is_some_and(|reduction| reduction.condition.is_some())
+                    && ability.functions_in(&object.zone)
+                    && static_ability.is_active(game, object.id)
+                {
+                    return None;
+                }
+            }
+        }
+    }
+
+    available
 }
 
 pub(super) fn build_untap_land_action_view(
@@ -72,6 +198,7 @@ pub(super) fn build_untap_land_action_view(
         kind: "untap_land".to_string(),
         object_id: Some(object_id.0),
         ability_index: None,
+        mana_payment_available: None,
         from_zone: Some(zone_name(Zone::Battlefield)),
         to_zone: Some(zone_name(Zone::Battlefield)),
         drag_requires_targets: false,

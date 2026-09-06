@@ -313,7 +313,8 @@ pub fn parse_possessive_player_reference(words: &[&str]) -> PossessivePlayerRefe
     if exact_phrase_occurs(words, &["your", "team"]) || exact_word_occurs(words, &["your"]) {
         return PossessivePlayerReference::You;
     }
-    if exact_word_occurs(words, &["opponent", "opponents"]) {
+    if normalized_phrase_occurs(words, &["opponent"])
+        || normalized_phrase_occurs(words, &["opponents"]) {
         return PossessivePlayerReference::Opponent;
     }
     PossessivePlayerReference::Any

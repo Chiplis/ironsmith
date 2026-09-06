@@ -2073,6 +2073,34 @@ impl WasmGame {
         self.preload_registry_status()
     }
 
+    /// Plan payments only for the card currently requested by an inspector.
+    #[wasm_bindgen(js_name = inspectorActions)]
+    pub fn inspector_actions(&self, object_id: u64, requested_ability: Option<usize>) -> Result<JsValue, JsValue> {
+        let mut actions = Vec::new();
+        if let Some(DecisionContext::Priority(priority)) = self.pending_decision.as_ref() {
+            for (index, action) in priority.actions.iter().enumerate() {
+                let (LegalAction::ActivateAbility { source, ability_index }
+                    | LegalAction::ActivateManaAbility { source, ability_index }) = action
+                else {
+                    continue;
+                };
+                if source.0 != object_id || requested_ability.is_some_and(|index| index != *ability_index) {
+                    continue;
+                }
+                let mut view = build_action_view(
+                    &self.game, self.perspective, self.active_viewed_cards.as_ref(), index, action,
+                );
+                if view.object_id.is_some() {
+                    view.mana_payment_available =
+                        activation_mana_payment_available(&self.game, priority.player, action);
+                    actions.push(view);
+                }
+            }
+        }
+        serde_wasm_bindgen::to_value(&actions)
+            .map_err(|e| JsValue::from_str(&format!("inspectorActions encode failed: {e}")))
+    }
+
     /// Return a detailed, human-readable object snapshot for inspector UI.
     #[wasm_bindgen(js_name = objectDetails)]
     pub fn object_details(&self, object_id: u64) -> Result<JsValue, JsValue> {

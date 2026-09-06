@@ -409,6 +409,15 @@ fn describe_turn_history_value_comparison(
         return None;
     };
     let count = *count;
+    if matches!(query, ironsmith_core::TurnHistoryCount::DamageDealtBySource) {
+        let quantity = match operator {
+            GreaterThanOrEqual => format!("{count} or more"),
+            GreaterThan => format!("more than {count}"),
+            Equal => format!("exactly {count}"),
+            _ => return None,
+        };
+        return Some(format!("this permanent has dealt {quantity} damage this turn"));
+    }
     let is_present = matches!(operator, GreaterThan) && count == 0
         || matches!(operator, GreaterThanOrEqual) && count == 1;
     let is_absent = matches!(operator, Equal) && count == 0;
@@ -619,6 +628,7 @@ fn describe_turn_history_value_comparison(
                 ))
             }
         }
+        ironsmith_core::TurnHistoryCount::PlayersAttackedThisCombat(_) => None,
         ironsmith_core::TurnHistoryCount::OpponentsAttacked(player) => {
             let player = describe_history_player_subject(player);
             if is_present {
@@ -730,6 +740,7 @@ fn describe_turn_history_value_comparison(
         ironsmith_core::TurnHistoryCount::Descended(_)
         | ironsmith_core::TurnHistoryCount::UntappedLandsAtTurnStart(_)
         | ironsmith_core::TurnHistoryCount::DamageDealtToSource
+        | ironsmith_core::TurnHistoryCount::DamageDealtBySource
         | ironsmith_core::TurnHistoryCount::ColorsAmongPermanentsAndSpellsCast(_) => None,
     }
 }
@@ -2319,6 +2330,26 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             "the target is paired with another creature".to_string()
         }
         Condition::TaggedObjectMatches(tag, filter) => {
+            if filter.zone == Some(Zone::Exile) && filter.has_plural_pronoun_reference_surface() {
+                let mut plain = filter.clone();
+                plain.zone = None;
+                plain.set_plural_pronoun_reference_surface(false);
+                plain.union_surface = plain.union_surface.with_one_or_more(false);
+                if plain == ObjectFilter::default() {
+                    return if filter.union_surface.one_or_more() { "any of those cards remain exiled" } else { "those cards remain exiled" }.to_string();
+                }
+            }
+            if let Some(zone) = filter.zone.filter(|zone| *zone != Zone::Battlefield) {
+                let mut remainder = filter.clone();
+                remainder.zone = None;
+                if remainder == ObjectFilter::default() {
+                    return match zone {
+                        Zone::Exile => "it's exiled".to_string(),
+                        Zone::Battlefield => "this object is on the battlefield".to_string(),
+                        _ => format!("it's in {}", zone.name()),
+                    };
+                }
+            }
             if matches!(tag.as_str(), "equipped" | "enchanted")
                 && let Some(states) = exact_attachment_state_reference(tag, filter)
             {
@@ -2332,9 +2363,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             {
                 return "that card is returned to its owner's hand this way".to_string();
             }
-            if tag.as_str() == "triggering"
-                && filter.has_trailing_candidate_ability_condition_surface()
-                && filter.ability_markers.len() == 1
+            if filter.ability_markers.len() == 1
             {
                 let mut remainder = filter.clone();
                 let ability = remainder.ability_markers.remove(0);
@@ -2879,6 +2908,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 format!("the tagged object '{}' matches {desc}", tag.as_str())
             }
         Condition::TaggedObjectMatchedLastKnown(tag, filter) => {
+            if is_implicit_reference_tag(tag.as_str())
+                && let Some(state) = describe_implicit_tagged_object_state_condition("it", filter)
+            { return state.replace("it isn't", "it wasn't").replace("it's", "it was").replace("it is ", "it was "); }
             if matches!(tag.as_str(), "equipped" | "enchanted")
                 && let Some(states) = exact_attachment_state_reference(tag, filter)
             {
@@ -3203,7 +3235,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 Value::ManaFromSourceSpentToCastThisSpell {
                     source_filter,
                     include_source_noun,
-                    ..
+                    reference,
                 },
                 crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                 Value::Fixed(amount),
@@ -3220,8 +3252,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 {
                     source = ensure_indefinite_article(&source);
                 }
+                let action = format!("{} {}", reference.payment_verb(), reference.text());
                 if *amount == 1 {
-                    return format!("mana from {source} was spent to cast it");
+                    return format!("mana from {source} was spent to {action}");
                 }
                 let source = pluralize_noun_phrase(strip_indefinite_article(&source));
                 let amount = u32::try_from(*amount)
@@ -3229,7 +3262,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     .and_then(small_number_word)
                     .unwrap_or_else(|| amount.to_string());
                 return format!(
-                    "{amount} or more mana from {source} was spent to cast it"
+                    "{amount} or more mana from {source} was spent to {action}"
                 );
             }
             if let (
@@ -4002,6 +4035,10 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 let positive = describe_condition(inner);
                 if let Some(rest) = positive.strip_prefix("it's ") {
                     format!("it isn't {rest}")
+                } else if let Some((before, after)) = positive.split_once(" has ") {
+                    format!("{before} doesn't have {after}")
+                } else if let Some((before, after)) = positive.split_once(" have ") {
+                    format!("{before} don't have {after}")
                 } else if let Some((before, after)) = positive.split_once(" is ") {
                     format!("{before} isn't {after}")
                 } else if let Some((before, after)) = positive.split_once(" are ") {
@@ -4187,6 +4224,26 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             format!("{} and {}", describe_condition(left), describe_condition(right))
         }
         Condition::Or(left, right) => {
+            if let (Condition::TaggedObjectMatchedLastKnown(left_tag, _), Condition::TaggedObjectMatchedLastKnown(right_tag, _)) = (left.as_ref(), right.as_ref())
+                && left_tag == right_tag
+            {
+                let left_text = describe_condition(left);
+                let right_text = describe_condition(right);
+                if let (Some(left_state), Some(right_state)) = (left_text.strip_prefix("it was "), right_text.strip_prefix("it was ")) {
+                    return format!("it was {left_state} or {right_state}");
+                }
+            }
+            if let (Condition::TaggedObjectMatches(left_tag, _), Condition::TaggedObjectMatches(right_tag, _)) = (left.as_ref(), right.as_ref())
+                && left_tag == right_tag
+            {
+                let left_text = describe_condition(left);
+                let right_text = describe_condition(right);
+                if let (Some(left_state), Some(right_state)) = (
+                    left_text.strip_prefix("that object is "), right_text.strip_prefix("that object is "),
+                ) {
+                    return format!("it's {left_state} or {right_state}");
+                }
+            }
             if matches!(left.as_ref(), Condition::PlayerControls { player: PlayerFilter::You, .. })
                 && let Condition::PlayerTaggedObjectMatches {
                     player: PlayerFilter::You,
@@ -4389,6 +4446,14 @@ fn describe_last_known_tagged_object_condition(tag: &TagKey, filter: &ObjectFilt
             }
         }
     }
+    if let Some(surface) = filter.demonstrative_antecedent_surface() {
+        let mut unhinted = filter.clone();
+        unhinted.set_demonstrative_antecedent_surface(None);
+        let described = describe_last_known_tagged_object_condition(tag, &unhinted);
+        if let Some(tail) = described.strip_prefix("it ") {
+            return format!("{} {tail}", surface.phrase());
+        }
+    }
     // A bare state filter is an adjective predicate in oracle ("If it was
     // tapped"), not a classified noun ("it was a tapped permanent").
     {
@@ -4503,6 +4568,14 @@ fn describe_demonstrative_object_property(
         clause.strip_prefix("is ").unwrap_or(&clause).to_string()
     }
 
+    if filter.excluded_supertypes == [Supertype::Basic] {
+        let mut remainder = filter.clone();
+        remainder.excluded_supertypes.clear();
+        if remainder == ObjectFilter::default() {
+            return Some(format!("{subject} {} nonbasic", if past { "was" } else { "is" }));
+        }
+    }
+
     let verb = if past { "had" } else { "has" };
 
     if let Some(power) = &filter.power {
@@ -4592,41 +4665,41 @@ pub(crate) fn describe_implicit_tagged_object_state_condition(
         });
     }
     if filter.attacking {
-        return Some("it was attacking".to_string());
+        return Some("it's attacking".to_string());
     }
     if filter.nonattacking {
         return Some(if subject == "it" {
-            "it wasn't attacking".to_string()
+            "it isn't attacking".to_string()
         } else {
-            "that object wasn't attacking".to_string()
+            "that object isn't attacking".to_string()
         });
     }
     if filter.blocking {
         return Some(if subject == "it" {
-            "it was blocking".to_string()
+            "it's blocking".to_string()
         } else {
-            "that object was blocking".to_string()
+            "that object is blocking".to_string()
         });
     }
     if filter.nonblocking {
         return Some(if subject == "it" {
-            "it wasn't blocking".to_string()
+            "it isn't blocking".to_string()
         } else {
-            "that object wasn't blocking".to_string()
+            "that object isn't blocking".to_string()
         });
     }
     if filter.blocked {
         return Some(if subject == "it" {
-            "it was blocked this turn".to_string()
+            "it's blocked".to_string()
         } else {
-            "that object was blocked this turn".to_string()
+            "that object is blocked".to_string()
         });
     }
     if filter.unblocked {
         return Some(if subject == "it" {
-            "it was unblocked".to_string()
+            "it's unblocked".to_string()
         } else {
-            "that object was unblocked".to_string()
+            "that object is unblocked".to_string()
         });
     }
 

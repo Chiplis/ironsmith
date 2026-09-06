@@ -64,6 +64,7 @@ mod bundle_rules;
 mod chain_carry;
 mod clause_dispatch;
 pub(crate) use clause_dispatch::parse_get_pump_clause;
+pub(crate) use dispatch_entry::parse_complete_get_pump_statement;
 pub mod clause_pattern_helpers;
 mod clause_primitives;
 pub use clause_primitives::{
@@ -164,6 +165,6 @@ pub use verb_handlers::{
 pub use zone_counter_helpers::target_object_filter_mut;
 #[cfg(test)]
 pub use zone_counter_helpers::{
-    parse_half_starting_life_total_value, parse_sentence_put_multiple_counters_on_target,
+    parse_half_starting_life_total_value, parse_starting_life_total_value, parse_sentence_put_multiple_counters_on_target,
 };
 pub use zone_handlers::parse_destroy;

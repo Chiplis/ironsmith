@@ -144,6 +144,9 @@ pub fn parse_destroy_or_exile_all_split_sentence(
 pub fn parse_exile_then_return_same_object_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if tokens.first().is_some_and(|token| token.is_any_word(&["if", "unless", "when", "whenever"])) {
+        return Ok(None);
+    }
     fn target_references_tag(target: &TargetAst, expected: &str) -> bool {
         match target {
             TargetAst::Tagged(tag, _) => tag.as_str() == expected,

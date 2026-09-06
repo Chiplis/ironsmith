@@ -277,7 +277,68 @@ fn parse_counter_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, Ca
     parse_target_phrase(tokens)
 }
 
+pub(super) fn has_counter_placement_head(tokens: &[OwnedLexToken]) -> bool {
+    let Some(counter) = tokens.iter().position(|token| token.is_any_word(&["counter", "counters"])) else { return false; };
+    // A counter on entry belongs to a zone move, not to a counter-placement action.
+    !tokens[..counter].iter().any(|token| token.is_word("onto"))
+}
+
 pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    if !has_counter_placement_head(tokens) {
+        return Err(CardTextError::ParseError("zone move with entry counters is not counter placement".into()));
+    }
+
+    if let crate::recognition::ParseOutcome::Match(matched) =
+        crate::grammar::effects::coordination::recognize_coordination(tokens)
+        && matched.value.members.len() > 1
+        && (tokens.iter().any(|token| token.is_word("then"))
+            || matched.value.members.iter().skip(1).any(|member| member.tokens.first().is_some_and(|token| token.is_any_word(&["tap", "untap", "attach"]))))
+        && matched.value.members.iter().skip(1).any(|member|
+            super::find_verb(member.tokens).is_some_and(|(_, index)| index == 0
+                || (index == 1 && member.tokens.first().is_some_and(|token| token.is_word("then"))))
+        )
+    {
+        let plan = matched.value;
+        let effects = plan.members.iter().map(|member|
+            crate::effect_sentences::parse_effect_sentence_lexed(member.tokens)
+                .map(|effects| EffectAst::Sequence { effects })
+        ).collect::<Result<Vec<_>, _>>()?;
+        if let Some(coordination) = plan.into_ast(effects) { return Ok(EffectAst::Coordination(coordination)); }
+    }
+    if let Some(effects) = super::subject_verb_primitives::parse_put_counter_choice_sequence(
+        super::SubjectVerbPrimitiveClause::new(tokens),
+    )? {
+        return Ok(EffectAst::Sequence { effects });
+    }
+    let tokens = if let Some(entry) = tokens.windows(2)
+        .position(|pair| pair[0].is_word("enters") && pair[1].is_word("with"))
+        && crate::util::is_source_reference_words(&crate::lexer::token_word_refs(&tokens[..entry]))
+    {
+        &tokens[entry + 2..]
+    } else {
+        tokens
+    };
+    if tokens.iter().filter(|token| token.is_word("if")).count() > 1
+        && let crate::recognition::ParseOutcome::Match(matched) =
+            crate::grammar::effects::coordination::recognize_coordination(tokens)
+        && matched.value.members.len() > 1
+    {
+        let plan = matched.value;
+        let mut members = Vec::new();
+        for member in &plan.members {
+            let Some(clause) = split_trailing_if_clause_lexed(member.tokens) else { break; };
+            if !clause.leading_tokens.iter().any(|token| token.is_any_word(&["counter", "counters"])) { break; }
+            let effect = parse_put_counters(clause.leading_tokens)?;
+            members.push(EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
+                predicate: clause.predicate, effects: vec![effect],
+            }));
+        }
+        if members.len() == plan.members.len()
+            && let Some(coordination) = plan.into_ast(members)
+        {
+            return Ok(EffectAst::Coordination(coordination));
+        }
+    }
     let tokens = shapes::strip_optional_put_prefix(tokens);
     let (mut count_value, used) = parse_put_counter_count_value(tokens)?;
     let rest = &tokens[used..];
@@ -327,7 +388,11 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
         )));
     }
 
-    let counter_type = if let Some(counter_type) = parse_counter_type_from_tokens(rest) {
+    // The descriptor belongs to the first counter noun. A later count
+    // expression can mention counters again without renaming these counters.
+    let descriptor_end = rest.iter().position(|token| token.is_any_word(&["counter", "counters"]))
+        .map(|index| index + 1).unwrap_or(rest.len());
+    let counter_type = if let Some(counter_type) = parse_counter_type_from_tokens(&rest[..descriptor_end]) {
         counter_type
     } else if let Value::CountersOn(_, Some(counter_type)) = &count_value {
         *counter_type
@@ -592,6 +657,16 @@ pub fn split_until_target_leaves_tail(
     shapes::split_until_target_leaves_shape(tokens)
 }
 
+pub fn parse_starting_life_total_value(tokens: &[OwnedLexToken], player: PlayerAst) -> Option<Value> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let words = words.strip_prefix(&["equal", "to"]).unwrap_or(&words);
+    let player_filter = shapes::player_filter_for_half_reference(player)?;
+    if (words == ["your", "starting", "life", "total"] && player_filter == PlayerFilter::You)
+        || words == ["their", "starting", "life", "total"]
+    { return Some(Value::StartingLifeTotal(player_filter)); }
+    parse_half_starting_life_total_value(tokens, player)
+}
+
 pub fn parse_half_starting_life_total_value(
     tokens: &[OwnedLexToken],
     player: PlayerAst,
@@ -818,5 +893,35 @@ mod filtered_prior_action_counter_tests {
         )
         .unwrap();
         parse_put_counters(&put_tokens).expect("compound count should remain one counter action");
+    }
+}
+
+#[cfg(test)]
+mod independently_conditioned_counter_tests {
+    use super::*;
+    #[test]
+    fn counter_clauses_keep_separate_type_conditions() {
+        let tokens = crate::lexer::lex_line("Put a +1/+1 counter on it if it's a creature and a loyalty counter on it if it's a planeswalker.", 0).unwrap();
+        let effect = parse_put_counters(&tokens).unwrap();
+        assert!(matches!(effect, EffectAst::Coordination(_)), "{effect:#?}");
+    }
+}
+
+#[cfg(test)]
+mod entry_counter_descriptor_tests {
+    use super::*;
+    #[test]
+    fn entry_counter_descriptor_is_not_taken_from_its_count_expression() {
+        for descriptor in ["+1/+1", "charge"] {
+            let text = format!("this creature enters with a {descriptor} counter on it for each counter removed this way.");
+            let tokens = crate::lexer::lex_line(&text, 0).unwrap();
+            let body = &tokens[4..];
+            let direct = parse_put_counters(body).unwrap();
+            assert!(format!("{direct:#?}").contains(if descriptor == "charge" { "Charge" } else { "PlusOnePlusOne" }), "body={body:#?} direct={direct:#?}");
+            let effects = crate::effect_sentences::parse_effect_sentence_lexed(&tokens).unwrap();
+            let debug = format!("{effects:#?}");
+            assert!(debug.contains(if descriptor == "charge" { "Charge" } else { "PlusOnePlusOne" }), "{debug}");
+            assert!(!debug.contains("Named(\"each\")"), "{debug}");
+        }
     }
 }

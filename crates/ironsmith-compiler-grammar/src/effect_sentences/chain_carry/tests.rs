@@ -1642,7 +1642,8 @@ fn duration_scoped_delayed_triggers_compile_for_the_three_real_cards() {
             && tamiyo_debug.contains("DealsCombatDamage")
             && tamiyo_debug.contains("UntilControllerNextTurn")
             && tamiyo_debug.contains("either_of_watched_objects: true")
-            && tamiyo_debug.contains("watch_all_object_targets: true")
+            && tamiyo_debug.contains("target_tag: Some")
+            && tamiyo_debug.contains("\"targeted_0\"")
             && tamiyo_debug.contains("DrawCardsEffect"),
         "{tamiyo_debug}"
     );
@@ -4513,8 +4514,16 @@ fn base_pt_where_x_full_chains_keep_duration_and_binding_together() {
         assert_eq!(duration, &crate::effect::Until::EndOfTurn, "{effects:#?}");
         assert_eq!(power, toughness, "{effects:#?}");
         assert!(!matches!(power.unhinted(), Value::X), "{effects:#?}");
+        let equivalent_hand_count = expected_value == "CardsInHand"
+            && matches!(power.unhinted(), Value::Count(filter) if {
+                let mut semantic_filter = filter.clone();
+                semantic_filter.union_surface = Default::default();
+                semantic_filter == crate::ObjectFilter::default()
+                    .in_zone(Zone::Hand)
+                    .owned_by(PlayerFilter::You)
+            });
         assert!(
-            format!("{power:#?}").contains(expected_value),
+            format!("{power:#?}").contains(expected_value) || equivalent_hand_count,
             "{card} should retain its authored where-X value: {effects:#?}"
         );
     }
@@ -4776,4 +4785,21 @@ fn delayed_next_spell_copy_keeps_its_legendary_exception_atomic() {
     assert!(debug.contains("DelayedTriggerThisTurn"), "{debug}");
     assert!(debug.contains("CopySpell"), "{debug}");
     assert!(debug.contains("Legendary"), "{debug}");
+}
+
+#[test]
+fn counter_producer_keeps_reflexive_counter_threshold() {
+    let tokens = lex_line("put a quest counter on this enchantment. when you do, if it has four or more quest counters on it, put a +1/+1 counter on target creature you control. it gains trample until end of turn.", 0).unwrap();
+    let effects = parse_effect_sentences_lexed(&tokens).unwrap();
+    let debug = format!("{effects:#?}");
+    assert!(debug.contains("WhenResult") || debug.contains("reflexive: true"), "{debug}");
+    assert!(debug.contains("CountersOn") && debug.contains("GreaterThanOrEqual"), "{debug}");
+}
+
+#[test]
+fn serial_mill_draw_discard_keeps_every_action() {
+    let tokens = lex_line("mill two cards, draw two cards, then discard two cards.", 0).unwrap();
+    let effects = parse_effect_sentences_lexed(&tokens).unwrap();
+    let debug = format!("{effects:#?}");
+    assert!(debug.contains("Mill") && debug.contains("Draw") && debug.contains("Discard"), "{debug}");
 }

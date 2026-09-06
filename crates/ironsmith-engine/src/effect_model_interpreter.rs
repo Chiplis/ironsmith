@@ -503,6 +503,7 @@ where
             has_haste: payload.has_haste,
             haste_followup_reference_surface: payload.haste_followup_reference_surface,
             enters_attacking: payload.enters_attacking,
+            entry_tapped_attacking_followup: payload.entry_tapped_attacking_followup,
             attack_target_mode: payload.attack_target_mode.clone(),
             exile_at_end_of_combat: payload.exile_at_end_of_combat,
             exile_at_end_of_combat_reference_surface: payload

@@ -6,6 +6,9 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
     tokens: &[OwnedLexToken],
     typed_subject_tokens: Option<&[OwnedLexToken]>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if tokens.first().is_some_and(|token| token.is_any_word(&["if", "unless", "instead"])) {
+        return Ok(None);
+    }
     let stripped_if_you_do = trim_commas(strip_leading_if_you_do_lexed(tokens));
     if stripped_if_you_do.len() < tokens.len() {
         return Ok(
@@ -40,6 +43,9 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
     let Some(gain_token_idx) = word_view.map_word_or_end_to_token_boundary(gain_idx) else {
         return Ok(None);
     };
+    if tokens[..gain_token_idx].iter().filter(|token| token.kind == TokenKind::Quote).count() % 2 != 0 {
+        return Ok(None);
+    }
     if let Some((Verb::Create, create_idx)) = find_verb(tokens)
         && create_idx < gain_token_idx
         && gain_shapes::gain_words_include_token_noun(&word_list)
@@ -70,6 +76,11 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
             find_verb(&tokens[subject_start_token_idx..gain_token_idx])
         && subject_verb != Verb::Get
     {
+        if matches!(subject_verb, Verb::Tap | Verb::Untap)
+            && tokens[subject_start_token_idx..gain_token_idx].iter().any(|token| token.is_word("and"))
+        {
+            return Ok(None);
+        }
         // An action head before the gain verb belongs to a sibling action in
         // an authored `<action> or <subject> gains ...` choice. The or-action
         // rule owns that whole sentence; reading those action words as a
@@ -590,7 +601,7 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
                     abilities,
                     duration.clone(),
                     &duration_condition,
-                ),
+                ).with_set_quantifier_surface(pronoun_set_quantifier_surface),
             );
         }
         if let Some(become_effect) = &following_become_effect {
@@ -694,7 +705,7 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
                     abilities,
                     duration.clone(),
                     &duration_condition,
-                ),
+                ).with_set_quantifier_surface(pronoun_set_quantifier_surface),
             );
         }
         if let Some(become_effect) = &following_become_effect {
@@ -709,10 +720,7 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
 
     let is_demonstrative_subject = real_subject_shape.demonstrative_object;
     if is_demonstrative_subject {
-        let target = TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.bind(),
-            span_from_tokens(real_subject_tokens),
-        );
+        let target = tagged_subject_target(real_subject_tokens);
         if let Some(become_effect) = &leading_become_effect {
             effects.push(become_effect.clone());
         }
@@ -737,7 +745,7 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
                     abilities,
                     duration.clone(),
                     &duration_condition,
-                ),
+                ).with_set_quantifier_surface(pronoun_set_quantifier_surface),
             );
         }
         if let Some(become_effect) = &following_become_effect {
@@ -830,7 +838,7 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
                     abilities,
                     duration.clone(),
                     &duration_condition,
-                ),
+                ).with_set_quantifier_surface(pronoun_set_quantifier_surface),
             );
         }
         effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;

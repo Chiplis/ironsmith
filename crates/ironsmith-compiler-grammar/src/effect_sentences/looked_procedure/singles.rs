@@ -481,6 +481,9 @@ pub(super) fn battlefield_or_hand_split(
     else {
         return Ok(false);
     };
+    let Some(order) = crate::grammar::effects::parse_bottom_order(rest[1].lowered()) else {
+        return Ok(false);
+    };
     // The composition spells the view itself.
     group.view_style = ViewStyle::Absorbed;
     group.effects =
@@ -493,6 +496,7 @@ pub(super) fn battlefield_or_hand_split(
             chooser,
             battlefield_filter,
             tapped,
+            order,
         );
     group.pending_statements = std::collections::VecDeque::from([Vec::new(), Vec::new()]);
     group.selected = Some(group.tag.clone());

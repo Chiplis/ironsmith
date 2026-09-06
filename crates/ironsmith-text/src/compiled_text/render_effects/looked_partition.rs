@@ -3819,8 +3819,9 @@ mod tests {
             .parse_text(oracle)
             .unwrap_or_else(|error| panic!("{name} should compile: {error}"));
             let compiled = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+            let expected_partition = expected_partition.replacen(". Put ", ", then put ", 1).replacen("one of them", "one of those cards", 1);
             assert!(
-                compiled.contains(expected_partition),
+                compiled.contains(&expected_partition),
                 "{name} should render the structurally linked selected/remainder partition:\n{compiled}\n{:#?}",
                 definition.abilities
             );

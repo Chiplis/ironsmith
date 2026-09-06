@@ -754,14 +754,21 @@ impl TurnHistory {
     }
 
     pub fn source_dealt_damage_to_player_this_turn(
+        &self, source: ObjectId, source_stable_id: Option<StableId>, player: PlayerId,
+    ) -> bool {
+        self.source_dealt_damage_to_player_this_turn_matching(source, source_stable_id, player, false)
+    }
+
+    pub fn source_dealt_damage_to_player_this_turn_matching(
         &self,
         source: ObjectId,
         source_stable_id: Option<StableId>,
         player: PlayerId,
+        combat_only: bool,
     ) -> bool {
         self.projected_records().any(|record| {
             record.event.downcast::<DamageEvent>().is_some_and(|event| {
-                event.amount > 0
+                event.amount > 0 && (!combat_only || event.is_combat)
                     && matches!(
                         event.target,
                         crate::events::DamageTarget::Player(pid) if pid == player
@@ -1328,6 +1335,18 @@ pub(crate) fn resolve_turn_history_count(
             }
             seen.len() as i32
         }
+        TurnHistoryCount::PlayersAttackedThisCombat(player) => {
+            let mut seen = HashSet::new();
+            for record in history.projected_records().rev() {
+                if record.event.downcast::<crate::events::BeginningOfCombatEvent>().is_some() { break; }
+                let Some(event) = record.event.downcast::<CreatureAttackedEvent>() else { continue; };
+                let Some(snapshot) = record.object_snapshot.as_ref() else { continue; };
+                if player.matches_player(snapshot.controller, filter_ctx)
+                    && let crate::triggers::event::AttackEventTarget::Player(defender) = event.target
+                { seen.insert(defender); }
+            }
+            seen.len() as i32
+        }
         TurnHistoryCount::OpponentsAttacked(player) => {
             let mut seen = HashSet::new();
             for record in history.projected_records() {
@@ -1443,6 +1462,10 @@ pub(crate) fn resolve_turn_history_count(
                     && player.matches_player(snapshot.owner, filter_ctx)
             })
             .count() as i32,
+        TurnHistoryCount::DamageDealtBySource => history.projected_records()
+            .filter_map(|record| record.event.downcast::<DamageEvent>())
+            .filter(|event| Some(event.source) == filter_ctx.source)
+            .map(|event| event.amount).sum::<u32>() as i32,
         TurnHistoryCount::DamageDealtToSource => {
             let source_object = filter_ctx.source;
             let source_stable_id = source_object

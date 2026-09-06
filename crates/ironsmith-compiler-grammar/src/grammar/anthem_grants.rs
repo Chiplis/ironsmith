@@ -1329,6 +1329,10 @@ pub fn parse_plain_no_defender_shape(
         return None;
     }
     let subject_tokens = trim_lexed_commas(&tokens[..phrase_start]);
+    if subject_tokens.iter().any(|token| token.is_comma()
+        || token.is_any_word(&["if", "as", "has", "have", "gets", "get", "gains", "gain"])) {
+        return None;
+    }
     (!subject_tokens.is_empty()).then_some(NoDefenderSubjectShape { subject_tokens })
 }
 

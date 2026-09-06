@@ -4100,7 +4100,7 @@ pub(super) fn rewrite_triggered_it_damage_source_binds_to_triggering_object() {
     assert!(
         compact.contains("TagTriggeringObjectEffect")
             && compact.contains("ExecuteWithSourceEffect")
-            && compact.contains("source:Tagged")
+            && compact.replace("SurfaceHinted{spec:", "").contains("source:Tagged")
             && compact.contains("TagKey(\"triggering\"")
             && compact.contains("PowerOf")
             && compact.contains("spec:Tagged"),
@@ -4127,7 +4127,7 @@ pub(super) fn dealt_damage_trigger_binds_it_to_damaged_object_and_tests_player_r
         compact.contains("TagTriggeringDamageTargetEffect")
             && compact.contains("TagKey(\"damaged\"")
             && compact.contains("ExecuteWithSourceEffect")
-            && compact.contains("source:Tagged")
+            && compact.replace("SurfaceHinted{spec:", "").contains("source:Tagged")
             && compact.contains("predicate:DealtDamageToPlayer"),
         "expected the damaged object to deal damage and the followup to test player damage, got {rendered}"
     );

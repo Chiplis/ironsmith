@@ -2699,3 +2699,54 @@ pub fn bind_return_exiled_to_owners_hands(
     ));
     true
 }
+
+/// Capture the objects that supply a counted draw before executing it, so a
+/// later "those creatures" grant refers to that collection, even if a draw
+/// replacement changes the battlefield in between.
+pub fn bind_counted_object_grant_followup(effects: &mut Vec<EffectAst>, tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    if words.get(..2) != Some(&["those", "creatures"]) { return false; }
+    let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::LifeResources(crate::cards::builders::LifeResourceActionAst::Draw { count }), ..
+    })) = effects.last() else { return false; };
+    let Value::Count(filter) = count.unhinted() else { return false; };
+    if !filter.card_types.contains(&crate::types::CardType::Creature) { return false; }
+    let filter = filter.clone();
+    let Ok(Some(mut followup)) = super::gain_ability::parse_gain_ability_sentence(tokens) else { return false; };
+    let [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::Grants(crate::cards::builders::GrantActionAst::GrantAbilitiesToTarget {
+            target, set_quantifier_surface: Some(ironsmith_core::SetQuantifierSurface::Those), ..
+        }), ..
+    })] = followup.as_mut_slice() else { return false; };
+    let tag = crate::util::helper_tag_for_tokens(tokens, "counted_objects");
+    let mut referent = ObjectFilter::tagged(tag.clone());
+    referent.source_surface = Some(crate::target::SourceReferenceSurface::ThisPermanentType("those creatures".to_owned()));
+    *target = TargetAst::Object(referent, None, span_from_tokens(tokens));
+    effects.insert(effects.len() - 1, EffectAst::subject_verb_tag_matching_objects(
+        filter, Vec::new(), crate::tag::TagRef::of(tag),
+    ));
+    effects.extend(followup);
+    true
+}
+
+/// A plural pronoun keeps the population affected by the preceding mass action.
+pub fn bind_population_counter_followup(effects: &mut Vec<EffectAst>, tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    if words.first() != Some(&"put") || !words.windows(4).any(|w| w == ["on", "each", "of", "them"]) { return false; }
+    let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. })) = effects.last() else { return false; };
+    let population = match action {
+        SubjectVerbActionAst::StatChanges(crate::cards::builders::StatChangeActionAst::PumpAll { filter, .. })
+        | SubjectVerbActionAst::Grants(crate::cards::builders::GrantActionAst::GrantAbilitiesAll { filter, .. }) => filter.clone(),
+        _ => return false,
+    };
+    let Ok(mut followup) = super::zone_counter_helpers::parse_put_counters(tokens) else { return false; };
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::Counters(crate::cards::builders::CounterActionAst::PutCountersAll { filter, .. }), ..
+    }) = &mut followup else { return false; };
+    let tag = crate::util::helper_tag_for_tokens(tokens, "affected_population");
+    *filter = ObjectFilter::tagged(tag.clone());
+    filter.source_surface = Some(crate::target::SourceReferenceSurface::ThisPermanentType("them".to_owned()));
+    effects.insert(effects.len() - 1, EffectAst::subject_verb_tag_matching_objects(population, vec![Zone::Battlefield], crate::tag::TagRef::of(tag)));
+    effects.push(followup);
+    true
+}

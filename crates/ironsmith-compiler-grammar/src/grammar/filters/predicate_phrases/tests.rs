@@ -1981,7 +1981,8 @@ fn parse_predicate_tagged_state_uses_shared_capture_parser() -> Result<(), CardT
             "If those cards remain exiled",
             PredicateAst::TaggedMatches(
                 crate::tag::CompilerReferenceTag::It.bind(),
-                ObjectFilter::default().in_zone(Zone::Exile),
+                { let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
+                  filter.set_plural_pronoun_reference_surface(true); filter },
             ),
         ),
         (
@@ -2014,13 +2015,10 @@ fn parse_predicate_tagged_state_uses_shared_capture_parser() -> Result<(), CardT
         ),
         (
             "If that creature was not blocking",
-            PredicateAst::TaggedMatches(
-                crate::tag::CompilerReferenceTag::It.bind(),
-                ObjectFilter {
-                    nonblocking: true,
-                    ..Default::default()
-                },
-            ),
+            PredicateAst::ItMatchedLastKnown(ObjectFilter {
+                nonblocking: true,
+                ..Default::default()
+            }),
         ),
         (
             "If that creature was blue or black",
@@ -3926,4 +3924,17 @@ fn parse_predicate_rejects_entered_from_zone_as_bare_it_matches() {
             "'{text}' must not be absorbed into a bare it-matches filter, got {parsed:?}"
         );
     }
+}
+
+#[test]
+fn exiled_source_state_is_a_zone_predicate() -> Result<(), CardTextError> {
+    assert_eq!(parse_predicate(&lex_line("it's exiled", 0)?)?,
+        PredicateAst::ItMatches(ObjectFilter::default().in_zone(Zone::Exile)));
+    assert_eq!(parse_predicate_for_source("Semantic Probe", "If it's exiled")?,
+        PredicateAst::ItMatches(ObjectFilter::default().in_zone(Zone::Exile)));
+    for text in ["If this card is exiled", "If this card is in exile"] {
+        assert_eq!(parse_predicate_for_source("Semantic Probe", text)?,
+            PredicateAst::Source(SourcePredicateAst::SourceIsInZone(Zone::Exile)));
+    }
+    Ok(())
 }

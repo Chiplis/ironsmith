@@ -53,7 +53,9 @@ pub(in crate::compiled_text::render_effects) fn describe_sacrificed_source_damag
     let damage_text = describe_effect(damage_effect);
     let predicate = damage_text
         .strip_prefix("this creature ")
-        .or_else(|| damage_text.strip_prefix("This creature "))?;
+        .or_else(|| damage_text.strip_prefix("This creature "))
+        .or_else(|| damage_text.strip_prefix("it "))
+        .or_else(|| damage_text.strip_prefix("It "))?;
     Some(format!(
         "{} and it {predicate}",
         sacrifice_text.trim().trim_end_matches('.')

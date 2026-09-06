@@ -263,6 +263,7 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
                     object_filter_mentions_iterated_player(filter)
                 }
                 TurnHistoryCount::TokensCreated(player)
+                | TurnHistoryCount::PlayersAttackedThisCombat(player)
                 | TurnHistoryCount::OpponentsAttacked(player)
                 | TurnHistoryCount::PlayersDiscarded(player)
                 | TurnHistoryCount::PlayersDealtDamage(player)
@@ -290,7 +291,7 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
                     player.mentions_iterated_player()
                         || object_filter_mentions_iterated_player(filter)
                 }
-                TurnHistoryCount::DamageDealtToSource => false,
+                TurnHistoryCount::DamageDealtToSource | TurnHistoryCount::DamageDealtBySource => false,
             }
         }
         _ => false,

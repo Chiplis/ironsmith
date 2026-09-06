@@ -1,0 +1,170 @@
+/* Restore sampled colors on the existing layout. Typography follows the displayed printing. */
+.interactive-card-frame-stage[data-card-colors="sampled"] .interactive-card-frame__inner {
+  background-image: var(--sampled-shell-veil, linear-gradient(transparent, transparent)), var(--sampled-shell-texture, var(--sampled-shell-paper));
+  background-size: 100% 100%, var(--sampled-shell-texture-size, 100% 100%);
+  background-repeat: repeat;
+}
+.interactive-card-frame-stage[data-card-colors="sampled"] .interactive-card-frame__title-row {
+  background: var(--sampled-title-paper);
+}
+.interactive-card-frame-stage[data-card-colors="sampled"] .interactive-card-frame__title {
+  color: var(--sampled-bar-ink, var(--sampled-title-ink));
+  text-shadow: none;
+}
+.interactive-card-frame-stage[data-card-colors="sampled"] .interactive-card-frame__type-row {
+  background: var(--sampled-type-paper);
+}
+.interactive-card-frame-stage[data-card-colors="sampled"] .interactive-card-frame__type {
+  color: var(--sampled-type-ink);
+  text-shadow: none;
+}
+.interactive-card-frame-stage[data-card-colors="sampled"] .interactive-card-frame__rules {
+  background-image: var(--sampled-rules-veil, linear-gradient(transparent, transparent)), var(--sampled-rules-texture, var(--sampled-rules-paper));
+  background-size: 100% 100%, var(--sampled-rules-texture-size, 100% 100%);
+  background-repeat: repeat;
+  --card-frame-ink: var(--sampled-rules-ink);
+  color: var(--sampled-rules-ink);
+}
+.interactive-card-frame-stage[data-card-colors="sampled"] .interactive-card-frame__rule-line {
+  text-shadow: none;
+}
+.interactive-card-frame-stage[data-card-colors="sampled"] .interactive-card-frame__art-stats {
+  background-image: var(--sampled-stats-veil, linear-gradient(transparent, transparent)), var(--sampled-stats-texture, var(--sampled-stats-paper));
+  background-size: 100% 100%, var(--sampled-stats-texture-size, 100% 100%);
+  background-repeat: repeat;
+  color: var(--sampled-stats-ink);
+  text-shadow: none;
+}
+
+/* Clone the embedded border into the title sides and surrounding frame. */
+.interactive-card-frame-stage[data-art-title-rails="true"] .interactive-card-frame__title-row {
+  border: 0;
+  padding-left: max(clamp(8px, 2.2cqw, 13px), calc(var(--art-title-left-rail) + 6px));
+  padding-right: max(clamp(8px, 2.2cqw, 13px), calc(var(--art-title-right-rail) + 6px));
+  box-shadow: none;
+}
+.interactive-card-frame-stage[data-art-title-rails="true"] .interactive-card-frame__title-row::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--art-title-rails) center bottom / 100% auto repeat-y;
+  /* Fade out the sampled inner pinline before it becomes a bright title seam. */
+  mask-image: linear-gradient(to right,
+    #000 calc(var(--art-title-left-rail) - 4px),
+    transparent var(--art-title-left-rail),
+    transparent calc(100% - var(--art-title-right-rail)),
+    #000 calc(100% - var(--art-title-right-rail) + 4px));
+  pointer-events: none;
+}
+.interactive-card-frame-stage[data-art-title-rails="true"] .interactive-card-frame__art {
+  margin-top: calc(-1 * clamp(3px, 0.7cqw, 5px));
+  border-top: 0;
+}
+
+/* Both horizontal bars clone the real printing's type-line material. */
+.interactive-card-frame-stage[data-card-colors="sampled"] :is(.interactive-card-frame__title-row, .interactive-card-frame__type-row) {
+  background-image: var(--sampled-type-veil, linear-gradient(transparent, transparent)), var(--sampled-type-texture, var(--sampled-type-paper));
+  background-size: 100% 100%, var(--sampled-type-texture-size, 100% auto);
+  background-repeat: repeat;
+}
+
+/* Let the art and both bars share one uninterrupted textured surface. */
+.interactive-card-frame__art,
+.interactive-card-frame__art + .interactive-card-frame__type-row {
+  margin-top: calc(-1 * clamp(3px, 0.7cqw, 5px));
+}
+
+/* Mirror the crop's real lower border to complete its missing upper edge. */
+.interactive-card-frame-stage[data-card-colors="sampled"] .interactive-card-frame__art::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: var(--art-top-rail-height, 0px);
+  background: var(--art-top-rail, none) center / 100% 100% no-repeat;
+  z-index: 1;
+  pointer-events: none;
+}
+.interactive-card-frame__title-wrap,
+.interactive-card-frame__mana {
+  position: relative;
+  z-index: 1;
+}
+
+/* Enclosed title panels use their own scan material and sampled bevel colors. */
+.interactive-card-frame-stage[data-title-panel="panel"] .interactive-card-frame__title-row {
+  background-image: var(--sampled-title-veil, linear-gradient(transparent, transparent)), var(--sampled-title-texture, var(--sampled-title-paper));
+  background-size: 100% 100%;
+  border: clamp(1px, var(--title-panel-stroke, .35cqw), 2px) solid var(--title-panel-border);
+  border-radius: clamp(5px, var(--title-panel-radius, 1.8cqw), 12px) !important;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--title-panel-highlight) 65%, transparent),
+    inset 0 1px 1px var(--title-panel-highlight),
+    inset 0 -1px 1px color-mix(in srgb, var(--title-panel-border) 30%, transparent),
+    0 1px 1px rgba(0, 0, 0, .25);
+}
+.interactive-card-frame-stage[data-title-panel="panel"] .interactive-card-frame__title {
+  color: var(--sampled-title-ink);
+}
+.interactive-card-frame-stage[data-title-panel="panel"] .interactive-card-frame__art {
+  margin-top: 0;
+}
+
+/* Type panels are classified independently from the title of the printing. */
+.interactive-card-frame-stage[data-type-panel="panel"] .interactive-card-frame__type-row {
+  background-image: var(--sampled-type-box-veil, linear-gradient(transparent, transparent)), var(--sampled-type-box-texture, var(--sampled-type-paper));
+  background-size: 100% 100%;
+  margin-top: 0;
+  border: clamp(1px, var(--type-panel-stroke, .35cqw), 2px) solid var(--type-panel-border);
+  border-radius: clamp(5px, var(--type-panel-radius, 1.8cqw), 12px) !important;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--type-panel-highlight) 65%, transparent),
+    inset 0 1px 1px var(--type-panel-highlight),
+    inset 0 -1px 1px color-mix(in srgb, var(--type-panel-border) 30%, transparent),
+    0 1px 1px rgba(0, 0, 0, .25);
+}
+
+/* Keep the sampled lower corners intact; only the long center spans the box. */
+.interactive-card-frame-stage[data-rules-bottom="sampled"] .interactive-card-frame__rules {
+  border-bottom: 0;
+  padding-bottom: max(clamp(8px, 2.35cqw, 14px), calc(var(--rules-bottom-height) + 4px));
+  background-image: var(--rules-bottom-left), var(--rules-bottom-right), var(--rules-bottom-middle), var(--sampled-rules-veil, linear-gradient(transparent, transparent)), var(--sampled-rules-texture, var(--sampled-rules-paper));
+  background-position: left bottom, right bottom, center bottom, center, center;
+  background-size: var(--rules-bottom-corner) var(--rules-bottom-height), var(--rules-bottom-corner) var(--rules-bottom-height), calc(100% - 2 * var(--rules-bottom-corner)) var(--rules-bottom-height), 100% 100%, var(--sampled-rules-texture-size, 100% 100%);
+  background-repeat: no-repeat;
+}
+
+/* Whole cleaned scan, resized in nine sections: fixed corners and edge weight. */
+.interactive-card-frame-stage[data-whole-title="true"] .interactive-card-frame__title-row {
+  background: none;
+  border: 0 solid transparent;
+  border-radius: 0 !important;
+  border-image-source: var(--whole-title-image);
+  border-image-slice: var(--whole-title-slice);
+  border-image-width: var(--whole-title-width);
+  border-image-repeat: stretch;
+  box-shadow: none;
+}
+
+/* Whole cleaned scan, resized in nine sections: fixed corners and edge weight. */
+.interactive-card-frame-stage[data-whole-type="true"] .interactive-card-frame__type-row {
+  background: none;
+  border: 0 solid transparent;
+  border-radius: 0 !important;
+  border-image-source: var(--whole-type-image);
+  border-image-slice: var(--whole-type-slice);
+  border-image-width: var(--whole-type-width);
+  border-image-repeat: stretch;
+  box-shadow: none;
+}
+
+/* Whole cleaned scan, resized in nine sections: fixed corners and edge weight. */
+.interactive-card-frame-stage[data-whole-rules="true"] .interactive-card-frame__rules {
+  background: none;
+  border: 0 solid transparent;
+  border-radius: 0 !important;
+  border-image-source: var(--whole-rules-image);
+  border-image-slice: var(--whole-rules-slice);
+  border-image-width: var(--whole-rules-width);
+  border-image-repeat: stretch;
+  box-shadow: none;
+}

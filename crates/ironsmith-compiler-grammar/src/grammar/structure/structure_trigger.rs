@@ -10,7 +10,11 @@ pub fn split_triggered_conditional_clause_lexed<'a>(
     let (leading_tokens, after_if) = primitives::split_lexed_once_on_separator(tokens, || {
         (primitives::comma(), primitives::kw("if")).void()
     })?;
-    if leading_tokens.len() <= start_idx {
+    if leading_tokens.len() <= start_idx
+        || leading_tokens.iter().any(|token| token.kind == TokenKind::Period)
+    {
+        // An intervening-if belongs to the trigger's first sentence. An if
+        // in a later reflexive or resolution clause cannot replace its body.
         return None;
     }
 

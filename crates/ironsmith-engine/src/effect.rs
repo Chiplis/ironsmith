@@ -1042,7 +1042,7 @@ pub use ironsmith_core::value_model::{
     AttachmentConditionHost, Condition, EffectMetric, EffectMetricSource, ManaSpendPermission,
     ManaSpendScope, PermanentLeftBattlefieldControlSurface, PriorEffectAction,
     PriorEffectMetricQuery, Restriction, SourceCounterThresholdSurface, TaggedObjectMatchMode,
-    Value,
+    TurnHistoryCount, Value,
 };
 
 pub(crate) trait RestrictionExt {

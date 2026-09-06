@@ -579,9 +579,10 @@
             create_copy.attack_target_mode,
             Some(crate::effects::CopyAttackTargetMode::Player(_))
         );
-        let inline_tapped = create_copy.enters_tapped && !player_only_attack;
+        let separate_entry = create_copy.entry_tapped_attacking_followup && create_copy.attack_target_mode.is_none();
+        let inline_tapped = create_copy.enters_tapped && !player_only_attack && !separate_entry;
         let inline_attacking =
-            create_copy.enters_attacking && create_copy.attack_target_mode.is_none();
+            create_copy.enters_attacking && create_copy.attack_target_mode.is_none() && !separate_entry;
         let token_state = match (inline_tapped, inline_attacking) {
             (true, true) => "tapped and attacking ",
             (true, false) => "tapped ",
@@ -606,8 +607,8 @@
         ) {
             (
                 PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(controller_tag)),
-                ChooseSpec::Tagged(target_tag),
-            ) => controller_tag == target_tag,
+                target,
+            ) if choose_spec_references_exact_tag(target, controller_tag) => true,
             (
                 PlayerFilter::ControllerOf(crate::target::ObjectRef::Target),
                 ChooseSpec::Target(_),
@@ -619,7 +620,7 @@
             _ => false,
         };
         let mut text = if copied_object_controller_is_actor {
-            let actor = if target == "it" {
+            let actor = if target == "it" || target.starts_with("that ") {
                 "Its controller".to_string()
             } else {
                 format!("{}'s controller", capitalize_first(&target))
@@ -636,10 +637,10 @@
                 describe_possessive_player_filter(&create_copy.controller)
             ));
         }
-        if create_copy.enters_tapped && !inline_tapped && !player_only_attack {
+        if create_copy.enters_tapped && !inline_tapped && !player_only_attack && !separate_entry {
             text.push_str(", tapped");
         }
-        if create_copy.enters_attacking && !inline_attacking {
+        if create_copy.enters_attacking && !inline_attacking && !separate_entry {
             match &create_copy.attack_target_mode {
                 Some(crate::effects::CopyAttackTargetMode::Player(_)) => {}
                 Some(
@@ -657,6 +658,9 @@
         }
         let singular_copy = matches!(create_copy.count, Value::Fixed(1));
         let append_copy_cleanup = |mut text: String| {
+            if separate_entry {
+                text.push_str(if singular_copy { ". The token enters tapped and attacking" } else { ". The tokens enter tapped and attacking" });
+            }
             let default_created_object = || {
                 if singular_copy && player_only_attack {
                     "it"
@@ -1109,6 +1113,13 @@
         return base;
     }
     if let Some(cant) = effect.downcast_ref::<crate::effects::CantEffect>() {
+        if cant.duration == Until::EndOfTurn && cant.start == crate::effect::RestrictionStart::Immediate
+            && let crate::effect::Restriction::BeTargetedPlayerFrom(player, sources) = &cant.restriction
+            && sources == &ObjectFilter::default().controlled_by(PlayerFilter::Opponent)
+        {
+            let subject = describe_player_filter(player);
+            return format!("{} {} hexproof until end of turn", capitalize_first(&subject), player_verb(&subject, "gain", "gains"));
+        }
         if let crate::effect::RestrictionStart::NextTurn(player) = &cant.start {
             return format!(
                 "{} during {} next turn",
@@ -3243,6 +3254,39 @@
         );
     }
     if let Some(schedule) = effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>() {
+        if !schedule.one_shot && schedule.until_end_of_turn && !schedule.start_next_turn
+            && schedule.target_tag.is_some()
+            && let Some(qualified) = schedule.trigger.downcast_ref::<crate::triggers::ConditionQualifiedTrigger>()
+            && matches!(qualified.condition, Condition::PlayerIsMonarch { player: PlayerFilter::Defending })
+            && let Some(attack) = qualified.trigger.downcast_ref::<crate::triggers::AttacksTrigger>()
+            && attack.filter.attacking_player_only
+            && attack.filter.attacking_player_or_planeswalker_controlled_by == Some(PlayerFilter::Any)
+        {
+            let mut noun = attack.filter.clone();
+            noun.zone = None;
+            noun.tagged_constraints.clear();
+            noun.source = false;
+            noun.source_surface = None;
+            noun.attacking_player_only = false;
+            noun.attacking_player_or_planeswalker_controlled_by = None;
+            let noun = describe_for_each_count_filter(&noun);
+            return format!("Whenever that {} attacks the monarch this turn, {}", strip_indefinite_article(&noun), lowercase_first(&describe_resolution_program(&schedule.effects)));
+        }
+        if schedule.one_shot && schedule.duration == ironsmith_core::DelayedTriggerDuration::Forever
+            && !schedule.start_next_turn && !schedule.until_end_of_turn && !schedule.until_end_of_combat
+            && schedule.target_tag.is_some() && schedule.prepayment.is_none()
+            && let Some(filter) = schedule.target_filter.as_ref()
+            && let Some(death) = schedule.trigger.downcast_ref::<crate::triggers::ZoneChangeTrigger>()
+            && death.from == crate::triggers::zone_changes::ZonePattern::Specific(Zone::Battlefield)
+            && death.to == crate::triggers::zone_changes::ZonePattern::Specific(Zone::Graveyard)
+        {
+            let mut noun = filter.clone();
+            noun.zone = None;
+            noun.tagged_constraints.clear();
+            let noun = describe_for_each_count_filter(&noun);
+            let body = describe_resolution_program(&schedule.effects);
+            return format!("{} when that {} dies", body.trim_end_matches('.'), strip_indefinite_article(&noun));
+        }
         if let Some(text) = describe_delayed_target_land_damages_tagged_creature(schedule) {
             return text;
         }

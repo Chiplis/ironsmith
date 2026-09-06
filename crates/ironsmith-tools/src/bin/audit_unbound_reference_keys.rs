@@ -187,6 +187,9 @@ fn runtime_keyed_references(payload: &CardPayload) -> Option<Vec<(String, bool)>
         )
     }));
     let lowered = result.ok()?.ok()?;
+    if std::env::var_os("RUNTIME_DUMP").is_some() {
+        println!("--- definition\n{:#?}", lowered.definition);
+    }
     let bound_keys: std::collections::HashSet<String> = lowered
         .symbols
         .bindings()

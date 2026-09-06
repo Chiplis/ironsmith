@@ -23,7 +23,9 @@ pub(super) struct RiddenStatement {
 }
 
 fn bind(effects: &mut Vec<EffectAst>, sentence: &SentenceInput) -> bool {
-    super::chain_carry::bind_prevention_followup(effects, sentence.lowered())
+    super::chain_carry::bind_population_counter_followup(effects, sentence.lowered())
+        || super::chain_carry::bind_counted_object_grant_followup(effects, sentence.lowered())
+        || super::chain_carry::bind_prevention_followup(effects, sentence.lowered())
         || super::chain_carry::bind_tap_lock(effects, sentence.lowered())
         || super::chain_carry::bind_self_animate_after_life_gain(effects, sentence.lowered())
         || super::chain_carry::bind_destroy_typed_subset(effects, sentence.lowered())

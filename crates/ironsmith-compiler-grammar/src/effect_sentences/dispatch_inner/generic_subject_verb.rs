@@ -251,6 +251,7 @@ struct GenericChoiceComplementProgram {
     keep_tag: TagKey,
     keep_filters: Vec<ObjectFilter>,
     keep_count: ChoiceCount,
+    distinct_slots: bool,
     aggregate_constraint: Option<crate::effect::ChoiceAggregateConstraint>,
 }
 
@@ -271,7 +272,7 @@ impl GenericChoiceComplementProgram {
             // Each later slot of a party complement chooses among what earlier
             // slots did not keep. A single slot chooses before anything is
             // kept, so the exclusion would only read as "other".
-            let sequential_slots = self.keep_filters.len() > 1;
+            let sequential_slots = self.distinct_slots;
             for keep_filter in self.keep_filters {
                 let mut filter = merge_filters(&self.base_filter, &keep_filter);
                 if sequential_slots {
@@ -2918,6 +2919,7 @@ pub fn parse_choice_complement_subject_verb(
                 keep_tag: (crate::tag::CompilerReferenceTag::Keep.bind()).into(),
                 keep_filters: shape.slot_filters,
                 keep_count: shape.count_per_slot,
+                distinct_slots: true,
                 aggregate_constraint: None,
             }
             .lower(),
@@ -2931,6 +2933,7 @@ pub fn parse_choice_complement_subject_verb(
                 keep_tag: (crate::tag::CompilerReferenceTag::Keep.bind()).into(),
                 keep_filters: Vec::new(),
                 keep_count: shape.count,
+                distinct_slots: false,
                 aggregate_constraint: Some(shape.constraint),
             }
             .lower(),
@@ -2964,7 +2967,21 @@ pub fn parse_choice_complement_subject_verb(
 
     let choice_clause = choice_clause.trimmed();
     let choice_tokens = choice_clause.tokens();
+    if let Some(suffix) = choice_tokens.windows(4).position(|tokens| tokens[0].is_word("of") && tokens[1].is_word("each") && tokens[2].is_word("permanent") && tokens[3].is_word("type"))
+        && choice_tokens[suffix + 4..].iter().all(|token| token.as_word().is_none())
+    {
+        let mut filter = parse_object_filter(&choice_tokens[..suffix], false)?;
+        filter.controller = Some(PlayerFilter::IteratedPlayer);
+        return Ok(Some(GenericChoiceComplementProgram {
+            chooser_scope, base_filter: filter,
+            keep_tag: crate::tag::CompilerReferenceTag::Keep.bind().into(),
+            keep_filters: [CardType::Artifact, CardType::Battle, CardType::Creature, CardType::Enchantment, CardType::Land, CardType::Planeswalker]
+                .into_iter().map(|kind| ObjectFilter::default().with_type(kind)).collect(),
+            keep_count: ChoiceCount::exactly(1), distinct_slots: false, aggregate_constraint: None,
+        }.lower()));
+    }
     if find_from_among(choice_tokens).is_none()
+        && !crate::lexer::token_word_refs(choice_tokens).windows(4).any(|words| words == ["of", "each", "permanent", "type"])
         && !choice_tokens.iter().any(|token| token.is_word("and"))
         && let Some((keep_count, count_used)) =
             crate::util::parse_choice_count_token_prefix_consumed(choice_tokens)
@@ -2987,6 +3004,7 @@ pub fn parse_choice_complement_subject_verb(
                     keep_tag: (crate::tag::CompilerReferenceTag::Keep.bind()).into(),
                     keep_filters: vec![ObjectFilter::default()],
                     keep_count,
+                    distinct_slots: false,
                     aggregate_constraint: None,
                 }
                 .lower(),
@@ -3067,6 +3085,7 @@ pub fn parse_choice_complement_subject_verb(
             keep_tag: (crate::tag::CompilerReferenceTag::Keep.bind()).into(),
             keep_filters,
             keep_count: ChoiceCount::exactly(1),
+            distinct_slots: false,
             aggregate_constraint: None,
         }
         .lower(),

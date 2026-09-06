@@ -453,7 +453,7 @@ fn subject_start_at(words: &[&str], offset: usize) -> Option<usize> {
                 Some("x" | "another" | "other")
             )
         {
-            start = offset - 1;
+            start = count_prefix_start(words, offset - 1);
         } else if offset >= 4 {
             let prefix = words.get(offset - 4..offset)?;
             let each_up_to = primitives::parse_full_word_slice(

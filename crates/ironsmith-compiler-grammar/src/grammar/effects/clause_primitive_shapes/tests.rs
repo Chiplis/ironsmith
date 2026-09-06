@@ -2,6 +2,17 @@ use super::*;
 use crate::lexer::lex_line;
 
 #[test]
+fn power_damage_does_not_absorb_an_earlier_action_as_its_source() {
+    for text in [
+        "Put a +1/+1 counter on target creature you control, then it deals damage equal to its power to target creature an opponent controls.",
+        "Untap target creature, then it deals damage equal to its power to another target creature.",
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        assert!(parse_power_damage_shape(&tokens).unwrap().is_none());
+    }
+}
+
+#[test]
 fn parses_power_damage_and_fight_shapes() {
     let damage = lex_line("It deals damage to each opponent equal to its power.", 0).unwrap();
     let shape = parse_power_damage_shape(&damage).unwrap().unwrap();

@@ -268,10 +268,29 @@ pub fn parse_consult_disposition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<
             moved_tag
         }
         bundle_grammar::ConsultMiddleShape::Generic(clauses) => {
+            fn bind_revealed_origin(effect: &mut EffectAst, revealed: &TagKey) {
+                if let EffectAst::SubjectVerb(subject_verb) = effect
+                    && let SubjectVerbActionAst::ZoneMoves(crate::cards::builders::ZoneMoveActionAst::MoveToZone { target: TargetAst::Object(filter, _, _), all: true, .. }) = &mut subject_verb.action
+                    && let Some(constraint) = filter.tagged_constraints.iter_mut().find(|constraint|
+                        constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                        && [crate::tag::CompilerReferenceTag::RevealedThisWay.as_str(), crate::tag::CompilerReferenceTag::It.as_str()].contains(&constraint.tag.as_str()))
+                {
+                    // Revealing during a consult leaves these cards in the library.
+                    // A creature-card noun must not add a battlefield restriction.
+                    filter.zone = Some(Zone::Library);
+                    constraint.tag = revealed.clone();
+                }
+                crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+                    for effect in nested { bind_revealed_origin(effect, revealed); }
+                });
+            }
             for clause in clauses {
                 let mut clause_effects = crate::grammar::primitives::probe_shape(
                     effect_sentences::parse_effect_sentence_lexed(&clause),
                 )?;
+                if crate::word_primitives::sequence_occurs(&crate::lexer::token_word_refs(&clause), &["revealed", "this", "way"]) {
+                    for effect in &mut clause_effects { bind_revealed_origin(effect, &parts.all_tag); }
+                }
                 effects.append(&mut clause_effects);
             }
             parts.match_tag.clone()
@@ -371,4 +390,16 @@ pub(super) fn parse_reveal_repeated_disposition_bundle(
             starting_with_controller: false,
         },
     ])
+}
+
+#[cfg(test)]
+mod provenance_tests {
+    use super::*;
+    #[test]
+    fn consult_filtered_disposition_retains_library_origin() {
+        let tokens = crate::lexer::lex_line("Reveal cards from the top of your library until you reveal X creature cards. Put all creature cards revealed this way into your graveyard, then put the rest on the bottom of your library in a random order.", 0).unwrap();
+        let effects = parse_consult_disposition_bundle(&tokens).unwrap();
+        let debug = format!("{effects:#?}");
+        assert!(!debug.contains("Battlefield"), "{debug}");
+    }
 }

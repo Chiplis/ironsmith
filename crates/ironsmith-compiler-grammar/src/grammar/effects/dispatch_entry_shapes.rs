@@ -270,7 +270,13 @@ pub fn parse_where_x_usage_shape_tokens(tokens: &[OwnedLexToken]) -> Option<Wher
     );
     let scope = if damage_or_life {
         WhereXReplacementScope::DamageOrLife
-    } else if marker_present(leading, primitives::kw("x")) {
+    } else if marker_present(leading, primitives::kw("x"))
+        || leading.iter().any(|token| {
+            crate::grammar::static_keyword_shapes::parse_pt_components(token.parser_text())
+                .is_some_and(|pt| [pt.power, pt.toughness].iter().any(|component|
+                    component.trim_start_matches(['+', '-']).eq_ignore_ascii_case("x")
+                ))
+        }) {
         WhereXReplacementScope::AnyEffect
     } else {
         return None;

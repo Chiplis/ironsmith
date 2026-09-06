@@ -5,6 +5,7 @@ import {
   customCardArtUrl,
   preloadCardArt,
   resolveScryfallImageUrl,
+  resolveScryfallFlavorText,
   scryfallImageUrl,
   setCustomCardArtUrls,
 } from "../src/lib/scryfall.js";
@@ -21,6 +22,32 @@ function installLocalStorageMock() {
     },
   };
 }
+
+test("flavor lookup follows the displayed printing and face, including an empty face", async () => {
+  const originalFetch = globalThis.fetch;
+  const id = "12345678-1234-1234-1234-123456789abc";
+  const front = `https://cards.scryfall.io/art_crop/front/1/2/${id}.jpg`;
+  const back = `https://cards.scryfall.io/art_crop/back/1/2/${id}.jpg`;
+  let calls = 0;
+  globalThis.fetch = async (url) => {
+    calls += 1;
+    assert.equal(url, `https://api.scryfall.com/cards/${id}`);
+    return { ok: true, json: async () => ({ card_faces: [
+      { image_uris: { art_crop: `${front}?new` }, flavor_text: "The front's story.\n—An author" },
+      { image_uris: { art_crop: back } },
+    ] }) };
+  };
+  try {
+    assert.equal(await resolveScryfallFlavorText(`${front}?old`), "The front's story.\n—An author");
+    assert.equal(await resolveScryfallFlavorText(back), "");
+    assert.equal(await resolveScryfallFlavorText(`${front}?old`), "The front's story.\n—An author");
+    assert.equal(await resolveScryfallFlavorText("https://example.test/custom.jpg"), "");
+    assert.equal(await resolveScryfallFlavorText(HIDDEN_CARD_BACK_IMAGE_URL), "");
+    assert.equal(calls, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
 test("custom card art overrides Scryfall image lookup by card name", () => {
   installLocalStorageMock();
@@ -66,6 +93,7 @@ test("preloading resolves and caches Scryfall image URLs by card name", async ()
             normal: "https://cards.example.test/cache-test-normal.jpg",
             art_crop: "https://cards.example.test/cache-test-art.jpg",
           },
+          flavor_text: "A tale from this printing.",
         },
       }),
     };
@@ -78,6 +106,10 @@ test("preloading resolves and caches Scryfall image URLs by card name", async ()
     });
 
     assert.equal(calls, 1);
+    assert.equal(
+      await resolveScryfallFlavorText("https://cards.example.test/cache-test-art.jpg"),
+      "A tale from this printing."
+    );
     assert.equal(
       scryfallImageUrl("Cache Test Card", "normal"),
       "https://cards.example.test/cache-test-normal.jpg"
