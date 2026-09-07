@@ -1,4 +1,7 @@
-// Printing colors and a narrow color continuation for embedded art borders.
+import { reconstructFrameMaterial } from './card-frame-material.js';
+import { sampleInnerFrameBevel, detectEmbeddedArtFrame } from './card-border-analysis.js';
+
+// Printing materials, source panel reconstruction, and frame geometry.
 // Panel reconstruction is independent of the typography selection.
 const cache = new Map();
 
@@ -29,7 +32,7 @@ function luminance(rgb) {
   return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
 }
 
-function analyzeSection({ data, width, height }) {
+function analyzeSection({ data, width, height }, {minGlyphHeight=5} = {}) {
   const paper = materialColor(data), light = luminance(paper);
   const mask = new Uint8Array(width * height), ink = [];
   for (let p = 0; p < mask.length; p++) {
@@ -37,7 +40,7 @@ function analyzeSection({ data, width, height }) {
     mask[p] = data[p * 4 + 3] >= 128 && (Math.max(light, value) + 0.05) / (Math.min(light, value) + 0.05) >= 2.5 ? 1 : 0;
   }
   let glyphs = 0;
-  const heights = [];
+  const heights = [], boxes = [];
   for (let p = 0; p < mask.length; p++) {
     if (!mask[p]) continue;
     const pending = [p], component = [];
@@ -59,7 +62,7 @@ function analyzeSection({ data, width, height }) {
     if (component.length < 3 || h < 2 || h > Math.min(36, height * 0.95)
       || w > Math.min(width * 0.6, h * 10) || minX === 0 || minY === 0 || maxX === width - 1 || maxY === height - 1) continue;
     glyphs++;
-    if (h >= 5 && w <= h * 2.5 && component.length >= h) heights.push(h);
+    if (h >= minGlyphHeight && w <= h * 2.5 && component.length >= h) {heights.push(h);boxes.push({x:minX,y:minY,width:w,height:h});}
     for (const at of component) ink.push(data[at * 4], data[at * 4 + 1], data[at * 4 + 2], 255);
   }
   // Use a repeated glyph-height cluster, not punctuation, borders, or symbols.
@@ -69,13 +72,24 @@ function analyzeSection({ data, width, height }) {
     if (similar.length > cluster.length) cluster = similar;
   }
   cluster.sort((a, b) => a - b);
+  const matched=boxes.filter(box=>cluster.includes(box.height));
+  const glyphBounds=matched.length>=4?{
+    x:Math.min(...matched.map(b=>b.x)),y:Math.min(...matched.map(b=>b.y)),
+    right:Math.max(...matched.map(b=>b.x+b.width)),bottom:Math.max(...matched.map(b=>b.y+b.height)),
+  }:null;
+
   return {
     ink: glyphs >= 2 && ink.length >= 24 ? materialColor(ink) : light > .35 ? [23, 24, 25] : [245, 241, 230],
+    glyphBounds,
     glyphHeight: cluster.length >= 4 ? cluster[Math.floor((cluster.length - 1) * .8)] : null,
   };
 }
 
-export function sectionInk(region) { return analyzeSection(region).ink; }
+export function sectionInk(region) {
+  const ink = analyzeSection(region).ink;
+  return luminance(ink) > luminance(materialColor(region.data))
+    ? [255, 255, 255] : [0, 0, 0];
+}
 export function printedGlyphHeight(region) { return analyzeSection(region).glyphHeight; }
 
 function loadImage(url) {
@@ -87,39 +101,6 @@ function loadImage(url) {
     image.onerror = () => { clearTimeout(timer); reject(new Error('Card colors unavailable')); };
     image.src = url;
   });
-}
-
-// Look for a long vertical boundary close to BOTH art edges. A cloud or a
-// single straight object in the illustration is insufficient evidence.
-export function artFrameRails({ data, width, height }) {
-  const pixel = (x, y) => {
-    const at = (Math.floor(y) * width + x) * 4;
-    return [data[at], data[at + 1], data[at + 2]];
-  };
-  const difference = (a, b) => Math.sqrt(a.reduce((n, v, c) => n + (v - b[c]) ** 2, 0));
-  const rows = Array.from({ length: 16 }, (_, i) => Math.floor(height * (0.12 + i * 0.045)));
-  const edge = right => {
-    let best = null;
-    for (let offset = Math.max(3, Math.floor(width * 0.015)); offset < width * 0.08; offset++) {
-      const x = right ? width - 1 - offset : offset;
-      const changes = rows.map(y => difference(pixel(x - 2, y), pixel(x + 2, y)));
-      const support = changes.filter(v => v > 32).length / rows.length;
-      const score = changes.reduce((n, v) => n + Math.min(100, v), 0) / rows.length;
-      if (support >= 0.8 && score >= 40 && (!best || score > best.score)) best = { offset, score };
-    }
-    return best;
-  };
-  const left = edge(false), right = edge(true);
-  if (!left || !right || Math.abs(left.offset - right.offset) > width * 0.035) return null;
-  const leftWidth = left.offset + 2, rightWidth = right.offset + 2;
-  const strip = new Uint8ClampedArray(width * 4);
-  for (let x = 0; x < width; x++) {
-    if (x >= leftWidth && x < width - rightWidth) continue;
-    const samples = [];
-    for (const y of rows) samples.push(...pixel(x, y), 255);
-    strip.set([...materialColor(samples), 255], x * 4);
-  }
-  return { left: leftWidth / width, right: rightWidth / width, strip };
 }
 
 // A real bottom rail has a horizontal transition across most of the crop.
@@ -139,8 +120,8 @@ export function artBottomRail({ data, width, height }) {
   return best?.height || 0;
 }
 
-function railStyle(image) {
-  if (!image) return {};
+function railStyle(image, integrated) {
+  if (!image || !integrated) return {};
   const canvas = document.createElement('canvas');
   canvas.width = 488; canvas.height = Math.round(image.height * 488 / image.width);
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -157,31 +138,21 @@ function railStyle(image) {
     joinStyle['--art-top-rail'] = `url("${join.toDataURL()}")`;
     joinStyle['--art-top-rail-height'] = `${bottomHeight / canvas.height * 100}%`;
   }
-  const rails = artFrameRails(ctx.getImageData(0, 0, canvas.width, canvas.height));
-  if (!rails) return joinStyle;
-  const leftWidth = Math.round(rails.left * canvas.width);
-  const rightWidth = Math.round(rails.right * canvas.width);
-  const stripHeight = Math.min(64, canvas.height);
-  const strips = document.createElement('canvas');
-  strips.width = canvas.width; strips.height = stripHeight;
-  const stripCtx = strips.getContext('2d');
-  // Reflect the art's top edge upward: the pixels at the title's lower edge
-  // meet the same pixels at the top of the art. The text area stays transparent.
-  stripCtx.translate(0, stripHeight); stripCtx.scale(1, -1);
-  stripCtx.drawImage(canvas, 0, 0, leftWidth, stripHeight, 0, 0, leftWidth, stripHeight);
-  stripCtx.drawImage(canvas, canvas.width - rightWidth, 0, rightWidth, stripHeight, canvas.width - rightWidth, 0, rightWidth, stripHeight);
-
-  return {
-    ...joinStyle,
-    '--art-title-rails': `url("${strips.toDataURL()}")`,
-    '--art-title-left-rail': `${rails.left * 100}%`,
-    '--art-title-right-rail': `${rails.right * 100}%`,
-  };
+  const enclosure = detectEmbeddedArtFrame(pixels);
+  if (enclosure) Object.assign(joinStyle, {
+    '--art-frame-enclosure': 'detected',
+    '--art-frame-left': `${enclosure.left.outer / canvas.width * 100}%`,
+    '--art-frame-right': `${enclosure.right.outer / canvas.width * 100}%`,
+    '--art-frame-bottom': `${enclosure.bottom.outer / canvas.height * 100}%`,
+    '--art-frame-title-left': `${enclosure.left.inner / canvas.width * 100}%`,
+    '--art-frame-title-right': `${enclosure.right.inner / canvas.width * 100}%`,
+  });
+  return joinStyle;
 }
 
 // Remove high-contrast print from a whole panel before sizing it to our layout.
 // Estimate paper in vertical bands so hybrid materials retain their direction.
-export function reconstructPanel({ data, width, height }) {
+export function reconstructPanel({ data, width, height }, { removeSeparators = false } = {}) {
   const count = width * height, mask = new Uint8Array(count);
   const bands = Math.max(1, Math.ceil(width / 64));
   const paper = Array.from({ length: bands }, (_, band) => {
@@ -201,6 +172,17 @@ export function reconstructPanel({ data, width, height }) {
     // Pale panels need a lower threshold for faint printed ink; dark
     // textured frames need more tolerance for their natural highlights.
     if (contrast > (a > .4 ? 1.3 : 1.7) && difference > (a > .4 ? 30 : 55)) mask[p] = 1;
+  }
+  // Rules dividers can be much paler than lettering. Look for a thin,
+  // sustained horizontal valley against nearby paper, then mask its full row.
+  if (removeSeparators) for (let y=3;y<height-3;y++) {
+    let support=0;
+    for(let x=0;x<width;x++) {
+      const light=dy=>luminance(Array.from(data.subarray(((y+dy)*width+x)*4,((y+dy)*width+x)*4+3)));
+      const valley=Math.min(light(-3),light(3))-light(0);
+      if (valley>.012 && valley<.12) support++;
+    }
+    if (support>width*.4) for(let x=0;x<width;x++) mask[y*width+x]=1;
   }
   // Include anti-aliasing and printed outlines around the detected ink.
   const expanded = mask.slice();
@@ -438,19 +420,100 @@ export function detectPanelBounds({data, width, height}, section) {
   return {x,y,width:w,height:h};
 }
 
+// Follow connected enclosure strokes rather than choosing unrelated strong
+// horizontal/vertical edges. This keeps curved corners and the lower bevel
+// inside the same crop on modern and Mirrodin-style frames.
+export function detectEnclosedPanelBounds(scan, section) {
+  if (!['title','type'].includes(section)) return null;
+  const {data,width,height}=scan;
+  const y0=Math.floor(height*(section==='title'?.032:.545));
+  const y1=Math.ceil(height*(section==='title'?.12:.635));
+  const x0=Math.floor(width*.035), x1=Math.ceil(width*.965);
+  const w=x1-x0,h=y1-y0;
+  const paperPixels=[];
+  const sampleTop=Math.floor(height*(section==='title'?.055:.573));
+  for(let y=sampleTop;y<sampleTop+14;y++) for(let x=Math.floor(width*.14);x<width*.7;x++) {
+    const p=(y*width+x)*4;paperPixels.push(...data.subarray(p,p+4));
+  }
+  const paper=materialColor(paperPixels), light=luminance(paper);
+  const ink=new Uint8Array(w*h);
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++) {
+    const p=((y+y0)*width+x+x0)*4;
+    const value=luminance(Array.from(data.subarray(p,p+3)));
+    if((Math.max(light,value)+.05)/(Math.min(light,value)+.05)>1.8) ink[y*w+x]=1;
+  }
+  // Close one-pixel anti-aliasing gaps, without merging separate text lines.
+  const joined=ink.slice();
+  for(let y=1;y<h-1;y++) for(let x=1;x<w-1;x++) if(ink[y*w+x]) {
+    for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]) joined[(y+dy)*w+x+dx]=1;
+  }
+  let best=null;
+  for(let p=0;p<joined.length;p++) if(joined[p]) {
+    const pending=[p];joined[p]=0;
+    let left=w,right=0,top=h,bottom=0,area=0;
+    while(pending.length){
+      const at=pending.pop(),x=at%w,y=Math.floor(at/w);area++;
+      left=Math.min(left,x);right=Math.max(right,x);top=Math.min(top,y);bottom=Math.max(bottom,y);
+      for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+        const nx=x+dx,ny=y+dy,next=ny*w+nx;
+        if(nx>=0&&nx<w&&ny>=0&&ny<h&&joined[next]){joined[next]=0;pending.push(next);}
+      }
+    }
+    const cw=right-left+1,ch=bottom-top+1;
+    if(left===0||right===w-1||top===0||bottom===h-1||cw<width*.75||ch<height*.035||area>cw*ch*.55) continue;
+    if(!best||cw>best.width) best={x:x0+left,y:y0+top,width:cw,height:ch};
+  }
+  return best;
+}
+
 function wholePanelStyle(canvas, scan, section) {
-  const bounds = detectPanelBounds(scan, section);
+  const contour = section === 'rules' ? null : detectEnclosedPanelBounds(scan, section);
+  const panel = section === 'title' ? classifyTitlePanel(scan) : classifyTypePanel(scan);
+  const generatedOutline = section !== 'rules' || panel.kind === 'panel' || classifyTitlePanel(scan).kind === 'panel';
+  // A flat rules box may have no detectable lower edge (for example silver
+  // artifact frames). A generated rim needs only conventional proportions;
+  // never manufacture a crop containing uncertain original edge pixels.
+  const bounds = contour || detectPanelBounds(scan, section) || (section === 'rules' && generatedOutline ? {
+    x:Math.round(scan.width*.09),y:Math.round(scan.height*.625),
+    width:Math.round(scan.width*.82),height:Math.round(scan.height*.29),
+  } : null);
   if (!bounds) return {};
-  // Retain the original outline and corners; mask only the text-bearing inset.
+  // Integrated rules retain their decorative edge; enclosed panels get a clean
+  // vector outline with sampled colors around the reconstructed material.
   const inset = section === 'rules' ? 12 : 10;
   const cleanX = 7, cleanY = 3;
   const source = document.createElement('canvas');
   source.width=bounds.width; source.height=bounds.height;
   const ctx=source.getContext('2d', {willReadFrequently:true});
   ctx.drawImage(canvas,bounds.x,bounds.y,bounds.width,bounds.height,0,0,bounds.width,bounds.height);
-  const inner=ctx.getImageData(cleanX,cleanY,bounds.width-cleanX*2,bounds.height-cleanY*2);
-  const cleaned=reconstructPanel(inner);
-  if (!cleaned) return {};
+  // Generated rules panels use the central paper, excluding the bottom stamp,
+  // P/T box, and the original edge bevels from their texture donors.
+  const inner=generatedOutline && section === 'rules'
+    ? canvas.getContext('2d').getImageData(Math.floor(scan.width*.12),Math.floor(scan.height*.64),Math.floor(scan.width*.76),Math.floor(scan.height*.20))
+    : ctx.getImageData(cleanX,cleanY,bounds.width-cleanX*2,bounds.height-cleanY*2);
+  let cleaned=reconstructPanel(inner, {removeSeparators: section === 'rules'});
+  if (!cleaned) {
+    if (!generatedOutline) return {};
+    // Dense print may leave too few trustworthy donors. Keep the enclosure
+    // and use its dominant paper instead of reintroducing printed fragments.
+    cleaned={width:1,height:1,data:new Uint8ClampedArray([...materialColor(inner.data),255])};
+  }
+  if (generatedOutline) {
+    // Never carry unknown edge pixels or stamp fragments into an enclosed
+    // panel. Keep its cleaned texture and generate a continuous vector rim.
+    const texture = document.createElement('canvas');
+    texture.width=cleaned.width; texture.height=cleaned.height;
+    texture.getContext('2d').putImageData(new ImageData(cleaned.data,cleaned.width,cleaned.height),0,0);
+    const radius=section==='rules'?2:Math.min(12,bounds.height*.25);
+    const stroke=Math.max(1,Math.min(2.5,panel.stroke*488/100));
+    const color=rgb=>`rgb(${rgb.join(',')})`;
+    const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${bounds.width}" height="${bounds.height}" viewBox="0 0 ${bounds.width} ${bounds.height}"><defs><clipPath id="panel"><rect x="1" y="1" width="${bounds.width-2}" height="${bounds.height-2}" rx="${radius}"/></clipPath></defs><image href="${texture.toDataURL()}" width="${bounds.width}" height="${bounds.height}" preserveAspectRatio="none" clip-path="url(#panel)"/><rect x="${stroke/2}" y="${stroke/2}" width="${bounds.width-stroke}" height="${bounds.height-stroke}" rx="${radius}" fill="none" stroke="${color(panel.border)}" stroke-width="${stroke}"/><rect x="${stroke+1}" y="${stroke+1}" width="${bounds.width-2*stroke-2}" height="${bounds.height-2*stroke-2}" rx="${Math.max(1,radius-stroke)}" fill="none" stroke="${color(panel.highlight)}" stroke-opacity=".65"/></svg>`;
+    return {
+      [`--whole-${section}-image`]: `url("data:image/svg+xml,${encodeURIComponent(svg)}")`,
+      [`--whole-${section}-slice`]: `${inset} 16 ${inset} 16 fill`,
+      [`--whole-${section}-width`]: `${inset/488*100}cqw ${16/488*100}cqw`,
+    };
+  }
   // Restore only actual edge pixels and corner shapes after cleaning text.
   const original = ctx.getImageData(0,0,bounds.width,bounds.height);
   ctx.putImageData(new ImageData(cleaned.data, cleaned.width, cleaned.height),cleanX,cleanY);
@@ -463,6 +526,212 @@ function wholePanelStyle(canvas, scan, section) {
     [`--whole-${section}-image`]: `url("${source.toDataURL()}")`,
     [`--whole-${section}-slice`]: `${inset} ${corner} ${inset} ${corner} fill`,
     [`--whole-${section}-width`]: `${inset/488*100}cqw ${corner/488*100}cqw`,
+  };
+}
+
+// Locate the exact art crop within its full printing. Comparing interior
+// samples avoids mistaking decorative frame edges for the artwork boundary.
+export function matchArtBounds(scan, art) {
+  if (!art || scan.height/scan.width<1.2) return null;
+  const samples=[];
+  for(let gy=0;gy<8;gy++) for(let gx=0;gx<10;gx++) {
+    const u=.12+gx*.76/9,v=.12+gy*.76/7;
+    const p=(Math.floor(v*art.height)*art.width+Math.floor(u*art.width))*4;
+    samples.push({u,v,rgb:Array.from(art.data.subarray(p,p+3))});
+  }
+  const score=(x,y,w)=>{
+    const h=w*art.height/art.width;
+    let error=0;
+    for(const {u,v,rgb} of samples) {
+      const p=(Math.round(y+v*h)*scan.width+Math.round(x+u*w))*4;
+      for(let c=0;c<3;c++) error+=Math.abs(scan.data[p+c]-rgb[c]);
+    }
+    return error/(samples.length*3);
+  };
+  let best={error:Infinity};
+  for(let w=Math.round(scan.width*.8);w<=scan.width*.95;w+=3) {
+    for(let x=Math.round((scan.width-w)/2)-6;x<=(scan.width-w)/2+6;x+=3) {
+      for(let y=Math.round(scan.height*.08);y<=scan.height*.14;y+=3) {
+        const error=score(x,y,w);if(error<best.error) best={x,y,width:w,error};
+      }
+    }
+  }
+  const coarse=best;
+  for(let w=coarse.width-2;w<=coarse.width+2;w++) for(let x=coarse.x-2;x<=coarse.x+2;x++) for(let y=coarse.y-2;y<=coarse.y+2;y++) {
+    const error=score(x,y,w);if(error<best.error) best={x,y,width:w,error};
+  }
+  if(best.error>22) return null;
+  const edge=(from,to,fallback)=>{
+    let found=null;
+    for(let y=Math.round(from);y<=to;y++) {
+      let support=0,total=0;
+      for(let i=0;i<32;i++) {
+        const x=Math.round(best.x+best.width*(.08+i*.84/31));
+        const a=((y-2)*scan.width+x)*4,b=((y+2)*scan.width+x)*4;
+        const d=Math.hypot(...[0,1,2].map(c=>scan.data[a+c]-scan.data[b+c]));
+        if(d>24) support++;total+=Math.min(d,100);
+      }
+      if(support>=24&&(!found||total>found.score)) found={y,score:total};
+    }
+    return found?.y ?? fallback;
+  };
+  const bottom=best.y+best.width*art.height/art.width;
+  const top=edge(best.y-scan.height*.012,best.y+2,best.y);
+  const end=edge(bottom-4,bottom+5,bottom);
+  return {...best,y:top,height:end-top};
+}
+
+// P/T is a small, aligned cluster of glyphs in the lower right. Try both ink
+// polarities so bare white retro numerals and black inset numerals both work.
+export function detectPrintedStats(scan) {
+  const {data,width,height}=scan;
+  if(height/width<1.2) return null;
+  const x0=Math.floor(width*.75),y0=Math.floor(height*.875),w=Math.floor(width*.21),h=Math.floor(height*.09);
+  let best=null;
+  for(const lightInk of [false,true]) {
+    const mask=new Uint8Array(w*h);
+    for(let y=0;y<h;y++) for(let x=0;x<w;x++) {
+      const p=((y0+y)*width+x0+x)*4;
+      const value=luminance(Array.from(data.subarray(p,p+3)));
+      mask[y*w+x]=lightInk?value>.4:value<.19;
+    }
+    const glyphs=[];
+    for(let p=0;p<mask.length;p++) if(mask[p]) {
+      const queue=[p];mask[p]=0;let l=w,r=0,t=h,b=0,area=0;
+      while(queue.length) {
+        const at=queue.pop(),x=at%w,y=Math.floor(at/w);area++;
+        l=Math.min(l,x);r=Math.max(r,x);t=Math.min(t,y);b=Math.max(b,y);
+        for(const [dx,dy] of [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1],[1,-1],[1,1]]) {
+          const nx=x+dx,ny=y+dy,n=ny*w+nx;
+          if(nx>=0&&nx<w&&ny>=0&&ny<h&&mask[n]){mask[n]=0;queue.push(n);}
+        }
+      }
+      const gh=b-t+1,gw=r-l+1;
+      if(gh>=height*.017&&gh<=height*.043&&gw<=gh*1.4&&area>=gh&&l>0&&r<w-1&&t>0&&b<h-1) glyphs.push({l,r,t,b,gh});
+    }
+    for(const g of glyphs) {
+      const line=glyphs.filter(v=>Math.abs((v.t+v.b-g.t-g.b)/2)<3&&Math.abs(v.gh-g.gh)<6).sort((a,b)=>a.l-b.l);
+      if(line.length<3||line.length>5) continue;
+      if(line.some((v,i)=>i&&v.l-line[i-1].r>g.gh*.9)) continue;
+      const l=line[0].l,r=line.at(-1).r,t=Math.min(...line.map(v=>v.t)),b=Math.max(...line.map(v=>v.b));
+      if(r-l>width*.15) continue;
+      const score=line.length*10+g.gh;
+      if(!best||score>best.score) best={x:x0+l,y:y0+t,width:r-l+1,height:b-t+1,score};
+    }
+  }
+  return best;
+}
+
+// A P/T panel has sustained side strokes and a horizontal enclosure. Bare
+// numerals on the frame do not; their surrounding texture stays uninterrupted.
+export function printedStatsTreatment(scan,stats) {
+  if(!stats) return 'text';
+  const {data,width,height}=scan,pixels=[];
+  const pixel=(x,y)=>Array.from(data.subarray((Math.max(0,Math.min(height-1,y))*width+Math.max(0,Math.min(width-1,x)))*4,(Math.max(0,Math.min(height-1,y))*width+Math.max(0,Math.min(width-1,x)))*4+3));
+  for(let y=stats.y-3;y<stats.y+stats.height+3;y++) for(let x=stats.x-5;x<stats.x+stats.width+5;x++) pixels.push(...pixel(x,y),255);
+  const paper=materialColor(pixels),light=luminance(paper);
+  const stroke=(x,y)=>{
+    const rgb=pixel(x,y),v=luminance(rgb);
+    return (Math.max(light,v)+.05)/(Math.min(light,v)+.05)>1.65 && Math.hypot(...rgb.map((c,i)=>c-paper[i]))>35;
+  };
+  const side=right=>{
+    const edge=right?stats.x+stats.width:stats.x;
+    for(let d=3;d<width*.085;d++) {
+      const x=edge+(right?d:-d);
+      if(x<width*.05||x>width*.95) continue;
+      let support=0;
+      for(let i=0;i<12;i++) if(stroke(x,Math.round(stats.y+stats.height*(.15+i*.7/11)))) support++;
+      if(support>=10) return true;
+    }
+    return false;
+  };
+  let horizontal=false;
+  for(const bottom of [false,true]) for(let d=2;d<=stats.height*.75;d++) {
+    const y=bottom?stats.y+stats.height+d:stats.y-d;let support=0;
+    for(let i=0;i<16;i++) if(stroke(Math.round(stats.x+stats.width*(.1+i*.8/15)),Math.round(y))) support++;
+    if(support>=13) horizontal=true;
+  }
+  return side(false)&&side(true)&&horizontal?'panel':'text';
+}
+
+function geometryStyle(scan,art,conventional) {
+  const stats=detectPrintedStats(scan);
+  let rules=detectPanelBounds(scan,'rules');
+  const style={'--printed-scan-width':scan.width, '--printed-scan-height':scan.height};
+  if(stats) {
+    // Place the center relative to the rules box, retaining the original
+    // overlap or drop below its lower edge as our rules section grows.
+    const box=rules || {x:scan.width*.07,width:scan.width*.86,y:scan.height*.625,height:scan.height*.29};
+    const drop=(stats.y+stats.height/2-(box.y+box.height))/scan.width*100;
+    style['--printed-pt-left']=`${Math.max(80,Math.min(94,(stats.x+stats.width/2-box.x)/box.width*100))}%`;
+    style['--printed-pt-drop']=`${Math.max(-2,Math.min(7,drop))}cqw`;
+    style['--printed-pt-position']='rules';
+    style['--printed-pt-treatment']=printedStatsTreatment(scan,stats);
+    style['--printed-pt-font-size']=`calc(${stats.height/scan.width*100}cqw / var(--card-stats-glyph-ratio, .7))`;
+  }
+  if(!conventional) return style;
+  const artBox=matchArtBounds(scan,art);
+  if(!artBox) return style;
+  const glyphBox=(section)=>{
+    const x=Math.floor(scan.width*.12),y=Math.floor(scan.height*(section==='title'?.035:.55));
+    const w=Math.floor(scan.width*.65),h=Math.floor(scan.height*.065),data=new Uint8ClampedArray(w*h*4);
+    for(let row=0;row<h;row++) data.set(scan.data.subarray(((y+row)*scan.width+x)*4,((y+row)*scan.width+x+w)*4),row*w*4);
+    const bounds=analyzeSection({data,width:w,height:h},{minGlyphHeight:Math.floor(scan.height*.015)}).glyphBounds;
+    const padding=bounds?Math.round((bounds.bottom-bounds.y)*.4):0;
+    return bounds?{x:x+bounds.x,y:y+bounds.y-padding,width:bounds.right-bounds.x,height:bounds.bottom-bounds.y+padding*2}:null;
+  };
+  // Integrated bars use the printed glyph block plus breathing room when
+  // there is no enclosing stroke to measure.
+  const title=classifyTitlePanel(scan).kind==='panel'?(detectEnclosedPanelBounds(scan,'title') || detectPanelBounds(scan,'title')):glyphBox('title');
+  const type=detectEnclosedPanelBounds(scan,'type') || detectPanelBounds(scan,'type') || glyphBox('type');
+  // A shared type/rules edge can be detected on both sides of its bevel.
+  // Allocate that overlap to the type bar instead of rejecting both boxes.
+  if (rules && type && rules.y < type.y + type.height
+    && type.y + type.height - rules.y < scan.height * .04) {
+    const top = type.y + type.height;
+    rules = {...rules, y: top, height: rules.y + rules.height - top};
+  }
+  // All regions share source coordinates and one uniform scale. Integrated
+  // bars have no enclosing sides: use the art's span, not the glyph width.
+  if (title && type && rules && title.y + title.height <= artBox.y + 3
+    && artBox.y + artBox.height <= type.y + 3 && type.y + type.height <= rules.y + 3) {
+    const titleBox = classifyTitlePanel(scan).kind === 'panel' ? title : {...title, x:artBox.x, width:artBox.width};
+    const typeBox = classifyTypePanel(scan).kind === 'panel' ? type : {...type, x:rules.x, width:rules.width};
+    const boxes = {title:titleBox, type:typeBox, rules, art:artBox};
+    style['--printed-box-sizing'] = 'measured';
+    style['--printed-layout'] = JSON.stringify(boxes);
+    for (const [name, box] of Object.entries(boxes)) {
+      for (const dimension of ['x', 'y', 'width', 'height']) {
+        style[`--printed-${name}-${dimension}`] = box[dimension];
+      }
+    }
+  }
+  const setGap=(name,value)=>{if(value>=-3&&value<scan.height*.04) style[`--printed-gap-${name}`]=`${Math.max(0,value)/scan.width*100}cqw`;};
+  if(title) setGap('title-art',artBox.y-(title.y+title.height));
+  if(type) {
+    setGap('art-type',type.y-(artBox.y+artBox.height));
+    if(rules) setGap('type-rules',rules.y-(type.y+type.height));
+  }
+  return style;
+}
+
+function innerFrameBorderStyle(scan) {
+  const rim = sampleInnerFrameBevel(scan);
+  if (!rim) return {};
+  return {
+    '--inner-frame-border-kind': rim.kind,
+    '--frame-border-bounds': JSON.stringify(rim.bounds),
+    '--frame-border-x': rim.bounds.x,
+    '--frame-border-y': rim.bounds.y,
+    '--frame-border-width': rim.bounds.width,
+    '--frame-border-height': rim.bounds.height,
+    '--frame-border-bottom': scan.height-rim.bounds.y-rim.bounds.height,
+    '--frame-border-right': scan.width-rim.bounds.x-rim.bounds.width,
+    '--frame-interior-radius': rim.innerRadius,
+    ...(rim.outerRadius == null ? {} : {'--frame-outer-radius': `${rim.outerRadius/scan.width*100}cqw`}),
+    ...Object.fromEntries(Object.entries(rim.colors).map(([side,rgb])=>[`--frame-border-${side}-color`, `rgb(${rgb.join(',')})`])),
+    '--inner-frame-border-confidence': rim.confidence,
+    '--inner-frame-bevel-profile': JSON.stringify(rim.profiles),
   };
 }
 
@@ -487,7 +756,7 @@ async function sample(fullUrl, textures) {
   const scan = textures ? ctx.getImageData(0, 0, canvas.width, canvas.height) : null;
   const titlePanel = scan ? classifyTitlePanel(scan) : null;
   const typePanel = scan ? classifyTypePanel(scan) : null;
-  const style = textures ? { ...rulesBottomStyle(canvas), ...railStyle(art), ...textureStyle(patch(.105, .56, .71, .033), 'type') } : {};
+  const style = textures ? { ...rulesBottomStyle(canvas), ...railStyle(art, titlePanel?.kind === 'integrated'), ...textureStyle(patch(.105, .56, .71, .033), 'type') } : {};
   for (const [name, [x, y, w, h]] of Object.entries(regions)) {
     const left = cssColor(materialColor(patch(x, y, w / 2, h).data));
     const right = cssColor(materialColor(patch(x + w / 2, y, w / 2, h).data));
@@ -495,13 +764,23 @@ async function sample(fullUrl, textures) {
     if (textures && ['rules', 'stats'].includes(name)) {
       Object.assign(style, textureStyle(patch(x, y, w, h), name));
     }
-    if (name !== 'shell') style[`--sampled-${name}-ink`] = cssColor(sectionInk(patch(x, y, w, h)));
+    if (name !== 'shell') {
+      const region=patch(x,y,w,h);
+      let ink=sectionInk(region);
+      if (!textures) {
+        const paper=luminance(materialColor(region.data)), text=luminance(ink);
+        if ((Math.max(paper,text)+.05)/(Math.min(paper,text)+.05)<4.5) ink=paper>.179?[0,0,0]:[255,255,255];
+      }
+      style[`--sampled-${name}-ink`] = cssColor(ink);
+    }
     if (['title', 'type', 'rules'].includes(name)) {
       const glyphRegion = name === 'title' ? patch(.085, .035, .72, .072) : name === 'type' ? patch(.09, .55, .72, .075) : patch(x, y, w, h);
       const glyphHeight = printedGlyphHeight(glyphRegion);
       if (glyphHeight) style[`--sampled-${name}-font-size`] = `calc(${glyphHeight / canvas.width * 100}cqw / var(--card-${name}-glyph-ratio, .7))`;
     }
   }
+  // Color-only bars share the type material in CSS, so their ink must too.
+  if (!textures) style['--sampled-bar-ink'] = style['--sampled-type-ink'];
   // The narrow vertical scan border contains pinlines, not usable panel grain.
   // Extend the reconstructed type material through the surrounding frame.
   if (style['--sampled-type-texture']) {
@@ -518,7 +797,6 @@ async function sample(fullUrl, textures) {
       style['--title-panel-highlight'] = cssColor(titlePanel.highlight);
       style['--title-panel-stroke'] = `${titlePanel.stroke}cqw`;
       style['--title-panel-radius'] = `${titlePanel.radius}cqw`;
-      delete style['--art-title-rails'];
       delete style['--art-top-rail'];
       delete style['--art-top-rail-height'];
     }
@@ -535,6 +813,7 @@ async function sample(fullUrl, textures) {
     }
   }
   if (scan) {
+    Object.assign(style, innerFrameBorderStyle(scan));
     for (const section of ['title', 'type', 'rules']) {
       if (section === 'title' && titlePanel.kind !== 'panel') continue;
       if (section === 'type' && typePanel.kind !== 'panel') continue;
@@ -542,6 +821,35 @@ async function sample(fullUrl, textures) {
     }
     if (style['--whole-rules-image']) {
       for (const key of Object.keys(style)) if (key.startsWith('--rules-bottom-')) delete style[key];
+    }
+  }
+  const fullScan=scan || ctx.getImageData(0,0,canvas.width,canvas.height);
+  let artScan=null;
+  if(art) {
+    const artCanvas=document.createElement('canvas');artCanvas.width=160;artCanvas.height=Math.round(art.height*160/art.width);
+    const artCtx=artCanvas.getContext('2d',{willReadFrequently:true});artCtx.drawImage(art,0,0,artCanvas.width,artCanvas.height);
+    artScan=artCtx.getImageData(0,0,artCanvas.width,artCanvas.height);
+  }
+  Object.assign(style, geometryStyle(fullScan,artScan,textures));
+  if (style['--printed-layout'] && style['--frame-border-bounds']) {
+    const bounds=JSON.parse(style['--frame-border-bounds']);
+    const material=reconstructFrameMaterial(fullScan,bounds,JSON.parse(style['--printed-layout']),detectPrintedStats(fullScan));
+    if(material) {
+      const atlas=document.createElement('canvas');atlas.width=bounds.width;atlas.height=bounds.height;
+      atlas.getContext('2d').putImageData(new ImageData(material.data,material.width,material.height),-bounds.x,-bounds.y);
+      style['--sampled-shell-texture']=`url("${atlas.toDataURL()}")`;
+      style['--sampled-shell-texture-size']='100% 100%';
+      style['--sampled-shell-veil']='linear-gradient(transparent, transparent)';
+      style['--frame-material-sampling']='regional';
+    }
+  }
+  if (style['--printed-scan-width']) {
+    // Typography, bevels, and P/T offsets use the same scale as the boxes,
+    // including previews constrained by height instead of width.
+    for (const [key, value] of Object.entries(style)) {
+      if (typeof value === 'string' && !value.includes('url(')) {
+        style[key] = value.replace(/(-?\d+(?:\.\d+)?)cqw/g, 'calc($1 * var(--card-frame-width-unit))');
+      }
     }
   }
   return style;

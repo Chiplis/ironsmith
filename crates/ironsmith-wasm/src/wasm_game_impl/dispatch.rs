@@ -340,23 +340,31 @@ impl WasmGame {
     }
 
     fn current_mana_payment_view(&self) -> Option<ManaPaymentView> {
-        if let Some(pending) = self.priority_state.pending_cast.as_ref()
-            && let Some(view) = mana_payment_view_from_pending_cast(&self.game, pending)
+        let Some(DecisionContext::ManaPayment(context)) = self.pending_decision.as_ref() else {
+            return None;
+        };
+        // A cost/effect decision inside a manual mana activation temporarily owns
+        // the payment UI. Only reuse the parent's provisional view when it matches.
+        let parent = self
+            .priority_state
+            .pending_cast
+            .as_ref()
+            .and_then(|pending| mana_payment_view_from_pending_cast(&self.game, pending))
+            .or_else(|| {
+                self.priority_state
+                    .pending_activation
+                    .as_ref()
+                    .and_then(|pending| {
+                        mana_payment_view_from_pending_activation(&self.game, pending)
+                    })
+            });
+        if let Some(view) = parent
+            && view.request_hash == context.plan.request_hash.to_string()
+            && view.plan_id == context.plan.id.to_string()
         {
             return Some(view);
         }
-
-        if let Some(pending) = self.priority_state.pending_activation.as_ref()
-            && let Some(view) = mana_payment_view_from_pending_activation(&self.game, pending)
-        {
-            return Some(view);
-        }
-
-        if let Some(DecisionContext::ManaPayment(context)) = self.pending_decision.as_ref() {
-            return Some(mana_payment_view_from_context(&self.game, context));
-        }
-
-        None
+        Some(mana_payment_view_from_context(&self.game, context))
     }
 
     fn pending_priority_decision_is_stale(&self) -> bool {
@@ -387,10 +395,7 @@ impl WasmGame {
             return true;
         };
         self.pending_decision = Some(DecisionContext::Priority(
-            ironsmith::decisions::context::PriorityContext::new(
-                priority_player,
-                ironsmith::decision::compute_legal_actions(&self.game, priority_player),
-            ),
+            ironsmith::game_loop::priority_context(&self.game, priority_player),
         ));
         self.runner_pending_decision = false;
         true
@@ -643,6 +648,8 @@ impl WasmGame {
             priority_state,
             pregame: None,
             match_format: MatchFormatInput::Normal,
+            priority_analysis_job: None,
+            inspector_analysis_job: None,
             pending_decision: None,
             pending_replay_action: None,
             pending_action_checkpoint: None,
@@ -2076,29 +2083,14 @@ impl WasmGame {
     /// Plan payments only for the card currently requested by an inspector.
     #[wasm_bindgen(js_name = inspectorActions)]
     pub fn inspector_actions(&self, object_id: u64, requested_ability: Option<usize>) -> Result<JsValue, JsValue> {
-        let mut actions = Vec::new();
-        if let Some(DecisionContext::Priority(priority)) = self.pending_decision.as_ref() {
-            for (index, action) in priority.actions.iter().enumerate() {
-                let (LegalAction::ActivateAbility { source, ability_index }
-                    | LegalAction::ActivateManaAbility { source, ability_index }) = action
-                else {
-                    continue;
-                };
-                if source.0 != object_id || requested_ability.is_some_and(|index| index != *ability_index) {
-                    continue;
-                }
-                let mut view = build_action_view(
-                    &self.game, self.perspective, self.active_viewed_cards.as_ref(), index, action,
-                );
-                if view.object_id.is_some() {
-                    view.mana_payment_available =
-                        activation_mana_payment_available(&self.game, priority.player, action);
-                    actions.push(view);
-                }
+        self.inspector_actions_with(object_id, requested_ability, &mut |request| {
+            use ironsmith::mana_payment::{plan_first_mana_payment, ManaPaymentFailure};
+            match plan_first_mana_payment(&self.game, request) {
+                Ok(_) => Some(true),
+                Err(ManaPaymentFailure::NoLegalPlan) => Some(false),
+                Err(_) => None,
             }
-        }
-        serde_wasm_bindgen::to_value(&actions)
-            .map_err(|e| JsValue::from_str(&format!("inspectorActions encode failed: {e}")))
+        })
     }
 
     /// Return a detailed, human-readable object snapshot for inspector UI.

@@ -425,6 +425,69 @@ pub(super) fn rewrite_player_counter_conditional_anthem_compiles_without_parse_l
 }
 
 #[test]
+pub(super) fn attack_or_block_source_status_is_a_static_restriction() {
+    for (text, expected) in [
+        ("This creature can't attack or block unless it's equipped.", "SourceIsEquipped"),
+        ("This creature can't attack or block unless it's enchanted.", "SourceIsEnchanted"),
+    ] {
+        let compiled = super::super::compile_card_text(
+            CardDefinitionBuilder::new(CardId::new(), "Status Restriction Probe")
+                .card_types(vec![CardType::Creature]), text, false,
+        ).expect("status-conditioned restriction should compile");
+        assert!(compiled.definition.spell_effect.is_none());
+        let debug = format!("{:#?}", compiled.definition.abilities);
+        assert!(debug.contains("AttackOrBlock"), "{debug}");
+        assert!(debug.contains("Not("), "{debug}");
+        assert!(debug.contains(expected), "{debug}");
+    }
+}
+
+#[test]
+pub(super) fn attack_or_block_control_condition_is_a_static_restriction() {
+    for (text, expected) in [
+        ("This creature can't attack or block unless you control another Giant.", "Giant"),
+        ("This creature can't attack or block unless you control another creature with power 4 or greater.", "GreaterThanOrEqual"),
+    ] {
+        let compiled = super::super::compile_card_text(
+            CardDefinitionBuilder::new(CardId::new(), "Restriction Probe")
+                .card_types(vec![CardType::Creature]), text, false,
+        ).expect("control-conditioned restriction should compile");
+        assert!(compiled.definition.spell_effect.is_none());
+        let debug = format!("{:#?}", compiled.definition.abilities);
+        assert!(debug.contains("AttackOrBlock"), "{debug}");
+        assert!(debug.contains("Not("), "{debug}");
+        assert!(debug.contains(expected), "{debug}");
+        assert!(debug.contains("other: true"), "{debug}");
+    }
+}
+
+#[test]
+pub(super) fn labeled_turn_animation_preserves_source_and_timing() {
+    for text in [
+        "Bear Form — During your turn, this creature is a Bear with base power and toughness 4/2.",
+        "Wolf Form — During your turn, this creature is a Wolf with base power and toughness 3/5.",
+    ] {
+        let compiled = super::super::compile_card_text(
+            CardDefinitionBuilder::new(CardId::from_raw(1), "Animation Probe")
+                .card_types(vec![CardType::Creature]),
+            text,
+            false,
+        ).expect("labeled animation should compile");
+        let mut modifications = 0;
+        for ability in &compiled.definition.abilities {
+            let AbilityKind::Static(static_ability) = &ability.kind else { continue };
+            let StaticAbilityPayload::Conditional { ability, condition } = &static_ability.payload else { continue };
+            if let StaticAbilityPayload::SetCardTypes { filter, .. } = &ability.payload {
+                assert!(filter.source, "{filter:#?}");
+                assert!(format!("{condition:?}").contains("YourTurn"), "{condition:?}");
+                modifications += 1;
+            }
+        }
+        assert_eq!(modifications, 1, "{:#?}", compiled.definition.abilities);
+    }
+}
+
+#[test]
 pub(super) fn rewrite_conditional_vehicle_type_identity_lowers_as_static_with_condition() {
     for (name, text, condition_fragments, expects_source_surface) in [
         (
@@ -1249,6 +1312,27 @@ pub(super) fn rewrite_grammar_trigger_duplication_as_long_as_prefix_splitter_mat
 
     assert!(debug.contains("ConditionalStaticAbility"), "{debug}");
     assert!(debug.contains("you control an artifact"), "{debug}");
+}
+
+#[test]
+pub(super) fn labeled_next_spell_grants_keep_activation_costs() {
+    for (text, sacrifice) in [
+        ("Gift of Chaos — {3}, {T}: The next noncreature spell you cast this turn has cascade.", false),
+        ("Jolly Gutpipes — {2}, {T}, Sacrifice a creature: The next creature spell you cast this turn has cascade.", true),
+    ] {
+        let compiled = super::super::compile_card_text(
+            CardDefinitionBuilder::new(CardId::new(), "Labeled Activation Probe")
+                .card_types(vec![CardType::Creature]), text, false,
+        ).expect("labeled next-spell activation should compile");
+        let activated = compiled.definition.abilities.iter().find_map(|ability| {
+            if let AbilityKind::Activated(activated) = &ability.kind { Some(activated) } else { None }
+        }).expect("must retain an activated ability");
+        let cost = format!("{:?}", activated.mana_cost);
+        assert!(cost.contains("Tap"), "{cost}");
+        assert_eq!(cost.contains("Sacrifice"), sacrifice, "{cost}");
+        let effects = format!("{:?}", activated.effects);
+        assert!(effects.contains("GrantNextSpell"), "{effects}");
+    }
 }
 
 #[test]

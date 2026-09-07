@@ -141,6 +141,61 @@ pub fn mana_payment_activation_inventory(
         .collect()
 }
 
+/// Only offer abilities whose activation increases coverage of the current cost.
+/// Simulating the ordinary activation preserves production and spending restrictions,
+/// replacement effects, and the mana consumed by filters.
+pub(super) fn useful_manual_mana_abilities(
+    game: &GameState,
+    request: &ManaPaymentRequest,
+) -> Vec<(ObjectId, usize)> {
+    if game
+        .preview_mana_cost_payment_with_options(
+            request.payer,
+            Some(request.source),
+            &request.cost,
+            request.x_value,
+            request.reason,
+            &request.spend_policy,
+            false,
+            false,
+            false,
+        )
+        .is_some()
+    {
+        return Vec::new();
+    }
+    let before = game.covered_mana_payment_pips(request);
+    let mut result = Vec::new();
+    let mut unconstrained = request.clone();
+    if request.reason != crate::costs::PaymentReason::ActivateManaAbility {
+        unconstrained.preferences.excluded_sources.clear();
+    }
+    for choice in collect_activation_choices(game, &unconstrained) {
+        let key = (choice.source, choice.ability_index);
+        if result.contains(&key) {
+            continue;
+        }
+        let mut staged = game.clone();
+        let mut exclusions = unconstrained.preferences.excluded_sources.clone();
+        exclusions.push(choice.source);
+        if crate::special_actions::perform_mana_ability_with_payment_mode(
+            &mut staged,
+            request.payer,
+            choice.source,
+            choice.ability_index,
+            choice.color_restriction,
+            Some(exclusions),
+            &mut SelectFirstDecisionMaker,
+        )
+        .is_ok()
+            && staged.covered_mana_payment_pips(request) > before
+        {
+            result.push(key);
+        }
+    }
+    result
+}
+
 /// Validate and execute a plan outside the priority cast/activation pipeline.
 /// The caller's enclosing replay checkpoint remains responsible for surfacing
 /// any nested decision made by a complex mana ability.
@@ -194,6 +249,11 @@ pub fn execute_mana_payment_plan(
 #[derive(Debug, Default)]
 pub struct ManaPaymentPlanner {
     visited_nodes: usize,
+    sliced: bool,
+    remaining: usize,
+    pending: bool,
+    search_index: usize,
+    searches: std::collections::HashMap<usize, CandidateSearch>,
 }
 
 #[derive(Debug, Clone)]
@@ -360,22 +420,145 @@ impl ManaPaymentPlanner {
         depth_limit: usize,
         stop_after_first: bool,
     ) -> Result<Vec<(GameState, Vec<PlannedManaActivation>)>, ManaPaymentFailure> {
-        let mut queue = VecDeque::from([(game, Vec::<SearchStep>::new())]);
-        let mut seen_safe_states = HashSet::new();
-        if let Some((initial, _)) = queue.front() {
-            seen_safe_states.insert(safe_search_state_key(initial, request.payer));
-        }
-        let mut enqueued_nodes = 1usize;
-        let mut out = Vec::<(ManaPaymentScore, GameState, Vec<PlannedManaActivation>)>::new();
-        let mut search_limit_reached = false;
-
-        while let Some((game, path)) = queue.pop_front() {
-            self.visited_nodes += 1;
-            if self.visited_nodes > MAX_SEARCH_NODES {
-                search_limit_reached = true;
-                break;
+        if self.sliced {
+            let index = self.search_index;
+            self.search_index += 1;
+            let search = self.searches.entry(index).or_insert_with(|| {
+                CandidateSearch::new(game, request, depth_limit, stop_after_first)
+            });
+            let result = search.step(request, &mut self.remaining);
+            self.visited_nodes = search.visited;
+            match result {
+                Some(result) => result,
+                None => {
+                    self.pending = true;
+                    Err(ManaPaymentFailure::SearchLimitReached)
+                }
             }
+        } else {
+            let mut search = CandidateSearch::new(game, request, depth_limit, stop_after_first);
+            {
+                let mut budget = usize::MAX;
+                let result = search
+                    .step(request, &mut budget)
+                    .expect("unbounded search completes");
+                self.visited_nodes = search.visited;
+                result
+            }
+        }
+    }
+}
 
+type Candidate = (GameState, Vec<PlannedManaActivation>);
+type PreparedChoice = (
+    (u8, (u8, u8, u8, usize, u64, usize)),
+    GameState,
+    PlannedManaActivation,
+);
+
+#[derive(Debug)]
+struct Expansion {
+    game: GameState,
+    path: Vec<SearchStep>,
+    choices: std::vec::IntoIter<ActivationChoice>,
+    prepared: Vec<PreparedChoice>,
+}
+
+/// The same search machine serves synchronous transactions and sliced previews.
+/// Each activation simulation consumes one work unit, rather than treating an
+/// entire battlefield's activation permutations as one indivisible node.
+#[derive(Debug)]
+struct CandidateSearch {
+    queue: VecDeque<(GameState, Vec<SearchStep>)>,
+    seen: HashSet<u64>,
+    enqueued: usize,
+    visited: usize,
+    out: Vec<(ManaPaymentScore, GameState, Vec<PlannedManaActivation>)>,
+    limited: bool,
+    expansion: Option<Expansion>,
+    depth_limit: usize,
+    first: bool,
+    result: Option<Result<Vec<Candidate>, ManaPaymentFailure>>,
+}
+
+impl CandidateSearch {
+    fn new(game: GameState, request: &ManaPaymentRequest, depth_limit: usize, first: bool) -> Self {
+        let seen = HashSet::from([safe_search_state_key(&game, request.payer)]);
+        Self {
+            queue: VecDeque::from([(game, Vec::new())]),
+            seen,
+            enqueued: 1,
+            visited: 0,
+            out: Vec::new(),
+            limited: false,
+            expansion: None,
+            depth_limit,
+            first,
+            result: None,
+        }
+    }
+    fn finish(&mut self) -> Option<Result<Vec<Candidate>, ManaPaymentFailure>> {
+        self.out.sort_by_key(|candidate| candidate.0);
+        let result = if self.out.is_empty() && self.limited {
+            Err(ManaPaymentFailure::SearchLimitReached)
+        } else {
+            Ok(std::mem::take(&mut self.out)
+                .into_iter()
+                .map(|(_, game, actions)| (game, actions))
+                .collect())
+        };
+        self.queue.clear();
+        self.expansion = None;
+        self.seen.clear();
+        self.result = Some(result.clone());
+        Some(result)
+    }
+    fn step(
+        &mut self,
+        request: &ManaPaymentRequest,
+        remaining: &mut usize,
+    ) -> Option<Result<Vec<Candidate>, ManaPaymentFailure>> {
+        if let Some(result) = &self.result {
+            return Some(result.clone());
+        }
+        while *remaining > 0 {
+            *remaining -= 1;
+            if let Some(mut expansion) = self.expansion.take() {
+                if let Some(choice) = expansion.choices.next() {
+                    if let Some(prepared) = prepare_activation(&expansion.game, request, choice) {
+                        expansion.prepared.push(prepared);
+                    }
+                    self.expansion = Some(expansion);
+                    continue;
+                }
+                expansion.prepared.sort_by_key(|candidate| candidate.0);
+                for (_, staged, activation) in expansion.prepared {
+                    let mut next_path = expansion.path.clone();
+                    next_path.push(SearchStep { activation });
+                    if next_path.iter().all(|step| step.activation.undo_safe)
+                        && !self
+                            .seen
+                            .insert(safe_search_state_key(&staged, request.payer))
+                    {
+                        continue;
+                    }
+                    if self.enqueued >= MAX_SEARCH_NODES {
+                        self.limited = true;
+                        break;
+                    }
+                    self.queue.push_back((staged, next_path));
+                    self.enqueued += 1;
+                }
+                continue;
+            }
+            let Some((game, path)) = self.queue.pop_front() else {
+                return self.finish();
+            };
+            self.visited += 1;
+            if self.visited > MAX_SEARCH_NODES {
+                self.limited = true;
+                return self.finish();
+            }
             if can_pay_request(&game, request) && required_activations_are_present(request, &path) {
                 let life_to_pay = preview_life_to_pay(&game, request);
                 let activations = path
@@ -383,118 +566,131 @@ impl ManaPaymentPlanner {
                     .map(|step| step.activation.clone())
                     .collect::<Vec<_>>();
                 let score = search_candidate_score(&game, request, &activations);
-                out.push((score, game.clone(), activations));
-                // Every score field is non-negative. Breadth-first traversal
-                // has already exhausted every shorter activation sequence, so
-                // a candidate at the absolute floor of the higher-priority
-                // fields cannot be improved by continuing this selection.
-                if stop_after_first || score_reaches_search_floor(score) {
-                    break;
+                self.out.push((score, game.clone(), activations));
+                if self.first || score_reaches_search_floor(score) {
+                    return self.finish();
                 }
-                out.sort_by_key(|candidate| candidate.0);
-                out.truncate(MAX_PLANS_PER_SELECTION);
-
-                // Once this path pays without unwanted life, adding another
-                // activation can only make its score worse. Life-paying paths
-                // still expand when mana is preferred so a zero-life plan can
-                // displace them.
+                self.out.sort_by_key(|candidate| candidate.0);
+                self.out.truncate(MAX_PLANS_PER_SELECTION);
                 if request.preferences.prefer_life || life_to_pay == 0 {
                     continue;
                 }
             }
-            if path.len() >= depth_limit {
+            if path.len() >= self.depth_limit {
                 continue;
             }
-
-            let mut prepared_choices = Vec::new();
-            for choice in collect_activation_choices(&game, request) {
-                let mut staged = game.clone();
-                let before = staged
-                    .player(request.payer)
-                    .map(|player| player.mana_pool.clone())
-                    .unwrap_or_default();
-                let mut decision_maker = SelectFirstDecisionMaker;
-                if crate::special_actions::perform_activate_mana_ability_restricted_colors(
-                    &mut staged,
-                    request.payer,
-                    choice.source,
-                    choice.ability_index,
-                    choice.color_restriction.clone(),
-                    &mut decision_maker,
-                )
-                .is_err()
-                {
-                    continue;
-                }
-                let after = staged
-                    .player(request.payer)
-                    .map(|player| player.mana_pool.clone())
-                    .unwrap_or_default();
-                if after == before {
-                    continue;
-                }
-
-                let preference_key = activation_preference_key(request, &choice);
-                let activation = PlannedManaActivation {
-                    source: choice.source,
-                    ability_index: choice.ability_index,
-                    color_restriction: choice.color_restriction,
-                    expected_mana: positive_pool_delta(&before, &after),
-                    expected_pool_after: after,
-                    flexibility: choice.flexibility,
-                    undo_safe: crate::game_loop::mana_ability_is_undo_safe(
-                        &game,
-                        choice.source,
-                        choice.ability_index,
-                    ),
-                };
-                let completes_payment = can_pay_request(&staged, request);
-                let completion_rank = if !completes_payment {
-                    2
-                } else if !request.preferences.prefer_life
-                    && preview_life_to_pay(&staged, request) > 0
-                {
-                    1
-                } else {
-                    0
-                };
-                prepared_choices.push(((completion_rank, preference_key), staged, activation));
-            }
-            // Breadth-first traversal guarantees that every shorter source
-            // sequence is considered before any longer one. The local ordering
-            // still makes immediately payable and user-preferred branches land
-            // in the bounded queue first.
-            prepared_choices.sort_by_key(|candidate| candidate.0);
-            for (_, staged, activation) in prepared_choices {
-                let mut next_path = path.clone();
-                next_path.push(SearchStep { activation });
-                // Undo-safe mana activations only mutate the source and mana
-                // bookkeeping represented by this key. Deduplicating those
-                // states collapses permutations such as A→B and B→A without
-                // conflating sacrifice, life, counter, or other irreversible
-                // mana abilities.
-                if next_path.iter().all(|step| step.activation.undo_safe)
-                    && !seen_safe_states.insert(safe_search_state_key(&staged, request.payer))
-                {
-                    continue;
-                }
-                if enqueued_nodes >= MAX_SEARCH_NODES {
-                    search_limit_reached = true;
-                    break;
-                }
-                queue.push_back((staged, next_path));
-                enqueued_nodes += 1;
-            }
+            let choices = collect_activation_choices(&game, request).into_iter();
+            self.expansion = Some(Expansion {
+                game,
+                path,
+                choices,
+                prepared: Vec::new(),
+            });
         }
+        None
+    }
+}
 
-        if out.is_empty() && search_limit_reached {
-            return Err(ManaPaymentFailure::SearchLimitReached);
+fn prepare_activation(
+    game: &GameState,
+    request: &ManaPaymentRequest,
+    choice: ActivationChoice,
+) -> Option<PreparedChoice> {
+    let mut staged = game.clone();
+    let before = staged
+        .player(request.payer)
+        .map(|player| player.mana_pool.clone())
+        .unwrap_or_default();
+    let mut decision_maker = SelectFirstDecisionMaker;
+    if crate::special_actions::perform_activate_mana_ability_restricted_colors(
+        &mut staged,
+        request.payer,
+        choice.source,
+        choice.ability_index,
+        choice.color_restriction.clone(),
+        &mut decision_maker,
+    )
+    .is_err()
+    {
+        return None;
+    }
+    let after = staged
+        .player(request.payer)
+        .map(|player| player.mana_pool.clone())
+        .unwrap_or_default();
+    if after == before {
+        return None;
+    }
+
+    let preference_key = activation_preference_key(request, &choice);
+    let activation = PlannedManaActivation {
+        source: choice.source,
+        ability_index: choice.ability_index,
+        color_restriction: choice.color_restriction,
+        expected_mana: positive_pool_delta(&before, &after),
+        expected_pool_after: after,
+        flexibility: choice.flexibility,
+        undo_safe: crate::game_loop::mana_ability_is_undo_safe(
+            &game,
+            choice.source,
+            choice.ability_index,
+        ),
+    };
+    let completes_payment = can_pay_request(&staged, request);
+    let completion_rank = if !completes_payment {
+        2
+    } else if !request.preferences.prefer_life && preview_life_to_pay(&staged, request) > 0 {
+        1
+    } else {
+        0
+    };
+    Some(((completion_rank, preference_key), staged, activation))
+}
+
+/// A first-plan query bound to an immutable game and request. Budget exhaustion
+/// returns None; it is never converted into an unpayable verdict.
+#[derive(Debug)]
+pub struct ManaPaymentAnalysis {
+    game: Box<GameState>,
+    request: ManaPaymentRequest,
+    planner: ManaPaymentPlanner,
+    result: Option<Result<ManaPaymentPlan, ManaPaymentFailure>>,
+}
+impl ManaPaymentAnalysis {
+    pub fn new(game: &GameState, request: ManaPaymentRequest) -> Self {
+        Self {
+            game: Box::new(game.clone()),
+            request,
+            planner: ManaPaymentPlanner {
+                sliced: true,
+                ..Default::default()
+            },
+            result: None,
         }
-        out.sort_by_key(|candidate| candidate.0);
-        Ok(out
-            .into_iter()
-            .map(|(_, game, activations)| (game, activations))
-            .collect())
+    }
+    pub fn step(&mut self, budget: usize) -> Option<Result<ManaPaymentPlan, ManaPaymentFailure>> {
+        if let Some(result) = &self.result {
+            return Some(result.clone());
+        }
+        self.planner.remaining = budget.max(1);
+        self.planner.pending = false;
+        self.planner.search_index = 0;
+        let result = self
+            .planner
+            .plan_internal(&self.game, &self.request, true)
+            .and_then(|plans| {
+                plans
+                    .into_iter()
+                    .next()
+                    .ok_or(ManaPaymentFailure::NoLegalPlan)
+            });
+        if self.planner.pending {
+            None
+        } else {
+            self.planner.searches.clear();
+            self.result = Some(result.clone());
+            Some(result)
+        }
     }
 }
 
@@ -1140,6 +1336,7 @@ fn build_plan(
         &pool_after_payment,
     );
     ManaPaymentPlan {
+        payable: true,
         id,
         request_hash,
         mana_ability_steps: steps,
@@ -1151,6 +1348,32 @@ fn build_plan(
         life_to_pay,
         score,
         warnings,
+    }
+}
+
+/// Keep a payment window open after manual activations leave the cost unfunded.
+/// This is a display proposal only and can never be confirmed or executed.
+pub fn unfunded_mana_payment_plan(
+    game: &GameState,
+    request: &ManaPaymentRequest,
+) -> ManaPaymentPlan {
+    let pool = game
+        .player(request.payer)
+        .map(|player| player.mana_pool.clone())
+        .unwrap_or_default();
+    ManaPaymentPlan {
+        payable: false,
+        id: request_hash(request),
+        request_hash: request_hash(request),
+        mana_ability_steps: Vec::new(),
+        allocations: Vec::new(),
+        mana_cost_after_alternatives: request.cost.clone(),
+        pool_before: pool.clone(),
+        expected_pool_after_activations: pool.clone(),
+        expected_pool_after_payment: pool,
+        life_to_pay: 0,
+        score: ManaPaymentScore::default(),
+        warnings: Vec::new(),
     }
 }
 
@@ -1259,6 +1482,47 @@ mod tests {
     ) -> ManaPaymentRequest {
         ManaPaymentRequest::new(payer, source, crate::costs::PaymentReason::Effect, cost)
             .with_spend_policy(game.mana_spend_policy(payer, Some(source)))
+    }
+
+    #[test]
+    fn sliced_first_plan_matches_synchronous_search_and_preserves_live_state() {
+        let (mut game, alice) = game();
+        for _ in 0..4 {
+            let definition = CardBuilder::new(CardId::new(), "Test Forest")
+                .card_types(vec![CardType::Land])
+                .build();
+            let land = game.create_object_from_card(&definition, alice, Zone::Battlefield);
+            game.object_mut(land)
+                .unwrap()
+                .abilities_mut()
+                .push(crate::ability::Ability::mana(
+                    crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()),
+                    vec![ManaSymbol::Green],
+                ));
+        }
+        let source = game.new_object_id();
+        for symbol in [ManaSymbol::Green, ManaSymbol::Black] {
+            let request = request(
+                &game,
+                alice,
+                source,
+                ManaCost::from_pips(vec![vec![symbol], vec![symbol]]),
+            );
+            let expected = plan_first_mana_payment(&game, &request).map(|plan| plan.id);
+            let mut analysis = ManaPaymentAnalysis::new(&game, request);
+            assert!(analysis.step(1).is_none());
+            let mut slices = 1;
+            let actual = loop {
+                slices += 1;
+                assert!(slices < 10000);
+                if let Some(result) = analysis.step(1) {
+                    break result.map(|plan| plan.id);
+                }
+            };
+            assert_eq!(actual, expected);
+            assert!(game.battlefield.iter().all(|id| !game.is_tapped(*id)));
+            assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0);
+        }
     }
 
     #[test]

@@ -2815,7 +2815,7 @@ impl WasmGame {
                     action_ref,
                 },
             ) => {
-                let action = resolve_priority_action(priority, action_index, action_ref.as_ref())
+                let action = resolve_priority_action(&self.game, priority, action_index, action_ref.as_ref())
                     .ok_or_else(|| {
                         if let Some(action_ref) = action_ref.as_ref() {
                             JsValue::from_str(&format!(

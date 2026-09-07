@@ -1339,6 +1339,79 @@ impl GameState {
         units
     }
 
+    /// Maximum number of cost pips covered by the current spendable pool.
+    /// Augmenting paths preserve flexible mana for pips that need it.
+    pub(crate) fn covered_mana_payment_pips(
+        &self,
+        request: &crate::mana_payment::ManaPaymentRequest,
+    ) -> usize {
+        let pips: Vec<_> = Self::expanded_payment_pips(&request.cost, request.x_value, false)
+            .into_iter()
+            .flat_map(|pip| {
+                let units = pip
+                    .iter()
+                    .filter_map(|symbol| match symbol {
+                        crate::mana::ManaSymbol::Generic(amount) => Some(*amount as usize),
+                        _ => None,
+                    })
+                    .max()
+                    .unwrap_or(1);
+                std::iter::repeat_n(pip, units)
+            })
+            .collect();
+        let units = self.payable_mana_units(
+            request.payer,
+            Some(request.source),
+            request.reason,
+            &request.cost,
+            self.chosen_color_activation_mana_restriction(request.source, &request.cost, request.reason),
+        );
+        let edges: Vec<Vec<usize>> = units
+            .iter()
+            .map(|unit| {
+                pips.iter()
+                    .enumerate()
+                    .filter_map(|(index, pip)| {
+                        pip.iter()
+                            .any(|symbol| {
+                                self.mana_unit_can_pay(
+                                    request.payer,
+                                    Some(request.source),
+                                    &request.spend_policy,
+                                    unit,
+                                    *symbol,
+                                )
+                            })
+                            .then_some(index)
+                    })
+                    .collect()
+            })
+            .collect();
+        fn assign(
+            unit: usize,
+            edges: &[Vec<usize>],
+            owners: &mut [Option<usize>],
+            seen: &mut [bool],
+        ) -> bool {
+            for &pip in &edges[unit] {
+                if seen[pip] {
+                    continue;
+                }
+                seen[pip] = true;
+                if owners[pip].is_none_or(|previous| assign(previous, edges, owners, seen)) {
+                    owners[pip] = Some(unit);
+                    return true;
+                }
+            }
+            false
+        }
+        let mut owners = vec![None; pips.len()];
+        for unit in 0..units.len() {
+            assign(unit, &edges, &mut owners, &mut vec![false; pips.len()]);
+        }
+        owners.iter().filter(|owner| owner.is_some()).count()
+    }
+
     pub(crate) fn expanded_payment_pips(
         cost: &crate::mana::ManaCost,
         x_value: u32,

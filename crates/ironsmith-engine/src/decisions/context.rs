@@ -1245,6 +1245,8 @@ impl ProliferateContext {
 /// This includes the full legal actions so responses can be converted back.
 #[derive(Debug, Clone)]
 pub struct PriorityContext {
+    /// False while background legal-action analysis is incomplete.
+    pub analysis_complete: bool,
     /// The player with priority.
     pub player: PlayerId,
     /// All legal actions available (including command-zone casts).
@@ -1254,7 +1256,11 @@ pub struct PriorityContext {
 impl PriorityContext {
     /// Create a new PriorityContext.
     pub fn new(player: PlayerId, actions: Vec<crate::decision::LegalAction>) -> Self {
-        Self { player, actions }
+        Self {
+            player,
+            actions,
+            analysis_complete: true,
+        }
     }
 }
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fullCardImageUrl, materialColor, sectionInk, artFrameRails, artBottomRail, reconstructPanel, classifyTitlePanel, classifyTypePanel, printedGlyphHeight, detectPanelBounds } from '../src/lib/card-frame-colors.js';
+import { fullCardImageUrl, materialColor, sectionInk, artBottomRail, reconstructPanel, classifyTitlePanel, classifyTypePanel, printedGlyphHeight, detectPanelBounds, detectEnclosedPanelBounds, matchArtBounds, detectPrintedStats, printedStatsTreatment } from '../src/lib/card-frame-colors.js';
 
 test('color reference preserves the displayed printing, face, and cache version', () => {
   assert.equal(fullCardImageUrl('https://cards.scryfall.io/art_crop/back/a/b/id.jpg?123'), 'https://cards.scryfall.io/normal/back/a/b/id.jpg?123');
@@ -18,29 +18,12 @@ test('ink sampling handles light and dark printed lettering', () => {
     const width = 100, height = 30, data = new Uint8ClampedArray(width * height * 4);
     for (let i = 0; i < width * height; i++) data.set([...paper, 255], i * 4);
     for (const left of [20, 40, 60]) for (let y = 8; y < 22; y++) for (let x = left; x < left + 4; x++) data.set([...ink, 255], (y * width + x) * 4);
-    assert.deepEqual(sectionInk({width, height, data}), ink);
+    assert.deepEqual(sectionInk({width, height, data}), ink[0] > paper[0] ? [255, 255, 255] : [0, 0, 0]);
   }
 });
 
 
-test('art-border continuation requires two supported edges and leaves its center transparent', () => {
-  const width = 200, height = 160;
-  const make = (left, right) => {
-    const data = new Uint8ClampedArray(width * height * 4);
-    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-      const border = (left && x < 10) || (right && x >= width - 10);
-      data.set(border ? [70, 45, 30, 255] : [180, 210, 240, 255], (y * width + x) * 4);
-    }
-    return {data,width,height};
-  };
-  assert.equal(artFrameRails(make(false, false)), null);
-  assert.equal(artFrameRails(make(true, false)), null);
-  const rails = artFrameRails(make(true, true));
-  assert.ok(rails);
-  assert.ok(rails.left > .03 && rails.left < .08);
-  assert.equal(rails.strip[3], 255);
-  assert.equal(rails.strip[100 * 4 + 3], 0);
-});
+
 
 
 test('panel reconstruction removes light and dark print while preserving clean texture', () => {
@@ -136,4 +119,68 @@ test('whole-panel bounds reject blank scans and locate an enclosed title', () =>
   assert.ok(Math.abs(bounds.y-32) <= 4);
   assert.ok(bounds.width > 415 && bounds.width < 435);
   assert.equal(detectPanelBounds({data,width,height}, 'rules'), null);
+});
+
+
+test('enclosure detection keeps a complete panel and rejects an adjoining art edge', () => {
+  const width=488,height=680,data=new Uint8ClampedArray(width*height*4);
+  for(let p=0;p<width*height;p++) data.set([220,220,215,255],p*4);
+  const stroke=(x,y)=>data.set([20,20,20,255],(y*width+x)*4);
+  for(let x=35;x<=453;x++) {stroke(x,29);stroke(x,70);}
+  for(let y=29;y<=70;y++) {stroke(35,y);stroke(453,y);}
+  for(let x=60;x<160;x+=12) for(let y=40;y<52;y++) stroke(x,y);
+  const bounds=detectEnclosedPanelBounds({data,width,height},'title');
+  assert.deepEqual(bounds,{x:34,y:28,width:421,height:44});
+  // A contour running into the artwork cannot establish an isolated panel.
+  for(let y=70;y<90;y++) stroke(453,y);
+  assert.equal(detectEnclosedPanelBounds({data,width,height},'title'),null);
+});
+
+
+test('rules reconstruction masks faint separators without flattening clean paper', () => {
+  const width=100,height=40,data=new Uint8ClampedArray(width*height*4);
+  for(let p=0;p<width*height;p++) data.set([235,240,245,255],p*4);
+  for(let x=10;x<90;x++) data.set([225,230,235,255],(20*width+x)*4);
+  const cleaned=reconstructPanel({data,width,height},{removeSeparators:true});
+  assert.ok(cleaned);
+  assert.deepEqual(Array.from(cleaned.data),Array.from(new Uint8ClampedArray(Array.from({length:width*height},()=>[235,240,245,255]).flat())));
+});
+
+
+
+
+
+
+
+
+test('P/T location follows aligned light or dark glyphs and ignores empty scans', () => {
+  const width=488,height=680;
+  for(const white of [false,true]) {
+    const data=new Uint8ClampedArray(width*height*4);
+    for(let p=0;p<width*height;p++) data.set(white?[35,30,25,255]:[235,230,220,255],p*4);
+    assert.equal(detectPrintedStats({data,width,height}),null);
+    for(const x0 of [402,414,425]) for(let y=613;y<634;y++) for(let x=x0;x<x0+6;x++) data.set(white?[240,240,235,255]:[20,20,20,255],(y*width+x)*4);
+    const box=detectPrintedStats({data,width,height});
+    assert.ok(box);
+    assert.equal(box.x,402);assert.equal(box.y,613);assert.equal(box.height,21);
+    assert.equal(printedStatsTreatment({data,width,height},box),'text');
+    const edge=(x,y)=>data.set(white?[240,240,235,255]:[20,20,20,255],(y*width+x)*4);
+    for(let x=390;x<=442;x++){edge(x,607);edge(x,640);}
+    for(let y=607;y<=640;y++){edge(390,y);edge(442,y);}
+    assert.equal(printedStatsTreatment({data,width,height},box),'panel');
+
+  }
+});
+
+test('art matching finds a crop independently of the card frame color', () => {
+  const width=200,height=280,aw=80,ah=60;
+  const art=new Uint8ClampedArray(aw*ah*4),data=new Uint8ClampedArray(width*height*4);
+  for(let y=0;y<ah;y++) for(let x=0;x<aw;x++) art.set([130+90*Math.sin(x*.21),130+90*Math.cos(y*.31),130+90*Math.sin((x+y)*.18),255],(y*aw+x)*4);
+  for(let p=0;p<width*height;p++) data.set([35,30,25,255],p*4);
+  for(let y=30;y<156;y++) for(let x=16;x<184;x++) {
+    const a=(Math.floor((y-30)*ah/126)*aw+Math.floor((x-16)*aw/168))*4;
+    data.set(art.subarray(a,a+4),(y*width+x)*4);
+  }
+  const bounds=matchArtBounds({data,width,height},{data:art,width:aw,height:ah});
+  assert.ok(bounds);assert.ok(Math.abs(bounds.x-16)<=3);assert.ok(Math.abs(bounds.width-168)<=4);assert.ok(Math.abs(bounds.y-30)<=3);
 });

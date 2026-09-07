@@ -51,10 +51,11 @@ fn activation_mana_payment_available(
     game: &GameState,
     payer: PlayerId,
     action: &LegalAction,
+    planner: &mut impl FnMut(&ironsmith::mana_payment::ManaPaymentRequest) -> Option<bool>,
 ) -> Option<bool> {
     use ironsmith::ability::AbilityKind;
     use ironsmith::mana_payment::{
-        ManaPaymentFailure, ManaPaymentRequest, plan_first_mana_payment,
+        ManaPaymentRequest,
     };
 
     let (LegalAction::ActivateAbility {
@@ -80,12 +81,13 @@ fn activation_mana_payment_available(
         source: ObjectId,
         cost: &ironsmith::cost::TotalCost,
         minimum_x: u32,
+        planner: &mut impl FnMut(&ManaPaymentRequest) -> Option<bool>,
     ) -> Option<bool> {
         match cost.kind() {
             ironsmith_core::TotalCostKind::OneOf(branches) => {
                 let mut unknown = false;
                 for branch in branches {
-                    match check_cost(game, payer, source, branch, minimum_x) {
+                    match check_cost(game, payer, source, branch, minimum_x, planner) {
                         Some(true) => return Some(true),
                         None => unknown = true,
                         Some(false) => {}
@@ -125,12 +127,7 @@ fn activation_mana_payment_available(
                 if costs.iter().any(|cost| cost.requires_tap()) {
                     request.preferences.excluded_sources.push(source);
                 }
-                match plan_first_mana_payment(game, &request) {
-                    Ok(_) => Some(true),
-                    Err(ManaPaymentFailure::NoLegalPlan) => Some(false),
-                    // A bounded search stopping early is not proof of impossibility.
-                    Err(_) => None,
-                }
+                planner(&request)
             }
         }
     }
@@ -147,6 +144,7 @@ fn activation_mana_payment_available(
         *source,
         &cost,
         activated.activation_x_minimum(),
+        planner,
     );
     if available != Some(false) {
         return available;
@@ -708,7 +706,7 @@ pub(super) fn describe_action(game: &GameState, action: &LegalAction) -> String 
     }
 }
 
-fn current_ability_action_text(
+pub(super) fn current_ability_action_text(
     game: &GameState,
     source: ObjectId,
     ability_index: usize,
@@ -1067,16 +1065,28 @@ pub(super) fn casting_method_ref(
 }
 
 pub(super) fn resolve_priority_action(
+    game: &GameState,
     priority: &ironsmith::decisions::context::PriorityContext,
     action_index: Option<usize>,
     action_ref: Option<&PriorityActionRef>,
 ) -> Option<LegalAction> {
     if let Some(action_ref) = action_ref {
-        return priority
-            .actions
-            .iter()
-            .find(|action| priority_action_ref(action) == *action_ref)
-            .cloned();
+        if let Some(action) = priority.actions.iter().find(|action| priority_action_ref(action) == *action_ref) {
+            return Some(action.clone());
+        }
+        if !priority.analysis_complete {
+            let source = match action_ref {
+                PriorityActionRef::CastSpell { spell_id, .. } => Some(ObjectId::from_raw(*spell_id)),
+                PriorityActionRef::ActivateAbility { source, .. } | PriorityActionRef::ActivateManaAbility { source, .. } => Some(ObjectId::from_raw(*source)),
+                PriorityActionRef::PlayLand { land_id } => Some(ObjectId::from_raw(*land_id)),
+                PriorityActionRef::TurnFaceUp { creature_id, .. } => Some(ObjectId::from_raw(*creature_id)),
+                _ => None,
+            };
+            return game.priority_team_players().into_iter()
+                .flat_map(|player| ironsmith::decision::compute_actions_for_source(game, player, source))
+                .find(|action| priority_action_ref(action) == *action_ref);
+        }
+        return None;
     }
     action_index.and_then(|index| priority.actions.get(index).cloned())
 }

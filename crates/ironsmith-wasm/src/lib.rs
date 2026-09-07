@@ -368,12 +368,14 @@ struct AvailableManaSourceView {
 
 #[derive(Debug, Clone, Serialize)]
 struct ManaPaymentView {
+    can_confirm: bool,
     plan_id: String,
     request_hash: String,
     source_name: String,
     pips: Vec<Vec<String>>,
     planned_sources: Vec<PlannedManaSourceView>,
     available_sources: Vec<AvailableManaSourceView>,
+    mana_abilities: Vec<ManualManaAbilityView>,
     allocations: Vec<PlannedPipAllocationView>,
     pool_before: ManaPoolView,
     pool_after_activations: ManaPoolView,
@@ -650,6 +652,7 @@ fn mana_payment_view_from_pending_cast(
         .unwrap_or_else(|| "spell".to_string());
 
     Some(ManaPaymentView {
+        can_confirm: payment.plan.payable,
         plan_id: payment.plan.id.to_string(),
         request_hash: payment.plan.request_hash.to_string(),
         source_name,
@@ -659,6 +662,7 @@ fn mana_payment_view_from_pending_cast(
             .collect(),
         planned_sources: planned_mana_source_views(game, payment),
         available_sources: available_mana_source_views(game, payment),
+        mana_abilities: manual_mana_ability_views(game, &payment.request),
         allocations: planned_pip_allocation_views(payment),
         pool_before: (&payment.plan.pool_before).into(),
         pool_after_activations: (&payment.plan.expected_pool_after_activations).into(),
@@ -718,6 +722,7 @@ fn mana_payment_view_from_pending_activation(
 
     let payment = pending.pending_mana_payment.as_ref()?;
     Some(ManaPaymentView {
+        can_confirm: payment.plan.payable,
         plan_id: payment.plan.id.to_string(),
         request_hash: payment.plan.request_hash.to_string(),
         source_name: pending.source_name.clone(),
@@ -727,6 +732,7 @@ fn mana_payment_view_from_pending_activation(
             .collect(),
         planned_sources: planned_mana_source_views(game, payment),
         available_sources: available_mana_source_views(game, payment),
+        mana_abilities: manual_mana_ability_views(game, &payment.request),
         allocations: planned_pip_allocation_views(payment),
         pool_before: (&payment.plan.pool_before).into(),
         pool_after_activations: (&payment.plan.expected_pool_after_activations).into(),
@@ -777,6 +783,7 @@ fn mana_payment_view_from_context(
         context.request.x_value as usize,
     );
     ManaPaymentView {
+        can_confirm: context.plan.payable,
         plan_id: context.plan.id.to_string(),
         request_hash: context.plan.request_hash.to_string(),
         source_name: game
@@ -789,6 +796,7 @@ fn mana_payment_view_from_context(
             .collect(),
         planned_sources: planned_mana_source_views(game, &payment),
         available_sources: available_mana_source_views(game, &payment),
+        mana_abilities: manual_mana_ability_views(game, &payment.request),
         allocations: planned_pip_allocation_views(&payment),
         pool_before: (&context.plan.pool_before).into(),
         pool_after_activations: (&context.plan.expected_pool_after_activations).into(),
@@ -2360,6 +2368,7 @@ struct BlockerOptionView {
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum DecisionView {
     Priority {
+        analysis_complete: bool,
         player: u8,
         actions: Vec<ActionView>,
     },
@@ -2695,6 +2704,7 @@ impl DecisionView {
                     actions.push(action);
                 }
                 DecisionView::Priority {
+                    analysis_complete: priority.analysis_complete,
                     player: decision_player.0,
                     actions,
                 }
@@ -3289,6 +3299,10 @@ enum ManaPaymentCommand {
         #[serde(default)]
         prefer_life: bool,
     },
+    Activate {
+        source_id: String,
+        ability_index: usize,
+    },
     Cancel,
 }
 
@@ -3351,6 +3365,13 @@ impl ManaPaymentCommand {
                     )?,
                     prefer_life,
                 },
+            }),
+            Self::Activate {
+                source_id,
+                ability_index,
+            } => Ok(ironsmith::mana_payment::ManaPaymentResponse::Activate {
+                source: parse_mana_payment_source_id(&source_id, "activation")?,
+                ability_index,
             }),
             Self::Cancel => Ok(ironsmith::mana_payment::ManaPaymentResponse::Cancel),
         }
@@ -3966,6 +3987,8 @@ struct GrandMeleeHostLane {
 
 #[wasm_bindgen]
 pub struct WasmGame {
+    priority_analysis_job: Option<Box<PriorityAnalysisJob>>,
+    inspector_analysis_job: Option<Box<InspectorAnalysisJob>>,
     game: GameState,
     registry: CardRegistry,
     trigger_queue: TriggerQueue,
@@ -5953,3 +5976,30 @@ mod determinism_tests {
 
 #[cfg(all(test, target_arch = "wasm32"))]
 mod tests;
+
+#[derive(Debug, Clone, Serialize)]
+struct ManualManaAbilityView {
+    source_id: String,
+    ability_index: usize,
+    source_name: String,
+    label: String,
+}
+
+fn manual_mana_ability_views(
+    game: &GameState,
+    request: &ironsmith::mana_payment::ManaPaymentRequest,
+) -> Vec<ManualManaAbilityView> {
+    ironsmith::mana_payment::manual_mana_abilities(game, request)
+        .into_iter()
+        .filter_map(|(source, ability_index)| {
+            let object = game.object(source)?;
+            Some(ManualManaAbilityView {
+                source_id: source.0.to_string(),
+                ability_index,
+                source_name: object.name.to_string(),
+                label: current_ability_action_text(game, source, ability_index)
+                    .unwrap_or_else(|| "Activate mana ability".to_string()),
+            })
+        })
+        .collect()
+}

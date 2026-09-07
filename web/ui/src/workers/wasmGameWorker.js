@@ -1,3 +1,4 @@
+import { createPriorityAnalysisScheduler } from "../lib/priority-analysis-scheduler.js";
 import initPreviewEngine, { WasmGame as PreviewGame } from "../../../wasm_demo/pkg/engine.js?target-preview";
 import { previewCastTargetDecision } from "../lib/cast-target-preview.js";
 import initWasm, { WasmGame, compileAndRegisterCardSources } from "../../../wasm_demo/pkg/ironsmith.js";
@@ -83,6 +84,22 @@ const CARD_ZONE_KEYS = [
   "library_cards",
   "stack",
 ];
+
+// Unknown methods invalidate by default. Presentation reads cannot cancel a
+// long search merely because the user hovered a card or requested a snapshot.
+const ANALYSIS_READ_METHOD = /^(snapshot|snapshotJson|uiState|last\w*Perf|lastWorkCounters|export\w+|autocompleteCardNames|get\w+|cardsMeetingThreshold|objectDetails|inspectorActions|preview\w+|registrySize|filterKnownCardNames|isKnownCardName|cardLoadDiagnostics|validateMatchConfig)$/;
+let priorityIdentity = null;
+let priorityViewRevision = 0;
+const priorityAnalysis = createPriorityAnalysisScheduler({
+  game: () => game,
+  busy: () => pendingCallCount > 0,
+  enqueue: enqueueCall,
+  publish: (analysis) => {
+    priorityIdentity = game.priorityAnalysisIdentity();
+    self.postMessage({ type: "priorityAnalysis", ...analysis });
+  },
+  fail: ({ revision, error }) => self.postMessage({ type: "priorityAnalysisError", revision, error: serializeError(error) }),
+});
 
 function nowMs() {
   return performance.now();
@@ -711,6 +728,7 @@ async function handleInit(msg = {}) {
       verifier: `${verifierWasmUrl}?${bust}`,
     });
     game = new WasmGame();
+    game.setDeferredPriorityAnalysis(true);
     const status = readRegistryStatus();
     if (status) {
       postRegistryStatus(status, true);
@@ -740,10 +758,19 @@ function handleCall(msg) {
       console.debug(`[ironsmith] worker call: ${method}`);
     }
   }
+  // A preview promise must never occupy the authoritative command queue.
+  // Its bounded slices use that queue separately, yielding to game commands.
+  if (method === "inspectorActions" && game) {
+    priorityAnalysis.inspector(...args).then(result => {
+      self.postMessage({ type: "result", id, ok: true, result });
+    });
+    return;
+  }
   const enqueuedAt = nowMs();
   pendingCallCount += 1;
   enqueueCall(async () => {
     if (!game) throw new Error("Game is not initialized yet");
+    if (!ANALYSIS_READ_METHOD.test(method)) priorityAnalysis.invalidate();
     const startedAt = nowMs();
     const queueWaitMs = startedAt - enqueuedAt;
     await ensureCardSourcesForNames(collectNamesForMethod(method, args));
@@ -854,6 +881,15 @@ function handleCall(msg) {
         postRegistryStatus(registryStatus);
         if (!registryStatus.done) scheduleBackgroundCompile(0);
       }
+      if (result && typeof result === "object" && "decision" in result) {
+        const identity = game.priorityAnalysisIdentity();
+        if (priorityIdentity !== identity) {
+          priorityAnalysis.invalidate();
+          priorityIdentity = identity;
+          priorityViewRevision = priorityAnalysis.revision();
+        }
+        result.__priority_revision = priorityViewRevision;
+      }
       self.postMessage({ type: "result", id, ok: true, result });
     })
     .catch((err) => {
@@ -866,6 +902,12 @@ function handleCall(msg) {
     })
     .finally(() => {
       pendingCallCount = Math.max(0, pendingCallCount - 1);
+      // A rejected command can cancel a job without changing game state.
+      // Resume against the still-visible snapshot instead of stranding its
+      // pending menu behind an unpublished worker generation.
+      const visibleRevision = game && game.priorityAnalysisIdentity() === priorityIdentity
+        ? priorityViewRevision : priorityAnalysis.revision();
+      priorityAnalysis.start(visibleRevision);
       if (!backgroundCompileDone) {
         scheduleBackgroundCompile(0);
       }

@@ -1,10 +1,12 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useState, useCallback, useMemo } from "react";
+import { createContext, useContext, useState, useCallback, useMemo, useLayoutEffect } from "react";
 
 const HoverStateContext = createContext(undefined);
 const HoverLinkedObjectsContext = createContext(undefined);
 const AnchoredCardPreviewContext = createContext(undefined);
 const HoverActionsContext = createContext(undefined);
+const CardPreviewSuppressedContext = createContext(false);
+const CardPreviewSuppressionActionsContext = createContext(null);
 
 function normalizeAnchorRect(anchor) {
   const rect = typeof anchor?.getBoundingClientRect === "function"
@@ -27,6 +29,7 @@ function normalizeAnchorRect(anchor) {
 }
 
 export function HoverProvider({ children }) {
+  const [previewSuppressors, setPreviewSuppressors] = useState(0);
   const [hoveredObjectId, setHoveredObjectId] = useState(null);
   const [hoveredLinkedObjectIds, setHoveredLinkedObjectIds] = useState(() => new Set());
   const [previewLinkedObjectIds, setPreviewLinkedObjectIds] = useState(() => new Set());
@@ -114,7 +117,11 @@ export function HoverProvider({ children }) {
       <HoverLinkedObjectsContext.Provider value={linkedObjectIds}>
         <AnchoredCardPreviewContext.Provider value={anchoredCardPreview}>
           <HoverActionsContext.Provider value={actions}>
-            {children}
+            <CardPreviewSuppressionActionsContext.Provider value={setPreviewSuppressors}>
+              <CardPreviewSuppressedContext.Provider value={previewSuppressors > 0}>
+                {children}
+              </CardPreviewSuppressedContext.Provider>
+            </CardPreviewSuppressionActionsContext.Provider>
           </HoverActionsContext.Provider>
         </AnchoredCardPreviewContext.Provider>
       </HoverLinkedObjectsContext.Provider>
@@ -172,4 +179,19 @@ export function useHover() {
     showAnchoredCardPreview,
     clearAnchoredCardPreview,
   };
+}
+
+// Multiple board rows may overlap briefly while a hover popover changes anchors.
+// Count mounted suppressors so closing one cannot reveal an inspector under another.
+export function useSuppressCardPreview() {
+  const setSuppressors = useContext(CardPreviewSuppressionActionsContext);
+  useLayoutEffect(() => {
+    if (!setSuppressors) return undefined;
+    setSuppressors(count => count + 1);
+    return () => setSuppressors(count => Math.max(0, count - 1));
+  }, [setSuppressors]);
+}
+
+export function useCardPreviewSuppressed() {
+  return useContext(CardPreviewSuppressedContext);
 }

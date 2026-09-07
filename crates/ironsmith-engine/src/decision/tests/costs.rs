@@ -2955,3 +2955,30 @@ fn this_way_commander_reduction_applies_only_to_flashback_cost() {
     assert_eq!(normal.to_oracle(), "{2}{B}");
     assert_eq!(flashback.to_oracle(), "{2}{B}{B}");
 }
+
+#[test]
+fn selected_source_actions_match_full_menu_without_hiding_payment_sources() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice).unwrap().mana_pool.blue = 1;
+    for index in 0..3 {
+        let card = CardBuilder::new(CardId::from_raw(900_000 + index), format!("Analysis probe {index}"))
+            .card_types(vec![CardType::Instant])
+            .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Blue]))
+            .build();
+        game.create_object_from_card(&card, alice, Zone::Hand);
+    }
+    let full = compute_legal_actions(&game, alice);
+    for action in &full {
+        let source = legal_action_source(action);
+        let selected = compute_actions_for_source(&game, alice, source);
+        assert!(selected.contains(action));
+        if let Some(source) = source {
+            assert!(selected.iter().all(|candidate| legal_action_source(candidate).is_none_or(|id| id == source)));
+        }
+    }
+    assert_eq!(compute_legal_actions(&game, alice), full, "query scope must restore");
+}

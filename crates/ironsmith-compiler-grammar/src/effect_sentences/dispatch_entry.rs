@@ -4367,6 +4367,15 @@ pub(crate) fn parse_complete_get_pump_statement(
         // own the wrapper.
         return Ok(None);
     }
+    // This subject requires a resolution-time type choice before the pump.
+    // Keep the dedicated primitive's complete program in the fast path too.
+    if effect_grammar::combat_damage_family_shapes::parse_pump_creature_type_choice_shape(sentence)
+        .is_some()
+    {
+        return super::subject_verb_primitives::parse_sentence_pump_creature_type_of_choice(
+            super::subject_verb_primitives::SubjectVerbPrimitiveClause::new(sentence),
+        ).map(|effects| effects.map(|effects| EffectAst::Sequence { effects }));
+    }
     super::clause_dispatch::parse_get_pump_clause(
         &sentence[..verb_idx],
         &sentence[verb_idx + 1..],

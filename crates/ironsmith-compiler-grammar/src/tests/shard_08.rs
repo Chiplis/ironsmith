@@ -5,6 +5,40 @@ use ironsmith_compiler::ParseCardText;
 use ironsmith_compiler_lowering::CardDefinitionBuilder;
 
 #[test]
+pub(super) fn inline_creature_type_choice_pumps_choose_before_modifying()
+-> Result<(), CardTextError> {
+    for text in [
+        "Destroy all creatures of the creature type of your choice.",
+        "Creatures of the creature type of your choice get +X/+X until end of turn.",
+        "Creatures of the creature type of your choice get -3/-3 until end of turn.",
+        "Creatures of the creature type of your choice get +0/+4 until end of turn.",
+    ] {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Type Choice Probe")
+            .card_types(vec![CardType::Instant])
+            .parse_text(text)?;
+        let program = definition.spell_effect.as_ref().expect("spell program");
+        let debug = format!("{program:#?}");
+        assert!(debug.contains("ChooseCreatureType"), "{debug}");
+        assert!(debug.contains("chosen_creature_type: true"), "{debug}");
+    }
+    Ok(())
+}
+
+#[test]
+pub(super) fn same_line_spell_sentences_do_not_create_paragraph_boundaries()
+-> Result<(), CardTextError> {
+    for text in ["Draw a card. Scry 2.", "Draw three cards. Proliferate."] {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Sentence Boundary Probe")
+            .card_types(vec![CardType::Sorcery])
+            .parse_text(text)?;
+        let program = definition.spell_effect.as_ref().expect("spell program");
+        assert!(program.segments.len() >= 2, "{program:#?}");
+        assert!(program.segments.iter().all(|segment| !segment.starts_new_source_line), "{program:#?}");
+    }
+    Ok(())
+}
+
+#[test]
 pub(super) fn distinct_spell_source_lines_survive_as_resolution_provenance()
 -> Result<(), CardTextError> {
     let definition = CardDefinitionBuilder::new(CardId::new(), "Source Line Variant")

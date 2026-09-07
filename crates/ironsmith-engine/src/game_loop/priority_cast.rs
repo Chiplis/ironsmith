@@ -2571,6 +2571,22 @@ pub(super) fn prompt_spell_assist_payment_plan(
     } else {
         crate::mana_payment::plan_first_mana_payment(game, &request)
     };
+    let plan_result = plan_result.or_else(|failure| {
+        if refining_existing_plan
+            && matches!(
+                failure,
+                crate::mana_payment::ManaPaymentFailure::NoLegalPlan
+                    | crate::mana_payment::ManaPaymentFailure::SearchLimitReached
+                    | crate::mana_payment::ManaPaymentFailure::ConflictingPreferences
+            )
+        {
+            Ok(crate::mana_payment::unfunded_mana_payment_plan(
+                game, &request,
+            ))
+        } else {
+            Err(failure)
+        }
+    });
     let plan = plan_result.map_err(|failure| {
         state.rollback_action(game);
         GameLoopError::ActionCancelled(format!(
@@ -2741,6 +2757,22 @@ pub(super) fn prompt_spell_mana_ability_window(
     } else {
         crate::mana_payment::plan_first_mana_payment(game, &request)
     };
+    let plan_result = plan_result.or_else(|failure| {
+        if refining_existing_plan
+            && matches!(
+                failure,
+                crate::mana_payment::ManaPaymentFailure::NoLegalPlan
+                    | crate::mana_payment::ManaPaymentFailure::SearchLimitReached
+                    | crate::mana_payment::ManaPaymentFailure::ConflictingPreferences
+            )
+        {
+            Ok(crate::mana_payment::unfunded_mana_payment_plan(
+                game, &request,
+            ))
+        } else {
+            Err(failure)
+        }
+    });
     let plan = plan_result.map_err(|failure| {
         state.rollback_action(game);
         GameLoopError::ActionCancelled(format!(
@@ -2795,6 +2827,22 @@ pub(super) fn prompt_activation_mana_ability_window(
     } else {
         crate::mana_payment::plan_first_mana_payment(game, &request)
     };
+    let plan_result = plan_result.or_else(|failure| {
+        if refining_existing_plan
+            && matches!(
+                failure,
+                crate::mana_payment::ManaPaymentFailure::NoLegalPlan
+                    | crate::mana_payment::ManaPaymentFailure::SearchLimitReached
+                    | crate::mana_payment::ManaPaymentFailure::ConflictingPreferences
+            )
+        {
+            Ok(crate::mana_payment::unfunded_mana_payment_plan(
+                game, &request,
+            ))
+        } else {
+            Err(failure)
+        }
+    });
     let plan = plan_result.map_err(|failure| {
         state.rollback_action(game);
         GameLoopError::ActionCancelled(format!(

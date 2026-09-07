@@ -27,9 +27,17 @@ export default function ActionPopover({
   subtitle = null,
   variant = "light",
   collapseEquivalentActions = true,
+  previewCards = true,
+  disabled = false,
+  anchorElement = null,
+  focusOnOpen = false,
+  ariaLabel = null,
+  onMouseEnter = null,
+  onMouseLeave = null,
 }) {
   const ref = useRef(null);
   const openedAtRef = useRef(0);
+  const closeTimerRef = useRef(null);
   const { hoverCard, clearHover } = useHoverActions();
   const [phase, setPhase] = useState("entering");
   const [hoveredIdx, setHoveredIdx] = useState(-1);
@@ -39,6 +47,7 @@ export default function ActionPopover({
     const raf = requestAnimationFrame(() => setPhase("open"));
     return () => {
       cancelAnimationFrame(raf);
+      clearTimeout(closeTimerRef.current);
       dispatchHandActionHover(null);
     };
   }, []);
@@ -49,17 +58,17 @@ export default function ActionPopover({
     clearHover();
     dispatchHandActionHover(null);
     setPhase("exiting");
-    setTimeout(onClose, 250);
+    closeTimerRef.current = setTimeout(onClose, 250);
   }, [clearHover, onClose, phase]);
 
   useEffect(() => {
     function handleClickOutside(e) {
-      if (ref.current && !ref.current.contains(e.target)) {
+      if (ref.current && !ref.current.contains(e.target) && !anchorElement?.contains(e.target)) {
         handleClose();
       }
     }
     function handleEscape(e) {
-      if (e.key === "Escape") handleClose();
+      if (e.key === "Escape") { handleClose(); anchorElement?.focus(); }
     }
     document.addEventListener("pointerdown", handleClickOutside);
     document.addEventListener("keydown", handleEscape);
@@ -67,7 +76,11 @@ export default function ActionPopover({
       document.removeEventListener("pointerdown", handleClickOutside);
       document.removeEventListener("keydown", handleEscape);
     };
-  }, [handleClose]);
+  }, [anchorElement, handleClose]);
+
+  useEffect(() => {
+    if (focusOnOpen && phase === "open") ref.current?.querySelector("[role=button]")?.focus();
+  }, [focusOnOpen, phase]);
 
   const palette = useMemo(
     () => (
@@ -97,7 +110,7 @@ export default function ActionPopover({
     ),
     [variant]
   );
-  const popoverWidth = variant === "game" ? 292 : 260;
+  const popoverWidth = Math.min(variant === "game" ? 292 : 260, window.innerWidth - 24);
   const rowHeight = 34;
   const headerHeight = (title || subtitle) ? (subtitle ? 58 : 40) : 0;
   const actionGroups = useMemo(
@@ -140,6 +153,13 @@ export default function ActionPopover({
       ref={ref}
       className="fixed z-[32000]"
       data-action-popover="true"
+      role={ariaLabel ? "dialog" : undefined}
+      aria-label={ariaLabel || undefined}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      onFocus={onMouseEnter}
+      onPointerDown={event => event.stopPropagation()}
+      onClick={event => event.stopPropagation()}
       data-action-count={actionGroups.length}
       style={{
         fontFamily: variant === "game" ? "var(--ironsmith-ui-font, 'Rajdhani'), system-ui, sans-serif" : undefined,
@@ -196,13 +216,14 @@ export default function ActionPopover({
               style={{
                 fontSize: variant === "game" ? "12px" : "14px",
                 fontWeight: variant === "game" ? 600 : 700,
+                opacity: disabled ? 0.5 : 1,
                 lineHeight: 1.4,
                 color: palette.rowText,
                 borderTop: showDivider ? `1px solid ${palette.rowDivider}` : undefined,
                 background: hoveredIdx === i ? palette.rowHoverBg : "transparent",
               }}
               onClick={(e) => {
-                if ((Date.now() - openedAtRef.current) < 160) return;
+                if (disabled || (Date.now() - openedAtRef.current) < 160) return;
                 e.preventDefault();
                 e.stopPropagation();
                 dispatchHandActionHover(null);
@@ -210,8 +231,10 @@ export default function ActionPopover({
               }}
               onMouseEnter={() => {
                 setHoveredIdx(i);
-                if (objId) hoverCard(objId);
-                dispatchHandActionHover(objId);
+                if (previewCards) {
+                  if (objId) hoverCard(objId);
+                  dispatchHandActionHover(objId);
+                }
               }}
               onMouseLeave={() => {
                 setHoveredIdx(-1);
@@ -220,8 +243,10 @@ export default function ActionPopover({
               }}
               onFocus={() => {
                 setHoveredIdx(i);
-                if (objId) hoverCard(objId);
-                dispatchHandActionHover(objId);
+                if (previewCards) {
+                  if (objId) hoverCard(objId);
+                  dispatchHandActionHover(objId);
+                }
               }}
               onBlur={() => {
                 setHoveredIdx(-1);
@@ -230,14 +255,15 @@ export default function ActionPopover({
               }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
-                  if ((Date.now() - openedAtRef.current) < 160) return;
+                  if (disabled || (Date.now() - openedAtRef.current) < 160) return;
                   event.preventDefault();
                   dispatchHandActionHover(null);
                   onAction(action);
                 }
               }}
               role="button"
-              tabIndex={0}
+              aria-disabled={disabled || undefined}
+              tabIndex={disabled ? -1 : 0}
             >
               <div
                 style={{

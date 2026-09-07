@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, LoaderCircle, RotateCcw, Shield, X } from "lucide-react";
 import { useGame } from "@/context/GameContext";
 import { useHover } from "@/context/HoverContext";
@@ -62,7 +62,7 @@ function warningText(value) {
 function sourceActionLabel(source) {
   if (source.payment_kind === "convoke") return "Tap for convoke";
   if (source.payment_kind === "improvise") return "Tap for improvise";
-  return source.planned ? "Activate mana ability" : "Available permanent";
+  return source.planned ? "" : "Available permanent";
 }
 
 function pipPaymentLabel(allocation) {
@@ -112,13 +112,37 @@ function SourceConstraintButtons({ sourceId, required, excluded, preserved, onCh
 }
 
 function PaymentCardName({ objectId, onInspect, children, className = "" }) {
+  const containerRef = useRef(null);
+  const textRef = useRef(null);
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    const text = textRef.current;
+    if (!container || !text) return undefined;
+    const fit = () => {
+      text.style.fontSize = "inherit";
+      const baseSize = parseFloat(getComputedStyle(container).fontSize);
+      const available = container.clientWidth;
+      const width = text.getBoundingClientRect().width;
+      if (available > 0 && width > available) {
+        text.style.fontSize = `${baseSize * available / width}px`;
+      }
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(container);
+    let disposed = false;
+    document.fonts?.ready.then(() => { if (!disposed) fit(); });
+    return () => { disposed = true; observer.disconnect(); };
+  }, [children]);
+  const label = <span ref={textRef} className="inline-block whitespace-nowrap">{children}</span>;
   if (objectId == null || typeof onInspect !== "function") {
-    return <span className={className}>{children}</span>;
+    return <span ref={containerRef} className={cn("block min-w-0 max-w-full overflow-hidden whitespace-nowrap", className)}>{label}</span>;
   }
   return (
     <button
       type="button"
-      className={cn("decision-card-name-trigger", className)}
+      ref={containerRef}
+      className={cn("decision-card-name-trigger block min-w-0 max-w-full overflow-hidden whitespace-nowrap", className)}
       data-inspector-object-id={String(objectId)}
       aria-label={`Inspect ${String(children || "card")}`}
       onPointerDown={(event) => {
@@ -135,7 +159,7 @@ function PaymentCardName({ objectId, onInspect, children, className = "" }) {
         onInspect(objectId, event.currentTarget);
       }}
     >
-      {children}
+      {label}
     </button>
   );
 }
@@ -197,7 +221,7 @@ export default function ManaPaymentDecision({
   }, [adjusting, payment?.available_sources, payment?.planned_sources]);
 
   const sendConfirmation = useCallback((currentPayment) => {
-    if (!currentPayment) return;
+    if (!currentPayment || currentPayment.can_confirm === false) return;
     dispatch({
       type: "mana_payment",
       response: {
@@ -209,7 +233,7 @@ export default function ManaPaymentDecision({
   }, [decision.subject, dispatch]);
 
   const confirm = useCallback(() => {
-    if (!payment) return;
+    if (!payment || payment.can_confirm === false) return;
     if (!payment.planning_complete) {
       payWhenReadyRef.current = true;
       return;
@@ -282,7 +306,7 @@ export default function ManaPaymentDecision({
 
   const submitAction = useMemo(() => ({
     label: "Pay",
-    disabled: !canAct || !payment,
+    disabled: !canAct || !payment || payment.can_confirm === false,
     onSubmit: confirm,
     secondaryAction: {
       label: adjusting ? "Use these sources" : "Change sources",
@@ -350,7 +374,7 @@ export default function ManaPaymentDecision({
                       ) : null}
                     </span>
                     <span className="mana-plan-strip-source-action">
-                      {sourceActionLabel(source)}{!source.undo_safe ? " · no undo" : ""}
+                      {[sourceActionLabel(source), !source.undo_safe && "no undo"].filter(Boolean).join(" · ")}
                     </span>
                   </span>
                   {adjusting ? (
@@ -366,7 +390,7 @@ export default function ManaPaymentDecision({
                 </div>
               );
             }) : (
-              <span className="mana-plan-strip-no-sources">Floating mana covers the cost.</span>
+              <span className="mana-plan-strip-no-sources">{payment.can_confirm === false ? "The cost needs more mana. Activate sources or change the plan." : "Floating mana covers the cost."}</span>
             )}
           </div>
         </div>
@@ -467,13 +491,12 @@ export default function ManaPaymentDecision({
                   <PaymentCardName
                     objectId={id}
                     onInspect={showAnchoredCardPreview}
-                    className="block max-w-full truncate text-sm font-semibold"
+                    className="block w-full max-w-full text-sm font-semibold"
                   >
                     {source.source_name}
                   </PaymentCardName>
                   <span className="flex items-center gap-1 text-[11px] opacity-70">
-                    {sourceActionLabel(source)}
-                    {!source.undo_safe ? " · cannot safely undo" : ""}
+                    {[sourceActionLabel(source), !source.undo_safe && "cannot safely undo"].filter(Boolean).join(" · ")}
                   </span>
                 </span>
                 {produced.length ? (
@@ -498,7 +521,7 @@ export default function ManaPaymentDecision({
               </div>
             );
           }) : (
-            <div className="mana-plan-empty">The floating mana pool already covers this cost.</div>
+            <div className="mana-plan-empty">{payment.can_confirm === false ? "The cost needs more mana. Activate sources or change the plan." : "The floating mana pool already covers this cost."}</div>
           )}
         </div>
       </div>
@@ -552,7 +575,7 @@ export default function ManaPaymentDecision({
               Plan
             </Button>
             {inlineSubmit ? (
-              <Button type="button" size="sm" disabled={!canAct} onClick={confirm}>
+              <Button type="button" size="sm" disabled={!canAct || payment.can_confirm === false} onClick={confirm}>
                 Pay
               </Button>
             ) : null}

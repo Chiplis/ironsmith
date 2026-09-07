@@ -1,12 +1,16 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { manaPaymentActionMap } from "@/lib/mana-payment-actions";
 import { useDragState } from "@/context/DragContext";
 import { useGame } from "@/context/GameContext";
 import {
   useAnchoredCardPreview,
+  useCardPreviewSuppressed,
   useHoverActions,
   useHoveredObjectId,
 } from "@/context/HoverContext";
 import HoverArtOverlay from "./HoverArtOverlay";
+import { prepareCardFrame } from "@/lib/card-frame-preparation";
+import { resolveScryfallImageUrl } from "@/lib/scryfall";
 import { playerAccentVars } from "@/lib/player-colors";
 import { samePlayerId } from "@/lib/player-display";
 import { getVisibleStackObjects } from "@/lib/stack-targets";
@@ -226,12 +230,15 @@ function anchoredPreviewPosition(anchorRect, size) {
 }
 
 export default function FloatingCardPreview({
-  disabled = false,
+  disabled: externallyDisabled = false,
   excludedObjectIds = [],
   pinnedObjectId = null,
   onRequestClose = null,
 }) {
+  const previewSuppressed = useCardPreviewSuppressed();
+  const disabled = externallyDisabled || previewSuppressed;
   const { state, dispatch, cancelDecision } = useGame();
+  const manaPaymentActions = useMemo(() => manaPaymentActionMap(state), [state]);
   const hoveredObjectId = useHoveredObjectId();
   const anchoredCardPreview = useAnchoredCardPreview();
   const { clearAnchoredCardPreview } = useHoverActions();
@@ -239,6 +246,10 @@ export default function FloatingCardPreview({
   const shellRef = useRef(null);
   const closeTimerRef = useRef(null);
   const [renderedObjectId, setRenderedObjectId] = useState(null);
+  const [readyObjectId, setReadyObjectId] = useState(null);
+  const onCardFrameReadyChange = useCallback(ready => {
+    setReadyObjectId(ready ? renderedObjectId : null);
+  }, [renderedObjectId]);
   const [size, setSize] = useState(FALLBACK_SIZE);
   const [accent, setAccent] = useState(null);
   const [previewHovered, setPreviewHovered] = useState(false);
@@ -251,6 +262,7 @@ export default function FloatingCardPreview({
     && !dragState
     && !(typeof document !== "undefined" && document.querySelector(".priority-inline-panel:hover"))
     && hoveredObjectId != null
+    && !manaPaymentActions.has(Number(hoveredObjectId))
     && canHoverInspectorObject(state, hoveredObjectId)
     && !excludedIds.has(String(hoveredObjectId))
   ) ? String(hoveredObjectId) : null;
@@ -263,13 +275,36 @@ export default function FloatingCardPreview({
   // Explicit selections bypass passive-hover exclusions. Hand cards stay
   // excluded from hover previews, but clicking one opens this composed,
   // interactive inspector instead of enlarging the card art in place.
-  const pinnedPreviewObjectId = !disabled && !dragState && objectExistsInState(state, pinnedObjectId)
+  const pinnedPreviewObjectId = !disabled && !dragState && state?.decision?.kind !== "mana_payment" && objectExistsInState(state, pinnedObjectId)
     ? String(pinnedObjectId)
     : null;
   const lockedObjectId = anchoredObjectId || pinnedPreviewObjectId;
   const requestedObjectId = lockedObjectId
     || directlyRequestedObjectId
-    || (previewHovered && canHoverInspectorObject(state, renderedObjectId) ? renderedObjectId : null);
+    || (previewHovered && !disabled && !manaPaymentActions.has(Number(renderedObjectId)) && canHoverInspectorObject(state, renderedObjectId) ? renderedObjectId : null);
+  const preparationCard = useMemo(() => {
+    const matches = card => card && [card.id, card.inspect_object_id, ...(card.member_ids || [])]
+      .some(id => id != null && String(id) === requestedObjectId);
+    for (const player of state?.players || []) {
+      for (const zone of ['battlefield', 'hand_cards', 'graveyard_cards', 'exile_cards', 'command_cards', 'ante_cards']) {
+        const card = (player[zone] || []).find(matches);
+        if (card) return card;
+      }
+    }
+    return getVisibleStackObjects(state).find(matches);
+  }, [requestedObjectId, state]);
+  const preparationName = preparationCard?.name;
+  const preparationType = preparationCard?.type_line;
+  useEffect(() => {
+    if (!preparationName) return undefined;
+    let active = true;
+    // Start asset work immediately, in parallel with the existing hover delay.
+    resolveScryfallImageUrl(preparationName, 'art_crop')
+      .then(url => active ? prepareCardFrame(url, preparationType) : null)
+      .catch(() => {});
+    return () => { active = false; };
+  }, [preparationName, preparationType]);
+
   const interactiveActions = useMemo(() => {
     if (renderedObjectId == null) return [];
     const decision = state?.decision;
@@ -373,7 +408,8 @@ export default function FloatingCardPreview({
   const stackPreview = renderedObjectId != null && getVisibleStackObjects(state).some((entry) =>
     [entry.id, entry.inspect_object_id].some((id) => id != null && String(id) === String(renderedObjectId))
   );
-  const visible = requestedObjectId != null && renderedObjectId === requestedObjectId;
+  const visible = requestedObjectId != null && renderedObjectId === requestedObjectId
+    && readyObjectId === renderedObjectId;
   const positionStyle = useMemo(
     () => (
       anchoredObjectId != null && renderedObjectId === anchoredObjectId
@@ -389,6 +425,8 @@ export default function FloatingCardPreview({
     }
     : {};
 
+  if (previewSuppressed) return null;
+
   return (
     <aside
       ref={shellRef}
@@ -401,6 +439,7 @@ export default function FloatingCardPreview({
       data-placement={anchoredObjectId != null ? "below-decision" : "near-card"}
       data-interactive={interactiveActions.length > 0 ? "true" : "false"}
       aria-hidden={!visible}
+      inert={!visible}
       style={{ ...accentStyle, ...(positionStyle || {}) }}
       onMouseEnter={() => setPreviewHovered(true)}
       onMouseLeave={() => setPreviewHovered(false)}
@@ -409,10 +448,14 @@ export default function FloatingCardPreview({
         <HoverArtOverlay
           key={renderedObjectId}
           objectId={renderedObjectId}
+          selectedStackEntry={String(pinnedObjectId) === String(renderedObjectId)
+            ? getVisibleStackObjects(state).find(entry => String(entry.id) === String(pinnedObjectId))
+            : null}
           displayMode="card-frame"
           availableInspectorWidth={size.width}
           availableInspectorHeight={size.height}
           onInspectorAccentChange={setAccent}
+          onCardFrameReadyChange={onCardFrameReadyChange}
           interactiveActions={interactiveActions}
           onInteractiveAction={triggerInteractiveAction}
         />

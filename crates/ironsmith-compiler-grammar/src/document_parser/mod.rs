@@ -2393,6 +2393,8 @@ fn try_parse_labeled_line_dispatch(
         // untyped subject `this` before the static grammar sees it.
         if looks_like_ability_word_label(label_tokens, false)
             && !looks_like_leading_conditional_self_replacement(&body_line.tokens)
+            && !split_activation_text_tokens_lexed(&body_line.tokens)
+                .is_some_and(|(cost, _)| looks_like_activation_cost_prefix(&cost))
         {
             let builder_aware_static = authored_tokens_for_normalized_slice(line, body_tokens)
                 .and_then(|body| normalize_named_source_sentence_tokens(&preprocessed.card, &body))

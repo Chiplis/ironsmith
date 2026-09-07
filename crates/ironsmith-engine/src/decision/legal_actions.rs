@@ -1,6 +1,45 @@
 use super::*;
 use crate::ability::ActivatedAbilityRuntimeExt as _;
 
+thread_local! {
+    static REQUESTED_ACTION_SOURCE: std::cell::Cell<Option<ObjectId>> = const { std::cell::Cell::new(None) };
+}
+
+fn requested_action_source(id: ObjectId) -> bool {
+    REQUESTED_ACTION_SOURCE.with(|source| source.get().is_none_or(|requested| requested == id))
+}
+
+/// Enumerate routes for one selected source using the same legality code as
+/// the full menu. The game itself is never filtered: other objects still
+/// contribute mana, restrictions, targets, continuous effects and grants.
+pub fn compute_actions_for_source(
+    game: &GameState,
+    player: PlayerId,
+    source: Option<ObjectId>,
+) -> Vec<LegalAction> {
+    struct Restore(Option<ObjectId>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            REQUESTED_ACTION_SOURCE.with(|slot| slot.set(self.0));
+        }
+    }
+    let _restore = Restore(REQUESTED_ACTION_SOURCE.with(|slot| slot.replace(source)));
+    let mut actions = compute_legal_actions(game, player);
+    actions.extend(compute_commander_actions(game, player));
+    actions
+}
+
+pub fn legal_action_source(action: &LegalAction) -> Option<ObjectId> {
+    match action {
+        LegalAction::CastSpell { spell_id, .. } => Some(*spell_id),
+        LegalAction::ActivateAbility { source, .. }
+        | LegalAction::ActivateManaAbility { source, .. } => Some(*source),
+        LegalAction::PlayLand { land_id } => Some(*land_id),
+        LegalAction::TurnFaceUp { creature_id, .. } => Some(*creature_id),
+        _ => None,
+    }
+}
+
 fn grant_usage_limit_allows(
     game: &GameState,
     player: PlayerId,
@@ -416,6 +455,9 @@ fn append_adventure_exiled_land_play_actions(
     player: PlayerId,
 ) {
     for &card_id in &game.exile {
+        if !requested_action_source(card_id) {
+            continue;
+        }
         let Some(card) = game.object(card_id) else {
             continue;
         };
@@ -649,6 +691,9 @@ fn add_library_cast_actions(
     else {
         return;
     };
+    if !requested_action_source(card_id) {
+        return;
+    }
     let Some(card) = game.object(card_id) else {
         return;
     };
@@ -672,6 +717,9 @@ fn add_exile_cast_actions(
     exile_has_active_grants: bool,
 ) {
     for &card_id in &game.exile {
+        if !requested_action_source(card_id) {
+            continue;
+        }
         let Some(card) = game.object(card_id) else {
             continue;
         };
@@ -787,6 +835,9 @@ fn add_battlefield_actions(
     // control the source. Scan every battlefield source before the ordinary
     // controlled-permanent pass so those special actions remain visible.
     for source_id in game.zone_ids(Zone::Battlefield) {
+        if !requested_action_source(source_id) {
+            continue;
+        }
         let Some(source) = game.object(source_id) else {
             continue;
         };
@@ -838,6 +889,9 @@ fn add_battlefield_actions(
 
     let simple_mana_analysis = view.simple_battlefield_mana_analysis(player);
     for &perm_id in simple_mana_analysis.relevant_source_ids() {
+        if !requested_action_source(perm_id) {
+            continue;
+        }
         if let Some(perm) = game.object(perm_id) {
             let source_facts = ActivationSourceFacts::for_source(game, perm_id, view);
             let cached_abilities = view.abilities_rc(perm_id);
@@ -1029,6 +1083,18 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
         .map_or((empty_zone, empty_zone), |player_obj| {
             (player_obj.hand.as_slice(), player_obj.graveyard.as_slice())
         });
+    let filtered_hand: Vec<_> = hand
+        .iter()
+        .copied()
+        .filter(|id| requested_action_source(*id))
+        .collect();
+    let filtered_graveyard: Vec<_> = graveyard
+        .iter()
+        .copied()
+        .filter(|id| requested_action_source(*id))
+        .collect();
+    let hand = filtered_hand.as_slice();
+    let graveyard = filtered_graveyard.as_slice();
     let mut actions = Vec::with_capacity(
         1 + hand.len() * 6
             + graveyard.len() * 2
@@ -1064,7 +1130,10 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
     perf.hand_summary_ms = hand_summary_started_at.elapsed_ms();
 
     let controlled_battlefield_started_at = PerfTimer::start();
-    let controlled_battlefield = collect_controlled_battlefield(game, player);
+    let controlled_battlefield: Vec<_> = collect_controlled_battlefield(game, player)
+        .into_iter()
+        .filter(|id| requested_action_source(*id))
+        .collect();
     perf.controlled_battlefield_ms = controlled_battlefield_started_at.elapsed_ms();
 
     actions.push(LegalAction::PassPriority);
@@ -1171,7 +1240,11 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
     perf.battlefield_ability_affordability_ms = battlefield_breakdown.affordability_ms;
 
     let non_battlefield_abilities_started_at = PerfTimer::start();
-    let non_battlefield_ids = collect_non_battlefield_source_ids(game, player, hand, graveyard);
+    let non_battlefield_ids: Vec<_> =
+        collect_non_battlefield_source_ids(game, player, hand, graveyard)
+            .into_iter()
+            .filter(|id| requested_action_source(*id))
+            .collect();
     add_non_battlefield_ability_actions(game, &mut actions, player, &non_battlefield_ids, &view);
 
     perf.non_battlefield_abilities_ms = non_battlefield_abilities_started_at.elapsed_ms();
@@ -2164,6 +2237,7 @@ pub fn compute_commander_actions(game: &GameState, player: PlayerId) -> Vec<Lega
     if let Some(player_obj) = game.player(player) {
         for &commander_id in player_obj.get_commanders() {
             if let Some(current_id) = game.current_commander_object(commander_id)
+                && requested_action_source(current_id)
                 && let Some(commander) = game.object(current_id)
             {
                 // Only if the commander is in the command zone

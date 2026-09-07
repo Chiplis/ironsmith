@@ -1523,7 +1523,15 @@ impl GameSnapshot {
     ) -> Self {
         let stack_viewed_cards = super::stack_revealed_view(game);
         let viewed_cards = viewed_cards.or(stack_viewed_cards.as_ref());
-        let protected_ids = protected_object_ids_for_decision(decision);
+        let mut protected_ids = protected_object_ids_for_decision(decision);
+        if let Some(payment) = mana_payment.as_ref() {
+            protected_ids.extend(
+                payment
+                    .mana_abilities
+                    .iter()
+                    .filter_map(|ability| ability.source_id.parse::<u64>().ok().map(ObjectId)),
+            );
+        }
         let mut characteristic_ids = game.battlefield.clone();
         characteristic_ids.extend(game.stack.iter().map(|entry| entry.object_id));
         if let Some(stack_id) = pending_cast_stack_id {
@@ -1946,6 +1954,7 @@ impl GameSnapshot {
                     effect_text: pending_effect_text,
                     ability_kind: None,
                     ability_text: None,
+                    source_ability_text: None,
                     targets: Vec::new(),
                 },
             );

@@ -6039,7 +6039,8 @@ pub(super) fn describe_for_each_tagged_shuffle_into_owner_library(
     if for_each.effects.len() != 2 {
         return None;
     }
-    let move_to_zone = for_each.effects[0].downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let move_to_zone = unwrap_tag_wrapped_effect(&for_each.effects[0])
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     if move_to_zone.zone != Zone::Library
         || move_to_zone.to_top
         || !matches!(move_to_zone.target, ChooseSpec::Iterated)
@@ -6047,6 +6048,17 @@ pub(super) fn describe_for_each_tagged_shuffle_into_owner_library(
         return None;
     }
     let shuffle = for_each.effects[1].downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+    if shuffle.target_spec.is_some() {
+        return None;
+    }
+    // ForEachTagged binds __it__ to the current snapshot, including its
+    // owner after a zone change. The triggering-object tag is singular.
+    if for_each.tag.as_str() == "triggering"
+        && matches!(&shuffle.player,
+            PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(tag)) if tag.as_str() == "__it__")
+    {
+        return Some("Shuffle it into its owner's library".to_string());
+    }
     if !matches!(
         &shuffle.player,
         PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(tag)) if tag == &for_each.tag
@@ -6054,6 +6066,31 @@ pub(super) fn describe_for_each_tagged_shuffle_into_owner_library(
         return None;
     }
     Some("Its owner shuffles it into their library".to_string())
+}
+
+#[cfg(test)]
+mod triggering_object_shuffle_tests {
+    use super::*;
+
+    #[test]
+    fn tagged_move_and_iterated_owner_shuffle_compact_together() {
+        let mut effects = crate::effects::ForEachTaggedEffect {
+            tag: TagKey::from("triggering"),
+            effects: vec![
+                Effect::new(crate::effects::MoveToZoneEffect::new(
+                    ChooseSpec::Iterated, Zone::Library, false,
+                )).tag("moved_0"),
+                Effect::shuffle_library_player(PlayerFilter::OwnerOf(
+                    crate::filter::ObjectRef::Tagged(TagKey::from("__it__")),
+                )),
+            ],
+            controller_at_last_blocked_by: None,
+        };
+        assert_eq!(describe_for_each_tagged_shuffle_into_owner_library(&effects),
+            Some("Shuffle it into its owner's library".to_string()));
+        effects.effects[1] = Effect::shuffle_library_player(PlayerFilter::You);
+        assert!(describe_for_each_tagged_shuffle_into_owner_library(&effects).is_none());
+    }
 }
 
 pub(super) fn describe_source_and_blocked_creatures_top_library_shuffle(

@@ -69,6 +69,7 @@ pub(crate) struct DerivedGameView<'a> {
     activated_ability_cost_modifier_sources: RefCell<Option<Vec<ObjectId>>>,
     has_battlefield_spell_cost_modifiers: RefCell<Option<bool>>,
     has_activated_ability_cost_modifiers: RefCell<Option<bool>>,
+    pub(crate) available_payment_sources: RefCell<FxMap<PlayerId, Rc<Vec<crate::decision::AvailableManaSource>>>>,
     simple_battlefield_mana_analysis: RefCell<FxMap<PlayerId, Rc<SimpleBattlefieldManaAnalysis>>>,
     spell_target_legality: RefCell<FxMap<SpellTargetLegalityKey, bool>>,
 }
@@ -394,6 +395,7 @@ impl<'a> DerivedGameView<'a> {
             activated_ability_cost_modifier_sources: RefCell::new(None),
             has_battlefield_spell_cost_modifiers: RefCell::new(None),
             has_activated_ability_cost_modifiers: RefCell::new(None),
+            available_payment_sources: RefCell::new(FxMap::default()),
             simple_battlefield_mana_analysis: RefCell::new(FxMap::default()),
             spell_target_legality: RefCell::new(FxMap::default()),
         }
@@ -434,6 +436,7 @@ impl<'a> DerivedGameView<'a> {
             activated_ability_cost_modifier_sources: RefCell::new(None),
             has_battlefield_spell_cost_modifiers: RefCell::new(None),
             has_activated_ability_cost_modifiers: RefCell::new(None),
+            available_payment_sources: RefCell::new(FxMap::default()),
             simple_battlefield_mana_analysis: RefCell::new(FxMap::default()),
             spell_target_legality: RefCell::new(FxMap::default()),
         }

@@ -279,6 +279,13 @@ export function useWasmGame() {
     };
 
     const gameProxy = createGameProxy(callWorker, callZiffleWorker);
+    const priorityAnalysisListeners = new Set();
+    let latestPriorityAnalysis = null;
+    gameProxy.latestPriorityAnalysis = () => latestPriorityAnalysis;
+    gameProxy.subscribePriorityAnalysis = (listener) => {
+      priorityAnalysisListeners.add(listener);
+      return () => priorityAnalysisListeners.delete(listener);
+    };
 
     const finishReady = async () => {
       const elapsed = initStartedAt > 0 ? performance.now() - initStartedAt : MIN_INIT_PHASE_MS;
@@ -324,6 +331,15 @@ export function useWasmGame() {
         return;
       }
 
+      if (msg.type === "priorityAnalysis") {
+        latestPriorityAnalysis = msg;
+        for (const listener of priorityAnalysisListeners) listener(msg);
+        return;
+      }
+      if (msg.type === "priorityAnalysisError") {
+        console.error("Priority analysis failed; explicit passing remains available", msg.error);
+        return;
+      }
       if (msg.type === "result") {
         const req = pending.get(msg.id);
         if (!req) return;

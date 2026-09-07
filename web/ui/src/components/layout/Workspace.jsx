@@ -37,7 +37,6 @@ import {
   plainRect,
   pointIsOutsideRect,
   shouldBeginTargetCastIntent,
-  targetDropCompletesDecision,
 } from "@/lib/hand-drag-intent";
 
 const HAND_PEEK_HEIGHT_DEFAULT = 72;
@@ -1533,7 +1532,7 @@ export default function Workspace({
       window.dispatchEvent(new CustomEvent("ironsmith:target-choice", {
         detail: {
           target,
-          submitIfComplete: targetDropCompletesDecision(decision, target),
+          submitIfComplete: true,
           fromHandDrag: true,
         },
       }));
@@ -1718,7 +1717,8 @@ export default function Workspace({
       if (event.button !== 0) return;
       const target = event.target;
       if (!(target instanceof Element)) return;
-      if (decision && samePlayerId(decision.player, state?.perspective) && decision.kind !== "priority") return;
+      if (decision && samePlayerId(decision.player, state?.perspective)
+        && decision.kind !== "priority" && decision.kind !== "mana_payment") return;
       if (target.closest("[data-object-id]")) return;
       if (target.closest(".zone-viewer")) return;
       if (target.closest(".priority-inline-panel")) return;
@@ -1732,7 +1732,7 @@ export default function Workspace({
       );
       if (!inDeadZone) return;
 
-      if (hasTransientInspectorPreview) {
+      if (hasTransientInspectorPreview && decision?.kind !== "mana_payment") {
         clearHover();
         restoreInspectorBeforeTransitionPreview();
         return;

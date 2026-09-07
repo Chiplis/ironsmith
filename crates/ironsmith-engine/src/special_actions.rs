@@ -1975,7 +1975,7 @@ fn can_activate_mana_ability(
 /// Check if a mana ability can be activated (for query/legality checks).
 ///
 /// This variant doesn't require a decision_maker because it only checks costs.
-fn can_activate_mana_ability_check(
+pub(crate) fn can_activate_mana_ability_check(
     game: &GameState,
     player: PlayerId,
     permanent_id: ObjectId,
@@ -2382,6 +2382,26 @@ pub(crate) fn perform_activate_mana_ability_restricted_colors_with_events(
     mana_color_restriction: Option<Vec<crate::color::Color>>,
     decision_maker: &mut dyn crate::decision::DecisionMaker,
 ) -> Result<Vec<crate::triggers::TriggerEvent>, ActionError> {
+    perform_mana_ability_with_payment_mode(
+        game,
+        player,
+        permanent_id,
+        ability_index,
+        mana_color_restriction,
+        None,
+        decision_maker,
+    )
+}
+
+pub(crate) fn perform_mana_ability_with_payment_mode(
+    game: &mut GameState,
+    player: PlayerId,
+    permanent_id: ObjectId,
+    ability_index: usize,
+    mana_color_restriction: Option<Vec<crate::color::Color>>,
+    interactive_mana_exclusions: Option<Vec<ObjectId>>,
+    decision_maker: &mut dyn DecisionMaker,
+) -> Result<Vec<TriggerEvent>, ActionError> {
     use crate::effects::ExecutionContext;
 
     // Get the mana ability details
@@ -2415,11 +2435,15 @@ pub(crate) fn perform_activate_mana_ability_restricted_colors_with_events(
         // Pay mana costs from TotalCost (for abilities like Blood Celebrant that cost {B})
         let mut cost_ctx = CostContext::new(permanent_id, player, decision_maker)
             .with_reason(crate::costs::PaymentReason::ActivateManaAbility);
+        cost_ctx.interactive_mana_exclusions = interactive_mana_exclusions;
         let cost_summary =
             pay_total_cost_without_preflight_with_choice(game, &total_cost, &mut cost_ctx)
                 .map_err(cost_error_to_action_error)?;
         let x_value_from_costs = cost_summary.x_value;
         drop(cost_ctx);
+        if decision_maker.awaiting_choice() {
+            return Ok(Vec::new());
+        }
 
         let mana = crate::events::mana::apply_mana_replacements(
             game,
@@ -2577,6 +2601,13 @@ pub(crate) fn pay_total_cost_without_preflight_with_choice(
     let pre_chosen_checkpoint = cost_ctx.pre_chosen_cards.clone();
 
     if let Err(err) = pay_total_cost_branch_without_execution_context(game, cost, cost_ctx) {
+        // Replay will restore the action checkpoint before applying the answer.
+        // Keep the completed prefix visible while an interactive mana cost waits.
+        if cost_ctx.interactive_mana_exclusions.is_some()
+            && cost_ctx.decision_maker.awaiting_choice()
+        {
+            return Err(err);
+        }
         *game = checkpoint;
         cost_ctx.x_value = x_checkpoint;
         cost_ctx.tagged_objects = tags_checkpoint;
@@ -2942,6 +2973,11 @@ fn pay_total_cost_branch_without_execution_context(
                 }
 
                 pay_component_without_execution_context(game, &costs[idx], cost_ctx)?;
+                if cost_ctx.interactive_mana_exclusions.is_some()
+                    && cost_ctx.decision_maker.awaiting_choice()
+                {
+                    return Ok(());
+                }
                 idx += 1;
             }
             Ok(())
@@ -3393,6 +3429,16 @@ fn pay_component_without_execution_context(
             mana_cost,
             cost_ctx.reason,
         );
+        if let Some(exclusions) = cost_ctx.interactive_mana_exclusions.clone() {
+            return crate::mana_payment::pay_activation_mana_interactively(
+                game,
+                cost_ctx.payer,
+                cost_ctx.source,
+                adjusted_cost,
+                exclusions,
+                cost_ctx.decision_maker,
+            );
+        }
         if game.try_pay_mana_cost_with_reason(
             cost_ctx.payer,
             Some(cost_ctx.source),
@@ -3412,6 +3458,16 @@ fn pay_component_without_execution_context(
                 &static_base,
                 cost_ctx.reason,
             );
+            if let Some(exclusions) = cost_ctx.interactive_mana_exclusions.clone() {
+                return crate::mana_payment::pay_activation_mana_interactively(
+                    game,
+                    cost_ctx.payer,
+                    cost_ctx.source,
+                    adjusted_cost,
+                    exclusions,
+                    cost_ctx.decision_maker,
+                );
+            }
             if game.try_pay_mana_cost_with_reason(
                 cost_ctx.payer,
                 Some(cost_ctx.source),

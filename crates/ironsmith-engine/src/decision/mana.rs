@@ -6,6 +6,8 @@ use crate::filter::{
 use crate::types::CardType;
 
 mod mechanics;
+mod resumable;
+pub use resumable::ManaAnalysisSession;
 
 pub use mechanics::*;
 
@@ -4835,8 +4837,8 @@ pub fn compute_potential_mana(game: &GameState, player: PlayerId) -> crate::play
     compute_potential_mana_with_view(game, player, &view)
 }
 
-#[derive(Clone)]
-struct AvailableManaSource {
+#[derive(Debug, Clone)]
+pub(crate) struct AvailableManaSource {
     source_id: ObjectId,
     outputs: Vec<Vec<ManaSymbol>>,
     from_snow_source: bool,
@@ -4922,38 +4924,28 @@ pub(crate) fn can_pay_mana_cost_with_available_sources(
 
     let sources = available_mana_sources_for_payment(game, player, view);
     let snow_pool = snow_mana_pool(game, player, source, reason);
-    if sources.len() > 128 {
-        return can_pay_expanded_pips_large_source_count(
-            game,
-            player,
-            &pips,
-            0,
-            player_obj.mana_pool.clone(),
-            snow_pool,
-            &sources,
-            &mut vec![false; sources.len()],
-            0,
-            max_life_payment,
-            mana_spend_policy,
-            source,
-        );
-    }
-
-    let mut failed_states = std::collections::HashSet::new();
-    can_pay_expanded_pips(
-        game,
-        player,
+    let source_policies = sources
+        .iter()
+        .map(|mana_source| {
+            let mut policy = mana_spend_policy.clone();
+            if game.can_spend_mana_as_any_color_from_mana_source(
+                player,
+                source,
+                mana_source.source_id,
+            ) {
+                policy.allow_mode(ironsmith_core::value_model::ManaSpendMode::AnyColor);
+            }
+            policy
+        })
+        .collect::<Vec<_>>();
+    resumable::solve(
         &pips,
-        0,
         player_obj.mana_pool.clone(),
         snow_pool,
         &sources,
-        0,
-        0,
         max_life_payment,
         mana_spend_policy,
-        source,
-        &mut failed_states,
+        &source_policies,
     )
 }
 
@@ -5027,8 +5019,11 @@ fn available_mana_sources_for_payment(
     game: &GameState,
     player: PlayerId,
     view: &DerivedGameView<'_>,
-) -> Vec<AvailableManaSource> {
+) -> Rc<Vec<AvailableManaSource>> {
     use crate::ability::AbilityKind;
+    if let Some(cached) = view.available_payment_sources.borrow().get(&player) {
+        return Rc::clone(cached);
+    }
 
     let mut sources = Vec::new();
     let analysis = view.simple_battlefield_mana_analysis(player);
@@ -5080,6 +5075,10 @@ fn available_mana_sources_for_payment(
         }
     }
 
+    let sources = Rc::new(sources);
+    view.available_payment_sources
+        .borrow_mut()
+        .insert(player, Rc::clone(&sources));
     sources
 }
 
@@ -5283,6 +5282,7 @@ fn combine_mana_output_options(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[cfg(test)]
 fn can_pay_expanded_pips(
     game: &GameState,
     player: PlayerId,
@@ -5408,6 +5408,7 @@ fn can_pay_expanded_pips(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[cfg(test)]
 fn can_pay_expanded_pips_large_source_count(
     game: &GameState,
     player: PlayerId,

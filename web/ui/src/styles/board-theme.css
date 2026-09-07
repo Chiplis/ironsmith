@@ -2178,7 +2178,7 @@ textarea,
 .mana-plan-strip-source-scroller {
   display: flex;
   width: 100%;
-  height: 100%;
+  min-height: 100%;
   min-width: 0;
   align-items: center;
   gap: 0.25rem;
@@ -2198,7 +2198,7 @@ textarea,
   flex: 0 1 175px;
   gap: 0.25rem;
   padding: 0.25rem 0.35rem;
-  border: 1px solid color-mix(in srgb, var(--border) 66%, transparent);
+  border: 0;
   background: color-mix(in srgb, var(--muted) 45%, transparent);
   transition: border-color 150ms ease, background 150ms ease, opacity 150ms ease;
 }
@@ -2230,7 +2230,6 @@ textarea,
   line-height: 1.05;
 }
 
-.mana-plan-strip-source-name,
 .mana-plan-strip-source-action {
   display: block;
   overflow: hidden;
@@ -2246,7 +2245,10 @@ textarea,
 }
 
 .mana-plan-strip-source-name {
+  display: block;
   min-width: 0;
+  flex: 1 1 0%;
+  white-space: nowrap;
   font-size: 0.72rem;
   font-weight: 800;
   line-height: 1.1;
@@ -2422,7 +2424,7 @@ textarea,
 .mana-plan-source {
   min-width: 0;
   gap: 0.5rem;
-  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border: 0;
   background: color-mix(in srgb, var(--muted) 52%, transparent);
   padding: 0.42rem 0.5rem;
   transition: border-color 150ms ease, background 150ms ease, opacity 150ms ease;

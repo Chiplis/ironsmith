@@ -13,9 +13,9 @@ test('embedded art borders join the title and P/T stays at the lower right', asy
     const card = { name: 'Ornithopter', image_uris: {art_crop:image, normal:image.replace('/art_crop/', '/normal/')}, flavor_text:'An ingenious little machine.' };
     await page.route('**/cards/ornithopter.json', r => r.fulfill({json:{scryfall:card}}));
     await page.route('https://api.scryfall.com/**', r => r.fulfill({json:card}));
-    await page.route('https://cards.scryfall.io/**', r => r.fulfill({contentType:'image/svg+xml', headers:{'Access-Control-Allow-Origin':'*'},body:'<svg xmlns="http://www.w3.org/2000/svg" width="488" height="356"><rect width="488" height="356" fill="#534332"/><rect x="24" y="0" width="440" height="356" fill="#b4d2f0"/></svg>'}));
+    await page.route('https://cards.scryfall.io/**', r => r.fulfill({contentType:'image/svg+xml', headers:{'Access-Control-Allow-Origin':'*'},body:'<svg xmlns="http://www.w3.org/2000/svg" width="488" height="356"><rect width="488" height="356" fill="#534332"/><rect x="12" y="0" width="464" height="354" fill="#c8b59c"/><rect x="19" y="0" width="450" height="348" fill="#b4d2f0"/></svg>'}));
     await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-art-join.html`);
-    await page.locator('[data-art-title-rails="true"]').waitFor();
+    await page.locator('[data-art-enclosure="detected"]').waitFor();
     await page.evaluate(() => document.fonts.ready);
     assert.equal(await page.locator('.interactive-card-frame__zone').count(), 0, 'battlefield badge is hidden');
     const landColors = await page.evaluate(async url => {
@@ -28,7 +28,8 @@ test('embedded art borders join the title and P/T stays at the lower right', asy
     for (const width of [420, 240]) {
       await page.locator('#card-host').evaluate((el,w) => {el.style.width=`${w}px`;el.style.height=`${w*1.65}px`;}, width);
       const backgrounds = await page.locator('.interactive-card-frame__title-row, .interactive-card-frame__type-row').evaluateAll(els => els.map(el => getComputedStyle(el).backgroundImage));
-      assert.match(backgrounds[0], /data:image\/png/);
+      assert.equal(backgrounds[0], 'none', 'integrated title reveals the shared frame material');
+      assert.match(await page.locator('.interactive-card-frame__inner').evaluate(el=>getComputedStyle(el).backgroundImage), /data:image\/png/);
       assert.equal(backgrounds[0], backgrounds[1]);
       const title = await page.locator('.interactive-card-frame__title-row').boundingBox();
       const art = await page.locator('.interactive-card-frame__art').boundingBox();
@@ -38,7 +39,8 @@ test('embedded art borders join the title and P/T stays at the lower right', asy
       assert.ok(stats.x + stats.width <= art.x + art.width);
       assert.ok(stats.y + stats.height <= art.y + art.height);
       assert.equal(await page.locator('.interactive-card-frame__art-stats').textContent(),'0/2');
-      assert.match(await page.locator('.interactive-card-frame__title-row').evaluate(el=>getComputedStyle(el,'::before').backgroundImage),/data:image\/png/);
+      assert.equal(await page.locator('.interactive-card-frame__title-row').evaluate(el=>getComputedStyle(el,'::before').backgroundImage),'none','no independent side-strip overlay');
+      assert.match(await page.locator('.interactive-card-frame__art img').evaluate(el=>getComputedStyle(el).clipPath),/inset/,'only the outside material is trimmed');
     }
     await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-art-join.html?zone=Hand`);
     const zone = page.locator('.interactive-card-frame__art .interactive-card-frame__zone');

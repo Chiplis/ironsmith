@@ -91,7 +91,12 @@ pub fn parse_destroy_creature_type_choice_shape(
         tokens,
         primitives::phrase(&["destroy", "all", "creatures"]).void(),
     )?;
-    inline_choice_range(tail)?;
+    let choice = inline_choice_range(tail)?;
+    if choice.start != 0
+        || !crate::util::trim_edge_punctuation_tokens(&tail[choice.end..]).is_empty()
+    {
+        return None;
+    }
     Some(DestroyCreatureTypeChoiceShape)
 }
 

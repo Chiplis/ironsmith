@@ -709,6 +709,9 @@ export default function RightRail({
             <div className="min-h-0 flex-1 overflow-hidden">
               <HoverArtOverlay
                 objectId={shouldShowRail ? renderedInspectorObjectId : null}
+                selectedStackEntry={String(pinnedObjectId) === String(renderedInspectorObjectId)
+                  ? getVisibleStackObjects(state).find(entry => String(entry.id) === String(pinnedObjectId))
+                  : null}
                 transientPreview={renderedTransientInspectorPreview}
                 transientPreviewIndex={transientInspectorPreviewIndex}
                 transientPreviewCount={transientInspectorPreviewCount}

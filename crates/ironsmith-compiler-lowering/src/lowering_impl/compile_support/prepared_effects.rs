@@ -1500,8 +1500,10 @@ fn materialize_source_sentence_segments(
         };
         merge_compiled_choices(&mut choices, &compiled, sentence_choices);
         if !compiled.is_empty() {
-            let mut segment = crate::resolution::ResolutionSegment::from_effects(compiled);
-            segment.starts_new_source_line = !segments.is_empty();
+            // These boundaries separate sentences within one source line.
+            // Actual paragraph boundaries are assigned by line lowering when
+            // it appends a separately authored line to the spell program.
+            let segment = crate::resolution::ResolutionSegment::from_effects(compiled);
             segments.push(segment);
         }
         start = end;

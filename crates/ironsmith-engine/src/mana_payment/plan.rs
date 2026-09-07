@@ -222,9 +222,11 @@ pub struct ManaPaymentScore {
     pub source_count: u32,
 }
 
-/// A complete, engine-produced proposal for paying a mana cost.
+/// An engine-produced proposal for paying a mana cost, or an unfunded payment window.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ManaPaymentPlan {
+    /// False for a payment window that needs more resources before confirmation.
+    pub payable: bool,
     pub id: u64,
     pub request_hash: u64,
     pub mana_ability_steps: Vec<PlannedManaActivation>,
@@ -259,11 +261,21 @@ pub enum ManaPaymentExecution {
 ///
 /// The client never sends executable activation or spending steps. It may
 /// accept the selected server plan, ask the server to replan with constraints,
-/// or cancel the enclosing cast/activation transaction.
+/// activate a currently legal mana source, or cancel the enclosing transaction.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ManaPaymentResponse {
-    Confirm { plan_id: u64, request_hash: u64 },
-    Replan { preferences: ManaPaymentPreferences },
+    Confirm {
+        plan_id: u64,
+        request_hash: u64,
+    },
+    Replan {
+        preferences: ManaPaymentPreferences,
+    },
+    /// Activate one currently legal source, then return to this payment.
+    Activate {
+        source: ObjectId,
+        ability_index: usize,
+    },
     Cancel,
 }
 

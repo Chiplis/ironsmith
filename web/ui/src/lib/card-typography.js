@@ -8,7 +8,11 @@ export function cardTypography(printing = {}) {
   const type = era === 'retro' ? rules : title;
   const stats = era === 'beleren' ? family('Beleren Small Caps') : era === 'modern' ? family('Matrix Small Caps') : rules;
   const titleWeight = era === 'retro' ? 400 : 700;
-  return { era, title, rules, type, stats, titleWeight, style: {
+  const conventionalFrame = !printing.full_art
+    && printing.border_color !== 'borderless'
+    && !(printing.frame_effects || []).some(effect => ['extendedart', 'showcase', 'borderless'].includes(effect))
+    && !['saga', 'class', 'split', 'flip', 'planar', 'scheme'].includes(printing.layout);
+  return { era, title, rules, type, stats, titleWeight, conventionalFrame, style: {
     '--card-title-font': title, '--card-type-font': type, '--card-rules-font': rules,
     '--card-stats-font': stats, '--card-title-weight': titleWeight,
     '--card-type-weight': titleWeight, '--card-stats-weight': era === 'retro' || era === 'future' ? 400 : 700,

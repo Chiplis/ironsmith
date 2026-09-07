@@ -9,6 +9,11 @@ mod planner;
 
 pub use plan::*;
 pub use planner::{
-    ManaPaymentPlanner, execute_mana_payment_plan, mana_payment_activation_inventory,
+    ManaPaymentAnalysis, ManaPaymentPlanner, execute_mana_payment_plan, mana_payment_activation_inventory,
     mana_payment_source_inventory, plan_first_mana_payment, plan_mana_payment,
+    unfunded_mana_payment_plan,
 };
+
+mod interactive;
+pub use interactive::manual_mana_abilities;
+pub(crate) use interactive::{activate_mana_during_payment, pay_activation_mana_interactively};

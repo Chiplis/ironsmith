@@ -512,6 +512,7 @@ export default function TargetsDecision({
     requirements.map(() => [])
   );
   const gestureSubmitTimerRef = useRef(null);
+  const [autoSubmitTarget, setAutoSubmitTarget] = useState(null);
   const liveTargetSourceId = useMemo(
     () => resolveTargetDecisionSourceId(state, decision),
     [state, decision]
@@ -537,8 +538,8 @@ export default function TargetsDecision({
     (req, idx) => (selectionsByReq[idx] || []).length >= (req.min_targets ?? 1)
   );
 
-  // Can submit: either all done cycling through, or all mins are met
-  const canSubmit = allDone || allMinsMet;
+  // Advancing past a requirement does not satisfy its minimum.
+  const canSubmit = allMinsMet;
   const optionsMaxHeight = useMemo(() => {
     const oracleHeight = Number(inspectorOracleTextHeight);
     if (!Number.isFinite(oracleHeight) || oracleHeight <= 0) return 360;
@@ -551,6 +552,7 @@ export default function TargetsDecision({
     preferredReqIdx = currentReqIdx,
     { toggleExisting = false, strictRequirement = false } = {}
   ) => {
+    setAutoSubmitTarget(null);
     const targetInput = toDispatchTarget(target);
     if (targetInput.kind === "player" && !Number.isFinite(targetInput.player)) return;
     if (targetInput.kind === "object" && !Number.isFinite(targetInput.object)) return;
@@ -653,18 +655,8 @@ export default function TargetsDecision({
         gestureSubmitTimerRef.current = null;
       }
       handleSelectTarget(target, currentReqIdx, { toggleExisting: true });
-      if (
-        event?.detail?.submitIfComplete === true
-        && targetDropCompletesDecision(decision, target)
-      ) {
-        const dispatchTarget = toDispatchTarget(target);
-        gestureSubmitTimerRef.current = setTimeout(() => {
-          gestureSubmitTimerRef.current = null;
-          dispatch(
-            { type: "select_targets", targets: [dispatchTarget] },
-            "Target selected by drag"
-          );
-        }, 180);
+      if (event?.detail?.submitIfComplete === true) {
+        setAutoSubmitTarget(target);
       }
     };
 
@@ -672,7 +664,7 @@ export default function TargetsDecision({
     return () => {
       window.removeEventListener("ironsmith:target-choice", onExternalTargetChoice);
     };
-  }, [canAct, currentReqIdx, decision, dispatch, handleSelectTarget]);
+  }, [canAct, currentReqIdx, handleSelectTarget]);
 
   useEffect(() => () => {
     if (gestureSubmitTimerRef.current) {
@@ -756,6 +748,7 @@ export default function TargetsDecision({
   ]);
 
   const handleRemoveTarget = (reqIdx, selIdx) => {
+    setAutoSubmitTarget(null);
     setSelectionsByReq((prev) => {
       const next = prev.map((arr) => [...arr]);
       next[reqIdx] = next[reqIdx].filter((_, i) => i !== selIdx);
@@ -774,11 +767,33 @@ export default function TargetsDecision({
   };
 
   const handleSubmit = useCallback(() => {
+    if (!canAct || !canSubmit) return;
+    clearTimeout(gestureSubmitTimerRef.current);
+    gestureSubmitTimerRef.current = null;
+    setAutoSubmitTarget(null);
     dispatch(
       { type: "select_targets", targets: allSelections.map(toDispatchTarget) },
       "Targets selected"
     );
-  }, [dispatch, allSelections]);
+  }, [dispatch, allSelections, canAct, canSubmit]);
+
+  // Dragging only requests auto-submit. Submit the committed selection through
+  // the same handler as the menu, and cancel if selection or legality changes.
+  useEffect(() => {
+    if (
+      !autoSubmitTarget
+      || !canAct
+      || !canSubmit
+      || !targetDropCompletesDecision(decision, autoSubmitTarget)
+      || allSelections.length !== 1
+      || !targetsMatch(allSelections[0], autoSubmitTarget)
+    ) return undefined;
+    gestureSubmitTimerRef.current = setTimeout(handleSubmit, 180);
+    return () => {
+      clearTimeout(gestureSubmitTimerRef.current);
+      gestureSubmitTimerRef.current = null;
+    };
+  }, [autoSubmitTarget, canAct, canSubmit, decision, allSelections, handleSubmit]);
 
   useEffect(() => {
     if (!onSubmitActionChange) return undefined;

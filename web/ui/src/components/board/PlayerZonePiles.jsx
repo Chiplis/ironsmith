@@ -19,6 +19,23 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds }) {
   const castHover = useCastTargetHover();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef(null);
+  const menuRef = useRef(null);
+  const closeTimerRef = useRef(null);
+  // Dismissing the overlay exposes the trigger under the same stationary pointer.
+  const dismissedRef = useRef(false);
+  const changeOpen = (nextOpen) => {
+    dismissedRef.current = !nextOpen;
+    setOpen(nextOpen);
+  };
+  const keepOpen = () => {
+    clearTimeout(closeTimerRef.current);
+    if (!dismissedRef.current) setOpen(true);
+  };
+  const closeAfterLeave = () => {
+    clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = setTimeout(() => setOpen(false), 120);
+  };
+  useEffect(() => () => clearTimeout(closeTimerRef.current), []);
   const [stripBounds, setStripBounds] = useState({ width: 240, cardWidth: 72 });
   useLayoutEffect(() => {
     if (!open) return undefined;
@@ -79,14 +96,14 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds }) {
       onClick={(event) => {
         if (castIntent && state?.decision?.kind !== "targets") return;
         onCardClick?.(event, card);
-        if (choosingTarget || choosingObject) setOpen(false);
+        if (choosingTarget || choosingObject) changeOpen(false);
       }}>
       <ZoneArt card={card} />
     </button>;
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={changeOpen}>
       <div className="zone-pile-slot">
       <span className="zone-pile-label">{label} <strong>{count}</strong></span>
       <PopoverTrigger asChild>
@@ -94,16 +111,30 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds }) {
           data-zone-owner={String(player.id ?? player.index)}
           data-has-targets={hasLegalCards ? "true" : undefined}
           aria-label={`${player.name}'s ${label}, ${count} cards. Open zone`}
+          onPointerEnter={(event) => { if (event.pointerType !== "touch") keepOpen(); }}
+          onPointerLeave={(event) => {
+            if (!(event.relatedTarget instanceof Node) || !menuRef.current?.contains(event.relatedTarget)) dismissedRef.current = false;
+            closeAfterLeave();
+          }}
           onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => event.stopPropagation()}>
+          onClick={(event) => {
+            event.stopPropagation();
+            if (event.detail > 0 && event.pointerType !== "touch") event.preventDefault();
+          }}>
           <ZoneArt card={topCard} />
         </button>
       </PopoverTrigger>
       </div>
-      <PopoverContent className="zone-pile-menu" side="left" align="start" sideOffset={-(stripBounds.cardWidth + 6)} alignOffset={-6} avoidCollisions={false}
+      <PopoverContent ref={menuRef} className="zone-pile-menu" side="left" align="start" sideOffset={-(stripBounds.cardWidth + 6)} alignOffset={-6} avoidCollisions={false}
         style={{ "--zone-strip-width": `${stripBounds.width}px`, "--zone-strip-card-width": `${stripBounds.cardWidth}px` }}
         aria-label={`${player.name}'s ${label}`}
-        onOpenAutoFocus={(event) => { if (castIntent) event.preventDefault(); }}
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        onCloseAutoFocus={(event) => event.preventDefault()}
+        onPointerEnter={() => clearTimeout(closeTimerRef.current)}
+        onPointerLeave={(event) => {
+          if (open && event.relatedTarget instanceof Node && !triggerRef.current?.contains(event.relatedTarget)) dismissedRef.current = false;
+          closeAfterLeave();
+        }}
         onClick={(event) => event.stopPropagation()}
         onPointerDown={(event) => event.stopPropagation()}>
         <div className="zone-pile-card-list" onWheel={(event) => {

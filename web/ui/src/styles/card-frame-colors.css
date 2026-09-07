@@ -36,31 +36,6 @@
   text-shadow: none;
 }
 
-/* Clone the embedded border into the title sides and surrounding frame. */
-.interactive-card-frame-stage[data-art-title-rails="true"] .interactive-card-frame__title-row {
-  border: 0;
-  padding-left: max(clamp(8px, 2.2cqw, 13px), calc(var(--art-title-left-rail) + 6px));
-  padding-right: max(clamp(8px, 2.2cqw, 13px), calc(var(--art-title-right-rail) + 6px));
-  box-shadow: none;
-}
-.interactive-card-frame-stage[data-art-title-rails="true"] .interactive-card-frame__title-row::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: var(--art-title-rails) center bottom / 100% auto repeat-y;
-  /* Fade out the sampled inner pinline before it becomes a bright title seam. */
-  mask-image: linear-gradient(to right,
-    #000 calc(var(--art-title-left-rail) - 4px),
-    transparent var(--art-title-left-rail),
-    transparent calc(100% - var(--art-title-right-rail)),
-    #000 calc(100% - var(--art-title-right-rail) + 4px));
-  pointer-events: none;
-}
-.interactive-card-frame-stage[data-art-title-rails="true"] .interactive-card-frame__art {
-  margin-top: calc(-1 * clamp(3px, 0.7cqw, 5px));
-  border-top: 0;
-}
-
 /* Both horizontal bars clone the real printing's type-line material. */
 .interactive-card-frame-stage[data-card-colors="sampled"] :is(.interactive-card-frame__title-row, .interactive-card-frame__type-row) {
   background-image: var(--sampled-type-veil, linear-gradient(transparent, transparent)), var(--sampled-type-texture, var(--sampled-type-paper));
@@ -167,4 +142,220 @@
   border-image-width: var(--whole-rules-width);
   border-image-repeat: stretch;
   box-shadow: none;
+}
+
+/* Keep the rules scroller separate from a P/T panel that crosses its edge. */
+.interactive-card-frame__rules-section {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.interactive-card-frame__rules-section[data-printed-stats="true"] {
+  --pt-font: clamp(11px, var(--printed-pt-font-size, 4cqw), 28px);
+  --pt-box-extra: 7px;
+  --pt-half-height: calc((var(--pt-font) + var(--pt-box-extra)) / 2);
+  margin-bottom: max(calc(var(--pt-half-height) + 2px), calc(var(--printed-pt-drop) + var(--pt-half-height) + 2px));
+}
+.interactive-card-frame__rules-section .interactive-card-frame__printed-stats {
+  font-size: var(--pt-font);
+  left: var(--printed-pt-left);
+  right: auto;
+  bottom: calc(-1 * var(--printed-pt-drop));
+  transform: translate(-50%, 50%);
+}
+.interactive-card-frame__rules-section[data-printed-stats="true"] .interactive-card-frame__rules {
+  padding-bottom: max(clamp(8px, 2.35cqw, 14px), calc(var(--pt-half-height) - var(--printed-pt-drop) + 3px));
+}
+/* Subtract the existing flex gap so these are measured edge-to-edge distances. */
+.interactive-card-frame-stage[data-frame-geometry="true"] .interactive-card-frame__art {
+  margin-top: calc(var(--printed-gap-title-art, 0px) - clamp(3px, 0.7cqw, 5px));
+}
+.interactive-card-frame-stage[data-frame-geometry="true"] .interactive-card-frame__type-row {
+  margin-top: calc(var(--printed-gap-art-type, 0px) - clamp(3px, 0.7cqw, 5px));
+}
+.interactive-card-frame-stage[data-frame-geometry="true"] .interactive-card-frame__rules-section {
+  margin-top: calc(var(--printed-gap-type-rules, 0px) - clamp(3px, 0.7cqw, 5px));
+}
+
+/* Keep bordered panels separate from the art and rules, even at a zero scan gap. */
+.interactive-card-frame-stage[data-title-panel="panel"] .interactive-card-frame__art {
+  margin-top: calc(max(2px, var(--printed-gap-title-art, clamp(3px, 0.7cqw, 5px))) - clamp(3px, 0.7cqw, 5px));
+}
+.interactive-card-frame-stage[data-type-panel="panel"] .interactive-card-frame__type-row {
+  margin-top: calc(max(2px, var(--printed-gap-art-type, clamp(3px, 0.7cqw, 5px))) - clamp(3px, 0.7cqw, 5px));
+}
+.interactive-card-frame-stage[data-type-panel="panel"] .interactive-card-frame__rules-section {
+  margin-top: calc(max(2px, var(--printed-gap-type-rules, clamp(3px, 0.7cqw, 5px))) - clamp(3px, 0.7cqw, 5px));
+}
+
+.interactive-card-frame__rules-section[data-pt-treatment="text"] {
+  --pt-box-extra: 0px;
+}
+.interactive-card-frame-stage .interactive-card-frame__rules-section[data-pt-treatment="text"] .interactive-card-frame__printed-stats {
+  border: 0;
+  padding: 0;
+  min-width: 0;
+  background: none;
+  box-shadow: none;
+}
+
+/* One rounded bevel owns the inner edge. Its contrast bands share the same
+   center of curvature and shade the cloned grain without a second outline. */
+.interactive-card-frame-stage[data-inner-frame-border] .interactive-card-frame__inner {
+  --inner-frame-radius: max(0px, calc(4.9cqw - 3px));
+  border: 0;
+  padding: calc(clamp(6px, 1.6cqw, 10px) + 1px);
+  border-radius: var(--inner-frame-radius) !important;
+  box-shadow: none;
+}
+.interactive-card-frame__bevel {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+/* Integrated sections reveal the same underlying material, with one texture
+   origin and scale. No independently shaded side-strip rectangles remain. */
+.interactive-card-frame-stage[data-title-panel="integrated"] .interactive-card-frame__title-row,
+.interactive-card-frame-stage[data-type-panel="integrated"] .interactive-card-frame__type-row {
+  background: none;
+  box-shadow: none;
+}
+.interactive-card-frame-stage[data-art-enclosure="detected"] .interactive-card-frame__title-row {
+  padding-left: max(clamp(8px, 2.2cqw, 13px), var(--art-frame-title-left));
+  padding-right: max(clamp(8px, 2.2cqw, 13px), var(--art-frame-title-right));
+}
+/* Trim only frame material outside the detected art bevel. The original art
+   and its pinlines keep their size; the shared surface shows around them. */
+.interactive-card-frame-stage[data-art-enclosure="detected"] .interactive-card-frame__art {
+  background: none;
+  box-shadow: none;
+}
+.interactive-card-frame-stage[data-art-enclosure="detected"] .interactive-card-frame__art img {
+  clip-path: inset(0 var(--art-frame-right) var(--art-frame-bottom) var(--art-frame-left));
+}
+.interactive-card-frame-stage[data-art-enclosure="detected"] .interactive-card-frame__art::before {
+  clip-path: inset(0 var(--art-frame-right) 0 var(--art-frame-left));
+}
+.interactive-card-frame-stage[data-art-enclosure="detected"] .interactive-card-frame__art::after {
+  inset: 0 var(--art-frame-right) var(--art-frame-bottom) var(--art-frame-left);
+  box-shadow:
+    0 0 clamp(2px, .5cqw, 3px) rgba(0, 0, 0, .48),
+    0 clamp(1px, .4cqw, 3px) clamp(3px, .8cqw, 5px) rgba(0, 0, 0, .6);
+}
+
+/* Source rectangles share a single scale. Fit the complete card geometry
+   inside the host, rather than independently stretching each row. */
+.interactive-card-frame-stage[data-card-colors="sampled"] {
+  --card-frame-source-unit: min(calc(100cqw / var(--printed-scan-width)), calc(100cqh / var(--printed-scan-height)));
+  --card-frame-width-unit: calc(var(--card-frame-source-unit) * var(--printed-scan-width) / 100);
+}
+.interactive-card-frame-stage[data-card-colors="sampled"] .interactive-card-frame {
+  position: absolute;
+  width: calc(var(--printed-scan-width) * var(--card-frame-source-unit));
+  height: calc(var(--printed-scan-height) * var(--card-frame-source-unit));
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+.interactive-card-frame-stage[data-box-sizing="measured"] .interactive-card-frame__inner {
+  padding: 0;
+}
+.interactive-card-frame-stage[data-box-sizing="measured"] :is(.interactive-card-frame__title-row, .interactive-card-frame__type-row, .interactive-card-frame__rules-section, .interactive-card-frame__art) {
+  position: absolute;
+  left: calc(var(--box-x) * var(--card-frame-source-unit) - 3px);
+  top: calc(var(--box-y) * var(--card-frame-source-unit) - 3px);
+  width: calc(var(--box-width) * var(--card-frame-source-unit));
+  height: calc(var(--box-height) * var(--card-frame-source-unit));
+  min-height: 0;
+  margin: 0;
+  flex: none;
+}
+.interactive-card-frame-stage[data-box-sizing="measured"] .interactive-card-frame__title-row {
+  --box-x: var(--printed-title-x);
+  --box-y: var(--printed-title-y);
+  --box-width: var(--printed-title-width);
+  --box-height: var(--printed-title-height);
+  padding-block: 0;
+}
+.interactive-card-frame-stage[data-box-sizing="measured"] .interactive-card-frame__type-row {
+  --box-x: var(--printed-type-x);
+  --box-y: var(--printed-type-y);
+  --box-width: var(--printed-type-width);
+  --box-height: var(--printed-type-height);
+  padding-block: 0;
+}
+.interactive-card-frame-stage[data-box-sizing="measured"] .interactive-card-frame__rules-section {
+  --box-x: var(--printed-rules-x);
+  --box-y: var(--printed-rules-y);
+  --box-width: var(--printed-rules-width);
+  --box-height: var(--printed-rules-height);
+}
+.interactive-card-frame-stage[data-box-sizing="measured"] .interactive-card-frame__art {
+  --box-x: var(--printed-art-x);
+  --box-y: var(--printed-art-y);
+  --box-width: var(--printed-art-width);
+  --box-height: var(--printed-art-height);
+}
+.interactive-card-frame-stage[data-box-sizing="measured"] .interactive-card-frame__rules-section {
+  margin-bottom: 0;
+}
+.interactive-card-frame-stage[data-box-sizing="measured"] .interactive-card-frame__art {
+  aspect-ratio: auto;
+}
+/* Game-state annotations occupy the existing footer rather than changing
+   the source rectangles or covering the oracle text. */
+.interactive-card-frame-stage[data-box-sizing="measured"] .interactive-card-frame__badges,
+.interactive-card-frame-stage[data-box-sizing="measured"] .interactive-card-frame__footer {
+  position: absolute;
+  bottom: 3px;
+  left: 6%;
+  max-width: 68%;
+}
+.interactive-card-frame-stage[data-box-sizing="measured"][data-title-panel="integrated"] .interactive-card-frame__title-row {
+  padding-left: var(--art-frame-title-left, 0px);
+  padding-right: var(--art-frame-title-right, 0px);
+}
+.interactive-card-frame-stage[data-box-sizing="measured"][data-type-panel="integrated"] .interactive-card-frame__type-row {
+  padding-inline: 0;
+}
+
+/* Retain the source border without translating the content coordinate system.
+   Only the texture surface and its bevel use the inset interior rectangle. */
+.interactive-card-frame-stage[data-box-sizing="measured"][data-inner-frame-border] .interactive-card-frame {
+  border-radius: var(--frame-outer-radius, calc(4.9 * var(--card-frame-width-unit))) !important;
+  background-color: var(--frame-border-top-color);
+  background-image: linear-gradient(var(--frame-border-left-color), var(--frame-border-left-color)),
+    linear-gradient(var(--frame-border-right-color), var(--frame-border-right-color)),
+    linear-gradient(var(--frame-border-bottom-color), var(--frame-border-bottom-color));
+  background-position: left top, right top, left bottom;
+  background-size: calc(var(--frame-border-x) * var(--card-frame-source-unit)) 100%,
+    calc(var(--frame-border-right) * var(--card-frame-source-unit)) 100%,
+    100% calc(var(--frame-border-bottom) * var(--card-frame-source-unit));
+  background-repeat: no-repeat;
+}
+.interactive-card-frame-stage[data-box-sizing="measured"][data-inner-frame-border] .interactive-card-frame__inner {
+  background: none;
+  border-radius: 0 !important;
+}
+.interactive-card-frame-stage[data-box-sizing="measured"][data-inner-frame-border] .interactive-card-frame__inner::before,
+.interactive-card-frame-stage[data-box-sizing="measured"][data-inner-frame-border] .interactive-card-frame__bevel {
+  position: absolute;
+  inset: auto;
+  left: calc(var(--frame-border-x) * var(--card-frame-source-unit) - 3px);
+  top: calc(var(--frame-border-y) * var(--card-frame-source-unit) - 3px);
+  width: calc(var(--frame-border-width) * var(--card-frame-source-unit));
+  height: calc(var(--frame-border-height) * var(--card-frame-source-unit));
+  border-radius: calc(var(--frame-interior-radius) * var(--card-frame-source-unit)) !important;
+}
+.interactive-card-frame-stage[data-box-sizing="measured"][data-inner-frame-border] .interactive-card-frame__inner::before {
+  content: "";
+  pointer-events: none;
+  background-image: var(--sampled-shell-veil, linear-gradient(transparent, transparent)), var(--sampled-shell-texture, var(--sampled-shell-paper));
+  background-size: 100% 100%, var(--sampled-shell-texture-size, 100% 100%);
 }

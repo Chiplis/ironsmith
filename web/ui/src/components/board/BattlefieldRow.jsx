@@ -1,4 +1,6 @@
 import { useRef, useLayoutEffect, useEffect, useCallback, useMemo, useState } from "react";
+import ManaAbilityPopover from "@/components/overlays/ManaAbilityPopover";
+import { manaPaymentActionMap, manaActivationCommand } from "@/lib/mana-payment-actions";
 import { Undo2 } from "lucide-react";
 import { useHover } from "@/context/HoverContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
@@ -248,7 +250,7 @@ function collectActivatableActionsForCard(card, activatableMap) {
     }
   }
 
-  for (const objectId of objectIds) {
+  for (const objectId of new Set(objectIds)) {
     if (!Number.isFinite(objectId) || !activatableMap.has(objectId)) continue;
     for (const action of activatableMap.get(objectId) || []) {
       const actionIndex = Number(action?.index);
@@ -894,14 +896,46 @@ export default function BattlefieldRow({
   const previousFreezePaperLayoutRef = useRef(false);
   const pendingLayoutSettlePositionsRef = useRef(null);
   const layoutHoldTimersRef = useRef(new Map());
-  const { state, cancelDecision } = useGame();
+  const { state, cancelDecision, dispatch, loading } = useGame();
   const dragState = useDragState();
   const { startDrag, updateDrag, endDrag } = useDragActions();
   const pendingPlacement = usePendingPlacement();
   const placementSlots = usePlacementSlots();
   const { commitPlacementSlot } = usePlacementActions();
-  const { hoverCard, clearHover, hoveredObjectId, hoveredLinkedObjectIds } = useHover();
+  const { hoverCard, clearHover, clearAnchoredCardPreview, hoveredObjectId, hoveredLinkedObjectIds } = useHover();
   const { combatMode, combatModeRef, dragArrow, startDragArrow, updateDragArrow, endDragArrow } = useCombatArrows();
+  const paymentActionMap = useMemo(() => manaPaymentActionMap(state), [state]);
+  const effectiveActivatableMap = state?.decision?.kind === "mana_payment" ? paymentActionMap : activatableMap;
+  const [manaPopover, setManaPopover] = useState(null);
+  const [manaSubmitting, setManaSubmitting] = useState(false);
+  const manaSubmittingRef = useRef(false);
+  const manaCloseTimer = useRef(null);
+  const keepManaPopover = useCallback(() => { clearTimeout(manaCloseTimer.current); }, []);
+  const closeManaPopover = useCallback(() => {
+    clearTimeout(manaCloseTimer.current);
+    setManaPopover(null);
+  }, []);
+  const leaveManaPopover = useCallback(() => {
+    clearTimeout(manaCloseTimer.current);
+    manaCloseTimer.current = setTimeout(() => setManaPopover(null), 180);
+  }, []);
+  useEffect(() => () => clearTimeout(manaCloseTimer.current), []);
+  const showManaPopover = useCallback((event, card) => {
+    const actions = (paymentActionMap.get(Number(card?.id)) || []);
+    if (!actions.length) return false;
+    keepManaPopover();
+    clearHover();
+    clearAnchoredCardPreview();
+    if (actions.length === 1) {
+      setManaPopover(null);
+      return true;
+    }
+    setManaPopover({ card, anchor: event.currentTarget, paymentKey: state.mana_payment.request_hash,
+      keyboard: event.type === "keydown" || (event.type === "click" && event.detail === 0) });
+    return true;
+  }, [paymentActionMap, keepManaPopover, clearHover, clearAnchoredCardPreview, state]);
+  const manaPopoverActions = manaPopover && manaPopover.paymentKey === state?.mana_payment?.request_hash
+    ? (paymentActionMap.get(Number(manaPopover.card?.id)) || []) : [];
   const [ghosts, setGhosts] = useState([]);
   const [layoutHolds, setLayoutHolds] = useState([]);
   const [processedLayoutSnapshotId, setProcessedLayoutSnapshotId] = useState(null);
@@ -2122,7 +2156,30 @@ export default function BattlefieldRow({
     updateDrag,
   ]);
 
+  const activatePaymentMana = useCallback(async (action) => {
+    if (loading || manaSubmittingRef.current) return;
+    manaSubmittingRef.current = true;
+    setManaSubmitting(true);
+    closeManaPopover();
+    clearHover();
+    clearAnchoredCardPreview();
+    try {
+      await dispatch(manaActivationCommand(action), `Activated ${action.source_name}'s mana ability`);
+    } finally {
+      manaSubmittingRef.current = false;
+      setManaSubmitting(false);
+    }
+  }, [loading, closeManaPopover, clearHover, clearAnchoredCardPreview, dispatch]);
+
   const handleCardSelectionClick = useCallback((event, card) => {
+    const manaActions = (paymentActionMap.get(Number(card?.id)) || []);
+    if (manaActions.length) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (manaActions.length === 1) void activatePaymentMana(manaActions[0]);
+      else showManaPopover(event, card);
+      return;
+    }
     const press = mobileCardPressRef.current;
     if (press.suppressCardId === String(card.id)) {
       const fresh = (performance.now() - press.suppressedAt) < MOBILE_LONG_PRESS_SUPPRESS_WINDOW_MS;
@@ -2164,7 +2221,7 @@ export default function BattlefieldRow({
       }
     }
     const isLegalTargetCard = cardObjectIds.some((id) => legalTargetObjectIds.has(id));
-    const cardActions = collectActivatableActionsForCard(card, activatableMap);
+    const cardActions = collectActivatableActionsForCard(card, effectiveActivatableMap);
     const untapLandAction = cardActions.find((action) => action?.kind === "untap_land");
     if (untapLandAction) {
       event.preventDefault();
@@ -2204,7 +2261,10 @@ export default function BattlefieldRow({
 
     onInspect?.(card.id);
   }, [
-    activatableMap,
+    effectiveActivatableMap,
+    showManaPopover,
+    paymentActionMap,
+    activatePaymentMana,
     cancelDecision,
     clearMobileCardPress,
     combatModeRef,
@@ -2277,6 +2337,7 @@ export default function BattlefieldRow({
   }, [displayCardById, handleCardSelectionClick, isMobileBattleSingleRowLayout]);
 
   const handleCardPointerPressStart = useCallback((event, card, isCombatCandidate = false) => {
+    if ((paymentActionMap.get(Number(card?.id)) || []).length) return;
     if (isCombatCandidate) {
       handleCombatPointerDown(event, card);
       return;
@@ -2314,6 +2375,7 @@ export default function BattlefieldRow({
     };
   }, [
     clearMobileCardPress,
+    paymentActionMap,
     handleBattlefieldMovePointerDown,
     handleCombatPointerDown,
     mobileObjectGesturesEnabled,
@@ -2358,6 +2420,11 @@ export default function BattlefieldRow({
         scrollbarGutter: (allowVerticalScroll || useDesktopPortraitBattlefield) ? "stable" : "auto",
       }}
     >
+      {manaPopoverActions.length > 0 && manaPopover.anchor?.isConnected && (
+        <ManaAbilityPopover anchor={manaPopover.anchor} actions={manaPopoverActions} disabled={loading || manaSubmitting} focusOnOpen={manaPopover.keyboard}
+          onClose={closeManaPopover} onEnter={keepManaPopover} onLeave={leaveManaPopover}
+          onAction={activatePaymentMana} />
+      )}
       {placementGridCells.map((cell) => (
         <div
           key={`placement-slot-${cell.key}`}
@@ -2383,7 +2450,7 @@ export default function BattlefieldRow({
           ? paperLayout.gridPositionById.get(String(card.id))
           : null;
         const isLayoutHold = card?.__battlefield_layout_hold === true;
-        const cardActions = collectActivatableActionsForCard(card, activatableMap);
+        const cardActions = collectActivatableActionsForCard(card, effectiveActivatableMap);
         const isActivatable = !isLayoutHold && cardActions.length > 0;
         const cardObjectIds = [Number(card.id)];
         if (Array.isArray(card.member_ids)) {
@@ -2514,8 +2581,10 @@ export default function BattlefieldRow({
             onPointerUp={isLayoutHold ? undefined : handleCardPointerPressEnd}
             onPointerCancel={isLayoutHold ? undefined : handleCardPointerPressEnd}
             onPointerLeave={isLayoutHold ? undefined : handleCardPointerPressEnd}
-            onMouseEnter={isLayoutHold ? undefined : (() => hoverCard(card.id))}
-            onMouseLeave={isLayoutHold ? undefined : clearHover}
+            onMouseEnter={isLayoutHold ? undefined : ((event) => {
+              if (!showManaPopover(event, card)) { closeManaPopover(); hoverCard(card.id); }
+            })}
+            onMouseLeave={isLayoutHold ? undefined : (() => { clearHover(); leaveManaPopover(); })}
             centerOverlay={showsUndoOverlay ? (
               <Button
                 type="button"

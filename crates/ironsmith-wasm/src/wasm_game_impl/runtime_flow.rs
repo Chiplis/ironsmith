@@ -1234,7 +1234,7 @@ impl WasmGame {
                     action_ref,
                 },
             ) => {
-                let action = resolve_priority_action(priority, action_index, action_ref.as_ref())
+                let action = resolve_priority_action(&self.game, priority, action_index, action_ref.as_ref())
                     .ok_or_else(|| {
                     if let Some(action_ref) = action_ref.as_ref() {
                         JsValue::from_str(&format!("invalid priority action ref: {action_ref:?}"))
@@ -1570,7 +1570,7 @@ impl WasmGame {
                     action_ref,
                 },
             ) => {
-                let action = resolve_priority_action(priority, action_index, action_ref.as_ref())
+                let action = resolve_priority_action(&self.game, priority, action_index, action_ref.as_ref())
                     .ok_or_else(|| {
                     if let Some(action_ref) = action_ref.as_ref() {
                         JsValue::from_str(&format!("invalid priority action ref: {action_ref:?}"))
@@ -1987,6 +1987,354 @@ mod live_action_rollback_tests {
             wasm.dispatch_live_priority_response(pending_ctx, command)
                 .expect("authoritative mana-payment plan should confirm");
         }
+    }
+
+    fn manual_payment_fixture() -> (WasmGame, ObjectId) {
+        let alice = PlayerId::from_index(0);
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.turn_number = 1;
+        wasm.game.turn.phase = Phase::FirstMain;
+        wasm.game.turn.step = None;
+        wasm.runner = Some(ironsmith::turn_runner::TurnRunner::from_state_for_sync(
+            ironsmith::turn_runner::TurnState::FirstMainPriority,
+        ));
+        wasm.runner_awaiting_priority = true;
+        wasm.priority_state.restore_priority_tracker_for_sync(0, 2);
+        let mountain = wasm.game.create_object_from_definition(
+            &ironsmith_registry_test::cards::definitions::basic_mountain(),
+            alice,
+            Zone::Battlefield,
+        );
+        (wasm, mountain)
+    }
+
+    fn begin_manual_payment_spell(wasm: &mut WasmGame) -> ObjectId {
+        begin_manual_payment_spell_with_cost(wasm, ManaCost::new().add_generic(1))
+    }
+
+    fn begin_manual_payment_spell_with_cost(wasm: &mut WasmGame, cost: ManaCost) -> ObjectId {
+        let alice = PlayerId::from_index(0);
+        let spell = CardDefinitionBuilder::new(CardId::new(), "Manual Payment Spell")
+            .card_types(vec![CardType::Sorcery])
+            .mana_cost(cost)
+            .build();
+        let spell = wasm
+            .game
+            .create_object_from_definition(&spell, alice, Zone::Hand);
+        let actions = compute_legal_actions(&wasm.game, alice);
+        let action_index = actions
+            .iter()
+            .position(|action| {
+                matches!(action,
+            LegalAction::CastSpell { spell_id, .. } if *spell_id == spell)
+            })
+            .unwrap();
+        wasm.dispatch_live_priority_response(
+            DecisionContext::Priority(PriorityContext::new(alice, actions)),
+            UiCommand::PriorityAction {
+                action_index: Some(action_index),
+                action_ref: None,
+            },
+        )
+        .unwrap();
+        assert!(matches!(
+            wasm.pending_decision,
+            Some(DecisionContext::ManaPayment(_))
+        ));
+        wasm.priority_state.pending_cast.as_ref().unwrap().spell_id
+    }
+
+    fn dispatch_manual_payment_command(wasm: &mut WasmGame, command: UiCommand) {
+        let decision = wasm.pending_decision.take().unwrap();
+        if wasm.pending_live_continuation.is_some() {
+            wasm.dispatch_live_priority_continuation(decision, command)
+                .unwrap();
+        } else {
+            wasm.dispatch_live_priority_response(decision, command)
+                .unwrap();
+        }
+    }
+
+    fn activate_manual_source(wasm: &mut WasmGame, source: ObjectId, ability_index: usize) {
+        assert!(wasm.current_mana_payment_view().unwrap().mana_abilities.iter().any(
+            |ability| ability.source_id == source.0.to_string() && ability.ability_index == ability_index
+        ), "requested mana ability must be offered");
+        dispatch_manual_payment_command(
+            wasm,
+            UiCommand::ManaPayment {
+                response: ManaPaymentCommand::Activate {
+                    source_id: source.0.to_string(),
+                    ability_index,
+                },
+            },
+        );
+    }
+
+    #[test]
+    fn manual_mana_payment_taps_source_and_returns_to_unpaid_spell() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut wasm, mountain) = manual_payment_fixture();
+        let spell = begin_manual_payment_spell(&mut wasm);
+        assert!(
+            wasm.current_mana_payment_view()
+                .unwrap()
+                .mana_abilities
+                .iter()
+                .any(|ability| ability.source_id == mountain.0.to_string())
+        );
+        activate_manual_source(&mut wasm, mountain, 0);
+        assert!(wasm.game.is_tapped(mountain));
+        assert_eq!(
+            wasm.game
+                .player(PlayerId::from_index(0))
+                .unwrap()
+                .mana_pool
+                .red,
+            1
+        );
+        assert_eq!(
+            wasm.priority_state.pending_cast.as_ref().unwrap().spell_id,
+            spell
+        );
+        assert!(matches!(
+            wasm.pending_decision,
+            Some(DecisionContext::ManaPayment(_))
+        ));
+        assert!(
+            wasm.current_mana_payment_view()
+                .unwrap()
+                .mana_abilities
+                .is_empty()
+        );
+        confirm_pending_mana_payment(&mut wasm);
+        assert!(wasm.priority_state.pending_cast.is_none());
+        assert_eq!(
+            wasm.game
+                .player(PlayerId::from_index(0))
+                .unwrap()
+                .mana_pool
+                .red,
+            0
+        );
+    }
+
+    #[test]
+    fn manual_mana_payment_nested_mana_cost_resumes_parent_and_pays_once() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut wasm, mountain) = manual_payment_fixture();
+        let alice = PlayerId::from_index(0);
+        let filter = CardDefinitionBuilder::new(CardId::new(), "Manual Mana Filter")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(ironsmith::ability::Ability::mana(
+                ironsmith::cost::TotalCost::from_costs(vec![
+                    ironsmith::costs::Cost::mana(ManaCost::new().add_generic(1)),
+                    ironsmith::costs::Cost::tap(),
+                    ironsmith::costs::Cost::life(1),
+                ]),
+                vec![ManaSymbol::Colorless, ManaSymbol::Colorless],
+            ))
+            .build();
+        let filter = wasm
+            .game
+            .create_object_from_definition(&filter, alice, Zone::Battlefield);
+        let spell = begin_manual_payment_spell(&mut wasm);
+        activate_manual_source(&mut wasm, filter, 0);
+        assert_eq!(
+            wasm.current_mana_payment_view().unwrap().source_name,
+            "Manual Mana Filter"
+        );
+        assert!(wasm.priority_state.pending_cast.is_some());
+        assert!(
+            wasm.current_mana_payment_view()
+                .unwrap()
+                .mana_abilities
+                .iter()
+                .all(|ability| ability.source_id != filter.0.to_string())
+        );
+        activate_manual_source(&mut wasm, mountain, 0);
+        assert!(
+            wasm.game.is_tapped(mountain),
+            "nested taps should be visible before confirming the filter's cost"
+        );
+        assert_eq!(wasm.game.player(alice).unwrap().mana_pool.red, 1);
+        assert_eq!(
+            wasm.current_mana_payment_view().unwrap().source_name,
+            "Manual Mana Filter"
+        );
+        confirm_pending_mana_payment(&mut wasm);
+        assert_eq!(
+            wasm.current_mana_payment_view().unwrap().source_name,
+            "Manual Payment Spell"
+        );
+        assert_eq!(
+            wasm.priority_state.pending_cast.as_ref().unwrap().spell_id,
+            spell
+        );
+        let player = wasm.game.player(alice).unwrap();
+        assert_eq!(player.life, 19);
+        assert_eq!(player.mana_pool.red, 0);
+        assert_eq!(player.mana_pool.colorless, 2);
+        assert!(wasm.game.is_tapped(filter));
+        assert!(wasm.game.is_tapped(mountain));
+        confirm_pending_mana_payment(&mut wasm);
+        assert_eq!(wasm.game.player(alice).unwrap().mana_pool.colorless, 1);
+    }
+
+    #[test]
+    fn manual_mana_payment_cancel_nested_cost_keeps_original_payment() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut wasm, mountain) = manual_payment_fixture();
+        let alice = PlayerId::from_index(0);
+        let filter = CardDefinitionBuilder::new(CardId::new(), "Cancel Mana Filter")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(ironsmith::ability::Ability::mana(
+                ironsmith::cost::TotalCost::mana(ManaCost::new().add_generic(1)),
+                vec![ManaSymbol::Colorless, ManaSymbol::Colorless],
+            ))
+            .build();
+        let filter = wasm
+            .game
+            .create_object_from_definition(&filter, alice, Zone::Battlefield);
+        let spell = begin_manual_payment_spell(&mut wasm);
+        activate_manual_source(&mut wasm, filter, 0);
+        dispatch_manual_payment_command(
+            &mut wasm,
+            UiCommand::ManaPayment {
+                response: ManaPaymentCommand::Cancel,
+            },
+        );
+        assert_eq!(
+            wasm.current_mana_payment_view().unwrap().source_name,
+            "Manual Payment Spell"
+        );
+        assert_eq!(
+            wasm.priority_state.pending_cast.as_ref().unwrap().spell_id,
+            spell
+        );
+        assert!(!wasm.game.is_tapped(filter));
+        assert!(!wasm.game.is_tapped(mountain));
+    }
+
+    #[test]
+    fn manual_mana_payment_sacrifice_choice_returns_to_payment_without_double_costs() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut wasm, _) = manual_payment_fixture();
+        let alice = PlayerId::from_index(0);
+        let tower = wasm.game.create_object_from_definition(
+            &ironsmith_registry_test::cards::definitions::phyrexian_tower(),
+            alice,
+            Zone::Battlefield,
+        );
+        let creature = CardDefinitionBuilder::new(CardId::new(), "Mana Sacrifice Candidate")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(ironsmith::card::PowerToughness::fixed(1, 1))
+            .build();
+        let first = wasm
+            .game
+            .create_object_from_definition(&creature, alice, Zone::Battlefield);
+        let second = wasm
+            .game
+            .create_object_from_definition(&creature, alice, Zone::Battlefield);
+        let spell = begin_manual_payment_spell(&mut wasm);
+        activate_manual_source(&mut wasm, tower, 1);
+        assert!(
+            wasm.current_mana_payment_view().is_none(),
+            "the sacrifice decision replaces payment"
+        );
+        assert!(matches!(
+            wasm.pending_decision,
+            Some(DecisionContext::SelectObjects(_))
+        ));
+        dispatch_manual_payment_command(
+            &mut wasm,
+            UiCommand::SelectObjects {
+                object_ids: vec![second.0],
+                object_stable_ids: Vec::new(),
+                object_hidden_refs: Vec::new(),
+            },
+        );
+        assert_eq!(
+            wasm.current_mana_payment_view().unwrap().source_name,
+            "Manual Payment Spell"
+        );
+        assert_eq!(
+            wasm.priority_state.pending_cast.as_ref().unwrap().spell_id,
+            spell
+        );
+        assert!(wasm.game.battlefield.contains(&first));
+        assert!(!wasm.game.battlefield.contains(&second));
+        assert_eq!(wasm.game.player(alice).unwrap().mana_pool.black, 2);
+        assert!(wasm.game.is_tapped(tower));
+        assert!(
+            wasm.priority_state
+                .pending_cast
+                .as_ref()
+                .unwrap()
+                .undo_locked_by_mana
+        );
+    }
+
+    #[test]
+    fn manual_mana_payment_excludes_abilities_that_do_not_cover_remaining_pips() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut wasm, mountain) = manual_payment_fixture();
+        let alice = PlayerId::from_index(0);
+        let filter = CardDefinitionBuilder::new(CardId::new(), "Wrong Color Filter")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(ironsmith::ability::Ability::mana(
+                ironsmith::cost::TotalCost::mana(ManaCost::from_symbols(vec![ManaSymbol::Red])),
+                vec![ManaSymbol::Colorless],
+            ))
+            .build();
+        let filter = wasm
+            .game
+            .create_object_from_definition(&filter, alice, Zone::Battlefield);
+        let spell = begin_manual_payment_spell_with_cost(
+            &mut wasm,
+            ManaCost::from_symbols(vec![ManaSymbol::Red]),
+        );
+        let payment = wasm.current_mana_payment_view().unwrap();
+        assert!(payment.mana_abilities.iter().all(|a| a.source_id != filter.0.to_string()));
+        assert!(payment.mana_abilities.iter().any(|a| a.source_id == mountain.0.to_string()));
+        activate_manual_source(&mut wasm, mountain, 0);
+        assert!(wasm.current_mana_payment_view().unwrap().mana_abilities.is_empty());
+        assert_eq!(wasm.priority_state.pending_cast.as_ref().unwrap().spell_id, spell);
+        confirm_pending_mana_payment(&mut wasm);
+        assert!(wasm.priority_state.pending_cast.is_none());
+    }
+
+    #[test]
+    fn manual_mana_payment_filters_each_ability_and_rechecks_pool_coverage() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut wasm, mountain) = manual_payment_fixture();
+        let alice = PlayerId::from_index(0);
+        let dual = CardDefinitionBuilder::new(CardId::new(), "Two Mana Abilities")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(ironsmith::ability::Ability::mana(
+                ironsmith::cost::TotalCost::from_costs(vec![ironsmith::costs::Cost::tap()]),
+                vec![ManaSymbol::Red],
+            ))
+            .with_ability(ironsmith::ability::Ability::mana(
+                ironsmith::cost::TotalCost::from_costs(vec![ironsmith::costs::Cost::tap()]),
+                vec![ManaSymbol::Green],
+            ))
+            .build();
+        let dual = wasm.game.create_object_from_definition(&dual, alice, Zone::Battlefield);
+        begin_manual_payment_spell_with_cost(&mut wasm,
+            ManaCost::from_symbols(vec![ManaSymbol::Red, ManaSymbol::Green]));
+        assert_eq!(wasm.current_mana_payment_view().unwrap().mana_abilities.len(), 3);
+        activate_manual_source(&mut wasm, mountain, 0);
+        let abilities = wasm.current_mana_payment_view().unwrap().mana_abilities;
+        assert_eq!(abilities.len(), 1);
+        assert_eq!(abilities[0].source_id, dual.0.to_string());
+        assert_eq!(abilities[0].ability_index, 1);
+        activate_manual_source(&mut wasm, dual, 1);
+        assert!(wasm.current_mana_payment_view().unwrap().mana_abilities.is_empty());
+        confirm_pending_mana_payment(&mut wasm);
+        assert!(wasm.priority_state.pending_cast.is_none());
     }
 
     fn dispatch_pass_priority(wasm: &mut WasmGame) {

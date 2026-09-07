@@ -234,9 +234,56 @@ pub fn advance_priority_with_dm(
     };
     perf.priority_player = Some(priority_player.index() as u8);
 
-    // A CR 805 priority decision exposes actions for every member of the team.
-    // The primary player remains the prompt recipient/fallback decision maker.
-    let legal_actions_started_at = PerfTimer::start();
+    let analysis_started_at = PerfTimer::start();
+    let ctx = priority_context(game, priority_player);
+    perf.compute_legal_actions_ms = analysis_started_at.elapsed_ms();
+    perf.action_count = ctx.actions.len();
+    if ctx.analysis_complete {
+        perf.compute_legal_actions_detail = crate::decision::last_compute_legal_actions_perf();
+    }
+    perf.total_ms = total_started_at.elapsed_ms();
+    perf.result_kind = "needs_priority_decision".to_string();
+    store_priority_advance_perf(perf);
+    Ok(GameProgress::NeedsDecisionCtx(
+        crate::decisions::context::DecisionContext::Priority(ctx),
+    ))
+}
+
+thread_local! {
+    static DEFER_PRIORITY_ANALYSIS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Presentation policy for this engine thread; never changes action validation.
+/// WASM owns one engine thread. Native callers default to synchronous decisions.
+pub fn set_priority_analysis_deferred(deferred: bool) {
+    DEFER_PRIORITY_ANALYSIS.with(|value| value.set(deferred));
+}
+
+pub fn priority_analysis_deferred() -> bool {
+    DEFER_PRIORITY_ANALYSIS.with(|value| value.get())
+}
+
+pub fn priority_context(
+    game: &GameState,
+    player: PlayerId,
+) -> crate::decisions::context::PriorityContext {
+    if priority_analysis_deferred() {
+        let mut ctx = crate::decisions::context::PriorityContext::new(
+            player,
+            vec![LegalAction::PassPriority],
+        );
+        ctx.analysis_complete = false;
+        ctx
+    } else {
+        analyze_priority_context(game, player)
+    }
+}
+
+/// Exact enumeration, also used by background analysis against an owned snapshot.
+pub fn analyze_priority_context(
+    game: &GameState,
+    priority_player: PlayerId,
+) -> crate::decisions::context::PriorityContext {
     let priority_players = game.priority_team_players();
     let mut actions = Vec::new();
     for player in priority_players.iter().copied() {
@@ -246,9 +293,6 @@ pub fn advance_priority_with_dm(
             }
         }
     }
-    perf.compute_legal_actions_ms = legal_actions_started_at.elapsed_ms();
-    perf.compute_legal_actions_detail = crate::decision::last_compute_legal_actions_perf();
-    let commander_actions_started_at = PerfTimer::start();
     let mut commander_actions = Vec::new();
     for player in priority_players {
         for action in compute_commander_actions(game, player) {
@@ -257,19 +301,9 @@ pub fn advance_priority_with_dm(
             }
         }
     }
-    perf.compute_commander_actions_ms = commander_actions_started_at.elapsed_ms();
-    perf.action_count = actions.len();
-    perf.commander_action_count = commander_actions.len();
     actions.extend(commander_actions);
 
-    // Return decision for the player using the new context-based system
-    let ctx = crate::decisions::context::PriorityContext::new(priority_player, actions);
-    perf.total_ms = total_started_at.elapsed_ms();
-    perf.result_kind = "needs_priority_decision".to_string();
-    store_priority_advance_perf(perf);
-    Ok(GameProgress::NeedsDecisionCtx(
-        crate::decisions::context::DecisionContext::Priority(ctx),
-    ))
+    crate::decisions::context::PriorityContext::new(priority_player, actions)
 }
 
 pub(super) fn priority_actor_for_action(
@@ -280,8 +314,12 @@ pub(super) fn priority_actor_for_action(
         return game.turn.priority_player;
     }
     game.priority_team_players().into_iter().find(|player| {
-        compute_legal_actions(game, *player).contains(action)
-            || compute_commander_actions(game, *player).contains(action)
+        crate::decision::compute_actions_for_source(
+            game,
+            *player,
+            crate::decision::legal_action_source(action),
+        )
+        .contains(action)
     })
 }
 
@@ -297,4 +335,33 @@ pub fn apply_priority_response(
 ) -> Result<GameProgress, GameLoopError> {
     let mut auto_dm = crate::decision::CliDecisionMaker;
     apply_priority_response_with_dm(game, trigger_queue, state, response, &mut auto_dm)
+}
+
+#[cfg(test)]
+mod deferred_analysis_tests {
+    use super::*;
+
+    #[test]
+    fn pending_priority_exposes_pass_without_auto_passing_or_changing_the_game() {
+        struct Restore(bool);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                set_priority_analysis_deferred(self.0);
+            }
+        }
+        let _restore = Restore(priority_analysis_deferred());
+        set_priority_analysis_deferred(true);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        game.turn.priority_player = Some(alice);
+        let ctx = priority_context(&game, alice);
+        assert!(!ctx.analysis_complete);
+        assert_eq!(ctx.actions, vec![LegalAction::PassPriority]);
+        assert!(!super::super::priority_mana::should_auto_pass_ctx(
+            &crate::decisions::context::DecisionContext::Priority(ctx)
+        ));
+        let full = analyze_priority_context(&game, alice);
+        assert!(full.analysis_complete);
+        assert_eq!(game.turn.priority_player, Some(alice));
+    }
 }

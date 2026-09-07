@@ -412,6 +412,22 @@ pub(super) fn prompt_pending_mana_ability_payment(
     } else {
         crate::mana_payment::plan_first_mana_payment(game, &request)
     };
+    let plan_result = plan_result.or_else(|failure| {
+        if refining_existing_plan
+            && matches!(
+                failure,
+                crate::mana_payment::ManaPaymentFailure::NoLegalPlan
+                    | crate::mana_payment::ManaPaymentFailure::SearchLimitReached
+                    | crate::mana_payment::ManaPaymentFailure::ConflictingPreferences
+            )
+        {
+            Ok(crate::mana_payment::unfunded_mana_payment_plan(
+                game, &request,
+            ))
+        } else {
+            Err(failure)
+        }
+    });
     let plan = plan_result.map_err(|failure| {
         state.rollback_action(game);
         GameLoopError::ActionCancelled(format!(
@@ -635,6 +651,77 @@ pub(super) fn apply_mana_payment_plan_response(
 ) -> Result<GameProgress, GameLoopError> {
     use crate::mana_payment::ManaPaymentResponse;
 
+    if let ManaPaymentResponse::Activate {
+        source,
+        ability_index,
+    } = response
+    {
+        let payment = state
+            .pending_mana_ability
+            .as_ref()
+            .and_then(|pending| pending.pending_mana_payment.as_ref())
+            .or_else(|| {
+                state
+                    .pending_activation
+                    .as_ref()
+                    .and_then(|pending| pending.pending_mana_payment.as_ref())
+            })
+            .or_else(|| {
+                state
+                    .pending_cast
+                    .as_ref()
+                    .and_then(|pending| pending.pending_mana_payment.as_ref())
+            })
+            .ok_or_else(|| GameLoopError::InvalidState("no mana payment is active".to_string()))?;
+        let request = payment.request.clone();
+        let undo_safe = mana_ability_is_undo_safe(game, *source, *ability_index);
+        let activated = crate::mana_payment::activate_mana_during_payment(
+            game,
+            &request,
+            *source,
+            *ability_index,
+            decision_maker,
+        )
+        .map_err(|error| {
+            GameLoopError::InvalidState(format!("illegal mana activation: {error}"))
+        })?;
+        if decision_maker.awaiting_choice() {
+            return Ok(GameProgress::Continue);
+        }
+        if activated {
+            if let Some(pending) = state.pending_mana_ability.as_mut() {
+                pending.undo_locked_by_mana |= !undo_safe;
+            }
+            if let Some(pending) = state.pending_activation.as_mut() {
+                pending.undo_locked_by_mana |= !undo_safe;
+            }
+            if let Some(pending) = state.pending_cast.as_mut() {
+                pending.undo_locked_by_mana |= !undo_safe;
+            }
+            drain_pending_trigger_events(game, trigger_queue);
+            resolve_triggered_mana_abilities_with_dm(game, trigger_queue, decision_maker)?;
+            if decision_maker.awaiting_choice() {
+                return Ok(GameProgress::Continue);
+            }
+        }
+        // A manual activation changes the pool and can consume previously planned sources.
+        // Keep soft preferences, but remove satisfied hard requirements before replanning.
+        let mut preferences = request.preferences;
+        if activated {
+            preferences.required_sources.retain(|id| id != source);
+            preferences
+                .required_activations
+                .retain(|activation| activation.source != *source);
+        }
+        return apply_mana_payment_plan_response(
+            game,
+            trigger_queue,
+            state,
+            &ManaPaymentResponse::Replan { preferences },
+            decision_maker,
+        );
+    }
+
     if matches!(response, ManaPaymentResponse::Cancel) {
         state.rollback_action(game);
         return advance_priority_with_dm(game, trigger_queue, decision_maker);
@@ -664,7 +751,9 @@ pub(super) fn apply_mana_payment_plan_response(
             ManaPaymentResponse::Confirm {
                 plan_id,
                 request_hash,
-            } if *plan_id == payment.plan.id && *request_hash == payment.plan.request_hash => {}
+            } if payment.plan.payable
+                && *plan_id == payment.plan.id
+                && *request_hash == payment.plan.request_hash => {}
             ManaPaymentResponse::Confirm { .. } => {
                 pending.pending_mana_payment = Some(payment);
                 state.pending_mana_ability = Some(pending);
@@ -672,7 +761,7 @@ pub(super) fn apply_mana_payment_plan_response(
                     "stale or client-authored mana-ability payment plan".to_string(),
                 ));
             }
-            ManaPaymentResponse::Cancel => unreachable!(),
+            ManaPaymentResponse::Cancel | ManaPaymentResponse::Activate { .. } => unreachable!(),
         }
         payment.plan = match revalidate_authoritative_payment_plan(game, &payment, "mana-ability") {
             Ok(plan) => plan,
@@ -750,7 +839,9 @@ pub(super) fn apply_mana_payment_plan_response(
             ManaPaymentResponse::Confirm {
                 plan_id,
                 request_hash,
-            } if *plan_id == payment.plan.id && *request_hash == payment.plan.request_hash => {}
+            } if payment.plan.payable
+                && *plan_id == payment.plan.id
+                && *request_hash == payment.plan.request_hash => {}
             ManaPaymentResponse::Confirm { .. } => {
                 pending.pending_mana_payment = Some(payment);
                 state.pending_activation = Some(pending);
@@ -758,7 +849,7 @@ pub(super) fn apply_mana_payment_plan_response(
                     "stale or client-authored activation payment plan".to_string(),
                 ));
             }
-            ManaPaymentResponse::Cancel => unreachable!(),
+            ManaPaymentResponse::Cancel | ManaPaymentResponse::Activate { .. } => unreachable!(),
         }
 
         payment.plan = match revalidate_authoritative_payment_plan(game, &payment, "activation") {
@@ -822,7 +913,9 @@ pub(super) fn apply_mana_payment_plan_response(
             ManaPaymentResponse::Confirm {
                 plan_id,
                 request_hash,
-            } if *plan_id == payment.plan.id && *request_hash == payment.plan.request_hash => {}
+            } if payment.plan.payable
+                && *plan_id == payment.plan.id
+                && *request_hash == payment.plan.request_hash => {}
             ManaPaymentResponse::Confirm { .. } => {
                 pending.pending_mana_payment = Some(payment);
                 state.pending_cast = Some(pending);
@@ -830,7 +923,7 @@ pub(super) fn apply_mana_payment_plan_response(
                     "stale or client-authored Assist payment plan".to_string(),
                 ));
             }
-            ManaPaymentResponse::Cancel => unreachable!(),
+            ManaPaymentResponse::Cancel | ManaPaymentResponse::Activate { .. } => unreachable!(),
         }
         payment.plan = match revalidate_authoritative_payment_plan(game, &payment, "Assist") {
             Ok(plan) => plan,
@@ -915,7 +1008,9 @@ pub(super) fn apply_mana_payment_plan_response(
         ManaPaymentResponse::Confirm {
             plan_id,
             request_hash,
-        } if *plan_id == payment.plan.id && *request_hash == payment.plan.request_hash => {}
+        } if payment.plan.payable
+            && *plan_id == payment.plan.id
+            && *request_hash == payment.plan.request_hash => {}
         ManaPaymentResponse::Confirm { .. } => {
             pending.pending_mana_payment = Some(payment);
             state.pending_cast = Some(pending);
@@ -923,7 +1018,7 @@ pub(super) fn apply_mana_payment_plan_response(
                 "stale or client-authored spell payment plan".to_string(),
             ));
         }
-        ManaPaymentResponse::Cancel => unreachable!(),
+        ManaPaymentResponse::Cancel | ManaPaymentResponse::Activate { .. } => unreachable!(),
     }
 
     payment.plan = match revalidate_authoritative_payment_plan(game, &payment, "spell") {
@@ -3704,15 +3799,7 @@ pub(super) fn apply_priority_action_with_dm(
     match action {
         LegalAction::PassPriority => {
             let total_started_at = PerfTimer::start();
-            let forced_pass = game.turn.priority_player.is_some_and(|player| {
-                let ordinary_actions = compute_legal_actions(game, player);
-                let commander_actions = compute_commander_actions(game, player);
-                ordinary_actions
-                    .iter()
-                    .chain(commander_actions.iter())
-                    .all(|action| matches!(action, LegalAction::PassPriority))
-            });
-            state.mandatory_loop.observe_priority_window(forced_pass);
+            state.mandatory_loop.observe_priority_snapshot(game);
             let pass_started_at = PerfTimer::start();
             let result = pass_priority(game, &mut state.tracker);
             let mut perf = PriorityActionPerfMetrics {
@@ -3811,7 +3898,7 @@ pub(super) fn apply_priority_action_with_dm(
 /// Returns true if this is a Priority decision with only PassPriority available.
 pub(super) fn should_auto_pass_ctx(ctx: &crate::decisions::context::DecisionContext) -> bool {
     if let crate::decisions::context::DecisionContext::Priority(pctx) = ctx {
-        pctx.actions.len() == 1 && matches!(pctx.actions[0], LegalAction::PassPriority)
+        pctx.analysis_complete && pctx.actions.len() == 1 && matches!(pctx.actions[0], LegalAction::PassPriority)
     } else {
         false
     }

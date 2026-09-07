@@ -100,7 +100,51 @@ pub(super) struct StackObjectSnapshot {
     pub(super) ability_kind: Option<String>,
     /// Compiled text of the specific ability effects (for inspector display).
     pub(super) ability_text: Option<String>,
+    /// Full source ability, including its activation cost or trigger condition.
+    pub(super) source_ability_text: Option<String>,
     pub(super) targets: Vec<TargetChoiceView>,
+}
+
+// Resolve identity against the captured abilities first: the source may have
+// transformed, lost abilities, or left play since this entry was created.
+fn stack_source_ability_text(
+    entry: &ironsmith::game_state::StackEntry,
+    source: Option<&ironsmith::object::Object>,
+) -> Option<String> {
+    let abilities = entry
+        .source_snapshot
+        .as_ref()
+        .map(|snapshot| snapshot.abilities.as_slice())
+        .or_else(|| source.map(|object| object.abilities.as_slice()))?;
+    let index = if let Some(identity) = entry.trigger_identity {
+        abilities.iter().position(|ability| {
+            matches!(&ability.kind,
+            ironsmith::ability::AbilityKind::Triggered(triggered)
+                if ironsmith::triggers::compute_trigger_identity(triggered) == identity)
+        })
+    } else {
+        entry.ability_index.filter(|&index| {
+            abilities.get(index).is_some_and(|ability| {
+                matches!(ability.kind, ironsmith::ability::AbilityKind::Activated(_))
+            })
+        })
+    }?;
+    let compiled = entry
+        .source_snapshot
+        .as_ref()
+        .map(|snapshot| snapshot.compiled_card_text.as_str())
+        .or_else(|| source.map(|object| object.compiled_card_text.as_ref()))?;
+    let lines: Vec<_> = compiled
+        .lines()
+        .filter_map(normalize_stack_display_text)
+        .collect();
+    // Only index card text when it maps one-to-one to executable abilities.
+    if lines.len() == abilities.len() {
+        return lines.get(index).cloned();
+    }
+    normalize_stack_display_text(&ironsmith::runtime_display::ability_surface_text(
+        &abilities[index],
+    ))
 }
 
 pub(super) fn build_stack_object_snapshot(
@@ -162,6 +206,7 @@ pub(super) fn build_stack_object_snapshot(
             mana_cost: None,
             effect_text: None,
             ability_kind: Some(ability_kind.to_string()),
+            source_ability_text: stack_source_ability_text(entry, source_obj.or(obj)),
             ability_text,
             targets,
         }
@@ -194,6 +239,7 @@ pub(super) fn build_stack_object_snapshot(
             effect_text,
             ability_kind: None,
             ability_text: None,
+            source_ability_text: None,
             targets,
         }
     }
@@ -225,4 +271,73 @@ pub(super) fn insert_pending_stack_object_snapshots(
     let count = stack_objects.len();
     snapshot.stack_objects.splice(0..0, stack_objects);
     snapshot.stack_size += count;
+}
+
+#[cfg(test)]
+mod source_ability_tests {
+    use super::*;
+    use ironsmith::game_state::StackEntry;
+    use ironsmith::snapshot::ObjectSnapshot;
+    use ironsmith_registry_test::compile_to_runtime_definition;
+
+    #[test]
+    fn stack_source_ability_text_preserves_identity_and_captured_source() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let definition = compile_to_runtime_definition(
+        "Ability Identity Fixture",
+        "Type: Artifact\n{1}: Draw a card.\n{2}: Draw a card.\nWhenever you gain life, draw a card.",
+        false,
+    ).expect("fixture should compile");
+        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let captured = ObjectSnapshot::from_object(game.object(source).unwrap(), &game);
+        let expected = ironsmith::runtime_display::compiled_text_lines(
+            &game.object(source).unwrap().to_card_definition(),
+        );
+        assert_eq!(expected.len(), 3);
+        let first = StackEntry::ability(source, alice, Vec::new())
+            .with_ability_index(0)
+            .with_source_snapshot(captured.clone());
+        let second = StackEntry::ability(source, alice, Vec::new())
+            .with_ability_index(1)
+            .with_source_snapshot(captured.clone());
+        // The source no longer has the abilities that were activated.
+        game.object_mut(source).unwrap().abilities = Default::default();
+        let first_view = build_stack_object_snapshot(&game, alice, None, &first);
+        let second_view = build_stack_object_snapshot(&game, alice, None, &second);
+        assert_eq!(
+            first_view.source_ability_text.as_deref(),
+            Some(expected[0].as_str())
+        );
+        assert_eq!(
+            second_view.source_ability_text.as_deref(),
+            Some(expected[1].as_str())
+        );
+        let ironsmith::ability::AbilityKind::Triggered(triggered) = &captured.abilities[2].kind
+        else {
+            panic!("expected third ability to be triggered");
+        };
+        let trigger = StackEntry::ability(source, alice, Vec::new())
+            .with_trigger_identity(ironsmith::triggers::compute_trigger_identity(triggered))
+            .with_source_snapshot(captured);
+        let trigger_view = build_stack_object_snapshot(&game, alice, None, &trigger);
+        assert_eq!(
+            trigger_view.source_ability_text.as_deref(),
+            Some(expected[2].as_str())
+        );
+        assert_eq!(
+            stack_source_ability_text(&second, None).as_deref(),
+            Some(expected[1].as_str())
+        );
+        assert_eq!(
+            serde_json::to_value(&second_view).unwrap()["source_ability_text"],
+            expected[1]
+        );
+        let unknown = StackEntry::ability(source, alice, Vec::new());
+        assert!(
+            build_stack_object_snapshot(&game, alice, None, &unknown)
+                .source_ability_text
+                .is_none()
+        );
+    }
 }

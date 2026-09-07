@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { resolveScryfallImageUrl, scryfallImageUrl } from "@/lib/scryfall";
 
-export default function useScryfallImageUrl(cardName, version = "normal") {
+export function useScryfallImage(cardName, version = "normal") {
   const query = String(cardName || "").trim();
   const imageVersion = String(version || "normal").trim() || "normal";
   const key = useMemo(() => `${query}|${imageVersion}`, [imageVersion, query]);
@@ -9,6 +9,7 @@ export default function useScryfallImageUrl(cardName, version = "normal") {
   const [resolved, setResolved] = useState(() => ({
     key,
     url: cached,
+    settled: Boolean(cached) || !query,
   }));
   const currentUrl = (resolved.key === key && resolved.url) ? resolved.url : cached;
 
@@ -19,12 +20,12 @@ export default function useScryfallImageUrl(cardName, version = "normal") {
     resolveScryfallImageUrl(query, imageVersion)
       .then((url) => {
         if (!cancelled) {
-          setResolved({ key, url: url || "" });
+          setResolved({ key, url: url || "", settled: true });
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setResolved({ key, url: "" });
+          setResolved({ key, url: "", settled: true });
         }
       });
 
@@ -33,5 +34,9 @@ export default function useScryfallImageUrl(cardName, version = "normal") {
     };
   }, [cached, imageVersion, key, query]);
 
-  return currentUrl;
+  return {url: currentUrl, ready: Boolean(currentUrl) || !query || (resolved.key === key && resolved.settled)};
+}
+
+export default function useScryfallImageUrl(cardName, version = "normal") {
+  return useScryfallImage(cardName, version).url;
 }

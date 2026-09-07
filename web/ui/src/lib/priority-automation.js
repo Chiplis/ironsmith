@@ -68,6 +68,7 @@ export function priorityHoldReason({
   if (holdRule === "combat" && isCombatPhase(currentState?.phase)) return "combat phase";
   if (holdRule === "ending" && isEndingPhase(currentState?.phase)) return "ending phase";
   if (holdRule === "if_actions") {
+    if (decision.analysis_complete === false) return "checking playable actions";
     const hasNonPass = (decision.actions || []).some((action) => action.kind !== "pass_priority");
     if (hasNonPass) {
       return perspectiveMode === "opponent"

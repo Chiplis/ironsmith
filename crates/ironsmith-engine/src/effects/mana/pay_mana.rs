@@ -61,10 +61,16 @@ fn try_pay_interactively(
         x_value,
         payment_reason,
     );
-    for _ in 0..MAX_REPLANS {
+    let mut replans = 0;
+    let mut payment_open = false;
+    loop {
         let Some(plan) = crate::mana_payment::plan_mana_payment(game, &request)
             .ok()
             .and_then(|plans| plans.into_iter().next())
+            .or_else(|| {
+                payment_open
+                    .then(|| crate::mana_payment::unfunded_mana_payment_plan(game, &request))
+            })
         else {
             return Ok(false);
         };
@@ -79,20 +85,51 @@ fn try_pay_interactively(
             request.clone(),
             plan.clone(),
         );
+        payment_open = true;
         let response = ctx.decision_maker.decide_mana_payment(game, &decision);
         if ctx.decision_maker.awaiting_choice() {
             return Ok(false);
         }
         match response {
+            crate::mana_payment::ManaPaymentResponse::Activate {
+                source,
+                ability_index,
+            } => {
+                crate::mana_payment::activate_mana_during_payment(
+                    game,
+                    &request,
+                    source,
+                    ability_index,
+                    ctx.decision_maker,
+                )
+                .map_err(|error| {
+                    ExecutionError::Impossible(format!("illegal mana activation: {error}"))
+                })?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(false);
+                }
+                request
+                    .preferences
+                    .required_sources
+                    .retain(|id| *id != source);
+                request
+                    .preferences
+                    .required_activations
+                    .retain(|activation| activation.source != source);
+            }
             crate::mana_payment::ManaPaymentResponse::Cancel => return Ok(false),
             crate::mana_payment::ManaPaymentResponse::Replan { mut preferences } => {
+                replans += 1;
+                if replans >= MAX_REPLANS {
+                    return Ok(false);
+                }
                 preferences.normalize();
                 request.preferences = preferences;
             }
             crate::mana_payment::ManaPaymentResponse::Confirm {
                 plan_id,
                 request_hash,
-            } if plan_id == plan.id && request_hash == plan.request_hash => {
+            } if plan.payable && plan_id == plan.id && request_hash == plan.request_hash => {
                 return Ok(matches!(
                     crate::mana_payment::execute_mana_payment_plan(
                         game,
@@ -106,7 +143,6 @@ fn try_pay_interactively(
             crate::mana_payment::ManaPaymentResponse::Confirm { .. } => return Ok(false),
         }
     }
-    Ok(false)
 }
 
 fn maximum_affordable_bounded_x(

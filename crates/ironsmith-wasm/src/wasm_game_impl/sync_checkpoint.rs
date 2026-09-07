@@ -2965,10 +2965,7 @@ impl WasmGame {
         restore_id_counters(id_counters);
         self.game.set_next_object_id_counter(id_counters.object);
         self.pending_decision = self.game.turn.priority_player.map(|player| {
-            DecisionContext::Priority(ironsmith::decisions::context::PriorityContext::new(
-                player,
-                ironsmith::decision::compute_legal_actions(&self.game, player),
-            ))
+            DecisionContext::Priority(ironsmith::game_loop::priority_context(&self.game, player))
         });
         Ok(())
     }

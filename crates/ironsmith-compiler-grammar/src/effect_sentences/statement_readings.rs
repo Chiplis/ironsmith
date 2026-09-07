@@ -815,6 +815,11 @@ fn read_leading_result_prefix(
 }
 
 fn read_destroy_single_segment(input: &Statement<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(effects) = super::subject_verb_primitives::parse_sentence_destroy_creature_type_of_choice(
+        super::subject_verb_primitives::SubjectVerbPrimitiveClause::new(input.sentence),
+    )? {
+        return Ok(Some(effects));
+    }
     if let Some(effects) = super::parse_same_name_target_fanout_sentence(input.sentence)? {
         return Ok(Some(effects));
     }

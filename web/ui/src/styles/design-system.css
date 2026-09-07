@@ -217,7 +217,7 @@
   --card-frame-bar-light: #e2e5e6;
   --card-frame-paper: #d7d8d4;
   --card-frame-paper-deep: #b9bcb8;
-  --card-frame-ink: #171819;
+  --card-frame-ink: #000;
   --card-frame-accent: #788087;
 }
 
@@ -365,6 +365,7 @@
 
 .interactive-card-frame__title-wrap {
   display: flex;
+  flex: 1;
   min-width: 0;
   align-items: center;
   gap: 6px;
@@ -372,6 +373,7 @@
 
 .interactive-card-frame__title {
   min-width: 0;
+  flex: 1;
   margin: 0;
   color: var(--card-frame-ink);
   font-family: Georgia, "Times New Roman", serif;
@@ -379,7 +381,8 @@
   font-weight: 800;
   line-height: 1.02;
   letter-spacing: -0.018em;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow-wrap: normal;
   text-shadow: 0 1px rgba(255, 255, 255, 0.5);
 }
 
@@ -435,7 +438,7 @@
   display: block;
   height: 100%;
   width: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .interactive-card-frame__art-fallback {
@@ -474,11 +477,14 @@
 
 .interactive-card-frame__type {
   min-width: 0;
+  flex: 1;
   color: var(--card-frame-ink);
   font-family: Georgia, "Times New Roman", serif;
   font-size: clamp(10px, 3.05cqw, 14px);
   font-weight: 800;
   line-height: 1.06;
+  white-space: nowrap;
+  overflow-wrap: normal;
 }
 
 .interactive-card-frame__zone {
@@ -606,7 +612,7 @@
   border-color: color-mix(in srgb, var(--card-frame-accent) 72%, #202020);
   border-radius: 2px;
   background: rgba(245, 241, 226, 0.48);
-  color: color-mix(in srgb, var(--card-frame-accent) 70%, #171717);
+  color: #000;
   font-size: clamp(6px, 1.75cqw, 8px);
   letter-spacing: 0.09em;
 }
@@ -810,12 +816,12 @@
 .interactive-card-frame .interactive-card-frame__ability .inspector-oracle-line-action__label {
   border-color: color-mix(in srgb, var(--card-frame-accent) 72%, #202020);
   background: rgba(245, 241, 226, 0.48);
-  color: color-mix(in srgb, var(--card-frame-accent) 70%, #171717);
+  color: #000;
 }
 
 .interactive-card-frame .interactive-card-frame__ability:disabled .inspector-oracle-line-action__label {
   border-color: rgba(43, 42, 38, 0.24);
-  color: rgba(43, 42, 38, 0.52);
+  color: #000;
 }
 
 .decision-card-name-trigger {
@@ -3637,4 +3643,68 @@ button:disabled,
 }
 [data-my-zone] .my-zone-board-shell > .my-zone-stack-rail > * {
   pointer-events: auto;
+}
+
+/* A shared gold treatment for an enabled ability under the pointer and
+   the originating ability of a selected stack entry. Overlays do not reflow
+   the printing's rules or change its fitted font size. */
+.inspector-ability-section {
+  position: relative;
+  isolation: isolate;
+  --ability-highlight-opacity: 0;
+  --ability-highlight-inset: 0;
+  --ability-highlight-left: 0px;
+  --ability-highlight-y: 2px;
+}
+/* Unboxed triggers need a little breathing room outside their printed text. */
+.inspector-ability-section:not(:has(> .inspector-oracle-line-action)) {
+  --ability-highlight-inset: -4px -6px;
+  --ability-highlight-left: -6px;
+  --ability-highlight-y: -2px;
+}
+.inspector-ability-section::before,
+.inspector-ability-section::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  opacity: var(--ability-highlight-opacity);
+  transition: opacity 140ms ease;
+}
+.inspector-ability-section::before {
+  inset: var(--ability-highlight-y) auto var(--ability-highlight-y) var(--ability-highlight-left);
+  width: 2px;
+  border-radius: 2px;
+  z-index: 1;
+  background: linear-gradient(180deg, #edc56f55, #ffe7a0 18%, #edc56f 82%, #edc56f55);
+  box-shadow: 0 0 4px #edc56f99, 0 0 10px #edc56f44;
+}
+.inspector-ability-section::after {
+  inset: var(--ability-highlight-inset);
+  z-index: -1;
+  border: 1px solid rgba(175, 126, 35, .56);
+  border-radius: 4px;
+  background: linear-gradient(100deg, rgba(237, 197, 111, .3), rgba(237, 197, 111, .14) 60%, rgba(237, 197, 111, .06));
+  box-shadow: inset 0 1px rgba(255, 242, 199, .46), 0 0 9px rgba(237, 197, 111, .15);
+}
+.inspector-ability-section:is(
+  [data-stack-highlighted="true"],
+  :has(> .inspector-oracle-line-action[data-available="true"]:not(:disabled):is(:hover, :focus-visible))
+) {
+  --ability-highlight-opacity: 1;
+}
+.inspector-ability-section:is(
+  [data-stack-highlighted="true"],
+  :has(> .inspector-oracle-line-action[data-available="true"]:not(:disabled):is(:hover, :focus-visible))
+) > .inspector-oracle-line-action {
+  /* Selection describes the stack even when the activation is unavailable. */
+  opacity: 1;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .inspector-ability-section::before,
+  .inspector-ability-section::after {
+    transition: none;
+  }
 }

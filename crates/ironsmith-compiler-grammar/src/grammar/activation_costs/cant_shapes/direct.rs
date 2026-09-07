@@ -205,6 +205,12 @@ fn parse_source_direct_cant_fact<'a>(input: &mut LexStream<'a>) -> WResult<Direc
         (
             parse_source_subject,
             parse_cant,
+            primitives::phrase(&["have", "counters", "put", "on", "it"]),
+        )
+            .value(DirectCantFact::CantHaveCountersPlaced),
+        (
+            parse_source_subject,
+            parse_cant,
             primitives::phrase(&["attack", "or", "block", "alone"]),
         )
             .value(DirectCantFact::SourceCantAttackOrBlockAlone),

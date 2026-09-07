@@ -221,12 +221,23 @@ impl MandatoryProcedureSignature {
 pub(super) struct MandatoryLoopTracker {
     actions: Vec<MandatoryProcedureSignature>,
     optional_action_seen: bool,
+    pending_windows: Vec<GameState>,
+    history_windows: Vec<Vec<GameState>>,
 }
 
 impl MandatoryLoopTracker {
     pub(super) fn reset(&mut self) {
         self.actions.clear();
+        self.pending_windows.clear();
+        self.history_windows.clear();
         self.optional_action_seen = false;
+    }
+
+    pub(super) fn observe_priority_snapshot(&mut self, game: &GameState) {
+        // Empty-stack passes cannot participate in a mandatory resolution loop.
+        if !game.stack.is_empty() && !self.optional_action_seen {
+            self.pending_windows.push(game.clone());
+        }
     }
 
     pub(super) fn observe_priority_window(&mut self, forced_pass: bool) {
@@ -259,20 +270,46 @@ impl MandatoryLoopTracker {
         }
 
         self.actions.push(resolved.signature);
+        self.history_windows
+            .push(std::mem::take(&mut self.pending_windows));
         if self.actions.len() > MAX_MANDATORY_ACTION_HISTORY {
             let overflow = self.actions.len() - MAX_MANDATORY_ACTION_HISTORY;
             self.actions.drain(..overflow);
+            self.history_windows.drain(..overflow);
         }
 
         let Some((next_expected, controllers)) = self.repeated_suffix_next_action() else {
             return None;
         };
-        queued
-            .into_iter()
-            .any(|candidate| {
-                !candidate.blocks_mandatory_proof && candidate.signature == next_expected
-            })
-            .then_some(controllers)
+        if !queued.into_iter().any(|candidate| {
+            !candidate.blocks_mandatory_proof && candidate.signature == next_expected
+        }) {
+            return None;
+        }
+        // Resolve historical unknowns only when they could establish a draw.
+        // Drop the prefix through the last optional window, exactly as eager
+        // observe_priority_window would have reset it at that resolution.
+        let mut last_optional = None;
+        for (index, windows) in self.history_windows.iter().enumerate() {
+            if windows.iter().any(|game| {
+                game.priority_team_players().into_iter().any(|player| {
+                    crate::decision::compute_legal_actions(game, player)
+                        .into_iter()
+                        .chain(crate::decision::compute_commander_actions(game, player))
+                        .any(|action| !matches!(action, crate::decision::LegalAction::PassPriority))
+                })
+            }) {
+                last_optional = Some(index);
+            }
+        }
+        if let Some(index) = last_optional {
+            self.actions.drain(..=index);
+            self.history_windows.drain(..=index);
+            return self
+                .repeated_suffix_next_action()
+                .and_then(|(next, controllers)| (next == next_expected).then_some(controllers));
+        }
+        Some(controllers)
     }
 
     fn repeated_suffix_next_action(
@@ -318,6 +355,43 @@ mod tests {
             ),
             blocks_mandatory_proof: false,
         }
+    }
+
+    #[test]
+    fn deferred_windows_preserve_optional_action_breaks_in_historical_state() {
+        let alice = PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        game.turn.priority_player = Some(alice);
+        game.turn.active_player = alice;
+        game.turn.phase = crate::game_state::Phase::FirstMain;
+        game.turn.step = None;
+        let land =
+            crate::card::CardBuilder::new(crate::ids::CardId::from_raw(990_000), "Analysis land")
+                .card_types(vec![crate::types::CardType::Land])
+                .build();
+        let id = game.create_object_from_card(&land, alice, crate::zone::Zone::Hand);
+        let action = observation(1, 11);
+        let mut deferred = MandatoryLoopTracker::default();
+        deferred.pending_windows.push(game.clone());
+        assert!(
+            deferred
+                .observe_resolution(Some(action.clone()), [action.clone()])
+                .is_none()
+        );
+        // The option no longer exists now, but it did exist at the first pass.
+        game.move_object(id, crate::zone::Zone::Graveyard, crate::events::cause::EventCause::effect());
+        deferred.pending_windows.push(game.clone());
+        assert!(
+            deferred
+                .observe_resolution(Some(action.clone()), [action.clone()])
+                .is_none()
+        );
+        deferred.pending_windows.push(game);
+        assert!(
+            deferred
+                .observe_resolution(Some(action.clone()), [action])
+                .is_some()
+        );
     }
 
     #[test]

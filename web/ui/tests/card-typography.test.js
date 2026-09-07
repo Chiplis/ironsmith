@@ -15,3 +15,12 @@ test('missing frame falls back to printing date, then modern typography', () => 
   assert.equal(cardTypography({released_at:'2024-01-01'}).era, 'beleren');
   assert.equal(cardTypography().era, 'beleren');
 });
+
+
+test('nonstandard layouts use colors without conventional panel extraction', () => {
+  assert.equal(cardTypography({frame:'2003',layout:'normal'}).conventionalFrame,true);
+  assert.equal(cardTypography({frame:'2015',frame_effects:['legendary']}).conventionalFrame,true);
+  for(const printing of [{full_art:true},{border_color:'borderless'},{frame_effects:['extendedart']},{frame_effects:['showcase']},{layout:'saga'},{layout:'split'}]) {
+    assert.equal(cardTypography(printing).conventionalFrame,false);
+  }
+});

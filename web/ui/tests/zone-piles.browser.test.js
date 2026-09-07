@@ -24,14 +24,22 @@ test('zone piles align, scroll, animate and require a separate target click', as
     const exileBox = await page.locator('[data-zone-pile="exile"]').boundingBox();
     assert.ok(Math.abs(exileBox.x-pileBox.x)<1);
     assert.ok(exileBox.y >= pileBox.y+pileBox.height);
-    // Browsing your own zone works before entering targeting mode.
-    await pile.click();
-    await page.keyboard.press('Escape');
-    await page.locator('.zone-pile-menu').waitFor({state:'hidden'});
+    // Both zones open on hover and stay open while browsing the card strip.
+    for (const zone of ['graveyard', 'exile']) {
+      await page.locator(`[data-zone-pile="${zone}"]`).hover();
+      const strip = page.locator('.zone-pile-menu');
+      await strip.waitFor();
+      await strip.locator('.zone-pile-card-row').first().hover();
+      await page.waitForTimeout(200);
+      assert.equal(await strip.isVisible(), true);
+      assert.equal(await page.locator('output').textContent(), 'none');
+      await page.mouse.move(900, 700);
+      await strip.waitFor({state:'hidden'});
+    }
     await page.getByRole('button',{name:'Toggle targeting'}).click();
     assert.equal(await pile.getAttribute('data-has-targets'),'true');
     await page.waitForFunction(() => getComputedStyle(document.querySelector('[data-zone-pile=graveyard]')).borderTopColor === 'rgb(255, 255, 255)');
-    await pile.click();
+    await pile.hover();
     assert.equal(await page.locator('output').textContent(),'none');
     const menu = page.locator('.zone-pile-menu');
     await menu.waitFor();
@@ -60,7 +68,7 @@ test('zone piles align, scroll, animate and require a separate target click', as
     assert.equal(await page.locator('output').textContent(),'20');
     await menu.waitFor({state:'hidden'});
     await page.setViewportSize({width:600,height:800});
-    await pile.click();
+    await pile.hover();
     await page.waitForTimeout(300);
     await page.screenshot({path:'/tmp/zone-piles-verified.png'});
   } finally { await browser.close(); await vite.close(); }
@@ -84,7 +92,7 @@ test('all four players can browse piles and select a graveyard target on the ful
     assert.ok(Math.abs(stack.x-field.x)<2);
     await page.screenshot({path:'/tmp/stack-left-zones-right-verified.png'});
     for(const owner of ['0','1','2','3']) {
-      await page.locator(`[data-zone-pile="graveyard"][data-zone-owner="${owner}"]`).click();
+      await page.locator(`[data-zone-pile="graveyard"][data-zone-owner="${owner}"]`).hover();
       await page.keyboard.press('Escape');
       await page.locator('.zone-pile-menu').waitFor({state:'hidden'});
     }
@@ -95,7 +103,7 @@ test('all four players can browse piles and select a graveyard target on the ful
     await page.getByRole('button',{name:'Target graveyard cards'}).click();
     const opponentPile=page.locator('[data-zone-pile="graveyard"][data-zone-owner="1"]');
     assert.equal(await opponentPile.getAttribute('data-has-targets'),'true');
-    await opponentPile.click();
+    await opponentPile.hover();
     assert.deepEqual(await page.evaluate(()=>window.zoneTargetEvents),[]);
     await page.locator('.zone-pile-card-row[data-object-id="1001"]').click();
     assert.deepEqual(await page.evaluate(()=>window.zoneTargetEvents),[{kind:'object',object:1001}]);
@@ -131,7 +139,7 @@ test('cast choices portal above inspector and an open zone list and remain click
   try {
     const page = await browser.newPage({viewport:{width:1200,height:800}});
     await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/zone-piles.html`);
-    await page.locator('[data-zone-pile="graveyard"]').click();
+    await page.locator('[data-zone-pile="graveyard"]').hover();
     await page.getByRole('button',{name:'Show cast choices'}).evaluate(el=>el.click());
     const choices=page.locator('[data-action-popover]');
     await choices.waitFor();
@@ -153,7 +161,7 @@ test('zone card inspectors leave the clicked card and expanded strip uncovered',
       const page = await browser.newPage({viewport});
       await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/zone-piles.html`);
       for (const [zone, ids] of [['graveyard', ['20','19','18']], ['exile', ['31']]]) {
-        await page.locator(`[data-zone-pile="${zone}"]`).click();
+        await page.locator(`[data-zone-pile="${zone}"]`).hover();
         for (const id of ids) {
           const card = page.locator(`[data-zone-card="${zone}"][data-object-id="${id}"]`);
           await card.click();

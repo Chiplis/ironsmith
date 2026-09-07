@@ -1,5 +1,5 @@
 import { useEffect, useReducer } from "react";
-import { cachedInspectorPayment, inspectorPaymentKey, requestInspectorPayment } from "@/lib/inspector-payment-cache";
+import { inspectorPaymentDisplay, inspectorPaymentKey, requestInspectorPayment } from "@/lib/inspector-payment-cache";
 
 function isActivation(action) {
   return ["activate_ability", "activate_mana_ability"].includes(action.kind)
@@ -26,11 +26,9 @@ export default function useInspectorPaymentActions(game, state, actions) {
   if (!canQuery) return actions;
   return actions.map(action => {
     if (!isActivation(action)) return action;
-    const entry = cachedInspectorPayment(game, state, inspectorPaymentKey(action));
     return {
       ...action,
-      payment_pending: !entry?.ready,
-      mana_payment_available: entry?.available,
+      ...inspectorPaymentDisplay(game, state, inspectorPaymentKey(action)),
     };
   });
 }

@@ -1,3 +1,4 @@
+import { mergePriorityAnalysis } from "@/lib/priority-analysis-scheduler.js";
 import { castingMethodChoiceForAction, finishExplicitCastingMethod } from "@/lib/casting-method-choice";
 import { useContext, useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { useWasmGame } from "@/hooks/useWasmGame";
@@ -1846,6 +1847,40 @@ export function GameProvider({ children }) {
       setStatus,
     ]
   );
+
+  useEffect(() => {
+    if (!game?.subscribePriorityAnalysis) return;
+    const apply = (analysis) => {
+      const previous = stateRef.current;
+      const next = mergePriorityAnalysis(previous, analysis);
+      if (next === previous) return;
+      stateRef.current = next;
+      setState(next);
+    };
+    const unsubscribe = game.subscribePriorityAnalysis(apply);
+    apply(game.latestPriorityAnalysis());
+    return unsubscribe;
+  }, [game, state?.__priority_revision, state?.decision?.analysis_complete]);
+
+  const automatedAnalysisRevisionRef = useRef(null);
+  useEffect(() => {
+    const revision = state?.__priority_revision;
+    if (multiplayer.matchStarted || state?.decision?.analysis_complete !== true
+        || game?.latestPriorityAnalysis?.()?.revision !== revision
+        || automatedAnalysisRevisionRef.current === revision) return;
+    let timer;
+    const resume = () => {
+      if (stateRef.current?.__priority_revision !== revision) return;
+      if (wasmInteractionGateRef.current.isBlocked()) {
+        timer = setTimeout(resume, 25);
+        return;
+      }
+      automatedAnalysisRevisionRef.current = revision;
+      void runWasmInteraction(() => refresh());
+    };
+    timer = setTimeout(resume, 0);
+    return () => clearTimeout(timer);
+  }, [game, state?.__priority_revision, state?.decision?.analysis_complete, multiplayer.matchStarted, refresh, runWasmInteraction]);
 
   const dispatch = useCallback(
     async (command, successMessage, { castingAction = null } = {}) => {

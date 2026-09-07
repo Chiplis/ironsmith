@@ -1,10 +1,14 @@
+import CardFrameBorder from "./CardFrameBorder";
 import "@/styles/card-typography.css";
+import CardFrameRulesBox from "./CardFrameRulesBox";
+import CardFrameSingleLine from "./CardFrameSingleLine";
+import CardFrameStage from "./CardFrameStage";
 import useCardTypography from "@/hooks/useCardTypography";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
-import useCardFrameColors from "@/hooks/useCardFrameColors";
+import usePreparedCardFrame from "@/hooks/usePreparedCardFrame";
 import "@/styles/card-frame-colors.css";
-import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
+import { useScryfallImage } from "@/hooks/useScryfallImageUrl";
 import useScryfallFlavorText from "@/hooks/useScryfallFlavorText";
 import useInspectorPaymentActions from "@/hooks/useInspectorPaymentActions";
 import { ManaCostIcons, SymbolText } from "@/lib/mana-symbols";
@@ -703,6 +707,7 @@ function InspectorArtImageLayers({
 
 export default function HoverArtOverlay({
   objectId,
+  selectedStackEntry = null,
   transientPreview = null,
   transientPreviewIndex = 0,
   transientPreviewCount = 0,
@@ -722,6 +727,7 @@ export default function HoverArtOverlay({
   onPreferredWidthChange = null,
   onPreferredInspectorWidthChange = null,
   onInspectorAccentChange = null,
+  onCardFrameReadyChange = null,
   interactiveActions = [],
   onInteractiveAction = null,
 }) {
@@ -773,6 +779,7 @@ export default function HoverArtOverlay({
   const ruleLineRefs = useRef(new Map());
 
   const [detailsCache, setDetailsCache] = useState({});
+  const [settledDetailsKey, setSettledDetailsKey] = useState(null);
   const [failedImageUrl, setFailedImageUrl] = useState(null);
   const [copiedDebug, setCopiedDebug] = useState(false);
   const [inspectorScaleSession, setInspectorScaleSession] = useState({ key: null, scale: 1 });
@@ -789,8 +796,10 @@ export default function HoverArtOverlay({
   const [renderedRulesWidth, setRenderedRulesWidth] = useState(null);
   const [translatedCardText, setTranslatedCardText] = useState(null);
   const detailsObjectIdNum = useMemo(
-    () => resolveObjectDetailsId(state, objectIdNum),
-    [objectIdNum, state]
+    () => selectedStackEntry
+      ? (selectedStackEntry.inspect_object_id != null ? Number(selectedStackEntry.inspect_object_id) : null)
+      : resolveObjectDetailsId(state, objectIdNum),
+    [objectIdNum, selectedStackEntry, state]
   );
   const detailsObjectIdKey = Number.isFinite(detailsObjectIdNum) ? String(detailsObjectIdNum) : null;
   // Cached details are only valid for the state snapshot they were fetched
@@ -816,7 +825,8 @@ export default function HoverArtOverlay({
       .catch(() => {
         // Keep any stale entry; a transient failure must not blank this
         // object's details for the rest of the session.
-      });
+      })
+      .finally(() => { if (active) setSettledDetailsKey(detailsObjectIdKey); });
 
     return () => {
       active = false;
@@ -827,15 +837,14 @@ export default function HoverArtOverlay({
 
   const details = detailsObjectIdKey ? (detailsCache[detailsObjectIdKey]?.value ?? null) : null;
   const cardSnapshot = useMemo(
-    () => findCardSnapshotForObjectId(state, objectIdNum),
-    [objectIdNum, state]
+    () => findCardSnapshotForObjectId(state, detailsObjectIdNum),
+    [detailsObjectIdNum, state]
   );
   const hoveredStackObject = useMemo(
-    () => visibleStackObjects.find((entry) => (
-      String(entry.id) === String(objectIdNum)
-      || String(entry.inspect_object_id) === String(objectIdNum)
-    )),
-    [visibleStackObjects, objectIdNum]
+    () => selectedStackEntry
+      || visibleStackObjects.find((entry) => String(entry.id) === String(objectIdNum))
+      || visibleStackObjects.find((entry) => String(entry.inspect_object_id) === String(objectIdNum)),
+    [visibleStackObjects, objectIdNum, selectedStackEntry]
   );
   const isFullArtMode = displayMode === "full-art";
   const isCardFrameMode = displayMode === "card-frame";
@@ -861,6 +870,7 @@ export default function HoverArtOverlay({
   const objectName = details?.name
     || previewObjectName
     || String(cardSnapshot?.name || "").trim()
+    || selectedStackEntry?.name
     || (Number.isFinite(objectIdNum) ? objectNameById.get(objectIdNum) : null)
     || hoveredStackObject?.name
     || null;
@@ -944,8 +954,11 @@ export default function HoverArtOverlay({
     state?.players,
   ]);
   const artObjectName = stableLinkedObjectName || objectName;
-  const imageUrl = useScryfallImageUrl(artObjectName, "art_crop");
-  const typography = useCardTypography(imageUrl);
+  const image = useScryfallImage(artObjectName, "art_crop");
+  const imageUrl = image.url;
+  const preparedFrame = usePreparedCardFrame(imageUrl, typeLine, isCardFrameMode && image.ready);
+  const defaultTypography = useCardTypography(isCardFrameMode ? "" : imageUrl);
+  const typography = preparedFrame?.typography || defaultTypography;
   const inspectorMeasureFont = typography.rules;
   useEffect(() => {
     if (typeof document === "undefined" || !document.fonts?.load) return undefined;
@@ -965,14 +978,15 @@ export default function HoverArtOverlay({
       cancelled = true;
     };
   }, [inspectorMeasureFont, typography]);
-  const cardFrameColors = useCardFrameColors(imageUrl, isCardFrameMode, !/\bland\b/i.test(String(typeLine || "").split(/[—–]/)[0]));
+  const cardFrameColors = preparedFrame?.style || null;
   // Forget past failures whenever the art URL changes so a transient network
   // error doesn't blacklist a card's art for the whole session.
   if (failedImageUrl != null && failedImageUrl !== imageUrl) {
     setFailedImageUrl(null);
   }
   const imageErrored = !!imageUrl && failedImageUrl === imageUrl;
-  const flavorText = useScryfallFlavorText(imageErrored ? "" : imageUrl);
+  const defaultFlavorText = useScryfallFlavorText(isCardFrameMode || imageErrored ? "" : imageUrl);
+  const flavorText = isCardFrameMode ? preparedFrame?.flavorText || "" : defaultFlavorText;
   const topStackObject = visibleStackObjects[0] || null;
   const detailCompiledText = Array.isArray(details?.compiled_text) ? details.compiled_text : null;
   const detailAbilities = Array.isArray(details?.abilities) ? details.abilities : null;
@@ -1129,6 +1143,7 @@ export default function HoverArtOverlay({
   const displayCountersLine = debugInspector ? null : countersLine;
   const displayManaCost = debugInspector ? null : manaCost;
   const displayStatsText = debugInspector || transitionTitle ? null : statsText;
+  const printedStatsAtRules = Boolean(displayStatsText && /^[^/]+\/[^/]+$/.test(displayStatsText) && cardFrameColors?.["--printed-pt-position"] === "rules");
   const displayTypeZoneLine = useMemo(
     () => [displayZoneLine, displayTypeLine].filter(Boolean).join(" - ") || null,
     [displayTypeLine, displayZoneLine]
@@ -1369,13 +1384,16 @@ export default function HoverArtOverlay({
     if (topStackMatchesInspectorObject) return topStackObject;
     return null;
   }, [hoveredStackObject, topStackMatchesInspectorObject, topStackObject]);
-  const highlightedStackAbilityText = String(highlightedStackObject?.ability_text || "").trim();
+  const highlightedStackAbilityText = String(highlightedStackObject?.source_ability_text || highlightedStackObject?.ability_text || "").trim();
   const highlightedStackEffectText = String(highlightedStackObject?.effect_text || "").trim();
-  const highlightedStackAbilityKind = String(highlightedStackObject?.ability_kind || "").toLowerCase();
   const highlightedRuleLineIndices = useMemo(() => {
     const indices = new Set();
     if (!highlightedStackObject) return indices;
     if (!displayRulesLines.length) return indices;
+    // A null canonical identity is intentional: do not guess from effects shared
+    // by unrelated abilities. Older snapshots can still use their legacy text.
+    if (Object.hasOwn(highlightedStackObject, "source_ability_text")
+      && !highlightedStackObject.source_ability_text?.trim()) return indices;
 
     const stackAbilityText = (
       highlightedStackAbilityText
@@ -1385,7 +1403,9 @@ export default function HoverArtOverlay({
       let bestScore = 0;
       const scored = [];
       displayRulesLines.forEach((line, index) => {
-        const score = lineAbilityMatchScore(line, stackAbilityText);
+        const score = highlightedStackObject.source_ability_text
+          ? (normalizeAbilityMatchText(line) === normalizeAbilityMatchText(stackAbilityText) ? 3 : 0)
+          : lineAbilityMatchScore(line, stackAbilityText);
         scored.push({ index, score });
         bestScore = Math.max(bestScore, score);
       });
@@ -1400,26 +1420,12 @@ export default function HoverArtOverlay({
       }
     }
 
-    if (indices.size === 0) {
-      const kind = highlightedStackAbilityKind;
-      if (kind.includes("trigger")) {
-        const triggerIndex = displayRulesLines.findIndex((line) => (
-          /^(when|whenever|at the beginning)\b/i.test(String(line).trim())
-        ));
-        if (triggerIndex >= 0) indices.add(triggerIndex);
-      } else if (kind.includes("activat") || kind.includes("mana")) {
-        const activatedIndex = displayRulesLines.findIndex((line) => String(line).includes(":"));
-        if (activatedIndex >= 0) indices.add(activatedIndex);
-      }
-    }
-
     return indices;
   }, [
     highlightedStackObject,
     displayRulesLines,
     highlightedStackAbilityText,
     highlightedStackEffectText,
-    highlightedStackAbilityKind,
   ]);
   const rawDefinition = details?.raw_compilation || "";
   const canCopyDebug = compiledText.trim().length > 0 || rawDefinition.trim().length > 0;
@@ -2381,7 +2387,7 @@ export default function HoverArtOverlay({
     rulesRenderKey,
   ]);
 
-  const showImageBackdrop = !!imageUrl && !imageErrored;
+  const showImageBackdrop = !!imageUrl && !imageErrored && (!isCardFrameMode || preparedFrame?.artReady);
   const hasRenderableContent = Boolean(
     transitionTitle
     || displayObjectName
@@ -2399,17 +2405,23 @@ export default function HoverArtOverlay({
     const useArtFrame = !cardFrameColors && showImageBackdrop
       && ["colorless", "land", "artifact"].includes(frameTone);
     return (
-      <div
+      <CardFrameStage
+        preparation={game && detailsObjectIdKey && !details && settledDetailsKey !== detailsObjectIdKey ? null : preparedFrame}
+        onReadyChange={onCardFrameReadyChange}
         className="interactive-card-frame-stage absolute inset-0 z-30 pointer-events-auto"
         data-card-frame-tone={frameTone}
+        data-printing-ready={typography.printingReady || undefined}
+        data-box-sizing={cardFrameColors?.["--printed-box-sizing"] || undefined}
+        data-frame-geometry={cardFrameColors && Object.keys(cardFrameColors).some(key => key.startsWith("--printed-gap-")) ? "true" : undefined}
         data-card-colors={cardFrameColors ? "sampled" : undefined}
+        data-inner-frame-border={cardFrameColors?.["--inner-frame-bevel-profile"] ? cardFrameColors["--inner-frame-border-kind"] : undefined}
         data-whole-title={cardFrameColors?.["--whole-title-image"] ? "true" : undefined}
         data-whole-type={cardFrameColors?.["--whole-type-image"] ? "true" : undefined}
         data-whole-rules={cardFrameColors?.["--whole-rules-image"] ? "true" : undefined}
         data-rules-bottom={cardFrameColors?.["--rules-bottom-middle"] ? "sampled" : undefined}
         data-type-panel={cardFrameColors?.["--type-panel-kind"] || undefined}
         data-title-panel={cardFrameColors?.["--title-panel-kind"] || undefined}
-        data-art-title-rails={cardFrameColors?.["--art-title-rails"] ? "true" : undefined}
+        data-art-enclosure={cardFrameColors?.["--art-frame-enclosure"] || undefined}
         style={{ ...cardFrameColors, ...typography.style }}
         data-card-era={typography.era}
         data-card-frame-art={useArtFrame ? "true" : undefined}
@@ -2428,14 +2440,15 @@ export default function HoverArtOverlay({
             />
           )}
           <div className="interactive-card-frame__inner">
+            {cardFrameColors?.["--inner-frame-bevel-profile"] && <CardFrameBorder profile={cardFrameColors["--inner-frame-bevel-profile"]} />}
             <header className="interactive-card-frame__title-row">
               <div className="interactive-card-frame__title-wrap">
                 {groupedCardCount > 1 && (
                   <span className="interactive-card-frame__count">×{groupedCardCount}</span>
                 )}
-                <h2 className="interactive-card-frame__title">
+                <CardFrameSingleLine as="h2" className="interactive-card-frame__title">
                   {displayObjectName || t("status.cardDetailsUnavailable")}
-                </h2>
+                </CardFrameSingleLine>
               </div>
               {displayManaCost && (
                 <div className="interactive-card-frame__mana" aria-label={`Mana cost ${displayManaCost}`}>
@@ -2461,15 +2474,15 @@ export default function HoverArtOverlay({
               {displayZoneLine && (
                 <span className="interactive-card-frame__zone">{displayZoneLine}</span>
               )}
-              {displayStatsText && (
+              {displayStatsText && !printedStatsAtRules && (
                 <div className="interactive-card-frame__art-stats">{displayStatsText}</div>
               )}
             </div>
 
             <div className="interactive-card-frame__type-row">
-              <span className="interactive-card-frame__type">
+              <CardFrameSingleLine className="interactive-card-frame__type">
                 {displayTypeLine || "Card"}
-              </span>
+              </CardFrameSingleLine>
             </div>
 
             {displayTypeLineBadges.length > 0 && (
@@ -2480,7 +2493,8 @@ export default function HoverArtOverlay({
               </div>
             )}
 
-            <div className="interactive-card-frame__rules" aria-label={displayObjectName ? `Rules text for ${displayObjectName}` : "Card rules text"}>
+            <div className="interactive-card-frame__rules-section" data-printed-stats={printedStatsAtRules ? "true" : undefined} data-pt-treatment={printedStatsAtRules ? cardFrameColors?.["--printed-pt-treatment"] : undefined}>
+            <CardFrameRulesBox label={displayObjectName ? `Rules text for ${displayObjectName}` : "Card rules text"}>
               {displayRulesLines.length > 0 || flavorText ? (
                 <div className="interactive-card-frame__rules-body">
                   {displayRulesLines.map((line, lineIndex) => {
@@ -2503,7 +2517,7 @@ export default function HoverArtOverlay({
                       />
                     );
                     return (
-                      <div key={`${lineIndex}-${line.slice(0, 32)}`} className="interactive-card-frame__rule">
+                      <div key={`${lineIndex}-${line.slice(0, 32)}`} className="interactive-card-frame__rule inspector-ability-section" data-stack-highlighted={highlightedRuleLineIndices.has(lineIndex) ? "true" : undefined}>
                         {isActivatedAbility ? (
                           <button
                             type="button"
@@ -2533,6 +2547,9 @@ export default function HoverArtOverlay({
                   {t("status.cardDetailsUnavailable")}
                 </div>
               )}
+            </CardFrameRulesBox>
+
+              {printedStatsAtRules && <div className="interactive-card-frame__art-stats interactive-card-frame__printed-stats">{displayStatsText}</div>}
             </div>
 
             {displayCountersLine && (
@@ -2544,7 +2561,7 @@ export default function HoverArtOverlay({
             )}
           </div>
         </article>
-      </div>
+      </CardFrameStage>
     );
   }
 
@@ -3032,7 +3049,8 @@ export default function HoverArtOverlay({
                                 ruleLineRefs.current.delete(lineIndex);
                               }
                             }}
-                            className="block w-full"
+                            className="block w-full inspector-ability-section"
+                            data-stack-highlighted={highlightedRuleLineIndices.has(lineIndex) ? "true" : undefined}
                           >
                             {isActivatedAbility ? (
                               <button

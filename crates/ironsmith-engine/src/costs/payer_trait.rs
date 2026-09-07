@@ -94,6 +94,8 @@ pub struct CostContext<'dm> {
     pub effect_outcomes: HashMap<crate::effect::EffectId, crate::effect::EffectOutcome>,
     /// Provenance parent node for events emitted while paying this cost.
     pub provenance: ProvNodeId,
+    /// Some while manually activating a source during payment. Ancestors cannot fund themselves.
+    pub interactive_mana_exclusions: Option<Vec<ObjectId>>,
 }
 
 impl std::fmt::Debug for CostContext<'_> {
@@ -134,6 +136,7 @@ impl<'dm> CostContext<'dm> {
             tagged_objects: HashMap::new(),
             effect_outcomes: HashMap::new(),
             provenance: ProvNodeId::default(),
+            interactive_mana_exclusions: None,
         }
     }
 
@@ -224,6 +227,7 @@ impl CostCheckContext {
             tagged_objects: HashMap::new(),
             effect_outcomes: HashMap::new(),
             provenance: ProvNodeId::default(),
+            interactive_mana_exclusions: None,
         }
     }
 }

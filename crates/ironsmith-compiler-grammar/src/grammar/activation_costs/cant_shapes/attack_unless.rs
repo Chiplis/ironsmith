@@ -33,6 +33,7 @@ pub enum AttackUnlessScope {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AttackUnlessSurface {
+    SourceStatus,
     ControllerCastCreatureSpellThisTurn,
     ControllerCastNoncreatureSpellThisTurn,
     ControllerControlsMoreCreatures,
@@ -150,7 +151,7 @@ fn parse_requirement_lexed(
 ) -> WResult<ParsedRequirement> {
     match scope {
         AttackUnlessScope::Attack => alt((
-            parse_cast_spell_this_turn,
+            alt((parse_source_status_requirement, parse_cast_spell_this_turn)),
             parse_controls_more,
             parse_mountain_present,
             parse_there_are_count,
@@ -162,11 +163,26 @@ fn parse_requirement_lexed(
         ))
         .parse_next(input),
         AttackUnlessScope::AttackOrBlock => alt((
+            parse_source_status_requirement,
             parse_counted_controller_control_requirement,
+            parse_controller_control_requirement,
             parse_there_are_exile_count,
         ))
         .parse_next(input),
     }
+}
+
+fn parse_source_status_requirement(input: &mut LexStream<'_>) -> WResult<ParsedRequirement> {
+    let tokens = take_remaining_tokens(input)?;
+    let status = conditions::parse_subject_status_condition(tokens)
+        .filter(|status| matches!(status.subject, conditions::StatusConditionSubjectAst::Source))
+        .ok_or_else(|| primitives::backtrack_err("source status", "source status condition"))?;
+    let condition = status.condition_expr()
+        .ok_or_else(|| primitives::backtrack_err("source status", "supported status condition"))?;
+    Ok(ParsedRequirement {
+        surface: AttackUnlessSurface::SourceStatus,
+        condition: CantAttackUnlessConditionSpec::SourceCondition(condition),
+    })
 }
 
 fn parse_cast_spell_this_turn(input: &mut LexStream<'_>) -> WResult<ParsedRequirement> {
