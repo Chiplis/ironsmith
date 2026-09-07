@@ -1,0 +1,27 @@
+.registered-card-frame { position:absolute; inset:0; display:grid; place-items:center; }
+.registered-card-frame__surface { position:relative; width:100%; aspect-ratio:488/680; max-height:100%; container-type:size; }
+.registered-card-frame__scan { display:block; width:100%; height:100%; object-fit:fill; }
+.registered-card-frame__patch { position:absolute; pointer-events:none; z-index:1; }
+.registered-card-frame__field { position:absolute; z-index:2; min-width:0; }
+.registered-card-frame__field[data-replaced="true"] { display:flex; }
+.registered-card-frame__field .interactive-card-frame__rules { padding:0!important; border:0; box-shadow:none; background:none; overflow:hidden; }
+.registered-card-frame__field .interactive-card-frame__rule-line { font-weight:400; text-shadow:none; line-height:var(--registered-field-line-height,1.2); color:var(--registered-field-ink,var(--card-frame-ink)); }
+/* Registered fields already sit on the printed baseline grid: the preview-wide
+   clamp for assembled frames would shrink or enlarge them away from the scan. */
+.registered-card-frame__field .interactive-card-frame__rules[data-fit-text="true"] { font-size:var(--card-fitted-rules-font-size,var(--registered-field-font-size,3.575cqw)); }
+.registered-card-frame__field[data-field-kind="name"] .interactive-card-frame__rule-line,
+.registered-card-frame__field[data-field-kind="name"] .interactive-card-frame__rule-line :not(svg):not(svg *) { font-family:var(--card-title-font)!important; font-weight:var(--card-title-weight,400); }
+.registered-card-frame__field[data-field-kind="type"] .interactive-card-frame__rule-line,
+.registered-card-frame__field[data-field-kind="type"] .interactive-card-frame__rule-line :not(svg):not(svg *) { font-family:var(--card-type-font)!important; font-weight:var(--card-type-weight,400); }
+.registered-card-frame__field[data-field-kind="stats"] .interactive-card-frame__rule-line,
+.registered-card-frame__field[data-field-kind="stats"] .interactive-card-frame__rule-line :not(svg):not(svg *) { font-family:var(--card-stats-font)!important; font-weight:var(--card-stats-weight,400); }
+.registered-card-frame__field[data-field-kind="flavor"] .interactive-card-frame__rule-line { font-style:italic; }
+.registered-card-frame__field[data-unprinted="true"] { color:white; text-shadow:0 1px 2px black,0 0 4px black; }
+.registered-card-frame__field[data-unprinted="true"] .interactive-card-frame__rule-line { color:inherit; text-shadow:inherit; }
+.registered-card-frame__hotspot, .registered-card-frame__mana-hotspots, .registered-card-frame__mana-hotspots button { position:absolute; inset:0; width:100%; height:100%; background:transparent; border:0; padding:0; }
+.registered-card-frame__mana-hotspots button { right:auto; }
+.registered-card-frame__hotspot:not(:disabled), .registered-card-frame__mana-hotspots button:not(:disabled) { cursor:pointer; }
+.registered-card-frame__hotspot:not(:disabled):hover, .registered-card-frame__hotspot:focus-visible,
+.registered-card-frame__mana-hotspots button:not(:disabled):hover,.registered-card-frame__mana-hotspots button:focus-visible,
+.registered-card-frame__field[data-stack-highlighted="true"] { outline:2px solid #deb963; outline-offset:2px; border-radius:2px; }
+.registered-card-frame__action { color:inherit; background:none; border:0; padding:0; width:100%; text-align:left; }

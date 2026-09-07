@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { GameContext } from "../src/context/GameContext.shared";
-import { I18nProvider } from "../src/i18n/I18nContext";
+import { I18nProvider, useI18n } from "../src/i18n/I18nContext";
 import HoverArtOverlay from "../src/components/right-rail/HoverArtOverlay";
 import "../src/index.css";
 
@@ -9,14 +9,22 @@ const card = { id: 1, name: "Payment fixture", type_line: "Artifact", oracle_tex
 const action = { index: 0, object_id: 1, ability_index: 0, kind: "activate_ability", label: "Activate Payment fixture: {U}: Draw a card." };
 const twoAbilities = new URLSearchParams(window.location.search).has("two");
 const dualLand = new URLSearchParams(window.location.search).has("dual");
-const actions = dualLand ? [
+const translated = new URLSearchParams(window.location.search).has("translated");
+const allActions = translated ? [{ ...action, ability_index: 1, action_ref: { ability_index: 1 }, label: "Activate Payment fixture: Pay 1 life: Draw a card." }] : dualLand ? [
   { ...action, kind: "activate_mana_ability", label: "Activate Payment fixture: {T}: Add {G}." },
   { ...action, index: 1, ability_index: 1, kind: "activate_mana_ability", label: "Activate Payment fixture: {T}: Add {U}." },
 ] : twoAbilities ? [
   { ...action, label: "Activate Payment fixture: Pay 1 life: Gain vigilance." },
   { ...action, index: 1, ability_index: 1 },
 ] : [action];
+const actions = new URLSearchParams(window.location.search).has("partial")
+  ? allActions.filter(action => action.ability_index === 1) : allActions;
 if (twoAbilities) card.oracle_text = "Pay 1 life: Gain vigilance.\n{U}: Draw a card.";
+if (translated) {
+  card.oracle_text = "{T}: Add {G}.\nPay 1 life: Draw a card.";
+  // Official translations follow Oracle, not this reversed compiled ordering.
+  card.compiled_text = ["Pay 1 life: Draw a card.", "{T}: Add {G}."];
+}
 if (dualLand) {
   card.type_line = "Land — Forest Island";
   // Reverse the lines so an ordinal fallback cannot hide an incorrect match.
@@ -39,12 +47,15 @@ const game = {
 };
 
 export default function Fixture() {
+  const { setLocale } = useI18n();
   const [revision, setRevision] = useState(0);
   const [open, setOpen] = useState(false);
   const state = useMemo(() => ({ players: [{ id: 0, battlefield: [card] }], perspective: 0, revision }), [revision]);
   const [activations, setActivations] = useState(0);
   const [mode, setMode] = useState("card-frame");
   return <GameContext.Provider value={{ state, game }}>
+    <button onClick={() => setLocale("es")}>Spanish</button>
+    <button onClick={() => setLocale("en")}>English</button>
     <button onClick={() => setOpen(!open)}>Toggle inspector</button>
     <button onClick={() => { paymentAvailable = !paymentAvailable; setRevision(value => value + 1); }}>Toggle payment</button>
     <button onClick={() => setMode(mode === "card-frame" ? "inspector" : "card-frame")}>Toggle layout</button>

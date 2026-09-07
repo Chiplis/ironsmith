@@ -33,5 +33,12 @@ export function createWasmInteractionGate({
   return {
     isBlocked,
     run,
+    async runWhenReady(task, isCurrent = () => true) {
+      while (isCurrent()) {
+        if (!isBlocked()) return run(task);
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      return undefined;
+    },
   };
 }

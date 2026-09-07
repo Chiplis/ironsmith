@@ -118,5 +118,15 @@ export default [
     "titlePanel": "panel",
     "typePanel": "panel",
     "innerBorder": "partial"
+  },
+  {
+    "slug": "braids-arisen-nightmare",
+    "name": "Braids, Arisen Nightmare",
+    "id": "4ff97c69-6a6b-401c-b0a1-55fa81045d19",
+    "set": "dmu",
+    "collector_number": "84",
+    "titlePanel": "panel",
+    "typePanel": "panel",
+    "innerBorder": null
   }
 ];

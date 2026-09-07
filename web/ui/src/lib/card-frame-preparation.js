@@ -1,6 +1,7 @@
-import { resolveScryfallFlavorText, resolveScryfallPrintingMetadata } from './scryfall';
-import { fullCardImageUrl, sampleCardFrameColors } from './card-frame-colors';
+import { resolveScryfallFlavorText, resolveScryfallPrintingMetadata, resolveScryfallSetSymbol } from './scryfall';
+import { fullCardImageUrl, preloadCardFrameSource, sampleCardFrameColors } from './card-frame-colors';
 import { cardTypography } from './card-typography';
+import {registrationForImage} from './card-region-layout';
 
 const preparations = new Map();
 const isBasicLand = typeLine => {
@@ -8,6 +9,10 @@ const isBasicLand = typeLine => {
   return /\bbasic\b/i.test(types) && /\bland\b/i.test(types);
 };
 export const cardFramePreparationKey = (imageUrl, typeLine) => `${imageUrl}|${isBasicLand(typeLine)}`;
+
+export function cachedCardFrame(imageUrl, typeLine = '') {
+  return preparations.get(cardFramePreparationKey(imageUrl, typeLine))?.result || null;
+}
 
 async function decodeImage(url) {
   if (!url) return;
@@ -40,15 +45,24 @@ async function prepareTypography(printing) {
 // never reveals a mixture of the default and final printing styles.
 export function prepareCardFrame(imageUrl, typeLine = '') {
   const key = cardFramePreparationKey(imageUrl, typeLine);
-  if (preparations.has(key)) return preparations.get(key);
+  if (preparations.has(key)) {
+    const entry = preparations.get(key);
+    preparations.delete(key);
+    preparations.set(key, entry);
+    return entry.promise;
+  }
+  const entry = { promise: null, result: null };
   const request = (async () => {
+    void preloadCardFrameSource(imageUrl);
     const art = decodeImage(imageUrl).then(() => true, () => false);
     const flavor = resolveScryfallFlavorText(imageUrl).catch(() => '');
     const printing = await resolveScryfallPrintingMetadata(imageUrl);
     const typographyRequest = prepareTypography(printing);
-    const basicLand = isBasicLand(typeLine || printing?.type_line);
-    const style = await sampleCardFrameColors(fullCardImageUrl(imageUrl), {
-      textures: cardTypography(printing || {}).conventionalFrame && !basicLand,
+    const setSymbolRequest = resolveScryfallSetSymbol(printing);
+    const preparedTypography = await typographyRequest;
+    const registration = registrationForImage((await import('./card-region-catalog.generated.js')).default, fullCardImageUrl(imageUrl));
+    const style = registration ? {} : await sampleCardFrameColors(fullCardImageUrl(imageUrl), {
+      typography: preparedTypography, printing, setSymbolUrl: await setSymbolRequest,
     });
     // CSS backgrounds and border images have their own decode step, even
     // after the canvas work has produced their data URLs.
@@ -59,10 +73,17 @@ export function prepareCardFrame(imageUrl, typeLine = '') {
       typographyRequest, flavor, art,
       Promise.allSettled([...urls].map(decodeImage)),
     ]);
-    if (fullCardImageUrl(imageUrl) && !style) preparations.delete(key);
-    return {key, imageUrl, style, typography, flavorText, artReady};
-  })().catch(error => { preparations.delete(key); throw error; });
-  preparations.set(key, request);
+    const result = {key, registration, printing, imageUrl, originalImageUrl: fullCardImageUrl(imageUrl) || imageUrl, style, typography, flavorText, artReady};
+    if (fullCardImageUrl(imageUrl) && !style) {
+      if (preparations.get(key) === entry) preparations.delete(key);
+    } else entry.result = result;
+    return result;
+  })().catch(error => {
+    if (preparations.get(key) === entry) preparations.delete(key);
+    throw error;
+  });
+  entry.promise = request;
+  preparations.set(key, entry);
   if (preparations.size > 48) preparations.delete(preparations.keys().next().value);
   return request;
 }

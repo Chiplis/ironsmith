@@ -722,6 +722,7 @@ export default function Workspace({
   setMobileViewMode,
   mobilePhaseStops,
   setMobilePhaseStops,
+  middleUtilityControls = null,
   middleTopbar = null,
   middleAddCardBar = null,
   zoneActionControls = null,
@@ -741,7 +742,6 @@ export default function Workspace({
   const previousZoneTransitionSnapshotRef = useRef(null);
   const previousCardRectsRef = useRef(new Map());
   const processedRuntimeZoneTransitionIdsRef = useRef(new Set());
-  const transitionInspectorRestoreRef = useRef(null);
   const transitionInspectorRevealTimerRef = useRef(null);
   const castIntentDispatchKeyRef = useRef(null);
   const {
@@ -854,39 +854,12 @@ export default function Workspace({
       clearTimeout(transitionInspectorRevealTimerRef.current);
       transitionInspectorRevealTimerRef.current = null;
     }
-    transitionInspectorRestoreRef.current = null;
     setTransientInspectorPreviews([]);
     setTransientInspectorPreviewIndex(0);
-  }, []);
-
-  const restoreInspectorBeforeTransitionPreview = useCallback(() => {
-    if (transitionInspectorRevealTimerRef.current) {
-      clearTimeout(transitionInspectorRevealTimerRef.current);
-      transitionInspectorRevealTimerRef.current = null;
-    }
-    const restoreState = transitionInspectorRestoreRef.current;
-    transitionInspectorRestoreRef.current = null;
-    setTransientInspectorPreviews([]);
-    setTransientInspectorPreviewIndex(0);
-    if (!restoreState) return;
-
-    setSelectedObjectId(restoreState.selectedObjectId);
-    setFocusedStackObjectId(restoreState.focusedStackObjectId);
-    setPinnedInspectorObjectId(restoreState.pinnedInspectorObjectId);
-    setSuppressFallbackInspector(Boolean(restoreState.suppressFallbackInspector));
   }, []);
 
   const showTransitionInspectorPreviews = useCallback((previews) => {
     if (!Array.isArray(previews) || previews.length === 0) return;
-
-    if (!transitionInspectorRestoreRef.current) {
-      transitionInspectorRestoreRef.current = {
-        selectedObjectId,
-        focusedStackObjectId,
-        pinnedInspectorObjectId,
-        suppressFallbackInspector,
-      };
-    }
 
     setSuppressFallbackInspector(true);
     setTransientInspectorPreviews(previews);
@@ -915,7 +888,7 @@ export default function Workspace({
         ));
       }, revealDelayMs + INSPECTOR_SHADER_REVEAL_CONSUME_MS);
     }
-  }, [focusedStackObjectId, pinnedInspectorObjectId, selectedObjectId, suppressFallbackInspector]);
+  }, []);
 
   const showPreviousTransientInspectorPreview = useCallback(() => {
     setTransientInspectorPreviewIndex((currentIndex) => {
@@ -1717,27 +1690,13 @@ export default function Workspace({
       if (event.button !== 0) return;
       const target = event.target;
       if (!(target instanceof Element)) return;
-      if (decision && samePlayerId(decision.player, state?.perspective)
-        && decision.kind !== "priority" && decision.kind !== "mana_payment") return;
       if (target.closest("[data-object-id]")) return;
       if (target.closest(".zone-viewer")) return;
-      if (target.closest(".priority-inline-panel")) return;
       if (target.closest("[data-card-inspector], .ironsmith-inspector-shell")) return;
       if (target.closest("button, input, label, a, [role='button']")) return;
 
-      const inDeadZone = (
-        target.closest("[data-drop-zone]")
-        || target.closest(".table-gradient")
-        || target.closest(".board-zone-bg")
-      );
-      if (!inDeadZone) return;
-
-      if (hasTransientInspectorPreview && decision?.kind !== "mana_payment") {
-        clearHover();
-        restoreInspectorBeforeTransitionPreview();
-        return;
-      }
-
+      clearTransientInspectorPreviews();
+      setFocusedStackObjectId(null);
       setSelectedObjectId(null);
       setPinnedInspectorObjectId(null);
       setSuppressFallbackInspector(true);
@@ -1752,10 +1711,7 @@ export default function Workspace({
   }, [
     clearHover,
     clearAnchoredCardPreview,
-    decision,
-    hasTransientInspectorPreview,
-    restoreInspectorBeforeTransitionPreview,
-    state?.perspective,
+    clearTransientInspectorPreviews,
   ]);
 
   const closeFloatingCardPreview = useCallback(() => {
@@ -1894,7 +1850,6 @@ export default function Workspace({
             focusedStackObjectId={focusedStackObjectId}
             onFocusStackObject={handleFocusStackObject}
             zoneViews={effectiveZoneViews}
-            zoneViewerViews={zoneViews}
             setZoneViews={setZoneViews}
             zoneActivityByPlayer={zoneActivityByPlayer}
             deckLoadingMode={deckLoadingMode}
@@ -1912,6 +1867,7 @@ export default function Workspace({
             setMobileViewMode={setMobileViewMode}
             mobilePhaseStops={mobilePhaseStops}
             setMobilePhaseStops={setMobilePhaseStops}
+            middleUtilityControls={middleUtilityControls}
             middleTopbar={middleTopbar}
             middleAddCardBar={middleAddCardBar}
             zoneActionControls={zoneActionControls}

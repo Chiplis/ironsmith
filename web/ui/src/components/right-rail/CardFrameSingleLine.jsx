@@ -10,6 +10,33 @@ export default function CardFrameSingleLine({ as = "span", className, children }
     const range = document.createRange();
     let frame = 0;
     let active = true;
+    const metricsContext=document.createElement('canvas').getContext('2d');
+    const alignBaseline=()=>{
+      const section = text.classList.contains('interactive-card-frame__title') ? 'title'
+        : text.classList.contains('interactive-card-frame__type') ? 'type'
+        : text.classList.contains('interactive-card-frame__stats-text') ? 'stats' : null;
+      if (!section) return;
+      const stage=text.closest('.interactive-card-frame-stage');
+      const baseline=Number(stage?.style.getPropertyValue(`--printed-${section}-baseline`));
+      text.style.removeProperty('transform');
+      if(!baseline)return;
+      const frame=stage.querySelector('.interactive-card-frame').getBoundingClientRect();
+      const scale=frame.width/Number(stage.style.getPropertyValue('--printed-scan-width'));
+      const css=getComputedStyle(text);
+      metricsContext.font=`${css.fontWeight} ${css.fontSize} ${css.fontFamily}`;
+      const metrics=metricsContext.measureText(text.textContent);
+      const ascent=metrics.fontBoundingBoxAscent,descent=metrics.fontBoundingBoxDescent;
+      if(!Number.isFinite(ascent)||!Number.isFinite(descent))return;
+      const offset=(parseFloat(css.lineHeight)-ascent-descent)/2+ascent;
+      const current=text.getBoundingClientRect().top+offset;
+      const bounds = JSON.parse(stage.style.getPropertyValue(`--printed-${section}-text-bounds`) || 'null');
+      const rect = text.getBoundingClientRect();
+      const inkLeft = rect.left - metrics.actualBoundingBoxLeft;
+      const dx = !bounds ? 0 : section === 'stats'
+        ? frame.left + (bounds.x + bounds.width / 2) * scale - (inkLeft + (metrics.actualBoundingBoxLeft + metrics.actualBoundingBoxRight) / 2)
+        : frame.left + bounds.x * scale - inkLeft;
+      text.style.transform=`translate(${dx}px, ${frame.top+baseline*scale-current}px)`;
+    };
     const fit = () => {
       const available = text.getBoundingClientRect().width;
       if (!available) return;
@@ -19,7 +46,7 @@ export default function CardFrameSingleLine({ as = "span", className, children }
       text.style.removeProperty("font-size");
       const preferred = parseFloat(getComputedStyle(text).fontSize);
       range.selectNodeContents(text);
-      if (range.getBoundingClientRect().width <= available) return;
+      if (range.getBoundingClientRect().width <= available) {alignBaseline();return;}
 
       let low = 0;
       let high = preferred;
@@ -30,6 +57,7 @@ export default function CardFrameSingleLine({ as = "span", className, children }
         else high = size;
       }
       text.style.fontSize = `${Math.floor(low * 100) / 100}px`;
+      alignBaseline();
     };
     const scheduleFit = () => {
       cancelAnimationFrame(frame);

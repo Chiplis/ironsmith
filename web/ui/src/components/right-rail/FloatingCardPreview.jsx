@@ -9,6 +9,8 @@ import {
   useHoveredObjectId,
 } from "@/context/HoverContext";
 import HoverArtOverlay from "./HoverArtOverlay";
+import useDisplayedCardImage from "@/hooks/useDisplayedCardImage";
+import { cardArtCropUrl } from "@/lib/card-image-variants";
 import { prepareCardFrame } from "@/lib/card-frame-preparation";
 import { resolveScryfallImageUrl } from "@/lib/scryfall";
 import { playerAccentVars } from "@/lib/player-colors";
@@ -295,15 +297,19 @@ export default function FloatingCardPreview({
   }, [requestedObjectId, state]);
   const preparationName = preparationCard?.name;
   const preparationType = preparationCard?.type_line;
+  const isStackSource = id => id != null && id === lockedObjectId
+    && getVisibleStackObjects(state).some(entry => String(entry.id) === id);
+  const requestedImageUrl = useDisplayedCardImage(requestedObjectId, isStackSource(requestedObjectId));
+  const renderedImageUrl = useDisplayedCardImage(renderedObjectId, isStackSource(renderedObjectId));
   useEffect(() => {
     if (!preparationName) return undefined;
     let active = true;
     // Start asset work immediately, in parallel with the existing hover delay.
-    resolveScryfallImageUrl(preparationName, 'art_crop')
+    (requestedImageUrl ? Promise.resolve(cardArtCropUrl(requestedImageUrl)) : resolveScryfallImageUrl(preparationName, 'art_crop'))
       .then(url => active ? prepareCardFrame(url, preparationType) : null)
       .catch(() => {});
     return () => { active = false; };
-  }, [preparationName, preparationType]);
+  }, [preparationName, preparationType, requestedImageUrl]);
 
   const interactiveActions = useMemo(() => {
     if (renderedObjectId == null) return [];
@@ -452,6 +458,7 @@ export default function FloatingCardPreview({
             ? getVisibleStackObjects(state).find(entry => String(entry.id) === String(pinnedObjectId))
             : null}
           displayMode="card-frame"
+          sourceImageUrl={renderedImageUrl}
           availableInspectorWidth={size.width}
           availableInspectorHeight={size.height}
           onInspectorAccentChange={setAccent}

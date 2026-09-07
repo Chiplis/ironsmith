@@ -118,6 +118,25 @@
   pointer-events: auto;
 }
 
+.player-zone-piles {
+  left: 6px;
+  align-items: flex-end;
+  pointer-events: none;
+}
+.player-zone-piles > .zone-pile-slot,
+.player-look-pile { pointer-events: auto; }
+.player-look-pile { position: absolute; top: 0; left: 0; }
+.player-look-pile .zone-pile-label { left: 0; right: auto; }
+.zone-pile-menu.zone-pile-menu--look[data-state="open"] {
+  flex-direction: row-reverse;
+  transform-origin: left center;
+  animation-name: look-strip-expand;
+}
+@keyframes look-strip-expand {
+  from { clip-path: inset(0 calc(100% - var(--zone-strip-card-width) - 12px) 0 0); }
+  to { clip-path: inset(0); }
+}
+
 .zone-pile {
   position: relative;
   width: var(--zone-pile-width, 50px);
@@ -3340,7 +3359,11 @@ button:disabled,
   padding: 0;
 }
 .my-zone-board-shell--with-stack { display: block; }
-.stack-flow-reveal { width: 100%; max-height: 100%; }
+.stack-flow-reveal { width: 100%; height: 100%; max-height: 100%; min-height: 0; }
+.stack-timeline-body > .battlefield-rolling-panel-clip {
+  display: flex;
+  flex-direction: column;
+}
 @media (prefers-reduced-motion: reduce) {
   .battlefield-rolling-panel { transition: none; }
 }
@@ -3707,4 +3730,30 @@ button:disabled,
   .inspector-ability-section::after {
     transition: none;
   }
+}
+
+/* Keep the turn summary with the right-aligned brand. */
+.topbar-brand-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 0;
+  gap: 5px;
+}
+
+.topbar-brand-stack .topbar-phase-status {
+  position: static;
+  max-width: 100%;
+  justify-content: flex-end;
+  transform: none;
+}
+
+.topbar-phase-shell .phase-track-cell {
+  padding-top: 0;
+}
+
+.player-header-utility-controls {
+  display: flex;
+  align-items: center;
+  margin-left: 8px;
 }

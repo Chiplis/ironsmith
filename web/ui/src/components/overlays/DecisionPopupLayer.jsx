@@ -1,3 +1,4 @@
+import { LOOK_DONE_EVENT } from "@/lib/look-pile";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useGame } from "@/context/GameContext";
@@ -1075,7 +1076,7 @@ function ViewedCardsStrip({
   compact = false,
   wrap = false,
 }) {
-  const { playerAccentOverrides: contextAccentOverrides } = useGame();
+  const { state, playerAccentOverrides: contextAccentOverrides } = useGame();
   const effectiveAccentOverrides = accentOverrides || contextAccentOverrides;
   const { attachScrollableRef, hoverSuppressed } = useHoverSuppressedWhileScrolling({
     onScrollStart: onCardHoverEnd,
@@ -1133,6 +1134,11 @@ function ViewedCardsStrip({
             effectiveAccentOverrides,
           );
           const cardAccentStyle = decisionOptionAccentVars(cardAccent);
+          const selectableCandidate = state?.decision?.kind === "select_objects"
+            && samePlayerId(state.decision.player, state.perspective)
+            && (state.decision.candidates || []).find((candidate) => (
+              candidate.legal !== false && String(candidate.id) === String(card.id)
+            ));
           return (
             <button
               key={card.key || card.id || index}
@@ -1145,6 +1151,13 @@ function ViewedCardsStrip({
                 "text-[#d8ccb4]",
               )}
               style={cardAccentStyle}
+              title={selectableCandidate ? `Select ${card.name}` : undefined}
+              onClick={() => {
+                if (!selectableCandidate) return;
+                window.dispatchEvent(new CustomEvent("ironsmith:select-object-choice", {
+                  detail: { objectId: selectableCandidate.id },
+                }));
+              }}
               onMouseEnter={() => {
                 if (hoverSuppressed) return;
                 onCardHoverStart?.(card);
@@ -1811,6 +1824,7 @@ function MobileBattleDecisionLayer({
   const completeViewedCardsStep = useCallback(() => {
     if (!viewedCardsToken) return;
     setAcknowledgedViewedCardsToken(viewedCardsToken);
+    window.dispatchEvent(new Event(LOOK_DONE_EVENT));
   }, [viewedCardsToken]);
 
   if (!decision) return null;
@@ -2623,6 +2637,7 @@ function PriorityBar({
   const completeViewedCardsStep = useCallback(() => {
     if (!viewedCardsToken) return;
     setAcknowledgedViewedCardsToken(viewedCardsToken);
+    window.dispatchEvent(new Event(LOOK_DONE_EVENT));
   }, [viewedCardsToken]);
 
   const topbarMainDecisionHost = inline
@@ -2823,7 +2838,7 @@ function PriorityBar({
           className={cn(
             "priority-inline-panel pointer-events-auto relative flex h-full w-full flex-col py-0",
             isPriorityDecision && "priority-inline-panel--segmented",
-            isPriorityDecision && !showViewedCardsStep && "priority-inline-panel--main-only",
+            isPriorityDecision && "priority-inline-panel--main-only",
             compactLandscapeViewport || isPriorityDecision ? "px-0" : "px-2"
           )}
           data-replaces-middle-controls={replaceMiddleControls ? "true" : "false"}
@@ -2831,7 +2846,7 @@ function PriorityBar({
           {isPriorityDecision ? (
             showViewedCardsStep ? (
               <div
-                className="priority-main-action-only flex min-h-[46px] items-stretch"
+                className="action-strip-layout action-strip-layout--segmented flex min-h-[46px] items-stretch gap-2"
                 style={decisionButtonStyle}
               >
                 <div className="action-strip-command-region shrink-0 self-stretch" style={decisionButtonStyle}>
@@ -2866,22 +2881,7 @@ function PriorityBar({
                     </PeerWaitPopover>
                   </div>
                 </div>
-                <ViewedCardsStrip
-                  label={viewedCardsLabel}
-                  description={viewedCards?.description || ""}
-                  sourceName={viewedCardsSourceName}
-                  cards={viewedCardEntries}
-                  players={state?.players || []}
-                  perspective={state?.perspective}
-                  accentOverrides={playerAccentOverrides}
-                  className="action-strip-options-region self-stretch"
-                  objectControllerById={objectControllerById}
-                  hoveredObjectId={hoveredObjectId}
-                  selectedObjectId={selectedObjectId}
-                  onCardHoverStart={handleViewedCardHoverStart}
-                  onCardHoverEnd={handleViewedCardHoverEnd}
-                  compact
-                />
+
               </div>
             ) : (
               <div

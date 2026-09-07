@@ -11,7 +11,6 @@ import PuzzleSetupView from "./PuzzleSetupView";
 import DecisionPopupLayer from "@/components/overlays/DecisionPopupLayer";
 import MobileBattleScene from "./MobileBattleScene";
 import PlanarZone from "./PlanarZone";
-import ZoneViewer from "./ZoneViewer";
 import ManaPool from "@/components/left-rail/ManaPool";
 import StackTimelineRail from "@/components/right-rail/StackTimelineRail";
 import { DEFAULT_PLAYER_ACCENT, getPlayerAccent } from "@/lib/player-colors";
@@ -41,7 +40,6 @@ export default function TableCore({
   focusedStackObjectId = null,
   onFocusStackObject = null,
   zoneViews,
-  zoneViewerViews = zoneViews,
   zoneActivityByPlayer = {},
   deckLoadingMode,
   puzzleSetupMode = false,
@@ -58,10 +56,10 @@ export default function TableCore({
   setMobileViewMode,
   mobilePhaseStops,
   setMobilePhaseStops,
+  middleUtilityControls = null,
   middleTopbar = null,
   middleAddCardBar = null,
   zoneActionControls = null,
-  setZoneViews = null,
   middleInspectorDock = null,
 }) {
   const { state, playerAccentOverrides, multiplayer } = useGame();
@@ -274,15 +272,9 @@ export default function TableCore({
           compact
           className="player-name-mana battlefield-header-mana"
         />
-        {zoneViewerViews && setZoneViews ? (
-          <div className="player-header-zone-visibility" aria-label="Visible table zones">
-            <ZoneViewer
-              player={me}
-              zoneViews={zoneViewerViews}
-              setZoneViews={setZoneViews}
-              onOpenDecklist={handleOpenDecklist}
-              embedded
-            />
+        {middleUtilityControls ? (
+          <div className="player-header-utility-controls">
+            {middleUtilityControls}
           </div>
         ) : null}
       </div>

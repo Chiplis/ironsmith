@@ -69,12 +69,12 @@ export default function Fixture() {
       await Promise.all(['400 100px "Goudy Medieval"','400 100px "MPlantin"','italic 400 100px "MPlantin"'].map(font => loadFont(font)));
       for (const [label, delays] of [
         ['fast preparation respects hover delay', {}],
-        ['slow printing metadata stays hidden', {apiDelay:900}],
-        ['initial card details finish before reveal', {detailsDelay:900}],
-        ['slow flavor text stays hidden', {flavorDelay:900}],
+        ['art appears while printing metadata loads', {apiDelay:900}],
+        ['art appears while initial card details load', {detailsDelay:900}],
+        ['art appears while flavor text loads', {flavorDelay:900}],
         ['texture calculation starts during delay', {textureDelay:900}],
         ['slow artwork decode stays hidden', {artDelay:900}],
-        ['slow fonts stay hidden', {fontDelay:900}],
+        ['art appears while fonts load', {fontDelay:900}],
         ['failed assets show a settled fallback', {fail:true}],
       ]) {
         flushSync(() => {clearHover();setCards([]);});await sleep(270);
@@ -90,12 +90,26 @@ export default function Fixture() {
         const visible = () => preview()?.dataset.visible === 'true';
         await sleep(350);check(!visible(), `${label}: appeared before hover delay`);
         if (delays.apiDelay || delays.detailsDelay || delays.flavorDelay || delays.textureDelay || delays.artDelay || delays.fontDelay) {
-          await sleep(260);check(!visible(), `${label}: appeared with unfinished style`);
+          await sleep(260);
+          const stage = preview()?.querySelector('.interactive-card-frame-stage');
+          check(stage?.dataset.renderReady === 'false', `${label}: unfinished frame revealed`);
+          check(stage.inert, `${label}: unfinished frame accepts interaction`);
+          if (!delays.artDelay) {
+            check(visible(), `${label}: artwork blocked by frame preparation`);
+            check(preview().querySelector('.card-frame-art-preview'), `${label}: artwork missing`);
+          } else check(!visible(), `${label}: undecoded artwork revealed`);
         }
-        await until(visible);
+        await until(() => visible() && preview().querySelector('.interactive-card-frame-stage')?.dataset.renderReady === 'true');
         const elapsed = performance.now() - started, stage = preview().querySelector('.interactive-card-frame-stage');
         check(stage.dataset.renderReady === 'true' && stage.dataset.printingReady === 'true', `${label}: visible before readiness`);
         check(!stage.inert && !preview().inert, `${label}: ready card remains inert`);
+        const artwork = preview().querySelector('.card-frame-art-preview');
+        if (artwork) {
+          check(artwork.dataset.frameReady === 'true', `${label}: artwork did not dissolve`);
+          await sleep(280);
+          check(getComputedStyle(artwork).opacity === '0', `${label}: artwork remains visible`);
+          check(getComputedStyle(stage).opacity === '1', `${label}: frame did not finish fading`);
+        }
         check(elapsed >= 490, `${label}: hover delay shortened`);
         if (delays.textureDelay) {
           check(scenario.textureStarted - started < 400, 'Texture preparation started after hover delay');
@@ -103,7 +117,12 @@ export default function Fixture() {
         if (!delays.fail) {
           check(stage.dataset.cardEra === 'retro', 'Default font leaked into visible frame');
           check(stage.querySelector('[aria-label="Flavor text"]'), 'Flavor missing at reveal');
-          check(parseFloat(stage.querySelector('[data-fit-text]').style.getPropertyValue('--card-fitted-rules-font-size')) > 0, 'Text not fitted at reveal');
+          if (stage.dataset.frameMode === 'masked') {
+            check(parseFloat(stage.querySelector('[data-fit-text]').style.getPropertyValue('--card-fitted-rules-font-size')) > 0, 'Text not fitted at reveal');
+          } else {
+            check(stage.querySelector('.original-card-fallback'), 'Missing original-image fallback');
+            check(!stage.querySelector('.interactive-card-frame'), 'Synthetic frame was rendered');
+          }
         }
         setResults(items => [...items, `PASS ${label} (${Math.round(elapsed)} ms)`]);
       }

@@ -1,0 +1,31 @@
+.inspector-mana-line {
+  display: block;
+  text-align: left;
+  white-space: pre-wrap;
+}
+
+.inspector-mana-choice {
+  display: inline-block;
+  vertical-align: baseline;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.inspector-mana-choice:not(:disabled):is(:hover, :focus-visible) {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.inspector-mana-choice:disabled {
+  cursor: default;
+  opacity: .55;
+}
+
+.inspector-ability-section:has(> .inspector-mana-line .inspector-mana-choice:not(:disabled):is(:hover, :focus-visible)) {
+  --ability-highlight-opacity: 1;
+}

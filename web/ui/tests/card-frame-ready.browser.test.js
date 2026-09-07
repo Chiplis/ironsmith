@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
 import {createServer} from 'vite';
 
-test('card frames reveal only after their hover delay, assets, and layout are ready', {timeout:60000}, async () => {
+test('card previews show artwork during preparation and dissolve into ready frames', {timeout:60000}, async () => {
   const vite = await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});
   await vite.listen();
   const browser = await chromium.launch();

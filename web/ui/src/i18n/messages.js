@@ -1,5 +1,6 @@
 export const messages = {
   en: {
+    "card.previewDetails": "Card details",
     "app.menu": "Menu",
     "app.settings": "Settings",
     "app.openNavigationMenu": "Open navigation menu",
@@ -150,6 +151,7 @@ export const messages = {
     "fidelity.off": "Off",
   },
   es: {
+    "card.previewDetails": "Detalles de la carta",
     "app.menu": "Menu",
     "app.settings": "Ajustes",
     "app.openNavigationMenu": "Abrir menu de navegacion",

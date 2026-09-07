@@ -359,3 +359,94 @@
   background-image: var(--sampled-shell-veil, linear-gradient(transparent, transparent)), var(--sampled-shell-texture, var(--sampled-shell-paper));
   background-size: 100% 100%, var(--sampled-shell-texture-size, 100% 100%);
 }
+
+/* A measured P/T enclosure retains its source dimensions and traced rim. */
+.interactive-card-frame-stage[style*="--printed-pt-outline"] .interactive-card-frame__printed-stats {
+  background: var(--printed-pt-outline) center / 100% 100% no-repeat;
+  border: 0;
+  box-shadow: none;
+  border-radius: 0;
+  width: var(--printed-pt-box-width);
+  height: var(--printed-pt-box-height);
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Enclosed source frames already supply their art rim. A generic drop shadow
+   would add a second, much softer border than the printed one. */
+.interactive-card-frame-stage[data-box-sizing="measured"][data-title-panel="panel"] .interactive-card-frame__art {
+  box-shadow: none;
+}
+.interactive-card-frame-stage[data-box-sizing="measured"][data-title-panel="panel"] .interactive-card-frame__art::after {
+  background: none;
+}
+
+/* The original printing supplies every visual layer; only live data is drawn
+   over it. Retain the measured DOM boxes for fitting and interaction. */
+.interactive-card-frame-stage[data-source-frame="true"] .interactive-card-frame {
+  background: var(--source-frame-image) center / 100% 100% no-repeat !important;
+  background-origin: border-box;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+.interactive-card-frame-stage[data-source-frame="true"] .interactive-card-frame__inner {
+  background: none !important;
+}
+.interactive-card-frame-stage[data-source-frame="true"] :is(.interactive-card-frame__bevel, .interactive-card-frame__backdrop, .interactive-card-frame__art img) {
+  display: none;
+}
+.interactive-card-frame-stage[data-source-frame="true"] :is(.interactive-card-frame__title-row, .interactive-card-frame__type-row, .interactive-card-frame__rules, .interactive-card-frame__art, .interactive-card-frame__printed-stats) {
+  background: none !important;
+  border-image: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Measured ink dimensions already scale with the original printing. */
+.interactive-card-frame-stage[data-source-frame="true"][style*="--printed-title-font-size"] .interactive-card-frame__title {
+  font-size: var(--printed-title-font-size);
+}
+.interactive-card-frame-stage[data-source-frame="true"][style*="--printed-type-font-size"] .interactive-card-frame__type {
+  font-size: var(--printed-type-font-size);
+}
+.interactive-card-frame-stage[data-source-frame="true"][style*="--printed-stats-font-size"] .interactive-card-frame__printed-stats {
+  font-size: var(--printed-stats-font-size);
+}
+.interactive-card-frame__stats-text { display: inline-block; white-space: nowrap; }
+.interactive-card-frame-stage[data-source-frame="true"][style*="--printed-rules-font-size"] .interactive-card-frame__rules[data-fit-text="true"] {
+  font-size: var(--card-fitted-rules-font-size, var(--printed-rules-font-size));
+  padding-top: max(4px, calc(var(--printed-rules-padding-top) * var(--card-rules-spacing-scale, 1) - 1px));
+  padding-left: max(6px, calc(var(--printed-rules-padding-left) * var(--card-rules-fit-scale, 1) - 1px));
+  padding-right: 6px;
+}
+.interactive-card-frame-stage[data-source-frame="true"][style*="--printed-rules-font-size"] .interactive-card-frame__rule-line {
+  line-height: var(--printed-rules-line-height);
+}
+.interactive-card-frame-stage[data-source-frame="true"] .interactive-card-frame__inner::before,
+.interactive-card-frame-stage[data-source-frame="true"] .interactive-card-frame__inner::after,
+.interactive-card-frame-stage[data-source-frame="true"] .interactive-card-frame__art::before,
+.interactive-card-frame-stage[data-source-frame="true"] .interactive-card-frame__art::after,
+.interactive-card-frame-stage[data-source-frame="true"] .interactive-card-frame__rules::before,
+.interactive-card-frame-stage[data-source-frame="true"] .interactive-card-frame__rules::after {
+  display: none !important;
+}
+
+/* Fit the type text to the measured start of the retained set icon. */
+.interactive-card-frame-stage[data-source-frame="true"] .interactive-card-frame__type {
+  flex: 0 1 var(--printed-type-text-width);
+  max-width: var(--printed-type-text-width);
+}
+
+.interactive-card-frame-stage[data-source-frame="true"][style*="--printed-mana-center-y"] .interactive-card-frame__mana {
+  position: relative;
+  top: calc(var(--printed-mana-center-y) * var(--card-frame-source-unit) - var(--printed-title-height) * var(--card-frame-source-unit) / 2);
+}
+
+.interactive-card-frame__source-mana {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+}
+.interactive-card-frame__source-mana :is(span, svg) { width: 100%; height: 100%; }

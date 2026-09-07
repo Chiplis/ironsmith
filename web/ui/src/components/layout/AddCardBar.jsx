@@ -1,14 +1,12 @@
 import { useGame } from "@/context/GameContext";
 import { Checkbox } from "@/components/ui/checkbox";
-import ZoneViewer from "@/components/board/ZoneViewer";
 import { useI18n } from "@/i18n/I18nContext";
 
 const selectPill = "stone-select rounded-none px-2.5 py-0.5 text-[13px] font-medium border-0 outline-none cursor-pointer";
 
 export default function AddCardBar({
   compact = false,
-  zoneViews = ["battlefield"],
-  setZoneViews,
+  utilityControls,
 }) {
   const {
     autoPassEnabled,
@@ -21,7 +19,7 @@ export default function AddCardBar({
   return (
     <div className={`add-card-toolbar table-toolbar table-toolbar--secondary rounded-none px-3 py-2${compact ? " add-card-toolbar--compact" : ""}`}>
       <div className="add-card-toolbar-zone-group">
-        <ZoneViewer zoneViews={zoneViews} setZoneViews={setZoneViews} embedded />
+        {utilityControls}
       </div>
 
       <span className="add-card-toolbar-separator add-card-toolbar-control-separator" aria-hidden="true" />

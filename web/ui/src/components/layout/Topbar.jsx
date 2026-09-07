@@ -2,10 +2,9 @@ import { useGame } from "@/context/GameContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
 import useViewportLayout from "@/hooks/useViewportLayout";
 import { formatPhase, formatStep } from "@/lib/constants";
-import { Button } from "@/components/ui/button";
 import PhaseTrack from "@/components/board/PhaseTrack";
 import DecisionPopupLayer from "@/components/overlays/DecisionPopupLayer";
-import { Bug, ChevronLeft, ChevronRight, Clock3, Github, ScrollText, WifiOff } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock3, WifiOff } from "lucide-react";
 import TopbarMenuSheet from "./TopbarMenuSheet";
 import { DEFAULT_PLAYER_ACCENT, getPlayerAccent } from "@/lib/player-colors";
 import { playerDisplayName, samePlayerId } from "@/lib/player-display";
@@ -57,12 +56,11 @@ export default function Topbar({
   mobileOverlay = false,
   middleDocked = false,
   onChangePerspective,
+  utilityControls,
 }) {
   const {
-    inspectorDebug,
     multiplayer,
     playerAccentOverrides,
-    setInspectorDebug,
     state,
   } = useGame();
   const { t } = useI18n();
@@ -222,72 +220,8 @@ export default function Topbar({
 
   const showCompactPhase = nonDesktopViewport || tabletCompactViewport;
   const showCenterLane = !nonDesktopViewport && !tabletCompactViewport;
-  const showInlineControls = !nonDesktopViewport && !tabletCompactViewport;
   const viewportTier = largeDesktopViewport ? "large" : smallDesktopViewport ? "small" : tabletCompactViewport ? "tablet" : nonDesktopViewport ? "phone" : "desktop";
-  const utilityControls = (
-    <div className="topbar-minor-controls topbar-minor-controls--utility">
-      {showInlineControls ? (
-        <Button
-          variant="secondary"
-          size="icon-xs"
-          className="stone-pill topbar-github-trigger rounded-none text-[#d8c8a7] hover:text-[#fff1cd]"
-          asChild
-        >
-          <a
-            href="https://github.com/Chiplis/ironsmith"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={t("settings.repository")}
-            title="GitHub"
-          >
-            <Github className="size-3.5" />
-          </a>
-        </Button>
-      ) : null}
-      <TopbarMenuSheet
-        playerNames={playerNames}
-        setPlayerNames={setPlayerNames}
-        startingLife={startingLife}
-        setStartingLife={setStartingLife}
-        onReset={onReset}
-        onRefresh={onRefresh}
-        onToggleLog={onToggleLog}
-        onEnterDeckLoading={onEnterDeckLoading}
-        onOpenPuzzleSetup={onOpenPuzzleSetup}
-        onOpenLobby={onOpenLobby}
-        deckLoadingMode={deckLoadingMode}
-        puzzleSetupMode={puzzleSetupMode}
-        onAddCardNotice={onAddCardNotice}
-        triggerIcon={showInlineControls ? "settings" : "menu"}
-        showQuickActions={!showInlineControls}
-      />
-      {showInlineControls ? (
-        <>
-          <Button
-            variant="secondary"
-            size="icon-xs"
-            className="stone-pill topbar-log-trigger rounded-none text-[#d8c8a7] hover:text-[#fff1cd]"
-            onClick={onToggleLog}
-            aria-label={t("settings.openLog")}
-            title={t("settings.openLog")}
-          >
-            <ScrollText className="size-3.5" />
-          </Button>
-          <Button
-            variant="secondary"
-            size="icon-xs"
-            className={`stone-pill topbar-debug-trigger rounded-none text-[#d8c8a7] hover:text-[#fff1cd]${inspectorDebug ? " is-active" : ""}`}
-            onClick={() => setInspectorDebug(!inspectorDebug)}
-            aria-label={t("settings.debug")}
-            aria-pressed={inspectorDebug}
-            title={inspectorDebug ? t("settings.debugEnabled") : t("settings.debug")}
-          >
-            <Bug className="size-3.5" />
-          </Button>
-        </>
-      ) : null}
-    </div>
-  );
+
 
   return (
     <header
@@ -358,62 +292,8 @@ export default function Topbar({
         ) : null}
         {showCenterLane ? (
           <div className="topbar-phase-shell">
-            <PhaseTrack compact={middleDocked} showBrand />
-            <div
-              className="topbar-phase-status"
-              aria-label={t("game.currentTurnSummary")}
-            >
-              <span>{t("game.turn", { turn: state?.turn_number ?? "-" })}</span>
-              {activePlayer ? (
-                <>
-                  <span className="topbar-phase-status-dot" aria-hidden="true">•</span>
-                  <span>{t("game.activePlayer", { player: playerDisplayName(players, activePlayer) })}</span>
-                </>
-              ) : null}
-              {decisionOwnerDiffersFromPriority ? (
-                <>
-                  <span className="topbar-phase-status-dot" aria-hidden="true">•</span>
-                  <span>{t("game.decisionPlayer", { player: playerDisplayName(players, decisionPlayer) })}</span>
-                </>
-              ) : priorityPlayer ? (
-                <>
-                  <span className="topbar-phase-status-dot" aria-hidden="true">•</span>
-                  <span>
-                    {t("game.priorityPlayer").split("{player}").map((part, index) => (
-                      <span key={index}>
-                        {index > 0 ? (
-                          <span style={{ color: getPlayerAccent(players, priorityPlayer.id, state?.perspective, playerAccentOverrides)?.hex }}>
-                            {playerDisplayName(players, priorityPlayer)}
-                          </span>
-                        ) : null}
-                        {part}
-                      </span>
-                    ))}
-                  </span>
-                </>
-              ) : null}
-              {players.length > 0 ? (
-                <>
-                  <span className="topbar-phase-status-dot" aria-hidden="true">•</span>
-                  <label className="topbar-phase-perspective">
-                    <span>{t("action.playingAs")}</span>
-                    <select
-                      className="stone-select topbar-phase-perspective-select"
-                      value={state?.perspective ?? me?.id ?? 0}
-                      disabled={multiplayer.matchStarted}
-                      onChange={(event) => onChangePerspective?.(Number(event.target.value))}
-                      aria-label={t("action.playingAs")}
-                    >
-                      {players.map((player) => (
-                        <option key={player.id} value={player.id}>
-                          {playerDisplayName(players, player)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </>
-              ) : null}
-            </div>
+            <PhaseTrack compact={middleDocked} />
+
           </div>
         ) : null}
         {showCompactPhase ? (
@@ -478,7 +358,66 @@ export default function Topbar({
       </div>
 
       <div className="topbar-side-cluster topbar-side-cluster--right">
-        {utilityControls}
+        {showCenterLane ? (
+          <div className="topbar-brand-stack">
+            <div
+              className="topbar-phase-status"
+              aria-label={t("game.currentTurnSummary")}
+            >
+              <span>{t("game.turn", { turn: state?.turn_number ?? "-" })}</span>
+              {activePlayer ? (
+                <>
+                  <span className="topbar-phase-status-dot" aria-hidden="true">•</span>
+                  <span>{t("game.activePlayer", { player: playerDisplayName(players, activePlayer) })}</span>
+                </>
+              ) : null}
+              {decisionOwnerDiffersFromPriority ? (
+                <>
+                  <span className="topbar-phase-status-dot" aria-hidden="true">•</span>
+                  <span>{t("game.decisionPlayer", { player: playerDisplayName(players, decisionPlayer) })}</span>
+                </>
+              ) : priorityPlayer ? (
+                <>
+                  <span className="topbar-phase-status-dot" aria-hidden="true">•</span>
+                  <span>
+                    {t("game.priorityPlayer").split("{player}").map((part, index) => (
+                      <span key={index}>
+                        {index > 0 ? (
+                          <span style={{ color: getPlayerAccent(players, priorityPlayer.id, state?.perspective, playerAccentOverrides)?.hex }}>
+                            {playerDisplayName(players, priorityPlayer)}
+                          </span>
+                        ) : null}
+                        {part}
+                      </span>
+                    ))}
+                  </span>
+                </>
+              ) : null}
+              {players.length > 0 ? (
+                <>
+                  <span className="topbar-phase-status-dot" aria-hidden="true">•</span>
+                  <label className="topbar-phase-perspective">
+                    <span>{t("action.playingAs")}</span>
+                    <select
+                      className="stone-select topbar-phase-perspective-select"
+                      value={state?.perspective ?? me?.id ?? 0}
+                      disabled={multiplayer.matchStarted}
+                      onChange={(event) => onChangePerspective?.(Number(event.target.value))}
+                      aria-label={t("action.playingAs")}
+                    >
+                      {players.map((player) => (
+                        <option key={player.id} value={player.id}>
+                          {playerDisplayName(players, player)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </>
+              ) : null}
+            </div>
+            <h1 className="toolbar-brand topbar-brand m-0 whitespace-nowrap font-bold">Ironsmith</h1>
+          </div>
+        ) : utilityControls}
       </div>
     </header>
   );

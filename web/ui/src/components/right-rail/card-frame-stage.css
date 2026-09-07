@@ -1,0 +1,26 @@
+.card-frame-art-preview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 240ms ease;
+}
+
+.card-frame-art-preview[data-frame-ready="true"] {
+  opacity: 0;
+}
+
+.interactive-card-frame-stage {
+  transition: opacity 240ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-frame-art-preview,
+  .interactive-card-frame-stage {
+    transition: none;
+  }
+}

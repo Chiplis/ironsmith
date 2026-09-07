@@ -120,9 +120,10 @@ export default function DecisionRouter({
         />
       );
     case "mana_payment":
+      // Preserve a queued Pay click when optimization replaces this request's plan.
       return (
         <ManaPaymentDecision
-          key={key}
+          key={decisionKey({ ...decision, plan_id: "" })}
           decision={decision}
           canAct={canAct}
           inlineSubmit={inlineSubmit}

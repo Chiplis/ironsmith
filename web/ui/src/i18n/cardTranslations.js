@@ -104,6 +104,7 @@ export async function loadTranslatedCardView(locale, cardView) {
         name: official?.name || cardName || null,
         typeLine: official?.typeLine || typeLine || null,
         rulesText: officialRulesText || generatedRulesText || rulesText || null,
+        rulesSource: officialRulesText ? "scryfall" : generatedRulesText ? "generated" : "original",
         source: official ? "scryfall" : "generated",
       };
     })());

@@ -82,6 +82,7 @@ const CARD_ZONE_KEYS = [
   "graveyard_cards",
   "hand_cards",
   "library_cards",
+  "persistent_look_cards",
   "stack",
 ];
 

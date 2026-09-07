@@ -229,7 +229,7 @@ export default function ManaPaymentDecision({
         plan_id: String(currentPayment.plan_id),
         request_hash: String(currentPayment.request_hash),
       },
-    }, `Paid mana for ${currentPayment.source_name || decision.subject}`);
+    }, `Paid mana for ${currentPayment.source_name || decision.subject}`, { waitForPaymentReady: true });
   }, [decision.subject, dispatch]);
 
   const confirm = useCallback(() => {

@@ -1,3 +1,5 @@
+import { localizedPrintingFlavor } from './printing-flavor.js';
+import { printingForImageFace } from './card-printing-face';
 const BASIC_LAND_NAMES = new Set([
   "Plains",
   "Island",
@@ -828,7 +830,7 @@ const printingMetadataRequests = new Map();
 export function resolveScryfallPrintingMetadata(imageUrl) {
   const id = String(imageUrl || '').match(/^https:\/\/cards\.scryfall\.io\/[^?#]+\/([0-9a-f-]{36})\.[a-z]+(?:\?.*)?$/i)?.[1];
   if (!id) return Promise.resolve(null);
-  if (printingMetadataRequests.has(id)) return printingMetadataRequests.get(id);
+  if (printingMetadataRequests.has(id)) return printingMetadataRequests.get(id).then(printing => printingForImageFace(printing, imageUrl));
   const request = fetchScryfallApiJson(`https://api.scryfall.com/cards/${id}`)
     .then(async response => {
       if (!response.ok) throw new Error('Printing metadata unavailable');
@@ -836,5 +838,41 @@ export function resolveScryfallPrintingMetadata(imageUrl) {
     }).catch(() => { printingMetadataRequests.delete(id); return null; });
   printingMetadataRequests.set(id, request);
   if (printingMetadataRequests.size > 96) printingMetadataRequests.delete(printingMetadataRequests.keys().next().value);
+  return request.then(printing => printingForImageFace(printing, imageUrl));
+}
+
+
+const setSymbolRequests = new Map();
+export function resolveScryfallSetSymbol(printing) {
+  const embedded = printing?.set === 'plst' ? printing.collector_number?.match(/^([a-z0-9]+)-/i)?.[1] : null;
+  const code = String(embedded || printing?.set || '').toLowerCase();
+  if (!code) return Promise.resolve(null);
+  if (setSymbolRequests.has(code)) return setSymbolRequests.get(code);
+  const request = fetchScryfallApiJson(`https://api.scryfall.com/sets/${encodeURIComponent(code)}`)
+    .then(async response => {
+      if (!response.ok) throw new Error('Set metadata unavailable');
+      const set = await response.json();
+      return set.icon_svg_uri || null;
+    }).catch(() => {setSymbolRequests.delete(code);return null;});
+  setSymbolRequests.set(code, request);
+  if (setSymbolRequests.size > 128) setSymbolRequests.delete(setSymbolRequests.keys().next().value);
+  return request;
+}
+
+const localizedFlavorRequests = new Map();
+export function resolveScryfallLocalizedFlavorText(imageUrl, locale) {
+  if (!imageUrl || !locale || locale === 'en') return resolveScryfallFlavorText(imageUrl);
+  const key = `${imageUrl}|${locale}`;
+  if (localizedFlavorRequests.has(key)) return localizedFlavorRequests.get(key);
+  const request = (async () => {
+    const source = await resolveScryfallPrintingMetadata(imageUrl);
+    if (!source?.set || !source?.collector_number) return '';
+    const url = `https://api.scryfall.com/cards/${encodeURIComponent(source.set)}/${encodeURIComponent(source.collector_number)}/${encodeURIComponent(locale)}`;
+    const response = await fetchScryfallApiJson(url);
+    if (!response.ok) { if(response.status === 404)return ''; throw new Error('Localized flavor unavailable'); }
+    return localizedPrintingFlavor(source, await response.json(), locale);
+  })().catch(error => { localizedFlavorRequests.delete(key); throw error; });
+  localizedFlavorRequests.set(key, request);
+  if (localizedFlavorRequests.size > 96) localizedFlavorRequests.delete(localizedFlavorRequests.keys().next().value);
   return request;
 }

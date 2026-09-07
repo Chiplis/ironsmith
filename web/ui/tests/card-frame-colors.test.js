@@ -1,6 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fullCardImageUrl, materialColor, sectionInk, artBottomRail, reconstructPanel, classifyTitlePanel, classifyTypePanel, printedGlyphHeight, detectPanelBounds, detectEnclosedPanelBounds, matchArtBounds, detectPrintedStats, printedStatsTreatment } from '../src/lib/card-frame-colors.js';
+import { fullCardImageUrl, materialColor, sectionInk, artBottomRail, reconstructPanel, classifyTitlePanel, classifyTypePanel, printedGlyphHeight, printedTextBounds, detectPanelBounds, detectEnclosedPanelBounds, matchArtBounds, detectPrintedStats, printedStatsTreatment, tracePanelRim, detectStatsPanelBounds } from '../src/lib/card-frame-colors.js';
+
+test('complete text bounds include capitals and descenders without absorbing a frame rail', () => {
+  const width=220,height=44,data=new Uint8ClampedArray(width*height*4);
+  for(let p=0;p<width*height;p++)data.set([230,230,230,255],p*4);
+  const rect=(x,y,w,h)=>{for(let row=y;row<y+h;row++)for(let col=x;col<x+w;col++)data.set([15,15,15,255],(row*width+col)*4);};
+  rect(0,1,width,2);
+  for(const x of [12,28,44,60,76,92])rect(x,15,5,10);
+  rect(110,8,8,17);rect(130,15,8,17);
+  assert.deepEqual(printedTextBounds({data,width,height}),{x:12,y:8,right:138,bottom:32});
+});
 
 test('color reference preserves the displayed printing, face, and cache version', () => {
   assert.equal(fullCardImageUrl('https://cards.scryfall.io/art_crop/back/a/b/id.jpg?123'), 'https://cards.scryfall.io/normal/back/a/b/id.jpg?123');
@@ -183,4 +193,28 @@ test('art matching finds a crop independently of the card frame color', () => {
   }
   const bounds=matchArtBounds({data,width,height},{data:art,width:aw,height:ah});
   assert.ok(bounds);assert.ok(Math.abs(bounds.x-16)<=3);assert.ok(Math.abs(bounds.width-168)<=4);assert.ok(Math.abs(bounds.y-30)<=3);
+});
+
+
+test('vector rim keeps asymmetric source colors while excluding central print', () => {
+  const width=80,height=40,data=new Uint8ClampedArray(width*height*4);
+  for(let y=0;y<height;y++)for(let x=0;x<width;x++) {
+    const rim=x<6||x>=width-6||y<6||y>=height-6;
+    data.set(rim?(x<width/2?[32,40,48,255]:[200,208,216,255]):[255,0,255,255],(y*width+x)*4);
+  }
+  const svg=tracePanelRim({data,width,height},{x:0,y:0,width,height},'rules');
+  assert.match(svg,/rgb\(32,40,48\)/);
+  assert.match(svg,/rgb\(200,208,216\)/);
+  assert.doesNotMatch(svg,/rgb\(255,0,255\)/);
+  assert.equal(detectStatsPanelBounds({data,width,height},null),null);
+});
+
+
+test('lower rail detection includes the full stroke beyond its first transition', () => {
+  const width=488,height=680,data=new Uint8ClampedArray(width*height*4).fill(220);
+  const ink=(x,y)=>data.set([30,30,30,255],(y*width+x)*4);
+  for(let y=32;y<=72;y++)for(let x=30;x<=455;x++)
+    if(y===32||y>=69||x===30||x===455)ink(x,y);
+  const box=detectPanelBounds({data,width,height},'title');
+  assert.ok(box.y+box.height>72,'all four pixels of the lower stroke remain inside the crop');
 });

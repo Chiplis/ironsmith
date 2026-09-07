@@ -64,7 +64,7 @@ function viewedCardIds(state) {
     ids.add(String(id));
   }
 
-  for (const card of state?.viewed_cards?.cards || []) {
+  for (const card of [...(state?.viewed_cards?.cards || []), ...(state?.players || []).flatMap((player) => player.persistent_look_cards || [])]) {
     if (card?.id != null) {
       ids.add(String(card.id));
     }

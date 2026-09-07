@@ -15,6 +15,7 @@ import {
 import useViewportLayout from "@/hooks/useViewportLayout";
 import useTabAttention from "@/hooks/useTabAttention";
 import Topbar from "./Topbar";
+import TopbarUtilityControls from "./TopbarUtilityControls";
 import LobbyOverlay from "./LobbyOverlay";
 import AddCardBar from "./AddCardBar";
 import TableActionControls from "./TableActionControls";
@@ -455,8 +456,37 @@ export default function Shell() {
 
   const dockToolbarsInTable = !nonDesktopViewport && !tabletCompactViewport;
   const renderTopLevelAddCardBar = !landscapeMobileViewport && !tabletCompactViewport && !dockToolbarsInTable;
+  const utilityControlsElement = (
+    <TopbarUtilityControls
+      playerNames={playerNames}
+      setPlayerNames={setPlayerNames}
+      startingLife={startingLife}
+      setStartingLife={setStartingLife}
+      onReset={handleReset}
+      onRefresh={() => void runWasmInteraction(() => refresh("Refreshed"))}
+      onToggleLog={() => setLogOpen((o) => !o)}
+      onEnterDeckLoading={() => {
+        setPuzzleSetupMode(false);
+        setDeckLoadingMode((mode) => !mode);
+      }}
+      onOpenPuzzleSetup={() => {
+        setDeckLoadingMode(false);
+        setPuzzleSetupMode((mode) => !mode);
+      }}
+      puzzleSetupMode={puzzleSetupMode}
+      onOpenLobby={() => {
+        setDeckLoadingMode(false);
+        setPuzzleSetupMode(false);
+        setLobbyOpen(true);
+      }}
+      deckLoadingMode={deckLoadingMode}
+      onAddCardNotice={pushNotice}
+      showInlineControls={!nonDesktopViewport && !tabletCompactViewport}
+    />
+  );
   const topbarElement = (
     <Topbar
+      utilityControls={utilityControlsElement}
       playerNames={playerNames}
       setPlayerNames={setPlayerNames}
       startingLife={startingLife}
@@ -490,8 +520,7 @@ export default function Shell() {
   const addCardBarElement = (
     <AddCardBar
       compact={smallDesktopViewport}
-      zoneViews={zoneViews}
-      setZoneViews={setZoneViews}
+      utilityControls={utilityControlsElement}
     />
   );
   const zoneActionControlsElement = (
@@ -552,6 +581,7 @@ export default function Shell() {
         setMobileViewMode={setMobileViewMode}
         mobilePhaseStops={mobilePhaseStops}
         setMobilePhaseStops={setMobilePhaseStops}
+        middleUtilityControls={dockToolbarsInTable ? utilityControlsElement : null}
         middleTopbar={dockToolbarsInTable ? topbarElement : null}
         middleAddCardBar={null}
         zoneActionControls={zoneActionControlsElement}

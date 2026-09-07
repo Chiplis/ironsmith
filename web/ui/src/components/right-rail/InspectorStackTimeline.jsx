@@ -463,7 +463,7 @@ export default function InspectorStackTimeline({
       style={embedded ? undefined : { height: `${Math.max(0, timelineHeight)}px` }}
       data-inspector-stack-timeline
     >
-      <header className="pointer-events-none flex items-center justify-between gap-2 border-b border-[#2f4864] px-2.5 py-1.5">
+      <header className="pointer-events-none flex shrink-0 items-center justify-between gap-2 border-b border-[#2f4864] px-2.5 py-1.5">
         <div className="flex items-center gap-1.5">
           {collapsible && typeof onToggleCollapsed === "function" && (
             <button
@@ -485,10 +485,10 @@ export default function InspectorStackTimeline({
         </div>
       </header>
       {embedded ? (
-        <RollingPanel open={!collapsed}>
-        <div ref={bodyRef} className="pointer-events-auto overflow-hidden">
+        <RollingPanel open={!collapsed} className="stack-timeline-body min-h-0 flex-1">
+        <div ref={bodyRef} className="pointer-events-auto flex min-h-0 flex-col overflow-hidden">
           <div
-            className="stack-timeline-scroll pointer-events-auto grid gap-1.5 overflow-y-auto overscroll-contain p-1.5"
+            className="stack-timeline-scroll pointer-events-auto grid min-h-0 gap-1.5 overflow-y-auto overscroll-contain p-1.5"
             style={{ maxHeight: `${embeddedExpandedMaxHeight}px` }}
           >
             {timelineEntries.length > 0

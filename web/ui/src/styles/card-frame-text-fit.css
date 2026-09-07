@@ -11,8 +11,8 @@
   /* Unboxed ability highlights extend 6px sideways and 4px vertically.
      Keep their paint inside the box even as the text/padding shrink, or
      decorative overflow makes the fitter reject every smaller font size. */
-  padding: max(4px, calc(clamp(8px, 2.35cqw, 14px) * var(--card-rules-fit-scale, 1)))
-    max(6px, calc(clamp(8px, 2.35cqw, 14px) * var(--card-rules-fit-scale, 1)));
+  padding: max(4px, calc(clamp(8px, 2.35cqw, 14px) * var(--card-rules-spacing-scale, 1)))
+    max(6px, calc(clamp(8px, 2.35cqw, 14px) * var(--card-rules-spacing-scale, 1)));
   font-size: var(--card-fitted-rules-font-size, clamp(11px, var(--sampled-rules-font-size, 3.575cqw), 16.5px));
 }
 .interactive-card-frame__rules[data-fit-text="true"] .interactive-card-frame__rule-line {
@@ -20,17 +20,34 @@
   overflow-wrap: anywhere;
 }
 .interactive-card-frame__rules[data-fit-text="true"] .interactive-card-frame__rules-body {
-  gap: calc(clamp(6px, 1.8cqw, 10px) * var(--card-rules-fit-scale, 1));
+  gap: calc(clamp(6px, 1.8cqw, 10px) * var(--card-rules-spacing-scale, 1));
 }
 .interactive-card-frame__rules[data-fit-text="true"] .interactive-card-frame__ability {
   font-size: inherit;
   line-height: 1.24;
-  padding: calc(clamp(5px, 1.35cqw, 8px) * var(--card-rules-fit-scale, 1));
+  padding: calc(clamp(5px, 1.35cqw, 8px) * var(--card-rules-spacing-scale, 1));
 }
 .interactive-card-frame__rules[data-fit-text="true"] .inspector-flavor-text {
-  padding-top: calc(8px * var(--card-rules-fit-scale, 1));
+  padding-top: calc(8px * var(--card-rules-spacing-scale, 1));
 }
 .interactive-card-frame__rules[data-fit-text="true"] .interactive-card-frame__rule-line :is(svg, img) {
   width: 0.95em;
   height: 0.95em;
+}
+
+/* A percentage min-height plus padding made the content overflow even when
+   the text fit, causing the old fitter to shrink short cards unnecessarily. */
+.interactive-card-frame__rules[data-fit-text="true"] {
+  display: flex;
+  flex-direction: column;
+}
+.interactive-card-frame__rules[data-fit-text="true"] .interactive-card-frame__rules-body {
+  min-height: 0;
+  flex: 1 0 auto;
+}
+.interactive-card-frame__rules[data-fit-text="true"] .inspector-flavor-text {
+  font-size: var(--card-fitted-flavor-font-size, var(--printed-flavor-font-size, var(--printed-rules-font-size, inherit)));
+}
+.interactive-card-frame__rules[data-fit-text="true"][data-text-overflow="true"] {
+  overflow-y: auto;
 }

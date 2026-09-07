@@ -25,13 +25,15 @@ test('stack clicks select the precise source ability and share the enabled-hover
       assert.equal(await sections.count(),3,'inspector retains the whole card');
       assert.equal(await sections.nth(index).getAttribute('data-stack-highlighted'),'true');
       assert.equal(await preview.locator('[data-stack-highlighted="true"]').count(),1);
-      assert.equal(await page.evaluate(()=>window.detailsId),'10','stack ID collision must not inspect another card');
+      assert.equal(await preview.locator('.interactive-card-frame-stage').getAttribute('data-inspected-object-id'),'10','stack ID collision must not inspect another card');
     }
     await page.locator('.stack-card[data-object-id="107"]').click();
     await page.waitForFunction(()=>document.querySelector('[data-card-hover-preview][data-visible="true"]')?.dataset.previewObjectId==='107');
     assert.equal(await preview.locator('[data-stack-highlighted="true"]').count(),0,'unknown source identity must not guess from shared effects');
     // Select the disabled second ability, then hover the enabled first ability.
     await page.locator('.stack-card[data-object-id="103"]').click();await preview.waitFor();
+    const fallbackDetails=preview.locator('.original-card-details');
+    if(await fallbackDetails.count())await fallbackDetails.locator('summary').click();
     const sections=preview.locator('.inspector-ability-section');
     const glow=section=>section.evaluate(node=>{const s=getComputedStyle(node,'::before');return {opacity:s.opacity,color:s.backgroundColor,shadow:s.boxShadow};});
     await sections.nth(0).getByRole('button').hover();

@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict';
+import { chromium } from 'playwright';
+const browser = await chromium.launch({headless:true});
+try {
+  const page = await browser.newPage({viewport:{width:1000,height:800}});
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await page.goto('http://127.0.0.1:5173/tests/look-pile.html');
+  const pile = page.locator('[data-zone-pile="look"]');
+  await pile.waitFor();
+  const lookBounds = await pile.boundingBox();
+  const graveyardBounds = await page.locator('[data-zone-pile="graveyard"]').boundingBox();
+  assert.equal(lookBounds.y, graveyardBounds.y, 'Look aligns vertically with graveyard');
+  assert.ok(lookBounds.x < graveyardBounds.x, 'Look sits on the left');
+  await pile.hover();
+  await page.locator('.zone-pile-menu').waitFor();
+  assert.equal(await page.locator('[data-zone-card="look"]').count(), 2);
+  await page.getByText('Done', {exact:true}).click();
+  await page.waitForTimeout(1000);
+  await pile.hover();
+  await page.waitForTimeout(3200);
+  assert.equal(await pile.count(), 1, 'hover rescues fading pile');
+  await page.mouse.move(900,700);
+  await page.waitForTimeout(3400);
+  assert.equal(await pile.count(), 0, 'pile disappears after leaving');
+  await page.getByText('Toggle permission').click();
+  await page.waitForTimeout(3300);
+  assert.equal(await pile.count(), 1, 'ongoing permission persists');
+  await page.getByText('Toggle permission').click();
+  assert.equal(await pile.count(), 0, 'revoked permission disappears');
+  await page.getByText('New view').click();
+  await pile.waitFor();
+  assert.equal(await pile.getAttribute('aria-label'), "Alice's Look, 1 cards. Open zone");
+  assert.deepEqual(errors, []);
+  console.log('Look pile browser checks passed');
+} finally { await browser.close(); }

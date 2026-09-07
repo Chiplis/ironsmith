@@ -100,6 +100,7 @@ export default function StackCard({
           className
         )}
         data-object-id={entry.id}
+        data-card-image-url={artUrl || ''}
         data-card-name={name}
         onClick={() => onClick?.(entry.inspect_object_id ?? entry.id, {
           source: "stack",
@@ -138,6 +139,7 @@ export default function StackCard({
         className
       )}
       data-object-id={entry.id}
+      data-card-image-url={artUrl || ''}
       data-card-name={name}
       onClick={() => onClick?.(entry.inspect_object_id ?? entry.id, {
         source: "stack",

@@ -12,32 +12,61 @@ export default function CardFrameRulesBox({ children, label }) {
     const fit = () => {
       const line = box.querySelector(".interactive-card-frame__rule-line");
       if (!line || !box.clientWidth || !box.clientHeight) return;
-
-      // Start from the printing's preferred size every time, allowing text to
-      // grow back after a resize or a switch to a shorter card description.
+      const flavor = box.querySelector(".inspector-flavor-text");
       box.style.removeProperty("--card-fitted-rules-font-size");
+      box.style.removeProperty("--card-fitted-flavor-font-size");
       box.style.setProperty("--card-rules-fit-scale", "1");
-      const preferred = parseFloat(getComputedStyle(line).fontSize);
-      const apply = size => {
-        box.style.setProperty("--card-fitted-rules-font-size", `${size}px`);
-        box.style.setProperty("--card-rules-fit-scale", String(size / preferred));
+      box.style.setProperty("--card-rules-spacing-scale", "1");
+      box.dataset.textOverflow = "false";
+      const preferred = parseFloat(getComputedStyle(box).fontSize);
+      const flavorPreferred = flavor ? parseFloat(getComputedStyle(flavor).fontSize) : preferred;
+      const apply = scale => {
+        box.style.setProperty("--card-fitted-rules-font-size", `${preferred * scale}px`);
+        box.style.setProperty("--card-fitted-flavor-font-size", `${flavorPreferred * scale}px`);
+        box.style.setProperty("--card-rules-fit-scale", String(scale));
       };
-      const fits = () => box.scrollHeight <= box.clientHeight + 1 && box.scrollWidth <= box.clientWidth + 1;
-
+      // Scroll extents include highlights and flex layout, which can report
+      // overflow even with ample room for the actual text. Fit glyph contents.
+      // Registered fields have no padding: text may run to their edges, while
+      // padded boxes keep a small margin so decoration never clips.
+      const fits = () => {
+        const bounds = box.getBoundingClientRect();
+        const style = getComputedStyle(box);
+        const inset = side => Math.min(3, parseFloat(style.getPropertyValue(`padding-${side}`)) || 0);
+        return [...box.querySelectorAll('.interactive-card-frame__rule-line')].every(node => {
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          const text = range.getBoundingClientRect();
+          return !text.height || (text.bottom <= bounds.bottom - inset('bottom') + .5
+            && text.right <= bounds.right - inset('right') + .5 && text.left >= bounds.left + inset('left') - .5);
+        });
+      };
+      // Remove UI-only padding/gaps before changing the printing's typography.
       if (!fits()) {
-        let low = Math.min(1, preferred);
-        let high = preferred;
-        // Layout-aware search accounts for line wrapping, mana symbols,
-        // ability padding, and flavor text instead of estimating by length.
-        for (let i = 0; i < 12; i++) {
-          const size = (low + high) / 2;
-          apply(size);
-          if (fits()) low = size;
-          else high = size;
+        box.style.setProperty("--card-rules-spacing-scale", "0");
+        if (fits()) {
+          let low = 0, high = 1;
+          for (let i = 0; i < 8; i++) {
+            const spacing = (low + high) / 2;
+            box.style.setProperty("--card-rules-spacing-scale", String(spacing));
+            if (fits()) low = spacing; else high = spacing;
+          }
+          box.style.setProperty("--card-rules-spacing-scale", String(low));
+        } else {
+          // Longer translations/live text may need smaller type, but never
+          // collapse an entire card to one-pixel lettering to hide overflow.
+          let low = .75, high = 1;
+          apply(low);
+          if (fits()) {
+            for (let i = 0; i < 10; i++) {
+              const scale = (low + high) / 2;
+              apply(scale);
+              if (fits()) low = scale; else high = scale;
+            }
+            apply(low);
+          }
+          box.dataset.textOverflow = String(!fits());
         }
-        apply(Math.floor(low * 100) / 100);
-      } else {
-        apply(preferred);
       }
       box.scrollTop = 0;
     };

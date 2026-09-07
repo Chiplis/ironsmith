@@ -2,6 +2,39 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createWasmInteractionGate } from "../src/lib/wasmInteractionGate.js";
 
+test("queued planning and payment survive an in-flight action and its cooldown", async () => {
+  let now = 0;
+  const gate = createWasmInteractionGate({ now: () => now });
+  let release;
+  const first = gate.run(() => new Promise(resolve => { release = resolve; }));
+  const actions = [];
+  const planning = gate.runWhenReady(() => { actions.push("replan"); return "planned"; });
+  assert.deepEqual(actions, []);
+  release();
+  await first;
+  now = 100;
+  assert.equal(await planning, "planned");
+  const payment = gate.runWhenReady(() => actions.push("confirm"));
+  assert.deepEqual(actions, ["replan"]);
+  now = 200;
+  await payment;
+  assert.deepEqual(actions, ["replan", "confirm"]);
+});
+
+test("queued refinement is discarded when its payment is no longer current", async () => {
+  const gate = createWasmInteractionGate();
+  let release;
+  const first = gate.run(() => new Promise(resolve => { release = resolve; }));
+  let current = true;
+  let ran = false;
+  const queued = gate.runWhenReady(() => { ran = true; }, () => current);
+  current = false;
+  release();
+  await first;
+  await queued;
+  assert.equal(ran, false);
+});
+
 test("blocks overlapping interactions and enforces a 100ms cooldown", async () => {
   let now = 0;
   const gate = createWasmInteractionGate({

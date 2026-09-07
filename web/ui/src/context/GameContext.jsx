@@ -1883,9 +1883,21 @@ export function GameProvider({ children }) {
   }, [game, state?.__priority_revision, state?.decision?.analysis_complete, multiplayer.matchStarted, refresh, runWasmInteraction]);
 
   const dispatch = useCallback(
-    async (command, successMessage, { castingAction = null } = {}) => {
+    async (command, successMessage, { castingAction = null, waitForPaymentReady = false } = {}) => {
       if (!game) return;
-      return runWasmInteraction(async () => {
+      const payment = stateRef.current?.mana_payment;
+      // Render-driven payment actions must survive the previous action's cooldown,
+      // but must not be applied after cancellation or a different plan arrives.
+      const runInteraction = waitForPaymentReady
+        ? (task) => wasmInteractionGateRef.current.runWhenReady(task, () => {
+          const current = stateRef.current;
+          return current?.decision?.kind === "mana_payment"
+            && samePlayerId(current.decision.player, current.perspective)
+            && current.mana_payment?.request_hash === payment?.request_hash
+            && current.mana_payment?.plan_id === payment?.plan_id;
+        })
+        : runWasmInteraction;
+      return runInteraction(async () => {
         const isTargetSubmit = command?.type === "select_targets";
         const currentDecision = stateRef.current?.decision || null;
         const stopAfterTriggerOrderingSubmit = (
@@ -2087,7 +2099,7 @@ export function GameProvider({ children }) {
     async (command) => {
       if (!game) return undefined;
       if (multiplayer.matchStarted) {
-        return dispatch(command);
+        return dispatch(command, undefined, { waitForPaymentReady: true });
       }
       const currentDecision = stateRef.current?.decision || null;
       if (!isDecisionCommandCompatible(currentDecision, command)) {

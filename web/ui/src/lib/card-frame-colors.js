@@ -1,5 +1,8 @@
-import { reconstructFrameMaterial } from './card-frame-material.js';
-import { sampleInnerFrameBevel, detectEmbeddedArtFrame } from './card-border-analysis.js';
+import { sourceMaskLayoutGap } from './card-frame-layout.js';
+import {manaTemplates,locateManaSymbols} from './card-mana-match.js';
+import { locateSetSymbol } from './card-set-symbol.js';
+import { fontGuidedPanel } from './card-frame-font-mask.js';
+import { maskSourceFrame } from './card-frame-source.js';
 
 // Printing materials, source panel reconstruction, and frame geometry.
 // Panel reconstruction is independent of the typography selection.
@@ -77,10 +80,18 @@ function analyzeSection({ data, width, height }, {minGlyphHeight=5} = {}) {
     x:Math.min(...matched.map(b=>b.x)),y:Math.min(...matched.map(b=>b.y)),
     right:Math.max(...matched.map(b=>b.x+b.width)),bottom:Math.max(...matched.map(b=>b.y+b.height)),
   }:null;
+  const letters = glyphBounds ? boxes.filter(b => b.height >= cluster[0] * .6
+    && b.y < glyphBounds.bottom && b.y + b.height > glyphBounds.y
+    && b.height <= cluster.at(-1) * 2.2) : [];
+  const textBounds = letters.length >= 4 ? {
+    x: Math.min(...letters.map(b => b.x)), y: Math.min(...letters.map(b => b.y)),
+    right: Math.max(...letters.map(b => b.x + b.width)), bottom: Math.max(...letters.map(b => b.y + b.height)),
+  } : null;
 
   return {
     ink: glyphs >= 2 && ink.length >= 24 ? materialColor(ink) : light > .35 ? [23, 24, 25] : [245, 241, 230],
     glyphBounds,
+    textBounds,
     glyphHeight: cluster.length >= 4 ? cluster[Math.floor((cluster.length - 1) * .8)] : null,
   };
 }
@@ -91,16 +102,109 @@ export function sectionInk(region) {
     ? [255, 255, 255] : [0, 0, 0];
 }
 export function printedGlyphHeight(region) { return analyzeSection(region).glyphHeight; }
+export function printedTextBounds(region) { return analyzeSection(region).textBounds; }
+
+export function measureRulesFirstLine(ctx, box, text, family, { italic = false, bandIndex = 0 } = {}) {
+  const x = Math.ceil(box.x + 9), y = Math.ceil(box.y + 8);
+  const scan = ctx.getImageData(x, y, Math.floor(box.width - 18), Math.floor(box.height - 16));
+  const paper = luminance(materialColor(scan.data));
+  const ink = new Uint8Array(scan.width * scan.height), rows = [];
+  for (let py = 0; py < scan.height; py++) {
+    let count = 0;
+    for (let px = 0; px < scan.width; px++) {
+      const p = py * scan.width + px, value = luminance(Array.from(scan.data.subarray(p * 4, p * 4 + 3)));
+      if ((Math.max(paper, value) + .05) / (Math.min(paper, value) + .05) > 2.5) { ink[p] = 1; count++; }
+    }
+    if (count >= 3) rows.push(py);
+  }
+  if (!rows.length) return null;
+  const bands = [];
+  for (const row of rows) {
+    const band = bands.at(-1);
+    if (!band || row - band.bottom > 2) bands.push({top:row,bottom:row});
+    else band.bottom = row;
+  }
+  const lineBand = bands.filter(b => b.bottom - b.top >= 7 && b.bottom - b.top <= 32)[bandIndex];
+  if (!lineBand) return null;
+  const {top,bottom} = lineBand;
+  const nextLine = bands.find(b => b.top > bottom && b.bottom - b.top >= 7);
+  const lineHeight = nextLine ? nextLine.top - top : null;
+  let left = scan.width, right = 0;
+  for (let py = top; py <= bottom; py++) for (let px = 0; px < scan.width; px++) if (ink[py * scan.width + px]) {
+    left = Math.min(left, px); right = Math.max(right, px);
+  }
+  const width = right - left + 1, height = bottom - top + 1;
+  const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
+  const template = canvas.getContext('2d', {willReadFrequently:true});
+  const words = String(text || '').split(/\n/)[0].split(/\s+/).filter(Boolean);
+  const candidates = [];
+  for (let n = 1; n <= Math.min(24, words.length); n++) {
+    const line = words.slice(0, n).join(' '); if (line.includes('{')) break;
+    template.font = `${italic ? "italic " : ""}400 100px ${family}`;
+    const m = template.measureText(line), size = width / (m.actualBoundingBoxLeft + m.actualBoundingBoxRight) * 100;
+    const expectedHeight = (m.actualBoundingBoxAscent + m.actualBoundingBoxDescent) * size / 100;
+    if (size < 12 || size > 36 || expectedHeight < height * .8 || expectedHeight > height * 1.2) continue;
+    template.clearRect(0, 0, width, height);
+    template.save(); template.scale(size / 100, height / (m.actualBoundingBoxAscent + m.actualBoundingBoxDescent));
+    template.fillStyle = 'white'; template.fillText(line, m.actualBoundingBoxLeft, m.actualBoundingBoxAscent); template.restore();
+    const pixels = template.getImageData(0, 0, width, height).data;
+    let intersection = 0, union = 0;
+    for (let py = 0; py < height; py++) for (let px = 0; px < width; px++) {
+      const a = ink[(py + top) * scan.width + px + left], b = pixels[(py * width + px) * 4 + 3] > 80;
+      if (a && b) intersection++; if (a || b) union++;
+    }
+    candidates.push({size, confidence:intersection / union, line, x:x+left, y:y+top, width, height, lineHeight});
+  }
+  // Symbol-led lines cannot be compared as plain canvas text. Their printed
+  // letter height still gives a font size without treating {T} as three glyphs.
+  const first = String(text || '').split('\n')[0];
+  if (first.includes('{')) {
+    const letters = first.replace(/\{[^}]+\}/g, '').trim();
+    if (letters) {
+      template.font = `${italic ? "italic " : ""}400 100px ${family}`;
+      const metrics = template.measureText(letters);
+      const size = height / (metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent) * 100;
+      if (size >= 12 && size <= 36) return {size,line:letters,x:x+left,y:y+top,width,height,lineHeight};
+    }
+  }
+  candidates.sort((a,b) => b.confidence - a.confidence);
+  const best = candidates[0];
+  return best?.confidence > .4 && (!candidates[1] || best.confidence - candidates[1].confidence > .06) ? best : null;
+}
+
+// Flavor can start below several rules lines. Match its own italic text against
+// each printed band; never inherit the size of an unrelated activated ability.
+export function measureFlavorFirstLine(ctx, box, text, family) {
+  if (!text) return null;
+  const candidates = [];
+  for (let bandIndex = 0; bandIndex < 18; bandIndex++) {
+    const match = measureRulesFirstLine(ctx, box, text, family, {italic:true, bandIndex});
+    if (match) candidates.push(match);
+  }
+  return candidates.sort((a,b) => b.confidence - a.confidence)[0] || null;
+}
+
+const sourceImages = new Map();
 
 function loadImage(url) {
-  return new Promise((resolve, reject) => {
+  if (sourceImages.has(url)) return sourceImages.get(url);
+  const request = new Promise((resolve, reject) => {
     const image = new Image();
     image.crossOrigin = 'anonymous'; image.referrerPolicy = 'no-referrer';
     const timer = setTimeout(() => { image.src = ''; reject(new Error('Card colors timed out')); }, 12000);
     image.onload = () => { clearTimeout(timer); resolve(image); };
     image.onerror = () => { clearTimeout(timer); reject(new Error('Card colors unavailable')); };
     image.src = url;
-  });
+  }).catch(error => { sourceImages.delete(url); throw error; });
+  sourceImages.set(url, request);
+  if (sourceImages.size > 48) sourceImages.delete(sourceImages.keys().next().value);
+  return request;
+}
+
+// Fetch the masking source while printing metadata and fonts are loading.
+export function preloadCardFrameSource(imageUrl) {
+  const url = fullCardImageUrl(imageUrl);
+  return url ? loadImage(url).catch(() => null) : Promise.resolve(null);
 }
 
 // A real bottom rail has a horizontal transition across most of the crop.
@@ -120,39 +224,7 @@ export function artBottomRail({ data, width, height }) {
   return best?.height || 0;
 }
 
-function railStyle(image, integrated) {
-  if (!image || !integrated) return {};
-  const canvas = document.createElement('canvas');
-  canvas.width = 488; canvas.height = Math.round(image.height * 488 / image.width);
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-  const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const bottomHeight = artBottomRail(pixels);
-  const joinStyle = {};
-  if (bottomHeight) {
-    const join = document.createElement('canvas');
-    join.width = canvas.width; join.height = bottomHeight;
-    const joinCtx = join.getContext('2d');
-    joinCtx.translate(0, join.height); joinCtx.scale(1, -1);
-    joinCtx.drawImage(canvas, 0, canvas.height - bottomHeight, canvas.width, bottomHeight, 0, 0, join.width, join.height);
-    joinStyle['--art-top-rail'] = `url("${join.toDataURL()}")`;
-    joinStyle['--art-top-rail-height'] = `${bottomHeight / canvas.height * 100}%`;
-  }
-  const enclosure = detectEmbeddedArtFrame(pixels);
-  if (enclosure) Object.assign(joinStyle, {
-    '--art-frame-enclosure': 'detected',
-    '--art-frame-left': `${enclosure.left.outer / canvas.width * 100}%`,
-    '--art-frame-right': `${enclosure.right.outer / canvas.width * 100}%`,
-    '--art-frame-bottom': `${enclosure.bottom.outer / canvas.height * 100}%`,
-    '--art-frame-title-left': `${enclosure.left.inner / canvas.width * 100}%`,
-    '--art-frame-title-right': `${enclosure.right.inner / canvas.width * 100}%`,
-  });
-  return joinStyle;
-}
-
-// Remove high-contrast print from a whole panel before sizing it to our layout.
-// Estimate paper in vertical bands so hybrid materials retain their direction.
-export function reconstructPanel({ data, width, height }, { removeSeparators = false } = {}) {
+export function reconstructPanel({ data, width, height }, { removeSeparators = false, minimumCleanFraction = .2 } = {}) {
   const count = width * height, mask = new Uint8Array(count);
   const bands = Math.max(1, Math.ceil(width / 64));
   const paper = Array.from({ length: bands }, (_, band) => {
@@ -194,7 +266,7 @@ export function reconstructPanel({ data, width, height }, { removeSeparators = f
   }
   const clean = [];
   for (let p = 0; p < count; p++) if (!expanded[p]) clean.push(p);
-  if (clean.length < count * .2) return null;
+  if (!clean.length || clean.length < count * minimumCleanFraction) return null;
   const output = data.slice();
   // Copy only original unmasked pixels. Nearby donors preserve local material;
   // deterministic variation prevents the long streaks of nearest-pixel filling.
@@ -213,41 +285,6 @@ export function reconstructPanel({ data, width, height }, { removeSeparators = f
   return { data: output, width, height, mask: expanded };
 }
 
-function textureStyle(region, name) {
-  const panel = reconstructPanel(region);
-  if (!panel) return {};
-  const canvas = document.createElement('canvas');
-  canvas.width = panel.width; canvas.height = panel.height * (name === 'type' ? 2 : 1);
-  // Suppress scan-wide bevels and lines while keeping local grain and
-  // left-to-right material changes, including hybrid frame colors.
-  const means = Array.from({ length: panel.height }, (_, y) => {
-    const rgb = [0, 0, 0];
-    for (let x = 0; x < panel.width; x++) for (let c = 0; c < 3; c++) rgb[c] += panel.data[(y * panel.width + x) * 4 + c] / panel.width;
-    return rgb;
-  });
-  const average = [0, 1, 2].map(c => means.reduce((sum, rgb) => sum + rgb[c], 0) / panel.height);
-  const normalized = panel.data.slice();
-  for (let y = 0; y < panel.height; y++) for (let x = 0; x < panel.width; x++) for (let c = 0; c < 3; c++) {
-    const p = (y * panel.width + x) * 4 + c;
-    normalized[p] += average[c] - means[y][c];
-  }
-  canvas.getContext('2d').putImageData(new ImageData(normalized, panel.width, panel.height), 0, 0);
-  if (name === 'type') {
-    const ctx = canvas.getContext('2d');
-    ctx.translate(0, canvas.height); ctx.scale(1, -1);
-    ctx.drawImage(canvas, 0, 0, panel.width, panel.height, 0, 0, panel.width, panel.height);
-  }
-  const material = materialColor(panel.data);
-  return {
-    [`--sampled-${name}-veil`]: `linear-gradient(rgba(${material.join(',')}, .22), rgba(${material.join(',')}, .22))`,
-    [`--sampled-${name}-texture`]: `url("${canvas.toDataURL()}")`,
-    [`--sampled-${name}-texture-size`]: name === 'type' ? '100% auto' : '100% 100%',
-    ...(name === 'type' ? { '--sampled-bar-ink': `rgb(${sectionInk(region).join(',')})` } : {}),
-  };
-}
-
-// Classify the printing, not the card: an enclosed title has contrasting
-// strokes on BOTH sides of its text-free margins. Shared textured frames do not.
 function classifyFramePanel({ data, width, height }, section) {
   const type = section === 'type';
   const patch = (x, y, w, h) => {
@@ -355,23 +392,6 @@ export function rulesBottomEdge({ data, width, height }) {
   return { x: left.x - 3, y: best.y - 5, width: right.x - left.x + 7, height: 10, corner: 12 };
 }
 
-function rulesBottomStyle(canvas) {
-  const ctx = canvas.getContext('2d');
-  const edge = rulesBottomEdge(ctx.getImageData(0, 0, canvas.width, canvas.height));
-  if (!edge) return {};
-  const style = {};
-  for (const [name, x, width] of [['left', edge.x, edge.corner], ['middle', edge.x + edge.corner, edge.width - edge.corner * 2], ['right', edge.x + edge.width - edge.corner, edge.corner]]) {
-    const strip = document.createElement('canvas');
-    strip.width = width; strip.height = edge.height;
-    strip.getContext('2d').drawImage(canvas, x, edge.y, width, edge.height, 0, 0, width, edge.height);
-    style[`--rules-bottom-${name}`] = `url("${strip.toDataURL()}")`;
-  }
-  style['--rules-bottom-height'] = `${edge.height / 488 * 100}cqw`;
-  style['--rules-bottom-corner'] = `${edge.corner / 488 * 100}cqw`;
-  return style;
-}
-
-// Locate conventional panels using sustained transitions, not printed glyphs.
 export function detectPanelBounds({data, width, height}, section) {
   const regions = {
     title: {top: [.043, .06], bottom: [.095, .118], sides: [.063, .085]},
@@ -415,7 +435,22 @@ export function detectPanelBounds({data, width, height}, section) {
   };
   const top=horizontal(ranges.top), bottom=horizontal(ranges.bottom), left=vertical(false), right=vertical(true, left);
   if (!top || !bottom || !left || !right) return null;
-  const x=left.position-1, y=top.position-1, w=right.position-left.position+3, h=bottom.position-top.position+3;
+  // A transition locates the beginning of a dark lower rail, not its far
+  // edge. Follow its sustained stroke so the crop cannot cut the rim off.
+  const darkRow=y=>{
+    let support=0;
+    for(let i=0;i<32;i++) {
+      const x=Math.floor(width*(.17+i*.64/31)),at=(y*width+x)*4;
+      if((data[at]+data[at+1]+data[at+2])/3<110)support++;
+    }
+    return support>=25;
+  };
+  let far=bottom.position,started=false;
+  for(let d=0;d<=7 && section==='title';d++) {
+    if(darkRow(bottom.position+d)){started=true;far=bottom.position+d;}
+    else if(started||d>=3)break;
+  }
+  const x=left.position-1, y=top.position-1, w=right.position-left.position+3, h=far-top.position+3;
   if (w < width * .7 || h < 20) return null;
   return {x,y,width:w,height:h};
 }
@@ -463,74 +498,39 @@ export function detectEnclosedPanelBounds(scan, section) {
     if(left===0||right===w-1||top===0||bottom===h-1||cw<width*.75||ch<height*.035||area>cw*ch*.55) continue;
     if(!best||cw>best.width) best={x:x0+left,y:y0+top,width:cw,height:ch};
   }
+  const rails=best&&detectPanelBounds(scan,section);
+  if(rails && best.x-rails.x>=4 && best.x-rails.x<=10
+    && Math.abs(best.y-rails.y)<=4) {
+    const right=Math.max(best.x+best.width,rails.x+rails.width);
+    best={...best,x:rails.x,width:right-rails.x};
+  }
   return best;
 }
 
-function wholePanelStyle(canvas, scan, section) {
-  const contour = section === 'rules' ? null : detectEnclosedPanelBounds(scan, section);
-  const panel = section === 'title' ? classifyTitlePanel(scan) : classifyTypePanel(scan);
-  const generatedOutline = section !== 'rules' || panel.kind === 'panel' || classifyTitlePanel(scan).kind === 'panel';
-  // A flat rules box may have no detectable lower edge (for example silver
-  // artifact frames). A generated rim needs only conventional proportions;
-  // never manufacture a crop containing uncertain original edge pixels.
-  const bounds = contour || detectPanelBounds(scan, section) || (section === 'rules' && generatedOutline ? {
-    x:Math.round(scan.width*.09),y:Math.round(scan.height*.625),
-    width:Math.round(scan.width*.82),height:Math.round(scan.height*.29),
-  } : null);
-  if (!bounds) return {};
-  // Integrated rules retain their decorative edge; enclosed panels get a clean
-  // vector outline with sampled colors around the reconstructed material.
-  const inset = section === 'rules' ? 12 : 10;
-  const cleanX = 7, cleanY = 3;
-  const source = document.createElement('canvas');
-  source.width=bounds.width; source.height=bounds.height;
-  const ctx=source.getContext('2d', {willReadFrequently:true});
-  ctx.drawImage(canvas,bounds.x,bounds.y,bounds.width,bounds.height,0,0,bounds.width,bounds.height);
-  // Generated rules panels use the central paper, excluding the bottom stamp,
-  // P/T box, and the original edge bevels from their texture donors.
-  const inner=generatedOutline && section === 'rules'
-    ? canvas.getContext('2d').getImageData(Math.floor(scan.width*.12),Math.floor(scan.height*.64),Math.floor(scan.width*.76),Math.floor(scan.height*.20))
-    : ctx.getImageData(cleanX,cleanY,bounds.width-cleanX*2,bounds.height-cleanY*2);
-  let cleaned=reconstructPanel(inner, {removeSeparators: section === 'rules'});
-  if (!cleaned) {
-    if (!generatedOutline) return {};
-    // Dense print may leave too few trustworthy donors. Keep the enclosure
-    // and use its dominant paper instead of reintroducing printed fragments.
-    cleaned={width:1,height:1,data:new Uint8ClampedArray([...materialColor(inner.data),255])};
+// Trace the narrow source rim into color-grouped vector paths. Unlike a
+// generic rounded rectangle this preserves asymmetric corners and stacked
+// highlight/shadow strokes without carrying the panel's printed content.
+export function tracePanelRim(scan, bounds, section) {
+  const {width,height}=bounds, groups=new Map();
+  const corner=section==='rules'?3:Math.min(12,Math.floor(height/3));
+  const included=(x,y)=>x<6||x>=width-6||y<6||y>=height-6
+    || ((x<corner||x>=width-corner)&&(y<8||y>=height-8));
+  for(let y=0;y<height;y++) {
+    let x=0;
+    while(x<width) {
+      if(!included(x,y)){x++;continue;}
+      const colorAt=x=>{
+        const at=((bounds.y+y)*scan.width+bounds.x+x)*4;
+        return [0,1,2].map(c=>Math.min(255,Math.round(scan.data[at+c]/8)*8)).join(',');
+      };
+      const start=x,color=colorAt(x++);
+      while(x<width&&included(x,y)&&colorAt(x)===color)x++;
+      groups.set(color,(groups.get(color)||'')+`M${start} ${y}h${x-start}v1h-${x-start}z`);
+    }
   }
-  if (generatedOutline) {
-    // Never carry unknown edge pixels or stamp fragments into an enclosed
-    // panel. Keep its cleaned texture and generate a continuous vector rim.
-    const texture = document.createElement('canvas');
-    texture.width=cleaned.width; texture.height=cleaned.height;
-    texture.getContext('2d').putImageData(new ImageData(cleaned.data,cleaned.width,cleaned.height),0,0);
-    const radius=section==='rules'?2:Math.min(12,bounds.height*.25);
-    const stroke=Math.max(1,Math.min(2.5,panel.stroke*488/100));
-    const color=rgb=>`rgb(${rgb.join(',')})`;
-    const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${bounds.width}" height="${bounds.height}" viewBox="0 0 ${bounds.width} ${bounds.height}"><defs><clipPath id="panel"><rect x="1" y="1" width="${bounds.width-2}" height="${bounds.height-2}" rx="${radius}"/></clipPath></defs><image href="${texture.toDataURL()}" width="${bounds.width}" height="${bounds.height}" preserveAspectRatio="none" clip-path="url(#panel)"/><rect x="${stroke/2}" y="${stroke/2}" width="${bounds.width-stroke}" height="${bounds.height-stroke}" rx="${radius}" fill="none" stroke="${color(panel.border)}" stroke-width="${stroke}"/><rect x="${stroke+1}" y="${stroke+1}" width="${bounds.width-2*stroke-2}" height="${bounds.height-2*stroke-2}" rx="${Math.max(1,radius-stroke)}" fill="none" stroke="${color(panel.highlight)}" stroke-opacity=".65"/></svg>`;
-    return {
-      [`--whole-${section}-image`]: `url("data:image/svg+xml,${encodeURIComponent(svg)}")`,
-      [`--whole-${section}-slice`]: `${inset} 16 ${inset} 16 fill`,
-      [`--whole-${section}-width`]: `${inset/488*100}cqw ${16/488*100}cqw`,
-    };
-  }
-  // Restore only actual edge pixels and corner shapes after cleaning text.
-  const original = ctx.getImageData(0,0,bounds.width,bounds.height);
-  ctx.putImageData(new ImageData(cleaned.data, cleaned.width, cleaned.height),cleanX,cleanY);
-  const cornerSize = 12;
-  for (const x of [0,bounds.width-cornerSize]) for (const y of [0,bounds.height-cornerSize]) {
-    ctx.putImageData(original,0,0,x,y,cornerSize,cornerSize);
-  }
-  const corner = 16;
-  return {
-    [`--whole-${section}-image`]: `url("${source.toDataURL()}")`,
-    [`--whole-${section}-slice`]: `${inset} ${corner} ${inset} ${corner} fill`,
-    [`--whole-${section}-width`]: `${inset/488*100}cqw ${corner/488*100}cqw`,
-  };
+  return [...groups].map(([color,path])=>`<path shape-rendering="crispEdges" fill="rgb(${color})" d="${path}"/>`).join('');
 }
 
-// Locate the exact art crop within its full printing. Comparing interior
-// samples avoids mistaking decorative frame edges for the artwork boundary.
 export function matchArtBounds(scan, art) {
   if (!art || scan.height/scan.width<1.2) return null;
   const samples=[];
@@ -549,8 +549,8 @@ export function matchArtBounds(scan, art) {
     return error/(samples.length*3);
   };
   let best={error:Infinity};
-  for(let w=Math.round(scan.width*.8);w<=scan.width*.95;w+=3) {
-    for(let x=Math.round((scan.width-w)/2)-6;x<=(scan.width-w)/2+6;x+=3) {
+  for(let w=Math.round(scan.width*.70);w<=scan.width*.98;w+=3) {
+    for(let x=Math.round((scan.width-w)/2)-12;x<=(scan.width-w)/2+12;x+=3) {
       for(let y=Math.round(scan.height*.08);y<=scan.height*.14;y+=3) {
         const error=score(x,y,w);if(error<best.error) best={x,y,width:w,error};
       }
@@ -654,7 +654,30 @@ export function printedStatsTreatment(scan,stats) {
   return side(false)&&side(true)&&horizontal?'panel':'text';
 }
 
-function geometryStyle(scan,art,conventional) {
+export function detectStatsPanelBounds(scan, stats) {
+  if(!stats || printedStatsTreatment(scan,stats)!=='panel') return null;
+  const {width,height,data}=scan;
+  const dark=(x,y)=>{const at=(y*width+x)*4;return (data[at]+data[at+1]+data[at+2])/3<100;};
+  const edge=(axis,start,direction,limit)=>{
+    for(let d=3;d<limit;d++) {
+      const p=Math.round(start+direction*d);let count=0;
+      if(p<1||p>=(axis==='x'?width:height)-1)continue;
+      for(let i=0;i<12;i++) {
+        const x=axis==='x'?p:Math.round(stats.x+stats.width*(.15+i*.7/11));
+        const y=axis==='y'?p:Math.round(stats.y+stats.height*(.15+i*.7/11));
+        if(dark(x,y))count++;
+      }
+      if(count>=10)return p;
+    }
+    return null;
+  };
+  const left=edge('x',stats.x,-1,width*.085),right=edge('x',stats.x+stats.width,1,width*.085);
+  const top=edge('y',stats.y,-1,stats.height),bottom=edge('y',stats.y+stats.height,1,stats.height);
+  if([left,right,top,bottom].some(v=>v===null))return null;
+  return {x:left-3,y:top-3,width:right-left+7,height:bottom-top+7};
+}
+
+export function measureFrameGeometry(scan,art,conventional=true) {
   const stats=detectPrintedStats(scan);
   let rules=detectPanelBounds(scan,'rules');
   const style={'--printed-scan-width':scan.width, '--printed-scan-height':scan.height};
@@ -668,21 +691,51 @@ function geometryStyle(scan,art,conventional) {
     style['--printed-pt-position']='rules';
     style['--printed-pt-treatment']=printedStatsTreatment(scan,stats);
     style['--printed-pt-font-size']=`calc(${stats.height/scan.width*100}cqw / var(--card-stats-glyph-ratio, .7))`;
+
   }
   if(!conventional) return style;
-  const artBox=matchArtBounds(scan,art);
+  let artBox=matchArtBounds(scan,art);
   if(!artBox) return style;
+  if(classifyTitlePanel(scan).kind==='panel') {
+    // Crop matching can stop inside the illustration. Sustained straight dark
+    // rails are stronger evidence for its actual left/right opening.
+    const rail=(edge,right)=>{
+      let best=null;
+      for(let x=Math.round(edge-10);x<=edge+10;x++) {
+        let supported=0;
+        for(let i=0;i<32;i++) {
+          const y=Math.round(artBox.y+artBox.height*(.08+i*.84/31));
+          const value=xx=>{const at=(y*scan.width+xx)*4;return (scan.data[at]+scan.data[at+1]+scan.data[at+2])/3;};
+          if(value(x)<90 && value(x+(right?-3:3))-value(x)>35)supported++;
+        }
+        if(supported>=28&&(!best||supported>best.supported))best={x,supported};
+      }
+      return best?.x;
+    };
+    const left=rail(artBox.x,false),right=rail(artBox.x+artBox.width,true);
+    if(left!=null&&right!=null) {
+      const x=left+3,width=right-left-5;
+      const height=width*art.height/art.width;
+      if(Math.abs(height-artBox.height)<8)
+        artBox={...artBox,x,width,y:artBox.y+(artBox.height-height)/2,height};
+    }
+  }
   const glyphBox=(section)=>{
-    const x=Math.floor(scan.width*.12),y=Math.floor(scan.height*(section==='title'?.035:.55));
-    const w=Math.floor(scan.width*.65),h=Math.floor(scan.height*.065),data=new Uint8ClampedArray(w*h*4);
+    const x=Math.floor(scan.width*.07),y=Math.floor(scan.height*(section==='title'?.035:.55));
+    const w=Math.floor(scan.width*.72),h=Math.floor(scan.height*.065),data=new Uint8ClampedArray(w*h*4);
     for(let row=0;row<h;row++) data.set(scan.data.subarray(((y+row)*scan.width+x)*4,((y+row)*scan.width+x+w)*4),row*w*4);
-    const bounds=analyzeSection({data,width:w,height:h},{minGlyphHeight:Math.floor(scan.height*.015)}).glyphBounds;
-    const padding=bounds?Math.round((bounds.bottom-bounds.y)*.4):0;
+    const analysis=analyzeSection({data,width:w,height:h},{minGlyphHeight:Math.floor(scan.height*.015)});
+    const bounds=analysis.textBounds || analysis.glyphBounds;
+    const padding=bounds?3:0;
     return bounds?{x:x+bounds.x,y:y+bounds.y-padding,width:bounds.right-bounds.x,height:bounds.bottom-bounds.y+padding*2}:null;
   };
   // Integrated bars use the printed glyph block plus breathing room when
   // there is no enclosing stroke to measure.
-  const title=classifyTitlePanel(scan).kind==='panel'?(detectEnclosedPanelBounds(scan,'title') || detectPanelBounds(scan,'title')):glyphBox('title');
+  const titleEnclosure=classifyTitlePanel(scan).kind==='panel' ? (detectEnclosedPanelBounds(scan,'title') || detectPanelBounds(scan,'title')) : null;
+  let title=titleEnclosure || glyphBox('title');
+  style['--title-panel-kind']=titleEnclosure?'panel':'integrated';
+  if(title && title.y+title.height>artBox.y && title.y+title.height-artBox.y<=8)
+    title={...title,height:artBox.y-title.y};
   const type=detectEnclosedPanelBounds(scan,'type') || detectPanelBounds(scan,'type') || glyphBox('type');
   // A shared type/rules edge can be detected on both sides of its bevel.
   // Allocate that overlap to the type bar instead of rejecting both boxes.
@@ -691,12 +744,20 @@ function geometryStyle(scan,art,conventional) {
     const top = type.y + type.height;
     rules = {...rules, y: top, height: rules.y + rules.height - top};
   }
+  // The visible artwork remains the source scan. Keep its annotation rectangle
+  // inside the measured text rows when a bevel is mistaken for the art edge.
+  if(title && title.y+title.height>artBox.y && title.y+title.height-artBox.y<scan.height*.03) {
+    const top=title.y+title.height; artBox={...artBox,y:top,height:artBox.y+artBox.height-top};
+  }
+  style['--printed-layout-candidates']=JSON.stringify({title,type,rules,art:artBox});
   // All regions share source coordinates and one uniform scale. Integrated
   // bars have no enclosing sides: use the art's span, not the glyph width.
   if (title && type && rules && title.y + title.height <= artBox.y + 3
     && artBox.y + artBox.height <= type.y + 3 && type.y + type.height <= rules.y + 3) {
-    const titleBox = classifyTitlePanel(scan).kind === 'panel' ? title : {...title, x:artBox.x, width:artBox.width};
-    const typeBox = classifyTypePanel(scan).kind === 'panel' ? type : {...type, x:rules.x, width:rules.width};
+    const titleLeft=Math.min(artBox.x,title.x-4);
+    const titleBox = titleEnclosure ? title : {...title, x:titleLeft, width:artBox.x+artBox.width-titleLeft};
+    const typeLeft=Math.min(rules.x,type.x-4);
+    const typeBox = classifyTypePanel(scan).kind === 'panel' ? type : {...type, x:typeLeft, width:rules.x+rules.width-typeLeft};
     const boxes = {title:titleBox, type:typeBox, rules, art:artBox};
     style['--printed-box-sizing'] = 'measured';
     style['--printed-layout'] = JSON.stringify(boxes);
@@ -715,134 +776,168 @@ function geometryStyle(scan,art,conventional) {
   return style;
 }
 
-function innerFrameBorderStyle(scan) {
-  const rim = sampleInnerFrameBevel(scan);
-  if (!rim) return {};
-  return {
-    '--inner-frame-border-kind': rim.kind,
-    '--frame-border-bounds': JSON.stringify(rim.bounds),
-    '--frame-border-x': rim.bounds.x,
-    '--frame-border-y': rim.bounds.y,
-    '--frame-border-width': rim.bounds.width,
-    '--frame-border-height': rim.bounds.height,
-    '--frame-border-bottom': scan.height-rim.bounds.y-rim.bounds.height,
-    '--frame-border-right': scan.width-rim.bounds.x-rim.bounds.width,
-    '--frame-interior-radius': rim.innerRadius,
-    ...(rim.outerRadius == null ? {} : {'--frame-outer-radius': `${rim.outerRadius/scan.width*100}cqw`}),
-    ...Object.fromEntries(Object.entries(rim.colors).map(([side,rgb])=>[`--frame-border-${side}-color`, `rgb(${rgb.join(',')})`])),
-    '--inner-frame-border-confidence': rim.confidence,
-    '--inner-frame-bevel-profile': JSON.stringify(rim.profiles),
-  };
+// Curved Future Sight frames need text envelopes, not rectangular panel edges.
+// These frame-family search regions deliberately exclude the type medallion,
+// left-hand mana column, set symbol, and curved paper rim. Glyph registration
+// below measures the actual text before anything is removed or replaced.
+function futureFrameGeometry(scan) {
+  const {width:w,height:h}=scan;
+  const rect=(x,y,width,height)=>({x:Math.round(x*w),y:Math.round(y*h),width:Math.round(width*w),height:Math.round(height*h)});
+  const boxes={title:rect(.175,.055,.74,.055),type:rect(.12,.565,.725,.055),
+    rules:rect(.09,.635,.825,.25),art:rect(.20,.12,.73,.44)};
+  const style={...measureFrameGeometry(scan,null,false),'--printed-box-sizing':'measured','--printed-layout':JSON.stringify(boxes),'--printed-mana-placement':'column'};
+  for(const [name,box] of Object.entries(boxes))for(const [dimension,value] of Object.entries(box))style[`--printed-${name}-${dimension}`]=value;
+  return style;
 }
 
-async function sample(fullUrl, textures) {
+async function sample(fullUrl, typography, printing, setSymbolUrl) {
+  const layoutGap=sourceMaskLayoutGap(printing);
+  if(layoutGap)return {'--source-frame-status':'original','--source-frame-fallback-reason':layoutGap};
   const artUrl = /^https:\/\/cards\.scryfall\.io\/normal\//.test(fullUrl) ? fullUrl.replace('/normal/', '/art_crop/') : '';
-  const [image, art] = await Promise.all([loadImage(fullUrl), textures && artUrl ? loadImage(artUrl).catch(() => null) : null]);
+  const [image, art] = await Promise.all([loadImage(fullUrl), artUrl ? loadImage(artUrl).catch(() => null) : null]);
   const canvas = document.createElement('canvas');
   canvas.width = 488; canvas.height = Math.round(image.height * 488 / image.width);
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-  const patch = (x, y, w, h) => ctx.getImageData(Math.floor(x * canvas.width), Math.floor(y * canvas.height), Math.max(1, Math.floor(w * canvas.width)), Math.max(1, Math.floor(h * canvas.height)));
-  // Broad conventional-frame regions, with separate left/right material colors
-  // for hybrid frames. The type material also supplies the shared horizontal bar texture.
-  const regions = {
-    shell: [0.035, 0.12, 0.028, 0.72],
-    title: [0.10, 0.045, 0.78, 0.045],
-    type: [0.10, 0.557, 0.78, 0.045],
-    rules: [0.12, 0.64, 0.76, 0.22],
-    stats: [0.77, 0.895, 0.15, 0.045],
-  };
-  const cssColor = rgb => `rgb(${rgb.join(',')})`;
-  const scan = textures ? ctx.getImageData(0, 0, canvas.width, canvas.height) : null;
-  const titlePanel = scan ? classifyTitlePanel(scan) : null;
-  const typePanel = scan ? classifyTypePanel(scan) : null;
-  const style = textures ? { ...rulesBottomStyle(canvas), ...railStyle(art, titlePanel?.kind === 'integrated'), ...textureStyle(patch(.105, .56, .71, .033), 'type') } : {};
-  for (const [name, [x, y, w, h]] of Object.entries(regions)) {
-    const left = cssColor(materialColor(patch(x, y, w / 2, h).data));
-    const right = cssColor(materialColor(patch(x + w / 2, y, w / 2, h).data));
-    style[`--sampled-${name}-paper`] = `linear-gradient(90deg, ${left} 25%, ${right} 75%)`;
-    if (textures && ['rules', 'stats'].includes(name)) {
-      Object.assign(style, textureStyle(patch(x, y, w, h), name));
-    }
-    if (name !== 'shell') {
-      const region=patch(x,y,w,h);
-      let ink=sectionInk(region);
-      if (!textures) {
-        const paper=luminance(materialColor(region.data)), text=luminance(ink);
-        if ((Math.max(paper,text)+.05)/(Math.min(paper,text)+.05)<4.5) ink=paper>.179?[0,0,0]:[255,255,255];
+  const fullScan = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  let artScan = null;
+  if (art) {
+    const crop = document.createElement('canvas');
+    crop.width = 160; crop.height = Math.round(art.height * 160 / art.width);
+    const cropCtx = crop.getContext('2d', { willReadFrequently: true });
+    cropCtx.drawImage(art, 0, 0, crop.width, crop.height);
+    artScan = cropCtx.getImageData(0, 0, crop.width, crop.height);
+  }
+  // Geometry is evidence for placing editable text, never a recipe for a
+  // replacement frame. If it cannot be measured, retain the original card.
+  const future = printing?.frame === 'future';
+  const style = future ? futureFrameGeometry(fullScan) : measureFrameGeometry(fullScan, artScan, true);
+  const fallback = reason => ({'--source-frame-status':'original','--source-frame-fallback-reason':reason});
+  if (!typography || !printing) return fallback('printing-metadata');
+  if (!style['--printed-layout']) return fallback(!matchArtBounds(fullScan,artScan) ? 'art-registration' : 'text-regions');
+  const titlePanel = future ? {kind:'integrated'} : {kind:style['--title-panel-kind'] || classifyTitlePanel(fullScan).kind}, typePanel = future ? {kind:'integrated'} : classifyTypePanel(fullScan);
+  style['--title-panel-kind'] = titlePanel.kind;
+  style['--type-panel-kind'] = typePanel.kind;
+  const measuredBoxes = JSON.parse(style['--printed-layout']);
+  const statsBox = printing.power != null && printing.toughness != null ? detectPrintedStats(fullScan) : null;
+  for (const [name, box] of Object.entries({ ...measuredBoxes, stats: statsBox })) {
+    if (name === 'art' || !box) continue;
+    const inset = name === 'stats' ? -6 : 6;
+    const x = Math.max(0, Math.ceil(box.x + inset)), y = Math.max(0, Math.ceil(box.y + inset));
+    const width = Math.min(canvas.width - x, Math.floor(box.width - inset * 2));
+    const height = Math.min(canvas.height - y, Math.floor(box.height - inset * 2));
+    if (width > 0 && height > 0) style[`--sampled-${name}-ink`] = `rgb(${sectionInk(ctx.getImageData(x, y, width, height)).join(',')})`;
+  }
+  let setSymbol=null;
+  if(style['--printed-layout']) {
+    const type=JSON.parse(style['--printed-layout']).type;
+    if(setSymbolUrl)try {
+      const symbol=await loadImage(setSymbolUrl),icon=document.createElement('canvas');
+      icon.width=48;icon.height=Math.max(1,Math.round(symbol.height*48/symbol.width));
+      const iconCtx=icon.getContext('2d',{willReadFrequently:true});iconCtx.drawImage(symbol,0,0,icon.width,icon.height);
+      setSymbol=locateSetSymbol(fullScan,type,iconCtx.getImageData(0,0,icon.width,icon.height));
+    }catch { /* Keep a conservative symbol slot if the SVG is unavailable. */ }
+    const stop=setSymbol?setSymbol.x-5:fullScan.width*.855-5;
+    style['--printed-type-text-width']=`${Math.max(40,stop-type.x-7)/fullScan.width*100}cqw`;
+    if(setSymbol)style['--printed-set-symbol-bounds']=JSON.stringify(setSymbol);
+  }
+  let manaMatch=null,icons=[];
+  if(style['--printed-layout']) {
+    const box=JSON.parse(style['--printed-layout']).title;
+    try {icons=await manaTemplates(printing?.mana_cost);manaMatch=locateManaSymbols(fullScan,box,icons,future ? {vertical:true,bounds:{x:fullScan.width*.09,y:fullScan.height*.125,width:fullScan.width*.13,height:fullScan.height*.40}} : {});}catch { /* Keep font masks if no reliable SVG registration is available. */ }
+    // Unregistered mana may live outside the title (for example future frames).
+    // Never move it to a conventional title slot or leave a duplicate behind.
+    if (printing.mana_cost && !manaMatch) return fallback('mana-registration');
+    if(manaMatch) {
+      if (future) for (const symbol of manaMatch.symbols) {
+        // Preserve unusual ink colors and disc treatments from this printing.
+        const sprite=document.createElement('canvas');
+        sprite.width=symbol.width; sprite.height=symbol.height;
+        const spriteCtx=sprite.getContext('2d');
+        spriteCtx.beginPath();spriteCtx.arc(symbol.width/2,symbol.height/2,symbol.width/2,0,Math.PI*2);spriteCtx.clip();
+        spriteCtx.drawImage(canvas,symbol.x,symbol.y,symbol.width,symbol.height,0,0,symbol.width,symbol.height);
+        symbol.image=sprite.toDataURL();
       }
-      style[`--sampled-${name}-ink`] = cssColor(ink);
+      style['--printed-mana-symbols']=JSON.stringify(manaMatch);
+      const first=manaMatch.symbols[0];
+      style['--printed-mana-center-y']=first.y+first.height/2-box.y;
     }
-    if (['title', 'type', 'rules'].includes(name)) {
-      const glyphRegion = name === 'title' ? patch(.085, .035, .72, .072) : name === 'type' ? patch(.09, .55, .72, .075) : patch(x, y, w, h);
-      const glyphHeight = printedGlyphHeight(glyphRegion);
-      if (glyphHeight) style[`--sampled-${name}-font-size`] = `calc(${glyphHeight / canvas.width * 100}cqw / var(--card-${name}-glyph-ratio, .7))`;
-    }
-  }
-  // Color-only bars share the type material in CSS, so their ink must too.
-  if (!textures) style['--sampled-bar-ink'] = style['--sampled-type-ink'];
-  // The narrow vertical scan border contains pinlines, not usable panel grain.
-  // Extend the reconstructed type material through the surrounding frame.
-  if (style['--sampled-type-texture']) {
-    style['--sampled-shell-texture'] = style['--sampled-type-texture'];
-    style['--sampled-shell-texture-size'] = '100% auto';
-    style['--sampled-shell-veil'] = style['--sampled-type-veil'];
-  }
-  if (titlePanel) {
-    style['--title-panel-kind'] = titlePanel.kind;
-    style['--title-panel-confidence'] = titlePanel.confidence;
-    if (titlePanel.kind === 'panel') {
-      Object.assign(style, textureStyle(patch(.105, .054, .71, .042), 'title'));
-      style['--title-panel-border'] = cssColor(titlePanel.border);
-      style['--title-panel-highlight'] = cssColor(titlePanel.highlight);
-      style['--title-panel-stroke'] = `${titlePanel.stroke}cqw`;
-      style['--title-panel-radius'] = `${titlePanel.radius}cqw`;
-      delete style['--art-top-rail'];
-      delete style['--art-top-rail-height'];
+    // Integrated retro titles keep their established alignment. Enclosed bars
+    // use a verified text baseline, independently of the symbol row's size.
+    if(titlePanel?.kind==='panel') {
+      const x=Math.round(fullScan.width*.08),y=Math.max(0,Math.floor(box.y-3)),w=Math.round(fullScan.width*.6),h=Math.ceil(box.height+6);
+      const analysis=analyzeSection(ctx.getImageData(x,y,w,h),{minGlyphHeight:6});
+      if(analysis.glyphBounds)style['--printed-title-baseline']=y+analysis.glyphBounds.bottom;
     }
   }
-  if (typePanel) {
-    style['--type-panel-kind'] = typePanel.kind;
-    style['--type-panel-confidence'] = typePanel.confidence;
-    if (typePanel.kind === 'panel') {
-      Object.assign(style, textureStyle(patch(.105, .573, .71, .028), 'type-box'));
-      style['--type-panel-border'] = cssColor(typePanel.border);
-      style['--type-panel-highlight'] = cssColor(typePanel.highlight);
-      style['--type-panel-stroke'] = `${typePanel.stroke}cqw`;
-      style['--type-panel-radius'] = `${typePanel.radius}cqw`;
+  if(style['--printed-layout']) {
+    const stats=statsBox;
+    if (typography && printing) {
+      const boxes = JSON.parse(style['--printed-layout']);
+      // Fit the complete printed line, including ascenders and descenders,
+      // inside its detected panel. A fixed scan strip can include artwork.
+      for (const section of ['title', 'type', 'stats']) {
+        const content = section === 'title' ? printing.printed_name || printing.name
+          : section === 'type' ? printing.printed_type_line || printing.type_line
+          : printing.power != null && printing.toughness != null ? `${printing.power}/${printing.toughness}` : '';
+        if (!content || section === 'stats' && !stats) continue;
+        let bounds = stats;
+        if (section !== 'stats') {
+          const box = boxes[section], stop = section === 'title' ? (future ? box.x+box.width : manaMatch?.symbols[0]?.x) : setSymbol?.x;
+          const enclosed = (section === 'title' ? titlePanel : typePanel)?.kind === 'panel';
+          const insetX = enclosed ? 6 : 0, insetY = enclosed ? 2 : 0;
+          const x = Math.ceil(box.x + insetX), y = Math.ceil(box.y + insetY);
+          const right = Math.floor(Math.min(box.x + box.width - insetX, (stop ?? fullScan.width * (section === 'title' ? .78 : .855)) - 4));
+          const measured = printedTextBounds(ctx.getImageData(x, y, right - x, Math.floor(box.height - insetY * 2)));
+          if (!measured) { if(future)return fallback('text-registration'); continue; }
+          bounds = {x:x+measured.x, y:y+measured.y, width:measured.right-measured.x, height:measured.bottom-measured.y};
+        }
+        ctx.font = `${section === 'stats' ? typography.style['--card-stats-weight'] : typography.titleWeight} 100px ${typography[section]}`;
+        const metrics = ctx.measureText(content);
+        const inkWidth = metrics.actualBoundingBoxLeft + metrics.actualBoundingBoxRight;
+        const inkHeight = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
+        const size = Math.min(bounds.width / inkWidth, bounds.height / inkHeight) * 100;
+        if (!Number.isFinite(size) || size < 10 || size > 40) continue;
+        style[`--printed-${section}-font-size`] = `${size / fullScan.width * 100}cqw`;
+        style[`--printed-${section}-text-bounds`] = JSON.stringify(bounds);
+        style[`--printed-${section}-baseline`] = bounds.y + bounds.height - metrics.actualBoundingBoxDescent * size / 100;
+      }
+      const flavorLine = measureFlavorFirstLine(ctx, boxes.rules, printing.flavor_text, typography.rules);
+      if (flavorLine) {
+        style['--printed-flavor-font-size'] = `${flavorLine.size / fullScan.width * 100}cqw`;
+        style['--printed-flavor-first-line'] = JSON.stringify(flavorLine);
+      }
+      const firstLine = measureRulesFirstLine(ctx, boxes.rules, printing.printed_text || printing.oracle_text, typography.rules);
+      if (firstLine) {
+        style['--printed-rules-first-line'] = JSON.stringify(firstLine);
+        style['--printed-rules-font-size'] = `${firstLine.size / fullScan.width * 100}cqw`;
+        ctx.font = `400 ${firstLine.size}px ${typography.rules}`;
+        const metrics = ctx.measureText(firstLine.line);
+        const lineHeight = firstLine.lineHeight && firstLine.lineHeight >= firstLine.height
+          && firstLine.lineHeight <= firstLine.size * 1.5 ? firstLine.lineHeight : firstLine.size * 1.24;
+        style['--printed-rules-line-height'] = lineHeight / firstLine.size;
+        const inkTop = (lineHeight - metrics.fontBoundingBoxAscent - metrics.fontBoundingBoxDescent) / 2
+          + metrics.fontBoundingBoxAscent - metrics.actualBoundingBoxAscent;
+        style['--printed-rules-padding-top'] = `${Math.max(4, firstLine.y - boxes.rules.y - inkTop) / fullScan.width * 100}cqw`;
+        style['--printed-rules-padding-left'] = `${Math.max(6, firstLine.x - boxes.rules.x + metrics.actualBoundingBoxLeft) / fullScan.width * 100}cqw`;
+      }
+    }
+    const masked=maskSourceFrame(fullScan,JSON.parse(style['--printed-layout']),stats,detectStatsPanelBounds(fullScan,stats),typography ? (patch,options)=>fontGuidedPanel(patch,{
+      family:typography[options.section==='footer'?'rules':options.section]||typography.rules,
+      weight:['title','type'].includes(options.section)?typography.titleWeight:options.section==='stats'?typography.style['--card-stats-weight']:400,
+      section:options.section,
+      allowItalic:options.section==='rules',symbols:options.section==='rules'||options.section==='title'&&Boolean(printing.mana_cost)&&!manaMatch,
+      text:options.section==='rules'?`${printing?.printed_text||printing?.oracle_text||''} ${printing?.flavor_text||''}`:options.section==='title'?(printing?.printed_name||printing?.name):options.section==='type'?(printing?.printed_type_line||printing?.type_line):options.section==='footer'?`${printing?.artist||''} Illus. Wizards of the Coast Inc.`:`${printing?.power||''}/${printing?.toughness||''}`,
+    }):reconstructPanel,{title:titlePanel?.kind,type:typePanel?.kind,fontGuided:!!typography,setSymbol,manaMatch,icons,preserveRules:/\bBasic\b.*\bLand\b/.test(printing.type_line||'') && ['2003','2015'].includes(printing.frame),textBounds:Object.fromEntries(['title','type'].map(name=>[name,JSON.parse(style[`--printed-${name}-text-bounds`]||'null')]))});
+    if(masked) {
+      const original=document.createElement('canvas');original.width=masked.width;original.height=masked.height;
+      original.getContext('2d').putImageData(new ImageData(masked.data,masked.width,masked.height),0,0);
+      style['--source-frame-mask-method']=typography?'font-template':'contrast';
+      style['--source-frame-image']=`url("${original.toDataURL()}")`;
     }
   }
-  if (scan) {
-    Object.assign(style, innerFrameBorderStyle(scan));
-    for (const section of ['title', 'type', 'rules']) {
-      if (section === 'title' && titlePanel.kind !== 'panel') continue;
-      if (section === 'type' && typePanel.kind !== 'panel') continue;
-      Object.assign(style, wholePanelStyle(canvas, scan, section));
-    }
-    if (style['--whole-rules-image']) {
-      for (const key of Object.keys(style)) if (key.startsWith('--rules-bottom-')) delete style[key];
-    }
-  }
-  const fullScan=scan || ctx.getImageData(0,0,canvas.width,canvas.height);
-  let artScan=null;
-  if(art) {
-    const artCanvas=document.createElement('canvas');artCanvas.width=160;artCanvas.height=Math.round(art.height*160/art.width);
-    const artCtx=artCanvas.getContext('2d',{willReadFrequently:true});artCtx.drawImage(art,0,0,artCanvas.width,artCanvas.height);
-    artScan=artCtx.getImageData(0,0,artCanvas.width,artCanvas.height);
-  }
-  Object.assign(style, geometryStyle(fullScan,artScan,textures));
-  if (style['--printed-layout'] && style['--frame-border-bounds']) {
-    const bounds=JSON.parse(style['--frame-border-bounds']);
-    const material=reconstructFrameMaterial(fullScan,bounds,JSON.parse(style['--printed-layout']),detectPrintedStats(fullScan));
-    if(material) {
-      const atlas=document.createElement('canvas');atlas.width=bounds.width;atlas.height=bounds.height;
-      atlas.getContext('2d').putImageData(new ImageData(material.data,material.width,material.height),-bounds.x,-bounds.y);
-      style['--sampled-shell-texture']=`url("${atlas.toDataURL()}")`;
-      style['--sampled-shell-texture-size']='100% 100%';
-      style['--sampled-shell-veil']='linear-gradient(transparent, transparent)';
-      style['--frame-material-sampling']='regional';
-    }
-  }
+  if (!style['--source-frame-image']) return fallback('glyph-mask');
+  style['--source-frame-status'] = 'masked';
   if (style['--printed-scan-width']) {
     // Typography, bevels, and P/T offsets use the same scale as the boxes,
     // including previews constrained by height instead of width.
@@ -855,11 +950,11 @@ async function sample(fullUrl, textures) {
   return style;
 }
 
-export function sampleCardFrameColors(fullUrl, { textures = true } = {}) {
+export function sampleCardFrameColors(fullUrl, { typography, printing, setSymbolUrl } = {}) {
   if (!fullUrl) return Promise.resolve(null);
-  const key = `${textures ? "texture" : "color"}:${fullUrl}`;
+  const key = `${typography ? "font-template" : "contrast"}:source-mask:${fullUrl}`;
   if (cache.has(key)) return cache.get(key);
-  const request = sample(fullUrl, textures).catch(() => { cache.delete(key); return null; });
+  const request = sample(fullUrl, typography, printing, setSymbolUrl).catch(() => { cache.delete(key); return null; });
   cache.set(key, request);
   if (cache.size > 48) cache.delete(cache.keys().next().value);
   return request;
