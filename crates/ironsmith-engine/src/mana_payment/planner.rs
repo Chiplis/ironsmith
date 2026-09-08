@@ -50,7 +50,7 @@ pub fn plan_mana_payment(
     request: &ManaPaymentRequest,
 ) -> Result<Vec<ManaPaymentPlan>, ManaPaymentFailure> {
     let mut planner = ManaPaymentPlanner::default();
-    let result = planner.plan(game, request);
+    let result = planner.plan_internal(game, request, false);
     LAST_MANA_PAYMENT_PERF.with(|slot| {
         *slot.borrow_mut() = ManaPaymentPerfMetrics {
             visited_nodes: planner.visited_nodes,
