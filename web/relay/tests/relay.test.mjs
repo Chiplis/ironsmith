@@ -48,3 +48,12 @@ test('Durable Object authenticates peers, relays only within rooms, lists and re
   }
   assert.equal(listing.lobbies.length, 0);
 });
+
+test('an expired resume credential cannot create a replacement room', async t => {
+  const mf = await startRelay(); t.after(() => mf.dispose());
+  const room = id(), peer = `ws-${room}-${id()}`;
+  const response = await mf.dispatchFetch(`http://localhost/rooms/${room}/socket?peer=${peer}`, { headers: { Origin: origin, Upgrade: 'websocket' } });
+  const socket = response.webSocket; socket.accept(); const next = inbox(socket);
+  socket.send(JSON.stringify({ type: 'auth', token: id(), resume: true, format: 'modern', desiredPlayers: 2 }));
+  assert.match((await next()).message, /expired/);
+});

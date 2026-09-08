@@ -422,7 +422,7 @@ export default function LobbyOverlay({
                 {transport === 'websocket' && <label className="flex items-center gap-2 text-sm">
                   <input type="checkbox" checked={advertise} onChange={e => setAdvertise(e.target.checked)} />Advertise in public lobby search
                 </label>}
-                {transport === 'websocket' && <p className="text-sm text-muted-foreground">Format rules are enforced. Open decklists are shared with the table. Keep the host tab open during play.</p>}
+                {transport === 'websocket' && <p className="text-sm text-muted-foreground">Format rules are enforced. Open decklists are shared with the table. Reopen this lobby link in the same browser to recover your seat. Play waits while the host is offline.</p>}
               </div>}
               {mode === "create" ? (
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">

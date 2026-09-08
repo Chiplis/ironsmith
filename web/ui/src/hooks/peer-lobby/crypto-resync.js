@@ -1,3 +1,5 @@
+import { relayCheckpoint } from '../../lib/relay/session.js';
+import { isRelayId } from '../../lib/relay/formats.js';
 import {
   DISCONNECT_AUTO_FORFEIT_MS,
   DISCONNECT_FORFEIT_REASON,
@@ -4026,6 +4028,19 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     }));
   }
 
+  async function persistRelayCheckpoint() {
+    const session = multiplayerRef.current;
+    if (!isRelayId(session.lobbyId) || session.role !== "host" || !session.matchStarted) return;
+    const match = buildHostedResyncPayload();
+    if (!match) return;
+    await relayCheckpoint(session.lobbyId, {
+      match, session: cloneMultiplayerPayload(session),
+      checkpoint: cloneMultiplayerPayload(await gameRef.current.exportSyncCheckpoint()),
+      actions: cloneMultiplayerPayload(actionHistoryRef.current),
+      lastSequence: session.lastAppliedSequence,
+    });
+  }
+
   async function publishCurrentRuntimeState(stateHint = null) {
     const currentGame = gameRef.current;
     if (!currentGame || typeof currentGame.uiState !== "function") return null;
@@ -4053,6 +4068,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       publish_ms: Date.now() - publishStartedAt,
       sequence: Number(multiplayerRef.current?.lastAppliedSequence || 0),
     });
+    await persistRelayCheckpoint();
     return nextState;
   }
 
@@ -4140,5 +4156,5 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
   }
 
 
-  return { actionCryptoRequirementsForSequence, actionHistoryEntryForSequence, actionQuorumRoster, actionQuorumThresholdForMessage, actionQuorumVoteCacheKey, actionQuorumVoteConflict, alignMatchClockObservationFromHostSnapshot, answerActionQuorumVoteRequest, answerCryptoMaterialRequest, answerDisconnectForfeitVoteRequest, answerProtocolResponseTimeoutVoteRequest, answerTimeoutVoteRequest, appendAppliedSequencedAction, authorizedCryptoMaterialRequirementsForRequest, batchedOwnerPrivateZiffleOpeningsForLocalViewer, broadcastMatchPresence, broadcastToClients, buildHostedResyncPayload, buildLocalCryptoMaterialForRequirements, buildLocalPrivateViewProofsForRequirements, buildMatchClockAuditForCommand, clearAllPeerResyncs, clearLocalDisconnectObservation, collectActionQuorumCertificate, collectDisconnectForfeitCertificateForCommand, collectProtocolResponseTimeoutCertificateForCommand, collectRemoteCryptoMaterialForRequirements, collectTimeoutCertificateForCommand, commandObjectHiddenRefs, commandObjectStableIds, commitMatchClockAudit, createSequencedActionValidationSnapshot, cryptoRequirementReplayKey, currentHiddenRefForObjectId, currentMatchClockSnapshot, currentObjectIdForHiddenRef, currentObjectIdForStableId, currentStableIdForObjectId, derivePostApplyCryptoRequirementsForRequest, disconnectForfeitRoster, filterOpeningsForCommandHiddenRefs, finishPeerResync, forfeitedPlayersForQuorum, freshCryptoRequirementsForSequence, handleHistoricalSequencedAction, hiddenPositionBatchRevealFromOpening, injectCryptoMaterialForRequirements, latestMatchClockAuditFromActions, leaveLobby, localDisconnectObservationForPlayer, markMatchDisputed, openingMatchesCommandHiddenRef, playerCountForClock, playerForDisconnectForfeit, playerForProtocolResponseTimeout, privateOpeningFromEncryptedProof, privateOpeningFromProof, privateOpeningsForLocalViewer, protocolResponseTimeoutRoster, publishCurrentRuntimeState, publishMatchClockSnapshot, relaySequencedAction, remapCommandForLocalHiddenOpening, remapPriorityCommandForLocalHiddenOpening, remapSelectObjectsCommandForLocalHiddenOpening, rememberActionCryptoRequirements, rememberLocalDisconnectObservation, rememberSignedActionQuorumVote, resetMatchClockForMatch, resolvePeerResyncWaitersIfIdle, restoreMatchClockRuntime, restoreMatchClockRuntimeFromActionTranscript, restoreSequencedActionValidationSnapshot, revealPrivateAuditProofsForLocalViewer, revealPrivateOpeningsForInjection, runtimeMatchClockSnapshot, sendHostedStateMessage, sendMatchStartToClients, sequencedActionRelayKey, sequencedActionsEquivalent, shuffleProofAlreadyAppliedBefore, shuffleProofReplayKey, shuffleProofRequirementAlreadyRecordedBefore, signActionQuorumVoteForMessage, signDisconnectForfeitVoteForCommand, signProtocolResponseTimeoutVoteForCommand, signTimeoutVoteForSnapshot, stageLocalMatchClockAudit, stateHashBeforeSequence, teardownPeer, updateMatchClockForState, validateDisconnectForfeitCommand, validateProtocolResponseTimeoutCommand, validateTimeoutForfeitCommand, validateTrustedSequencedAction, verifyActionQuorumForMessage, verifyActionQuorumVoteForMessage, verifyMatchClockAuditForAction, verifyTimeoutCertificate, verifyTimeoutVote, waitForPeerResyncs };
+  return { persistRelayCheckpoint, actionCryptoRequirementsForSequence, actionHistoryEntryForSequence, actionQuorumRoster, actionQuorumThresholdForMessage, actionQuorumVoteCacheKey, actionQuorumVoteConflict, alignMatchClockObservationFromHostSnapshot, answerActionQuorumVoteRequest, answerCryptoMaterialRequest, answerDisconnectForfeitVoteRequest, answerProtocolResponseTimeoutVoteRequest, answerTimeoutVoteRequest, appendAppliedSequencedAction, authorizedCryptoMaterialRequirementsForRequest, batchedOwnerPrivateZiffleOpeningsForLocalViewer, broadcastMatchPresence, broadcastToClients, buildHostedResyncPayload, buildLocalCryptoMaterialForRequirements, buildLocalPrivateViewProofsForRequirements, buildMatchClockAuditForCommand, clearAllPeerResyncs, clearLocalDisconnectObservation, collectActionQuorumCertificate, collectDisconnectForfeitCertificateForCommand, collectProtocolResponseTimeoutCertificateForCommand, collectRemoteCryptoMaterialForRequirements, collectTimeoutCertificateForCommand, commandObjectHiddenRefs, commandObjectStableIds, commitMatchClockAudit, createSequencedActionValidationSnapshot, cryptoRequirementReplayKey, currentHiddenRefForObjectId, currentMatchClockSnapshot, currentObjectIdForHiddenRef, currentObjectIdForStableId, currentStableIdForObjectId, derivePostApplyCryptoRequirementsForRequest, disconnectForfeitRoster, filterOpeningsForCommandHiddenRefs, finishPeerResync, forfeitedPlayersForQuorum, freshCryptoRequirementsForSequence, handleHistoricalSequencedAction, hiddenPositionBatchRevealFromOpening, injectCryptoMaterialForRequirements, latestMatchClockAuditFromActions, leaveLobby, localDisconnectObservationForPlayer, markMatchDisputed, openingMatchesCommandHiddenRef, playerCountForClock, playerForDisconnectForfeit, playerForProtocolResponseTimeout, privateOpeningFromEncryptedProof, privateOpeningFromProof, privateOpeningsForLocalViewer, protocolResponseTimeoutRoster, publishCurrentRuntimeState, publishMatchClockSnapshot, relaySequencedAction, remapCommandForLocalHiddenOpening, remapPriorityCommandForLocalHiddenOpening, remapSelectObjectsCommandForLocalHiddenOpening, rememberActionCryptoRequirements, rememberLocalDisconnectObservation, rememberSignedActionQuorumVote, resetMatchClockForMatch, resolvePeerResyncWaitersIfIdle, restoreMatchClockRuntime, restoreMatchClockRuntimeFromActionTranscript, restoreSequencedActionValidationSnapshot, revealPrivateAuditProofsForLocalViewer, revealPrivateOpeningsForInjection, runtimeMatchClockSnapshot, sendHostedStateMessage, sendMatchStartToClients, sequencedActionRelayKey, sequencedActionsEquivalent, shuffleProofAlreadyAppliedBefore, shuffleProofReplayKey, shuffleProofRequirementAlreadyRecordedBefore, signActionQuorumVoteForMessage, signDisconnectForfeitVoteForCommand, signProtocolResponseTimeoutVoteForCommand, signTimeoutVoteForSnapshot, stageLocalMatchClockAudit, stateHashBeforeSequence, teardownPeer, updateMatchClockForState, validateDisconnectForfeitCommand, validateProtocolResponseTimeoutCommand, validateTimeoutForfeitCommand, validateTrustedSequencedAction, verifyActionQuorumForMessage, verifyActionQuorumVoteForMessage, verifyMatchClockAuditForAction, verifyTimeoutCertificate, verifyTimeoutVote, waitForPeerResyncs };
 }

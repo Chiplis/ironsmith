@@ -93,6 +93,7 @@ export class LobbyRoom {
           try {
             const existing = await this.ctx.storage.get(`peer:${state.peer}`);
             const config = await this.ctx.storage.get('config');
+            if (msg.resume && (!existing || !config)) throw new Error('Saved lobby has expired');
             if (existing && existing !== msg.token) throw new Error('Identity already reserved');
             if (!config) {
               if (!Object.hasOwn(PUBLIC_FORMATS, msg.format)) throw new Error('A supported format is required');
@@ -106,6 +107,7 @@ export class LobbyRoom {
             const peers = await this.ctx.storage.list({ prefix: 'peer:' });
             if (!existing && peers.size >= 16) throw new Error('Room identity limit reached');
             await this.ctx.storage.put(`peer:${state.peer}`, msg.token);
+            await this.ctx.storage.delete('emptySince');
             for (const old of this.sockets()) {
               if (old !== ws && old.deserializeAttachment().peer === state.peer) old.close(4001, 'Reconnected');
             }
@@ -171,6 +173,13 @@ export class LobbyRoom {
       await this.ctx.storage.setAlarm(Date.now() + 30000); return;
     }
     if (this.sockets().length) await this.ctx.storage.setAlarm(Date.now() + 24 * 60 * 60 * 1000);
-    else await this.ctx.storage.deleteAll();
+    else {
+      const emptySince = await this.ctx.storage.get('emptySince') ?? Date.now();
+      if (Date.now() - emptySince >= 24 * 60 * 60 * 1000) await this.ctx.storage.deleteAll();
+      else {
+        await this.ctx.storage.put('emptySince', emptySince);
+        await this.ctx.storage.setAlarm(emptySince + 24 * 60 * 60 * 1000);
+      }
+    }
   }
 }

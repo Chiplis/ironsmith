@@ -16,6 +16,7 @@ scripts/__pycache__*
 !/fixtures/determinism/*.json
 !/crates/ironsmith-compiled-artifact/fixtures/v3.json
 !/web/ui/package.json
+!/web/ui/tests/card-frame-regression-cases.json
 !/npm/ironsmith-wasm/package.template.json
 *.csv
 web/ui/node_modules
@@ -38,3 +39,10 @@ pkg/
 **/ironsmith_bg*.wasm
 **/ironsmith_bg*.wasm.gz
 **/ironsmith_bg*.wasm.br
+
+# Cloudflare WebSocket lobby service
+web/relay/node_modules/
+web/relay/.wrangler/
+!/web/relay/package.json
+!/web/relay/package-lock.json
+!/web/ui/src/lib/relay/format-catalog.generated.json

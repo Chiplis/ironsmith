@@ -1,3 +1,4 @@
+import { readRelaySession, saveRelayIdentity } from './session.js';
 import { isRelayId, relayBaseUrl } from './formats.js';
 const id = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), n => n.toString(16).padStart(2, '0')).join('');
 const MAX_MESSAGE = 64 * 1024 * 1024;
@@ -69,9 +70,11 @@ export class WebSocketPeer extends Events {
     super();
     this.options = { ...options, transport: 'websocket' };
     const room = options.room || (isRelayId(peerId) ? peerId.split('-')[1] : id());
-    this.id = peerId || `ws-${room}-${id()}`;
+    const saved = options.room ? readRelaySession(room, options.url) : null;
+    this.id = peerId || saved?.peerId || `ws-${room}-${id()}`;
     this.room = room;
-    this.token = id();
+    this.token = saved?.token || id();
+    this.resuming = Boolean(saved);
     queueMicrotask(() => this.reconnect());
   }
   reconnect() {
@@ -83,7 +86,7 @@ export class WebSocketPeer extends Events {
     url.searchParams.set('peer', this.id);
     const ws = new WebSocket(url);
     this.socket = ws;
-    ws.onopen = () => ws.send(JSON.stringify({ type: 'auth', token: this.token,
+    ws.onopen = () => ws.send(JSON.stringify({ type: 'auth', token: this.token, resume: this.resuming,
       format: this.options.format, desiredPlayers: this.options.desiredPlayers }));
     ws.onmessage = ({ data }) => {
       if (this.socket !== ws || this.destroyed) return;
@@ -91,6 +94,8 @@ export class WebSocketPeer extends Events {
         if (data === 'pong') { this.lastPong = Date.now(); return; }
         const msg = JSON.parse(data);
         if (msg.type === 'open') {
+          saveRelayIdentity(this.room, this.options.url, { peerId: this.id, token: this.token, advertise: this.options.advertise });
+          this.resuming = true;
           this.open = true; this.disconnected = false; this.config = msg.config;
           this.lastPong = Date.now(); this.lastPing = Date.now();
           this.pingTimer = setInterval(() => {
@@ -119,13 +124,16 @@ export class WebSocketPeer extends Events {
         } else if (conn?.peer === msg.from) conn.receive(msg);
       } catch (error) { this.emit('error', error); ws.close(1008, 'Invalid frame'); }
     };
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       if (this.socket !== ws) return;
       this.open = false; this.disconnected = true;
       clearInterval(this.pingTimer); clearTimeout(this.flushTimer); clearInterval(this.advertiseTimer);
       this.queue = []; this.queuedSize = 0;
       for (const conn of [...this.connections.values()]) conn.close(false);
-      if (!this.destroyed) this.emit('disconnected');
+      if (event.code === 4001) {
+        this.destroyed = true;
+        this.emit('error', new Error('This seat was reopened in another tab. Continue there.'));
+      } else if (!this.destroyed) this.emit('disconnected');
     };
     ws.onerror = () => { const error = new Error('Could not reach WebSocket lobby service'); error.type = 'network'; this.emit('error', error); };
   }

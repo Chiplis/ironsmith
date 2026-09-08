@@ -58,7 +58,10 @@ Sources: [Durable Object pricing](https://developers.cloudflare.com/durable-obje
 
 ## Recovery and limits
 
-Socket reconnect in the same tab preserves the peer identity and resumes through the existing lobby resync protocol. Keep the host tab open: host migration is deliberately disabled for relay rooms because the room's host identity is authenticated. A page reload loses the transport token; this implementation does not promise reload recovery or recovery after the host permanently leaves. The relay forwards messages without storing game snapshots or becoming an authoritative game server. Trusted mode is not cryptographic anticheat.
+Socket reconnect preserves the peer identity and resumes through the existing lobby resync protocol. To recover after a refresh or closing a tab, reopen the lobby link and join from the same browser profile and site origin. Each browser stores a room-specific identity/token in localStorage; the public link never contains those credentials. The host also saves its match checkpoint and action transcript to IndexedDB after match start and each committed action. Rejoining as that host restores the saved game before accepting connections. Guest rejoining restores the original seat and gets the current checkpoint from the host. A second tab taking the same seat stops the old tab's reconnect loop.
+
+The host must return before play can continue; host migration remains disabled. Clearing site data, switching devices/profiles/origins, or unavailable browser storage prevents seat recovery. A saved identity cannot claim another player's seat, and the public link alone cannot reclaim a disconnected seat. Existing game timeout/forfeit rules still apply. Empty rooms retain identities for at least 24 hours before cleanup; expired identities fail explicitly. The relay forwards messages without storing game snapshots or becoming an authoritative game server. Trusted mode is not cryptographic anticheat.
+
 
 ## Tests
 

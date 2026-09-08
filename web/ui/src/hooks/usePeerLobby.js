@@ -773,8 +773,8 @@ export function usePeerLobby({
           commitMatchClockAudit(clock, appliedState);
           await appendAppliedSequencedAction(message);
           localSubmissionCommitted = true;
-          relaySequencedAction(message);
           await publishCurrentRuntimeState(appliedState);
+          relaySequencedAction(message);
           await drainPendingSequencedActions();
           setStatus("Action broadcast to trusted peers");
           return;

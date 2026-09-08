@@ -431,13 +431,13 @@ export function usePeerLobbyValidation(base, servicesRef) {
         if (Number(nextSequence) === Number(matchClockObservationExemptSequenceRef.current || 0)) {
           matchClockObservationExemptSequenceRef.current = 0;
         }
+        await publishCurrentRuntimeState(appliedState);
         if (options.relay !== false) {
           relaySequencedAction({
             ...message,
             securityMode: MULTIPLAYER_SECURITY_TRUSTED,
           });
         }
-        await publishCurrentRuntimeState(appliedState);
         await drainPendingSequencedActions();
         return { trusted: true };
       }
