@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  bindCommandToDecision,
   describeDecisionCommandMismatch,
   findPriorityActionForCommand,
   isDecisionCommandCompatible,
@@ -9,6 +10,26 @@ import {
   selectObjectCandidateRevealPolicy,
   selectObjectSyncMetadataForCommand,
 } from "../src/lib/sync-commands.js";
+
+test("commands are bound to the exact decision in a multi-step effect", () => {
+  const payLife = {
+    kind: "number",
+    player: 0,
+    source_id: 41,
+    reason: "Pay life",
+    description: "Choose how much life to pay",
+  };
+  const chooseCopies = {
+    ...payLife,
+    reason: "Choose copies",
+    description: "Choose how many copies to resolve",
+  };
+  const command = bindCommandToDecision({ type: "number_choice", value: 3 }, payLife);
+
+  assert.equal(isDecisionCommandCompatible(payLife, command), true);
+  assert.equal(isDecisionCommandCompatible(chooseCopies, command), false);
+  assert.equal(resolveSyncedCommand(command).decision_key, command.decision_key);
+});
 
 test("priority decisions only accept priority commands", () => {
   const decision = {

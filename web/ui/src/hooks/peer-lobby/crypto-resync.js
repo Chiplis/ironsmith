@@ -3990,9 +3990,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 
   async function appendAppliedSequencedAction(message) {
     const nextSequence = Number(message.seq || 0);
-    actionHistoryRef.current = [
-      ...actionHistoryRef.current,
-      {
+    const historyEntry = {
         type: "apply_action",
         protocolVersion: Number(message.protocolVersion || PROTOCOL_VERSION),
         requestId: String(message.requestId || ""),
@@ -4006,15 +4004,13 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
         ),
         clock: cloneMultiplayerPayload(message.clock),
         audit: cloneMultiplayerPayload(message.audit),
-      },
-    ];
-    if (liveAuditTranscriptRef.current) {
-      liveAuditTranscriptRef.current = {
-        ...liveAuditTranscriptRef.current,
-        actions: actionHistoryRef.current.map((entry) =>
-          cloneMultiplayerPayload(entry)
-        ),
       };
+    actionHistoryRef.current.push(historyEntry);
+    if (liveAuditTranscriptRef.current) {
+      if (!Array.isArray(liveAuditTranscriptRef.current.actions)) {
+        liveAuditTranscriptRef.current.actions = [];
+      }
+      liveAuditTranscriptRef.current.actions.push(cloneMultiplayerPayload(historyEntry));
     }
     clearPendingActionIntent({
       matchId: message.audit?.matchId || currentAuditMatchId(),

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
 const MIN_INIT_PHASE_MS = 180;
+const ENGINE_CALL_TIMEOUT_MS = 90_000;
+const ZIFFLE_CALL_TIMEOUT_MS = 120_000;
 
 const WORKER_METHODS = [
   "addCardToHand",
@@ -157,12 +159,18 @@ export function useWasmGame() {
     );
 
     const rejectPending = (err) => {
-      for (const { reject } of pending.values()) reject(err);
+      for (const { reject, timeoutId } of pending.values()) {
+        clearTimeout(timeoutId);
+        reject(err);
+      }
       pending.clear();
     };
 
     const rejectZifflePending = (err) => {
-      for (const { reject } of zifflePending.values()) reject(err);
+      for (const { reject, timeoutId } of zifflePending.values()) {
+        clearTimeout(timeoutId);
+        reject(err);
+      }
       zifflePending.clear();
     };
 
@@ -170,6 +178,7 @@ export function useWasmGame() {
       for (const [id, pendingRequest] of zifflePending.entries()) {
         if (pendingRequest.workerEntry !== workerEntry) continue;
         zifflePending.delete(id);
+        clearTimeout(pendingRequest.timeoutId);
         pendingRequest.reject(err);
       }
       if (workerEntry) workerEntry.pending = 0;
@@ -182,7 +191,11 @@ export function useWasmGame() {
           return;
         }
         const id = nextRequestId++;
-        pending.set(id, { resolve, reject });
+        const timeoutId = setTimeout(() => {
+          if (!pending.delete(id)) return;
+          reject(new Error(`WASM worker timed out while running ${method}`));
+        }, ENGINE_CALL_TIMEOUT_MS);
+        pending.set(id, { resolve, reject, timeoutId });
         worker.postMessage({ type: "call", id, method, args });
       });
 
@@ -238,6 +251,7 @@ export function useWasmGame() {
               const req = zifflePending.get(msg.id);
               if (!req) return;
               zifflePending.delete(msg.id);
+              clearTimeout(req.timeoutId);
               req.workerEntry.pending = Math.max(0, req.workerEntry.pending - 1);
               if (msg.ok) req.resolve(msg.result);
               else req.reject(toError(msg.error));
@@ -273,7 +287,12 @@ export function useWasmGame() {
         }
         const id = nextZiffleRequestId++;
         workerEntry.pending += 1;
-        zifflePending.set(id, { resolve, reject, workerEntry });
+        const timeoutId = setTimeout(() => {
+          if (!zifflePending.delete(id)) return;
+          workerEntry.pending = Math.max(0, workerEntry.pending - 1);
+          reject(new Error(`Ziffle worker timed out while running ${method}`));
+        }, ZIFFLE_CALL_TIMEOUT_MS);
+        zifflePending.set(id, { resolve, reject, workerEntry, timeoutId });
         workerEntry.worker.postMessage({ type: "call", id, method, args });
       });
     };
@@ -344,6 +363,7 @@ export function useWasmGame() {
         const req = pending.get(msg.id);
         if (!req) return;
         pending.delete(msg.id);
+        clearTimeout(req.timeoutId);
         if (msg.ok) req.resolve(msg.result);
         else req.reject(toError(msg.error));
         return;

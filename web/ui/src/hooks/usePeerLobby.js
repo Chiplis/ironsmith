@@ -19,6 +19,7 @@ import {
   buildExportedMatchOutcome,
   buildMatchClockConfig,
   buildPeerHeartbeatConfig,
+  bindCommandToDecision,
   buildPeerOptions,
   canHostedMatchStart,
   cloneMultiplayerPayload,
@@ -511,6 +512,9 @@ export function usePeerLobby({
 
   const submitMultiplayerCommand = useCallback(
     async (command, label = "") => {
+      // Capture the prompt at click time, before waiting for any previous
+      // network/engine work. A delayed click must not answer a later prompt.
+      command = bindCommandToDecision(command, stateRef.current?.decision);
       let session = multiplayerRef.current;
       if (!session.matchStarted) {
         setStatus("Match has not started yet", true);
@@ -585,6 +589,7 @@ export function usePeerLobby({
           }
         }
         let preSubmitState = gameRef.current ? await gameRef.current.uiState() : stateRef.current;
+        command = bindCommandToDecision(command, preSubmitState?.decision);
         if (!isDecisionCommandCompatible(preSubmitState?.decision, command)) {
           updateMultiplayer((prev) => ({ ...prev, submittingAction: false }));
           setStatus("That action is no longer available");

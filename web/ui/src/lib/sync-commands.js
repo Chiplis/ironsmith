@@ -1,3 +1,5 @@
+import { decisionKey } from "./decision-key.js";
+
 function stableStringify(value) {
   if (value === null || typeof value !== "object") {
     return JSON.stringify(value);
@@ -50,6 +52,12 @@ export function priorityCommandForAction(action) {
 
 export function isDecisionCommandCompatible(decision, command) {
   if (!command) return false;
+  if (
+    command.decision_key != null
+    && String(command.decision_key) !== decisionKey(decision || {})
+  ) {
+    return false;
+  }
   if (command.type === "cancel_decision") return true;
   if (command.type === "forfeit_player") {
     if (DISCONNECT_TIMEOUT_POLICY_REASONS.has(String(command.reason || ""))) {
@@ -86,6 +94,18 @@ export function isDecisionCommandCompatible(decision, command) {
     default:
       return false;
   }
+}
+
+// Bind a user response to the exact prompt that produced it. This matters for
+// effect stacks that expose several consecutive prompts of the same kind: a
+// delayed click or replay must never answer the next prompt by accident.
+export function bindCommandToDecision(command, decision) {
+  if (!command || typeof command !== "object" || !decision) return command;
+  if (command.type === "forfeit_player") return command;
+  return {
+    ...command,
+    decision_key: String(command.decision_key || decisionKey(decision)),
+  };
 }
 
 export function describeDecisionCommandMismatch(decision, command) {
@@ -285,6 +305,7 @@ export function resolveSyncedCommand(command) {
     if (hiddenRef) {
       syncedCommand.object_hidden_ref = hiddenRef;
     }
+    if (command.decision_key != null) syncedCommand.decision_key = String(command.decision_key);
     return syncedCommand;
   }
 
@@ -292,6 +313,7 @@ export function resolveSyncedCommand(command) {
     return {
       type: "priority_action",
       action_index: Number(command.action_index),
+      ...(command.decision_key == null ? {} : { decision_key: String(command.decision_key) }),
     };
   }
 
@@ -299,12 +321,14 @@ export function resolveSyncedCommand(command) {
     return {
       type: "select_options",
       option_indices: command.option_indices.map((optionIndex) => Number(optionIndex)),
+      ...(command.decision_key == null ? {} : { decision_key: String(command.decision_key) }),
     };
   }
 
   if (command.type === "mana_payment" && command.response) {
     return {
       type: "mana_payment",
+      ...(command.decision_key == null ? {} : { decision_key: String(command.decision_key) }),
       response: {
         ...command.response,
         plan_id: command.response.plan_id == null ? undefined : String(command.response.plan_id),
@@ -321,6 +345,7 @@ export function resolveSyncedCommand(command) {
       type: "select_objects",
       object_ids: command.object_ids.map((objectId) => Number(objectId)),
     };
+    if (command.decision_key != null) syncedCommand.decision_key = String(command.decision_key);
     const stableIds = Array.isArray(command.object_stable_ids)
       ? command.object_stable_ids
       : Array.isArray(command.objectStableIds)
@@ -347,6 +372,7 @@ export function resolveSyncedCommand(command) {
     return {
       type: "select_targets",
       targets: command.targets.map(normalizeMultiplayerTarget),
+      ...(command.decision_key == null ? {} : { decision_key: String(command.decision_key) }),
     };
   }
 
@@ -354,6 +380,7 @@ export function resolveSyncedCommand(command) {
     return {
       type: "number_choice",
       value: Number(command.value),
+      ...(command.decision_key == null ? {} : { decision_key: String(command.decision_key) }),
     };
   }
 
@@ -361,6 +388,7 @@ export function resolveSyncedCommand(command) {
     return {
       type: "text_choice",
       value: String(command.value ?? ""),
+      ...(command.decision_key == null ? {} : { decision_key: String(command.decision_key) }),
     };
   }
 
@@ -368,6 +396,7 @@ export function resolveSyncedCommand(command) {
     return {
       type: "declare_attackers",
       declarations: command.declarations.map(normalizeAttackerDeclaration),
+      ...(command.decision_key == null ? {} : { decision_key: String(command.decision_key) }),
     };
   }
 
@@ -375,11 +404,15 @@ export function resolveSyncedCommand(command) {
     return {
       type: "declare_blockers",
       declarations: command.declarations.map(normalizeBlockerDeclaration),
+      ...(command.decision_key == null ? {} : { decision_key: String(command.decision_key) }),
     };
   }
 
   if (command.type === "cancel_decision") {
-    return { type: "cancel_decision" };
+    return {
+      type: "cancel_decision",
+      ...(command.decision_key == null ? {} : { decision_key: String(command.decision_key) }),
+    };
   }
 
   if (command.type === "forfeit_player") {

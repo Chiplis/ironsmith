@@ -1,4 +1,4 @@
-import { needsFullStateResync } from '../../lib/relay/resync.js';
+import { localActionsForRelayRepair, needsFullStateResync } from '../../lib/relay/resync.js';
 import { replayTrustedMatch } from '../../lib/relay/replay-trusted-match.js';
 import { readRelaySession, relayCheckpoint } from '../../lib/relay/session.js';
 import { PUBLIC_FORMATS, isRelayId, relayBaseUrl } from '../../lib/relay/formats.js';
@@ -122,18 +122,22 @@ export function usePeerLobbyMessaging(base, servicesRef) {
   const ensureDirectPeerConnections = useCallback((...args) => servicesRef.current.ensureDirectPeerConnections(...args), [servicesRef]);
   const replayLocalActionsForRepair = useCallback((conn) => {
     const session = multiplayerRef.current;
-    if (!conn?.open || !isRelayId(session.lobbyId) || session.localPlayerIndex == null) return 0;
-    const actions = (actionHistoryRef.current || [])
-      .filter((entry) => Number(entry?.actorIndex) === Number(session.localPlayerIndex))
-      .slice(-32);
+    if (!conn?.open || !isRelayId(session.lobbyId) || session.localPlayerIndex == null) {
+      return { attempted: 0, sent: 0 };
+    }
+    const actions = localActionsForRelayRepair(
+      actionHistoryRef.current,
+      session.localPlayerIndex,
+    );
+    let sent = 0;
     for (const action of actions) {
-      safeSend(conn, {
+      if (safeSend(conn, {
         ...cloneMultiplayerPayload(action),
         type: "apply_action",
         protocolVersion: PROTOCOL_VERSION,
         requestId: String(action.requestId || `repair-action:${session.lobbyId}:${session.localPeerId}:${action.seq}`),
         replayedAfterDisconnect: true,
-      });
+      })) sent += 1;
     }
     if (actions.length > 0) {
       recordDiagnosticEvent("relay_action:repair_replay", {
@@ -143,7 +147,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         peer: String(conn.peer || ""),
       });
     }
-    return actions.length;
+    return { attempted: actions.length, sent };
   }, []);
   const ensureZiffleIdentity = useCallback((...args) => servicesRef.current.ensureZiffleIdentity(...args), [servicesRef]);
   const finishPeerResync = useCallback((...args) => servicesRef.current.finishPeerResync(...args), [servicesRef]);
@@ -185,6 +189,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
   const ziffleTokensForPosition = useCallback((...args) => servicesRef.current.ziffleTokensForPosition(...args), [servicesRef]);
   const lastForegroundRecoveryRef = useRef(0);
   const resyncInProgressRef = useRef(false);
+  const lastResyncRequestRef = useRef(0);
   const requestResync = useCallback((reason = "Resyncing with host...") => {
     const session = multiplayerRef.current;
     if (session.role !== "client" || !session.matchStarted) return false;
@@ -198,18 +203,42 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     awaitingStateResyncRef.current = true;
     // WebSockets are ordered and reliable while connected, but a frame queued
     // at the instant the network drops may never reach the host. Replaying the
-    // bounded local transcript is safe because sequenced actions are
+    // local transcript is safe because sequenced actions are
     // idempotent; the host applies a missing action once or ignores a duplicate.
-    replayLocalActionsForRepair(conn);
-    safeSend(conn, {
+    const replay = replayLocalActionsForRepair(conn);
+    const requested = safeSend(conn, {
       type: "resync_request",
       protocolVersion: PROTOCOL_VERSION,
       lastSequence: session.lastAppliedSequence,
       forceCheckpoint: true,
     });
+    if (!requested || replay.sent !== replay.attempted) {
+      try { peerRef.current?.reconnect?.(); } catch { /* retry loop below will continue */ }
+      return false;
+    }
+    lastResyncRequestRef.current = Date.now();
     setStatus(reason, true);
     return true;
   }, [replayLocalActionsForRepair, setStatus, updateMultiplayer]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const session = multiplayerRef.current;
+      if (
+        !awaitingStateResyncRef.current
+        || !session.matchStarted
+        || !isRelayId(session.lobbyId)
+        || session.role !== "client"
+        || session.submittingAction
+        || resyncInProgressRef.current
+        || document.visibilityState === "hidden"
+        || globalThis.navigator?.onLine === false
+        || Date.now() - lastResyncRequestRef.current < 8_000
+      ) return;
+      requestResync("Retrying match recovery...");
+    }, 2_000);
+    return () => window.clearInterval(timer);
+  }, [requestResync]);
 
   useEffect(() => {
     const recoverForegroundSession = () => {
@@ -471,6 +500,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
             : "Resynced with trusted host",
         );
         awaitingStateResyncRef.current = false;
+        lastResyncRequestRef.current = 0;
         safeSend(hostConnectionRef.current, {
           type: "resync_ack",
           protocolVersion: PROTOCOL_VERSION,
@@ -705,6 +735,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           : "Resynced with host",
       );
       awaitingStateResyncRef.current = false;
+      lastResyncRequestRef.current = 0;
       await revealLocalZiffleHand(acceptedMatchPayload);
 
       safeSend(hostConnectionRef.current, {

@@ -82,6 +82,7 @@ import { setPreferredCardPrints } from "@/lib/scryfall";
 import { emitSyncFailureNotice } from "@/lib/ui-notices";
 import { isDisadvantageousActivePlayerClockAdvance } from "@/lib/match-clock";
 import {
+  bindCommandToDecision,
   isDecisionCommandCompatible,
   normalizeSelectObjectHiddenRef,
   selectObjectCandidateForId,
@@ -95,6 +96,8 @@ import {
   ZIFFLE_REVEAL_TOKEN_TIMEOUT_MS_PER_CARD,
   ziffleRevealTokenTimeoutMs,
 } from "@/lib/ziffle-timeouts";
+
+export { bindCommandToDecision };
 import { preloadCardArt } from "@/lib/scryfall";
 import {
   MULTIPLAYER_SECURITY_TRUSTED,
@@ -925,12 +928,14 @@ export function buildExportedMatchOutcome({
 }
 
 export function safeSend(conn, payload) {
-  if (!conn || conn.open === false) return;
+  if (!conn || conn.open === false) return false;
   try {
     conn.send(payload);
     recordPeerMessage(conn.peer, "out", payload?.type, approximateMessageBytes(payload));
+    return true;
   } catch {
     // PeerJS can report stale connections as open until the next send.
+    return false;
   }
 }
 
