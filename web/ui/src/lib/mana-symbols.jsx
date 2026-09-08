@@ -307,12 +307,25 @@ export function SymbolText({
     parts.push(...keywordTextParts(value, nextKey, keywordHelpersEnabled));
   };
 
-  for (const match of text.matchAll(SYMBOL_RE)) {
-    if (match.index > last) appendText(text.slice(last, match.index));
-    parts.push(<ManaSymbol key={`symbol-${key++}`} sym={match[1]} size={symbolSize} />);
-    last = match.index + match[0].length;
+  const appendSegment = (segment) => {
+    last = 0;
+    for (const match of segment.matchAll(SYMBOL_RE)) {
+      if (match.index > last) appendText(segment.slice(last, match.index));
+      parts.push(<ManaSymbol key={`symbol-${key++}`} sym={match[1]} size={symbolSize} />);
+      last = match.index + match[0].length;
+    }
+    if (last < segment.length) appendText(segment.slice(last));
+  };
+  // Reminder text is printed in italics, which also keeps translated reminder
+  // paragraphs close to the room the printing gave them.
+  for (const segment of text.split(/(\([^()]*\))/)) {
+    if (!segment) continue;
+    if (segment.startsWith("(") && segment.endsWith(")")) {
+      const start = parts.length;
+      appendSegment(segment);
+      parts.push(<em key={`reminder-${key++}`} className="rules-reminder-text">{parts.splice(start)}</em>);
+    } else appendSegment(segment);
   }
-  if (last < text.length) appendText(text.slice(last));
   return (
     <span
       className={className}

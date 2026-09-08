@@ -1,4 +1,7 @@
 import initEngine, { WasmGame } from "./engine.js";
+// Retain the engine's current source compiler before compatibility methods
+// replace these entry points with artifact-first registration.
+const registerSourceInEngine = WasmGame.prototype.registerExternalCardSources;
 import initCompiler, {
   compileCardArtifact,
   validateCompiledCardArtifact,
@@ -85,6 +88,20 @@ export function compileAndRegisterCardSources(game, input) {
       summary.loaded += Number(registered?.loaded ?? 0);
       if (Array.isArray(registered?.failed)) summary.failed.push(...registered.failed);
     } catch (error) {
+      // A rebuilt engine can reject artifacts baked against an older schema.
+      // Recompile the original source with this engine; never rewrite or bypass
+      // the artifact checksum, or use a mismatched standalone compiler result.
+      if (Array.isArray(source?.artifacts) && source.artifacts.length > 0
+        && source?.group && typeof registerSourceInEngine === "function") {
+        try {
+          const registered = registerSourceInEngine.call(game, source);
+          summary.loaded += Number(registered?.loaded ?? 0);
+          if (Array.isArray(registered?.failed)) summary.failed.push(...registered.failed);
+          continue;
+        } catch (fallbackError) {
+          error = fallbackError;
+        }
+      }
       summary.failed.push({
         name: String(failureName),
         error: String(error?.message ?? error),

@@ -102,12 +102,23 @@ def register(case, printing, observations):
             continue
         field['lines'].append({key:line[key] for key in ['text','x','y','width','height']})
     attach_errata(fields, unmatched)
+    # Translated names may run past the printed name: record where the mana
+    # cost (or other print on the same row) begins so the field can grow to it.
+    for field in fields:
+        if field['kind'] != 'name' or not field['lines']:
+            continue
+        row = field['lines'][0]
+        blockers = [line['x'] for line in unmatched if line['x'] >= row['x'] + row['width'] - .01
+                    and line['y'] < row['y'] + row['height'] and line['y'] + line['height'] > row['y']]
+        if blockers:
+            field['limit'] = min(blockers)
     for field in fields:
         rows = field['lines']
         if rows:
             x, y = min(r['x'] for r in rows), min(r['y'] for r in rows)
             field['bounds'] = dict(x=x,y=y,width=max(r['x']+r['width'] for r in rows)-x,height=max(r['y']+r['height'] for r in rows)-y)
-    return dict(id=case['id'], face=case.get('face'), source=case['source'], layout=case['layout'], fields=fields)
+    return dict(id=case['id'], face=case.get('face'), source=case['source'], layout=case['layout'],
+                set=case.get('set'), collector_number=case.get('collector_number'), fields=fields)
 
 
 def main():

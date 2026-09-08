@@ -51,3 +51,12 @@
 .interactive-card-frame__rules[data-fit-text="true"][data-text-overflow="true"] {
   overflow-y: auto;
 }
+
+/* The fitter measures the text synchronously after every size change. Any
+   transition on these boxes, including the near-zero one reduced-motion gives
+   every property, would report the previous size and derail the search. */
+.interactive-card-frame__rules[data-fit-text="true"],
+.interactive-card-frame__rules[data-fit-text="true"] *,
+.registered-card-frame__field {
+  transition: none !important;
+}

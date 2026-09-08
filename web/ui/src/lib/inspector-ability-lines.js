@@ -131,5 +131,11 @@ export function interactiveRulesView(canonicalText, displayedText, actions = [])
     sourceLines[target] = [canonical[index]];
     if (lineActions) projection.set(target, lineActions);
   }
+  // Keyword and static lines carry no actions. When both texts have the same
+  // number of them they pair up in order, so registered printings can find the
+  // printed paragraph behind a translated line and replace it.
+  const restSource = canonical.map((_, index) => index).filter(index => !sourceAbilities.includes(index) && !matches.has(index));
+  const restTarget = displayed.map((_, index) => index).filter(index => !targetAbilities.includes(index) && !sourceLines[index].length);
+  if (restSource.length === restTarget.length) restSource.forEach((index, k) => { sourceLines[restTarget[k]] = [canonical[index]]; });
   return { lines: displayed, actions: projection, sourceLines, translated: true };
 }

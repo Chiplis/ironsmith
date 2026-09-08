@@ -66,12 +66,13 @@ export function HoverProvider({ children }) {
     setPreviewLinkedObjectIds(new Set());
   }, []);
 
-  const showAnchoredCardPreview = useCallback((objectId, anchor) => {
+  const showAnchoredCardPreview = useCallback((objectId, anchor, options = null) => {
     const anchorRect = normalizeAnchorRect(anchor);
     if (objectId == null || !anchorRect) return;
     setAnchoredCardPreview({
       objectId: String(objectId),
       anchorRect,
+      placement: options?.placement || "default",
     });
   }, []);
 

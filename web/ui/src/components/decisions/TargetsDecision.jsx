@@ -822,7 +822,7 @@ export default function TargetsDecision({
       )}
       <div className={cn(
         stripLayout && !compactStripLayout
-          ? "min-w-0 overflow-x-auto overflow-y-hidden pb-1"
+          ? "decision-strip-scroll min-w-0 overflow-x-auto overflow-y-hidden pb-1"
           : "grid gap-1.5"
       )}>
         <div className={cn(

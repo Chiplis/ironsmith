@@ -1,7 +1,7 @@
 import { resolveScryfallFlavorText, resolveScryfallPrintingMetadata, resolveScryfallSetSymbol } from './scryfall';
 import { fullCardImageUrl, preloadCardFrameSource, sampleCardFrameColors } from './card-frame-colors';
 import { cardTypography } from './card-typography';
-import {registrationForImage} from './card-region-layout';
+import {registrationForImage, registrationForPrinting} from './card-region-layout';
 
 const preparations = new Map();
 const isBasicLand = typeLine => {
@@ -60,8 +60,20 @@ export function prepareCardFrame(imageUrl, typeLine = '') {
     const typographyRequest = prepareTypography(printing);
     const setSymbolRequest = resolveScryfallSetSymbol(printing);
     const preparedTypography = await typographyRequest;
-    const registration = registrationForImage((await import('./card-region-catalog.generated.js')).default, fullCardImageUrl(imageUrl));
-    const style = registration ? {} : await sampleCardFrameColors(fullCardImageUrl(imageUrl), {
+    const catalog = (await import('./card-region-catalog.generated.js')).default;
+    const scanUrl = fullCardImageUrl(imageUrl);
+    let registration = registrationForImage(catalog, scanUrl);
+    // Localized art resolves to the same printing in another language. Its
+    // registration was made on the pinned scan, so the frame masks and shows
+    // that scan while every text field carries the live (translated) wording.
+    let registeredScanUrl = registration ? scanUrl : '';
+    if (!registration && printing) {
+      registration = registrationForPrinting(catalog, printing, scanUrl);
+      if (registration) registeredScanUrl = registration.source;
+    }
+    const registeredScan = registeredScanUrl && registeredScanUrl !== scanUrl
+      ? decodeImage(registeredScanUrl).then(() => true, () => false) : Promise.resolve(true);
+    const style = registration ? {} : await sampleCardFrameColors(scanUrl, {
       typography: preparedTypography, printing, setSymbolUrl: await setSymbolRequest,
     });
     // CSS backgrounds and border images have their own decode step, even
@@ -70,10 +82,10 @@ export function prepareCardFrame(imageUrl, typeLine = '') {
       Array.from(String(value).matchAll(/url\("([^"]+)"\)/g), match => match[1])
     ));
     const [typography, flavorText, artReady] = await Promise.all([
-      typographyRequest, flavor, art,
+      typographyRequest, flavor, art, registeredScan,
       Promise.allSettled([...urls].map(decodeImage)),
     ]);
-    const result = {key, registration, printing, imageUrl, originalImageUrl: fullCardImageUrl(imageUrl) || imageUrl, style, typography, flavorText, artReady};
+    const result = {key, registration, printing, imageUrl, originalImageUrl: registeredScanUrl || scanUrl || imageUrl, style, typography, flavorText, artReady};
     if (fullCardImageUrl(imageUrl) && !style) {
       if (preparations.get(key) === entry) preparations.delete(key);
     } else entry.result = result;

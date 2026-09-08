@@ -171,7 +171,7 @@ export default function SelectObjectsDecision({
         <div
           className={cn(
             "w-full transition-[max-height] duration-300 ease-out",
-            stripLayout ? "overflow-x-auto overflow-y-hidden pb-1" : "overflow-y-auto overflow-x-hidden"
+            stripLayout ? "decision-strip-scroll overflow-x-auto overflow-y-hidden pb-1" : "overflow-y-auto overflow-x-hidden"
           )}
           style={stripLayout ? undefined : { maxHeight: `${optionsMaxHeight}px` }}
         >

@@ -55,3 +55,14 @@ test('language switches preserve action identity and payment state', () => {
     assert.equal(interactiveRulesView(canonical, text, [pending]).actions.get(2)[0], pending);
   }
 });
+
+test('keyword lines pair with their translations in order so printed paragraphs can be replaced', () => {
+  const canonical = 'Protection from Humans\nPay 1 life, Sacrifice another creature: Draw a card.\n{B}{B}, Discard a card: Proliferate.';
+  const translated = 'Protección contra Humanos.\nPagar 1 vida, sacrificar otra criatura: Roba una carta.\n{B}{B}, descartar una carta: Prolifera.';
+  const view = interactiveRulesView(canonical, translated, []);
+  assert.deepEqual(view.sourceLines, [['Protection from Humans'], ['Pay 1 life, Sacrifice another creature: Draw a card.'], ['{B}{B}, Discard a card: Proliferate.']]);
+  // A translation that splits reminder text into its own paragraph is ambiguous
+  // for the static lines and leaves them unpaired rather than mismatched.
+  const split = interactiveRulesView('Flying\nTrample', 'Vuela.\n(Reminder.)\nArrolla.', []);
+  assert.deepEqual(split.sourceLines, [[], [], []]);
+});

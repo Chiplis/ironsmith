@@ -44,7 +44,13 @@ export function objectExistsInState(state, objectId) {
     if (String(card?.id) === needle) return true;
   }
 
-  if ((state?.viewed_cards?.card_ids || []).some((id) => String(id) === needle)) {
+  if (
+    (state?.viewed_cards?.card_ids || []).some((id) => String(id) === needle)
+    || (state?.viewed_cards?.cards || []).some((card) => String(card?.id) === needle)
+    || (state?.players || []).some((player) => (
+      (player?.persistent_look_cards || []).some((card) => String(card?.id) === needle)
+    ))
+  ) {
     return true;
   }
 

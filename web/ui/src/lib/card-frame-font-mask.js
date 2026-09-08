@@ -4,6 +4,8 @@ const banks=new Map();
 function glyphBank(family,weight,italic=false,text='') {
   const words=String(text||'').replace(/\{[^}]+\}/g,' ').split(/\s+/).filter(Boolean);
   const extras=new Set();
+  // Translations use letters outside the Latin alphabet below (á, ñ, ¿, …).
+  for(const char of words.join(''))if(!alphabet.includes(char))extras.add(char);
   for(const word of words) {
     if(word.length<=6)extras.add(word);
     for(let i=0;i<word.length-1;i++) {extras.add(word.slice(i,i+2));if(i+2<word.length)extras.add(word.slice(i,i+3));}

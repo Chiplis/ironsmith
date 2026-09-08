@@ -1,4 +1,4 @@
-import {useEffect,useMemo,useState} from 'react';
+import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {SymbolText} from '@/lib/mana-symbols';
 import {registeredFieldLayouts,registeredRuleAssignments} from '@/lib/card-region-layout';
 import {maskRegisteredRegion} from '@/lib/card-region-mask';
@@ -8,7 +8,7 @@ import './registered-card-frame.css';
 
 const position=b=>({left:`${b.x*100}%`,top:`${b.y*100}%`,width:`${b.width*100}%`,height:`${b.height*100}%`});
 const same=(a,b)=>String(a||'').normalize('NFKC').replace(/\s+/g,' ').trim()===String(b||'').normalize('NFKC').replace(/\s+/g,' ').trim();
-function RegisteredField({field,layout,text,actions,group,imageUrl,typography,name,onActivate,highlighted}) {
+function RegisteredField({field,layout,unit,scale=1,onFit,text,actions,group,imageUrl,typography,name,onActivate,highlighted}) {
   // Errata'd printings keep stale wording in the box: replace it even when the
   // live text already equals the current oracle text.
   const changed=!same(text,field.text) || field.unprinted || field.errata;
@@ -26,14 +26,16 @@ function RegisteredField({field,layout,text,actions,group,imageUrl,typography,na
   const available=Boolean(action&&onActivate);
   const content=<SymbolText text={text} className="interactive-card-frame__rule-line" />;
   const activate=event=>{event.stopPropagation();if(available)onActivate(action);};
-  const style={...position(layout.bounds),'--registered-field-font-size':`${layout.size*100}cqw`,'--registered-field-line-height':layout.lineHeight};
+  // Pixel sizes, not container units: Chromium resolves a var() fallback that
+  // carries cq units lazily, so the fitter would measure text at a stale size.
+  const style={...position(layout.bounds),'--registered-field-font-size':unit?`${layout.size*unit*scale}px`:`${layout.size*scale*100}cqw`,'--registered-field-line-height':layout.lineHeight};
   if(showReplacement&&patch?.value?.ink)style['--registered-field-ink']=patch.value.ink;
   return <>
     {showReplacement&&patch?.field===field&&<img className="registered-card-frame__patch" src={patch.value.image} alt="" style={position(patch.value.bounds)} />}
     <div className="registered-card-frame__field" style={style} data-field-kind={field.kind}
       data-replaced={showReplacement?'true':'false'} data-live-text={text} data-printed-text={field.text}
       data-stack-highlighted={highlighted?'true':undefined} data-unprinted={field.unprinted?'true':undefined}>
-      {showReplacement ? <CardFrameRulesBox label={text}>
+      {showReplacement ? <CardFrameRulesBox label={text} refitKey={`${unit}|${scale}`} onFit={onFit?fit=>onFit(fit*scale):undefined}>
         {group?<GroupedManaAbility group={group} name={name} onActivate={onActivate}/>:actions.length?
           <button className="registered-card-frame__action" disabled={!available} onClick={activate} aria-label={`${name}: ${text}`}>{content}</button>:content}
       </CardFrameRulesBox>:group?<div className="registered-card-frame__mana-hotspots">
@@ -67,8 +69,35 @@ export default function RegisteredCardFrame({registration,imageUrl,typography,ru
   const assignments=useMemo(()=>registeredRuleAssignments(registration.fields,rulesView),[registration,rulesView]);
   const fields=registration.fields;
   const layouts=useMemo(()=>registeredFieldLayouts(fields,fieldMeasurer(typography)),[fields,typography]);
-  return <article className="registered-card-frame" aria-label={name} data-registration-id={registration.id}>
-    <div className="registered-card-frame__surface">
+  const surfaceRef=useRef(null);
+  const [unit,setUnit]=useState(0);
+  // A printed text box uses one type size. When any translated paragraph has
+  // to shrink, every rules and flavor field follows it; the shared scale only
+  // ratchets down until the text changes, so the refits cannot oscillate.
+  const rulesKey=`${rulesView.lines.join('\n')}|${flavorText||''}`;
+  const [shared,setShared]=useState({key:rulesKey,scale:1});
+  const sharedScale=shared.key===rulesKey?shared.scale:1;
+  // Fields report the absolute scale their text needs (their own fit times the
+  // shared scale they were measured at), so several reports never compound.
+  const onRulesFit=absolute=>{
+    if(absolute>=1)return;
+    setShared(current=>{
+      const scale=current.key===rulesKey?current.scale:1;
+      const next=Math.max(.75,Math.round(absolute*1000)/1000);
+      return next<scale-.002?{key:rulesKey,scale:next}:current.key===rulesKey?current:{key:rulesKey,scale:1};
+    });
+  };
+  useLayoutEffect(()=>{
+    const node=surfaceRef.current;
+    if(!node)return undefined;
+    const update=()=>setUnit(node.getBoundingClientRect().width);
+    update();
+    const observer=new ResizeObserver(update);
+    observer.observe(node);
+    return ()=>observer.disconnect();
+  },[]);
+  return <article className="registered-card-frame" aria-label={name} data-registration-id={registration.id} data-rules-scale={sharedScale}>
+    <div className="registered-card-frame__surface" ref={surfaceRef}>
       <img className="registered-card-frame__scan" src={imageUrl} alt={name} referrerPolicy="no-referrer" />
       {fields.map((field,index)=>{
         if(!field.bounds)return null;
@@ -85,7 +114,8 @@ export default function RegisteredCardFrame({registration,imageUrl,typography,ru
         else if(field.kind==='type'&&typeLine&&fields.filter(f=>f.kind==='type').length===1)text=typeLine;
         else if(field.kind==='stats'&&stats&&fields.filter(f=>f.kind==='stats').length===1)text=stats.replace(/\s/g,'');
         else if(field.kind==='flavor'&&flavorText&&fields.filter(f=>f.kind==='flavor').length===1)text=flavorText;
-        return <RegisteredField key={index} field={field} layout={layouts[index]} text={text} actions={actions} group={group} imageUrl={imageUrl}
+        const shares=['rule','flavor'].includes(field.kind);
+        return <RegisteredField key={index} field={field} layout={layouts[index]} unit={unit} scale={shares?sharedScale:1} onFit={shares?onRulesFit:undefined} text={text} actions={actions} group={group} imageUrl={imageUrl}
           typography={typography} name={name} onActivate={onActivate} highlighted={isHighlighted}/>;
       })}
     </div>

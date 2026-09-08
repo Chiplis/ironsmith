@@ -331,6 +331,11 @@ impl SnapshotJsEncodingCache {
             self.encode_zone_cards(&player.sideboard_cards)?.as_ref(),
         )?;
         self.set_serde(&object, "library_top", &player.library_top)?;
+        self.set_serde(
+            &object,
+            "persistent_look_cards",
+            &player.persistent_look_cards,
+        )?;
         self.set_serde(&object, "graveyard_top", &player.graveyard_top)?;
         self.set_value(
             &object,
@@ -1377,6 +1382,7 @@ pub(super) struct PlayerSnapshot {
     pub(super) ante_cards: Vec<ZoneCardSnapshot>,
     pub(super) sideboard_cards: Vec<ZoneCardSnapshot>,
     pub(super) library_top: Option<String>,
+    pub(super) persistent_look_cards: Vec<ViewedCardSnapshot>,
     pub(super) graveyard_top: Option<String>,
     pub(super) battlefield: Vec<PermanentSnapshot>,
     pub(super) battlefield_total: usize,
@@ -1566,7 +1572,29 @@ impl GameSnapshot {
                     || visible_hand_view.is_some()
                     || hand_revealed_by_static;
                 let can_view_library_top = can_view_library_top(game, perspective, p.id);
+                // Only ongoing permissions belong here; resolution views have their own lifetime.
+                let persistent_look_cards = p
+                    .library
+                    .last()
+                    .copied()
+                    .filter(|_| can_view_library_top)
+                    .into_iter()
+                    .chain(game.exile.iter().copied().filter(|id| {
+                        game.object(*id).is_some_and(|object| object.owner == p.id)
+                            && game.is_face_down(*id)
+                            && game.can_player_look_at_face_down_exiled_card(*id, perspective)
+                    }))
+                    .chain(p.hand.iter().copied().filter(|_| hand_revealed_by_static))
+                    .filter_map(|id| game.object(id))
+                    .map(|object| ViewedCardSnapshot {
+                        id: object.id.0,
+                        stable_id: object.stable_id.0.0,
+                        name: object.name.to_string(),
+                        oracle_text: object.compiled_card_text.to_string(),
+                    })
+                    .collect();
                 PlayerSnapshot {
+                    persistent_look_cards,
                     can_view_hand,
                     can_view_library_top,
                     hand_cards: if can_view_hand {
@@ -2884,6 +2912,12 @@ mod tests {
         assert_eq!(alice_player.hand_cards[0].name, "Primeval Titan");
         assert!(alice_player.can_view_library_top);
         assert_eq!(alice_player.library_top.as_deref(), Some("Alice's Future"));
+        assert!(
+            alice_player
+                .persistent_look_cards
+                .iter()
+                .any(|card| card.name == "Alice's Future")
+        );
     }
 
     #[test]

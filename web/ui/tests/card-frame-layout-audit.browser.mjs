@@ -44,7 +44,10 @@ try {
     await page.evaluate(async()=>{
       await document.fonts.ready;
       await Promise.allSettled([...document.images].map(img=>img.decode()));
-      await new Promise(resolve=>{let last='',stable=0,frames=0;const check=()=>{const next=JSON.stringify([...document.querySelectorAll('.interactive-card-frame__rule-line')].map(el=>{const r=el.getBoundingClientRect();return [r.x,r.y,r.width,r.height,getComputedStyle(el).fontSize];}));stable=next===last?stable+1:0;last=next;if(stable>=3 || ++frames>=120)resolve();else requestAnimationFrame(check);};requestAnimationFrame(check);});
+      // Registered replacements mount after their mask patches arrive and the
+      // fitter runs a frame later: wait for the field set and text rects to
+      // hold still, not merely for the first frame with no rule lines.
+      await new Promise(resolve=>{let last='',stable=0,frames=0;const check=()=>{const next=JSON.stringify([...document.querySelectorAll('.interactive-card-frame__rule-line, .registered-card-frame__field')].map(el=>{const r=el.getBoundingClientRect();return [el.dataset.replaced,r.x,r.y,r.width,r.height,getComputedStyle(el).fontSize,el.style.cssText];}));stable=next===last?stable+1:0;last=next;if(stable>=20 || ++frames>=600)resolve();else requestAnimationFrame(check);};requestAnimationFrame(check);});
     });
     const actual=await page.locator('.interactive-card-frame-stage').evaluateAll(nodes=>nodes.map(n=>{
       const get=k=>n.style.getPropertyValue(k),parse=k=>JSON.parse(get(k)||'null');

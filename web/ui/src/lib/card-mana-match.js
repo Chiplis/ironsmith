@@ -10,12 +10,31 @@ export function manaTemplateSource(key) {
   }
   return null;
 }
+// The rules text renders the same CDN symbols as plain <img> elements, whose
+// requests carry no Origin header, so the CDN answers them without CORS
+// headers. Chromium then reuses that cached response for a CORS request to the
+// same URL and the template fails to load, exactly for the symbols the card
+// displays. A distinct URL keeps the template out of that cache entry, and a
+// blob URL is same-origin for the canvas.
+async function loadTemplateImage(source) {
+  let url=source,revoke=null;
+  if(!source.startsWith('data:')) {
+    const response=await fetch(`${source}${source.includes('?')?'&':'?'}template`,{mode:'cors',referrerPolicy:'no-referrer'});
+    if(!response.ok)throw new Error(`Mana symbol unavailable: ${response.status}`);
+    url=URL.createObjectURL(await response.blob());revoke=url;
+  }
+  try {
+    const image=new Image();
+    await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=()=>reject(new Error('Mana symbol failed to load'));image.src=url;});
+    return image;
+  } finally {if(revoke)URL.revokeObjectURL(revoke);}
+}
 export async function manaTemplates(cost) {
   const keys=[...String(cost||'').matchAll(/\{([^}]+)\}/g)].map(m=>m[1].toUpperCase());
   return Promise.all(keys.map(async key=>{
     if(!templates.has(key))templates.set(key,(async()=>{
       const source=manaTemplateSource(key);if(!source)return null;
-      const image=new Image();image.crossOrigin='anonymous';image.referrerPolicy='no-referrer';image.src=source;await image.decode();
+      const image=await loadTemplateImage(source);
       const canvas=document.createElement('canvas');canvas.width=48;canvas.height=48;
       const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(image,0,0,48,48);
       return {key,data:ctx.getImageData(0,0,48,48).data,width:48,height:48};

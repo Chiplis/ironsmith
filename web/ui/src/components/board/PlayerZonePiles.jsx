@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { useGame } from "@/context/GameContext";
 import { useCastTargeting, useCastTargetHover } from "@/context/DragContext";
+import { useHover } from "@/context/HoverContext";
 import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
 import { LOOK_DONE_EVENT, LOOK_FADE_MS, lookViewKey, temporaryLookView, persistentLookCards, mergeLookCards } from "@/lib/look-pile";
 import { samePlayerId } from "@/lib/player-display";
@@ -16,6 +17,7 @@ function ZoneArt({ card }) {
 
 function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverride, fading = false, onOpenChange }) {
   const { state } = useGame();
+  const { hoverCard, clearHover, showAnchoredCardPreview } = useHover();
   const castIntent = useCastTargeting();
   const castHover = useCastTargetHover();
   const [open, setOpen] = useState(false);
@@ -66,6 +68,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
     : castIntent?.targetDecision || state?.decision;
   const choosingTarget = decision?.kind === "targets";
   const choosingObject = decision?.kind === "select_objects";
+  const choosingOption = decision?.kind === "select_options";
   const canChoose = samePlayerId(decision?.player, state?.perspective);
   const isLegal = (card) => choosingObject
     ? (decision.candidates || []).some((candidate) => String(candidate.id) === String(card.id) && candidate.legal !== false)
@@ -95,9 +98,54 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
       aria-label={card.name || "Face-down card"}
       data-object-id={String(card.id).startsWith("look-top-") ? undefined : card.id} data-zone-card={zone}
       data-target-legal={legal ? "true" : undefined} disabled={disabled}
+      onPointerEnter={(event) => {
+        if (event.pointerType === "touch" || disabled || !isFaceUpZoneCard(card) || String(card.id).startsWith("look-top-")) return;
+        hoverCard(card.id);
+      }}
+      onPointerLeave={(event) => {
+        if (event.pointerType !== "touch") clearHover();
+      }}
+      onFocus={() => {
+        if (!disabled && isFaceUpZoneCard(card) && !String(card.id).startsWith("look-top-")) hoverCard(card.id);
+      }}
+      onBlur={() => clearHover()}
       onClick={(event) => {
         if (castIntent && state?.decision?.kind !== "targets") return;
+        if (choosingObject && legal) {
+          window.dispatchEvent(new CustomEvent("ironsmith:select-object-choice", {
+            detail: { objectId: card.id },
+          }));
+          changeOpen(false);
+          return;
+        }
+        if (choosingTarget && legal) {
+          window.dispatchEvent(new CustomEvent("ironsmith:target-choice", {
+            detail: { target: { kind: "object", object: Number(card.id) } },
+          }));
+          changeOpen(false);
+          return;
+        }
+        if (choosingOption && legal) {
+          const option = (decision.options || []).find((candidate) =>
+            candidate.object_id != null && String(candidate.object_id) === String(card.id)
+          );
+          if (option) {
+            window.dispatchEvent(new CustomEvent("ironsmith:select-option-choice", {
+              detail: { optionIndex: option.index },
+            }));
+            changeOpen(false);
+            return;
+          }
+        }
+        const anchor = event.currentTarget;
         onCardClick?.(event, card);
+        // A zone card is an explicit selection, so show its full frame
+        // immediately while keeping the normal inspector selection in sync.
+        // Do this after onCardClick because that callback clears any previous
+        // anchored preview as part of changing the selected object.
+        if (isFaceUpZoneCard(card) && !String(card.id).startsWith("look-top-")) {
+          showAnchoredCardPreview(card.id, anchor, { placement: "zone" });
+        }
         if (choosingTarget || choosingObject) changeOpen(false);
       }}>
       <ZoneArt card={card} />
@@ -176,9 +224,19 @@ function LookPile({ player, onCardClick, legalTargetObjectIds }) {
   }, [active, open, retained]);
   const cards = mergeLookCards(persistent, (active ? view : retained)?.cards || []);
   if (!cards.length) return null;
-  return <ZonePile player={player} zone="look" cardsOverride={cards}
-    fading={!active && !open && persistent.length === 0}
-    onOpenChange={setOpen} onCardClick={onCardClick} legalTargetObjectIds={legalTargetObjectIds} />;
+  return <>
+    {active && <div key={key} className="look-eye-effect" aria-hidden="true">
+      <svg viewBox="0 0 96 54" role="presentation">
+        <path className="look-eye-glow" d="M8 27 C27 4 69 4 88 27 C69 50 27 50 8 27 Z" />
+        <path className="look-eye-lid" d="M8 27 C27 4 69 4 88 27" />
+        <ellipse className="look-eye-iris" cx="48" cy="27" rx="12" ry="15" />
+        <circle className="look-eye-pupil" cx="48" cy="27" r="5" />
+      </svg>
+    </div>}
+    <ZonePile player={player} zone="look" cardsOverride={cards}
+      fading={!active && !open && persistent.length === 0}
+      onOpenChange={setOpen} onCardClick={onCardClick} legalTargetObjectIds={legalTargetObjectIds} />
+  </>;
 }
 
 export default function PlayerZonePiles({ player, onCardClick, legalTargetObjectIds }) {

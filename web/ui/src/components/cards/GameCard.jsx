@@ -779,6 +779,7 @@ export default function GameCard({
   onPointerLeave,
   onMouseEnter,
   onMouseLeave,
+  onFocus,
   style,
   className = "",
   centerOverlay = null,
@@ -1409,7 +1410,26 @@ export default function GameCard({
       aria-pressed={keyboardInteractive && isInspected ? true : undefined}
       onClick={debouncedOnClick}
       onKeyDown={(event) => {
-        if (!keyboardInteractive || (event.key !== "Enter" && event.key !== " ")) return;
+        if (!keyboardInteractive) return;
+        if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+          const cards = Array.from(document.querySelectorAll('.game-card[role="button"]'))
+            .filter((candidate) => candidate.offsetParent !== null && !candidate.hasAttribute("aria-hidden"));
+          const targetMode = Boolean(targetDecision);
+          const navigable = targetMode
+            ? cards.filter((candidate) => candidate.classList.contains("target-legal"))
+            : cards;
+          const pool = navigable.length > 0 ? navigable : cards;
+          const currentIndex = pool.indexOf(event.currentTarget);
+          if (pool.length === 0 || (pool.length < 2 && currentIndex >= 0)) return;
+          const forward = event.key === "ArrowRight" || event.key === "ArrowDown";
+          const nextIndex = currentIndex < 0
+            ? (forward ? 0 : pool.length - 1)
+            : (currentIndex + (forward ? 1 : -1) + pool.length) % pool.length;
+          event.preventDefault();
+          pool[nextIndex]?.focus();
+          return;
+        }
+        if (event.key !== "Enter" && event.key !== " ") return;
         event.preventDefault();
         (onKeyboardActivate || onClick)?.(event);
       }}
@@ -1421,6 +1441,7 @@ export default function GameCard({
       onPointerLeave={onPointerLeave}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
+      onFocus={onFocus}
       style={{
         ...style,
         "--inspected-object-rgb": sourceAccent?.rgb || "255, 224, 131",

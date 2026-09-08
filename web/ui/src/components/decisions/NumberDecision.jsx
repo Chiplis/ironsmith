@@ -89,7 +89,7 @@ export default function NumberDecision({
       stripLayout && "min-w-0 gap-1.5"
     )}>
       {stripLayout ? (
-        <div className="min-w-0 overflow-x-auto overflow-y-hidden">
+        <div className="decision-strip-scroll min-w-0 overflow-x-auto overflow-y-hidden">
           {content}
         </div>
       ) : (

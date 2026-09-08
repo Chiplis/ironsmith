@@ -1059,16 +1059,16 @@ textarea,
 }
 
 .stack-inline-vertical-rail .game-card.stack-card--compact-timeline {
-  min-height: 64px !important;
+  min-height: 48px !important;
 }
 
 .stack-inline-vertical-rail .stack-card--compact-timeline .stack-card-body {
-  min-height: 64px !important;
-  padding: 0.45rem 0.55rem;
+  min-height: 48px !important;
+  padding: 0.25rem 0.35rem;
 }
 
 .stack-inline-vertical-rail .stack-card--compact-timeline .stack-card-body > .flex {
-  gap: 0.4rem;
+  gap: 0.3rem;
 }
 
 .stack-inline-vertical-rail .stack-card--compact-timeline .stack-card-body .h-7.w-7 {
@@ -1077,7 +1077,7 @@ textarea,
 }
 
 .stack-inline-vertical-rail .stack-card--compact-timeline .stack-card-title {
-  font-size: 12px;
+  font-size: 10px;
   line-height: 1.04;
 }
 
@@ -1089,10 +1089,10 @@ textarea,
 }
 
 .stack-inline-vertical-rail .stack-card--compact-timeline .stack-card-effect {
-  margin-top: 0.18rem;
-  font-size: 9px;
+  margin-top: 0.1rem;
+  font-size: 8px;
   line-height: 1.08;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
 }
 
 .stack-inline-vertical-rail .stack-card--compact-timeline .mt-auto {

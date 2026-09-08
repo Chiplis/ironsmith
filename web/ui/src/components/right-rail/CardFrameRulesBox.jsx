@@ -1,9 +1,11 @@
 import { useLayoutEffect, useRef } from "react";
 import "@/styles/card-frame-text-fit.css";
 
-export default function CardFrameRulesBox({ children, label }) {
+export default function CardFrameRulesBox({ children, label, onFit, refitKey }) {
   const boxRef = useRef(null);
   const fitRef = useRef(null);
+  const onFitRef = useRef(onFit);
+  onFitRef.current = onFit;
 
   useLayoutEffect(() => {
     const box = boxRef.current;
@@ -37,8 +39,15 @@ export default function CardFrameRulesBox({ children, label }) {
           const range = document.createRange();
           range.selectNodeContents(node);
           const text = range.getBoundingClientRect();
-          return !text.height || (text.bottom <= bounds.bottom - inset('bottom') + .5
-            && text.right <= bounds.right - inset('right') + .5 && text.left >= bounds.left + inset('left') - .5);
+          if (!text.height) return true;
+          // A space at a wrapped line end hangs past the box by design; it
+          // must not count as horizontal overflow.
+          const em = parseFloat(getComputedStyle(node).fontSize) || 16;
+          const rects = [...range.getClientRects()];
+          const right = Math.max(...rects.filter(rect => !(rect.width < em * .45
+            && rects.some(other => other !== rect && Math.abs(other.top - rect.top) < 1 && Math.abs(other.right - rect.left) < 1))).map(rect => rect.right));
+          return text.bottom <= bounds.bottom - inset('bottom') + .5
+            && right <= bounds.right - inset('right') + .5 && text.left >= bounds.left + inset('left') - .5;
         });
       };
       // Remove UI-only padding/gaps before changing the printing's typography.
@@ -69,6 +78,7 @@ export default function CardFrameRulesBox({ children, label }) {
         }
       }
       box.scrollTop = 0;
+      onFitRef.current?.(Number(box.style.getPropertyValue("--card-rules-fit-scale")) || 1);
     };
     const scheduleFit = () => {
       cancelAnimationFrame(frame);
@@ -90,7 +100,7 @@ export default function CardFrameRulesBox({ children, label }) {
     };
   }, []);
 
-  useLayoutEffect(() => { fitRef.current?.(); }, [children]);
+  useLayoutEffect(() => { fitRef.current?.(); }, [children, refitKey]);
 
   return <div ref={boxRef} className="interactive-card-frame__rules" data-fit-text="true" aria-label={label}>{children}</div>;
 }

@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Parse the complete rebuild before starting long-running commands. Bash otherwise
+# reads later sections from disk after a build, which breaks if this file is edited
+# in the meantime.
+rebuild_wasm_main() {
 set -euo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -66,6 +70,7 @@ Notes:
   - Frontend JSON assets are skipped when their checksum manifest matches the registry DB and generator inputs.
   - Default features are "wasm-lean" with crate default features disabled, so card source data is loaded from dist/cards/ instead of being embedded in engine_bg.wasm.
   - The package contains separate engine, compiler, and verifier modules behind one JavaScript facade.
+  - Custom-card compilation is always enabled in the engine, including lean builds with default features disabled.
   - IRONSMITH_WASM_OPT_LEVEL selects the shipped optimizer level (-O1, -O2, -Os, or -Oz; default -O1).
 USAGE
 }
@@ -611,3 +616,8 @@ build_split_wasm_package
 rm -rf -- "$DEMO_PKG_DIR"
 mkdir -p "$DEMO_PKG_DIR"
 cp -Rf "$PKG_DIR/." "$DEMO_PKG_DIR/"
+
+}
+
+# Parse the exit together with the call; never resume reading an edited script.
+rebuild_wasm_main "$@"; exit "$?"

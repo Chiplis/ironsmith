@@ -11,13 +11,27 @@ export function regionTextScore(a, b) {
   return 2*matched/(aa.length+bb.length);
 }
 
+const scanPath = url => { try { return new URL(url, 'https://cards.scryfall.io').pathname.split('/').slice(-4).join('/'); } catch { return ''; } };
+const scanFace = url => /\/back\//.test(String(url || '')) ? 'back' : 'front';
+
 export function registrationForImage(registrations, url) {
   if (!url) return null;
-  const image = new URL(url,'https://cards.scryfall.io');
-  return registrations.find(item=>{
-    const source=new URL(item.source);
-    return image.pathname.split('/').slice(-4).join('/')===source.pathname.split('/').slice(-4).join('/');
-  }) || null;
+  const path = scanPath(url);
+  return registrations.find(item => scanPath(item.source) === path) || null;
+}
+
+// A registration describes the ink on one scan. Another language of the same
+// printing (same set and collector number) shares the art and frame but wraps
+// its text differently, so it cannot reuse the line boxes; it can borrow the
+// registered scan and lay its own translated text over it.
+export function registrationForPrinting(registrations, printing, url = '') {
+  const set = String(printing?.set || '').toLowerCase();
+  const number = String(printing?.collector_number || '').toLowerCase();
+  if (!set || !number) return null;
+  const face = scanFace(url);
+  return registrations.find(item => String(item.set || '').toLowerCase() === set
+    && String(item.collector_number || '').toLowerCase() === number
+    && scanFace(item.source) === face) || null;
 }
 
 // Assign by canonical text, not display language or filtered action-array index.
@@ -89,12 +103,29 @@ export function registeredFieldLayouts(fields, measureFor, { fallbackLineHeight 
     return { field, lines, size, content, lineHeight: ratio >= .9 && ratio <= 1.6 ? ratio : null };
   });
   const shared = median(sized.filter(item => item?.lineHeight && ['rule', 'flavor'].includes(item.field.kind)).map(item => item.lineHeight)) ?? fallbackLineHeight;
+  // Translations outgrow the printed ink. Names may run to the mana cost, type
+  // lines to the set symbol, and the last paragraph down to the flavor text,
+  // stats or the foot of the text box.
+  const bottomOf = kind => Math.min(...fields.filter(f => f.kind === kind && f.bounds).map(f => f.bounds.y));
+  const rules = sized.filter(item => item?.field.kind === 'rule');
+  const lastRule = rules.length ? rules.reduce((a, b) => b.field.bounds.y > a.field.bounds.y ? b : a) : null;
+  // Short keyword lines share the paragraph column with the longest lines.
+  const columnRight = Math.max(...fields.filter(f => ['rule', 'flavor'].includes(f.kind) && f.bounds).map(f => f.bounds.x + f.bounds.width));
   return sized.map(item => {
     if (!item) return null;
     const lineHeight = item.lineHeight ?? shared;
     const { bounds } = item.field;
     const span = ((item.lines - 1) * lineHeight + Math.max(lineHeight, item.content)) * item.size / SCAN_ASPECT;
-    const height = Math.max(bounds.height, span);
-    return { size: item.size, lineHeight, bounds: { x: bounds.x, width: bounds.width, y: bounds.y + bounds.height / 2 - height / 2, height } };
+    let height = Math.max(bounds.height, span);
+    const y = bounds.y + bounds.height / 2 - height / 2;
+    let width = bounds.width;
+    if (item.field.kind === 'name') width = Math.max(width, (item.field.limit ?? .8) - .012 - bounds.x);
+    if (item.field.kind === 'type') width = Math.max(width, .84 - bounds.x);
+    if (item.field.kind === 'rule' && Number.isFinite(columnRight)) width = Math.max(width, columnRight - bounds.x);
+    if (item === lastRule) {
+      const below = [bottomOf('flavor'), bottomOf('stats')].filter(limit => limit > bounds.y + bounds.height);
+      height = Math.max(height, Math.min(...below, .875) - .006 - y);
+    }
+    return { size: item.size, lineHeight, bounds: { x: bounds.x, width, y, height } };
   });
 }

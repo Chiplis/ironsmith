@@ -25,6 +25,7 @@ import {
   buildBattlefieldFamilies,
   buildPriorityActionGroups,
 } from "@/lib/priority-action-groups";
+import { findOpeningHandMulliganAction } from "@/lib/opening-hand-actions";
 import {
   buildObjectControllerById,
   buildObjectNameById,
@@ -1611,7 +1612,9 @@ function MobileBattleDecisionLayer({
   const showViewedCardsStep = decision?.kind === "priority"
     && Boolean(viewedCardsToken)
     && acknowledgedViewedCardsToken !== viewedCardsToken;
-  const showInlineViewedCards = Boolean(viewedCardsToken) && !showViewedCardsStep;
+  const showInlineViewedCards = Boolean(viewedCardsToken)
+    && !showViewedCardsStep
+    && !["select_objects", "select_options", "targets"].includes(decision?.kind);
   const actionsSheetOpen = actionsSheetState.key === decisionIdentity
     ? actionsSheetState.open
     : false;
@@ -1624,6 +1627,11 @@ function MobileBattleDecisionLayer({
     () => decisionActions.find((action) => action.kind === "pass_priority"),
     [decisionActions]
   );
+  const openingHandMulliganAction = useMemo(
+    () => findOpeningHandMulliganAction(decisionActions, passAction),
+    [decisionActions, passAction]
+  );
+  const openingHandMulliganLabel = openingHandMulliganAction?.label || "Mulligan";
   const otherActions = useMemo(
     () => decisionActions.filter((action) => action.kind !== "pass_priority"),
     [decisionActions]
@@ -1908,7 +1916,13 @@ function MobileBattleDecisionLayer({
 
     const dockTitle = canAct ? "Your Action" : "Opponent Action";
     const singleActionGroup = visibleActionGroups.length === 1 ? visibleActionGroups[0] : null;
-    const secondaryAction = showPriorityAdvanceButton
+    const secondaryAction = openingHandMulliganAction
+      ? {
+        label: openingHandMulliganLabel,
+        disabled: !canAct,
+        onClick: () => triggerPriorityAction(openingHandMulliganAction),
+      }
+      : showPriorityAdvanceButton
       ? (visibleActionGroups.length > 1
         ? {
           label: "Actions",
@@ -2390,6 +2404,11 @@ function PriorityBar({
     () => decisionActions.find((action) => action.kind === "pass_priority"),
     [decisionActions]
   );
+  const openingHandMulliganAction = useMemo(
+    () => findOpeningHandMulliganAction(decisionActions, passAction),
+    [decisionActions, passAction]
+  );
+  const openingHandMulliganLabel = openingHandMulliganAction?.label || "Mulligan";
   const otherActions = useMemo(
     () => decisionActions.filter((action) => action.kind !== "pass_priority"),
     [decisionActions]
@@ -2449,7 +2468,9 @@ function PriorityBar({
   const showViewedCardsStep = isPriorityDecision
     && Boolean(viewedCardsToken)
     && acknowledgedViewedCardsToken !== viewedCardsToken;
-  const showInlineViewedCards = Boolean(viewedCardsToken) && !showViewedCardsStep;
+  const showInlineViewedCards = Boolean(viewedCardsToken)
+    && !showViewedCardsStep
+    && !["select_objects", "select_options", "targets"].includes(decision?.kind);
   const triggerOrderingDecision = isTriggerOrderingDecision(decision);
   const showStripDecisionSummary = (
     decision?.kind === "targets"
@@ -2936,6 +2957,32 @@ function PriorityBar({
                     </div>
                   )}
                 </div>
+                {openingHandMulliganAction && (
+                  <div className="action-strip-command-region action-strip-command-region--danger shrink-0 self-stretch">
+                    <div className="action-strip-main-region relative h-full w-[132px] shrink-0 self-stretch">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="pass-priority-btn decision-main-button action-strip-mulligan-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
+                        disabled={!canAct}
+                        aria-disabled={peerWaitLocked || !canAct}
+                        aria-label={openingHandMulliganLabel}
+                        onClick={() => {
+                          if (peerWaitLocked) return;
+                          triggerPriorityAction(openingHandMulliganAction);
+                        }}
+                      >
+                        <span className="sr-only">{openingHandMulliganLabel}</span>
+                      </Button>
+                      <div className="action-strip-main-text-stack action-strip-main-text-stack--centered absolute left-2 top-2 z-20">
+                        <div className="action-strip-main-title-row">
+                          <ActionStripMainTitleText>{openingHandMulliganLabel}</ActionStripMainTitleText>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )
           ) : (
@@ -3185,6 +3232,19 @@ function PriorityBar({
                     )}
                   </div>
                 )}
+                  {openingHandMulliganAction && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="pass-priority-btn decision-main-button action-strip-mulligan-button h-full min-w-[132px] rounded-none px-3 text-[14px] font-bold uppercase"
+                      disabled={!canAct || peerWaitLocked}
+                      aria-label={openingHandMulliganLabel}
+                      onClick={() => triggerPriorityAction(openingHandMulliganAction)}
+                    >
+                      {openingHandMulliganLabel}
+                    </Button>
+                  )}
               </>
             )
           ) : (

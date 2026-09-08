@@ -2582,9 +2582,10 @@ export default function BattlefieldRow({
             onPointerCancel={isLayoutHold ? undefined : handleCardPointerPressEnd}
             onPointerLeave={isLayoutHold ? undefined : handleCardPointerPressEnd}
             onMouseEnter={isLayoutHold ? undefined : ((event) => {
-              if (!showManaPopover(event, card)) { closeManaPopover(); hoverCard(card.id); }
+              if (!showManaPopover(event, card)) { closeManaPopover(); hoverCard(card.id); event.currentTarget.focus({ preventScroll: true }); }
             })}
             onMouseLeave={isLayoutHold ? undefined : (() => { clearHover(); leaveManaPopover(); })}
+            onFocus={isLayoutHold ? undefined : (() => { closeManaPopover(); hoverCard(card.id); })}
             centerOverlay={showsUndoOverlay ? (
               <Button
                 type="button"

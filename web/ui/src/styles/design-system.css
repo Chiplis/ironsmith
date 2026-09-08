@@ -127,6 +127,47 @@
 .player-look-pile { pointer-events: auto; }
 .player-look-pile { position: absolute; top: 0; left: 0; }
 .player-look-pile .zone-pile-label { left: 0; right: auto; }
+.look-eye-effect {
+  position: absolute;
+  z-index: 2;
+  top: -47px;
+  left: 50%;
+  width: 72px;
+  height: 42px;
+  pointer-events: none;
+  transform: translateX(-50%);
+  animation: look-eye-dissolve 1400ms ease-out forwards;
+  filter: drop-shadow(0 0 4px rgba(121, 220, 255, 0.9));
+}
+.look-eye-effect svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.look-eye-glow {
+  fill: rgba(70, 190, 255, 0.12);
+  stroke: rgba(141, 232, 255, 0.92);
+  stroke-width: 2;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: look-eye-open 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.look-eye-lid {
+  fill: none;
+  stroke: #d8f8ff;
+  stroke-linecap: round;
+  stroke-width: 2.5;
+  stroke-dasharray: 80;
+  stroke-dashoffset: 80;
+  animation: look-eye-open-lid 420ms ease-out 80ms both;
+}
+.look-eye-iris { fill: rgba(100, 214, 255, 0.78); stroke: #e1fbff; stroke-width: 1.5; animation: look-eye-open 360ms ease-out 50ms both; }
+.look-eye-pupil { fill: #102530; animation: look-eye-open 360ms ease-out 70ms both; }
+@keyframes look-eye-open {
+  from { opacity: 0; transform: scaleY(0.08); }
+  to { opacity: 1; transform: scaleY(1); }
+}
+@keyframes look-eye-open-lid { to { stroke-dashoffset: 0; } }
+@keyframes look-eye-dissolve {
+  0%, 62% { opacity: 1; transform: translateX(-50%) scale(1); }
+  100% { opacity: 0; transform: translateX(-50%) scale(1.28); filter: blur(5px) drop-shadow(0 0 10px rgba(121, 220, 255, 0)); }
+}
 .zone-pile-menu.zone-pile-menu--look[data-state="open"] {
   flex-direction: row-reverse;
   transform-origin: left center;
@@ -163,7 +204,7 @@
 .zone-pile-label { position: absolute; top: 0; right: 0; height: 16px; color: var(--ui-text-secondary); white-space: nowrap; font-size: 10px; line-height: 16px; }
 
 .zone-pile-menu[data-slot="popover-content"] {
-  z-index: 180;
+  z-index: 1000;
   width: max-content;
   max-width: var(--zone-strip-width);
   display: flex;
@@ -194,6 +235,7 @@
 @media (prefers-reduced-motion: reduce) {
   .zone-pile { transition: none; }
   .zone-pile-menu[data-slot="popover-content"] { animation: none; }
+  .look-eye-effect, .look-eye-glow, .look-eye-lid, .look-eye-iris, .look-eye-pupil { animation: none; }
 }
 
 .player-priority-hold {
@@ -3354,7 +3396,8 @@ button:disabled,
 .my-zone-board-shell > .my-zone-stack-rail {
   position: absolute;
   inset: var(--battlefield-objects-top, 12px) auto 0 0;
-  width: clamp(188px, 18vw, 260px);
+  left: calc(var(--zone-pile-width, 56px) + 14px);
+  width: clamp(150px, 15vw, 210px);
   height: auto;
   padding: 0;
 }
@@ -3756,4 +3799,123 @@ button:disabled,
   display: flex;
   align-items: center;
   margin-left: 8px;
+}
+
+/* Option strips scroll sideways by wheel, drag and touch. A visible horizontal
+   bar would lie over the row of choices and clip them, so it takes no space. */
+.decision-strip-scroll,
+.action-strip-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.decision-strip-scroll::-webkit-scrollbar,
+.action-strip-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* Printed reminder text is italic. */
+.rules-reminder-text { font-style: italic; }
+
+/* Opening hand: Mulligan sits beside Keep hand as the red twin of the main
+   decision surface. The region variant routes the accent variables so the
+   shared segmented-strip glow and edge text follow the danger palette. */
+.action-strip-command-region--danger {
+  --decision-main-accent: var(--ui-danger);
+  --decision-main-rgb: 223, 113, 108;
+  --decision-edge-text: #ffd9d4;
+  --decision-edge-text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.9),
+    0 0 8px rgba(223, 113, 108, 0.22);
+}
+
+:is(.topbar-main-decision-host, .priority-inline-panel)
+.action-strip-command-region--danger:has(.decision-main-button:not(:disabled):not([aria-disabled="true"])) {
+  border: 1px solid rgba(223, 113, 108, 0.55) !important;
+  background:
+    linear-gradient(180deg, rgba(40, 20, 19, 0.995), rgba(14, 7, 7, 0.995)) !important;
+  box-shadow:
+    inset 3px 0 0 rgba(223, 113, 108, 0.9),
+    inset 0 1px 0 rgba(255, 236, 232, 0.07),
+    0 2px 7px rgba(0, 0, 0, 0.42) !important;
+}
+
+:is(.topbar-main-decision-host, .priority-inline-panel)
+.action-strip-command-region--danger:has(.decision-main-button:not(:disabled):not([aria-disabled="true"]):hover) {
+  border-color: rgba(239, 140, 132, 0.8) !important;
+  background:
+    linear-gradient(180deg, rgba(56, 25, 23, 0.995), rgba(20, 8, 8, 0.995)) !important;
+  box-shadow:
+    inset 3px 0 0 rgba(239, 140, 132, 1),
+    inset 0 1px 0 rgba(255, 240, 236, 0.1),
+    0 3px 9px rgba(0, 0, 0, 0.5) !important;
+}
+
+.action-strip-command-region--danger .decision-main-button:not(:disabled):not([aria-disabled="true"]),
+.action-strip-command-region--danger .decision-main-button:not(:disabled):not([aria-disabled="true"]):hover {
+  background: transparent !important;
+}
+
+.action-strip-command-region--danger .action-strip-main-title-text,
+.topbar-main-decision-host .action-strip-command-region--danger .action-strip-main-title-text {
+  color: #ffb3ab !important;
+  -webkit-text-fill-color: #ffb3ab !important;
+  text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.9),
+    0 0 8px rgba(223, 113, 108, 0.28) !important;
+}
+
+:is(.topbar-main-decision-host, .priority-inline-panel)
+.action-strip-command-region--danger
+.action-strip-main-region:has(.decision-main-button:not(:disabled):not([aria-disabled="true"]):hover)
+.action-strip-main-title-text {
+  color: #ffe1dd !important;
+  -webkit-text-fill-color: #ffe1dd !important;
+  text-shadow:
+    0 0 4px #ff9a90,
+    0 0 12px rgba(223, 113, 108, 0.85),
+    0 0 26px rgba(223, 113, 108, 0.6) !important;
+}
+
+/* Standalone (floating strip) variant of the same control. */
+.pass-priority-btn.action-strip-mulligan-button:not(:disabled):not([aria-disabled="true"]),
+.pass-priority-btn.action-strip-mulligan-button:not(:disabled):not([aria-disabled="true"]):hover {
+  border: 1px solid rgba(223, 113, 108, 0.55) !important;
+  color: #ffb3ab !important;
+  -webkit-text-fill-color: #ffb3ab !important;
+  background:
+    linear-gradient(180deg, rgba(40, 20, 19, 0.995), rgba(14, 7, 7, 0.995)) !important;
+  box-shadow: inset 3px 0 0 rgba(223, 113, 108, 0.9) !important;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.9) !important;
+}
+
+.pass-priority-btn.action-strip-mulligan-button:not(:disabled):not([aria-disabled="true"]):hover {
+  border-color: rgba(239, 140, 132, 0.8) !important;
+  color: #ffe1dd !important;
+  -webkit-text-fill-color: #ffe1dd !important;
+}
+
+.action-strip-command-region--danger .pass-priority-btn.action-strip-mulligan-button:not(:disabled):not([aria-disabled="true"]) {
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* A main-region label with no control stack beside it sits dead centre. */
+.action-strip-main-region .action-strip-main-text-stack--centered,
+.topbar-main-decision-host .action-strip-main-region .action-strip-main-text-stack--centered {
+  left: 50% !important;
+  top: 50% !important;
+  right: auto !important;
+  width: calc(100% - 16px) !important;
+  max-width: calc(100% - 16px) !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center;
+  transform: translate(-50%, -50%);
+}
+
+.action-strip-main-region .action-strip-main-text-stack--centered .action-strip-main-title-row {
+  justify-content: center !important;
+  max-width: 100% !important;
 }

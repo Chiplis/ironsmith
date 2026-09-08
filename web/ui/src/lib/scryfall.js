@@ -765,7 +765,19 @@ function localizedCardPayload(card, locale) {
     scryfallId: card.id || null,
     set: card.set || null,
     collectorNumber: card.collector_number || null,
+    imageUris: card.image_uris || (
+      Array.isArray(card.card_faces)
+        ? card.card_faces.find((face) => face?.image_uris)?.image_uris || null
+        : null
+    ),
   };
+}
+
+export async function resolveScryfallLocalizedImageUrl(cardName, locale, version = "normal") {
+  const targetLang = String(locale || "").trim().toLowerCase();
+  if (!targetLang || targetLang === "en") return "";
+  const translated = await fetchScryfallLocalizedCardTranslation(cardName, targetLang);
+  return imageUrlFromImageUris(translated?.imageUris, version);
 }
 
 export async function fetchScryfallLocalizedCardTranslation(cardName, locale) {

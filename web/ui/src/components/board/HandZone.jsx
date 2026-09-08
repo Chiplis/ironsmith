@@ -756,10 +756,48 @@ export default function HandZone({
     if (nextRects.size > 0) collapsedCardRectsRef.current = nextRects;
   }, [dragState, handLayoutSignature, isExpanded, isRoulette]);
 
-  const handleCardClick = (_e, card) => {
+  const handleCardClick = useCallback((_e, card) => {
     const candidateObjectIds = [Number(card?.id)].filter((id) => Number.isFinite(id));
     onInspect?.(card.id, { candidateObjectIds, source: "hand" });
-  };
+  }, [onInspect]);
+
+  const handleKeyboardCardActivate = useCallback((event, card, plays, glowKind) => {
+    if (plays?.length) {
+      const element = event.currentTarget?.closest?.(".game-card") || event.currentTarget;
+      const rect = element?.getBoundingClientRect?.();
+      const x = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+      const y = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
+      startDrag(
+        card.id,
+        card.name,
+        plays,
+        glowKind,
+        x,
+        y,
+        plainRect(rect),
+        { ...card, id: card.id, name: card.name },
+        { left: 0, top: 0, right: 0, bottom: 0 },
+        handCardSourcePoint(plainRect(rect)),
+      );
+      return;
+    }
+
+    const targetDecision = state?.decision?.kind === "targets" ? state.decision : null;
+    const targetId = Number(card?.id);
+    const legalTarget = targetDecision?.requirements?.some((requirement) =>
+      (requirement.legal_targets || []).some((target) =>
+        target.kind === "object" && Number(target.object) === targetId
+      )
+    );
+    if (legalTarget) {
+      event.preventDefault();
+      window.dispatchEvent(new CustomEvent("ironsmith:target-choice", {
+        detail: { target: { kind: "object", object: targetId } },
+      }));
+      return;
+    }
+    handleCardClick(event, card);
+  }, [handleCardClick, startDrag, state]);
 
   const releaseDragScrollLock = useCallback(() => {
     const scrollLock = dragScrollLockRef.current;
@@ -1208,10 +1246,11 @@ export default function HandZone({
             isHovered={isHovered}
             isInspected={isInspected}
             onClick={isPlayable ? undefined : (event) => handleCardClick(event, card)}
-            onKeyboardActivate={(event) => handleCardClick(event, card)}
+            onKeyboardActivate={(event) => handleKeyboardCardActivate(event, card, plays, glowKind)}
             onPointerDown={isPlayable ? (event) => handlePointerDown(event, card, plays, glowKind) : undefined}
-            onMouseEnter={() => handleHoverEnter(card.id)}
+            onMouseEnter={(event) => { handleHoverEnter(card.id); event.currentTarget.focus({ preventScroll: true }); }}
             onMouseLeave={isMobileFan ? undefined : handleHoverLeave}
+            onFocus={() => handleHoverEnter(card.id)}
             className={`mobile-hand-rail-card${isPlayable ? " mobile-hand-rail-card--draggable" : ""}${String(dragState?.objectId) === cardObjectId ? " hand-card--drag-source" : ""} !w-full !max-w-none !min-w-0 !basis-auto !flex-none self-stretch p-1`}
             style={{
               width: "100%",
@@ -1259,10 +1298,11 @@ export default function HandZone({
           isHovered={isHovered}
           isInspected={isInspected}
           onClick={isPlayable ? undefined : (event) => handleCardClick(event, card)}
-          onKeyboardActivate={(event) => handleCardClick(event, card)}
+          onKeyboardActivate={(event) => handleKeyboardCardActivate(event, card, plays, glowKind)}
           onPointerDown={plays.length > 0 ? (event) => handlePointerDown(event, card, plays, baseGlowKind || "extra") : undefined}
-          onMouseEnter={() => handleHoverEnter(extra.id)}
-          onMouseLeave={isMobileFan ? undefined : handleHoverLeave}
+        onMouseEnter={(event) => { handleHoverEnter(extra.id); event.currentTarget.focus({ preventScroll: true }); }}
+        onMouseLeave={isMobileFan ? undefined : handleHoverLeave}
+        onFocus={() => handleHoverEnter(extra.id)}
           className={`mobile-hand-rail-card mobile-hand-rail-card--extra${plays.length > 0 ? " mobile-hand-rail-card--draggable" : ""}${String(dragState?.objectId) === extraObjectId ? " hand-card--drag-source" : ""} !w-full !max-w-none !min-w-0 !basis-auto !flex-none self-stretch p-1`}
           style={{
             width: "100%",
@@ -1341,10 +1381,11 @@ export default function HandZone({
               isHovered={isHovered}
               isInspected={isInspected}
               onClick={isPlayable ? undefined : (e) => handleCardClick(e, card)}
-              onKeyboardActivate={(event) => handleCardClick(event, card)}
+              onKeyboardActivate={(event) => handleKeyboardCardActivate(event, card, plays, glowKind)}
               onPointerDown={isPlayable ? (e) => handlePointerDown(e, card, plays, glowKind) : undefined}
-              onMouseEnter={() => handleHoverEnter(card.id)}
+              onMouseEnter={(event) => { handleHoverEnter(card.id); event.currentTarget.focus({ preventScroll: true }); }}
               onMouseLeave={isMobileFan ? undefined : handleHoverLeave}
+              onFocus={() => handleHoverEnter(card.id)}
               className={[
                 isMobileFan && isPlayable ? "hand-card--mobile-draggable" : null,
                 String(dragState?.objectId) === cardObjectId ? "hand-card--drag-source" : null,
@@ -1404,10 +1445,11 @@ export default function HandZone({
             isHovered={isHovered}
             isInspected={isInspected}
             onClick={isPlayable ? undefined : (e) => handleCardClick(e, card)}
-            onKeyboardActivate={(event) => handleCardClick(event, card)}
+            onKeyboardActivate={(event) => handleKeyboardCardActivate(event, card, plays, glowKind)}
             onPointerDown={plays.length > 0 ? (e) => handlePointerDown(e, card, plays, baseGlowKind || "extra") : undefined}
-            onMouseEnter={() => handleHoverEnter(extra.id)}
+            onMouseEnter={(event) => { handleHoverEnter(extra.id); event.currentTarget.focus({ preventScroll: true }); }}
             onMouseLeave={isMobileFan ? undefined : handleHoverLeave}
+            onFocus={() => handleHoverEnter(extra.id)}
             className={[
               isMobileFan && isPlayable ? "hand-card--mobile-draggable" : null,
               String(dragState?.objectId) === extraObjectId ? "hand-card--drag-source" : null,

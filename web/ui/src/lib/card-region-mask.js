@@ -29,7 +29,10 @@ export function maskRegisteredRegion(url,field,family) {
       const data=new Uint8ClampedArray(w*h*4);
       for(let row=0;row<h;row++)data.set(patch.data.subarray(((ly+row)*width+lx)*4,((ly+row)*width+lx+w)*4),row*w*4);
       const region={data,width:w,height:h};
-      let clean=fontGuidedPanel(region,{family,weight:400,allowItalic:true,italic:field.kind==='flavor',symbols:true,text:line.text,section:field.kind});
+      // Templates come from the printed wording; OCR text only stands in for
+      // errata, where the current text no longer describes the print. Mana pips
+      // sit beside names and inside rules, never inside type or stats lettering.
+      let clean=fontGuidedPanel(region,{family,weight:400,allowItalic:true,italic:field.kind==='flavor',symbols:field.kind==='rule',text:field.errata?line.text:field.text,section:field.kind});
       if(!clean) {
         // OCR gives a tight ink rectangle. Contrast against the surrounding
         // paper supports lettering that our installed fonts cannot reproduce.

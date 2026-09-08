@@ -611,6 +611,17 @@ function SingleSelectDecision({
     [state],
   );
   const options = useMemo(() => decision.options || [], [decision.options]);
+  useEffect(() => {
+    const onLookCardChoice = (event) => {
+      if (!canAct) return;
+      const index = event?.detail?.optionIndex;
+      const option = options.find((candidate) => String(candidate.index) === String(index));
+      if (option?.legal === false) return;
+      if (option) dispatch({ type: "select_options", option_indices: [option.index] }, option.description);
+    };
+    window.addEventListener("ironsmith:select-option-choice", onLookCardChoice);
+    return () => window.removeEventListener("ironsmith:select-option-choice", onLookCardChoice);
+  }, [canAct, dispatch, options]);
   const decisionDescription = String(decision?.description || "");
   const normalizedDecisionDescription = decisionDescription.trim().toLowerCase();
   const searchResetKey = `${decisionDescription}|${decision?.source_id || ""}|${optionsSignature(options)}`;
@@ -897,7 +908,7 @@ function SingleSelectDecision({
           className={cn(
             "w-full min-w-0 max-w-full",
             stripLayout && !compactStripLayout
-              ? "overflow-x-auto overflow-y-hidden pb-1"
+              ? "decision-strip-scroll overflow-x-auto overflow-y-hidden pb-1"
               : mobileOverlayLayout
                 ? "flex-1 min-h-0 overflow-hidden"
                 : "decision-options-panel",
@@ -1077,14 +1088,25 @@ function MultiSelectDecision({
     contextual.waitingForHover && options.some((opt) => opt.object_id != null);
   const showHeader = !stripLayout && !mobileOverlayLayout;
 
-  const toggle = (index) => {
+  const toggle = useCallback((index) => {
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(index)) next.delete(index);
       else if (next.size < max) next.add(index);
       return next;
     });
-  };
+  }, [max]);
+  useEffect(() => {
+    const onLookCardChoice = (event) => {
+      if (!canAct) return;
+      const index = event?.detail?.optionIndex;
+      if (index == null) return;
+      const option = options.find((candidate) => String(candidate.index) === String(index));
+      if (option?.legal !== false) toggle(option.index);
+    };
+    window.addEventListener("ironsmith:select-option-choice", onLookCardChoice);
+    return () => window.removeEventListener("ironsmith:select-option-choice", onLookCardChoice);
+  }, [canAct, options, toggle]);
   const canSubmit = canAct && selected.size >= min && selected.size <= max;
   const selectedIndices = useMemo(() => Array.from(selected), [selected]);
   const submitLabel = `Submit (${selected.size})`;
@@ -1145,7 +1167,7 @@ function MultiSelectDecision({
           className={cn(
             "w-full min-w-0 max-w-full transition-[max-height] duration-300 ease-out",
             stripLayout
-              ? "overflow-x-auto overflow-y-hidden pb-1"
+              ? "decision-strip-scroll overflow-x-auto overflow-y-hidden pb-1"
               : mobileOverlayLayout
                 ? "flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
                 : "overflow-y-auto overflow-x-hidden",
@@ -1429,7 +1451,7 @@ function OrderingDecision({
       )}
     >
       {stripLayout ? (
-        <div className="min-w-0 overflow-x-auto overflow-y-hidden">
+        <div className="decision-strip-scroll min-w-0 overflow-x-auto overflow-y-hidden">
           <div className="decision-strip-options-row flex w-max min-w-full items-center gap-1.5">
             {!hideDescription && (
               <div className="shrink-0 px-1">
@@ -1595,7 +1617,7 @@ function DistributeDecision({
       )}
     >
       {stripLayout ? (
-        <div className="min-w-0 overflow-x-auto overflow-y-hidden">
+        <div className="decision-strip-scroll min-w-0 overflow-x-auto overflow-y-hidden">
           <div className="decision-strip-options-row flex w-max min-w-full items-center gap-1.5">
             {!hideDescription && (
               <div className="shrink-0 px-1">
@@ -1761,7 +1783,7 @@ function CountersDecision({
       )}
     >
       {stripLayout ? (
-        <div className="min-w-0 overflow-x-auto overflow-y-hidden">
+        <div className="decision-strip-scroll min-w-0 overflow-x-auto overflow-y-hidden">
           <div className="decision-strip-options-row flex w-max min-w-full items-center gap-1.5">
             {!hideDescription && (
               <div className="shrink-0 px-1">
@@ -1928,7 +1950,7 @@ function RepeatableDecision({
       )}
     >
       {stripLayout ? (
-        <div className="min-w-0 overflow-x-auto overflow-y-hidden">
+        <div className="decision-strip-scroll min-w-0 overflow-x-auto overflow-y-hidden">
           <div className="decision-strip-options-row flex w-max min-w-full items-center gap-1.5">
             {!hideDescription && (
               <div className="shrink-0 px-1">

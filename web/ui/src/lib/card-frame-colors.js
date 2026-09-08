@@ -826,7 +826,16 @@ async function sample(fullUrl, typography, printing, setSymbolUrl) {
     const x = Math.max(0, Math.ceil(box.x + inset)), y = Math.max(0, Math.ceil(box.y + inset));
     const width = Math.min(canvas.width - x, Math.floor(box.width - inset * 2));
     const height = Math.min(canvas.height - y, Math.floor(box.height - inset * 2));
-    if (width > 0 && height > 0) style[`--sampled-${name}-ink`] = `rgb(${sectionInk(ctx.getImageData(x, y, width, height)).join(',')})`;
+    if (width <= 0 || height <= 0) continue;
+    const region = ctx.getImageData(x, y, width, height);
+    // A textless box (basic lands, watermark-only panels) has no glyph cluster
+    // to sample: its texture would pick an arbitrary ink. Type lettering shares
+    // the panel material, so borrow its ink instead.
+    if (name === 'rules' && !printedGlyphHeight(region) && style['--sampled-type-ink']) {
+      style['--sampled-rules-ink'] = style['--sampled-type-ink'];
+      continue;
+    }
+    style[`--sampled-${name}-ink`] = `rgb(${sectionInk(region).join(',')})`;
   }
   let setSymbol=null;
   if(style['--printed-layout']) {
@@ -927,7 +936,7 @@ async function sample(fullUrl, typography, printing, setSymbolUrl) {
       weight:['title','type'].includes(options.section)?typography.titleWeight:options.section==='stats'?typography.style['--card-stats-weight']:400,
       section:options.section,
       allowItalic:options.section==='rules',symbols:options.section==='rules'||options.section==='title'&&Boolean(printing.mana_cost)&&!manaMatch,
-      text:options.section==='rules'?`${printing?.printed_text||printing?.oracle_text||''} ${printing?.flavor_text||''}`:options.section==='title'?(printing?.printed_name||printing?.name):options.section==='type'?(printing?.printed_type_line||printing?.type_line):options.section==='footer'?`${printing?.artist||''} Illus. Wizards of the Coast Inc.`:`${printing?.power||''}/${printing?.toughness||''}`,
+      text:options.section==='rules'?`${printing?.printed_text||printing?.oracle_text||''} ${printing?.flavor_text||''}`:options.section==='title'?(printing?.printed_name||printing?.name):options.section==='type'?(printing?.printed_type_line||printing?.type_line):options.section==='footer'?`${printing?.artist||''} Illus. Ilus. Wizards of the Coast Inc.`:`${printing?.power||''}/${printing?.toughness||''}`,
     }):reconstructPanel,{title:titlePanel?.kind,type:typePanel?.kind,fontGuided:!!typography,setSymbol,manaMatch,icons,preserveRules:/\bBasic\b.*\bLand\b/.test(printing.type_line||'') && ['2003','2015'].includes(printing.frame),textBounds:Object.fromEntries(['title','type'].map(name=>[name,JSON.parse(style[`--printed-${name}-text-bounds`]||'null')]))});
     if(masked) {
       const original=document.createElement('canvas');original.width=masked.width;original.height=masked.height;

@@ -63,14 +63,18 @@ function snapPreviewToAdjacentCardCenter({
   minimumLeft,
   maximumLeft,
 }) {
-  const row = source?.closest?.('.battlefield-row[data-bf-side="bottom"]');
+  const zoneMenu = source?.closest?.(".zone-pile-menu");
+  const row = zoneMenu || source?.closest?.('.battlefield-row[data-bf-side="bottom"]');
   if (!row) return left;
 
   const sourceRect = source.getBoundingClientRect();
   const sourceCenterX = sourceRect.left + (sourceRect.width / 2);
   const previewBottom = top + height;
   const proposedEdge = side === "right" ? left : left + width;
-  const candidateCenters = Array.from(row.querySelectorAll(".battlefield-row-card[data-object-id]"))
+  const candidateSelector = zoneMenu
+    ? ".zone-pile-card-row[data-object-id]"
+    : ".battlefield-row-card[data-object-id]";
+  const candidateCenters = Array.from(row.querySelectorAll(candidateSelector))
     .map((card) => card.getBoundingClientRect())
     .filter((cardRect) => (
       cardRect.width > 0
@@ -119,23 +123,61 @@ function objectFamilyIds(state, objectId) {
   return ids;
 }
 
-function zonePreviewPosition(source, size) {
-  const rect = source.getBoundingClientRect();
-  const strip = source.closest(".zone-pile-menu")?.getBoundingClientRect() || rect;
+function zonePreviewLayout(anchorRect, size, source = null) {
   const margin = 8;
-  const gap = 12;
-  const below = Math.max(0, window.innerHeight - margin - strip.bottom - gap);
-  const above = Math.max(0, strip.top - gap - margin);
-  const placeBelow = below >= size.height || below >= above;
-  const availableHeight = placeBelow ? below : above;
+  const gap = 14;
+  const minimumTop = phaseToolbarTop(margin);
+  const availableHeight = Math.max(0, window.innerHeight - margin - minimumTop);
   const height = Math.min(size.height, availableHeight, (window.innerWidth - margin * 2) * 88 / 63);
-  const width = height * 63 / 88;
+  const width = Math.min(size.width, height * (63 / 88), window.innerWidth - (margin * 2));
+  const top = Math.max(
+    minimumTop,
+    Math.min(window.innerHeight - height - margin, anchorRect.top + (anchorRect.height / 2) - (height / 2))
+  );
+  const minimumLeft = previewLeftInset({ top, height, minimumLeft: margin });
+  const maximumLeft = Math.max(minimumLeft, window.innerWidth - width - margin);
+  let side = "right";
+  let left = anchorRect.right + gap;
+  if (left + width > window.innerWidth - margin) {
+    side = "left";
+    left = anchorRect.left - width - gap;
+  }
+  const wasClampedPastDecisionButton = left < minimumLeft;
+  left = Math.max(minimumLeft, Math.min(maximumLeft, left));
+  if (source && !wasClampedPastDecisionButton) {
+    // Match battlefield previews: align the frame to the adjacent card's
+    // midpoint so the next card remains partially exposed and hoverable.
+    left = snapPreviewToAdjacentCardCenter({
+      source,
+      left,
+      top,
+      width,
+      height,
+      side,
+      minimumLeft,
+      maximumLeft,
+    });
+  }
   return {
-    left: Math.max(margin, Math.min(window.innerWidth - margin - width, rect.left + (rect.width - width) / 2)),
-    top: placeBelow ? strip.bottom + gap : strip.top - gap - height,
+    left: Math.round(left),
+    top: Math.round(top),
     right: "auto",
-    height: `${height}px`,
+    maxHeight: `${Math.max(0, Math.floor(height))}px`,
   };
+}
+
+function zonePreviewPosition(source, size) {
+  const anchorRect = source.getBoundingClientRect();
+  return zonePreviewLayout(anchorRect, size, source);
+}
+
+function zoneAnchoredPreviewPosition(anchorRect, objectId, size) {
+  if (!anchorRect || typeof document === "undefined" || typeof window === "undefined") return null;
+  const zoneCard = Array.from(document.querySelectorAll("[data-zone-card][data-object-id]"))
+    .find((element) => element.getAttribute("data-object-id") === String(objectId));
+  return zoneCard
+    ? zonePreviewPosition(zoneCard, size)
+    : zonePreviewLayout(anchorRect, size);
 }
 
 function previewPosition(objectId, size) {
@@ -268,6 +310,18 @@ export default function FloatingCardPreview({
     && canHoverInspectorObject(state, hoveredObjectId)
     && !excludedIds.has(String(hoveredObjectId))
   ) ? String(hoveredObjectId) : null;
+  const directHandHover = useMemo(() => {
+    if (directlyRequestedObjectId == null) return false;
+    return (state?.players || []).some((player) => (
+      (player?.hand_cards || []).some((card) => String(card?.id) === directlyRequestedObjectId)
+    ));
+  }, [directlyRequestedObjectId, state?.players]);
+  const directZoneHover = useMemo(() => {
+    if (directlyRequestedObjectId == null || typeof document === "undefined") return false;
+    return Array.from(document.querySelectorAll("[data-zone-card][data-object-id]")).some((element) => (
+      element.getAttribute("data-object-id") === directlyRequestedObjectId
+    ));
+  }, [directlyRequestedObjectId]);
   // Anchored previews are explicit card-name clicks, so they may inspect a
   // spell on the stack or a card in another zone even though passive hand
   // hovers remain excluded from this surface.
@@ -293,6 +347,11 @@ export default function FloatingCardPreview({
         if (card) return card;
       }
     }
+    const viewedCard = [
+      ...(state?.viewed_cards?.cards || []),
+      ...(state?.players || []).flatMap((player) => player?.persistent_look_cards || []),
+    ].find(matches);
+    if (viewedCard) return viewedCard;
     return getVisibleStackObjects(state).find(matches);
   }, [requestedObjectId, state]);
   const preparationName = preparationCard?.name;
@@ -355,10 +414,10 @@ export default function FloatingCardPreview({
     // Keep the outgoing card mounted and positioned at its own source until
     // its fade completes. Swapping object content while that transition is
     // running creates a visible flash when moving quickly between cards.
-    const openDelay = lockedObjectId != null ? 0 : PREVIEW_OPEN_DELAY_MS;
+    const openDelay = lockedObjectId != null || directHandHover || directZoneHover ? 0 : PREVIEW_OPEN_DELAY_MS;
     const delay = renderedObjectId == null
       ? openDelay
-      : Math.max(openDelay, PREVIEW_FADE_MS);
+      : directHandHover || directZoneHover ? 0 : Math.max(openDelay, PREVIEW_FADE_MS);
     closeTimerRef.current = window.setTimeout(() => {
       setRenderedObjectId(requestedObjectId);
       closeTimerRef.current = null;
@@ -369,7 +428,7 @@ export default function FloatingCardPreview({
         closeTimerRef.current = null;
       }
     };
-  }, [lockedObjectId, renderedObjectId, requestedObjectId]);
+  }, [directHandHover, directZoneHover, lockedObjectId, renderedObjectId, requestedObjectId]);
 
   useLayoutEffect(() => {
     const shell = shellRef.current;
@@ -419,10 +478,12 @@ export default function FloatingCardPreview({
   const positionStyle = useMemo(
     () => (
       anchoredObjectId != null && renderedObjectId === anchoredObjectId
-        ? anchoredPreviewPosition(anchoredCardPreview?.anchorRect, size)
+        ? anchoredCardPreview?.placement === "zone"
+          ? zoneAnchoredPreviewPosition(anchoredCardPreview?.anchorRect, anchoredCardPreview?.objectId, size)
+          : anchoredPreviewPosition(anchoredCardPreview?.anchorRect, size)
         : previewPosition(renderedObjectId, size)
     ),
-    [anchoredCardPreview?.anchorRect, anchoredObjectId, renderedObjectId, size]
+    [anchoredCardPreview?.anchorRect, anchoredCardPreview?.objectId, anchoredCardPreview?.placement, anchoredObjectId, renderedObjectId, size]
   );
   const accentStyle = accent
     ? {

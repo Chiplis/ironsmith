@@ -1,17 +1,42 @@
 import { useEffect, useMemo, useState } from "react";
-import { resolveScryfallImageUrl, scryfallImageUrl } from "@/lib/scryfall";
+import { useI18n } from "@/i18n/I18nContext";
+import {
+  resolveScryfallImageUrl,
+  resolveScryfallLocalizedImageUrl,
+  scryfallImageUrl,
+} from "@/lib/scryfall";
 
 export function useScryfallImage(cardName, version = "normal") {
+  const { locale } = useI18n();
   const query = String(cardName || "").trim();
   const imageVersion = String(version || "normal").trim() || "normal";
-  const key = useMemo(() => `${query}|${imageVersion}`, [imageVersion, query]);
+  const key = useMemo(() => `${locale}|${query}|${imageVersion}`, [imageVersion, locale, query]);
   const cached = scryfallImageUrl(query, imageVersion);
+  const [localized, setLocalized] = useState(() => ({ key, url: "", settled: locale === "en" || !query }));
   const [resolved, setResolved] = useState(() => ({
     key,
     url: cached,
     settled: Boolean(cached) || !query,
   }));
-  const currentUrl = (resolved.key === key && resolved.url) ? resolved.url : cached;
+  const localizedUrl = localized.key === key ? localized.url : "";
+  const currentUrl = localizedUrl || ((resolved.key === key && resolved.url) ? resolved.url : cached);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (locale === "en" || !query) {
+      return undefined;
+    }
+
+    resolveScryfallLocalizedImageUrl(query, locale, imageVersion)
+      .then((url) => {
+        if (!cancelled) setLocalized({ key, url: url || "", settled: true });
+      })
+      .catch(() => {
+        if (!cancelled) setLocalized({ key, url: "", settled: true });
+      });
+
+    return () => { cancelled = true; };
+  }, [imageVersion, key, locale, query]);
 
   useEffect(() => {
     let cancelled = false;
@@ -34,7 +59,7 @@ export function useScryfallImage(cardName, version = "normal") {
     };
   }, [cached, imageVersion, key, query]);
 
-  return {url: currentUrl, ready: Boolean(currentUrl) || !query || (resolved.key === key && resolved.settled)};
+  return {url: currentUrl, ready: Boolean(currentUrl) || !query || (localized.key === key && localized.settled) || (resolved.key === key && resolved.settled)};
 }
 
 export default function useScryfallImageUrl(cardName, version = "normal") {

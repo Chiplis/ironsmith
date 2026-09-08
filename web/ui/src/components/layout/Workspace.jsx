@@ -775,13 +775,6 @@ export default function Workspace({
   const players = useMemo(() => state?.players || [], [state?.players]);
   const perspective = state?.perspective;
   const me = players.find((p) => p.id === perspective) || players[0];
-  const handPreviewExcludedObjectIds = useMemo(
-    () => (me?.hand_cards || []).flatMap((card) => [
-      card?.id,
-      ...(Array.isArray(card?.member_ids) ? card.member_ids : []),
-    ]).filter((id) => id != null),
-    [me?.hand_cards]
-  );
   const selectedObjectIsValid = objectExistsInState(state, selectedObjectId);
   const decision = state?.decision || null;
   const combatDeclarationActive = decision?.kind === "attackers" || decision?.kind === "blockers";
@@ -1755,10 +1748,7 @@ export default function Workspace({
           disabled={deckLoadingMode || puzzleSetupMode}
           pinnedObjectId={pinnedInspectorObjectId}
           onRequestClose={closeFloatingCardPreview}
-          excludedObjectIds={[
-            focusedStackObjectId,
-            ...handPreviewExcludedObjectIds,
-          ]}
+          excludedObjectIds={[focusedStackObjectId]}
         />
       )}
       <CastParticles />

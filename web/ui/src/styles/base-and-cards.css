@@ -2064,6 +2064,7 @@
 .game-card.hand-card:hover,
 .game-card.hand-card.hovered,
 .game-card.hand-card.inspected {
+  --card-translate-y: -8px;
   z-index: 999 !important;
 }
 
