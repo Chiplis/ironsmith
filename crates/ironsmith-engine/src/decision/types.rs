@@ -303,9 +303,7 @@ pub(crate) struct HandCardSummary<'a> {
     pub(crate) card: &'a crate::object::Object,
     pub(crate) is_land: bool,
     pub(crate) has_normal_mana_cost: bool,
-    pub(crate) has_foretell: bool,
-    pub(crate) has_suspend: bool,
-    pub(crate) has_plot: bool,
+    pub(crate) has_hand_special_actions: bool,
     pub(crate) can_cast_face_down: bool,
     pub(crate) has_split_other_half: bool,
     pub(crate) has_fuse: bool,
@@ -314,7 +312,7 @@ pub(crate) struct HandCardSummary<'a> {
 
 impl<'a> HandCardSummary<'a> {
     pub(crate) fn has_any_hand_special_action(&self) -> bool {
-        self.has_foretell || self.has_suspend || self.has_plot
+        self.has_hand_special_actions
     }
 
     pub(crate) fn has_any_alternative_branch(&self, has_hand_grants: bool) -> bool {

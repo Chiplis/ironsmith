@@ -3,6 +3,9 @@
 //! Special actions include playing lands, turning face-down creatures face up,
 //! suspending/foretelling cards, and activating mana abilities.
 
+mod payment;
+use payment::{SpecialActionPayment, check_special_action_payment, pay_special_action_payment};
+
 use crate::ability::ActivatedAbilityRuntimeExt as _;
 use crate::cost::CostPaymentError;
 use crate::costs::{CostContext, CostPaymentResult};
@@ -464,6 +467,8 @@ pub enum SpecialAction {
 /// Errors that can occur when attempting to perform a special action.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ActionError {
+    /// The player cancelled payment; the action transaction has been restored.
+    Cancelled,
     /// You don't have priority.
     NotYourPriority,
 
@@ -519,6 +524,7 @@ pub enum ActionError {
 impl std::fmt::Display for ActionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            ActionError::Cancelled => f.write_str("Action cancelled"),
             ActionError::NotYourPriority => f.write_str("You do not have priority"),
             ActionError::WrongPhase { required, actual } => {
                 write!(f, "Wrong phase: need {required}, currently in {actual}")
@@ -565,40 +571,20 @@ pub fn can_perform(
     player: PlayerId,
     decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
-    match action {
-        SpecialAction::PlayLand { card_id } => can_play_land(game, player, *card_id),
-        SpecialAction::TurnFaceUp {
-            permanent_id,
-            method,
-        } => can_turn_face_up_with_method(game, player, *permanent_id, *method),
-        SpecialAction::Suspend { card_id } => can_suspend(game, player, *card_id),
-        SpecialAction::Foretell { card_id } => can_foretell(game, player, *card_id),
-        SpecialAction::Plot { card_id } => can_plot(game, player, *card_id),
-        SpecialAction::ActivateManaAbility {
-            permanent_id,
-            ability_index,
-        } => can_activate_mana_ability(game, player, *permanent_id, *ability_index, decision_maker),
-        SpecialAction::UnlockRoomDoor { room_id } => can_unlock_room_door(game, player, *room_id),
-        SpecialAction::RollPlanarDie => can_roll_planar_die(game, player),
-        SpecialAction::TurnConspiracyFaceUp { conspiracy_id } => {
-            can_turn_conspiracy_face_up(game, player, *conspiracy_id)
-        }
-        SpecialAction::Companion { card_id } => can_take_companion_action(game, player, *card_id),
-        SpecialAction::IgnoreAttachedRestriction {
-            source_id,
-            ability_index,
-        } => can_ignore_attached_restriction(game, player, *source_id, *ability_index),
-        SpecialAction::IgnoreSourceEffect {
-            source_id,
-            ability_index,
-        } => can_ignore_source_effect(game, player, *source_id, *ability_index),
-        SpecialAction::PayDelayedTrigger {
-            delayed_trigger_index,
-        } => can_pay_delayed_trigger(game, player, *delayed_trigger_index),
-        SpecialAction::PerformRepeatableManaPaymentAction { action_index } => {
-            can_perform_repeatable_mana_payment_action(game, player, *action_index)
-        }
+    if let SpecialAction::ActivateManaAbility {
+        permanent_id,
+        ability_index,
+    } = action
+    {
+        return can_activate_mana_ability(
+            game,
+            player,
+            *permanent_id,
+            *ability_index,
+            decision_maker,
+        );
     }
+    can_perform_check(action, game, player)
 }
 
 /// Check if a special action can be performed (for query/legality checks).
@@ -616,7 +602,7 @@ pub fn can_perform_check(
         SpecialAction::TurnFaceUp {
             permanent_id,
             method,
-        } => can_turn_face_up_with_method(game, player, *permanent_id, *method),
+        } => validate_turn_face_up_with_method(game, player, *permanent_id, *method),
         SpecialAction::Suspend { card_id } => can_suspend(game, player, *card_id),
         SpecialAction::Foretell { card_id } => can_foretell(game, player, *card_id),
         SpecialAction::Plot { card_id } => can_plot(game, player, *card_id),
@@ -644,7 +630,11 @@ pub fn can_perform_check(
         SpecialAction::PerformRepeatableManaPaymentAction { action_index } => {
             can_perform_repeatable_mana_payment_action(game, player, *action_index)
         }
+    }?;
+    if let Some(payment) = action.payment_spec(game, player)? {
+        check_special_action_payment(game, player, &payment)?;
     }
+    Ok(())
 }
 
 /// Perform a special action.
@@ -654,9 +644,32 @@ pub fn perform(
     player: PlayerId,
     decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
-    // First validate that we can perform the action
     can_perform(&action, game, player, &mut *decision_maker)?;
+    let checkpoint = game.clone();
+    if let Some(payment) = action.payment_spec(game, player)? {
+        if let Err(error) = pay_special_action_payment(game, player, &payment, decision_maker) {
+            if !decision_maker.awaiting_choice() {
+                *game = checkpoint;
+            }
+            return Err(error);
+        }
+        if decision_maker.awaiting_choice() {
+            return Ok(());
+        }
+    }
+    let result = finish_special_action(action, game, player, decision_maker);
+    if result.is_err() && !decision_maker.awaiting_choice() {
+        *game = checkpoint;
+    }
+    result
+}
 
+fn finish_special_action(
+    action: SpecialAction,
+    game: &mut GameState,
+    player: PlayerId,
+    decision_maker: &mut impl crate::decision::DecisionMaker,
+) -> Result<(), ActionError> {
     match action {
         SpecialAction::PlayLand { card_id } => {
             perform_play_land(game, player, card_id, decision_maker)
@@ -664,7 +677,7 @@ pub fn perform(
         SpecialAction::TurnFaceUp {
             permanent_id,
             method,
-        } => perform_turn_face_up(game, player, permanent_id, method, &mut *decision_maker),
+        } => finish_turn_face_up(game, player, permanent_id, method, &mut *decision_maker),
         SpecialAction::Suspend { card_id } => perform_suspend(game, player, card_id),
         SpecialAction::Foretell { card_id } => perform_foretell(game, player, card_id),
         SpecialAction::Plot { card_id } => perform_plot(game, player, card_id),
@@ -733,15 +746,8 @@ fn can_perform_repeatable_mana_payment_action(
     player: PlayerId,
     action_index: usize,
 ) -> Result<(), ActionError> {
-    let action = repeatable_mana_payment_action(game, player, action_index)?;
-    crate::cost::can_pay_cost_with_reason(
-        game,
-        action.source,
-        player,
-        &crate::cost::TotalCost::mana(action.cost.clone()),
-        crate::costs::PaymentReason::Other,
-    )
-    .map_err(cost_error_to_action_error)
+    repeatable_mana_payment_action(game, player, action_index)?;
+    Ok(())
 }
 
 fn perform_repeatable_mana_payment_action(
@@ -751,15 +757,6 @@ fn perform_repeatable_mana_payment_action(
     decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
     let action = repeatable_mana_payment_action(game, player, action_index)?.clone();
-    pay_total_cost_with_choice(
-        game,
-        player,
-        action.source,
-        &crate::cost::TotalCost::mana(action.cost),
-        crate::costs::PaymentReason::Other,
-        decision_maker,
-    )
-    .map_err(cost_error_to_action_error)?;
 
     let mut ctx = ExecutionContext::new(action.source, action.controller, decision_maker)
         .with_targets(action.targets)
@@ -795,33 +792,17 @@ fn can_pay_delayed_trigger(
     if payment.player != player {
         return Err(ActionError::InvalidTarget);
     }
-    crate::cost::can_pay_cost_with_reason(
-        game,
-        payment.source,
-        player,
-        &payment.cost,
-        crate::costs::PaymentReason::Other,
-    )
-    .map_err(cost_error_to_action_error)
+    Ok(())
 }
 
 fn perform_pay_delayed_trigger(
     game: &mut GameState,
     player: PlayerId,
     delayed_trigger_index: usize,
-    decision_maker: &mut impl crate::decision::DecisionMaker,
+    _decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
     can_pay_delayed_trigger(game, player, delayed_trigger_index)?;
-    let payment = delayed_trigger_prepayment(game, delayed_trigger_index)?.clone();
-    pay_total_cost_with_choice(
-        game,
-        player,
-        payment.source,
-        &payment.cost,
-        crate::costs::PaymentReason::Other,
-        decision_maker,
-    )
-    .map_err(cost_error_to_action_error)?;
+
     game.effect_store
         .delayed_triggers
         .remove(delayed_trigger_index);
@@ -879,35 +860,20 @@ fn can_ignore_source_effect(
     if game.player_ignores_source_static_effect_this_turn(source_id, player) {
         return Err(ActionError::InvalidTiming);
     }
-    let cost = ignore_source_effect_mana_cost(game, source_id, ability_index)?;
-    crate::cost::can_pay_cost_with_reason(
-        game,
-        source_id,
-        player,
-        &crate::cost::TotalCost::mana(cost),
-        crate::costs::PaymentReason::Other,
-    )
-    .map_err(cost_error_to_action_error)
+    ignore_source_effect_mana_cost(game, source_id, ability_index)?;
+    Ok(())
 }
 
 fn perform_ignore_source_effect(
     game: &mut GameState,
     player: PlayerId,
     source_id: ObjectId,
-    ability_index: usize,
-    decision_maker: &mut impl crate::decision::DecisionMaker,
+    _ability_index: usize,
+    _decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
-    can_ignore_source_effect(game, player, source_id, ability_index)?;
-    let cost = ignore_source_effect_mana_cost(game, source_id, ability_index)?;
-    pay_total_cost_with_choice(
-        game,
-        player,
-        source_id,
-        &crate::cost::TotalCost::mana(cost),
-        crate::costs::PaymentReason::Other,
-        decision_maker,
-    )
-    .map_err(cost_error_to_action_error)?;
+    // Eligibility was checked before costs, which may sacrifice the attached
+    // object or the source itself. Do not reject a successfully paid action.
+
     game.player_ignores_source_static_effect_until_end_of_turn(source_id, player);
     game.update_cant_effects();
     Ok(())
@@ -963,33 +929,19 @@ fn can_ignore_attached_restriction(
         return Err(ActionError::InvalidTarget);
     }
 
-    crate::cost::can_pay_cost_with_reason(
-        game,
-        source_id,
-        player,
-        &ignore_attached_restriction_cost(),
-        crate::costs::PaymentReason::Other,
-    )
-    .map_err(cost_error_to_action_error)
+    Ok(())
 }
 
 fn perform_ignore_attached_restriction(
     game: &mut GameState,
     player: PlayerId,
     source_id: ObjectId,
-    ability_index: usize,
-    decision_maker: &mut impl crate::decision::DecisionMaker,
+    _ability_index: usize,
+    _decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
-    can_ignore_attached_restriction(game, player, source_id, ability_index)?;
-    pay_total_cost_with_choice(
-        game,
-        player,
-        source_id,
-        &ignore_attached_restriction_cost(),
-        crate::costs::PaymentReason::Other,
-        decision_maker,
-    )
-    .map_err(cost_error_to_action_error)?;
+    // Eligibility was checked before costs, which may sacrifice the attached
+    // object or the source itself. Do not reject a successfully paid action.
+
     game.player_ignores_attached_static_restrictions_until_end_of_turn(source_id, player);
     game.update_cant_effects();
     Ok(())
@@ -1019,15 +971,6 @@ fn can_take_companion_action(
             actual: companion.zone,
         });
     }
-    if !game.can_pay_mana_cost_with_reason(
-        player,
-        Some(card_id),
-        &companion_action_cost(),
-        0,
-        crate::costs::PaymentReason::Other,
-    ) {
-        return Err(ActionError::CantPayCost);
-    }
     Ok(())
 }
 
@@ -1039,15 +982,6 @@ fn perform_companion_action(
     // Stage payment and movement together so an unexpected movement failure
     // cannot spend mana or consume the once-per-game action.
     let mut staged = game.clone();
-    if !staged.try_pay_mana_cost_with_reason(
-        player,
-        Some(card_id),
-        &companion_action_cost(),
-        0,
-        crate::costs::PaymentReason::Other,
-    ) {
-        return Err(ActionError::CantPayCost);
-    }
     let new_id = staged
         .move_object(
             card_id,
@@ -1103,25 +1037,12 @@ fn can_roll_planar_die(game: &GameState, player: PlayerId) -> Result<(), ActionE
     if game.planar_controller() != Some(player) || game.face_up_planar_objects().is_empty() {
         return Err(ActionError::InvalidTiming);
     }
-    let cost = game
-        .planar_die_roll_cost(player)
+    game.planar_die_roll_cost(player)
         .ok_or(ActionError::InvalidTiming)?;
-    let player_state = game.player(player).ok_or(ActionError::PlayerNotFound)?;
-    if !player_state.mana_pool.can_pay(&planar_die_cost(cost), 0) {
-        return Err(ActionError::CantPayCost);
-    }
     Ok(())
 }
 
 fn perform_roll_planar_die(game: &mut GameState, player: PlayerId) -> Result<(), ActionError> {
-    let cost = game
-        .planar_die_roll_cost(player)
-        .ok_or(ActionError::InvalidTiming)?;
-    let player_state = game.player_mut(player).ok_or(ActionError::PlayerNotFound)?;
-    if !player_state.mana_pool.try_pay(&planar_die_cost(cost), 0) {
-        return Err(ActionError::CantPayCost);
-    }
-    player_state.trim_mana_source_provenance_to_pool();
     game.roll_planar_die(player, true)
         .map(|_| ())
         .map_err(|_| ActionError::InvalidTiming)
@@ -1326,17 +1247,18 @@ fn can_pay_turn_face_up_spec(
     permanent_id: ObjectId,
     spec: &TurnFaceUpSpec,
 ) -> Result<(), ActionError> {
-    crate::cost::can_pay_cost_with_reason(
+    check_special_action_payment(
         game,
-        permanent_id,
         player,
-        &adjusted_turn_face_up_cost(game, player, permanent_id, spec),
-        crate::costs::PaymentReason::TurnFaceUp,
+        &SpecialActionPayment {
+            source: permanent_id,
+            cost: adjusted_turn_face_up_cost(game, player, permanent_id, spec),
+            reason: crate::costs::PaymentReason::TurnFaceUp,
+        },
     )
-    .map_err(cost_error_to_action_error)
 }
 
-fn can_turn_face_up_with_method(
+fn validate_turn_face_up_with_method(
     game: &GameState,
     player: PlayerId,
     permanent_id: ObjectId,
@@ -1346,13 +1268,13 @@ fn can_turn_face_up_with_method(
     if !game.can_turn_face_up_permanent(permanent_id) {
         return Err(ActionError::NoSuchAbility);
     }
-    let Some(spec) = turn_face_up_spec(game, object, method) else {
+    let Some(_spec) = turn_face_up_spec(game, object, method) else {
         return Err(ActionError::NoSuchAbility);
     };
-    can_pay_turn_face_up_spec(game, player, permanent_id, &spec)
+    Ok(())
 }
 
-fn perform_turn_face_up(
+fn finish_turn_face_up(
     game: &mut GameState,
     player: PlayerId,
     permanent_id: ObjectId,
@@ -1377,16 +1299,6 @@ fn perform_turn_face_up(
             controller: player,
         },
     );
-    let adjusted_cost = adjusted_turn_face_up_cost(game, player, permanent_id, &spec);
-    pay_total_cost_with_choice(
-        game,
-        player,
-        permanent_id,
-        &adjusted_cost,
-        crate::costs::PaymentReason::TurnFaceUp,
-        decision_maker,
-    )
-    .map_err(cost_error_to_action_error)?;
 
     if let Some(object) = game.object_mut(permanent_id) {
         object.end_face_down_cast_overlay();
@@ -1483,15 +1395,8 @@ fn can_unlock_room_door(
     room_id: ObjectId,
 ) -> Result<(), ActionError> {
     validate_unlock_room_door_common(game, player, room_id)?;
-    let cost = adjusted_room_unlock_cost(game, player, room_id)?;
-    crate::cost::can_pay_cost_with_reason(
-        game,
-        room_id,
-        player,
-        &cost,
-        crate::costs::PaymentReason::UnlockDoor,
-    )
-    .map_err(cost_error_to_action_error)
+    adjusted_room_unlock_cost(game, player, room_id)?;
+    Ok(())
 }
 
 /// Apply the Room state transition shared by the paid special action and
@@ -1512,26 +1417,16 @@ fn perform_unlock_room_door(
     game: &mut GameState,
     player: PlayerId,
     room_id: ObjectId,
-    decision_maker: &mut impl crate::decision::DecisionMaker,
+    _decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
     validate_unlock_room_door_common(game, player, room_id)?;
-    let cost = adjusted_room_unlock_cost(game, player, room_id)?;
+
     let action_provenance = game.provenance_graph_mut().alloc_root(
         crate::provenance::ProvenanceNodeKind::EffectExecution {
             source: room_id,
             controller: player,
         },
     );
-
-    pay_total_cost_with_choice(
-        game,
-        player,
-        room_id,
-        &cost,
-        crate::costs::PaymentReason::UnlockDoor,
-        decision_maker,
-    )
-    .map_err(cost_error_to_action_error)?;
 
     if !apply_room_door_unlock(game, room_id) {
         return Err(ActionError::NoSuchAbility);
@@ -1557,8 +1452,6 @@ fn perform_unlock_room_door(
 // === Suspend ===
 
 fn can_suspend(game: &GameState, player: PlayerId, card_id: ObjectId) -> Result<(), ActionError> {
-    use crate::costs::{CostCheckContext, can_pay_with_check_context};
-
     // Must have priority
     if !game.team_has_priority(player) {
         return Err(ActionError::NotYourPriority);
@@ -1578,25 +1471,12 @@ fn can_suspend(game: &GameState, player: PlayerId, card_id: ObjectId) -> Result<
         return Err(ActionError::InvalidTarget);
     }
 
-    let Some((_time, cost)) = suspend_spec(object) else {
+    let Some((_time, _cost)) = suspend_spec(object) else {
         return Err(ActionError::NoSuchAbility);
     };
 
     if !crate::decision::can_begin_to_cast_from_hand_for_suspend(game, player, object) {
         return Err(ActionError::InvalidTiming);
-    }
-
-    let total_cost = adjust_total_cost_mana_components_for_reason(
-        game,
-        player,
-        card_id,
-        &crate::cost::TotalCost::mana(cost),
-        crate::costs::PaymentReason::Other,
-    );
-    let check_ctx = CostCheckContext::new(card_id, player);
-    for component in total_cost.costs() {
-        can_pay_with_check_context(&*component.0, game, &check_ctx)
-            .map_err(cost_error_to_action_error)?;
     }
 
     Ok(())
@@ -1607,32 +1487,6 @@ fn perform_suspend(
     player: PlayerId,
     card_id: ObjectId,
 ) -> Result<(), ActionError> {
-    let (_time, cost) = {
-        let object = game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
-        suspend_spec(object).ok_or(ActionError::NoSuchAbility)?
-    };
-
-    let action_provenance = game.provenance_graph_mut().alloc_root(
-        crate::provenance::ProvenanceNodeKind::EffectExecution {
-            source: card_id,
-            controller: player,
-        },
-    );
-    let total_cost = adjust_total_cost_mana_components_for_reason(
-        game,
-        player,
-        card_id,
-        &crate::cost::TotalCost::mana(cost),
-        crate::costs::PaymentReason::Other,
-    );
-    let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
-    let mut cost_ctx =
-        CostContext::new(card_id, player, &mut decision_maker).with_provenance(action_provenance);
-    for component in total_cost.costs() {
-        pay_cost_component_with_choice(game, component, &mut cost_ctx)
-            .map_err(cost_error_to_action_error)?;
-    }
-
     let (time, _cost) = {
         let object = game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
         suspend_spec(object).ok_or(ActionError::NoSuchAbility)?
@@ -1654,8 +1508,6 @@ fn perform_suspend(
 // === Foretell ===
 
 fn can_foretell(game: &GameState, player: PlayerId, card_id: ObjectId) -> Result<(), ActionError> {
-    use crate::costs::{CostCheckContext, can_pay_with_check_context};
-
     // Must be during your turn
     if !game.is_active_player(player) {
         return Err(ActionError::NotActivePlayer);
@@ -1688,21 +1540,6 @@ fn can_foretell(game: &GameState, player: PlayerId, card_id: ObjectId) -> Result
         return Err(ActionError::InvalidTiming);
     }
 
-    let foretell_action_cost = adjust_total_cost_mana_components_for_reason(
-        game,
-        player,
-        card_id,
-        &crate::cost::TotalCost::mana(crate::mana::ManaCost::from_pips(vec![vec![
-            crate::mana::ManaSymbol::Generic(2),
-        ]])),
-        crate::costs::PaymentReason::Other,
-    );
-    let check_ctx = CostCheckContext::new(card_id, player);
-    for cost in foretell_action_cost.costs() {
-        can_pay_with_check_context(&*cost.0, game, &check_ctx)
-            .map_err(cost_error_to_action_error)?;
-    }
-
     Ok(())
 }
 
@@ -1711,29 +1548,6 @@ fn perform_foretell(
     player: PlayerId,
     card_id: ObjectId,
 ) -> Result<(), ActionError> {
-    let action_provenance = game.provenance_graph_mut().alloc_root(
-        crate::provenance::ProvenanceNodeKind::EffectExecution {
-            source: card_id,
-            controller: player,
-        },
-    );
-    let foretell_action_cost = adjust_total_cost_mana_components_for_reason(
-        game,
-        player,
-        card_id,
-        &crate::cost::TotalCost::mana(crate::mana::ManaCost::from_pips(vec![vec![
-            crate::mana::ManaSymbol::Generic(2),
-        ]])),
-        crate::costs::PaymentReason::Other,
-    );
-    let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
-    let mut cost_ctx =
-        CostContext::new(card_id, player, &mut decision_maker).with_provenance(action_provenance);
-    for cost in foretell_action_cost.costs() {
-        pay_cost_component_with_choice(game, cost, &mut cost_ctx)
-            .map_err(cost_error_to_action_error)?;
-    }
-
     // Move to exile face-down
     let new_id = game
         .move_object(
@@ -1755,8 +1569,6 @@ fn perform_foretell(
 // === Plot ===
 
 fn can_plot(game: &GameState, player: PlayerId, card_id: ObjectId) -> Result<(), ActionError> {
-    use crate::costs::{CostCheckContext, can_pay_with_check_context};
-
     has_sorcery_speed_special_action_timing(game, player)?;
 
     let object = game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
@@ -1770,22 +1582,9 @@ fn can_plot(game: &GameState, player: PlayerId, card_id: ObjectId) -> Result<(),
         return Err(ActionError::InvalidTarget);
     }
 
-    let Some(cost) = plot_cost(object) else {
+    let Some(_cost) = plot_cost(object) else {
         return Err(ActionError::NoSuchAbility);
     };
-
-    let total_cost = adjust_total_cost_mana_components_for_reason(
-        game,
-        player,
-        card_id,
-        &crate::cost::TotalCost::mana(cost),
-        crate::costs::PaymentReason::Other,
-    );
-    let check_ctx = CostCheckContext::new(card_id, player);
-    for component in total_cost.costs() {
-        can_pay_with_check_context(&*component.0, game, &check_ctx)
-            .map_err(cost_error_to_action_error)?;
-    }
 
     Ok(())
 }
@@ -1795,31 +1594,12 @@ fn perform_plot(
     player: PlayerId,
     card_id: ObjectId,
 ) -> Result<(), ActionError> {
-    let cost = {
-        let object = game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
-        plot_cost(object).ok_or(ActionError::NoSuchAbility)?
-    };
-
     let action_provenance = game.provenance_graph_mut().alloc_root(
         crate::provenance::ProvenanceNodeKind::EffectExecution {
             source: card_id,
             controller: player,
         },
     );
-    let total_cost = adjust_total_cost_mana_components_for_reason(
-        game,
-        player,
-        card_id,
-        &crate::cost::TotalCost::mana(cost),
-        crate::costs::PaymentReason::Other,
-    );
-    let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
-    let mut cost_ctx =
-        CostContext::new(card_id, player, &mut decision_maker).with_provenance(action_provenance);
-    for component in total_cost.costs() {
-        pay_cost_component_with_choice(game, component, &mut cost_ctx)
-            .map_err(cost_error_to_action_error)?;
-    }
 
     let new_id = game
         .move_object(
@@ -1851,6 +1631,7 @@ fn cost_error_to_action_error(err: CostPaymentError) -> ActionError {
         CostPaymentError::AlreadyTapped => ActionError::CantPayCost,
         CostPaymentError::SummoningSickness => ActionError::SummoningSickness,
         CostPaymentError::AlreadyUntapped => ActionError::CantPayCost,
+        CostPaymentError::Cancelled => ActionError::Cancelled,
         CostPaymentError::InsufficientMana => ActionError::CantPayCost,
         CostPaymentError::InsufficientLife => ActionError::CantPayCost,
         CostPaymentError::SourceNotOnBattlefield => ActionError::CantPayCost,
@@ -2987,14 +2768,29 @@ fn pay_total_cost_branch_without_execution_context(
                 .iter()
                 .enumerate()
                 .filter_map(|(index, branch)| {
-                    crate::cost::can_pay_cost_with_reason(
-                        game,
-                        cost_ctx.source,
-                        cost_ctx.payer,
-                        branch,
-                        cost_ctx.reason,
-                    )
-                    .is_ok()
+                    (if cost_ctx.interactive_mana_exclusions.is_some()
+                        && cost_ctx.reason != crate::costs::PaymentReason::ActivateManaAbility
+                    {
+                        check_special_action_payment(
+                            game,
+                            cost_ctx.payer,
+                            &SpecialActionPayment {
+                                source: cost_ctx.source,
+                                cost: branch.clone(),
+                                reason: cost_ctx.reason,
+                            },
+                        )
+                        .is_ok()
+                    } else {
+                        crate::cost::can_pay_cost_with_reason(
+                            game,
+                            cost_ctx.source,
+                            cost_ctx.payer,
+                            branch,
+                            cost_ctx.reason,
+                        )
+                        .is_ok()
+                    })
                     .then_some(index)
                 })
                 .collect();
@@ -3430,11 +3226,12 @@ fn pay_component_without_execution_context(
             cost_ctx.reason,
         );
         if let Some(exclusions) = cost_ctx.interactive_mana_exclusions.clone() {
-            return crate::mana_payment::pay_activation_mana_interactively(
+            return crate::mana_payment::pay_mana_interactively(
                 game,
                 cost_ctx.payer,
                 cost_ctx.source,
                 adjusted_cost,
+                cost_ctx.reason,
                 exclusions,
                 cost_ctx.decision_maker,
             );
@@ -3459,11 +3256,12 @@ fn pay_component_without_execution_context(
                 cost_ctx.reason,
             );
             if let Some(exclusions) = cost_ctx.interactive_mana_exclusions.clone() {
-                return crate::mana_payment::pay_activation_mana_interactively(
+                return crate::mana_payment::pay_mana_interactively(
                     game,
                     cost_ctx.payer,
                     cost_ctx.source,
                     adjusted_cost,
+                    cost_ctx.reason,
                     exclusions,
                     cost_ctx.decision_maker,
                 );
@@ -4934,4 +4732,40 @@ mod tests {
             "playing a granted graveyard land should consume the turn's land play"
         );
     }
+}
+
+#[cfg(test)]
+fn perform_turn_face_up(
+    game: &mut GameState,
+    player: PlayerId,
+    permanent_id: ObjectId,
+    method: TurnFaceUpMethod,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<(), ActionError> {
+    perform(
+        SpecialAction::TurnFaceUp {
+            permanent_id,
+            method,
+        },
+        game,
+        player,
+        decision_maker,
+    )
+}
+
+#[cfg(test)]
+fn can_turn_face_up_with_method(
+    game: &GameState,
+    player: PlayerId,
+    permanent_id: ObjectId,
+    method: TurnFaceUpMethod,
+) -> Result<(), ActionError> {
+    can_perform_check(
+        &SpecialAction::TurnFaceUp {
+            permanent_id,
+            method,
+        },
+        game,
+        player,
+    )
 }

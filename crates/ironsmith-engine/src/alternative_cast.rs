@@ -7,6 +7,41 @@ pub type AlternativeCastingMethod = ironsmith_core::AlternativeCastingMethod<
     crate::static_abilities::ThisSpellCostCondition,
 >;
 
+/// Route alternatives that first take a special action from hand. Ordinary
+/// alternative casts use the generic spell-casting pipeline. Keep this match
+/// exhaustive so a new mechanic cannot silently miss hand-action discovery.
+pub(crate) fn hand_special_action(
+    method: &AlternativeCastingMethod,
+    card_id: crate::ids::ObjectId,
+) -> Option<crate::special_actions::SpecialAction> {
+    use crate::special_actions::SpecialAction;
+    match method {
+        AlternativeCastingMethod::Plot { .. } => Some(SpecialAction::Plot { card_id }),
+        AlternativeCastingMethod::Foretell { .. } => Some(SpecialAction::Foretell { card_id }),
+        AlternativeCastingMethod::Suspend { .. } => Some(SpecialAction::Suspend { card_id }),
+        AlternativeCastingMethod::Dash { .. }
+        | AlternativeCastingMethod::Blitz { .. }
+        | AlternativeCastingMethod::Warp { .. }
+        | AlternativeCastingMethod::Disturb { .. }
+        | AlternativeCastingMethod::Overload { .. }
+        | AlternativeCastingMethod::Cleave { .. }
+        | AlternativeCastingMethod::Awaken { .. }
+        | AlternativeCastingMethod::Flashback { .. }
+        | AlternativeCastingMethod::Harmonize { .. }
+        | AlternativeCastingMethod::Retrace { .. }
+        | AlternativeCastingMethod::JumpStart { .. }
+        | AlternativeCastingMethod::Escape { .. }
+        | AlternativeCastingMethod::Madness { .. }
+        | AlternativeCastingMethod::Miracle { .. }
+        | AlternativeCastingMethod::FlashWithAdditionalCost { .. }
+        | AlternativeCastingMethod::Composed { .. }
+        | AlternativeCastingMethod::FromZone { .. }
+        | AlternativeCastingMethod::Trap { .. }
+        | AlternativeCastingMethod::Bestow { .. }
+        | AlternativeCastingMethod::Mutate { .. } => None,
+    }
+}
+
 /// Which method is being used to cast a spell.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum CastingMethod {

@@ -16,4 +16,4 @@ pub use planner::{
 
 mod interactive;
 pub use interactive::manual_mana_abilities;
-pub(crate) use interactive::{activate_mana_during_payment, pay_activation_mana_interactively};
+pub(crate) use interactive::{activate_mana_during_payment, pay_mana_interactively};

@@ -483,36 +483,20 @@ fn build_hand_summaries<'a>(game: &'a GameState, hand: &[ObjectId]) -> Vec<HandC
     hand.iter()
         .filter_map(|&card_id| {
             let card = game.object(card_id)?;
-            let mut has_foretell = false;
-            let mut has_suspend = false;
-            let mut has_plot = false;
-            let mut has_hand_native_alternatives = false;
-            for method in &card.alternative_casts {
-                match method {
-                    crate::alternative_cast::AlternativeCastingMethod::Foretell { .. } => {
-                        has_foretell = true;
-                    }
-                    crate::alternative_cast::AlternativeCastingMethod::Suspend { .. } => {
-                        has_suspend = true;
-                    }
-                    crate::alternative_cast::AlternativeCastingMethod::Plot { .. } => {
-                        has_plot = true;
-                    }
-                    _ => {}
-                }
-                if method.cast_from_zone() == Zone::Hand {
-                    has_hand_native_alternatives = true;
-                }
-            }
+            let has_hand_special_actions = card.alternative_casts.iter().any(|method| {
+                crate::alternative_cast::hand_special_action(method, card_id).is_some()
+            });
+            let has_hand_native_alternatives = card
+                .alternative_casts
+                .iter()
+                .any(|method| method.cast_from_zone() == Zone::Hand);
             let has_split_other_half = spell_has_castable_linked_other_half(game, card);
             Some(HandCardSummary {
                 card_id,
                 card,
                 is_land: card.is_land(),
                 has_normal_mana_cost: card.mana_cost.is_some(),
-                has_foretell,
-                has_suspend,
-                has_plot,
+                has_hand_special_actions,
                 can_cast_face_down: spell_can_be_cast_face_down(card),
                 has_split_other_half,
                 has_fuse: card.has_fuse
@@ -618,33 +602,21 @@ fn add_hand_special_actions(
     player: PlayerId,
     hand_summaries: &[HandCardSummary<'_>],
 ) {
-    use crate::special_actions::{SpecialAction, can_perform_check};
-
     for summary in hand_summaries {
         if !summary.has_any_hand_special_action() {
             continue;
         }
-        if summary.has_foretell {
-            let action = SpecialAction::Foretell {
-                card_id: summary.card_id,
+        let mut offered = Vec::new();
+        for method in &summary.card.alternative_casts {
+            let Some(action) =
+                crate::alternative_cast::hand_special_action(method, summary.card_id)
+            else {
+                continue;
             };
-            if can_perform_check(&action, game, player).is_ok() {
-                actions.push(LegalAction::SpecialAction(action));
-            }
-        }
-        if summary.has_suspend {
-            let action = SpecialAction::Suspend {
-                card_id: summary.card_id,
-            };
-            if can_perform_check(&action, game, player).is_ok() {
-                actions.push(LegalAction::SpecialAction(action));
-            }
-        }
-        if summary.has_plot {
-            let action = SpecialAction::Plot {
-                card_id: summary.card_id,
-            };
-            if can_perform_check(&action, game, player).is_ok() {
+            if !offered.contains(&action)
+                && crate::special_actions::can_perform_check(&action, game, player).is_ok()
+            {
+                offered.push(action.clone());
                 actions.push(LegalAction::SpecialAction(action));
             }
         }

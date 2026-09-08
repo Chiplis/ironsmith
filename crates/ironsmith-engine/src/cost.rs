@@ -102,6 +102,8 @@ impl ironsmith_core::CoreCostComponent for Cost {
 /// Error type for when a cost cannot be paid.
 #[derive(Debug, Clone, PartialEq)]
 pub enum CostPaymentError {
+    /// The player explicitly cancelled an interactive payment.
+    Cancelled,
     /// The source object doesn't exist.
     SourceNotFound,
 
@@ -157,6 +159,7 @@ pub enum CostPaymentError {
 impl std::fmt::Display for CostPaymentError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            CostPaymentError::Cancelled => f.write_str("Payment cancelled"),
             CostPaymentError::SourceNotFound => f.write_str("Source object not found"),
             CostPaymentError::PlayerNotFound => f.write_str("Player not found"),
             CostPaymentError::InsufficientMana => f.write_str("Not enough mana"),

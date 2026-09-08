@@ -76,21 +76,20 @@ pub(crate) fn activate_mana_during_payment(
     Ok(true)
 }
 
-pub(crate) fn pay_activation_mana_interactively(
+pub(crate) fn pay_mana_interactively(
     game: &mut GameState,
     payer: PlayerId,
     source: ObjectId,
     cost: crate::mana::ManaCost,
+    reason: crate::costs::PaymentReason,
     exclusions: Vec<ObjectId>,
     dm: &mut dyn DecisionMaker,
 ) -> Result<(), CostPaymentError> {
-    let mut request = ManaPaymentRequest::new(
-        payer,
-        source,
-        crate::costs::PaymentReason::ActivateManaAbility,
-        cost,
-    )
-    .with_spend_policy(game.mana_spend_policy(payer, Some(source)));
+    if cost.is_empty() {
+        return Ok(());
+    }
+    let mut request = ManaPaymentRequest::new(payer, source, reason, cost)
+        .with_spend_policy(game.mana_spend_policy(payer, Some(source)));
     request.allow_black_life = crate::decision::mana_cost_has_black_symbol(&request.cost)
         && game.player_can_pay_black_with_life_for_reason(payer, Some(source), request.reason);
     request.preferences.excluded_sources = exclusions.clone();
@@ -101,8 +100,8 @@ pub(crate) fn pay_activation_mana_interactively(
             .unwrap_or_else(|| unfunded_mana_payment_plan(game, &request));
         let subject = game
             .object(source)
-            .map(|object| format!("{}'s mana ability", object.name))
-            .unwrap_or_else(|| "mana ability".to_string());
+            .map(|object| object.name.to_string())
+            .unwrap_or_else(|| "action".to_string());
         let decision = crate::decisions::context::ManaPaymentContext::new(
             payer,
             source,
@@ -115,7 +114,7 @@ pub(crate) fn pay_activation_mana_interactively(
             return Err(CostPaymentError::InsufficientMana);
         }
         match response {
-            ManaPaymentResponse::Cancel => return Err(CostPaymentError::InsufficientMana),
+            ManaPaymentResponse::Cancel => return Err(CostPaymentError::Cancelled),
             ManaPaymentResponse::Replan { mut preferences } => {
                 preferences
                     .excluded_sources

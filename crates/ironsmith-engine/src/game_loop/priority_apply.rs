@@ -1008,8 +1008,11 @@ pub fn apply_priority_response_with_dm(
             };
             crate::special_actions::can_perform(&action, game, player, &mut *decision_maker)
                 .map_err(|e| GameLoopError::InvalidState(format!("Cannot turn face up: {e}")))?;
-            crate::special_actions::perform(action, game, player, &mut *decision_maker)
-                .map_err(|e| GameLoopError::InvalidState(format!("Failed to turn face up: {e}")))?;
+            finish_special_action_response(
+                crate::special_actions::perform(action, game, player, &mut *decision_maker),
+                game,
+                decision_maker,
+            )?;
             drain_pending_trigger_events(game, trigger_queue);
 
             // Player retains priority
@@ -1024,17 +1027,21 @@ pub fn apply_priority_response_with_dm(
             if crate::special_actions::can_perform(special, game, player, &mut *decision_maker)
                 .is_ok()
             {
-                crate::special_actions::perform(
-                    special.clone(),
+                let performed = finish_special_action_response(
+                    crate::special_actions::perform(
+                        special.clone(),
+                        game,
+                        player,
+                        &mut *decision_maker,
+                    ),
                     game,
-                    player,
-                    &mut *decision_maker,
-                )
-                .map_err(|e| GameLoopError::InvalidState(format!("Failed special action: {e}")))?;
-                if let crate::special_actions::SpecialAction::ActivateManaAbility {
-                    permanent_id,
-                    ability_index,
-                } = special
+                    decision_maker,
+                )?;
+                if performed
+                    && let crate::special_actions::SpecialAction::ActivateManaAbility {
+                        permanent_id,
+                        ability_index,
+                    } = special
                 {
                     let activation_cost_has_tap =
                         activated_ability_has_tap_cost(game, *permanent_id, *ability_index);
@@ -1485,4 +1492,23 @@ pub(super) fn apply_x_value_response(
 
     // Modes and alternative/additional costs were announced before X.
     continue_to_targeting_or_finalize(game, trigger_queue, state, pending, decision_maker)
+}
+
+// Cancel is an ordinary completed interaction after the special-action
+// transaction restores its checkpoint, not a failed replay command.
+fn finish_special_action_response(
+    result: Result<(), crate::special_actions::ActionError>,
+    game: &GameState,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<bool, GameLoopError> {
+    match result {
+        Ok(()) => Ok(true),
+        Err(crate::special_actions::ActionError::Cancelled) => {
+            decision_maker.on_action_cancelled(game, "Special action cancelled");
+            Ok(false)
+        }
+        Err(error) => Err(GameLoopError::InvalidState(format!(
+            "Failed special action: {error}"
+        ))),
+    }
 }

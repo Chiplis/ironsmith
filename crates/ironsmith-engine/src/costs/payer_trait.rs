@@ -94,7 +94,8 @@ pub struct CostContext<'dm> {
     pub effect_outcomes: HashMap<crate::effect::EffectId, crate::effect::EffectOutcome>,
     /// Provenance parent node for events emitted while paying this cost.
     pub provenance: ProvNodeId,
-    /// Some while manually activating a source during payment. Ancestors cannot fund themselves.
+    /// Some during an interactive cost transaction. The entries exclude ancestor
+    /// mana abilities from funding themselves; special actions start with no exclusions.
     pub interactive_mana_exclusions: Option<Vec<ObjectId>>,
 }
 
