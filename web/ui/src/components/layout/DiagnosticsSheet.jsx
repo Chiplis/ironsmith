@@ -3,6 +3,7 @@ import { Activity, Check, ClipboardCopy, Eraser } from "lucide-react";
 import { useGame } from "@/context/GameContext";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { readEngineDiagnostics } from "@/lib/engine-diagnostics";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import {
   diagnosticsVersion,
@@ -115,20 +116,7 @@ export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTr
   const clock = multiplayer?.matchClock || null;
 
   const handleCopy = async () => {
-    const readPerf = async (method) => {
-      try {
-        return typeof game?.[method] === "function" ? await game[method]() : null;
-      } catch {
-        return null;
-      }
-    };
-    const [dispatchPerf, snapshotPerf, workCounters, manaPaymentPerf, advancePerf] = await Promise.all([
-      readPerf("lastDispatchPerf"),
-      readPerf("lastSnapshotPerf"),
-      readPerf("lastWorkCounters"),
-      readPerf("lastManaPaymentPerf"),
-      readPerf("lastAdvanceUntilDecisionPerf"),
-    ]);
+    const engine = await readEngineDiagnostics(game);
     const payload = exportDiagnostics({
       multiplayer: {
         mode: multiplayer?.mode, role: multiplayer?.role, lastAppliedSequence: multiplayer?.lastAppliedSequence,
@@ -136,7 +124,7 @@ export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTr
         players: lobbyPlayers,
       },
       game: { phase: state?.phase, step: state?.step, decision: state?.decision?.kind, priority_player: state?.priority_player, turn: state?.turn },
-      engine: { dispatchPerf, snapshotPerf, workCounters, manaPaymentPerf, advanceUntilDecisionPerf: advancePerf },
+      engine,
     });
     try {
       await copyTextToClipboard(`${JSON.stringify(payload, null, 2)}\n`);

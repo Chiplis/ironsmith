@@ -2039,7 +2039,7 @@ impl WasmGame {
             .map_err(|e| JsValue::from_str(&format!("lastWorkCounters encode failed: {e}")))
     }
 
-    /// Return counters for the most recent public mana-payment query.
+    /// Return counters for the most recent `plan_mana_payment` call.
     /// This is diagnostic-only and is safe to call after any dispatch.
     #[wasm_bindgen(js_name = lastManaPaymentPerf)]
     pub fn last_mana_payment_perf_js(&self) -> Result<JsValue, JsValue> {

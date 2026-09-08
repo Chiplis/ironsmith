@@ -22,7 +22,7 @@ const MAX_EXTRA_ACTIVATIONS: usize = 8;
 const MAX_PLANS_PER_SELECTION: usize = 16;
 const MAX_TOTAL_PLANS: usize = 32;
 
-/// Diagnostic counters for the most recent public mana-payment query.
+/// Diagnostic counters for the most recent `plan_mana_payment` call.
 ///
 /// These counters are intentionally observational: they do not change search
 /// ordering or legality.  The WASM adapter exposes them so a slow priority
