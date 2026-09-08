@@ -2,6 +2,9 @@
 // Keeping this small adapter separate lets the existing validation/resync
 // pipeline consume WebSocket messages without depending on browser globals in
 // tests or leaking transport details into the game engine.
+import { realtimeLobbyUrl } from "./realtime-config.js";
+
+export { realtimeLobbyUrl };
 
 export function createWebSocketConnection(url, { peer = "realtime", WebSocketImpl = globalThis.WebSocket } = {}) {
   if (typeof WebSocketImpl !== "function") {
