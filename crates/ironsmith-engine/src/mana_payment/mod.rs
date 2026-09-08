@@ -11,6 +11,7 @@ pub use plan::*;
 pub use planner::{
     ManaPaymentAnalysis, ManaPaymentPlanner, execute_mana_payment_plan, mana_payment_activation_inventory,
     mana_payment_source_inventory, plan_first_mana_payment, plan_mana_payment,
+    last_mana_payment_perf, ManaPaymentPerfMetrics,
     unfunded_mana_payment_plan,
 };
 
