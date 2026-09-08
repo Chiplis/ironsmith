@@ -1,8 +1,8 @@
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
-import { fileURLToPath } from 'node:url';
 import { startRelay } from '../../relay/tests/runtime.mjs';
 
 async function setup(t) {
@@ -61,12 +61,6 @@ test('WebSocket lobby validates decks and resumes guest and host after socket dr
   for (const page of [host, guest]) await wait(page, async () => (await window.__peerHarness.lobbyState()).multiplayer.matchStarted);
   await host.evaluate(() => window.__peerHarness.submitMultiplayerCommand({ type: 'priority_action', action_ref: { kind: 'test_priority_action', actor: 0, sequence: 0 } }, 'Relay action'));
   for (const page of [host, guest]) await wait(page, async () => (await window.__peerHarness.lobbyState()).multiplayer.lastAppliedSequence >= 1);
-  const guestStateBeforeBackgroundRepair = await guest.evaluate(async () => (await window.__peerHarness.snapshot()).visibleState);
-  await guest.evaluate(() => window.__peerHarness.silentlyAddCard({ playerIndex: 1, cardName: 'Black Lotus' }));
-  assert.notDeepEqual(await guest.evaluate(async () => (await window.__peerHarness.snapshot()).visibleState), guestStateBeforeBackgroundRepair);
-  await guest.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow')));
-  await wait(guest, async expected => JSON.stringify((await window.__peerHarness.snapshot()).visibleState) === expected,
-    JSON.stringify(guestStateBeforeBackgroundRepair));
   await guest.evaluate(() => window.testSockets.filter(s => s.url.includes('/rooms/')).forEach(s => s.close()));
   await wait(host, async () => (await window.__peerHarness.lobbyState()).multiplayer.players.some(p => p.connected === false));
   try { await wait(host, async () => (await window.__peerHarness.lobbyState()).multiplayer.players.every(p => p.connected !== false)); } catch(e) { console.error('GUEST STATUS', await guest.evaluate(async () => (await window.__peerHarness.lobbyState()).statusEvents)); throw e; }
@@ -201,4 +195,63 @@ test('lobby UI selects public formats, constrains settings, searches and selects
   assert.equal(await page.getByLabel('Lobby Code', { exact: true }).inputValue(), lobbyId);
   await page.setViewportSize({ width: 1100, height: 950 });
   await page.screenshot({ path: '/private/tmp/ironsmith-public-lobby.png', fullPage: true });
+});
+
+test('trusted host rejection restores a divergent guest instead of leaving it ahead and stuck', { timeout: 60000 }, async t => {
+  const { pages: [host, guest] } = await setup(t);
+  await host.evaluate(() => window.__peerHarness.createLobby({ name: 'Host', desiredPlayers: 2,
+    format: 'modern', transport: 'websocket', deckText: '60 Plains' }));
+  await wait(host, () => window.__peerHarness.lobbyState().multiplayer.mode === 'lobby');
+  const lobbyId = await host.evaluate(() => window.__peerHarness.lobbyState().multiplayer.lobbyId);
+  await guest.evaluate(lobbyId => window.__peerHarness.joinLobby({ name: 'Alice', lobbyId, deckText: '60 Island' }), lobbyId);
+  await wait(host, () => window.__peerHarness.lobbyState().multiplayer.players.length === 2 && window.__peerHarness.lobbyState().multiplayer.players.every(p => p.ready));
+  await host.evaluate(() => window.__peerHarness.startHostedMatch());
+  await wait(guest, () => window.__peerHarness.lobbyState().multiplayer.matchStarted);
+  await host.evaluate(() => window.__peerHarness.submitMultiplayerCommand({ type: 'priority_action', action_ref: { kind: 'test_priority_action', actor: 0, sequence: 0 } }, 'First action'));
+  await wait(guest, () => window.__peerHarness.lobbyState().multiplayer.lastAppliedSequence === 1);
+  // Reproduce an action available in Alice's divergent engine but absent on the host.
+  await guest.evaluate(async () => {
+    const state = await window.__peerHarness.silentlyAddCard({ playerIndex: 1, cardName: 'Island' });
+    const action = state.decision.actions.find(a => a.kind === 'cast_spell');
+    await window.__peerHarness.submitMultiplayerCommand({ type: 'priority_action', action_ref: action.action_ref }, 'Divergent action');
+  });
+  await wait(host, () => window.__peerHarness.lobbyState().statusEvents.some(e => JSON.stringify(e).includes('Trusted action is no longer available')));
+  await wait(guest, () => window.__peerHarness.lobbyState().multiplayer.lastAppliedSequence === 1);
+  await guest.evaluate(() => window.__peerHarness.submitMultiplayerCommand({ type: 'priority_action', action_ref: { kind: 'test_priority_action', actor: 1, sequence: 1 } }, 'Retry after repair'));
+  for (const page of [host, guest]) await wait(page, () => window.__peerHarness.lobbyState().multiplayer.lastAppliedSequence === 2);
+});
+
+test('failed foreground repair keeps actions paused and can retry', { timeout: 60000 }, async t => {
+  const { pages: [host, guest] } = await setup(t);
+  await host.evaluate(() => window.__peerHarness.createLobby({ name: 'Host', desiredPlayers: 2,
+    format: 'modern', transport: 'websocket', deckText: '60 Plains' }));
+  await wait(host, () => window.__peerHarness.lobbyState().multiplayer.mode === 'lobby');
+  const lobbyId = await host.evaluate(() => window.__peerHarness.lobbyState().multiplayer.lobbyId);
+  await guest.evaluate(lobbyId => window.__peerHarness.joinLobby({ name: 'Alice', lobbyId, deckText: '60 Island' }), lobbyId);
+  await wait(host, () => window.__peerHarness.lobbyState().multiplayer.players.length === 2 && window.__peerHarness.lobbyState().multiplayer.players.every(p => p.ready));
+  await host.evaluate(() => window.__peerHarness.startHostedMatch());
+  await wait(guest, () => window.__peerHarness.lobbyState().multiplayer.matchStarted);
+  await host.evaluate(() => window.__peerHarness.submitMultiplayerCommand({ type: 'priority_action', action_ref: { kind: 'test_priority_action', actor: 0, sequence: 0 } }, 'First action'));
+  await wait(guest, () => window.__peerHarness.lobbyState().multiplayer.lastAppliedSequence === 1);
+  await host.evaluate(() => {
+    const socket = window.testSockets.find(s => s.readyState === 1 && s.url.includes('/rooms/')), send = socket.send.bind(socket);
+    let corrupt = true;
+    socket.send = raw => {
+      if (corrupt && raw.includes('state_resync')) {
+        const frame = JSON.parse(raw);
+        frame.data = frame.data.replace('"match":{', '"match":null,"unused":{');
+        raw = JSON.stringify(frame); corrupt = false;
+      }
+      send(raw);
+    };
+  });
+  await guest.evaluate(() => window.dispatchEvent(new Event('online')));
+  await wait(guest, () => window.__peerHarness.lobbyState().statusEvents.some(e => e.message.includes('State recovery failed')));
+  await guest.evaluate(() => window.__peerHarness.submitMultiplayerCommand({ type: 'priority_action', action_ref: { kind: 'test_priority_action', actor: 1, sequence: 1 } }));
+  assert.match(await guest.evaluate(() => window.__peerHarness.lobbyState().statusEvents.at(-1).message), /Waiting for resync/);
+  await guest.waitForTimeout(1100);
+  await guest.evaluate(() => window.dispatchEvent(new Event('online')));
+  await wait(guest, () => window.__peerHarness.lobbyState().statusEvents.some(e => e.message.includes('Resynced with trusted host at action 1')));
+  await guest.evaluate(() => window.__peerHarness.submitMultiplayerCommand({ type: 'priority_action', action_ref: { kind: 'test_priority_action', actor: 1, sequence: 1 } }));
+  for (const page of [host, guest]) await wait(page, () => window.__peerHarness.lobbyState().multiplayer.lastAppliedSequence === 2);
 });

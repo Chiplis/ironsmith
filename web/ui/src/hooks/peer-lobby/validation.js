@@ -746,7 +746,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	          if (!resynced) {
 	            setStatus(status, true);
 	          }
-	          return;
+	          return { rejected: true, reason: failureReason };
 	        }
 	        const status = `Cheat detected from ${actorName}: ${failureReason}`;
 	        emitSyncFailureNotice("Cheat detected", status);

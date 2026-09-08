@@ -4,7 +4,7 @@ import { needsFullStateResync } from '../src/lib/relay/resync.js';
 
 test('an explicit repair request sends state even when sequences match', () => {
   assert.equal(needsFullStateResync({
-    force: true,
+    forceCheckpoint: true,
     connected: true,
     requesterSequence: 50,
     hostSequence: 50,
@@ -23,4 +23,9 @@ test('disconnected, behind, or invalid peers receive the full state', () => {
   assert.equal(needsFullStateResync({ connected: false, requesterSequence: 50, hostSequence: 50 }), true);
   assert.equal(needsFullStateResync({ connected: true, requesterSequence: 49, hostSequence: 50 }), true);
   assert.equal(needsFullStateResync({ connected: true, requesterSequence: NaN, hostSequence: 50 }), true);
+});
+
+test('an ahead peer must reconcile with the host rather than receive an ACK', () => {
+  assert.equal(needsFullStateResync({ requesterSequence: 51, hostSequence: 50 }), true);
+  assert.equal(needsFullStateResync({ requesterSequence: -1, hostSequence: 0 }), true);
 });
