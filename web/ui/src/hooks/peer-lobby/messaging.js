@@ -1,5 +1,6 @@
 import { readRelaySession, relayCheckpoint } from '../../lib/relay/session.js';
 import { PUBLIC_FORMATS, isRelayId, relayBaseUrl } from '../../lib/relay/formats.js';
+import { needsFullStateResync } from '../../lib/relay/resync.js';
 import { loadFormatCatalog, validateFormatDeck, assertFormatMatch } from '../../lib/relay/format-legality.js';
 import { buildPeerOptions, describePeerServer } from './shared.js';
 import {
@@ -169,6 +170,9 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       type: "resync_request",
       protocolVersion: PROTOCOL_VERSION,
       lastSequence: session.lastAppliedSequence,
+      // A sync failure can leave both peers at the same sequence with
+      // different engine state. Sequence equality is not proof of equality.
+      force: true,
     });
     setStatus(reason, true);
     return true;
@@ -189,6 +193,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
   const applyStateResync = useCallback(
     async (message) => {
       awaitingStateResyncRef.current = true;
+      try {
       if (multiplayerRef.current.submittingAction) {
         setStatus("Waiting for local action to settle before resync");
         const idle = await waitForSubmissionIdle(PROTOCOL_RESPONSE_TIMEOUT_MS);
@@ -625,6 +630,12 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         protocolVersion: PROTOCOL_VERSION,
         lastSequence,
       });
+      } catch (error) {
+        // Never leave the client permanently unable to submit or retry after a
+        // malformed, interrupted, or stale resync payload.
+        awaitingStateResyncRef.current = false;
+        throw error;
+      }
     },
     [
       assertZiffleShuffleProofBoundToSignedMatch,
@@ -2770,11 +2781,12 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           }
 
           const requesterSequence = Number(message.lastSequence ?? 0);
-          if (
-            existingPlayer.connected !== false
-            && Number.isSafeInteger(requesterSequence)
-            && requesterSequence >= Number(session.lastAppliedSequence || 0)
-          ) {
+          if (!needsFullStateResync({
+            force: message.force,
+            connected: existingPlayer.connected,
+            requesterSequence,
+            hostSequence: session.lastAppliedSequence,
+          })) {
             clientConnectionsRef.current.set(conn.peer, conn);
             clearLocalDisconnectObservation(conn.peer, existingPlayer?.index);
             updateMultiplayer((prev) => ({
@@ -3876,6 +3888,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
               type: "resync_request",
               protocolVersion: PROTOCOL_VERSION,
               lastSequence: session.lastAppliedSequence,
+              force: true,
             });
             setStatus(`Reconnected to match host ${hostTarget}`);
             return;
