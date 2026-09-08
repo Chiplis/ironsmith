@@ -682,6 +682,10 @@ impl WasmGame {
             last_replay_execution_perf: None,
             last_advance_until_decision_perf: None,
             last_dispatch_perf: None,
+            cooperative_driver_enabled: false,
+            cooperative_advance_pending: false,
+            cooperative_advance_iterations: 0,
+            cooperative_transaction_checkpoint: None,
             snapshot_object_view_cache: SnapshotObjectViewCache::default(),
             #[cfg(target_arch = "wasm32")]
             snapshot_js_encoding_cache: SnapshotJsEncodingCache::default(),
@@ -3249,6 +3253,59 @@ impl WasmGame {
         self.clear_active_resolving_stack_object();
         self.recompute_ui_decision()?;
         self.snapshot()
+    }
+
+    /// Opt into bounded auto-advance slices driven by the browser Worker.
+    #[wasm_bindgen(js_name = setCooperativeDriverEnabled)]
+    pub fn set_cooperative_driver_enabled(&mut self, enabled: bool) {
+        self.cooperative_driver_enabled = enabled;
+        if !enabled {
+            self.cooperative_advance_pending = false;
+            self.cooperative_advance_iterations = 0;
+            self.cooperative_transaction_checkpoint = None;
+        }
+    }
+
+    #[wasm_bindgen(js_name = beginCooperativeTransaction)]
+    pub fn begin_cooperative_transaction(&mut self) {
+        if self.cooperative_driver_enabled {
+            self.cooperative_transaction_checkpoint = Some(self.build_sync_checkpoint());
+        }
+    }
+
+    #[wasm_bindgen(js_name = completeCooperativeTransaction)]
+    pub fn complete_cooperative_transaction(&mut self) {
+        self.cooperative_transaction_checkpoint = None;
+    }
+
+    #[wasm_bindgen(js_name = rollbackCooperativeTransaction)]
+    pub fn rollback_cooperative_transaction(&mut self) -> Result<(), JsValue> {
+        if let Some(checkpoint) = self.cooperative_transaction_checkpoint.take() {
+            self.apply_sync_checkpoint(checkpoint)?;
+        }
+        self.cooperative_advance_pending = false;
+        self.cooperative_advance_iterations = 0;
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = hasCooperativeAdvancePending)]
+    pub fn has_cooperative_advance_pending(&self) -> bool {
+        self.cooperative_advance_pending
+    }
+
+    #[wasm_bindgen(js_name = continueCooperativeAdvance)]
+    pub fn continue_cooperative_advance(&mut self) -> Result<JsValue, JsValue> {
+        if self.cooperative_advance_pending {
+            if let Err(error) = self.advance_until_decision() {
+                let _ = self.rollback_cooperative_transaction();
+                return Err(error);
+            }
+        }
+        if self.cooperative_advance_pending {
+            Ok(JsValue::NULL)
+        } else {
+            self.snapshot()
+        }
     }
 
     /// Apply a player command for the currently pending decision.

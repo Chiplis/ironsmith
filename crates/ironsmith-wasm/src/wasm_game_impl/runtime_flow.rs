@@ -1,3 +1,15 @@
+const MAX_ADVANCE_ITERATIONS: usize = 192;
+const COOPERATIVE_SLICE_ITERATIONS: usize = 8;
+
+fn advance_slice_iteration_limit(cooperative: bool, completed: usize) -> usize {
+    let remaining = MAX_ADVANCE_ITERATIONS.saturating_sub(completed);
+    if cooperative {
+        remaining.min(COOPERATIVE_SLICE_ITERATIONS)
+    } else {
+        remaining
+    }
+}
+
 impl WasmGame {
     fn prune_grand_melee_host_lanes(&mut self) {
         let live_markers = self
@@ -151,6 +163,15 @@ impl WasmGame {
     pub(super) fn advance_until_decision(&mut self) -> Result<(), JsValue> {
         use ironsmith::turn_runner::TurnAction;
 
+        let continuing_cooperative_slice =
+            self.cooperative_driver_enabled && self.cooperative_advance_pending;
+        if !continuing_cooperative_slice {
+            self.cooperative_advance_iterations = 0;
+        }
+        // A successful terminal path leaves this false. Only exhausting a
+        // cooperative slice below schedules another worker turn.
+        self.cooperative_advance_pending = false;
+
         let total_started_at = PerfTimer::start();
         let mut perf = AdvanceUntilDecisionPerfMetrics::default();
         self.last_advance_until_decision_perf = None;
@@ -188,7 +209,13 @@ impl WasmGame {
             self.runner_awaiting_priority = false;
         }
 
-        for _ in 0..192 {
+        let slice_iterations = advance_slice_iteration_limit(
+            self.cooperative_driver_enabled,
+            self.cooperative_advance_iterations,
+        );
+
+        for _ in 0..slice_iterations {
+            self.cooperative_advance_iterations += 1;
             perf.iterations += 1;
             // If we're NOT currently inside a priority loop, advance the TurnRunner
             if !self.runner_awaiting_priority {
@@ -346,7 +373,7 @@ impl WasmGame {
                         self.priority_epoch_undo_land_stable_id = None;
                         self.clear_active_resolving_stack_object();
                         if started_child {
-                            return self.advance_until_decision();
+                            continue;
                         }
                         continue;
                     }
@@ -365,6 +392,14 @@ impl WasmGame {
         }
 
         perf.total_ms = total_started_at.elapsed_ms();
+        if self.cooperative_driver_enabled
+            && self.cooperative_advance_iterations < MAX_ADVANCE_ITERATIONS
+        {
+            self.cooperative_advance_pending = true;
+            perf.final_outcome = "cooperative_yield".to_string();
+            self.last_advance_until_decision_perf = Some(perf);
+            return Ok(());
+        }
         perf.final_outcome = "iteration_budget_exceeded".to_string();
         self.last_advance_until_decision_perf = Some(perf);
         Err(JsValue::from_str(
@@ -1937,6 +1972,35 @@ impl WasmGame {
             self.priority_state.pending_method_selection.is_some(),
             self.game.effect_store.pending_replacement_choice.is_some(),
         )))
+    }
+}
+
+#[cfg(test)]
+mod cooperative_advance_budget_tests {
+    use super::*;
+
+    #[test]
+    fn cooperative_slices_preserve_the_existing_total_iteration_budget() {
+        assert_eq!(advance_slice_iteration_limit(false, 0), 192);
+        assert_eq!(advance_slice_iteration_limit(true, 0), 8);
+        assert_eq!(advance_slice_iteration_limit(true, 8), 8);
+        assert_eq!(advance_slice_iteration_limit(true, 190), 2);
+        assert_eq!(advance_slice_iteration_limit(true, 192), 0);
+        assert_eq!(advance_slice_iteration_limit(true, usize::MAX), 0);
+    }
+
+    #[test]
+    fn cooperative_transaction_rolls_back_partial_runtime_state() {
+        let mut wasm = WasmGame::new();
+        wasm.set_cooperative_driver_enabled(true);
+        wasm.begin_cooperative_transaction();
+        wasm.set_life(0, 3).expect("test life mutation should succeed");
+
+        wasm.rollback_cooperative_transaction();
+
+        assert_eq!(wasm.game.players[0].life, 20);
+        assert!(!wasm.cooperative_advance_pending);
+        assert!(wasm.cooperative_transaction_checkpoint.is_none());
     }
 }
 

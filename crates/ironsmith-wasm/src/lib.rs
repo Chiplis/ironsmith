@@ -4076,6 +4076,12 @@ pub struct WasmGame {
     last_advance_until_decision_perf: Option<AdvanceUntilDecisionPerfMetrics>,
     /// Timing breakdown for the most recent dispatch-like engine call.
     last_dispatch_perf: Option<DispatchPerfMetrics>,
+    /// Browser workers enable cooperative auto-advance so long trigger/phase
+    /// chains return to the JS event loop at deterministic safe boundaries.
+    cooperative_driver_enabled: bool,
+    cooperative_advance_pending: bool,
+    cooperative_advance_iterations: usize,
+    cooperative_transaction_checkpoint: Option<SyncCheckpoint>,
     snapshot_object_view_cache: SnapshotObjectViewCache,
     #[cfg(target_arch = "wasm32")]
     snapshot_js_encoding_cache: SnapshotJsEncodingCache,

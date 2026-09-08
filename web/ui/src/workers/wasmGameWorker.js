@@ -733,6 +733,7 @@ async function handleInit(msg = {}) {
       verifier: `${verifierWasmUrl}?${bust}`,
     });
     game = new WasmGame();
+    game.setCooperativeDriverEnabled?.(true);
     game.setDeferredPriorityAnalysis(true);
     const status = readRegistryStatus();
     if (status) {
@@ -766,6 +767,27 @@ function summarizeDebugArgument(value) {
     return summary;
   }
   return `[${typeof value}]`;
+}
+
+const yieldWorkerTurn = () => new Promise((resolve) => self.setTimeout(resolve, 0));
+
+async function drainCooperativeAdvance(result, requestId, method) {
+  if (!SNAPSHOT_METHODS.has(method)
+      || typeof game?.hasCooperativeAdvancePending !== "function"
+      || typeof game?.continueCooperativeAdvance !== "function") {
+    return result;
+  }
+
+  const maxSlices = 24; // 24 * 8 Rust iterations = the existing 192-step budget.
+  for (let slice = 1; game.hasCooperativeAdvancePending(); slice += 1) {
+    if (slice > maxSlices) {
+      throw new Error("cooperative advance exceeded its deterministic slice budget");
+    }
+    await yieldWorkerTurn();
+    self.postMessage({ type: "callProgress", id: requestId, method, slice });
+    result = await game.continueCooperativeAdvance();
+  }
+  return result;
 }
 
 function handleCall(msg) {
@@ -835,7 +857,18 @@ function handleCall(msg) {
       throw new Error(`Unknown game method: ${method}`);
     }
     const wasmStartedAt = nowMs();
-    const result = await fn.apply(game, args);
+    const cooperativeTransaction = DISPATCH_TRACE_METHODS.has(method)
+      && typeof game.beginCooperativeTransaction === "function";
+    if (cooperativeTransaction) game.beginCooperativeTransaction();
+    let result;
+    try {
+      result = await fn.apply(game, args);
+      result = await drainCooperativeAdvance(result, id, method);
+      if (cooperativeTransaction) game.completeCooperativeTransaction?.();
+    } catch (error) {
+      if (cooperativeTransaction) game.rollbackCooperativeTransaction?.();
+      throw error;
+    }
     rememberCardNamesFromEngineResult(result);
     const wasmCallMs = nowMs() - wasmStartedAt;
     let snapshotPerf = null;

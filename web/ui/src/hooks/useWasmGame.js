@@ -205,6 +205,15 @@ export function useWasmGame() {
       if (workerEntry) workerEntry.pending = 0;
     };
 
+    const armRequestWatchdog = (id, request) => {
+      if (!shouldWatchEngineMethod(request.method)) return;
+      if (request.timeoutId !== null) clearTimeout(request.timeoutId);
+      request.timeoutId = setTimeout(() => {
+        if (!pending.has(id) || request.generation !== workerGeneration) return;
+        void recoverWorkerFromStall(request.method, request.generation);
+      }, watchdogTimeoutMs);
+    };
+
     const postWorkerCall = (method, args = [], { watchdog = true } = {}) =>
       new Promise((resolve, reject) => {
         if (disposed) {
@@ -217,18 +226,23 @@ export function useWasmGame() {
         }
         const id = nextRequestId++;
         const generation = workerGeneration;
-        const timeoutId = watchdog && shouldWatchEngineMethod(method)
-          ? setTimeout(() => {
-              if (!pending.has(id) || generation !== workerGeneration) return;
-              void recoverWorkerFromStall(method, generation);
-            }, watchdogTimeoutMs)
-          : null;
-        pending.set(id, { resolve, reject, method, args, generation, timeoutId });
+        const request = {
+          resolve,
+          reject,
+          method,
+          args,
+          generation,
+          timeoutId: null,
+          watchdog,
+          progressSlices: 0,
+        };
+        pending.set(id, request);
+        if (watchdog) armRequestWatchdog(id, request);
         beginEngineRequest(id, method);
         try { worker.postMessage({ type: "call", id, method, args }); }
         catch (error) {
           pending.delete(id);
-          if (timeoutId !== null) clearTimeout(timeoutId);
+          if (request.timeoutId !== null) clearTimeout(request.timeoutId);
           endEngineRequest(id);
           reject(error);
         }
@@ -404,6 +418,19 @@ export function useWasmGame() {
       }
       if (msg.type === "priorityAnalysisError") {
         console.error("Priority analysis failed; explicit passing remains available", msg.error);
+        return;
+      }
+      if (msg.type === "callProgress") {
+        const req = pending.get(msg.id);
+        if (!req || req.generation !== generation) return;
+        req.progressSlices += 1;
+        if (req.watchdog) armRequestWatchdog(msg.id, req);
+        if (req.progressSlices === 1) {
+          recordDiagnosticEvent("engine:cooperative_yield", {
+            method: req.method,
+            generation,
+          });
+        }
         return;
       }
       if (msg.type === "result") {

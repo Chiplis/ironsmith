@@ -37,6 +37,8 @@ jobs:
         run: cargo check -p ironsmith-engine-wasm --target wasm32-unknown-unknown
       - name: Test runtime fault transaction marker
         run: cargo test -p ironsmith-engine --lib runtime_fault_preserves_first_cause_and_is_consumed_once
+      - name: Test cooperative Rust transaction budget
+        run: cargo test -p ironsmith-engine-wasm --lib cooperative_advance_budget_tests
 
   browser-worker:
     runs-on: ubuntu-latest

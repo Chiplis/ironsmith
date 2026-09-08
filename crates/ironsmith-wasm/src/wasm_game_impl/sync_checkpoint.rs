@@ -3006,6 +3006,9 @@ impl WasmGame {
         let checkpoint: SyncCheckpoint = serde_wasm_bindgen::from_value(checkpoint)
             .map_err(|e| JsValue::from_str(&format!("invalid sync checkpoint: {e}")))?;
         self.apply_sync_checkpoint(checkpoint)?;
+        self.cooperative_advance_pending = false;
+        self.cooperative_advance_iterations = 0;
+        self.cooperative_transaction_checkpoint = None;
         self.set_perspective(perspective_index)?;
         self.snapshot()
     }

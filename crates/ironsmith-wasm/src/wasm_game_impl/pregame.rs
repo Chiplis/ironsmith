@@ -393,6 +393,9 @@ impl WasmGame {
         self.suspended_subgame_hosts.clear();
         self.grand_melee_host_lanes.clear();
         self.loaded_decks = Vec::new();
+        self.cooperative_advance_pending = false;
+        self.cooperative_advance_iterations = 0;
+        self.cooperative_transaction_checkpoint = None;
     }
 
     fn populate_demo_libraries(&mut self) -> Result<(), String> {
