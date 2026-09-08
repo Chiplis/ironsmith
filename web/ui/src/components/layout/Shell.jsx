@@ -41,9 +41,30 @@ export default function Shell() {
   } = useGame();
   useTabAttention();
   const initialPuzzleQueryRef = useRef(readPuzzleQueryParams());
+  const syncedLobbyUrlRef = useRef("");
   const [playerNames, setPlayerNames] = useState(
     () => initialPuzzlePlayerNames(initialPuzzleQueryRef.current) || "Alice,Bob,Charlie,Diana"
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const lobbyId = String(multiplayer?.lobbyId || multiplayer?.hostPeerId || "").trim();
+    const active = multiplayer?.mode && multiplayer.mode !== "idle";
+    const currentUrl = new URL(window.location.href);
+    if (active && lobbyId) {
+      if (currentUrl.searchParams.get("lobby") !== lobbyId) {
+        currentUrl.searchParams.set("lobby", lobbyId);
+        window.history.replaceState({}, "", currentUrl.toString());
+      }
+      syncedLobbyUrlRef.current = lobbyId;
+      return;
+    }
+    if (syncedLobbyUrlRef.current && currentUrl.searchParams.get("lobby") === syncedLobbyUrlRef.current) {
+      currentUrl.searchParams.delete("lobby");
+      window.history.replaceState({}, "", currentUrl.toString());
+    }
+    syncedLobbyUrlRef.current = "";
+  }, [multiplayer?.hostPeerId, multiplayer?.lobbyId, multiplayer?.mode]);
   const [startingLife, setStartingLife] = useState(
     () => initialPuzzleStartingLife(initialPuzzleQueryRef.current) ?? 20
   );

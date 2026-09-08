@@ -35,3 +35,18 @@ VITE_PEER_SECURE=false
 ```
 
 Use the host machine's LAN IP for `VITE_PEER_HOST`, not `0.0.0.0`. If you are serving the Vite dev app across machines, start it with `pnpm dev --host 0.0.0.0`.
+
+### ICE/TURN for restrictive networks
+
+The client accepts an optional `VITE_PEER_ICE_SERVERS` JSON array and passes it
+to WebRTC. Public STUN servers can improve address discovery, but they do not
+relay traffic. For peers that cannot connect directly, configure a TURN relay
+you control (for example coturn) in both clients' `.env.local` files:
+
+```bash
+VITE_PEER_ICE_SERVERS=[{"urls":["stun:stun.l.google.com:19302"]},{"urls":"turn:turn.example.com:3478","username":"user","credential":"pass"}]
+```
+
+Keep TURN credentials out of git and inject them at deployment time. No
+browser-only P2P setup can guarantee connectivity when a device is offline or
+the browser is suspended; TURN removes the common NAT traversal failure mode.
