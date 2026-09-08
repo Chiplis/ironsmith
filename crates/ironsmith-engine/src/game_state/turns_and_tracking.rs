@@ -1179,7 +1179,7 @@ impl GameState {
         // Turn-relative durations can change control exactly at this boundary.
         // Reconcile them before the untap step establishes which permanents
         // have been continuously controlled since this turn began (CR 302.6).
-        self.reconcile_continuous_control_changes();
+        self.refresh_continuous_state();
         self.activate_restrictions_starting_this_turn();
 
         // Printed static restrictions can switch on or off solely because the

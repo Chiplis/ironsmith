@@ -63,6 +63,9 @@ pub(super) fn queue_triggers_for_event(
     event: TriggerEvent,
 ) {
     let event = game.ensure_trigger_event_provenance(event);
+    // Zone changes and turn-history updates invalidate characteristics. Build
+    // the shared cache before trigger matching creates immutable derived views.
+    game.refresh_continuous_state();
     let triggers = check_triggers(game, &event);
     for trigger in triggers {
         if crate::triggers::check::is_speed_rule_trigger(&trigger) {
@@ -118,6 +121,7 @@ pub(super) fn queue_triggers_for_simultaneous_events(
         game.record_turn_history_event(event);
     }
 
+    game.refresh_continuous_state();
     let trigger_groups = check_triggers_batch(game, &events);
     let mut speed_controllers = std::collections::HashSet::new();
     let mut simultaneous_groups_seen = HashSet::new();

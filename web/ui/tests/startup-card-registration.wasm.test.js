@@ -26,3 +26,44 @@ test("browser facade loads startup cards when baked artifacts are stale", async 
     }
   } finally { game.free(); }
 });
+
+test("browser facade preserves compiler failures for loading and diagnostics", async () => {
+  const modules = await Promise.all(["engine", "compiler", "verifier"].map(async name => [
+    name, await readFile(new URL(`../../wasm_demo/pkg/${name}_bg.wasm`, import.meta.url)),
+  ]));
+  await init(Object.fromEntries(modules));
+  const game = new WasmGame();
+  try {
+    game.resetEmpty(["Alice", "Bob"], 20);
+    const source = {
+      canonicalName: "Unparseable Card Probe",
+      group: {
+        kind: "single",
+        name: "Unparseable Card Probe",
+        block: "Type: Creature — Demon\nPower/Toughness: 4/5\nThis is deliberately invalid oracle text.",
+      },
+    };
+    const summary = JSON.parse(game.registerExternalCardSourcesJson(JSON.stringify(source)));
+    assert.equal(summary.loaded, 0);
+    assert.equal(summary.failed.length, 1);
+    const error = summary.failed[0].error;
+    assert.ok(error.length > 0);
+    assert.doesNotMatch(error, /generated registry is not embedded/);
+    assert.throws(
+      () => game.addCardToZone(0, "unparseable card probe", "hand", true),
+      (thrown) => String(thrown) === error,
+    );
+    const diagnostics = game.cardLoadDiagnostics("unparseable card probe");
+    assert.equal(diagnostics.error, error);
+    assert.equal(diagnostics.parseError, error);
+    assert.equal(diagnostics.canonicalName, source.canonicalName);
+    assert.match(diagnostics.oracleText, /deliberately invalid oracle text/);
+
+    // A successful retry must clear the earlier failure.
+    source.group.block = "Type: Creature — Demon\nPower/Toughness: 4/5\nFlying.";
+    const retry = game.registerExternalCardSources(source);
+    assert.deepEqual(retry.failed, []);
+    assert.equal(retry.loaded, 1);
+    assert.ok(game.addCardToZone(0, source.canonicalName, "hand", true));
+  } finally { game.free(); }
+});

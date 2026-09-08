@@ -113,7 +113,7 @@ import {
   ziffleKeyContextForCeremony,
   zifflePositionFromCommitment,
 } from "./shared.js";
-import { markActionStage } from "../../lib/action-diagnostics.js";
+import { markActionStage, recordDiagnosticEvent } from "../../lib/action-diagnostics.js";
 
 export function usePeerLobbyCryptoResync(base, servicesRef) {
   const { actionCryptoRequirementsRef, actionHistoryRef, applySyncedCommand, applyingSequencedActionsRef, auditKeyPairRef, auditStateHashRef, awaitingStateResyncRef, clientConnectionsRef, drainingPendingSequencedActionsRef, gameRef, hostConnectionRef, ignoredActionIntentKeysRef, initialPublicCheckpointHashRef, liveAuditTranscriptRef, liveZiffleCeremoniesRef, localDisconnectObservationsRef, localRevealedOpeningsRef, localZiffleCeremonyLookupRef, localZiffleRevealInFlightRef, matchClockConfigRef, matchClockObservationExemptSequenceRef, matchClockRef, matchStartPayloadRef, multiplayerRef, outboundCryptoMaterialRequestsRef, peerConnectionsRef, peerRef, pendingSequencedActionsRef, privateViewDisclosuresRef, reconnectChallengesRef, relayedActionIdsRef, resyncWaitersRef, resyncingPeerIdsRef, setState, setStatus, signedActionQuorumVotesRef, stateRef, timeoutClaimInFlightRef, verifiedAuditOpeningsRef, verifiedShuffleProofsRef, ziffleHandRevealKeyRef, ziffleHandRevealQuickKeyRef, ziffleOpeningPositionsRef, ziffleRevealTokenCacheRef } = base;
@@ -3254,6 +3254,13 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       });
     } else {
       if (!isDecisionCommandCompatible(liveState?.decision, command)) {
+        recordDiagnosticEvent("trusted_action:mismatch", {
+          sequence: seq, actor: normalizedActor,
+          command_type: command?.type, action_kind: command?.action_ref?.kind,
+          decision_kind: liveState?.decision?.kind, decision_player: expectedActor,
+          role: multiplayerRef.current.role,
+          last_applied_sequence: multiplayerRef.current.lastAppliedSequence,
+        });
         throw new Error("Trusted action is no longer available");
       }
       if (

@@ -734,6 +734,7 @@ impl TurnRunner {
                 // a step other than upkeep begins.
                 game.clear_forecast_revealed_hand_cards();
                 game.turn.step = Some(Step::Draw);
+                game.refresh_continuous_state();
                 let draw_events = match self.execute_draw_step_with_choices(game) {
                     RunnerProgress::Complete(draw_events) => draw_events,
                     RunnerProgress::NeedsDecision(ctx) => return Ok(TurnAction::Decision(ctx)),
@@ -880,6 +881,10 @@ impl TurnRunner {
                 self.pending_discard = None;
                 self.pending_draw_replacement = None;
 
+                // Refresh continuous state for the new step before combat
+                // queries so conditional abilities share the characteristics
+                // cache instead of recursively rebuilding it.
+                game.refresh_continuous_state();
                 let ctx = get_declare_attackers_decision(game, &self.combat);
                 self.state = TurnState::DeclareAttackersApply;
                 Ok(TurnAction::Decision(ctx))
@@ -1111,6 +1116,7 @@ impl TurnRunner {
 
                 game.turn.priority_player = Some(defending_player);
 
+                game.refresh_continuous_state();
                 let ctx = get_declare_blockers_decision(game, &self.combat, defending_player);
                 self.state = TurnState::DeclareBlockersApply;
                 Ok(TurnAction::Decision(ctx))
@@ -2508,6 +2514,54 @@ mod tests {
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()
+    }
+
+    #[test]
+    fn attacker_decision_refreshes_conditional_characteristics_before_queries() {
+        use crate::continuous::{ContinuousEffect, EffectTarget, Modification};
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let creature = create_battlefield_creature(&mut game, alice, "Conditional Attacker");
+        game.remove_summoning_sickness(creature);
+        for card_type in [
+            CardType::Artifact,
+            CardType::Land,
+            CardType::Instant,
+            CardType::Sorcery,
+        ] {
+            let card = CardBuilder::new(CardId::new(), "Graveyard Probe")
+                .card_types(vec![card_type])
+                .build();
+            game.create_object_from_card(&card, alice, Zone::Graveyard);
+        }
+        game.effect_store.continuous_effects.add_effect(
+            ContinuousEffect::new(
+                creature,
+                alice,
+                EffectTarget::Specific(creature),
+                Modification::AddAbility(StaticAbility::must_attack()),
+            )
+            .with_condition(crate::ConditionExpr::PlayerHasCardTypesInGraveyardOrMore {
+                player: crate::target::PlayerFilter::You,
+                count: 4,
+            }),
+        );
+        let before = game.work_counters();
+        let mut runner = TurnRunner::from_state_for_sync(TurnState::DeclareAttackersDecision);
+        let TurnAction::Decision(DecisionContext::Attackers(ctx)) = runner
+            .advance(&mut game, &mut TriggerQueue::new())
+            .expect("attacker decision")
+        else {
+            panic!("expected attackers");
+        };
+        assert_eq!(ctx.attacker_options.len(), 1);
+        assert!(ctx.attacker_options[0].must_attack);
+        let recomputes = game.work_counters().characteristics_full_recomputes
+            - before.characteristics_full_recomputes;
+        assert!(
+            recomputes < 100,
+            "small board recomputed characteristics {recomputes} times"
+        );
     }
 
     fn create_battlefield_creature(game: &mut GameState, owner: PlayerId, name: &str) -> ObjectId {

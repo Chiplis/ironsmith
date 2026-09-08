@@ -84,6 +84,8 @@ pub fn execute_turn_with(
 
 /// Generate step trigger events and add them to the queue.
 pub fn generate_and_queue_step_triggers(game: &mut GameState, trigger_queue: &mut TriggerQueue) {
+    // Phase/step changes can invalidate conditions on triggered abilities.
+    game.refresh_continuous_state();
     for event in crate::triggers::check::generate_step_trigger_events_for_active_players(game) {
         let event = game.ensure_trigger_event_provenance(event);
         queue_triggers_from_event(game, trigger_queue, event.clone(), true);

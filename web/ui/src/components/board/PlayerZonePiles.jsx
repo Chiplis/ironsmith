@@ -255,15 +255,21 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
       const rowBounds = row?.getBoundingClientRect();
       const top = cards.length ? Math.min(...cards.map((card) => card.top)) : (rowBounds?.top ?? bounds.top) + 12;
       const cardWidth = cards[0]?.width || (row ? parseFloat(getComputedStyle(row).getPropertyValue("--bf-card-width")) : 72) || 72;
-      piles.style.top = `${Math.max(0, top - bounds.top)}px`;
       piles.style.setProperty("--zone-pile-width", `${Math.min(56, cardWidth * 0.7)}px`);
       const board = container.closest(".my-zone-board-shell");
-      if (board) board.style.setProperty("--battlefield-objects-top", `${Math.max(0, top - board.getBoundingClientRect().top)}px`);
+      if (board) {
+        const boardBounds = board.getBoundingClientRect();
+        board.style.setProperty("--battlefield-objects-top", `${Math.max(0, top - boardBounds.top)}px`);
+        // Reserve the Look area even when it has no cards, keeping the stack
+        // boundary stable as temporary reveals appear and disappear.
+        board.style.setProperty("--look-area-bottom-offset", `${Math.max(0, boardBounds.bottom - piles.getBoundingClientRect().top)}px`);
+      }
     };
     const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(measure); };
     measure();
     const observer = new ResizeObserver(schedule);
     observer.observe(container);
+    observer.observe(piles);
     if (row) observer.observe(row);
     const mutations = new MutationObserver(schedule);
     if (row) mutations.observe(row, { attributes: true, childList: true, subtree: true, attributeFilter: ["style", "class"] });

@@ -1257,3 +1257,165 @@ test("real WASM engine ziffle position reveal ignores opened commitment metadata
     await vite.close();
   }
 });
+
+test("real WASM trusted recovery preserves pending surveil and scry choices", { timeout: 30000 }, async () => {
+  const { vite, baseUrl } = await startWasmServer();
+  let browser = null;
+
+  try {
+    browser = await chromium.launch();
+    const page = await browser.newPage();
+    const pageErrors = [];
+    page.on("pageerror", (error) => pageErrors.push(String(error?.stack || error)));
+    page.on("console", (message) => {
+      if (message.type() === "error") pageErrors.push(message.text());
+    });
+
+    await page.goto(baseUrl);
+    const cardSources = await loadCardSources(page, [
+      "preordain",
+      "barrier-of-bones",
+      "island",
+      "swamp",
+      "mountain",
+    ]);
+    const result = await page.evaluate(async ({ wasmModuleUrl, cardSources }) => {
+      const mod = await import(wasmModuleUrl);
+      await mod.default();
+
+      const { replayTrustedMatch } = await import("/src/lib/relay/replay-trusted-match.js");
+      let acceptedActions = [];
+      function recordedDispatch(game, command) {
+        acceptedActions.push({ seq: acceptedActions.length + 1, command });
+        return game.dispatch(command);
+      }
+      function dispatchPriority(game, action) {
+        return recordedDispatch(game, {
+          type: "priority_action",
+          action_ref: action.action_ref,
+        });
+      }
+
+      async function advanceToInspectionPrompt({ spellName, landName, fillerName }) {
+        const game = new mod.WasmGame();
+        game.registerExternalCardSourcesJson(JSON.stringify(cardSources));
+        acceptedActions = [];
+        const config = {
+          playerNames: ["Alice", "Bob"],
+          startingLife: 20,
+          seed: 1,
+          format: "normal",
+          openingHandSize: 7,
+          decks: [
+            Array(60).fill(landName),
+            Array(60).fill(fillerName),
+          ],
+        };
+        let state = game.startMatch(config);
+        // Test fixture setup is applied identically before both initial play and replay.
+        game.addCardToZone(0, spellName, "hand", true);
+        game.addCardToZone(0, landName, "battlefield", true);
+        state = game.uiState();
+
+        for (let step = 0; step < 20; step += 1) {
+          const actions = state.decision?.actions || [];
+          let action = actions.find((candidate) => (
+            candidate.action_ref?.kind === "keep_opening_hand"
+            || candidate.action_ref?.kind === "continue_pregame"
+            || candidate.action_ref?.kind === "begin_game"
+          ));
+          if (!action) action = actions.find((candidate) => candidate.action_ref?.kind === "play_land");
+          if (!action && actions.some((candidate) => candidate.label?.includes(spellName))) break;
+          if (!action) action = actions.find((candidate) => candidate.action_ref?.kind === "pass_priority");
+          if (!action) {
+            throw new Error(`could not advance to ${spellName}: ${JSON.stringify(state.decision)}`);
+          }
+          state = dispatchPriority(game, action);
+        }
+
+        const castAction = state.decision?.actions?.find((action) => action.label?.includes(spellName));
+        if (!castAction) {
+          throw new Error(`could not cast ${spellName}: ${JSON.stringify(state.decision)}`);
+        }
+        state = dispatchPriority(game, castAction);
+
+        if (state.decision?.kind !== "mana_payment") {
+          throw new Error(`${spellName} did not ask for mana payment: ${JSON.stringify(state.decision)}`);
+        }
+        state = recordedDispatch(game, {
+          type: "mana_payment",
+          response: {
+            action: "confirm",
+            plan_id: state.decision.plan_id,
+            request_hash: state.decision.request_hash,
+          },
+        });
+
+        for (let step = 0; step < 10; step += 1) {
+          if (state.decision?.kind === "select_objects") break;
+          const action = (state.decision?.actions || []).find(
+            (candidate) => candidate.action_ref?.kind === "pass_priority"
+          ) || state.decision?.actions?.[0];
+          if (!action) {
+            throw new Error(`could not reach ${spellName} inspection prompt: ${JSON.stringify(state.decision)}`);
+          }
+          state = dispatchPriority(game, action);
+        }
+
+        const checkpointOnly = new mod.WasmGame();
+        checkpointOnly.registerExternalCardSourcesJson(JSON.stringify(cardSources));
+        checkpointOnly.importSyncCheckpoint(game.exportSyncCheckpoint(), 0);
+        const importedKind = checkpointOnly.uiState().decision?.kind;
+        const recovered = new mod.WasmGame();
+        recovered.registerExternalCardSourcesJson(JSON.stringify(cardSources));
+        const replayGame = {
+          startMatch: config => { recovered.startMatch(config); recovered.addCardToZone(0, spellName, "hand", true); recovered.addCardToZone(0, landName, "battlefield", true); },
+          setPerspective: p => recovered.setPerspective(p),
+          // The worker can publish a priority snapshot before background
+          // action enumeration completes. Replay must use engine validation.
+          uiState: () => {
+            const snapshot = recovered.uiState();
+            return snapshot.decision?.kind === "priority"
+              ? { ...snapshot, decision: { ...snapshot.decision, actions: [], analysis_complete: false } }
+              : snapshot;
+          },
+          dispatch: command => recovered.dispatch(command),
+        };
+        const replayed = await replayTrustedMatch(replayGame, config, acceptedActions, 0);
+        const choice = { type: "select_objects", object_ids: [] };
+        const originalAfter = game.dispatch(choice);
+        const recoveredAfter = recovered.dispatch(choice);
+        return { importedKind, originalKind: state.decision.kind, replayedKind: replayed.decision.kind,
+          originalAfterKind: originalAfter.decision?.kind, recoveredAfterKind: recoveredAfter.decision?.kind };
+
+      }
+
+      return {
+        scry: await advanceToInspectionPrompt({
+          spellName: "Preordain",
+          landName: "Island",
+          fillerName: "Mountain",
+        }),
+        surveil: await advanceToInspectionPrompt({
+          spellName: "Barrier of Bones",
+          landName: "Swamp",
+          fillerName: "Mountain",
+        }),
+      };
+    }, {
+      wasmModuleUrl: WASM_MODULE_URL,
+      cardSources,
+    });
+
+    for (const resultCase of [result.scry, result.surveil]) {
+      assert.equal(resultCase.originalKind, "select_objects");
+      assert.notEqual(resultCase.importedKind, resultCase.originalKind, "checkpoint loses the pending choice");
+      assert.equal(resultCase.replayedKind, resultCase.originalKind);
+      assert.equal(resultCase.recoveredAfterKind, resultCase.originalAfterKind);
+    }
+    assert.deepEqual(pageErrors, []);
+  } finally {
+    if (browser) await browser.close();
+    await vite.close();
+  }
+});

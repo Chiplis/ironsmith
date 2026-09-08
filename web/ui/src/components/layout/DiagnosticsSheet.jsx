@@ -113,16 +113,24 @@ export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTr
   const lobbyPlayers = Array.isArray(multiplayer?.players) ? multiplayer.players : [];
   const clock = multiplayer?.matchClock || null;
 
-  const handleCopy = async () => {
-    const payload = exportDiagnostics({
+  const report = () => exportDiagnostics({
       multiplayer: {
         mode: multiplayer?.mode, role: multiplayer?.role, lastAppliedSequence: multiplayer?.lastAppliedSequence,
         submittingAction: multiplayer?.submittingAction, peerWait, connectionWarnings: multiplayer?.connectionWarnings, matchClock: clock,
         players: lobbyPlayers,
       },
-      game: { phase: state?.phase, step: state?.step, decision: state?.decision?.kind, priority_player: state?.priority_player, turn: state?.turn },
-    });
-    await copyTextToClipboard(`${JSON.stringify(payload, null, 2)}\n`);
+      game: { phase: state?.phase, step: state?.step, decision: state?.decision?.kind, priority_player: state?.priority_player, turn: state?.turn_number ?? state?.turn },
+    }, state);
+  const handleCopy = async () => {
+    await copyTextToClipboard(`${JSON.stringify(report(), null, 2)}\n`);
+  };
+  const handleDownload = () => {
+    const url = URL.createObjectURL(new Blob([JSON.stringify(report(), null, 2)], { type: "application/json" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `ironsmith-diagnostics-${Date.now()}.json`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const triggerNode = isValidElement(trigger)
@@ -237,6 +245,9 @@ export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTr
                 <div className="diagnostics-toolbar">
                   <Button type="button" variant="secondary" size="sm" className="stone-pill" onClick={handleCopy}>
                     <ClipboardCopy className="size-3.5" aria-hidden="true" /> Copy report
+                  </Button>
+                  <Button type="button" variant="secondary" size="sm" className="stone-pill" onClick={handleDownload}>
+                    Download report
                   </Button>
                   <Button type="button" variant="secondary" size="sm" className="stone-pill" onClick={() => resetDiagnostics()}>
                     <Eraser className="size-3.5" aria-hidden="true" /> Clear

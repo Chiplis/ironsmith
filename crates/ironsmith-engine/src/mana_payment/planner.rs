@@ -1,4 +1,4 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{Hash, Hasher};
 
 use crate::ability::{AbilityKind, ActivatedAbilityRuntimeExt as _};
@@ -38,6 +38,21 @@ pub fn plan_first_mana_payment(
     request: &ManaPaymentRequest,
 ) -> Result<ManaPaymentPlan, ManaPaymentFailure> {
     ManaPaymentPlanner::default().first_plan(game, request)
+}
+
+/// Check for one valid payment without ranking plans for display or execution.
+/// Lazy activation exploration is confined to existence checks so preview plan
+/// ordering remains compatible with ranked plan validation at commit time.
+pub fn check_mana_payment(
+    game: &GameState,
+    request: &ManaPaymentRequest,
+) -> Result<(), ManaPaymentFailure> {
+    ManaPaymentPlanner {
+        lazy_candidates: true,
+        ..Default::default()
+    }
+    .first_plan(game, request)
+    .map(|_| ())
 }
 
 /// Legal source-level controls the client may use to constrain replanning.
@@ -249,6 +264,7 @@ pub fn execute_mana_payment_plan(
 #[derive(Debug, Default)]
 pub struct ManaPaymentPlanner {
     visited_nodes: usize,
+    lazy_candidates: bool,
     sliced: bool,
     remaining: usize,
     pending: bool,
@@ -424,7 +440,13 @@ impl ManaPaymentPlanner {
             let index = self.search_index;
             self.search_index += 1;
             let search = self.searches.entry(index).or_insert_with(|| {
-                CandidateSearch::new(game, request, depth_limit, stop_after_first)
+                CandidateSearch::new(
+                    game,
+                    request,
+                    depth_limit,
+                    stop_after_first,
+                    self.lazy_candidates,
+                )
             });
             let result = search.step(request, &mut self.remaining);
             self.visited_nodes = search.visited;
@@ -436,7 +458,13 @@ impl ManaPaymentPlanner {
                 }
             }
         } else {
-            let mut search = CandidateSearch::new(game, request, depth_limit, stop_after_first);
+            let mut search = CandidateSearch::new(
+                game,
+                request,
+                depth_limit,
+                stop_after_first,
+                self.lazy_candidates,
+            );
             {
                 let mut budget = usize::MAX;
                 let result = search
@@ -476,14 +504,24 @@ struct CandidateSearch {
     out: Vec<(ManaPaymentScore, GameState, Vec<PlannedManaActivation>)>,
     limited: bool,
     expansion: Option<Expansion>,
+    deferred_expansions: Vec<Expansion>,
+    first_seen_depths: HashMap<u64, usize>,
     depth_limit: usize,
     first: bool,
+    lazy_candidates: bool,
     result: Option<Result<Vec<Candidate>, ManaPaymentFailure>>,
 }
 
 impl CandidateSearch {
-    fn new(game: GameState, request: &ManaPaymentRequest, depth_limit: usize, first: bool) -> Self {
-        let seen = HashSet::from([safe_search_state_key(&game, request.payer)]);
+    fn new(
+        game: GameState,
+        request: &ManaPaymentRequest,
+        depth_limit: usize,
+        first: bool,
+        lazy_candidates: bool,
+    ) -> Self {
+        let root_key = safe_search_state_key(&game, request.payer);
+        let seen = HashSet::from([root_key]);
         Self {
             queue: VecDeque::from([(game, Vec::new())]),
             seen,
@@ -492,8 +530,11 @@ impl CandidateSearch {
             out: Vec::new(),
             limited: false,
             expansion: None,
+            deferred_expansions: Vec::new(),
+            first_seen_depths: HashMap::from([(root_key, 0)]),
             depth_limit,
             first,
+            lazy_candidates,
             result: None,
         }
     }
@@ -509,6 +550,8 @@ impl CandidateSearch {
         };
         self.queue.clear();
         self.expansion = None;
+        self.deferred_expansions.clear();
+        self.first_seen_depths.clear();
         self.seen.clear();
         self.result = Some(result.clone());
         Some(result)
@@ -526,7 +569,42 @@ impl CandidateSearch {
             if let Some(mut expansion) = self.expansion.take() {
                 if let Some(choice) = expansion.choices.next() {
                     if let Some(prepared) = prepare_activation(&expansion.game, request, choice) {
-                        expansion.prepared.push(prepared);
+                        if self.lazy_candidates {
+                            // Follow one candidate before simulating its siblings. Keep
+                            // the parent iterator so failed branches and sliced searches
+                            // resume without rebuilding or losing alternatives.
+                            let (_, staged, activation) = prepared;
+                            let mut next_path = expansion.path.clone();
+                            next_path.push(SearchStep { activation });
+                            // Unlike breadth-first search, a later visit can have
+                            // more depth remaining. Do not prune that shorter path.
+                            let duplicate =
+                                if next_path.iter().all(|step| step.activation.undo_safe) {
+                                    let key = safe_search_state_key(&staged, request.payer);
+                                    let previous =
+                                        self.first_seen_depths.entry(key).or_insert(usize::MAX);
+                                    if *previous <= next_path.len() {
+                                        true
+                                    } else {
+                                        *previous = next_path.len();
+                                        false
+                                    }
+                                } else {
+                                    false
+                                };
+                            if !duplicate {
+                                if self.enqueued >= MAX_SEARCH_NODES {
+                                    self.limited = true;
+                                    return self.finish();
+                                }
+                                self.enqueued += 1;
+                                self.queue.push_front((staged, next_path));
+                                self.deferred_expansions.push(expansion);
+                                continue;
+                            }
+                        } else {
+                            expansion.prepared.push(prepared);
+                        }
                     }
                     self.expansion = Some(expansion);
                     continue;
@@ -552,6 +630,10 @@ impl CandidateSearch {
                 continue;
             }
             let Some((game, path)) = self.queue.pop_front() else {
+                if let Some(expansion) = self.deferred_expansions.pop() {
+                    self.expansion = Some(expansion);
+                    continue;
+                }
                 return self.finish();
             };
             self.visited += 1;
@@ -614,6 +696,7 @@ fn prepare_activation(
     {
         return None;
     }
+    staged.refresh_continuous_state();
     let after = staged
         .player(request.payer)
         .map(|player| player.mana_pool.clone())
@@ -1562,6 +1645,51 @@ mod tests {
 
         assert!(all.iter().any(|candidate| candidate.id == first.id));
         assert_eq!(first.expected_pool_after_payment.total(), 0);
+    }
+
+    #[test]
+    fn affordability_skips_sibling_simulations_and_backtracks_when_needed() {
+        let (mut game, alice) = game();
+        for _ in 0..32 {
+            let definition = CardBuilder::new(CardId::new(), "Test Forest")
+                .card_types(vec![CardType::Land])
+                .build();
+            let land = game.create_object_from_card(&definition, alice, Zone::Battlefield);
+            game.object_mut(land)
+                .unwrap()
+                .abilities_mut()
+                .push(crate::ability::Ability::mana(
+                    crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()),
+                    vec![ManaSymbol::Green],
+                ));
+        }
+        let source = game.new_object_id();
+        let request = request(&game, alice, source, ManaCost::new().add_generic(1));
+        let mut search = CandidateSearch::new(game.clone(), &request, 2, true, true);
+        // Visit the root, simulate one activation, then accept that child.
+        // Eager sibling preparation cannot finish within these three work units.
+        let candidates = search.step(&request, &mut 3).unwrap().unwrap();
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].1.len(), 1);
+        assert!(can_pay_request(&candidates[0].0, &request));
+        assert!(game.battlefield.iter().all(|id| !game.is_tapped(*id)));
+
+        // A failed first branch must not discard the remaining candidates.
+        let required = *game.battlefield.last().unwrap();
+        let mut request = request;
+        request.preferences.required_sources.push(required);
+        let mut search = CandidateSearch::new(game.clone(), &request, 1, true, true);
+        let mut slices = 0;
+        let candidates = loop {
+            slices += 1;
+            assert!(slices < 1000);
+            if let Some(result) = search.step(&request, &mut 1) {
+                break result.unwrap();
+            }
+        };
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].1[0].source, required);
+        assert!(check_mana_payment(&game, &request).is_ok());
     }
 
     #[test]

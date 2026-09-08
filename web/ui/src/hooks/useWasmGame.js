@@ -1,3 +1,4 @@
+import { beginEngineRequest, endEngineRequest } from '../lib/action-diagnostics.js';
 import { useEffect, useRef, useState } from "react";
 
 const MIN_INIT_PHASE_MS = 180;
@@ -157,7 +158,7 @@ export function useWasmGame() {
     );
 
     const rejectPending = (err) => {
-      for (const { reject } of pending.values()) reject(err);
+      for (const [id, { reject }] of pending) { endEngineRequest(id); reject(err); }
       pending.clear();
     };
 
@@ -183,7 +184,9 @@ export function useWasmGame() {
         }
         const id = nextRequestId++;
         pending.set(id, { resolve, reject });
-        worker.postMessage({ type: "call", id, method, args });
+        beginEngineRequest(id, method);
+        try { worker.postMessage({ type: "call", id, method, args }); }
+        catch (error) { pending.delete(id); endEngineRequest(id); reject(error); }
       });
 
     const selectZiffleWorker = () => {
@@ -344,6 +347,7 @@ export function useWasmGame() {
         const req = pending.get(msg.id);
         if (!req) return;
         pending.delete(msg.id);
+        endEngineRequest(msg.id);
         if (msg.ok) req.resolve(msg.result);
         else req.reject(toError(msg.error));
         return;

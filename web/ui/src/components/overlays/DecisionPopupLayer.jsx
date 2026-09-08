@@ -2301,12 +2301,15 @@ function ManaPaymentToolbarPool({ label, pool }) {
   );
 }
 
-function ManaPaymentToolbarMeta({ payment, sourceObjectId = null, onInspectObject = null }) {
+function ManaPaymentToolbarMeta({ payment, sourceObjectId = null, onInspectObject = null, showCost = false }) {
   if (!payment) return null;
   const sourceName = payment.source_name || "mana cost";
   return (
     <div className="mana-payment-toolbar-meta">
       <div className="mana-payment-toolbar-title" title={`Pay for ${sourceName}`}>
+        {showCost ? <span className="inline-flex items-center gap-1" aria-label="Mana cost">
+          {buildManaPaymentGroups(payment).map(group => <ManaSymbol key={group.key} sym={group.kind === "generic" ? String(group.displayCount) : group.displayCode} size={16} />)}
+        </span> : null}
         <span>Pay for </span>
         <DecisionCardNameTrigger objectId={sourceObjectId} onInspect={onInspectObject}>
           {sourceName}
@@ -2854,7 +2857,7 @@ function PriorityBar({
             compactLandscapeViewport || isPriorityDecision ? "px-0" : "px-2"
           )}
         >
-        <ManaPaymentTab manaPayment={manaPayment} anchorRect={inline ? manaTabAnchorRect : null} />
+        {!replaceMiddleControls ? <ManaPaymentTab manaPayment={manaPayment} anchorRect={inline ? manaTabAnchorRect : null} /> : null}
         <div
           className={cn(
             "priority-inline-panel pointer-events-auto relative flex h-full w-full flex-col py-0",
@@ -3023,6 +3026,7 @@ function PriorityBar({
                   {manaPayment ? (
                     <ManaPaymentToolbarMeta
                       payment={manaPayment}
+                      showCost={replaceMiddleControls}
                       sourceObjectId={decision?.source_id}
                       onInspectObject={handleActionCardInspect}
                     />

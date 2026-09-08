@@ -28,6 +28,7 @@ const store = {
   stalls: [],
   mainThread: { lagMs: 0, worstStallMs: 0, worstStallAt: null, lastTickAt: null, longTasks: 0 },
   engine: null,
+  engineRequests: new Map(),
   listeners: new Set(),
   version: 0,
   traceSequence: 0,
@@ -276,6 +277,13 @@ export function stopMainThreadMonitor() {
   monitorHandle = null;
 }
 
+// Track unanswered worker calls separately from the last completed dispatch.
+// Method names and timings only: request arguments can contain private cards.
+export function beginEngineRequest(id, method) {
+  store.engineRequests.set(id, { id, method, startedAt: now(), startedAtWall: Date.now() });
+}
+export function endEngineRequest(id) { store.engineRequests.delete(id); }
+
 // ---------------------------------------------------------------------------
 // Reading
 
@@ -304,15 +312,34 @@ export function getDiagnosticsSnapshot() {
     })),
     mainThread: { ...store.mainThread, stalls: store.stalls.filter((stall) => stall.at >= at - STALL_WINDOW_MS) },
     engine: store.engine,
+    engineRequests: { count: store.engineRequests.size,
+      oldest: [...store.engineRequests.values()].slice(0, 12).map(request => ({ ...request, elapsedMs: at - request.startedAt })) },
   };
 }
 
-export function exportDiagnostics(extra = null) {
+export function exportDiagnostics(extra = null, gameState = null) {
+  const snapshot = getDiagnosticsSnapshot();
+  // Export the last published UI state without waiting for the worker. Unlike
+  // event metadata, this must retain complete card lists and nested decisions.
+  let capturedGameState = null;
+  let gameStateError = null;
+  try {
+    capturedGameState = gameState == null ? null : JSON.parse(JSON.stringify(gameState));
+  } catch (error) {
+    gameStateError = String(error?.message || error);
+  }
   return {
     exportedAt: new Date().toISOString(),
-    ...getDiagnosticsSnapshot(),
-    perfEvents: typeof window !== "undefined" && Array.isArray(window.__ironsmithPerfEvents) ? window.__ironsmithPerfEvents.slice(-100) : [],
     extra: compact(extra),
+    gameState: capturedGameState,
+    gameStateSource: capturedGameState == null ? null : "last_published_ui_snapshot",
+    ...(gameStateError ? { gameStateError } : {}),
+    at: snapshot.at, atWall: snapshot.atWall,
+    current: snapshot.current, engine: snapshot.engine, engineRequests: snapshot.engineRequests,
+    peers: snapshot.peers, mainThread: snapshot.mainThread,
+    events: snapshot.events,
+    traces: snapshot.traces,
+    perfEvents: typeof window !== "undefined" && Array.isArray(window.__ironsmithPerfEvents) ? window.__ironsmithPerfEvents.slice(-100) : [],
   };
 }
 

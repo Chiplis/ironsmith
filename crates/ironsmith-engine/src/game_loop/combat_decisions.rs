@@ -938,6 +938,7 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
     next_combat.attackers.clear();
     next_combat.attacking_bands.clear();
     next_combat.had_to_attack_this_combat.clear();
+    game.refresh_continuous_state();
     let post_cost_view = DerivedGameView::new(game);
     let post_cost_candidates = prepared
         .declarations

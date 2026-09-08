@@ -2985,6 +2985,9 @@ fn effect_applies_to_direct(
     _commanders: &HashSet<ObjectId>,
     game: &crate::game_state::GameState,
 ) -> bool {
+    if effect_target_definitely_excludes_object(effect, object, objects) {
+        return false;
+    }
     if !continuous_effect_duration_and_condition_are_active(effect, game) {
         return false;
     }
@@ -3099,6 +3102,31 @@ fn continuous_effect_condition_is_active(
     }
 
     true
+}
+
+// Reject identity/zone mismatches before evaluating conditions, which may
+// themselves query characteristics of other objects. Leave dynamic filters
+// and characteristics-dependent targeting to the normal layer evaluation.
+fn effect_target_definitely_excludes_object(
+    effect: &ContinuousEffect,
+    object: &Object,
+    objects: &ObjectMap,
+) -> bool {
+    if let EffectSourceType::Resolution { locked_targets } = &effect.source_type {
+        return object.zone != Zone::Battlefield || !locked_targets.contains(&object.id);
+    }
+    match &effect.applies_to {
+        EffectTarget::Specific(id) => *id != object.id,
+        EffectTarget::Source => effect.source != object.id,
+        EffectTarget::AllPermanents | EffectTarget::AllCreatures => object.zone != Zone::Battlefield,
+        EffectTarget::AttachedTo(source_id) => {
+            object.zone != Zone::Battlefield
+                || objects.get(source_id).is_none_or(|source| {
+                    source.attached_to != Some(crate::object::AttachmentTarget::Object(object.id))
+                })
+        }
+        EffectTarget::Filter(_) => false,
+    }
 }
 
 fn effect_target_applies_to_direct(

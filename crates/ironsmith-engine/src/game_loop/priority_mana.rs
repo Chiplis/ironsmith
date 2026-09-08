@@ -650,6 +650,7 @@ pub(super) fn apply_mana_payment_plan_response(
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
     use crate::mana_payment::ManaPaymentResponse;
+    game.refresh_continuous_state();
 
     if let ManaPaymentResponse::Activate {
         source,
@@ -2994,10 +2995,14 @@ pub(super) fn finalize_spell_cast(
     let _ = payment_trace;
 
     // All nonmana components have already been paid by the staged transaction.
-    let mut base_mana_cost = game.object(spell_id).and_then(|obj| {
-        crate::decision::spell_mana_cost_for_cast(game, caster, obj, &casting_method, from_zone)
-    });
-    if base_mana_cost_waived {
+    let mut base_mana_cost = if mana_already_paid {
+        None
+    } else {
+        game.object(spell_id).and_then(|obj| {
+            crate::decision::spell_mana_cost_for_cast(game, caster, obj, &casting_method, from_zone)
+        })
+    };
+    if base_mana_cost_waived && !mana_already_paid {
         base_mana_cost = Some(crate::mana::ManaCost::new());
     }
 
@@ -3176,6 +3181,7 @@ pub(super) fn finalize_spell_cast(
     // creature you controlled as you cast this spell".  Re-evaluating the
     // battlefield at resolution would be observably wrong after a creature
     // gains/loses a counter, an Aura, or Equipment, or changes zones.
+    game.refresh_continuous_state();
     let cast_filter = crate::target::ObjectFilter::creature()
         .modified()
         .controlled_by(crate::target::PlayerFilter::You);
@@ -3238,6 +3244,7 @@ pub(super) fn finalize_spell_cast(
     if let Some(x) = x_value {
         entry = entry.with_x(x);
     }
+    game.refresh_continuous_state();
     game.push_to_stack(entry);
 
     if let Some(spell_obj) = game.object(new_id).cloned() {

@@ -1111,6 +1111,7 @@ pub fn execute_cleanup_step(game: &mut GameState) {
     // Restrictions are materialized into CantEffectTracker. Rebuild it only
     // after both direct restriction instances and continuous effects have
     // expired so end-of-turn "can't" effects cannot remain cached.
+    game.refresh_continuous_state();
     game.update_cant_effects();
 
     // Normally no priority during cleanup, but if triggers/SBAs happen, there's a new cleanup

@@ -1,3 +1,4 @@
+import DiagnosticsSheet from "@/components/layout/DiagnosticsSheet";
 import PriorityHoldControl from "@/components/decisions/PriorityHoldControl";
 import { useCastPlayerHovered } from "@/context/DragContext";
 import { useCallback, useRef, useState } from "react";
@@ -249,23 +250,6 @@ export default function TableCore({
           </span>
         </span>
         <PriorityHoldControl />
-        {zoneActionControls ? (
-          <button
-            type="button"
-            className="table-tools-toggle"
-            aria-expanded={tableToolsExpanded}
-            aria-controls="table-utility-actions"
-            aria-label={t(tableToolsExpanded ? "action.hideTableTools" : "action.showTableTools")}
-            title={t(tableToolsExpanded ? "action.hideTableTools" : "action.showTableTools")}
-            onClick={() => setTableToolsExpanded((expanded) => !expanded)}
-          >
-            {tableToolsExpanded ? (
-              <ChevronDown aria-hidden="true" />
-            ) : (
-              <ChevronRight aria-hidden="true" />
-            )}
-          </button>
-        ) : null}
         <ManaPool
           pool={me.mana_pool}
           alwaysVisible
@@ -300,40 +284,65 @@ export default function TableCore({
         "--middle-inspector-width": "clamp(460px, calc(100vw - 600px), 840px)",
       }}
     >
-      <div
-        className="table-shared-control-stack relative z-[1] grid min-h-0 gap-0 overflow-visible"
-        aria-hidden={expandedActionBar ? "true" : undefined}
-        inert={expandedActionBar ? true : undefined}
-      >
-        <div className="table-shared-toolbar-slot relative overflow-visible">
-          {middleToolbarElement}
+      <div className="table-decision-strips relative min-w-0">
+        <div
+          className="table-shared-control-stack relative z-[1] grid min-h-0 gap-0 overflow-visible"
+          aria-hidden={expandedActionBar ? "true" : undefined}
+          inert={expandedActionBar ? true : undefined}
+        >
+          <div className="table-shared-toolbar-slot relative overflow-visible">
+            {middleToolbarElement}
+          </div>
+          <div className="table-shared-player-slot relative overflow-visible">
+            {middlePlayerHeaderElement}
+          </div>
         </div>
-        <div className="table-shared-player-slot relative overflow-visible">
-          {middlePlayerHeaderElement}
-        </div>
+        {expandedActionBar ? (
+          <div
+            className="table-shared-action-slot table-decision-overlay-slot absolute inset-0 z-[115] overflow-visible"
+            data-tools-expanded={activeZoneActionControls ? "true" : "false"}
+          >
+            {actionBarElement}
+          </div>
+        ) : null}
+        {middleInspectorDock ? (
+          <div
+            className="table-shared-inspector-dock pointer-events-none absolute right-2 z-[110] flex items-start justify-end overflow-visible"
+            style={{
+              top: "2px",
+              right: "20px",
+              bottom: "0px",
+              width: "var(--middle-inspector-width)",
+            }}
+            data-inspector-dock="middle"
+          >
+            {middleInspectorDock}
+          </div>
+        ) : null}
       </div>
-      {expandedActionBar ? (
-        <div
-          className="table-shared-action-slot table-decision-overlay-slot absolute inset-0 z-[115] overflow-visible"
-          data-tools-expanded={activeZoneActionControls ? "true" : "false"}
-        >
-          {actionBarElement}
+      <div className="table-persistent-utility-strip" aria-label="Table utilities">
+        <DiagnosticsSheet />
+        <div id="table-utility-actions" className="table-inline-utility-actions" hidden={!tableToolsExpanded}>
+          {zoneActionControls}
         </div>
-      ) : null}
-      {middleInspectorDock ? (
-        <div
-          className="table-shared-inspector-dock pointer-events-none absolute right-2 z-[110] flex items-start justify-end overflow-visible"
-          style={{
-            top: "2px",
-            right: "20px",
-            bottom: "0px",
-            width: "var(--middle-inspector-width)",
-          }}
-          data-inspector-dock="middle"
-        >
-          {middleInspectorDock}
-        </div>
-      ) : null}
+        {zoneActionControls ? (
+          <button
+            type="button"
+            className="table-tools-toggle"
+            aria-expanded={tableToolsExpanded}
+            aria-controls="table-utility-actions"
+            aria-label={t(tableToolsExpanded ? "action.hideTableTools" : "action.showTableTools")}
+            title={t(tableToolsExpanded ? "action.hideTableTools" : "action.showTableTools")}
+            onClick={() => setTableToolsExpanded((expanded) => !expanded)}
+          >
+            {tableToolsExpanded ? (
+              <ChevronDown aria-hidden="true" />
+            ) : (
+              <ChevronRight aria-hidden="true" />
+            )}
+          </button>
+        ) : null}
+      </div>
     </div>
   ) : null;
   const planarZoneElement = (
@@ -413,7 +422,7 @@ export default function TableCore({
         headerInspectorDock={!mergeActionBarIntoMyZone && !sharedMiddleElement ? middleInspectorDock : null}
         headerActionBar={!mergeActionBarIntoMyZone && !sharedMiddleElement ? actionBarElement : null}
         embeddedActionBar={mergeActionBarIntoMyZone ? actionBarElement : null}
-        zoneActionControls={!mergeActionBarIntoMyZone ? zoneActionControls : null}
+        zoneActionControls={!mergeActionBarIntoMyZone && !sharedMiddleElement ? zoneActionControls : null}
         zoneActionControlsOpen={tableToolsExpanded}
         zoneActionRailOffset={!mergeActionBarIntoMyZone && !sharedMiddleElement && activeZoneActionControls ? actionBarHeight : 0}
         dockStackRail={dockStackRailInBoard}

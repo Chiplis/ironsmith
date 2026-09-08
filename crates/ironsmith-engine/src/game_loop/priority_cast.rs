@@ -2237,6 +2237,7 @@ pub(super) fn finalize_pending_spell_cast(
     // triggers only after the proposal survives legality and payment. Until
     // this point they remain in GameState so CR 729 rollback erases them with
     // the rest of an illegal proposal.
+    game.refresh_continuous_state();
     drain_pending_trigger_events(game, trigger_queue);
     let effect_driven = pending.effect_driven;
     let base_mana_cost_waived = pending.base_mana_cost_waived;
@@ -2444,7 +2445,7 @@ pub(super) fn prompt_spell_assist_player(
     mut pending: PendingCast,
 ) -> Result<GameProgress, GameLoopError> {
     let caster_can_pay = spell_mana_payment_request(game, &pending)
-        .is_ok_and(|request| crate::mana_payment::plan_mana_payment(game, &request).is_ok());
+        .is_ok_and(|request| crate::mana_payment::check_mana_payment(game, &request).is_ok());
     let mut options = vec![crate::decisions::context::SelectableOption::with_legality(
         0,
         "Do not choose a player to assist",
@@ -2531,14 +2532,14 @@ pub(super) fn assist_generic_contribution_is_legal(
             crate::mana::ManaCost::new().add_generic(amount),
         )
         .with_spend_policy(game.mana_spend_policy(assistant, Some(pending.spell_id)));
-        if crate::mana_payment::plan_mana_payment(game, &assistant_request).is_err() {
+        if crate::mana_payment::check_mana_payment(game, &assistant_request).is_err() {
             return false;
         }
     }
     let mut caster_pending = pending.clone();
     caster_pending.assist_generic_contribution = amount;
     spell_mana_payment_request(game, &caster_pending)
-        .is_ok_and(|request| crate::mana_payment::plan_mana_payment(game, &request).is_ok())
+        .is_ok_and(|request| crate::mana_payment::check_mana_payment(game, &request).is_ok())
 }
 
 pub(super) fn prompt_spell_assist_payment_plan(
@@ -2710,7 +2711,7 @@ pub(super) fn spell_mana_payment_request(
 
 pub(super) fn spell_mana_payment_is_legal(game: &GameState, pending: &PendingCast) -> bool {
     if spell_mana_payment_request(game, pending)
-        .is_ok_and(|request| crate::mana_payment::plan_mana_payment(game, &request).is_ok())
+        .is_ok_and(|request| crate::mana_payment::check_mana_payment(game, &request).is_ok())
     {
         return true;
     }

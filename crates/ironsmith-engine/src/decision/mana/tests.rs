@@ -653,3 +653,48 @@ fn cavern_hoard_dragon_cost_reduction_is_zero_without_opponent_artifacts() {
         "artifacts controlled by Cavern-Hoard Dragon's caster must not reduce its cost"
     );
 }
+
+#[test]
+fn optional_and_x_proposals_reuse_characteristics_without_mutating_live_state() {
+    for has_x in [false, true] {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::new(), "Proposal Cache Probe")
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        let id = game.create_object_from_card(&card, alice, Zone::Hand);
+        game.object_mut(id).unwrap().optional_costs = vec![crate::cost::OptionalCost::custom(
+            "Optional probe",
+            crate::cost::TotalCost::free(),
+        )]
+        .into();
+        game.refresh_continuous_state();
+        let spell = game.object(id).unwrap();
+        let cost = has_x.then(|| ManaCost::from_symbols(vec![ManaSymbol::X]));
+        let mut visited = Vec::new();
+        assert!(!any_payable_optional_cost_proposal(
+            &game,
+            alice,
+            spell,
+            cost.as_ref(),
+            &CastingMethod::Normal,
+            |hypothetical, proposal, _, _| {
+                visited.push(proposal.optional_costs_paid.was_paid(0));
+                assert_eq!(proposal.x_value, has_x.then_some(0));
+                let first = hypothetical.calculated_characteristics(id).unwrap();
+                let before = hypothetical.work_counters().characteristics_full_recomputes;
+                let second = hypothetical.calculated_characteristics(id).unwrap();
+                assert_eq!(first.card_types, second.card_types);
+                assert_eq!(
+                    hypothetical.work_counters().characteristics_full_recomputes,
+                    before,
+                    "repeated queries within a proposal must reuse characteristics"
+                );
+                false
+            },
+        ));
+        assert_eq!(visited, vec![false, true]);
+        assert!(!game.object(id).unwrap().optional_costs_paid.any_paid());
+        assert_eq!(game.object(id).unwrap().x_value, None);
+    }
+}

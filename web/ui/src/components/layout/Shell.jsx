@@ -1,6 +1,7 @@
 import { useEffect, useCallback, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { parseNames } from "@/lib/constants";
+import { installMainDecisionShortcut } from "@/lib/main-decision-shortcut";
 import { UI_NOTICE_EVENT } from "@/lib/ui-notices";
 import { decodeBase64UrlUtf8, normalizePuzzlePayload, PUZZLE_ZONE_ORDER } from "@/lib/puzzles";
 import {
@@ -18,12 +19,14 @@ import Topbar from "./Topbar";
 import TopbarUtilityControls from "./TopbarUtilityControls";
 import LobbyOverlay from "./LobbyOverlay";
 import AddCardBar from "./AddCardBar";
+import DiagnosticsSheet from "./DiagnosticsSheet";
 import TableActionControls from "./TableActionControls";
 import Workspace from "./Workspace";
 import MobileLandscapeGate from "./MobileLandscapeGate";
 import LogDrawer from "@/components/overlays/LogDrawer";
 
 export default function Shell() {
+  useEffect(() => installMainDecisionShortcut(document), []);
   const {
     game,
     state,
@@ -581,6 +584,9 @@ export default function Shell() {
       data-mobile-overlay-shell={landscapeMobileViewport ? "true" : "false"}
     >
       {!deckLoadingMode && !puzzleSetupMode && multiplayer?.rematch?.phase !== "sideboarding" && <MobileLandscapeGate />}
+      {(!dockToolbarsInTable || deckLoadingMode || puzzleSetupMode) ? (
+        <div className="table-persistent-diagnostics-fallback"><DiagnosticsSheet /></div>
+      ) : null}
       {!dockToolbarsInTable ? topbarElement : null}
       {renderTopLevelAddCardBar ? addCardBarElement : null}
       <Workspace

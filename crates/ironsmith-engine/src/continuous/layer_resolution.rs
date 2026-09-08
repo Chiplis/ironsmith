@@ -1130,6 +1130,9 @@ pub(super) fn effect_applies_to(
     chars: &CalculatedCharacteristics,
     ctx: &CalculationContext,
 ) -> bool {
+    if effect_target_definitely_excludes_object(effect, object, ctx.objects) {
+        return false;
+    }
     if !continuous_effect_duration_and_condition_are_active(effect, ctx.game) {
         return false;
     }

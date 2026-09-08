@@ -419,6 +419,10 @@ export function createMatchSeed({
   );
   hash = mixMatchSeedCardLists(hash, sideboards);
 
+  // Generate once on the host; peers and reconnects reuse the payload's seed.
+  // Identical decks and rematches must still receive fresh randomness.
+  hash = mixMatchSeedBytes(hash, globalThis.crypto.getRandomValues(new Uint8Array(16)));
+
   const seed = Number(hash & BigInt(Number.MAX_SAFE_INTEGER));
   return seed > 0 ? seed : 1;
 }

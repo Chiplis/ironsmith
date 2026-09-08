@@ -1092,6 +1092,9 @@ where
                 hypothetical_spell.optional_costs_paid.pay_times(index, 1);
             }
         }
+        if let Some(hypothetical) = hypothetical_storage.as_mut() {
+            hypothetical.refresh_continuous_state();
+        }
         let hypothetical = hypothetical_storage.as_ref().unwrap_or(game);
 
         let mut proposal = spell.clone();
@@ -1176,6 +1179,7 @@ where
             if let Some(game_spell) = x_game.object_mut(spell.id) {
                 game_spell.x_value = Some(x_value);
             }
+            x_game.refresh_continuous_state();
             let x_view = DerivedGameView::new(&x_game);
             if predicate(&x_game, &x_proposal, effective_cost.as_ref(), &x_view) {
                 return true;

@@ -88,11 +88,11 @@ export function compileAndRegisterCardSources(game, input) {
       summary.loaded += Number(registered?.loaded ?? 0);
       if (Array.isArray(registered?.failed)) summary.failed.push(...registered.failed);
     } catch (error) {
-      // A rebuilt engine can reject artifacts baked against an older schema.
-      // Recompile the original source with this engine; never rewrite or bypass
-      // the artifact checksum, or use a mismatched standalone compiler result.
-      if (Array.isArray(source?.artifacts) && source.artifacts.length > 0
-        && source?.group && typeof registerSourceInEngine === "function") {
+      // Recompile rejected sources through the engine's source entry point.
+      // Besides recovering stale artifacts, this records parse failures and
+      // source metadata for subsequent card loading and diagnostics. A failure
+      // in the standalone compiler has not reached the engine at all yet.
+      if (source?.group && typeof registerSourceInEngine === "function") {
         try {
           const registered = registerSourceInEngine.call(game, source);
           summary.loaded += Number(registered?.loaded ?? 0);

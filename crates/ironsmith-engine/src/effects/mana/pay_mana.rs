@@ -164,7 +164,7 @@ fn maximum_affordable_bounded_x(
             x_value,
             reason,
         );
-        crate::mana_payment::plan_mana_payment(game, &request).is_ok()
+        crate::mana_payment::check_mana_payment(game, &request).is_ok()
     };
     if !can_pay(0) {
         return None;
@@ -301,7 +301,7 @@ impl CostExecutableEffect for PayManaEffect {
             x_value,
             crate::costs::PaymentReason::Effect,
         );
-        if crate::mana_payment::plan_mana_payment(game, &request).is_ok() {
+        if crate::mana_payment::check_mana_payment(game, &request).is_ok() {
             Ok(())
         } else {
             Err(CostValidationError::Other(

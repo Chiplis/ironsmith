@@ -890,3 +890,72 @@ fn layer_six_preserves_distinct_static_ability_instances_and_dedups_the_same_ins
     assert!(flanking.contains(&printed.instance_id()));
     assert!(flanking.contains(&granted.instance_id()));
 }
+
+#[test]
+fn unrelated_targets_skip_recursive_graveyard_condition_queries() {
+    let mut game = dynamic_value_test_game();
+    let alice = PlayerId::from_index(0);
+    let card = CardBuilder::new(CardId::new(), "Conditional Source")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+    let mut graveyard = Vec::new();
+    for card_type in [
+        CardType::Artifact,
+        CardType::Land,
+        CardType::Instant,
+        CardType::Sorcery,
+    ] {
+        let card = CardBuilder::new(CardId::new(), "Graveyard Probe")
+            .card_types(vec![card_type])
+            .build();
+        graveyard.push(game.create_object_from_card(&card, alice, Zone::Graveyard));
+    }
+    let probe = graveyard[0];
+    let chars = game.calculated_characteristics(probe).unwrap();
+    let effect = ContinuousEffect::new(
+        source,
+        alice,
+        EffectTarget::Source,
+        Modification::AddAbility(StaticAbility::flying()),
+    )
+    .with_condition(crate::ConditionExpr::PlayerHasCardTypesInGraveyardOrMore {
+        player: PlayerFilter::You,
+        count: 4,
+    });
+    for target in [
+        EffectTarget::Source,
+        EffectTarget::Specific(source),
+        EffectTarget::AllPermanents,
+        EffectTarget::AllCreatures,
+        EffectTarget::AttachedTo(source),
+    ] {
+        let mut effect = effect.clone();
+        effect.applies_to = target;
+        let before = game.work_counters().characteristics_full_recomputes;
+        assert!(!effect_applies_to_direct(
+            &effect,
+            game.object(probe).unwrap(),
+            &chars,
+            game.objects_map(),
+            &game.battlefield,
+            game.commander_objects(),
+            &game
+        ));
+        assert_eq!(
+            game.work_counters().characteristics_full_recomputes,
+            before,
+            "unrelated targets must not evaluate the graveyard condition"
+        );
+    }
+    let source_chars = game.calculated_characteristics(source).unwrap();
+    assert!(effect_applies_to_direct(
+        &effect,
+        game.object(source).unwrap(),
+        &source_chars,
+        game.objects_map(),
+        &game.battlefield,
+        game.commander_objects(),
+        &game
+    ));
+}

@@ -1901,10 +1901,14 @@ export function usePeerLobby({
       }
     };
 
-    void tick();
-    const timerId = window.setInterval(() => {
-      void tick();
-    }, MATCH_CLOCK_TICK_MS);
+    let tickInFlight = false;
+    const runTick = () => {
+      if (disposed || tickInFlight) return;
+      tickInFlight = true;
+      void tick().finally(() => { tickInFlight = false; });
+    };
+    runTick();
+    const timerId = window.setInterval(runTick, MATCH_CLOCK_TICK_MS);
     return () => {
       disposed = true;
       window.clearInterval(timerId);
