@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
+import { fileURLToPath } from 'node:url';
 import { startRelay } from '../../relay/tests/runtime.mjs';
 
 async function setup(t) {
@@ -10,7 +11,7 @@ async function setup(t) {
   const base = `http://127.0.0.1:${port}`;
   const relay = await startRelay(base); t.after(() => relay.dispose());
   const url = String(await relay.ready).replace(/\/$/, '');
-  const server = await createServer({ root: new URL('..', import.meta.url).pathname,
+  const server = await createServer({ root: fileURLToPath(new URL('..', import.meta.url)),
     define: { 'import.meta.env.VITE_LOBBY_RELAY_URL': JSON.stringify(url) },
     server: { host: '127.0.0.1', port, strictPort: true }, logLevel: 'error' });
   await server.listen(); t.after(() => server.close());
