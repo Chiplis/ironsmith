@@ -111,6 +111,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
     const heartbeat = connectionHeartbeatsRef.current.get(key);
     if (heartbeat) {
       heartbeat.lastSeen = Date.now();
+      heartbeat.missedTimeouts = 0;
     }
   }, []);
 
@@ -134,12 +135,23 @@ export function usePeerLobbyConnections(base, servicesRef) {
     clearConnectionHeartbeat(key);
     const { intervalMs, timeoutMs } = peerHeartbeatConfigRef.current;
     if (!intervalMs || !timeoutMs) return;
+    const maxMissedTimeouts = 3;
 
     const heartbeat = {
       lastSeen: Date.now(),
       lastCheck: Date.now(),
+      missedTimeouts: 0,
+      lastTimeoutLogAt: 0,
       timer: window.setInterval(() => {
-        if (!conn || conn.open === false) {
+        const dataChannelState = String(conn?.dataChannel?.readyState || "").toLowerCase();
+        const iceState = String(conn?.peerConnection?.iceConnectionState || "").toLowerCase();
+        if (
+          !conn
+          || conn.open === false
+          || dataChannelState === "closed"
+          || iceState === "failed"
+          || iceState === "closed"
+        ) {
           clearConnectionHeartbeat(key);
           onStale?.("Connection closed");
           return;
@@ -163,12 +175,28 @@ export function usePeerLobbyConnections(base, servicesRef) {
           nowMs - heartbeat.lastSeen > timeoutMs
           && !pendingActionIntentSuppressesHeartbeatStale(nowMs)
         ) {
-          recordPeerSyncPerf("peer_heartbeat:timeout", {
-            connection: key,
-            silent_ms: nowMs - heartbeat.lastSeen,
-            timeout_ms: timeoutMs,
-            connection_open: conn.open !== false,
-          });
+          if (nowMs - heartbeat.lastTimeoutLogAt >= timeoutMs) {
+            recordPeerSyncPerf("peer_heartbeat:timeout", {
+              connection: key,
+              silent_ms: nowMs - heartbeat.lastSeen,
+              timeout_ms: timeoutMs,
+              missed_windows: heartbeat.missedTimeouts + 1,
+              connection_open: conn.open !== false,
+            });
+            heartbeat.lastTimeoutLogAt = nowMs;
+          }
+          heartbeat.missedTimeouts += 1;
+          if (heartbeat.missedTimeouts < maxMissedTimeouts) {
+            // Application-level silence is not proof that WebRTC is dead: the
+            // browser may be backgrounded or the event loop may be suspended.
+            // Require several consecutive windows before recovery is started.
+            safeSend(conn, {
+              type: "peer_heartbeat",
+              protocolVersion: PROTOCOL_VERSION,
+              at: nowMs,
+            });
+            return;
+          }
           clearConnectionHeartbeat(key);
           try {
             conn.close();
