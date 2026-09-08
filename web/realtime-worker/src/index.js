@@ -61,6 +61,7 @@ export class LobbyRoom {
     if (message?.type === "ping") return this.send(session, { type: "pong", at: message.at ?? Date.now() });
     if (message?.type === "action") return this.action(session, message);
     if (message?.type === "resume") return this.resume(session, message);
+    if (message?.type === "snapshot") return this.snapshot(session, message);
     this.send(session, { type: "error", code: "unknown_message" });
   }
 
@@ -76,6 +77,19 @@ export class LobbyRoom {
   async resume(session, message) {
     if (!session.playerId) return this.send(session, { type: "error", code: "join_required" });
     await this.replay(session, Number(message.lastSequence ?? 0));
+  }
+
+  async snapshot(session, message) {
+    if (!session.playerId) return this.send(session, { type: "error", code: "join_required" });
+    const snapshot = message.state;
+    if (snapshot === undefined) return this.send(session, { type: "error", code: "invalid_snapshot" });
+    const encoded = json(snapshot);
+    if (new TextEncoder().encode(encoded).byteLength > MAX_ACTION_BYTES) {
+      return this.send(session, { type: "error", code: "snapshot_too_large" });
+    }
+    const sequence = await this.sequence();
+    await this.state.storage.put("snapshot", { sequence, state: snapshot, at: Date.now() });
+    this.send(session, { type: "snapshot_ack", sequence });
   }
 
   async action(session, message) {
@@ -102,13 +116,20 @@ export class LobbyRoom {
   async replay(session, lastSequence) {
     const current = await this.sequence();
     const from = Math.max(0, Number.isFinite(lastSequence) ? lastSequence : 0);
+    const snapshot = await this.state.storage.get("snapshot");
+    if (snapshot && from < snapshot.sequence && current - from > MAX_REPLAY) {
+      this.send(session, { type: "snapshot_required", sequence: snapshot.sequence, snapshot: snapshot.state });
+      session.lastSequence = snapshot.sequence;
+      return;
+    }
     const records = [];
     for (let sequence = from + 1; sequence <= current && records.length < MAX_REPLAY; sequence += 1) {
       const record = await this.state.storage.get(`sequence:${sequence}`);
       if (record) records.push(record);
     }
-    this.send(session, { type: "replay", from: from + 1, to: current, actions: records });
-    session.lastSequence = current;
+    const complete = records.length === current - from;
+    this.send(session, { type: "replay", from: from + 1, to: current, actions: records, complete });
+    session.lastSequence = complete ? current : from + records.length;
   }
 
   send(session, message) { try { session.socket.send(json(message)); } catch { this.sessions.delete(session.socket); } }
