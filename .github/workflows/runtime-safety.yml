@@ -6,6 +6,14 @@ on:
       - "crates/ironsmith-engine/**"
       - "crates/ironsmith-wasm/**"
       - "crates/ironsmith-web-session/**"
+      - "web/ui/src/hooks/useWasmGame.js"
+      - "web/ui/src/lib/action-diagnostics.js"
+      - "web/ui/src/lib/engine-worker-watchdog.js"
+      - "web/ui/src/workers/wasmGameWorker.js"
+      - "web/ui/tests/action-diagnostics.test.js"
+      - "web/ui/tests/engine-worker-watchdog.test.js"
+      - "web/ui/package.json"
+      - "web/ui/pnpm-lock.yaml"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/runtime-safety.yml"
@@ -29,3 +37,22 @@ jobs:
         run: cargo check -p ironsmith-engine-wasm --target wasm32-unknown-unknown
       - name: Test runtime fault transaction marker
         run: cargo test -p ironsmith-engine --lib runtime_fault_preserves_first_cause_and_is_consumed_once
+
+  browser-worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web/ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable
+      - name: Install UI dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Lint engine worker recovery
+        run: pnpm exec eslint src/hooks/useWasmGame.js src/lib/engine-worker-watchdog.js src/workers/wasmGameWorker.js tests/engine-worker-watchdog.test.js
+      - name: Test watchdog and diagnostics
+        run: node --test tests/engine-worker-watchdog.test.js tests/action-diagnostics.test.js

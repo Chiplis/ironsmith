@@ -646,8 +646,8 @@ async function runBackgroundCompileStep() {
   scheduleBackgroundCompile(16);
 }
 
-async function fetchWasmWithProgress(url, onProgress) {
-  const response = await fetch(url, { cache: "no-store" });
+async function fetchWasmWithProgress(url, onProgress, fetchOptions = { cache: "default" }) {
+  const response = await fetch(url, fetchOptions);
   if (!response.ok) throw new Error(`WASM fetch failed: HTTP ${response.status}`);
 
   const contentLength = response.headers.get("content-length");
@@ -714,10 +714,14 @@ async function handleInit(msg = {}) {
     postProgress("module", 0);
 
     postProgress("download", 0);
-    const bust = `v=${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
+    const suppliedVersion = String(msg.assetVersion || "").replace(/[^a-zA-Z0-9_-]/g, "");
+    const assetVersion = suppliedVersion || `${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
+    const bust = `v=${assetVersion}`;
+    const wasmFetchOptions = { cache: msg.recovery ? "force-cache" : "default" };
     const { wasmResponse, downloadDone } = await fetchWasmWithProgress(
       `${engineWasmUrl}?${bust}`,
-      (p) => postProgress("download", p)
+      (p) => postProgress("download", p),
+      wasmFetchOptions
     );
 
     await downloadDone;

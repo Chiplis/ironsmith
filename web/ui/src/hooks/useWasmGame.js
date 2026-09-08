@@ -1,4 +1,13 @@
-import { beginEngineRequest, endEngineRequest } from '../lib/action-diagnostics.js';
+import {
+  beginEngineRequest,
+  endEngineRequest,
+  recordDiagnosticEvent,
+} from '../lib/action-diagnostics.js';
+import {
+  engineWorkerTimeoutMs,
+  makeEngineWorkerStallError,
+  shouldWatchEngineMethod,
+} from "../lib/engine-worker-watchdog.js";
 import { useEffect, useRef, useState } from "react";
 
 const MIN_INIT_PHASE_MS = 180;
@@ -151,20 +160,33 @@ export function useWasmGame() {
     let nextRequestId = 1;
     let initStartedAt = 0;
     const pending = new Map();
+    const watchdogTimeoutMs = engineWorkerTimeoutMs(
+      import.meta.env?.VITE_ENGINE_WORKER_TIMEOUT_MS
+    );
+    const workerAssetVersion = `${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
+    const assetBaseUrl = resolveAssetBaseUrl();
+    let worker = null;
+    let workerGeneration = 0;
+    let workerReady = null;
+    let resolveWorkerReady = null;
+    let rejectWorkerReady = null;
+    let recoveryPromise = null;
+    let lastSyncCheckpoint = null;
+    let lastPerspective = 0;
     let nextZiffleRequestId = 1;
     let zifflePool = [];
     let zifflePoolReady = null;
     let ziffleRoundRobin = 0;
     const zifflePending = new Map();
 
-    const worker = new Worker(
-      new URL("../workers/wasmGameWorker.js", import.meta.url),
-      { type: "module" }
-    );
-
-    const rejectPending = (err) => {
-      for (const [id, { reject }] of pending) { endEngineRequest(id); reject(err); }
-      pending.clear();
+    const rejectPending = (err, generation = null) => {
+      for (const [id, request] of pending) {
+        if (generation !== null && request.generation !== generation) continue;
+        pending.delete(id);
+        if (request.timeoutId !== null) clearTimeout(request.timeoutId);
+        endEngineRequest(id);
+        request.reject(err);
+      }
     };
 
     const rejectZifflePending = (err) => {
@@ -181,18 +203,40 @@ export function useWasmGame() {
       if (workerEntry) workerEntry.pending = 0;
     };
 
-    const callWorker = (method, args = []) =>
+    const postWorkerCall = (method, args = [], { watchdog = true } = {}) =>
       new Promise((resolve, reject) => {
         if (disposed) {
           reject(new Error("WASM worker is not available"));
           return;
         }
+        if (!worker) {
+          reject(new Error("WASM worker is restarting"));
+          return;
+        }
         const id = nextRequestId++;
-        pending.set(id, { resolve, reject });
+        const generation = workerGeneration;
+        const timeoutId = watchdog && shouldWatchEngineMethod(method)
+          ? setTimeout(() => {
+              if (!pending.has(id) || generation !== workerGeneration) return;
+              void recoverWorkerFromStall(method, generation);
+            }, watchdogTimeoutMs)
+          : null;
+        pending.set(id, { resolve, reject, method, args, generation, timeoutId });
         beginEngineRequest(id, method);
         try { worker.postMessage({ type: "call", id, method, args }); }
-        catch (error) { pending.delete(id); endEngineRequest(id); reject(error); }
+        catch (error) {
+          pending.delete(id);
+          if (timeoutId !== null) clearTimeout(timeoutId);
+          endEngineRequest(id);
+          reject(error);
+        }
       });
+
+    const callWorker = async (method, args = []) => {
+      if (recoveryPromise) await recoveryPromise;
+      if (workerReady) await workerReady;
+      return postWorkerCall(method, args);
+    };
 
     const selectZiffleWorker = () => {
       let best = null;
@@ -305,18 +349,30 @@ export function useWasmGame() {
       setLoading(false);
     };
 
-    const onMessage = (event) => {
-      if (disposed) return;
+    let initialReady = false;
+
+    const detachWorker = (target) => {
+      if (!target) return;
+      if (target.__ironsmithMessageHandler) {
+        target.removeEventListener("message", target.__ironsmithMessageHandler);
+      }
+      if (target.__ironsmithErrorHandler) {
+        target.removeEventListener("error", target.__ironsmithErrorHandler);
+      }
+    };
+
+    const onMessage = (event, generation, target) => {
+      if (disposed || target !== worker || generation !== workerGeneration) return;
       const msg = event.data || {};
 
       if (msg.type === "progress") {
-        if (typeof msg.phase === "string") {
+        if (!initialReady && typeof msg.phase === "string") {
           setPhase(msg.phase);
           if (msg.phase === "init" && initStartedAt === 0) {
             initStartedAt = performance.now();
           }
         }
-        if (typeof msg.progress === "number") {
+        if (!initialReady && typeof msg.progress === "number") {
           const clamped = Math.max(0, Math.min(1, msg.progress));
           setProgress(clamped);
         }
@@ -350,42 +406,178 @@ export function useWasmGame() {
       }
       if (msg.type === "result") {
         const req = pending.get(msg.id);
-        if (!req) return;
+        if (!req || req.generation !== generation) return;
         pending.delete(msg.id);
+        if (req.timeoutId !== null) clearTimeout(req.timeoutId);
         endEngineRequest(msg.id);
-        if (msg.ok) req.resolve(msg.result);
-        else req.reject(toError(msg.error));
+        if (msg.ok) {
+          if (req.method === "exportSyncCheckpoint" && msg.result) {
+            lastSyncCheckpoint = msg.result;
+            const checkpointPerspective = Number(msg.result?.perspective);
+            if (Number.isInteger(checkpointPerspective) && checkpointPerspective >= 0) {
+              lastPerspective = checkpointPerspective;
+            }
+          } else if (req.method === "importSyncCheckpoint" && req.args[0]) {
+            lastSyncCheckpoint = req.args[0];
+            const importedPerspective = Number(req.args[1]);
+            if (Number.isInteger(importedPerspective) && importedPerspective >= 0) {
+              lastPerspective = importedPerspective;
+            }
+          } else if (req.method === "setPerspective") {
+            const nextPerspective = Number(req.args[0]);
+            if (Number.isInteger(nextPerspective) && nextPerspective >= 0) {
+              lastPerspective = nextPerspective;
+            }
+          }
+          req.resolve(msg.result);
+        } else {
+          req.reject(toError(msg.error));
+        }
         return;
       }
 
       if (msg.type === "ready") {
-        finishReady().catch((err) => {
-          if (!disposed) {
-            setError(toError(err));
-            setLoading(false);
-          }
-        });
+        resolveWorkerReady?.();
+        resolveWorkerReady = null;
+        rejectWorkerReady = null;
+        if (!initialReady) {
+          initialReady = true;
+          finishReady().catch((err) => {
+            if (!disposed) {
+              setError(toError(err));
+              setLoading(false);
+            }
+          });
+        }
         return;
       }
 
       if (msg.type === "error") {
         const err = toError(msg.error);
-        rejectPending(err);
-        setError(err);
-        setLoading(false);
+        rejectWorkerReady?.(err);
+        rejectWorkerReady = null;
+        resolveWorkerReady = null;
+        if (!initialReady) {
+          rejectPending(err, generation);
+          setError(err);
+          setLoading(false);
+        } else {
+          void recoverWorkerAfterFailure(err, generation).catch(() => {});
+        }
       }
     };
 
-    const onWorkerError = (event) => {
-      if (disposed) return;
+    const onWorkerError = (event, generation, target) => {
+      if (disposed || target !== worker || generation !== workerGeneration) return;
       const err = new Error(event.message || "WASM worker crashed");
-      rejectPending(err);
-      setError(err);
-      setLoading(false);
+      rejectWorkerReady?.(err);
+      rejectWorkerReady = null;
+      resolveWorkerReady = null;
+      if (!initialReady) {
+        rejectPending(err, generation);
+        setError(err);
+        setLoading(false);
+      } else {
+        void recoverWorkerAfterFailure(err, generation).catch(() => {});
+      }
     };
 
-    worker.addEventListener("message", onMessage);
-    worker.addEventListener("error", onWorkerError);
+    const startEngineWorker = (recovery = false) => {
+      const generation = workerGeneration + 1;
+      workerGeneration = generation;
+      const nextWorker = new Worker(
+        new URL("../workers/wasmGameWorker.js", import.meta.url),
+        { type: "module" }
+      );
+      worker = nextWorker;
+      workerReady = new Promise((resolve, reject) => {
+        resolveWorkerReady = resolve;
+        rejectWorkerReady = reject;
+      });
+      // Initialization failures are also surfaced through React state. Attach a
+      // handler immediately so a failed first boot cannot become an unhandled
+      // rejection before a caller has a chance to await workerReady.
+      void workerReady.catch(() => {});
+      const messageHandler = (event) => onMessage(event, generation, nextWorker);
+      const errorHandler = (event) => onWorkerError(event, generation, nextWorker);
+      nextWorker.__ironsmithMessageHandler = messageHandler;
+      nextWorker.__ironsmithErrorHandler = errorHandler;
+      nextWorker.addEventListener("message", messageHandler);
+      nextWorker.addEventListener("error", errorHandler);
+      nextWorker.postMessage({
+        type: "init",
+        assetBaseUrl,
+        assetVersion: workerAssetVersion,
+        recovery,
+      });
+      return nextWorker;
+    };
+
+    const replaceEngineWorker = async (failure, generation) => {
+      if (disposed || generation !== workerGeneration) return false;
+      const failedWorker = worker;
+      rejectPending(failure, generation);
+      detachWorker(failedWorker);
+      failedWorker?.terminate();
+      worker = null;
+
+      startEngineWorker(true);
+      await workerReady;
+      if (lastSyncCheckpoint) {
+        await postWorkerCall(
+          "importSyncCheckpoint",
+          [lastSyncCheckpoint, lastPerspective],
+          { watchdog: false }
+        );
+        recordDiagnosticEvent("engine:worker_recovered", {
+          generation: workerGeneration,
+          restoredCheckpoint: true,
+        });
+        return true;
+      }
+      recordDiagnosticEvent("engine:worker_recovered", {
+        generation: workerGeneration,
+        restoredCheckpoint: false,
+      });
+      return false;
+    };
+
+    const recoverWorkerAfterFailure = (failure, generation) => {
+      if (recoveryPromise) return recoveryPromise;
+      recoveryPromise = replaceEngineWorker(failure, generation)
+        .catch((recoveryError) => {
+          const err = toError(recoveryError);
+          recordDiagnosticEvent("engine:worker_recovery_failed", {
+            generation: workerGeneration,
+            message: err.message,
+          });
+          if (!disposed) setError(err);
+          throw err;
+        })
+        .finally(() => {
+          recoveryPromise = null;
+        });
+      return recoveryPromise;
+    };
+
+    const recoverWorkerFromStall = (method, generation) => {
+      const failure = makeEngineWorkerStallError(
+        method,
+        watchdogTimeoutMs,
+        Boolean(lastSyncCheckpoint)
+      );
+      console.warn(failure.message, {
+        generation,
+        checkpointAvailable: Boolean(lastSyncCheckpoint),
+      });
+      recordDiagnosticEvent("engine:worker_stall", {
+        method,
+        timeoutMs: watchdogTimeoutMs,
+        generation,
+        checkpointAvailable: Boolean(lastSyncCheckpoint),
+      });
+      return recoverWorkerAfterFailure(failure, generation);
+    };
 
     setLoading(true);
     setError(null);
@@ -395,14 +587,13 @@ export function useWasmGame() {
     setRegistryCount(0);
     setRegistryTotal(0);
 
-    const assetBaseUrl = resolveAssetBaseUrl();
-    worker.postMessage({ type: "init", assetBaseUrl });
+    startEngineWorker(false);
 
     return () => {
       disposed = true;
-      worker.removeEventListener("message", onMessage);
-      worker.removeEventListener("error", onWorkerError);
-      worker.terminate();
+      detachWorker(worker);
+      worker?.terminate();
+      worker = null;
       rejectPending(new Error("WASM worker terminated"));
       for (const entry of zifflePool) {
         entry.worker?.terminate();
