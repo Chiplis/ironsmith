@@ -1059,6 +1059,15 @@ impl WasmGame {
         root: &ReplayRoot,
         nested_answers: &[ReplayDecisionAnswer],
     ) -> Result<ReplayOutcome, JsValue> {
+        // A replay is one atomic engine transaction.  Bound the number of
+        // nested answers accepted for that transaction so a corrupted or
+        // cyclic command stream cannot keep the worker busy indefinitely.
+        const MAX_REPLAY_ANSWERS: usize = 128;
+        if nested_answers.len() > MAX_REPLAY_ANSWERS {
+            return Err(JsValue::from_str(
+                "replay rejected: too many nested decisions (possible cycle)",
+            ));
+        }
         let total_started_at = PerfTimer::start();
         let mut perf = ReplayExecutionPerfMetrics {
             root_kind: replay_root_kind(root).to_string(),
