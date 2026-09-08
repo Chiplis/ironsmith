@@ -109,7 +109,10 @@ export const INITIAL_MATCH_CLOCK_HASH = "0".repeat(64);
 export const PEER_OPEN_TIMEOUT_MS = 10000;
 export const PEER_CONNECT_TIMEOUT_MS = 15000;
 export const PEER_HEARTBEAT_INTERVAL_MS = 3000;
-export const PEER_HEARTBEAT_TIMEOUT_MS = 10000;
+// A busy or backgrounded browser can easily miss a few application-level
+// heartbeats while its WebRTC connection is still healthy.  Ten seconds was
+// short enough to turn ordinary event-loop stalls into destructive reconnects.
+export const PEER_HEARTBEAT_TIMEOUT_MS = 45000;
 export const DEFAULT_PLAYER_CLOCK_MS = 40 * 60 * 1000;
 export const MATCH_CLOCK_TICK_MS = 1000;
 export const MATCH_CLOCK_CLAIM_SKEW_MS = 2000;
