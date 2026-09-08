@@ -1,5 +1,5 @@
 import { cloneElement, isValidElement, useEffect, useState, useSyncExternalStore } from "react";
-import { Activity, ClipboardCopy, Eraser } from "lucide-react";
+import { Activity, Check, ClipboardCopy, Eraser } from "lucide-react";
 import { useGame } from "@/context/GameContext";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -94,10 +94,11 @@ function verdict({ snapshot, peerWait, multiplayer }) {
 }
 
 export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTriggerClassName }) {
-  const { multiplayer, state } = useGame();
+  const { game, multiplayer, state } = useGame();
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [tick, setTick] = useState(0);
+  const [copied, setCopied] = useState(false);
   useSyncExternalStore(subscribeDiagnostics, diagnosticsVersion, diagnosticsVersion);
   // Ages keep counting while the sheet is open even when nothing new arrives.
   useEffect(() => {
@@ -114,6 +115,20 @@ export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTr
   const clock = multiplayer?.matchClock || null;
 
   const handleCopy = async () => {
+    const readPerf = async (method) => {
+      try {
+        return typeof game?.[method] === "function" ? await game[method]() : null;
+      } catch {
+        return null;
+      }
+    };
+    const [dispatchPerf, snapshotPerf, workCounters, manaPaymentPerf, advancePerf] = await Promise.all([
+      readPerf("lastDispatchPerf"),
+      readPerf("lastSnapshotPerf"),
+      readPerf("lastWorkCounters"),
+      readPerf("lastManaPaymentPerf"),
+      readPerf("lastAdvanceUntilDecisionPerf"),
+    ]);
     const payload = exportDiagnostics({
       multiplayer: {
         mode: multiplayer?.mode, role: multiplayer?.role, lastAppliedSequence: multiplayer?.lastAppliedSequence,
@@ -121,8 +136,15 @@ export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTr
         players: lobbyPlayers,
       },
       game: { phase: state?.phase, step: state?.step, decision: state?.decision?.kind, priority_player: state?.priority_player, turn: state?.turn },
+      engine: { dispatchPerf, snapshotPerf, workCounters, manaPaymentPerf, advanceUntilDecisionPerf: advancePerf },
     });
-    await copyTextToClipboard(`${JSON.stringify(payload, null, 2)}\n`);
+    try {
+      await copyTextToClipboard(`${JSON.stringify(payload, null, 2)}\n`);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setCopied(false);
+    }
   };
 
   const triggerNode = isValidElement(trigger)
@@ -236,7 +258,8 @@ export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTr
 
                 <div className="diagnostics-toolbar">
                   <Button type="button" variant="secondary" size="sm" className="stone-pill" onClick={handleCopy}>
-                    <ClipboardCopy className="size-3.5" aria-hidden="true" /> Copy report
+                    {copied ? <Check className="size-3.5" aria-hidden="true" /> : <ClipboardCopy className="size-3.5" aria-hidden="true" />}
+                    {copied ? "Copied" : "Copy report"}
                   </Button>
                   <Button type="button" variant="secondary" size="sm" className="stone-pill" onClick={() => resetDiagnostics()}>
                     <Eraser className="size-3.5" aria-hidden="true" /> Clear
