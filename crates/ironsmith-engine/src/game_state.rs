@@ -3264,6 +3264,11 @@ pub struct GameState {
     /// Whether required single-object choices with exactly one legal candidate
     /// may be resolved by the generic decision layer without surfacing a prompt.
     auto_choose_single_object_decisions: bool,
+    /// Non-rules failure raised by a deterministic runtime safety budget.
+    ///
+    /// The WASM transaction boundary consumes this marker and restores its
+    /// checkpoint instead of publishing a partially resolved game state.
+    runtime_fault: Option<String>,
     runtime_cache: RuntimeCacheState,
 }
 
@@ -3517,8 +3522,21 @@ impl GameState {
             commander_damage_loss_enabled: true,
             exile_tracking: Arc::new(ExileTracking::default()),
             auto_choose_single_object_decisions: true,
+            runtime_fault: None,
             runtime_cache: RuntimeCacheState::new(active_player),
         }
+    }
+
+    /// Record the first deterministic runtime-safety failure in this transaction.
+    pub(crate) fn report_runtime_fault(&mut self, message: impl Into<String>) {
+        if self.runtime_fault.is_none() {
+            self.runtime_fault = Some(message.into());
+        }
+    }
+
+    /// Consume a runtime-safety failure at the transaction boundary.
+    pub fn take_runtime_fault(&mut self) -> Option<String> {
+        self.runtime_fault.take()
     }
 
     pub fn auto_choose_single_object_decisions(&self) -> bool {

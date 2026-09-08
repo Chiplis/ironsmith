@@ -4,6 +4,17 @@ use crate::ids::CardId;
 use crate::types::CardType;
 
 #[test]
+fn runtime_fault_preserves_first_cause_and_is_consumed_once() {
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+
+    game.report_runtime_fault("first failure");
+    game.report_runtime_fault("secondary failure");
+
+    assert_eq!(game.take_runtime_fault().as_deref(), Some("first failure"));
+    assert_eq!(game.take_runtime_fault(), None);
+}
+
+#[test]
 fn current_turn_extra_provenance_tracks_the_selected_turn_after_queue_consumption() {
     let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
     let alice = PlayerId::from_index(0);

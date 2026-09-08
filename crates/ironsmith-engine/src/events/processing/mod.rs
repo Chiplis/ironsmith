@@ -4101,12 +4101,18 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
     // interaction that loop used to monopolise the worker forever.  Keep a
     // conservative transaction budget so multiplayer replays always return to
     // the caller and can be retried/diagnosed instead of freezing the runtime.
-    const MAX_ETB_PROPOSAL_ITERATIONS: u32 = 128;
+    // Normal entry needs at most a handful of passes (copy choice, copied
+    // replacements, prepared choices). Sixteen leaves ample rules headroom
+    // while failing fast enough that recovery is effectively immediate.
+    const MAX_ETB_PROPOSAL_ITERATIONS: u32 = 16;
     let mut proposal_iterations = 0;
 
     loop {
         proposal_iterations += 1;
         if proposal_iterations > MAX_ETB_PROPOSAL_ITERATIONS {
+            game.report_runtime_fault(format!(
+                "enter-the-battlefield proposal exceeded {MAX_ETB_PROPOSAL_ITERATIONS} iterations for object {object:?}"
+            ));
             return EtbEventResult {
                 prevented: true,
                 ..Default::default()

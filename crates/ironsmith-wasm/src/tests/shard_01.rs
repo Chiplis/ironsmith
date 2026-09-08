@@ -4,6 +4,30 @@ use super::shard_02::*;
 use super::*;
 
 #[test]
+pub(super) fn replay_rejects_unbounded_nested_answers_without_mutating_game() {
+    let mut wasm = WasmGame::new();
+    let before = format!("{:?}", wasm.game);
+    let checkpoint = wasm.capture_replay_checkpoint();
+    let answers = vec![ReplayDecisionAnswer::Boolean(false); 129];
+
+    let error = wasm
+        .execute_with_replay(&checkpoint, &ReplayRoot::Advance, &answers)
+        .expect_err("an unbounded replay decision stream must be rejected");
+
+    assert!(
+        error
+            .as_string()
+            .is_some_and(|message| message.contains("too many nested decisions")),
+        "the caller should receive an actionable replay-cycle error"
+    );
+    assert_eq!(
+        format!("{:?}", wasm.game),
+        before,
+        "rejecting an oversized replay must not mutate authoritative state"
+    );
+}
+
+#[test]
 pub(super) fn yawgmoth_activation_stays_cancelable_through_target_and_cost_prompts() {
     let mut wasm = WasmGame::new();
     let alice = PlayerId::from_index(0);

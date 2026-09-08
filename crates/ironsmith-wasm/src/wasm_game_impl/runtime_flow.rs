@@ -92,6 +92,8 @@ impl WasmGame {
         self.active_viewed_cards = None;
         self.active_audit_viewed_cards.clear();
         self.clear_active_resolving_stack_object();
+        // A full UI recomputation begins a new transaction boundary.
+        let _ = self.game.take_runtime_fault();
         if self.game_over.is_some() {
             return Ok(());
         }
@@ -1085,6 +1087,8 @@ impl WasmGame {
         self.active_viewed_cards = None;
         self.active_audit_viewed_cards.clear();
         self.clear_active_resolving_stack_object();
+        // Checkpoints must never carry a stale safety fault into a new replay.
+        let _ = self.game.take_runtime_fault();
 
         let mut replay_dm = WasmReplayDecisionMaker::new(nested_answers);
 
@@ -1143,6 +1147,19 @@ impl WasmGame {
         } else {
             audit_viewed_cards
         };
+
+        if let Some(fault) = self.game.take_runtime_fault() {
+            self.active_viewed_cards = None;
+            self.active_audit_viewed_cards.clear();
+            self.clear_active_resolving_stack_object();
+            self.restore_replay_checkpoint(checkpoint);
+            perf.outcome_kind = "runtime_fault".to_string();
+            perf.total_ms = total_started_at.elapsed_ms();
+            self.last_replay_execution_perf = Some(perf);
+            return Err(JsValue::from_str(&format!(
+                "dispatch aborted and rolled back: {fault}"
+            )));
+        }
 
         if let Some(next_ctx) = pending_context {
             self.sync_active_resolving_stack_object_for_prompt(Some(checkpoint));
