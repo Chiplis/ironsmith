@@ -74,6 +74,8 @@ import {
   toPublicPlayer,
   toPublicPlayers,
   useCallback,
+  useEffect,
+  useRef,
   validationCommandersForMatchPayload,
   validationDecksForMatchPayload,
   validationPlanarDecksForMatchPayload,
@@ -117,6 +119,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
   const emitZiffleDiagnosticNotice = useCallback((...args) => servicesRef.current.emitZiffleDiagnosticNotice(...args), [servicesRef]);
   const ensureAuditIdentity = useCallback((...args) => servicesRef.current.ensureAuditIdentity(...args), [servicesRef]);
   const ensureDirectPeerConnections = useCallback((...args) => servicesRef.current.ensureDirectPeerConnections(...args), [servicesRef]);
+  const lastForegroundRecoveryRef = useRef(0);
   const ensureZiffleIdentity = useCallback((...args) => servicesRef.current.ensureZiffleIdentity(...args), [servicesRef]);
   const finishPeerResync = useCallback((...args) => servicesRef.current.finishPeerResync(...args), [servicesRef]);
   const handleActionIntentCancelMessage = useCallback((...args) => servicesRef.current.handleActionIntentCancelMessage(...args), [servicesRef]);
@@ -177,6 +180,35 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     setStatus(reason, true);
     return true;
   }, [setStatus, updateMultiplayer]);
+
+  useEffect(() => {
+    const recoverForegroundSession = () => {
+      if (document.visibilityState === "hidden") return;
+      const session = multiplayerRef.current;
+      if (!session.matchStarted || !isRelayId(session.lobbyId)) return;
+      const now = Date.now();
+      if (now - lastForegroundRecoveryRef.current < 1000) return;
+      lastForegroundRecoveryRef.current = now;
+
+      const peer = peerRef.current;
+      if (peer?.disconnected || !peer?.open) {
+        try { peer?.reconnect?.(); } catch { /* normal reconnect loop will retry */ }
+        return;
+      }
+      if (session.role === "client") {
+        requestResync("Checking match state after returning to the tab...");
+      }
+    };
+
+    document.addEventListener("visibilitychange", recoverForegroundSession);
+    window.addEventListener("online", recoverForegroundSession);
+    window.addEventListener("pageshow", recoverForegroundSession);
+    return () => {
+      document.removeEventListener("visibilitychange", recoverForegroundSession);
+      window.removeEventListener("online", recoverForegroundSession);
+      window.removeEventListener("pageshow", recoverForegroundSession);
+    };
+  }, [requestResync]);
 
   const reportSyncFailure = useCallback(
     (body, resyncReason = "", fallbackStatus = body) => {

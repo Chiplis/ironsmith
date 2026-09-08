@@ -61,6 +61,12 @@ test('WebSocket lobby validates decks and resumes guest and host after socket dr
   for (const page of [host, guest]) await wait(page, async () => (await window.__peerHarness.lobbyState()).multiplayer.matchStarted);
   await host.evaluate(() => window.__peerHarness.submitMultiplayerCommand({ type: 'priority_action', action_ref: { kind: 'test_priority_action', actor: 0, sequence: 0 } }, 'Relay action'));
   for (const page of [host, guest]) await wait(page, async () => (await window.__peerHarness.lobbyState()).multiplayer.lastAppliedSequence >= 1);
+  const guestStateBeforeBackgroundRepair = await guest.evaluate(async () => (await window.__peerHarness.snapshot()).visibleState);
+  await guest.evaluate(() => window.__peerHarness.silentlyAddCard({ playerIndex: 1, cardName: 'Black Lotus' }));
+  assert.notDeepEqual(await guest.evaluate(async () => (await window.__peerHarness.snapshot()).visibleState), guestStateBeforeBackgroundRepair);
+  await guest.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow')));
+  await wait(guest, async expected => JSON.stringify((await window.__peerHarness.snapshot()).visibleState) === expected,
+    JSON.stringify(guestStateBeforeBackgroundRepair));
   await guest.evaluate(() => window.testSockets.filter(s => s.url.includes('/rooms/')).forEach(s => s.close()));
   await wait(host, async () => (await window.__peerHarness.lobbyState()).multiplayer.players.some(p => p.connected === false));
   try { await wait(host, async () => (await window.__peerHarness.lobbyState()).multiplayer.players.every(p => p.connected !== false)); } catch(e) { console.error('GUEST STATUS', await guest.evaluate(async () => (await window.__peerHarness.lobbyState()).statusEvents)); throw e; }
