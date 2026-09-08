@@ -5,7 +5,9 @@ import {
 } from '../lib/action-diagnostics.js';
 import {
   engineWorkerTimeoutMs,
+  isFatalWasmWorkerError,
   makeEngineWorkerStallError,
+  makeFatalWasmWorkerError,
   shouldWatchEngineMethod,
 } from "../lib/engine-worker-watchdog.js";
 import { useEffect, useRef, useState } from "react";
@@ -407,6 +409,20 @@ export function useWasmGame() {
       if (msg.type === "result") {
         const req = pending.get(msg.id);
         if (!req || req.generation !== generation) return;
+        if (!msg.ok && isFatalWasmWorkerError(msg.error)) {
+          const failure = makeFatalWasmWorkerError(
+            msg.error,
+            Boolean(lastSyncCheckpoint)
+          );
+          recordDiagnosticEvent("engine:wasm_runtime_failure", {
+            method: req.method,
+            generation,
+            message: failure.message,
+            checkpointAvailable: Boolean(lastSyncCheckpoint),
+          });
+          void recoverWorkerAfterFailure(failure, generation).catch(() => {});
+          return;
+        }
         pending.delete(msg.id);
         if (req.timeoutId !== null) clearTimeout(req.timeoutId);
         endEngineRequest(msg.id);

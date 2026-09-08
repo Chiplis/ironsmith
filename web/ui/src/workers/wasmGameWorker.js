@@ -754,11 +754,26 @@ function enqueueCall(task) {
   return callQueue;
 }
 
+function summarizeDebugArgument(value) {
+  if (value == null || typeof value === "boolean" || typeof value === "number") return value;
+  if (typeof value === "string") return value.length > 80 ? `${value.slice(0, 77)}...` : value;
+  if (Array.isArray(value)) return `[Array(${value.length})]`;
+  if (typeof value === "object") {
+    const keys = Object.keys(value);
+    const summary = { __keys: keys.slice(0, 12), __keyCount: keys.length };
+    if (typeof value.type === "string") summary.type = value.type;
+    if (typeof value.kind === "string") summary.kind = value.kind;
+    return summary;
+  }
+  return `[${typeof value}]`;
+}
+
 function handleCall(msg) {
   const { id, method, args = [] } = msg;
   if (!/^(snapshot|uiState|last\w*Perf|exportSyncCheckpoint|exportPublicAuditCheckpoint|autocompleteCardNames|getCardSemanticScore|cardsMeetingThreshold)$/.test(method)) {
     try {
-      console.debug(`[ironsmith] worker call: ${method} ${JSON.stringify(args).slice(0, 240)}`);
+      const summary = args.slice(0, 8).map(summarizeDebugArgument);
+      console.debug(`[ironsmith] worker call: ${method} ${JSON.stringify(summary)}`);
     } catch {
       console.debug(`[ironsmith] worker call: ${method}`);
     }
