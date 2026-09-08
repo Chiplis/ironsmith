@@ -6,6 +6,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "lan": "vite --mode lan --host 0.0.0.0",
+    "build:lan": "pnpm build --mode lan",
+    "preview:lan": "vite preview --mode lan --host 0.0.0.0",
+    "test:lan": "node --test tests/lan-service.test.mjs tests/lan-browser.test.mjs tests/sha256.test.mjs",
     "build": "node ./scripts/build-scryfall-i18n.mjs --if-changed --locale es && vite build",
     "preview": "vite preview",
     "lint": "eslint .",
@@ -16,7 +20,9 @@
     "test:peerjs": "bash scripts/run-peerjs-tests.sh",
     "test:p2p-browser": "node tests/p2p-browser-scenarios.mjs",
     "test:hidden-info": "node tests/hidden-info-inventory.mjs",
-    "test:wasm-real-engine": "node --test tests/wasm-real-engine-cheat.e2e.test.js"
+    "test:wasm-real-engine": "node --test tests/wasm-real-engine-cheat.e2e.test.js",
+    "formats:build": "node scripts/build-format-catalog.mjs",
+    "test:relay": "node --test tests/relay-format.test.mjs ../relay/tests/relay.test.mjs tests/relay-browser.test.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

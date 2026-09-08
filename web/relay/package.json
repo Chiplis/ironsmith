@@ -1,0 +1,5 @@
+{
+  "name": "ironsmith-lobby-relay", "private": true, "type": "module",
+  "scripts": { "dev": "wrangler dev --port 8787", "deploy": "wrangler deploy", "test": "node --test tests/*.test.mjs" },
+  "devDependencies": { "wrangler": "^4.0.0", "miniflare": "^4.0.0" }
+}

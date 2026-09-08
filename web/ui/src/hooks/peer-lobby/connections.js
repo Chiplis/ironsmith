@@ -75,6 +75,7 @@ import {
   ziffleRevealTokenTimeoutMs,
   ziffleRuntimeCommitment,
 } from "./shared.js";
+import { recordPeerRtt } from "../../lib/action-diagnostics.js";
 
 export function usePeerLobbyConnections(base, servicesRef) {
   const { actionIntentOpeningPreviewKeysRef, actionQuorumVoteWaitersRef, actionSubmissionStartedAtMsRef, auditEncryptionKeyPairRef, auditEncryptionPublicKeyRef, auditKeyPairRef, auditPublicKeyRef, auditVerifyKeyCacheRef, connectionHeartbeatsRef, cryptoMaterialWaitersRef, ensureDirectPeerConnectionsRef, gameRef, ignoredActionIntentKeysRef, liveZiffleCeremoniesRef, localRevealedOpeningsRef, localZiffleCeremonyLookupRef, matchClockConfigRef, matchStartPayloadRef, multiplayerRef, peerHeartbeatConfigRef, pendingActionIntentTimeoutsRef, pendingActionIntentsRef, privateDeckManifestsRef, privateViewDisclosuresRef, rngCommitWaitersRef, rngRevealWaitersRef, setMultiplayer, setStatus, stateRef, submissionIdleWaitersRef, timeoutVoteWaitersRef, ziffleHandRevealKeyRef, ziffleHandRevealQuickKeyRef, ziffleKeyPairsRef, ziffleOpeningPositionsRef, ziffleRevealTokenCacheRef, ziffleRevealWaitersRef, ziffleShuffleWaitersRef } = base;
@@ -132,7 +133,10 @@ export function usePeerLobbyConnections(base, servicesRef) {
 
   const startConnectionHeartbeat = useCallback((key, conn, onStale) => {
     clearConnectionHeartbeat(key);
-    const { intervalMs, timeoutMs } = peerHeartbeatConfigRef.current;
+    const configured = peerHeartbeatConfigRef.current;
+    // Leave idle gaps for Durable Object hibernation while retaining end-to-end liveness checks.
+    const intervalMs = conn?.owner?.options?.transport === 'websocket' ? 30000 : configured.intervalMs;
+    const timeoutMs = conn?.owner?.options?.transport === 'websocket' ? 120000 : configured.timeoutMs;
     if (!intervalMs || !timeoutMs) return;
 
     const heartbeat = {
@@ -191,6 +195,9 @@ export function usePeerLobbyConnections(base, servicesRef) {
 
   const handleConnectionHeartbeatMessage = useCallback((conn, message) => {
     if (message?.type === "peer_heartbeat_ack") {
+      // The ack echoes our own send timestamp, so the difference is a round trip.
+      const sentAtMs = Number(message.at);
+      if (Number.isFinite(sentAtMs) && sentAtMs > 0) recordPeerRtt(conn?.peer, Date.now() - sentAtMs);
       return message.protocolVersion === PROTOCOL_VERSION;
     }
     if (message?.type !== "peer_heartbeat") return false;

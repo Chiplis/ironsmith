@@ -12,7 +12,7 @@ function loadScan(url) {
 // Mask only registered printed text, leaving the rest of the scan untouched.
 // Patches are shared between translations and repeated previews.
 export function maskRegisteredRegion(url,field,family) {
-  const key=JSON.stringify([url,field.lines,family]);
+  const key=JSON.stringify([url,field.lines,family,field.outlined]);
   if(patches.has(key))return patches.get(key);
   const promise=(async()=>{
     const {canvas,ctx}=await loadScan(url),W=canvas.width,H=canvas.height;
@@ -32,7 +32,7 @@ export function maskRegisteredRegion(url,field,family) {
       // Templates come from the printed wording; OCR text only stands in for
       // errata, where the current text no longer describes the print. Mana pips
       // sit beside names and inside rules, never inside type or stats lettering.
-      let clean=fontGuidedPanel(region,{family,weight:400,allowItalic:true,italic:field.kind==='flavor',symbols:field.kind==='rule',text:field.errata?line.text:field.text,section:field.kind});
+      let clean=fontGuidedPanel(region,{family,weight:400,allowItalic:true,italic:field.kind==='flavor',symbols:field.kind==='rule',text:field.errata?line.text:field.printedText||field.text,section:field.kind==='name'?'title':field.kind,outlined:field.outlined});
       if(!clean) {
         // OCR gives a tight ink rectangle. Contrast against the surrounding
         // paper supports lettering that our installed fonts cannot reproduce.
@@ -62,7 +62,7 @@ export function maskRegisteredRegion(url,field,family) {
     // Anti-aliased edges dilute the colour; keep the solid glyph cores.
     const strongest=inkSamples.slice(0,Math.max(1,Math.floor(inkSamples.length*.15)));
     const channel=c=>strongest.map(s=>s.rgb[c]).sort((a,b)=>a-b)[Math.floor(strongest.length/2)];
-    const ink=strongest.length&&strongest[0].contrast>40?`rgb(${channel(0)},${channel(1)},${channel(2)})`:null;
+    const ink=field.outlined?'white':strongest.length&&strongest[0].contrast>40?`rgb(${channel(0)},${channel(1)},${channel(2)})`:null;
     return {image:result.toDataURL('image/png'),bounds:{x:x/W,y:y/H,width:width/W,height:height/H},ink};
   })();
   patches.set(key,promise);

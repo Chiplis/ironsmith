@@ -1,3 +1,5 @@
+import { PUBLIC_FORMATS, isRelayId } from '../../lib/relay/formats.js';
+import { loadFormatCatalog, assertFormatMatch } from '../../lib/relay/format-legality.js';
 import {
   DEFAULT_OPENING_HAND_SIZE,
   INITIAL_AUDIT_STATE_HASH,
@@ -89,6 +91,7 @@ import {
   ziffleRevealTokenTimeoutMs,
   ziffleRuntimeCommitment,
 } from "./shared.js";
+import { recordDiagnosticEvent } from "../../lib/action-diagnostics.js";
 
 export function usePeerLobbyValidation(base, servicesRef) {
   const { actionCryptoRequirementsRef, actionHistoryRef, applySyncedCommand, applyingSequencedActionsRef, auditEncryptionPublicKeyRef, auditPublicKeyRef, auditStateHashRef, awaitingStateResyncRef, clientConnectionsRef, drainingPendingSequencedActionsRef, gameRef, hostConnectionRef, initialPublicCheckpointHashRef, liveAuditTranscriptRef, liveZiffleCeremoniesRef, localRevealedOpeningsRef, localZiffleCeremonyLookupRef, localZiffleRevealInFlightRef, matchClockObservationExemptSequenceRef, matchStartPayloadRef, multiplayerRef, outboundCryptoMaterialRequestsRef, peerConnectionsRef, pendingSequencedActionsRef, privateViewDisclosuresRef, relayedActionIdsRef, rngCommitNoncesRef, rngRevealCommitSetLocksRef, setState, setStatus, signedRngCommitmentsRef, stateRef, verifiedAuditOpeningsRef, verifiedShuffleProofsRef, ziffleHandRevealKeyRef, ziffleHandRevealQuickKeyRef, ziffleOpeningPositionsRef, ziffleRevealTokenCacheRef, ziffleShufflePerfRef } = base;
@@ -365,6 +368,24 @@ export function usePeerLobbyValidation(base, servicesRef) {
       updateMultiplayer((prev) => ({ ...prev, submittingAction: true }));
     }
     let applyPhase = "init";
+    // Per-phase wall time for the received action, reported once when it lands.
+    const applyPhaseNow = () => (globalThis.performance?.now?.() ?? Date.now());
+    const applyPhaseStartedAt = applyPhaseNow();
+    let applyPhaseMarkedAt = applyPhaseStartedAt;
+    const applyPhaseMarks = [];
+    const markApplyPhase = (name) => {
+      const at = applyPhaseNow();
+      applyPhaseMarks.push({ phase: applyPhase, ms: Math.round(at - applyPhaseMarkedAt) });
+      applyPhaseMarkedAt = at;
+      return name;
+    };
+    const applyPhaseReport = () => ({
+      seq: Number(message?.seq),
+      actor: message?.actorIndex,
+      dry_run: Boolean(dryRun),
+      total_ms: Math.round(applyPhaseNow() - applyPhaseStartedAt),
+      phases: [...applyPhaseMarks, { phase: applyPhase, ms: Math.round(applyPhaseNow() - applyPhaseMarkedAt) }],
+    });
     try {
       const localSecurityMode = sessionSecurityMode(
         session,
@@ -377,7 +398,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
         );
       }
       if (isTrustedMultiplayerSecurityMode(localSecurityMode)) {
-        applyPhase = "pre_apply_checks";
+        applyPhase = markApplyPhase("pre_apply_checks");
         const liveStateForClock = gameRef.current
           ? await gameRef.current.uiState()
           : stateRef.current;
@@ -391,7 +412,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
           // bounds are a Verified anti-cheat check and can diverge between peers.
           enforceMatchClockObservationBounds: false,
         });
-        applyPhase = "apply_command";
+        applyPhase = markApplyPhase("apply_command");
         const appliedState = await applySyncedCommand(message.command, message.label || "", {
           actorIndex: message.actorIndex,
           sequence: nextSequence,
@@ -406,6 +427,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
           ...message,
           securityMode: MULTIPLAYER_SECURITY_TRUSTED,
         });
+        recordDiagnosticEvent("apply_action:applied", applyPhaseReport());
         if (Number(nextSequence) === Number(matchClockObservationExemptSequenceRef.current || 0)) {
           matchClockObservationExemptSequenceRef.current = 0;
         }
@@ -419,20 +441,20 @@ export function usePeerLobbyValidation(base, servicesRef) {
         await drainPendingSequencedActions();
         return { trusted: true };
       }
-      applyPhase = "verify_audit";
+      applyPhase = markApplyPhase("verify_audit");
       await verifySequencedActionAudit({
         audit: message.audit,
         seq: nextSequence,
         actorIndex: message.actorIndex,
         command: message.command,
       });
-      applyPhase = "verify_pending_intent";
+      applyPhase = markApplyPhase("verify_pending_intent");
       const pendingIntentVerification = await verifyActionMatchesPendingIntent(message);
       if (!options.skipQuorumCertificate) {
-        applyPhase = "verify_quorum";
+        applyPhase = markApplyPhase("verify_quorum");
         await verifyActionQuorumForMessage(message);
       }
-      applyPhase = "pre_apply_checks";
+      applyPhase = markApplyPhase("pre_apply_checks");
       const liveStateForClock = gameRef.current ? await gameRef.current.uiState() : stateRef.current;
       const auditSigner = Number(message.audit?.signer ?? message.actorIndex);
       if (auditSigner !== Number(message.actorIndex)) {
@@ -513,7 +535,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	            && !actionWasDelayedByProtocolWork,
 	        });
 	      }
-      applyPhase = "reveal_pre_openings";
+      applyPhase = markApplyPhase("reveal_pre_openings");
       await revealAuditOpenings(message.audit?.openings || [], {
         timing: "pre",
         command: message.command,
@@ -521,18 +543,18 @@ export function usePeerLobbyValidation(base, servicesRef) {
         uiState: liveStateForClock,
         updateState: false,
       });
-      applyPhase = "reveal_private_proofs";
+      applyPhase = markApplyPhase("reveal_private_proofs");
       await revealPrivateAuditProofsForLocalViewer(message.audit || {}, {
         updateState: false,
         persistDisclosure: !dryRun,
       });
-      applyPhase = "remap_local_command";
+      applyPhase = markApplyPhase("remap_local_command");
       const localCommand = await remapCommandForLocalHiddenOpening(
         message.command,
         message.audit?.openings || [],
         message.actorIndex
       );
-      applyPhase = "preview_requirements";
+      applyPhase = markApplyPhase("preview_requirements");
       const cryptoRequirements = filterCryptoRequirementsForCommand(
         localCommand,
         liveStateForClock,
@@ -542,18 +564,18 @@ export function usePeerLobbyValidation(base, servicesRef) {
         )
       );
       rememberActionCryptoRequirements(nextSequence, cryptoRequirements);
-      applyPhase = "verify_shuffle_proofs";
+      applyPhase = markApplyPhase("verify_shuffle_proofs");
       await verifyShuffleProofsForRequirements(
         cryptoRequirements,
         message.audit?.shuffleProofs || [],
         { allowAfterOrderMismatch: true }
       );
-      applyPhase = "verify_crypto_requirements";
+      applyPhase = markApplyPhase("verify_crypto_requirements");
       await verifyAuditSatisfiesCryptoRequirements({
         requirements: cryptoRequirements,
         audit: message.audit,
       });
-      applyPhase = "inject_crypto_material";
+      applyPhase = markApplyPhase("inject_crypto_material");
       await injectCryptoMaterialForRequirements(cryptoRequirements, message.audit || {}, {
         command: localCommand,
         seq: nextSequence,
@@ -573,7 +595,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
       ) {
         throw new Error("Sequenced action actor is not the current decision player");
       }
-      applyPhase = "apply_command";
+      applyPhase = markApplyPhase("apply_command");
       const publishAppliedStateImmediately = false;
       const appliedState = await applySyncedCommand(localCommand, message.label || "", {
         actorIndex: message.actorIndex,
@@ -640,6 +662,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
       );
       if (dryRun) {
         await restoreValidationSnapshot();
+        recordDiagnosticEvent("action_quorum:dry_run", applyPhaseReport());
         return {
           verified: true,
           publicCheckpointHash: String(message.audit?.publicCheckpointHash || ""),
@@ -648,6 +671,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
       }
       commitMatchClockAudit(message.audit?.clock, appliedState);
       await appendAppliedSequencedAction(message);
+      recordDiagnosticEvent("apply_action:applied", applyPhaseReport());
       if (Number(nextSequence) === Number(matchClockObservationExemptSequenceRef.current || 0)) {
         matchClockObservationExemptSequenceRef.current = 0;
       }
@@ -663,6 +687,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	      const rejectedActionCheat = isRejectedActionCheatReason(failureReason);
 	      const unauthorizedAddCardCheat = isUnauthorizedAddCardCommand(message?.command);
 	      if (!rejectedActionCheat && !unauthorizedAddCardCheat) {
+	        recordDiagnosticEvent("apply_action:failed", applyPhaseReport());
 	        console.error("[ironsmith] apply_action:failed", {
 	          seq: nextSequence,
 	          actor: Number(message?.actorIndex ?? -1),
@@ -4201,7 +4226,13 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	        throw new Error("Match genesis does not bind the local private-view encryption key");
 	      }
 
-	      const startDecks = verifiedMode
+	      if (isRelayId(payload.lobbyId)) {
+        await loadFormatCatalog();
+        if (verifiedMode) throw new Error('Public relay lobbies require Trusted mode');
+        assertFormatMatch({ ...payload, decks: validationDecksForMatchPayload(payload),
+          sideboards: validationSideboardsForMatchPayload(payload), commanders: validationCommandersForMatchPayload(payload) });
+      }
+      const startDecks = verifiedMode
 	        ? payload.players.map(() => [])
 	        : validationDecksForMatchPayload(payload);
 	      const startSideboards = validationSideboardsForMatchPayload(payload);
@@ -4212,7 +4243,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	        playerNames: payload.players.map((player) => player.name),
 	        startingLife: payload.startingLife,
 	        seed: payload.seed,
-	        format: payload.format,
+	        format: PUBLIC_FORMATS[payload.format]?.engineFormat || payload.format,
 	        decks: startDecks,
 	        sideboards: startSideboards,
 	        commanders: startCommanders,

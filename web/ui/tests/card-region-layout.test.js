@@ -1,6 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {registeredFieldFontSize, registeredFieldLayouts, registeredLinePitch, SCAN_ASPECT} from '../src/lib/card-region-layout.js';
+import {registeredFieldFontSize, registeredFieldLayouts, registeredLinePitch, registrationGeometryIsUsable, SCAN_ASPECT} from '../src/lib/card-region-layout.js';
+
+test('unusable OCR geometry preserves the scan instead of replacing text across other fields',()=>{
+  const name={kind:'name',bounds:{x:.1,y:.05,width:.5,height:.04}};
+  const rule={kind:'rule',bounds:{x:.1,y:.6,width:.7,height:.25}};
+  assert.equal(registrationGeometryIsUsable({fields:[name,rule]}),true);
+  assert.equal(registrationGeometryIsUsable({fields:[name,{...rule,bounds:{...rule.bounds,y:.05,height:.8}}]}),false);
+  assert.equal(registrationGeometryIsUsable({fields:[{...name,bounds:{x:.1,y:.3,width:.04,height:.5}},rule]}),false);
+  assert.equal(registrationGeometryIsUsable({fields:[name,{...rule,unprinted:true,bounds:name.bounds}]}),true);
+});
 
 // A face whose glyphs average half an em wide, whose ink spans 0.9em and whose
 // content area (ascent plus descent) is 1.2em.

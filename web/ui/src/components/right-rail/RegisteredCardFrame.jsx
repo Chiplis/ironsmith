@@ -4,6 +4,8 @@ import {registeredFieldLayouts,registeredRuleAssignments} from '@/lib/card-regio
 import {maskRegisteredRegion} from '@/lib/card-region-mask';
 import CardFrameRulesBox from './CardFrameRulesBox';
 import GroupedManaAbility from './GroupedManaAbility';
+import {useI18n} from '@/i18n/I18nContext';
+import {loadTranslatedCardView} from '@/i18n/cardTranslations';
 import './registered-card-frame.css';
 
 const position=b=>({left:`${b.x*100}%`,top:`${b.y*100}%`,width:`${b.width*100}%`,height:`${b.height*100}%`});
@@ -11,7 +13,7 @@ const same=(a,b)=>String(a||'').normalize('NFKC').replace(/\s+/g,' ').trim()===S
 function RegisteredField({field,layout,unit,scale=1,onFit,text,actions,group,imageUrl,typography,name,onActivate,highlighted}) {
   // Errata'd printings keep stale wording in the box: replace it even when the
   // live text already equals the current oracle text.
-  const changed=!same(text,field.text) || field.unprinted || field.errata;
+  const changed=!same(text,field.printedText??field.text) || field.unprinted || field.errata;
   const [patch,setPatch]=useState(null);
   useEffect(()=>{
     if(!changed || field.unprinted || !field.lines.length)return;
@@ -33,7 +35,7 @@ function RegisteredField({field,layout,unit,scale=1,onFit,text,actions,group,ima
   return <>
     {showReplacement&&patch?.field===field&&<img className="registered-card-frame__patch" src={patch.value.image} alt="" style={position(patch.value.bounds)} />}
     <div className="registered-card-frame__field" style={style} data-field-kind={field.kind}
-      data-replaced={showReplacement?'true':'false'} data-live-text={text} data-printed-text={field.text}
+      data-replaced={showReplacement?'true':'false'} data-live-text={text} data-printed-text={field.text} data-outlined={field.outlined?'true':undefined}
       data-stack-highlighted={highlighted?'true':undefined} data-unprinted={field.unprinted?'true':undefined}>
       {showReplacement ? <CardFrameRulesBox label={text} refitKey={`${unit}|${scale}`} onFit={onFit?fit=>onFit(fit*scale):undefined}>
         {group?<GroupedManaAbility group={group} name={name} onActivate={onActivate}/>:actions.length?
@@ -68,6 +70,19 @@ function fieldMeasurer(typography) {
 export default function RegisteredCardFrame({registration,imageUrl,typography,rulesView,name,typeLine,stats,flavorText,onActivate,highlighted}) {
   const assignments=useMemo(()=>registeredRuleAssignments(registration.fields,rulesView),[registration,rulesView]);
   const fields=registration.fields;
+  const {locale}=useI18n();
+  const [translated,setTranslated]=useState(null);
+  useEffect(()=>{
+    let active=true;
+    const names=fields.filter(f=>f.kind==='name');
+    if(names.length<2||locale==='en')return;
+    Promise.all(names.map(async field=>[field.face,await loadTranslatedCardView(locale,{
+      name:field.text,typeLine:fields.find(f=>f.kind==='type'&&f.face===field.face)?.text,
+      rulesText:fields.filter(f=>f.kind==='rule'&&f.face===field.face).map(f=>f.text).join('\n'),
+    })])).then(entries=>{if(active)setTranslated({registration,locale,faces:new Map(entries)});});
+    return ()=>{active=false;};
+  },[fields,registration,locale]);
+  const translatedFaces=translated?.registration===registration&&translated.locale===locale?translated.faces:null;
   const layouts=useMemo(()=>registeredFieldLayouts(fields,fieldMeasurer(typography)),[fields,typography]);
   const surfaceRef=useRef(null);
   const [unit,setUnit]=useState(0);
@@ -101,17 +116,23 @@ export default function RegisteredCardFrame({registration,imageUrl,typography,ru
       <img className="registered-card-frame__scan" src={imageUrl} alt={name} referrerPolicy="no-referrer" />
       {fields.map((field,index)=>{
         if(!field.bounds)return null;
-        let text=field.text,actions=[],group=null,isHighlighted=false;
+        let text=locale===registration.lang?(field.printedText||field.text):field.text,actions=[],group=null,isHighlighted=false;
+        const face=translatedFaces?.get(field.face);
+        if(face) {
+          const localized=field.kind==='name'?face.name:field.kind==='type'?face.typeLine:field.kind==='rule'?face.rulesText?.replace(/\\n/g,'\n').split('\n')[field.index]:null;
+          if(localized&&!same(localized,field.text))text=localized;
+        }
         if(field.kind==='rule') {
           const indices=assignments.get(index)||[];
           if(indices.length) {
-            text=indices.map(i=>rulesView.lines[i]).join('\n');
+            const live=indices.map(i=>rulesView.lines[i]).join('\n');
+            if(!same(live,field.text))text=live;
             actions=indices.flatMap(i=>rulesView.actions.get(i)||[]);
             group=indices.length===1?rulesView.manaGroups.get(indices[0]):null;
             isHighlighted=indices.some(i=>highlighted.has(i));
           }
-        } else if(field.kind==='name'&&name&&!name.includes(' // ')&&fields.filter(f=>f.kind==='name').length===1)text=name;
-        else if(field.kind==='type'&&typeLine&&fields.filter(f=>f.kind==='type').length===1)text=typeLine;
+        } else if(field.kind==='name'&&name&&!name.includes(' // ')&&fields.filter(f=>f.kind==='name').length===1&&(locale==='en'||!same(name,field.text)))text=name;
+        else if(field.kind==='type'&&typeLine&&fields.filter(f=>f.kind==='type').length===1&&(locale==='en'||!same(typeLine,field.text)))text=typeLine;
         else if(field.kind==='stats'&&stats&&fields.filter(f=>f.kind==='stats').length===1)text=stats.replace(/\s/g,'');
         else if(field.kind==='flavor'&&flavorText&&fields.filter(f=>f.kind==='flavor').length===1)text=flavorText;
         const shares=['rule','flavor'].includes(field.kind);

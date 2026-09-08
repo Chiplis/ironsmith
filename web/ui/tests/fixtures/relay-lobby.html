@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Public lobby UI</title></head><body><div id="root"></div>
+<script type="module">
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { GameContext } from '/src/context/GameContext.shared.js';
+import { createEmptyState } from '/src/hooks/peer-lobby/shared.js';
+import LobbyOverlay from '/src/components/layout/LobbyOverlay.jsx';
+import '/src/index.css';
+const value = { multiplayer: createEmptyState(), canStartHostedMatch: false, status: null,
+  createLobby: input => { window.createdLobby = input; }, joinLobby: input => { window.joinedLobby = input; },
+  leaveLobby() {}, startHostedMatch() {}, updateLobbyDeck() {}, setStatus() {} };
+createRoot(document.getElementById('root')).render(React.createElement(GameContext.Provider, { value },
+  React.createElement(LobbyOverlay, { onClose() {}, initialCreateDeckText: '60 Plains' })));
+</script></body></html>

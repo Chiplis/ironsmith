@@ -20,6 +20,22 @@ export function registrationForImage(registrations, url) {
   return registrations.find(item => scanPath(item.source) === path) || null;
 }
 
+// The renderer lays out horizontal text. Rotated OCR boxes and ability boxes
+// that swallow a header cannot safely drive either masking or replacement.
+export function registrationGeometryIsUsable(registration) {
+  const fields = (registration?.fields || []).filter(field => !field.unprinted && field.bounds);
+  const headers = fields.filter(field => ['name', 'type'].includes(field.kind));
+  if (headers.some(({bounds}) => bounds.height > bounds.width)) return false;
+  for (const {bounds: rule} of fields.filter(field => field.kind === 'rule')) {
+    for (const {bounds: header} of headers) {
+      const width = Math.max(0, Math.min(rule.x + rule.width, header.x + header.width) - Math.max(rule.x, header.x));
+      const height = Math.max(0, Math.min(rule.y + rule.height, header.y + header.height) - Math.max(rule.y, header.y));
+      if (width * height > header.width * header.height * .5) return false;
+    }
+  }
+  return true;
+}
+
 // A registration describes the ink on one scan. Another language of the same
 // printing (same set and collector number) shares the art and frame but wraps
 // its text differently, so it cannot reuse the line boxes; it can borrow the
@@ -125,6 +141,13 @@ export function registeredFieldLayouts(fields, measureFor, { fallbackLineHeight 
     if (item === lastRule) {
       const below = [bottomOf('flavor'), bottomOf('stats')].filter(limit => limit > bounds.y + bounds.height);
       height = Math.max(height, Math.min(...below, .875) - .006 - y);
+    }
+    const region = item.field.region;
+    if (region) {
+      const top = Math.max(region.y, y);
+      return {size:item.size,lineHeight,bounds:{x:Math.max(region.x,bounds.x),y:top,
+        width:Math.min(width,region.x+region.width-Math.max(region.x,bounds.x)),
+        height:Math.min(Math.max(height,region.y+region.height-top),region.y+region.height-top)}};
     }
     return { size: item.size, lineHeight, bounds: { x: bounds.x, width, y, height } };
   });

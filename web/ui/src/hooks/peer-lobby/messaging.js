@@ -1,3 +1,6 @@
+import { PUBLIC_FORMATS, isRelayId, relayBaseUrl } from '../../lib/relay/formats.js';
+import { loadFormatCatalog, validateFormatDeck, assertFormatMatch } from '../../lib/relay/format-legality.js';
+import { buildPeerOptions, describePeerServer } from './shared.js';
 import {
   CURRENT_AUDIT_MAX_PLAYERS,
   CURRENT_AUDIT_MIN_PLAYERS,
@@ -80,6 +83,7 @@ import {
   withDeckState,
   writeStoredPlayerIndex,
 } from "./shared.js";
+import { approximateMessageBytes, recordDiagnosticEvent, recordPeerMessage, recordPeerState } from "../../lib/action-diagnostics.js";
 
 export function usePeerLobbyMessaging(base, servicesRef) {
   const { actionCryptoRequirementsRef, actionHistoryRef, applySyncedCommand, applyingSequencedActionsRef, auditEncryptionPublicKeyRef, auditKeyPairRef, auditPublicKeyRef, auditStateHashRef, awaitingStateResyncRef, clientConnectionsRef, clientMessageQueueRef, drainingPendingSequencedActionsRef, ensureDirectPeerConnectionsRef, gameRef, hostConnectionRef, hostMessageQueueRef, ignoredActionIntentKeysRef, initialPublicCheckpointHashRef, liveAuditTranscriptRef, localZiffleRevealInFlightRef, matchClockConfigRef, matchClockObservationExemptSequenceRef, matchStartPayloadRef, multiplayerRef, peerConnectionsRef, peerMessageQueueRef, peerOptionsRef, peerRef, peerServerLabelRef, pendingSequencedActionsRef, reconnectChallengesRef, relayedActionIdsRef, resyncingPeerIdsRef, setState, setStatus, stateRef } = base;
@@ -635,7 +639,11 @@ export function usePeerLobbyMessaging(base, servicesRef) {
   );
 
   const broadcastLobbyState = useCallback(() => {
-    const session = multiplayerRef.current;
+    let session = multiplayerRef.current;
+    if (session.role === 'host' && isRelayId(session.lobbyId) && !session.matchStarted) {
+      session = updateMultiplayer(prev => ({ ...prev, players: prev.players.map(p =>
+        withDeckState(p, prev.format, p.deck, p.commanders, p.sideboard)) }));
+    }
     if (session.role !== "host") return;
     broadcastToClients({
       type: "lobby_state",
@@ -649,7 +657,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       players: toLobbyPlayers(session.players),
       matchStarted: session.matchStarted,
     });
-  }, [broadcastToClients]);
+  }, [broadcastToClients, updateMultiplayer]);
 
   const startTrustedMatchFromPlayers = useCallback(async (rawPlayers, options = {}) => {
     const session = multiplayerRef.current;
@@ -706,6 +714,10 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       matchClockPolicy: matchClockPolicyPayload(matchClockConfigRef.current),
       auditMatchId: session.lobbyId || session.localPeerId,
     };
+    if (isRelayId(session.lobbyId)) {
+      try { assertFormatMatch(payload); }
+      catch (error) { setStatus(error.message, true); return; }
+    }
     payload.seed = createMatchSeed(payload);
 
     updateMultiplayer((prev) => ({
@@ -728,7 +740,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           playerNames: payload.players.map((player) => player.name),
           startingLife: payload.startingLife,
           seed: payload.seed,
-          format: payload.format,
+          format: PUBLIC_FORMATS[payload.format]?.engineFormat || payload.format,
           decks: validationDecksForMatchPayload(payload),
           sideboards: validationSideboardsForMatchPayload(payload),
           commanders: validationCommandersForMatchPayload(payload),
@@ -934,7 +946,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           playerNames: payload.players.map((player) => player.name),
           startingLife: payload.startingLife,
           seed: payload.seed,
-          format: payload.format,
+          format: PUBLIC_FORMATS[payload.format]?.engineFormat || payload.format,
           decks: validationDecksForMatchPayload(payload),
           sideboards: validationSideboardsForMatchPayload(payload),
           commanders: validationCommandersForMatchPayload(payload),
@@ -1188,7 +1200,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           playerNames: payload.players.map((player) => player.name),
           startingLife: payload.startingLife,
           seed: payload.seed,
-          format: payload.format,
+          format: PUBLIC_FORMATS[payload.format]?.engineFormat || payload.format,
           decks: validationDecksForMatchPayload(payload),
           sideboards: validationSideboardsForMatchPayload(payload),
           commanders: validationCommandersForMatchPayload(payload),
@@ -1544,6 +1556,12 @@ export function usePeerLobbyMessaging(base, servicesRef) {
 	      session.localCommanderText
 	    );
 	    if (isTrustedMultiplayerSecurityMode(sessionSecurityMode(session))) {
+          // A lobby_state acknowledges these open decklists. Re-sending the same
+          // submission would make the host broadcast another lobby_state forever.
+          const accepted = session.players.find(p => p.peerId === session.localPeerId);
+          if (isRelayId(session.lobbyId) && accepted
+            && JSON.stringify([accepted.deck, accepted.commanders, accepted.sideboard])
+              === JSON.stringify([deckSubmission.deck, deckSubmission.commanders, deckSubmission.sideboard])) return;
 	      updateMultiplayer((prev) => ({
 	        ...prev,
 	        localDeckCount: deckSubmission.deckCount,
@@ -2173,17 +2191,22 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         });
       };
       if (conn.open) {
+        recordPeerState(conn.peer, "open");
         beginHeartbeat();
       } else {
-        conn.on("open", beginHeartbeat);
+        conn.on("open", () => { recordPeerState(conn.peer, "open"); beginHeartbeat(); });
       }
       conn.on("data", (message) => {
         markConnectionAlive(heartbeatKey);
+        recordPeerMessage(conn.peer, "in", message?.type, approximateMessageBytes(message));
         if (handleConnectionHeartbeatMessage(conn, message)) return;
         if (message?.type === "apply_action") {
-          void enqueueAsync(peerMessageQueueRef, () =>
-            handlePeerMessage(conn, message)
-          ).catch((err) => {
+          const queuedAtMs = Date.now();
+          void enqueueAsync(peerMessageQueueRef, () => {
+            const queueWaitMs = Date.now() - queuedAtMs;
+            if (queueWaitMs >= 50) recordDiagnosticEvent("apply_action:queue_wait", { peer: conn.peer, seq: message.seq, queue_wait_ms: queueWaitMs });
+            return handlePeerMessage(conn, message);
+          }).catch((err) => {
             setStatus(`Peer message failed: ${toErrorMessage(err)}`, true);
           });
           return;
@@ -2216,19 +2239,24 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           });
           return;
         }
-        void enqueueAsync(peerMessageQueueRef, () =>
-          handlePeerMessage(conn, message)
-        ).catch((err) => {
+        const queuedAtMs = Date.now();
+        void enqueueAsync(peerMessageQueueRef, () => {
+          const queueWaitMs = Date.now() - queuedAtMs;
+          if (queueWaitMs >= 50) recordDiagnosticEvent("apply_action:queue_wait", { peer: conn.peer, seq: message.seq, queue_wait_ms: queueWaitMs });
+          return handlePeerMessage(conn, message);
+        }).catch((err) => {
           setStatus(`Peer message failed: ${toErrorMessage(err)}`, true);
         });
       });
       conn.on("close", () => {
+        recordPeerState(conn.peer, "closed");
         clearConnectionHeartbeat(heartbeatKey);
         if (peerConnectionsRef.current.get(conn.peer) === conn) {
           handlePeerDisconnect(conn.peer);
         }
       });
       conn.on("error", () => {
+        recordPeerState(conn.peer, "error");
         clearConnectionHeartbeat(heartbeatKey);
         if (peerConnectionsRef.current.get(conn.peer) === conn) {
           handlePeerDisconnect(conn.peer);
@@ -2632,7 +2660,9 @@ export function usePeerLobbyMessaging(base, servicesRef) {
 	                  ziffleKey: message.ziffleKey || basePlayer.ziffleKey || null,
 	                  commanders: sanitizeCardList(message.commanders),
                   deckSlotOpenings: sanitizeDeckSlotOpenings(message.deckSlotOpenings),
-	                  ready: Boolean(message.ready),
+	                  ready: isRelayId(prev.lobbyId)
+                        ? validateFormatDeck(prev.format, sanitizeCardList(message.deck), sanitizeCardList(message.commanders), sanitizeCardList(message.sideboard)).ready
+                        : Boolean(message.ready),
                   deckCount: Number(message.deckCount || 0),
                   sideboardCount: Number(message.sideboardCount || 0),
                   commanderCount: Number(message.commanderCount || 0),
@@ -2855,7 +2885,9 @@ export function usePeerLobbyMessaging(base, servicesRef) {
 	                      ziffleKey: message.ziffleKey || player.ziffleKey || null,
 	                      commanders: sanitizeCardList(message.commanders),
                       deckSlotOpenings: sanitizeDeckSlotOpenings(message.deckSlotOpenings),
-	                      ready: Boolean(message.ready),
+	                      ready: isRelayId(prev.lobbyId)
+                        ? validateFormatDeck(prev.format, sanitizeCardList(message.deck), sanitizeCardList(message.commanders), sanitizeCardList(message.sideboard)).ready
+                        : Boolean(message.ready),
                       deckCount: Number(message.deckCount || 0),
                       sideboardCount: Number(message.sideboardCount || 0),
                       commanderCount: Number(message.commanderCount || 0),
@@ -3000,12 +3032,14 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         handleClientDisconnect(conn.peer);
       });
       if (conn.open) {
+        recordPeerState(conn.peer, "open");
         beginHeartbeat();
       } else {
-        conn.on("open", beginHeartbeat);
+        conn.on("open", () => { recordPeerState(conn.peer, "open"); beginHeartbeat(); });
       }
       conn.on("data", (message) => {
         markConnectionAlive(heartbeatKey);
+        recordPeerMessage(conn.peer, "in", message?.type, approximateMessageBytes(message));
         if (handleConnectionHeartbeatMessage(conn, message)) return;
         const handleError = (err) => {
           if (shouldSuppressProtocolMessageError(err, message)) return;
@@ -3054,11 +3088,13 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         ).catch(handleError);
       });
       conn.on("close", () => {
+        recordPeerState(conn.peer, "closed");
         clearConnectionHeartbeat(heartbeatKey);
         if (clientConnectionsRef.current.get(conn.peer) !== conn) return;
         handleClientDisconnect(conn.peer);
       });
       conn.on("error", () => {
+        recordPeerState(conn.peer, "error");
         clearConnectionHeartbeat(heartbeatKey);
         if (clientConnectionsRef.current.get(conn.peer) !== conn) return;
         handleClientDisconnect(conn.peer);
@@ -3089,6 +3125,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     (reason = "Lobby host disconnected.") => {
       const session = multiplayerRef.current;
       const lobbyId = String(session.lobbyId || session.hostPeerId || "").trim();
+      if (isRelayId(lobbyId)) return false;
       const localPlayerIndex = resolveReconnectPlayerIndex(session, lobbyId);
       if (session.role !== "client" || !lobbyId || localPlayerIndex == null) {
         return false;
@@ -3342,7 +3379,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           if (peerRef.current !== takeoverPeer) return;
           clearTimeout(openTimeout);
           scheduleReconnect(
-            `Disconnected from the PeerJS signaling server (${peerServerLabelRef.current}).`
+            `Disconnected from the lobby signaling service (${peerServerLabelRef.current}).`
           );
         });
         takeoverPeer.on("close", () => {
@@ -3374,8 +3411,21 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       securityMode = MULTIPLAYER_SECURITY_TRUSTED,
       deckText = "",
       commanderText = "",
+      transport = "peerjs",
+      advertise = true,
     }) => {
+      if (transport === 'websocket') {
+        if (!relayBaseUrl()) { setStatus('WebSocket lobby service is not configured', true); return; }
+        if (!PUBLIC_FORMATS[format]) { setStatus('Choose a format for the public lobby', true); return; }
+        try { await loadFormatCatalog(); } catch (error) { setStatus(error.message, true); return; }
+        securityMode = MULTIPLAYER_SECURITY_TRUSTED;
+        startingLife = PUBLIC_FORMATS[format].startingLife;
+        if (PUBLIC_FORMATS[format].maxPlayers === 2) desiredPlayers = 2;
+      }
       teardownPeer();
+      peerOptionsRef.current = transport === 'websocket'
+        ? { transport, format, desiredPlayers, advertise, url: relayBaseUrl() } : buildPeerOptions();
+      peerServerLabelRef.current = describePeerServer(peerOptionsRef.current);
       const normalizedFormat = normalizeMatchFormat(format);
       const normalizedSecurityMode =
         normalizedFormat === MATCH_FORMAT_PLANECHASE
@@ -3435,7 +3485,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       const openTimeout = window.setTimeout(() => {
         if (peerRef.current !== peer || peer.open) return;
         setStatus(
-          `Could not register the lobby with the PeerJS signaling server (${peerServerLabelRef.current}).`,
+          `Could not register the lobby with the lobby signaling service (${peerServerLabelRef.current}).`,
           true
         );
         leaveLobby("");
@@ -3456,7 +3506,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         localDeckCount: deckSubmission.deckCount,
         localCommanderCount: deckSubmission.commanderCount,
       });
-      setStatus(`Registering lobby with PeerJS (${peerServerLabelRef.current})...`);
+      setStatus(`Registering lobby with signaling service (${peerServerLabelRef.current})...`);
 
       peer.on("open", async (peerId) => {
         clearTimeout(openTimeout);
@@ -3575,7 +3625,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       peer.on("disconnected", () => {
         clearTimeout(openTimeout);
         scheduleReconnect(
-          `Disconnected from the PeerJS signaling server (${peerServerLabelRef.current}).`
+          `Disconnected from the lobby signaling service (${peerServerLabelRef.current}).`
         );
       });
       peer.on("close", () => {
@@ -3601,7 +3651,14 @@ export function usePeerLobbyMessaging(base, servicesRef) {
 
   const joinLobby = useCallback(
     async ({ name, lobbyId, deckText = "", commanderText = "" }) => {
+      if (isRelayId(lobbyId)) {
+        if (!relayBaseUrl()) { setStatus('WebSocket lobby service is not configured', true); return; }
+        try { await loadFormatCatalog(); } catch (error) { setStatus(error.message, true); return; }
+      }
       teardownPeer();
+      peerOptionsRef.current = isRelayId(lobbyId)
+        ? { transport: 'websocket', room: lobbyId.split('-')[1], url: relayBaseUrl() } : buildPeerOptions();
+      peerServerLabelRef.current = describePeerServer(peerOptionsRef.current);
       const localName = sanitizePlayerName(name, "Guest");
       const targetLobby = String(lobbyId || "").trim();
       if (!targetLobby) {
@@ -3637,7 +3694,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       const peerOpenTimeout = window.setTimeout(() => {
         if (peerRef.current !== peer || peer.open) return;
         setStatus(
-          `Could not connect to the PeerJS signaling server (${peerServerLabelRef.current}).`,
+          `Could not connect to the lobby signaling service (${peerServerLabelRef.current}).`,
           true
         );
         leaveLobby("");
@@ -3656,7 +3713,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         localDeckCount: deckSubmission.deckCount,
         localCommanderCount: deckSubmission.commanderCount,
       });
-      setStatus(`Connecting to the PeerJS signaling server (${peerServerLabelRef.current})...`);
+      setStatus(`Connecting to the lobby signaling service (${peerServerLabelRef.current})...`);
 
       const scheduleHostReconnect = (reason) => {
         if (peerRef.current !== peer || peer.destroyed) {
@@ -3754,6 +3811,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         };
         conn.on("open", async () => {
           if (hostConnectionRef.current !== conn) return;
+          recordPeerState(conn.peer, "open");
           clearJoinTimeouts();
           clearHostReconnect();
           const hostPlayer = multiplayerRef.current.players.find(
@@ -3830,9 +3888,15 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         conn.on("data", (message) => {
           if (hostConnectionRef.current !== conn) return;
           markConnectionAlive(heartbeatKey);
+          recordPeerMessage(conn.peer, "in", message?.type, approximateMessageBytes(message));
           if (handleConnectionHeartbeatMessage(conn, message)) return;
           if (message?.type === "apply_action") {
-            void enqueueAsync(hostMessageQueueRef, () => handleHostMessage(message)).catch((err) => {
+            const queuedAtMs = Date.now();
+            void enqueueAsync(hostMessageQueueRef, () => {
+              const queueWaitMs = Date.now() - queuedAtMs;
+              if (queueWaitMs >= 50) recordDiagnosticEvent("apply_action:queue_wait", { peer: conn.peer, seq: message.seq, queue_wait_ms: queueWaitMs });
+              return handleHostMessage(message);
+            }).catch((err) => {
               emitSyncFailureNotice(
                 "Sync failed",
                 err instanceof Error ? err.message : String(err)
@@ -3872,7 +3936,12 @@ export function usePeerLobbyMessaging(base, servicesRef) {
             });
             return;
           }
-          void enqueueAsync(hostMessageQueueRef, () => handleHostMessage(message)).catch((err) => {
+          const queuedAtMs = Date.now();
+            void enqueueAsync(hostMessageQueueRef, () => {
+              const queueWaitMs = Date.now() - queuedAtMs;
+              if (queueWaitMs >= 50) recordDiagnosticEvent("apply_action:queue_wait", { peer: conn.peer, seq: message.seq, queue_wait_ms: queueWaitMs });
+              return handleHostMessage(message);
+            }).catch((err) => {
             emitSyncFailureNotice(
               "Sync failed",
               err instanceof Error ? err.message : String(err)
@@ -3881,6 +3950,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           });
         });
         conn.on("close", () => {
+          recordPeerState(conn.peer, "closed");
           if (hostConnectionRef.current !== conn) return;
           handleHostConnectionLost("Disconnected from lobby host.");
         });
@@ -3956,7 +4026,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       peer.on("disconnected", () => {
         clearTimeout(peerOpenTimeout);
         scheduleReconnect(
-          `Disconnected from the PeerJS signaling server (${peerServerLabelRef.current}).`
+          `Disconnected from the lobby signaling service (${peerServerLabelRef.current}).`
         );
       });
       peer.on("close", () => {

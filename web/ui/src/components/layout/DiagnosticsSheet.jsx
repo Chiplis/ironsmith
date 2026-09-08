@@ -146,7 +146,8 @@ export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTr
           {snapshot ? (() => {
             const summary = verdict({ snapshot, peerWait, multiplayer });
             const current = snapshot.current;
-            const clockEpochAge = clock?.startedAtMs != null ? snapshot.atWall - Number(clock.startedAtMs) : null;
+            // Match-clock epochs are stamped with the monotonic clock, like snapshot.at.
+            const clockEpochAge = clock?.startedAtMs != null ? snapshot.at - Number(clock.startedAtMs) : null;
             const activeClockPlayer = clock?.activePlayerIndex != null ? playerDisplayName(players, clock.activePlayerIndex) || `P${Number(clock.activePlayerIndex) + 1}` : "—";
             return (
               <div className="diagnostics-body">

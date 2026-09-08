@@ -83,7 +83,7 @@ export function inpaintGlyphMask({data,width,height},mask) {
   return {data:out,width,height,mask};
 }
 
-export function fontGuidedPanel(scan,{family,weight=400,italic=false,allowItalic=false,symbols=false,text='',section=''}) {
+export function fontGuidedPanel(scan,{family,weight=400,italic=false,allowItalic=false,symbols=false,text='',section='',outlined=false}) {
   const {data,width,height}=scan,bins=new Map();
   for(let p=0;p<width*height;p++) {
     const v=Math.round((data[p*4]+data[p*4+1]+data[p*4+2])/3/16);
@@ -93,7 +93,7 @@ export function fontGuidedPanel(scan,{family,weight=400,italic=false,allowItalic
   const ink=new Uint8Array(width*height);
   for(let p=0;p<ink.length;p++) {
     const v=(data[p*4]+data[p*4+1]+data[p*4+2])/3;
-    ink[p]=(light?v>paper+65:v<paper-55)?1:0;
+    ink[p]=outlined ? (Math.min(data[p*4],data[p*4+1],data[p*4+2])>165 && Math.max(data[p*4],data[p*4+1],data[p*4+2])-Math.min(data[p*4],data[p*4+1],data[p*4+2])<65?1:0) : (light?v>paper+65:v<paper-55)?1:0;
   }
   const bank=[...glyphBank(family,weight,italic,text),...(allowItalic?glyphBank(family,400,true,text):[])];
   const visited=new Uint8Array(ink.length),accepted=new Uint8Array(ink.length),components=[];
@@ -161,7 +161,8 @@ export function fontGuidedPanel(scan,{family,weight=400,italic=false,allowItalic
   const mask=accepted.slice();
   for(let p=0;p<accepted.length;p++)if(accepted[p]) {
     const x=p%width,y=Math.floor(p/width);
-    for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++)if(dx*dx+dy*dy<=5&&x+dx>=0&&x+dx<width&&y+dy>=0&&y+dy<height)mask[(y+dy)*width+x+dx]=1;
+    const radius=outlined?4:2;
+    for(let dy=-radius;dy<=radius;dy++)for(let dx=-radius;dx<=radius;dx++)if(dx*dx+dy*dy<=radius*radius+1&&x+dx>=0&&x+dx<width&&y+dy>=0&&y+dy<height)mask[(y+dy)*width+x+dx]=1;
   }
   const result=inpaintGlyphMask(scan,mask);
   return {...result,matches:matches.length,method:'font-template'};

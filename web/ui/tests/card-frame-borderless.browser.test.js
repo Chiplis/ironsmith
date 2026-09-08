@@ -8,7 +8,7 @@ import {createServer} from 'vite';
 
 const fixtures=process.env.CARD_FRAME_FIXTURES;
 test('borderless title masks include the first capital on English and Spanish scans', {skip:!fixtures,timeout:120000}, async()=>{
-  const cases=JSON.parse(await readFile(new URL('./card-frame-regression-cases.json',import.meta.url),'utf8'));
+  const cases=JSON.parse(await readFile(new URL('./card-frame-regression-cases.json',import.meta.url),'utf8')).filter(c=>c.families.includes('borderless-white-title'));
   const slugs=cases.map(c=>c.slug);
   const prints=await Promise.all(slugs.map(slug=>readFile(join(fixtures,slug+'.json'),'utf8').then(JSON.parse)));
   prints.forEach((printing,i)=>assert.equal(printing.id,cases[i].id,'use the exact regression scan'));

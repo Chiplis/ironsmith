@@ -1,3 +1,4 @@
+import { PUBLIC_FORMATS } from './relay/formats.js';
 export const MATCH_FORMAT_NORMAL = "normal";
 export const MATCH_FORMAT_COMMANDER = "commander";
 export const MATCH_FORMAT_PLANECHASE = "planechase";
@@ -345,6 +346,7 @@ export function saveSavedDeckPreset(name, texts) {
 }
 
 export function normalizeMatchFormat(raw) {
+  if (typeof raw === 'string' && Object.hasOwn(PUBLIC_FORMATS, raw)) return raw;
   if (raw === MATCH_FORMAT_COMMANDER) return MATCH_FORMAT_COMMANDER;
   if (raw === MATCH_FORMAT_PLANECHASE) return MATCH_FORMAT_PLANECHASE;
   return MATCH_FORMAT_NORMAL;
@@ -385,7 +387,7 @@ export function evaluateLobbyDeckSubmission(format, deck, commanders = []) {
   }
 
   return {
-    ready: deckCount === LOBBY_DECK_SIZE,
+    ready: PUBLIC_FORMATS[normalizedFormat] ? deckCount >= LOBBY_DECK_SIZE && commanderCount === 0 : deckCount === LOBBY_DECK_SIZE,
     deckCount,
     commanderCount,
     requiredDeckCount: LOBBY_DECK_SIZE,

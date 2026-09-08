@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><title>Local lobby search fixture</title></head>
+  <body>
+    <div id="root"></div>
+    <script type="module">
+      import React from "react";
+      import { createRoot } from "react-dom/client";
+      import LocalLobbySearch from "/src/components/layout/LocalLobbySearch.jsx";
+      createRoot(document.getElementById("root")).render(
+        React.createElement(LocalLobbySearch, { onSelect: (id) => { window.selectedLobby = id; } })
+      );
+    </script>
+  </body>
+</html>

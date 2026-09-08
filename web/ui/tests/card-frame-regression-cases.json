@@ -37,5 +37,897 @@
     ],
     "border_color": "borderless",
     "full_art": false
+  },
+  {
+    "id": "3c34660c-25e3-4ff5-9b2b-5554ded2bcc3",
+    "name": "Cheerful Osteomancer // Raise Dead",
+    "layout": "prepare",
+    "set": "sos",
+    "collector_number": "76",
+    "frame": "2015",
+    "border_color": "black",
+    "full_art": false,
+    "slug": "prepare-sos-76-en",
+    "source": "https://cards.scryfall.io/normal/front/3/c/3c34660c-25e3-4ff5-9b2b-5554ded2bcc3.jpg?1783903683",
+    "families": [
+      "user-dynamic-regression"
+    ],
+    "expectedMode": "registered",
+    "registration": {
+      "id": "3c34660c-25e3-4ff5-9b2b-5554ded2bcc3",
+      "face": null,
+      "source": "https://cards.scryfall.io/normal/front/3/c/3c34660c-25e3-4ff5-9b2b-5554ded2bcc3.jpg?1783903683",
+      "layout": "prepare",
+      "set": "sos",
+      "collector_number": "76",
+      "fields": [
+        {
+          "kind": "name",
+          "text": "Cheerful Osteomancer",
+          "face": 0,
+          "lines": [
+            {
+              "text": "Cheerful Osteomancer",
+              "x": 0.08196721697892272,
+              "y": 0.06176470575630255,
+              "width": 0.540983606557377,
+              "height": 0.03529411764705881
+            }
+          ],
+          "bounds": {
+            "x": 0.08196721697892272,
+            "y": 0.06176470575630255,
+            "width": 0.540983606557377,
+            "height": 0.03529411764705881
+          },
+          "limit": 0.825
+        },
+        {
+          "kind": "type",
+          "text": "Creature \u2014 Orc Warlock",
+          "face": 0,
+          "lines": [
+            {
+              "text": "Creature - Orc Warlock",
+              "x": 0.08196721006659839,
+              "y": 0.5764705883823529,
+              "width": 0.48770491803278687,
+              "height": 0.02941176470588236
+            }
+          ],
+          "bounds": {
+            "x": 0.08196721006659839,
+            "y": 0.5764705883823529,
+            "width": 0.48770491803278687,
+            "height": 0.02941176470588236
+          }
+        },
+        {
+          "kind": "stats",
+          "text": "4/2",
+          "face": 0,
+          "lines": [
+            {
+              "text": "4/2",
+              "x": 0.8196721317622951,
+              "y": 0.8999999998739497,
+              "width": 0.08606557377049173,
+              "height": 0.03529411764705881
+            }
+          ],
+          "bounds": {
+            "x": 0.8196721317622951,
+            "y": 0.8999999998739497,
+            "width": 0.08606557377049173,
+            "height": 0.03529411764705881
+          }
+        },
+        {
+          "kind": "rule",
+          "text": "This creature enters prepared. (While it's prepared, you may cast a copy of its spell. Doing so unprepares it.)",
+          "face": 0,
+          "index": 0,
+          "lines": [
+            {
+              "text": "This creature enters",
+              "x": 0.07786885763319658,
+              "y": 0.6823529411029411,
+              "width": 0.4139344262295082,
+              "height": 0.02941176470588236
+            },
+            {
+              "text": "prepared. ( While",
+              "x": 0.07786885590163928,
+              "y": 0.7147058821764706,
+              "width": 0.3442622950819672,
+              "height": 0.03529411764705881
+            },
+            {
+              "text": "it's prepared, you",
+              "x": 0.07756536289113677,
+              "y": 0.7427281278532541,
+              "width": 0.328475827076396,
+              "height": 0.04101433052736181
+            },
+            {
+              "text": "may cast a copy of",
+              "x": 0.07717197779645861,
+              "y": 0.7789851020648909,
+              "width": 0.366411021498383,
+              "height": 0.040949151095222014
+            },
+            {
+              "text": "its spell. Doing so",
+              "x": 0.07786885519125679,
+              "y": 0.811764705735294,
+              "width": 0.3278688524590164,
+              "height": 0.03529411764705881
+            },
+            {
+              "text": "unprepares it.)",
+              "x": 0.07753645614176047,
+              "y": 0.8427114799823344,
+              "width": 0.279353313758725,
+              "height": 0.03810645411996283
+            }
+          ],
+          "bounds": {
+            "x": 0.07717197779645861,
+            "y": 0.6823529411029411,
+            "width": 0.41463130606624615,
+            "height": 0.19846499299935616
+          },
+          "region": {
+            "x": 0.07,
+            "y": 0.66,
+            "width": 0.422,
+            "height": 0.265
+          }
+        },
+        {
+          "kind": "name",
+          "text": "Raise Dead",
+          "face": 1,
+          "lines": [
+            {
+              "text": "Raise Dead",
+              "x": 0.5161615107157147,
+              "y": 0.6374610588401841,
+              "width": 0.2053818937207832,
+              "height": 0.03390141094432164
+            }
+          ],
+          "bounds": {
+            "x": 0.5161615107157147,
+            "y": 0.6374610588401841,
+            "width": 0.2053818937207832,
+            "height": 0.03390141094432164
+          },
+          "limit": 0.89
+        },
+        {
+          "kind": "type",
+          "text": "Sorcery",
+          "face": 1,
+          "lines": [
+            {
+              "text": "Sorcery",
+              "x": 0.5163934440983606,
+              "y": 0.6882352939411766,
+              "width": 0.14754098360655743,
+              "height": 0.02941176470588225
+            }
+          ],
+          "bounds": {
+            "x": 0.5163934440983606,
+            "y": 0.6882352939411766,
+            "width": 0.14754098360655743,
+            "height": 0.02941176470588225
+          },
+          "region": {
+            "x": 0.51,
+            "y": 0.682,
+            "width": 0.415,
+            "height": 0.045
+          }
+        },
+        {
+          "kind": "rule",
+          "text": "Return target creature card from your graveyard to your hand.",
+          "face": 1,
+          "index": 0,
+          "lines": [
+            {
+              "text": "Return target",
+              "x": 0.5163934398360657,
+              "y": 0.7500000000882354,
+              "width": 0.2786885245901639,
+              "height": 0.032352941176470584
+            },
+            {
+              "text": "creature card from",
+              "x": 0.5163934445491802,
+              "y": 0.7794117644117649,
+              "width": 0.3811475409836066,
+              "height": 0.02941176470588236
+            },
+            {
+              "text": "your graveyard to",
+              "x": 0.5122950840163935,
+              "y": 0.8117647055294118,
+              "width": 0.360655737704918,
+              "height": 0.03529411764705881
+            },
+            {
+              "text": "your hand.",
+              "x": 0.512110821495113,
+              "y": 0.8434898670596445,
+              "width": 0.22987672149157912,
+              "height": 0.0365496775683235
+            }
+          ],
+          "bounds": {
+            "x": 0.512110821495113,
+            "y": 0.7500000000882354,
+            "width": 0.38543016403767383,
+            "height": 0.13003954453973254
+          },
+          "region": {
+            "x": 0.51,
+            "y": 0.74,
+            "width": 0.415,
+            "height": 0.15
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "c2ac1892-66cc-4c4e-a886-7024a6932142",
+    "name": "Cheerful Osteomancer // Raise Dead",
+    "layout": "prepare",
+    "set": "sos",
+    "collector_number": "76",
+    "frame": "2015",
+    "border_color": "black",
+    "full_art": false,
+    "slug": "prepare-sos-76-es",
+    "source": "https://cards.scryfall.io/normal/front/c/2/c2ac1892-66cc-4c4e-a886-7024a6932142.jpg?1782758656",
+    "families": [
+      "user-dynamic-regression"
+    ],
+    "expectedMode": "registered",
+    "registration": {
+      "id": "c2ac1892-66cc-4c4e-a886-7024a6932142",
+      "face": null,
+      "source": "https://cards.scryfall.io/normal/front/c/2/c2ac1892-66cc-4c4e-a886-7024a6932142.jpg?1782758656",
+      "layout": "prepare",
+      "set": "sos",
+      "collector_number": "76",
+      "fields": [
+        {
+          "kind": "name",
+          "text": "Cheerful Osteomancer",
+          "face": 0,
+          "lines": [
+            {
+              "text": "Osteomante jubilosa",
+              "x": 0.08196721799180319,
+              "y": 0.06176470576470594,
+              "width": 0.4877049180327869,
+              "height": 0.0352941176470587
+            }
+          ],
+          "bounds": {
+            "x": 0.08196721799180319,
+            "y": 0.06176470576470594,
+            "width": 0.4877049180327869,
+            "height": 0.0352941176470587
+          },
+          "limit": 0.825,
+          "printedText": "Osteomante jubilosa"
+        },
+        {
+          "kind": "type",
+          "text": "Creature \u2014 Orc Warlock",
+          "face": 0,
+          "lines": [
+            {
+              "text": "Criatura - Brujo orco",
+              "x": 0.08196721506147532,
+              "y": 0.5764705878308822,
+              "width": 0.4426229508196722,
+              "height": 0.032352941176470695
+            }
+          ],
+          "bounds": {
+            "x": 0.08196721506147532,
+            "y": 0.5764705878308822,
+            "width": 0.4426229508196722,
+            "height": 0.032352941176470695
+          },
+          "printedText": "Criatura \u2014 Brujo orco"
+        },
+        {
+          "kind": "stats",
+          "text": "4/2",
+          "face": 0,
+          "lines": [
+            {
+              "text": "4/2",
+              "x": 0.8196721317622951,
+              "y": 0.8999999998739497,
+              "width": 0.08606557377049173,
+              "height": 0.03529411764705881
+            }
+          ],
+          "bounds": {
+            "x": 0.8196721317622951,
+            "y": 0.8999999998739497,
+            "width": 0.08606557377049173,
+            "height": 0.03529411764705881
+          },
+          "printedText": "4/2"
+        },
+        {
+          "kind": "rule",
+          "text": "This creature enters prepared. (While it's prepared, you may cast a copy of its spell. Doing so unprepares it.)",
+          "face": 0,
+          "index": 0,
+          "lines": [
+            {
+              "text": "Esta criatura entra",
+              "x": 0.08196721574941453,
+              "y": 0.6529411763865546,
+              "width": 0.36885245901639346,
+              "height": 0.02941176470588236
+            },
+            {
+              "text": "preparada. (Mientras",
+              "x": 0.07786885594262292,
+              "y": 0.6852941175245097,
+              "width": 0.41803278688524587,
+              "height": 0.032352941176470584
+            },
+            {
+              "text": "esta criatura est\u00e9",
+              "x": 0.07786885645491794,
+              "y": 0.7147058820588235,
+              "width": 0.319672131147541,
+              "height": 0.02941176470588236
+            },
+            {
+              "text": "preparada, puedes",
+              "x": 0.0819672158469945,
+              "y": 0.7529411762745098,
+              "width": 0.3278688524590164,
+              "height": 0.02941176470588236
+            },
+            {
+              "text": "lanzar una cop\u0131a",
+              "x": 0.07786884856557386,
+              "y": 0.7823529408455883,
+              "width": 0.31967213114754095,
+              "height": 0.026470588235294024
+            },
+            {
+              "text": "de su hechizo. Si",
+              "x": 0.08196721393442621,
+              "y": 0.8088235289705882,
+              "width": 0.3114754098360656,
+              "height": 0.03529411764705881
+            },
+            {
+              "text": "lo haces, deja de",
+              "x": 0.07786885432889341,
+              "y": 0.8441176468933824,
+              "width": 0.29918032786885246,
+              "height": 0.032352941176470584
+            },
+            {
+              "text": "estarlo.)",
+              "x": 0.07761480805678952,
+              "y": 0.8729051571926922,
+              "width": 0.152147433796867,
+              "height": 0.03360144951764277
+            }
+          ],
+          "bounds": {
+            "x": 0.07761480805678952,
+            "y": 0.6529411763865546,
+            "width": 0.4182868347710793,
+            "height": 0.2535654303237804
+          },
+          "region": {
+            "x": 0.07,
+            "y": 0.64,
+            "width": 0.422,
+            "height": 0.285
+          },
+          "printedText": "Esta criatura entra preparada. (Mientras esta criatura est\u00e9 preparada, puedes lanzar una copia de su hechizo. Si lo haces, deja de estarlo.)"
+        },
+        {
+          "kind": "name",
+          "text": "Raise Dead",
+          "face": 1,
+          "lines": [
+            {
+              "text": "Alzar a los muertos",
+              "x": 0.5163934415983606,
+              "y": 0.63823529375,
+              "width": 0.3524590163934427,
+              "height": 0.02941176470588236
+            }
+          ],
+          "bounds": {
+            "x": 0.5163934415983606,
+            "y": 0.63823529375,
+            "width": 0.3524590163934427,
+            "height": 0.02941176470588236
+          },
+          "limit": 0.89,
+          "printedText": "Alzar a los muertos"
+        },
+        {
+          "kind": "type",
+          "text": "Sorcery",
+          "face": 1,
+          "lines": [
+            {
+              "text": "Conjuro",
+              "x": 0.5163934438866119,
+              "y": 0.6882352940196079,
+              "width": 0.15163934426229508,
+              "height": 0.02941176470588236
+            }
+          ],
+          "bounds": {
+            "x": 0.5163934438866119,
+            "y": 0.6882352940196079,
+            "width": 0.15163934426229508,
+            "height": 0.02941176470588236
+          },
+          "region": {
+            "x": 0.51,
+            "y": 0.682,
+            "width": 0.415,
+            "height": 0.045
+          },
+          "printedText": "Conjuro"
+        },
+        {
+          "kind": "rule",
+          "text": "Return target creature card from your graveyard to your hand.",
+          "face": 1,
+          "index": 0,
+          "lines": [
+            {
+              "text": "Regresa la carta de",
+              "x": 0.5163934402459016,
+              "y": 0.7470588238823529,
+              "width": 0.4016393442622951,
+              "height": 0.03529411764705881
+            },
+            {
+              "text": "criatura objetivo",
+              "x": 0.5163934446721311,
+              "y": 0.776470587882353,
+              "width": 0.34426229508196726,
+              "height": 0.03529411764705881
+            },
+            {
+              "text": "de tu cementerio a",
+              "x": 0.516393447592213,
+              "y": 0.8088235294117647,
+              "width": 0.39754098360655743,
+              "height": 0.03529411764705881
+            },
+            {
+              "text": "tu mano.",
+              "x": 0.5163198712979985,
+              "y": 0.8526909859971634,
+              "width": 0.19277009807649204,
+              "height": 0.029912147802465094
+            }
+          ],
+          "bounds": {
+            "x": 0.5163198712979985,
+            "y": 0.7470588238823529,
+            "width": 0.4017129132101982,
+            "height": 0.13554430991727562
+          },
+          "region": {
+            "x": 0.51,
+            "y": 0.74,
+            "width": 0.415,
+            "height": 0.15
+          },
+          "printedText": "Regresa la carta de criatura objetivo de tu cementerio a tu mano."
+        }
+      ],
+      "lang": "es"
+    }
+  },
+  {
+    "id": "6881d7c8-5bb7-4f8c-9f03-50fb1309d9c8",
+    "name": "Lightning Bolt",
+    "layout": "normal",
+    "set": "tle",
+    "collector_number": "32",
+    "frame": "2015",
+    "border_color": "borderless",
+    "full_art": true,
+    "slug": "bolt-tle-32-en",
+    "source": "https://cards.scryfall.io/normal/front/6/8/6881d7c8-5bb7-4f8c-9f03-50fb1309d9c8.jpg?1783904851",
+    "families": [
+      "user-dynamic-regression"
+    ],
+    "expectedMode": "registered",
+    "registration": {
+      "id": "6881d7c8-5bb7-4f8c-9f03-50fb1309d9c8",
+      "face": null,
+      "source": "https://cards.scryfall.io/normal/front/6/8/6881d7c8-5bb7-4f8c-9f03-50fb1309d9c8.jpg?1783904851",
+      "layout": "normal",
+      "set": "tle",
+      "collector_number": "32",
+      "fields": [
+        {
+          "kind": "name",
+          "text": "Lightning Bolt",
+          "face": 0,
+          "lines": [
+            {
+              "text": "Lightning Bolt",
+              "x": 0.08181711061859274,
+              "y": 0.05240335142446928,
+              "width": 0.3445624992495677,
+              "height": 0.051075649261474676
+            }
+          ],
+          "bounds": {
+            "x": 0.08181711061859274,
+            "y": 0.05240335142446928,
+            "width": 0.3445624992495677,
+            "height": 0.051075649261474676
+          },
+          "outlined": true
+        },
+        {
+          "kind": "type",
+          "text": "Instant",
+          "face": 0,
+          "lines": [
+            {
+              "text": "Instant",
+              "x": 0.07735845009582151,
+              "y": 0.5721784786534999,
+              "width": 0.16085687230844967,
+              "height": 0.035054807101978946
+            }
+          ],
+          "bounds": {
+            "x": 0.07735845009582151,
+            "y": 0.5721784786534999,
+            "width": 0.16085687230844967,
+            "height": 0.035054807101978946
+          },
+          "outlined": true
+        },
+        {
+          "kind": "rule",
+          "text": "Lightning Bolt deals 3 damage to any target.",
+          "face": 0,
+          "index": 0,
+          "lines": [
+            {
+              "text": "Lightning Boltdeals 3 damage to any",
+              "x": 0.07786884400614777,
+              "y": 0.6264705876470589,
+              "width": 0.7499999999999999,
+              "height": 0.04705882352941171
+            },
+            {
+              "text": "target.",
+              "x": 0.08196721331967212,
+              "y": 0.6676470591176471,
+              "width": 0.13524590163934425,
+              "height": 0.02941176470588236
+            }
+          ],
+          "bounds": {
+            "x": 0.07786884400614777,
+            "y": 0.6264705876470589,
+            "width": 0.7499999999999999,
+            "height": 0.07058823617647059
+          },
+          "outlined": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "05aa8d78-789f-440a-b1fc-6daea5982b9a",
+    "name": "Lightning Bolt",
+    "layout": "normal",
+    "set": "tle",
+    "collector_number": "32",
+    "frame": "2015",
+    "border_color": "borderless",
+    "full_art": true,
+    "slug": "bolt-tle-32-es",
+    "source": "https://cards.scryfall.io/normal/front/0/5/05aa8d78-789f-440a-b1fc-6daea5982b9a.jpg?1782763912",
+    "families": [
+      "user-dynamic-regression"
+    ],
+    "expectedMode": "registered",
+    "registration": {
+      "id": "05aa8d78-789f-440a-b1fc-6daea5982b9a",
+      "face": null,
+      "source": "https://cards.scryfall.io/normal/front/0/5/05aa8d78-789f-440a-b1fc-6daea5982b9a.jpg?1782763912",
+      "layout": "normal",
+      "set": "tle",
+      "collector_number": "32",
+      "fields": [
+        {
+          "kind": "name",
+          "text": "Lightning Bolt",
+          "face": 0,
+          "lines": [
+            {
+              "text": "Rel\u00e1mpago",
+              "x": 0.08101766527134345,
+              "y": 0.05014885413807768,
+              "width": 0.27239089715676224,
+              "height": 0.05558464386883899
+            }
+          ],
+          "bounds": {
+            "x": 0.08101766527134345,
+            "y": 0.05014885413807768,
+            "width": 0.27239089715676224,
+            "height": 0.05558464386883899
+          },
+          "outlined": true,
+          "printedText": "Rel\u00e1mpago"
+        },
+        {
+          "kind": "type",
+          "text": "Instant",
+          "face": 0,
+          "lines": [
+            {
+              "text": "Instant\u00e1neo",
+              "x": 0.07746776260879161,
+              "y": 0.5718483920746406,
+              "width": 0.2508021808061443,
+              "height": 0.03571497973273785
+            }
+          ],
+          "bounds": {
+            "x": 0.07746776260879161,
+            "y": 0.5718483920746406,
+            "width": 0.2508021808061443,
+            "height": 0.03571497973273785
+          },
+          "outlined": true,
+          "printedText": "Instant\u00e1neo"
+        },
+        {
+          "kind": "rule",
+          "text": "Lightning Bolt deals 3 damage to any target.",
+          "face": 0,
+          "index": 0,
+          "lines": [
+            {
+              "text": "El Rel\u00e1mpago hace 3 puntos de da\u00f1o a",
+              "x": 0.07786885345433255,
+              "y": 0.6264705885294117,
+              "width": 0.7868852459016393,
+              "height": 0.04117647058823526
+            },
+            {
+              "text": "cualquier objetivo.",
+              "x": 0.08150243354462863,
+              "y": 0.6509405668643409,
+              "width": 0.3779787470082767,
+              "height": 0.05106004266177899
+            }
+          ],
+          "bounds": {
+            "x": 0.07786885345433255,
+            "y": 0.6264705885294117,
+            "width": 0.7868852459016393,
+            "height": 0.07553002099670814
+          },
+          "outlined": true,
+          "printedText": "El Rel\u00e1mpago hace 3 puntos de da\u00f1o a cualquier objetivo."
+        }
+      ],
+      "lang": "es"
+    }
+  },
+  {
+    "id": "610a7782-ffe4-4b1c-bcc2-b3d89357e3da",
+    "name": "Counterspell",
+    "layout": "normal",
+    "set": "mar",
+    "collector_number": "9",
+    "frame": "2015",
+    "border_color": "borderless",
+    "full_art": true,
+    "slug": "counter-mar-9-en",
+    "source": "https://cards.scryfall.io/normal/front/6/1/610a7782-ffe4-4b1c-bcc2-b3d89357e3da.jpg?1783905389",
+    "families": [
+      "user-dynamic-regression"
+    ],
+    "expectedMode": "registered",
+    "registration": {
+      "id": "610a7782-ffe4-4b1c-bcc2-b3d89357e3da",
+      "face": null,
+      "source": "https://cards.scryfall.io/normal/front/6/1/610a7782-ffe4-4b1c-bcc2-b3d89357e3da.jpg?1783905389",
+      "layout": "normal",
+      "set": "mar",
+      "collector_number": "9",
+      "fields": [
+        {
+          "kind": "name",
+          "text": "Counterspell",
+          "face": 0,
+          "lines": [
+            {
+              "text": "Counterspell",
+              "x": 0.0774993126263245,
+              "y": 0.04307949159783053,
+              "width": 0.316312852453013,
+              "height": 0.06089984108419977
+            }
+          ],
+          "bounds": {
+            "x": 0.0774993126263245,
+            "y": 0.04307949159783053,
+            "width": 0.316312852453013,
+            "height": 0.06089984108419977
+          },
+          "outlined": true
+        },
+        {
+          "kind": "type",
+          "text": "Instant",
+          "face": 0,
+          "lines": [
+            {
+              "text": "Instant",
+              "x": 0.07377049016393447,
+              "y": 0.5705882353823528,
+              "width": 0.16393442622950818,
+              "height": 0.038235294117647034
+            }
+          ],
+          "bounds": {
+            "x": 0.07377049016393447,
+            "y": 0.5705882353823528,
+            "width": 0.16393442622950818,
+            "height": 0.038235294117647034
+          },
+          "outlined": true
+        },
+        {
+          "kind": "rule",
+          "text": "Counter target spell.",
+          "face": 0,
+          "index": 0,
+          "lines": [
+            {
+              "text": "Counter target spell.-",
+              "x": 0.09016393146955506,
+              "y": 0.6323529413025211,
+              "width": 0.41393442622950827,
+              "height": 0.02941176470588236
+            }
+          ],
+          "bounds": {
+            "x": 0.09016393146955506,
+            "y": 0.6323529413025211,
+            "width": 0.41393442622950827,
+            "height": 0.02941176470588236
+          },
+          "outlined": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "c7d38538-cd68-46a0-993e-d4d5444b7657",
+    "name": "Counterspell",
+    "layout": "normal",
+    "set": "mar",
+    "collector_number": "9",
+    "frame": "2015",
+    "border_color": "borderless",
+    "full_art": true,
+    "slug": "counter-mar-9-es",
+    "source": "https://cards.scryfall.io/normal/front/c/7/c7d38538-cd68-46a0-993e-d4d5444b7657.jpg?1782766518",
+    "families": [
+      "user-dynamic-regression"
+    ],
+    "expectedMode": "registered",
+    "registration": {
+      "id": "c7d38538-cd68-46a0-993e-d4d5444b7657",
+      "face": null,
+      "source": "https://cards.scryfall.io/normal/front/c/7/c7d38538-cd68-46a0-993e-d4d5444b7657.jpg?1782766518",
+      "layout": "normal",
+      "set": "mar",
+      "collector_number": "9",
+      "fields": [
+        {
+          "kind": "name",
+          "text": "Counterspell",
+          "face": 0,
+          "lines": [
+            {
+              "text": "Contrahechizo",
+              "x": 0.07755981435118517,
+              "y": 0.04295667724322583,
+              "width": 0.3571754518102427,
+              "height": 0.05232193890739889
+            }
+          ],
+          "bounds": {
+            "x": 0.07755981435118517,
+            "y": 0.04295667724322583,
+            "width": 0.3571754518102427,
+            "height": 0.05232193890739889
+          },
+          "outlined": true,
+          "printedText": "Contrahechizo"
+        },
+        {
+          "kind": "type",
+          "text": "Instant",
+          "face": 0,
+          "lines": [
+            {
+              "text": "Unstant\u00e1neo",
+              "x": 0.07332350258074495,
+              "y": 0.5744855809334314,
+              "width": 0.2631890656518155,
+              "height": 0.03632295552422016
+            }
+          ],
+          "bounds": {
+            "x": 0.07332350258074495,
+            "y": 0.5744855809334314,
+            "width": 0.2631890656518155,
+            "height": 0.03632295552422016
+          },
+          "outlined": true,
+          "printedText": "Instant\u00e1neo"
+        },
+        {
+          "kind": "rule",
+          "text": "Counter target spell.",
+          "face": 0,
+          "index": 0,
+          "lines": [
+            {
+              "text": "Contrarresta el hechizo objetivo.",
+              "x": 0.08196721659836062,
+              "y": 0.6147058819362746,
+              "width": 0.6475409836065574,
+              "height": 0.04999999999999993
+            }
+          ],
+          "bounds": {
+            "x": 0.08196721659836062,
+            "y": 0.6147058819362746,
+            "width": 0.6475409836065574,
+            "height": 0.04999999999999993
+          },
+          "outlined": true,
+          "printedText": "Contrarresta el hechizo objetivo."
+        }
+      ],
+      "lang": "es"
+    }
   }
 ]

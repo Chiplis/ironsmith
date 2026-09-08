@@ -1,6 +1,10 @@
+import { WebSocketPeer } from '../../lib/relay/websocket-peer.js';
+import { PUBLIC_FORMATS, isRelayId } from '../../lib/relay/formats.js';
+import { validateFormatDeck } from '../../lib/relay/format-legality.js';
 import { useCallback, useEffect, useRef, useState } from "react";
-import { markActionStage, recordDiagnosticEvent, recordPeerMessage } from "../../lib/action-diagnostics.js";
+import { approximateMessageBytes, markActionStage, recordDiagnosticEvent, recordPeerMessage } from "../../lib/action-diagnostics.js";
 import Peer from "peerjs";
+import { NativeLanPeer } from "../../lib/lan/native-peer.js";
 import {
   auditStateHash,
   actionQuorumThreshold,
@@ -443,13 +447,13 @@ export function formatPeerError(err, fallback = "Peer connection failed") {
   const message = String(err?.message || err || "").trim();
 
   if (type === "peer-unavailable") {
-    return "Lobby host was not found on the current signaling server. The code can still be correct if the host disconnected or the two machines are using different VITE_PEER_* settings.";
+    return "Lobby host was not found on the current signaling server. The code can still be correct if the host disconnected or the devices are using different game addresses or signaling settings.";
   }
   if (type === "network" || type === "server-error" || type === "socket-error") {
-    return "Could not reach the PeerJS signaling server.";
+    return "Could not reach the lobby signaling service.";
   }
   if (type === "socket-closed" || type === "disconnected") {
-    return "Disconnected from the PeerJS signaling server.";
+    return "Disconnected from the lobby signaling service.";
   }
   if (type === "browser-incompatible") {
     return "This browser does not support the required WebRTC data-channel features.";
@@ -493,12 +497,15 @@ export function parseIceConfig() {
 }
 
 export function describePeerServer(options) {
+  if (options?.transport === "websocket") return "WebSocket relay";
+  if (options?.transport === "lan") return "local network";
   const host = options?.host || "0.peerjs.com";
   const port = options?.port || 443;
   return `${host}:${port}`;
 }
 
 export function buildPeerOptions() {
+  if (readPeerEnv("VITE_LAN_LOBBY") === "true") return { transport: "lan" };
   const host = readPeerEnv("VITE_PEER_HOST");
   const path = readPeerEnv("VITE_PEER_PATH");
   const key = readPeerEnv("VITE_PEER_KEY");
@@ -921,7 +928,7 @@ export function safeSend(conn, payload) {
   if (!conn || conn.open === false) return;
   try {
     conn.send(payload);
-    recordPeerMessage(conn.peer, "out", payload?.type);
+    recordPeerMessage(conn.peer, "out", payload?.type, approximateMessageBytes(payload));
   } catch {
     // PeerJS can report stale connections as open until the next send.
   }
@@ -929,6 +936,8 @@ export function safeSend(conn, payload) {
 
 export function createPeer(peerId, options) {
   const requestedPeerId = String(peerId || "").trim();
+  if (options?.transport === "websocket") return new WebSocketPeer(requestedPeerId, options);
+  if (options?.transport === "lan") return new NativeLanPeer(requestedPeerId);
   return requestedPeerId ? new Peer(requestedPeerId, options) : new Peer(options);
 }
 
@@ -2128,7 +2137,7 @@ export function withDeckState(player, format, deck, commanders = [], sideboard =
     deckCount: status.deckCount,
     sideboardCount: normalizedSideboard.length,
     commanderCount: status.commanderCount,
-    ready: status.ready,
+    ready: status.ready && (!isRelayId(player.peerId) || validateFormatDeck(format, normalizedDeck, normalizedCommanders, normalizedSideboard).ready),
   };
 }
 
@@ -2980,6 +2989,11 @@ export function canHostedMatchStart(session) {
     session.players.every((player) => player.connected !== false && player.ready)
   );
   if (!lobbyReady) return false;
+  if (isRelayId(session.lobbyId)) {
+    const rules = PUBLIC_FORMATS[session.format];
+    if (!rules || playerCount > rules.maxPlayers || session.startingLife !== rules.startingLife
+      || !session.players.every(p => validateFormatDeck(session.format, p.deck, p.commanders, p.sideboard).ready)) return false;
+  }
   if (
     normalizeMatchFormat(session.format) === MATCH_FORMAT_PLANECHASE
     && !isTrustedMultiplayerSecurityMode(sessionSecurityMode(session))

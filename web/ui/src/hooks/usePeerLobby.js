@@ -181,6 +181,18 @@ export function usePeerLobby({
     stateRef.current = state;
   }, [state]);
 
+  useEffect(() => {
+    peerRef.current?.advertise?.({
+      available: multiplayer.role === "host" && multiplayer.mode === "lobby"
+        && !multiplayer.matchStarted && multiplayer.players.length < multiplayer.desiredPlayers,
+      name: multiplayer.localName,
+      format: multiplayer.format,
+      securityMode: multiplayer.securityMode,
+      playerCount: multiplayer.players.length,
+      desiredPlayers: multiplayer.desiredPlayers,
+    });
+  }, [multiplayer]);
+
   // updateMultiplayer owns multiplayerRef so async message handlers can observe
   // state changes before React commits the next render. Mirroring rendered state
   // back into the ref here can regress the ref to an older render during fast
@@ -1785,6 +1797,14 @@ export function usePeerLobby({
     ]
   );
 
+  // Timer lifetimes must not depend on the action callback, whose dependencies
+  // can change on each render. Restarting a timer runs its immediate tick again,
+  // which publishes state and can starve socket reconnect events in a render loop.
+  const timerCommandRef = useRef(submitMultiplayerCommand);
+  useEffect(() => {
+    timerCommandRef.current = submitMultiplayerCommand;
+  }, [submitMultiplayerCommand]);
+
   useEffect(() => {
     if (!multiplayer.matchStarted || !matchClockConfigRef.current.initialMs) {
       const idleSnapshot = createMatchClockSnapshot({
@@ -1867,7 +1887,7 @@ export function usePeerLobby({
         basis_sequence: Number(session.lastAppliedSequence || 0),
       };
       try {
-        await submitMultiplayerCommand(
+        await timerCommandRef.current(
           command,
           `${playerName} was peer-claimed inactive after their match clock expired`
         );
@@ -1892,7 +1912,6 @@ export function usePeerLobby({
   }, [
     multiplayer.matchStarted,
     setStatus,
-    submitMultiplayerCommand,
     updateMultiplayer,
   ]);
 
@@ -1979,7 +1998,7 @@ export function usePeerLobby({
         basis_sequence: Number(session.lastAppliedSequence || 0),
       };
       try {
-        await submitMultiplayerCommand(
+        await timerCommandRef.current(
           command,
           `${playerName} forfeited by unanimous disconnect timeout policy`
         );
@@ -2004,7 +2023,6 @@ export function usePeerLobby({
   }, [
     multiplayer.matchStarted,
     setStatus,
-    submitMultiplayerCommand,
     updateMultiplayer,
   ]);
 

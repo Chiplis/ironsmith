@@ -173,6 +173,16 @@ export function recordPeerRtt(peerId, rttMs, name) {
   notify();
 }
 
+// Only large envelopes are worth sizing; JSON of a heartbeat costs more than it tells.
+const SIZED_MESSAGE_TYPES = new Set(["apply_action", "state_resync", "match_start", "action_quorum_vote_request", "crypto_material_response", "resync_ack"]);
+export function approximateMessageBytes(message) {
+  if (!SIZED_MESSAGE_TYPES.has(String(message?.type || ""))) return 0;
+  try { return JSON.stringify(message).length; } catch { return 0; }
+}
+
+// Routine chatter counts toward the peer totals but does not earn a timeline line.
+const QUIET_MESSAGE_TYPES = /^(peer_heartbeat|peer_heartbeat_ack|lobby_state|deck_update|action_intent_progress|peer_ready)$/;
+
 export function recordPeerMessage(peerId, direction, type, bytes = 0, name) {
   const entry = peerEntry(peerId, name);
   const at = now();
@@ -186,8 +196,7 @@ export function recordPeerMessage(peerId, direction, type, bytes = 0, name) {
     entry.sent += 1;
     entry.bytesOut += Number(bytes) || 0;
   }
-  // Heartbeats are noise at the event level; every other message is worth a line.
-  if (!/^peer_heartbeat/.test(String(type || ""))) {
+  if (!QUIET_MESSAGE_TYPES.test(String(type || ""))) {
     recordDiagnosticEvent(direction === "in" ? "message:in" : "message:out", { peer: entry.name || entry.peerId, type, bytes });
   } else {
     notify();

@@ -1,4 +1,8 @@
+import PublicLobbySearch from './PublicLobbySearch';
+import { PUBLIC_FORMATS, isRelayId, relayBaseUrl } from '@/lib/relay/formats';
+import { validateFormatDeck, formatCatalogDate } from '@/lib/relay/format-legality';
 import { useMemo, useState } from "react";
+import LocalLobbySearch from "./LocalLobbySearch";
 import { useGame } from "@/context/GameContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,6 +24,7 @@ import {
   normalizeMatchFormat,
   parseCommanderList,
   parseDeckList,
+  parseSideboardList,
   readDefaultLobbyDeck,
 } from "@/lib/decklists";
 import {
@@ -58,6 +63,7 @@ const securityModeOptions = [
 ];
 
 function formatName(format) {
+  if (PUBLIC_FORMATS[format]) return PUBLIC_FORMATS[format].label;
   const normalized = normalizeMatchFormat(format);
   if (normalized === MATCH_FORMAT_COMMANDER) return "Commander";
   if (normalized === MATCH_FORMAT_PLANECHASE) return "Planechase";
@@ -120,6 +126,7 @@ function offlinePlayerSummary(players) {
 }
 
 function formatDeckRequirement(format) {
+  if (PUBLIC_FORMATS[format] && format !== MATCH_FORMAT_COMMANDER) return "At least 60 main-deck cards; up to 15 sideboard cards. Format bans and copy limits apply.";
   const normalized = normalizeMatchFormat(format);
   if (normalized === MATCH_FORMAT_COMMANDER) {
     return `Submit a ${COMMANDER_DECK_SIZE}-card main deck plus 1 commander, or a ${PARTNER_DECK_SIZE}-card main deck plus 2 commanders.`;
@@ -167,6 +174,8 @@ export default function LobbyOverlay({
     shouldDefaultCreateDeck && String(lobbyDeckDefault.commanderText || "").trim()
       ? MATCH_FORMAT_COMMANDER
       : normalizeMatchFormat(initialCreateFormat);
+  const [transport, setTransport] = useState('peerjs');
+  const [advertise, setAdvertise] = useState(true);
   const [mode, setMode] = useState(
     initialMode === "join" ? "join" : "create"
   );
@@ -228,6 +237,7 @@ export default function LobbyOverlay({
   ).length;
   const slotsRemaining = Math.max(0, multiplayer.desiredPlayers - connectedPlayers);
   const activeFormat = normalizeMatchFormat(multiplayer.format);
+
   const activeSecurityMode = normalizeMultiplayerSecurityMode(multiplayer.securityMode);
   const createDeckCount = useMemo(
     () => parseDeckList(createDeckText).length,
@@ -277,21 +287,36 @@ export default function LobbyOverlay({
     [activeFormat, inviteCommanderText, inviteDeckText, inviteName, shareLobbyCode]
   );
 
+  const publicDeckStatus = isRelayId(multiplayer.lobbyId) ? validateFormatDeck(activeFormat,
+    parseDeckList(multiplayer.localDeckText || ''), parseCommanderList(multiplayer.localCommanderText || ''),
+    parseSideboardList(multiplayer.localDeckText || '')) : null;
+
   const handleCreateFormatChange = (nextFormat) => {
     const normalized = normalizeMatchFormat(nextFormat);
     setCreateFormat(normalized);
+    if (transport === 'websocket' && PUBLIC_FORMATS[normalized]) {
+      setDesiredPlayers(PUBLIC_FORMATS[normalized].maxPlayers === 2 ? 2 : desiredPlayers);
+      setStartingLife(PUBLIC_FORMATS[normalized].startingLife);
+    }
     if (normalized === MATCH_FORMAT_PLANECHASE) {
       setCreateSecurityMode(MULTIPLAYER_SECURITY_TRUSTED);
     }
     setStartingLife((prev) => {
       if (normalized === MATCH_FORMAT_COMMANDER && prev === 20) return 40;
-      if (normalized === MATCH_FORMAT_NORMAL && prev === 40) return 20;
+      if (normalized !== MATCH_FORMAT_COMMANDER && prev === 40) return 20;
       return prev;
     });
   };
 
   const handleCreate = () => {
+    if (import.meta.env.VITE_LAN_LOBBY === "true"
+      && createSecurityMode === MULTIPLAYER_SECURITY_VERIFIED && !globalThis.crypto?.subtle) {
+      setStatus("Verified mode requires the LAN server's trusted HTTPS address. Use Trusted mode at this HTTP address.", true);
+      return;
+    }
     createLobby({
+      transport,
+      advertise,
       name: createName,
       desiredPlayers,
       startingLife,
@@ -349,6 +374,10 @@ export default function LobbyOverlay({
         </SheetHeader>
 
         <div className="lobby-sheet-body grid min-h-0 gap-4 p-4">
+              {publicDeckStatus && <div className={panelClass} role="status">
+                <span>{publicDeckStatus.ready ? 'Your deck meets the format restrictions.' : publicDeckStatus.errors.slice(0, 5).join(' ')}</span>
+                <small>Card legality snapshot: {formatCatalogDate()?.slice(0, 10) || 'loading'}</small>
+              </div>}
           {!lobbyActive ? (
             <div className="grid gap-4">
               <div className="flex gap-2">
@@ -374,6 +403,27 @@ export default function LobbyOverlay({
                 </button>
               </div>
 
+              {mode === 'create' && <div className={panelClass}>
+                <label className={labelClass}>Connection
+                  <select aria-label="Connection" className={inputClass} value={transport} onChange={event => {
+                    const value = event.target.value;
+                    setTransport(value);
+                    if (value === 'websocket') {
+                      const format = PUBLIC_FORMATS[createFormat] ? createFormat : 'modern';
+                      setCreateFormat(format); setStartingLife(PUBLIC_FORMATS[format].startingLife);
+                      setDesiredPlayers(PUBLIC_FORMATS[format].maxPlayers === 2 ? 2 : desiredPlayers);
+                      setCreateSecurityMode(MULTIPLAYER_SECURITY_TRUSTED);
+                    }
+                  }}>
+                    <option value="peerjs">{import.meta.env.VITE_LAN_LOBBY === 'true' ? 'Local network' : 'Peer-to-peer'}</option>
+                    <option value="websocket" disabled={!relayBaseUrl()}>WebSocket lobby{!relayBaseUrl() ? ' (not configured)' : ''}</option>
+                  </select>
+                </label>
+                {transport === 'websocket' && <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={advertise} onChange={e => setAdvertise(e.target.checked)} />Advertise in public lobby search
+                </label>}
+                {transport === 'websocket' && <p className="text-sm text-muted-foreground">Format rules are enforced. Open decklists are shared with the table. Keep the host tab open during play.</p>}
+              </div>}
               {mode === "create" ? (
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
                   <div className="grid gap-4">
@@ -391,12 +441,15 @@ export default function LobbyOverlay({
                         Format
                         <select
                           className={inputClass}
+                          aria-label="Format"
                           value={createFormat}
                           onChange={(event) => handleCreateFormatChange(event.target.value)}
                         >
-                          <option value={MATCH_FORMAT_NORMAL}>Normal</option>
-                          <option value={MATCH_FORMAT_COMMANDER}>Commander</option>
-                          <option value={MATCH_FORMAT_PLANECHASE}>Planechase</option>
+                          {transport === 'websocket' ? Object.values(PUBLIC_FORMATS).map(f => <option key={f.id} value={f.id}>{f.label}</option>) : <>
+                            <option value={MATCH_FORMAT_NORMAL}>Normal</option>
+                            <option value={MATCH_FORMAT_COMMANDER}>Commander</option>
+                            <option value={MATCH_FORMAT_PLANECHASE}>Planechase</option>
+                          </>}
                         </select>
                       </label>
                     </div>
@@ -408,6 +461,7 @@ export default function LobbyOverlay({
                           type="number"
                           min={1}
                           value={startingLife}
+                          disabled={transport === 'websocket'}
                           onChange={(event) => setStartingLife(Number(event.target.value) || 20)}
                         />
                       </label>
@@ -415,7 +469,9 @@ export default function LobbyOverlay({
                         Players
                         <select
                           className={inputClass}
+                          aria-label="Players"
                           value={desiredPlayers}
+                          disabled={transport === 'websocket' && PUBLIC_FORMATS[createFormat]?.maxPlayers === 2}
                           onChange={(event) => setDesiredPlayers(Number(event.target.value) || 2)}
                         >
                           <option value={2}>2 Players</option>
@@ -430,6 +486,7 @@ export default function LobbyOverlay({
                       </legend>
                       <div className="grid gap-2 md:grid-cols-2">
                         {securityModeOptions.map((option) => {
+                          if (transport === 'websocket' && option.value === MULTIPLAYER_SECURITY_VERIFIED) return null;
                           if (
                             createFormat === MATCH_FORMAT_PLANECHASE
                             && option.value === MULTIPLAYER_SECURITY_VERIFIED
@@ -437,6 +494,8 @@ export default function LobbyOverlay({
                             return null;
                           }
                           const selected = createSecurityMode === option.value;
+                          const needsHttps = import.meta.env.VITE_LAN_LOBBY === "true"
+                            && option.value === MULTIPLAYER_SECURITY_VERIFIED && !globalThis.crypto?.subtle;
                           return (
                             <label
                               key={option.value}
@@ -450,13 +509,14 @@ export default function LobbyOverlay({
                                 name="create-security-mode"
                                 value={option.value}
                                 checked={selected}
+                                disabled={needsHttps}
                                 onChange={() => setCreateSecurityMode(option.value)}
                               />
                               <span className="text-[13px] font-semibold uppercase tracking-[0.18em] text-foreground">
                                 {option.label}
                               </span>
                               <span className="text-[13px] leading-5 text-muted-foreground">
-                                {option.description}
+                                {needsHttps ? "Open the LAN server's trusted HTTPS address to use Verified mode." : option.description}
                               </span>
                             </label>
                           );
@@ -545,10 +605,12 @@ export default function LobbyOverlay({
                           className={inputClass}
                           value={joinCode}
                           onChange={(event) => setJoinCode(event.target.value)}
-                          placeholder="Host peer ID"
+                          placeholder="Host lobby code"
                         />
                       </label>
                     </div>
+                    {relayBaseUrl() && <PublicLobbySearch onSelect={setJoinCode} />}
+                    {import.meta.env.VITE_LAN_LOBBY === "true" && <LocalLobbySearch onSelect={setJoinCode} />}
                     <label className={labelClass}>
                       Main Deck
                       <textarea
@@ -574,7 +636,7 @@ export default function LobbyOverlay({
                       <span>Main deck: {joinDeckCount} cards</span>
                       <span>Supplemental cards: {joinCommanderCount}</span>
                       <span>
-                        Join first, then the lobby will tell you whether the host chose Normal, Commander, or Planechase.
+                        Join first to see the host’s format and deck requirements.
                       </span>
                       <span>
                         You only become ready after the host receives a valid deck submission for that format.

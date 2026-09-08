@@ -669,8 +669,10 @@ function Harness() {
   useEffect(() => {
     window.__peerHarness = {
       ready: true,
+      lobbyState: () => ({ multiplayer: lobby.multiplayer, statusEvents: [...statusEventsRef.current] }),
       createLobby: lobby.createLobby,
       joinLobby: lobby.joinLobby,
+      updateLobbyDeck: lobby.updateLobbyDeck,
       leaveLobby: lobby.leaveLobby,
       startHostedMatch: lobby.startHostedMatch,
       submitMultiplayerCommand: lobby.submitMultiplayerCommand,

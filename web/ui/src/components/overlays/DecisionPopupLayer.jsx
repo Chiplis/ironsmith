@@ -2965,6 +2965,7 @@ function PriorityBar({
                         variant="ghost"
                         size="sm"
                         className="pass-priority-btn decision-main-button action-strip-mulligan-button h-full w-full rounded-none px-3 text-[14px] font-bold uppercase"
+                        data-local-action={localDecisionButton ? "true" : "false"}
                         disabled={!canAct}
                         aria-disabled={peerWaitLocked || !canAct}
                         aria-label={openingHandMulliganLabel}
@@ -3238,6 +3239,7 @@ function PriorityBar({
                       variant="ghost"
                       size="sm"
                       className="pass-priority-btn decision-main-button action-strip-mulligan-button h-full min-w-[132px] rounded-none px-3 text-[14px] font-bold uppercase"
+                      data-local-action={localDecisionButton ? "true" : "false"}
                       disabled={!canAct || peerWaitLocked}
                       aria-label={openingHandMulliganLabel}
                       onClick={() => triggerPriorityAction(openingHandMulliganAction)}

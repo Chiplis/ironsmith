@@ -1,7 +1,7 @@
 import { resolveScryfallFlavorText, resolveScryfallPrintingMetadata, resolveScryfallSetSymbol } from './scryfall';
 import { fullCardImageUrl, preloadCardFrameSource, sampleCardFrameColors } from './card-frame-colors';
 import { cardTypography } from './card-typography';
-import {registrationForImage, registrationForPrinting} from './card-region-layout';
+import {registrationForImage, registrationForPrinting, registrationGeometryIsUsable} from './card-region-layout';
 
 const preparations = new Map();
 const isBasicLand = typeLine => {
@@ -71,9 +71,16 @@ export function prepareCardFrame(imageUrl, typeLine = '') {
       registration = registrationForPrinting(catalog, printing, scanUrl);
       if (registration) registeredScanUrl = registration.source;
     }
+    const invalidRegistration = registration && !registrationGeometryIsUsable(registration);
+    if (invalidRegistration) {
+      registration = null;
+      registeredScanUrl = '';
+    }
     const registeredScan = registeredScanUrl && registeredScanUrl !== scanUrl
       ? decodeImage(registeredScanUrl).then(() => true, () => false) : Promise.resolve(true);
-    const style = registration ? {} : await sampleCardFrameColors(scanUrl, {
+    const style = invalidRegistration
+      ? {'--source-frame-status': 'original', '--source-frame-fallback-reason': 'registration-geometry'}
+      : registration ? {} : await sampleCardFrameColors(scanUrl, {
       typography: preparedTypography, printing, setSymbolUrl: await setSymbolRequest,
     });
     // CSS backgrounds and border images have their own decode step, even

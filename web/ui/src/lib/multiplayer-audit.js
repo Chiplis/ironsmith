@@ -1,3 +1,5 @@
+import { sha256Bytes } from "./sha256.js";
+
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 const INITIAL_MATCH_CLOCK_HASH = "0".repeat(64);
@@ -453,10 +455,8 @@ function normalizePublicCheckpointForHash(checkpoint) {
 }
 
 export async function sha256Hex(value, cryptoImpl = globalThis.crypto) {
-  if (!cryptoImpl?.subtle) {
-    throw new Error("WebCrypto subtle API is unavailable");
-  }
   const bytes = typeof value === "string" ? textEncoder.encode(value) : value;
+  if (!cryptoImpl?.subtle) return bytesToHex(sha256Bytes(bytes));
   const digest = await cryptoImpl.subtle.digest("SHA-256", bytes);
   return bytesToHex(new Uint8Array(digest));
 }

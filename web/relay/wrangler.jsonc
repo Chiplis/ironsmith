@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ironsmith-lobby-relay",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-08-01",
+  "vars": { "ALLOWED_ORIGINS": "https://chiplis.com,http://localhost:5173,http://127.0.0.1:5173" },
+  "durable_objects": { "bindings": [
+    { "name": "ROOMS", "class_name": "LobbyRoom" },
+    { "name": "DIRECTORY", "class_name": "LobbyDirectory" }
+  ] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["LobbyRoom", "LobbyDirectory"] }]
+}

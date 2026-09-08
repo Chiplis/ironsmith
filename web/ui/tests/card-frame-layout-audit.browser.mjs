@@ -17,6 +17,7 @@ const manifest=JSON.parse(await readFile(new URL('./card-frame-layout-cases.json
 const regressions=JSON.parse(await readFile(new URL('./card-frame-regression-cases.json',import.meta.url),'utf8'));
 for(const regression of regressions)if(!manifest.some(c=>c.slug===regression.slug))manifest.push(regression);
 const cases=manifest.filter(c=>!process.env.CARD_FRAME_CASE_FILTER || new RegExp(process.env.CARD_FRAME_CASE_FILTER).test(c.slug+' '+c.families.join(' ')));
+const cached=await Promise.all(manifest.map(async c=>({case:c,printing:JSON.parse(await readFile(join(base,c.slug+'.json'),'utf8'))})));
 const vite=await createServer({root,server:{host:'127.0.0.1',port:0},logLevel:'silent'});await vite.listen();
 const browser=await chromium.launch();const results=[];
 try {
@@ -29,20 +30,34 @@ try {
     const errors=[];page.on('pageerror',error=>errors.push(error.message));
     await page.addInitScript(({cards,locale})=>{window.__comparisonCards=cards;window.__comparisonShowOriginals=true;if(locale)localStorage.setItem('ironsmith.locale',locale);},{cards,locale:process.env.CARD_FRAME_LOCALE||''});
     await page.route('https://cards.scryfall.io/**',async route=>{
-      const url=route.request().url();const i=batch.findIndex((c,j)=>url.includes(c.id)&&url.includes(faces[j].image_uris?.normal.includes('/back/')?'/back/':'/front/'));
-      if(i<0)return route.abort();
+      const url=route.request().url();const match=cached.find(({case:c})=>url.includes(c.id)&&url.includes(c.source.includes('/back/')?'/back/':'/front/'));
+      if(!match)return route.abort();
       const variant=url.includes('/art_crop/')?'art_crop':'normal';
-      try {await route.fulfill({contentType:'image/jpeg',headers:{'Access-Control-Allow-Origin':'*'},body:await readFile(join(base,batch[i].slug+'-'+variant+'.jpg'))});}
+      try {await route.fulfill({contentType:'image/jpeg',headers:{'Access-Control-Allow-Origin':'*'},body:await readFile(join(base,match.case.slug+'-'+variant+'.jpg'))});}
       catch {await route.abort();}
     });
     await page.route('https://api.scryfall.com/**',route=>{
-      const i=prints.findIndex(p=>route.request().url().includes(p.id));
-      return route.fulfill({json:i>=0?prints[i]:{}});
+      const url=route.request().url();
+      const match=cached.find(({printing:p})=>url.includes(p.id)||url.endsWith(`/cards/${p.set}/${p.collector_number}/${p.lang}`));
+      const request=new URL(url);
+      if(request.pathname==='/cards/named') {
+        const name=request.searchParams.get('exact')||request.searchParams.get('fuzzy');
+        return route.fulfill({json:cached.find(({printing:p})=>p.lang==='en'&&(p.name===name||p.card_faces?.some(f=>f.name===name)))?.printing||{}});
+      }
+      if(request.pathname==='/cards/search') {
+        const query=request.searchParams.get('q')||'';
+        return route.fulfill({json:{data:cached.filter(({printing:p})=>query.includes(p.oracle_id)&&query.includes(`lang:${p.lang}`)).map(c=>c.printing)}});
+      }
+      return route.fulfill({json:match?.printing||{}});
     });
     await page.route('https://svgs.scryfall.io/**',route=>route.abort());
     await page.route('**/cards/*.json',route=>route.fulfill({json:{}}));
     await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-frame-comparison.html`);
     await page.waitForFunction(n=>document.querySelectorAll('[data-render-ready="true"]').length===n,batch.length,{timeout:90000});
+    if(process.env.CARD_FRAME_LOCALE)await page.evaluate(async({cards,locale})=>{
+      const {loadTranslatedCardView}=await import('/src/i18n/cardTranslations.js');
+      await Promise.all(cards.map(c=>loadTranslatedCardView(locale,{name:c.name,typeLine:c.type_line,rulesText:c.oracle_text})));
+    },{cards,locale:process.env.CARD_FRAME_LOCALE});
     await page.evaluate(async()=>{
       await document.fonts.ready;
       await Promise.allSettled([...document.images].map(img=>img.decode()));
