@@ -137,6 +137,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
 
     const heartbeat = {
       lastSeen: Date.now(),
+      lastCheck: Date.now(),
       timer: window.setInterval(() => {
         if (!conn || conn.open === false) {
           clearConnectionHeartbeat(key);
@@ -145,10 +146,29 @@ export function usePeerLobbyConnections(base, servicesRef) {
         }
 
         const nowMs = Date.now();
+        const localSchedulerDelayMs = nowMs - heartbeat.lastCheck;
+        heartbeat.lastCheck = nowMs;
+        // Do not condemn the remote peer immediately after this tab's own
+        // event loop was suspended or heavily throttled.  Give the queued
+        // heartbeat/data events one full timeout window to arrive.
+        if (localSchedulerDelayMs > timeoutMs) {
+          recordPeerSyncPerf("peer_heartbeat:local_scheduler_stall", {
+            connection: key,
+            scheduler_delay_ms: localSchedulerDelayMs,
+            timeout_ms: timeoutMs,
+          });
+          heartbeat.lastSeen = nowMs;
+        }
         if (
           nowMs - heartbeat.lastSeen > timeoutMs
           && !pendingActionIntentSuppressesHeartbeatStale(nowMs)
         ) {
+          recordPeerSyncPerf("peer_heartbeat:timeout", {
+            connection: key,
+            silent_ms: nowMs - heartbeat.lastSeen,
+            timeout_ms: timeoutMs,
+            connection_open: conn.open !== false,
+          });
           clearConnectionHeartbeat(key);
           try {
             conn.close();
