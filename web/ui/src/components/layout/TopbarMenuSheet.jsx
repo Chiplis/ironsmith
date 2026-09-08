@@ -15,10 +15,11 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { ExternalLink, Github, Menu, RefreshCw, Settings2, ShieldCheck } from "lucide-react";
+import { Activity, ExternalLink, Github, Menu, RefreshCw, Settings2, ShieldCheck } from "lucide-react";
 import AddCardSheet from "./AddCardSheet";
 import CreateCardForgeSheet from "./CreateCardForgeSheet";
 import VerifyMatchSheet from "./VerifyMatchSheet";
+import DiagnosticsSheet from "./DiagnosticsSheet";
 import { playerDisplayName } from "@/lib/player-display";
 import { getPlayerAccent } from "@/lib/player-colors";
 import { UI_FONT_OPTIONS } from "@/lib/ui-fonts";
@@ -283,6 +284,18 @@ export default function TopbarMenuSheet({
                     >
                       <ShieldCheck className="size-3.5" />
                       {t("action.verifyMatch")}
+                    </Button>
+                  )}
+                />
+                <DiagnosticsSheet
+                  trigger={(
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="stone-pill justify-start"
+                    >
+                      <Activity className="size-3.5" />
+                      {t("action.diagnostics")}
                     </Button>
                   )}
                 />

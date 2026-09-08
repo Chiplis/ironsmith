@@ -14,6 +14,8 @@ assert.ok(base,'Set CARD_FRAME_FIXTURES; populate it with scripts/cache-card-fra
 const output=process.env.CARD_FRAME_AUDIT_OUTPUT || join(base,'audit');
 await mkdir(output,{recursive:true});
 const manifest=JSON.parse(await readFile(new URL('./card-frame-layout-cases.json',import.meta.url),'utf8'));
+const regressions=JSON.parse(await readFile(new URL('./card-frame-regression-cases.json',import.meta.url),'utf8'));
+for(const regression of regressions)if(!manifest.some(c=>c.slug===regression.slug))manifest.push(regression);
 const cases=manifest.filter(c=>!process.env.CARD_FRAME_CASE_FILTER || new RegExp(process.env.CARD_FRAME_CASE_FILTER).test(c.slug+' '+c.families.join(' ')));
 const vite=await createServer({root,server:{host:'127.0.0.1',port:0},logLevel:'silent'});await vite.listen();
 const browser=await chromium.launch();const results=[];
@@ -79,6 +81,9 @@ try {
     for(let i=0;i<batch.length;i++) {
       const result={...batch[i],...actual[i],errors};results.push(result);
       assert.ok(!result.assembled,`${result.slug}: assembled panel regression`);
+      if(batch[i].face!=null)for(const field of result.registered) {
+        if(['name','type'].includes(field.kind))assert.ok(!field.text.includes('//'),`${result.slug}: combined face text in ${field.kind}`);
+      }
       if(result.mode==='original')assert.equal(result.image,batch[i].source,`${result.slug}: fallback changed printing/face`);
       console.log(`${start+i+1}/${cases.length} ${result.slug}: ${result.mode} ${result.reason||''}`);
     }
@@ -87,7 +92,7 @@ try {
     await page.close();
   }
 } finally {await browser.close();await vite.close();}
-const summary={cases:results.length,masked:results.filter(c=>c.mode==='masked').length,original:results.filter(c=>c.mode==='original').length,
+const summary={cases:results.length,masked:results.filter(c=>c.mode==='masked').length,registered:results.filter(c=>c.mode==='registered').length,original:results.filter(c=>c.mode==='original').length,
   ruleOverflow:results.filter(c=>c.ruleMetrics&&(c.ruleMetrics.scroll>c.ruleMetrics.height+2||c.ruleMetrics.rows.some(r=>r.top+r.height>c.ruleMetrics.height+2))).map(c=>c.slug),
   errors:results.filter(c=>c.errors.length).map(c=>c.slug),overflow:results.filter(c=>c.textOverflow).map(c=>c.slug)};
 await writeFile(join(output,'summary.json'),JSON.stringify(summary,null,2));

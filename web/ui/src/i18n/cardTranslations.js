@@ -1,5 +1,6 @@
 import { cardRouteKey, fetchScryfallLocalizedCardTranslation } from "@/lib/scryfall";
 import { loadGeneratedTextTranslation } from "./generatedTextTranslations";
+import { translationForFace } from "./cardTranslationFace";
 
 const cardI18nBucketCache = new Map();
 const officialCardTranslationCache = new Map();
@@ -93,7 +94,7 @@ export async function loadTranslatedCardView(locale, cardView) {
       // Card names and type lines are only ever taken from official Scryfall
       // printed fields; everything else stays English. Machine translation is
       // reserved for rules text.
-      const official = await loadOfficialCardTranslation(locale, cardName, oracleId);
+      const official = translationForFace(await loadOfficialCardTranslation(locale, cardName, oracleId), cardName);
       const officialRulesText = String(official?.oracleText || "").trim();
       const generatedRulesText = !officialRulesText && rulesText
         ? await loadGeneratedTextTranslation(locale, rulesText)

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { markActionStage, recordDiagnosticEvent, recordPeerMessage } from "../../lib/action-diagnostics.js";
 import Peer from "peerjs";
 import {
   auditStateHash,
@@ -917,6 +918,7 @@ export function safeSend(conn, payload) {
   if (!conn || conn.open === false) return;
   try {
     conn.send(payload);
+    recordPeerMessage(conn.peer, "out", payload?.type);
   } catch {
     // PeerJS can report stale connections as open until the next send.
   }
@@ -1946,6 +1948,18 @@ export function recordPeerSyncPerf(label, payload = {}) {
       : [];
     peerOnly.push(event);
     window.__ironsmithPeerSyncEvents = peerOnly.slice(-200);
+  }
+  // Feed the action trace: every timed phase of the local submit pipeline is a
+  // stage of the action the player is waiting on; everything else (received
+  // actions, quorum votes, relays) is an event on the diagnostics timeline.
+  try {
+    if (/^submit_action:.+:(done|error)$/.test(label)) {
+      markActionStage(null, label.replace(/^submit_action:/, "").replace(/:done$/, "").replace(/_/g, " "), payload);
+    } else if (!/:start$/.test(label)) {
+      recordDiagnosticEvent(label, payload);
+    }
+  } catch {
+    // Diagnostics never interrupt the sync path.
   }
   return event;
 }

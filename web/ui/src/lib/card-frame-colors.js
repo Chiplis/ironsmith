@@ -895,7 +895,10 @@ async function sample(fullUrl, typography, printing, setSymbolUrl) {
           const box = boxes[section], stop = section === 'title' ? (future ? box.x+box.width : manaMatch?.symbols[0]?.x) : setSymbol?.x;
           const enclosed = (section === 'title' ? titlePanel : typePanel)?.kind === 'panel';
           const insetX = enclosed ? 6 : 0, insetY = enclosed ? 2 : 0;
-          const x = Math.ceil(box.x + insetX), y = Math.ceil(box.y + insetY);
+          // A rounded title's detected rail can start inside the first capital.
+          // Include the space just outside that estimate so the connected-component
+          // scan sees complete glyphs; clipped components are deliberately rejected.
+          const x = Math.max(0, Math.ceil(box.x + (enclosed && section === 'title' ? -6 : insetX))), y = Math.ceil(box.y + insetY);
           const right = Math.floor(Math.min(box.x + box.width - insetX, (stop ?? fullScan.width * (section === 'title' ? .78 : .855)) - 4));
           const measured = printedTextBounds(ctx.getImageData(x, y, right - x, Math.floor(box.height - insetY * 2)));
           if (!measured) { if(future)return fallback('text-registration'); continue; }

@@ -1,3 +1,10 @@
+import {
+  beginActionTrace,
+  completeActionTrace,
+  markActionStage,
+  recordEnginePerf,
+  startMainThreadMonitor,
+} from "@/lib/action-diagnostics";
 import { mergePriorityAnalysis } from "@/lib/priority-analysis-scheduler.js";
 import { castingMethodChoiceForAction, finishExplicitCastingMethod } from "@/lib/casting-method-choice";
 import { useContext, useState, useCallback, useRef, useMemo, useEffect } from "react";
@@ -740,6 +747,29 @@ function recordPerfEvent(label, payload) {
     recorded_at_ms: performance.now(),
   });
   window.__ironsmithPerfEvents = bucket.slice(-100);
+}
+
+function describeCommandLabel(command) {
+  if (!command || typeof command !== "object") return "action";
+  const type = String(command.type || "action");
+  const ref = command.action_ref?.kind ? String(command.action_ref.kind) : "";
+  return ref && ref !== type ? `${type} · ${ref}` : type;
+}
+
+// Close the trace on the frame after the state landed, so the total is
+// click-to-pixels rather than click-to-promise.
+function completeActionTraceOnPaint(traceId, meta = null) {
+  if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+    const paintRequestedAt = performance.now();
+    window.requestAnimationFrame(() => {
+      completeActionTrace(traceId, {
+        outcome: "ok",
+        meta: { ...(meta || {}), to_next_paint_ms: performance.now() - paintRequestedAt },
+      });
+    });
+    return;
+  }
+  completeActionTrace(traceId, { outcome: "ok", meta });
 }
 
 function summarizeCommand(command) {
@@ -1593,6 +1623,8 @@ export function GameProvider({ children }) {
         };
         console.info("[ironsmith] synced dispatch:success", syncedDispatchSuccessPayload);
         recordPerfEvent("synced dispatch:success", syncedDispatchSuccessPayload);
+        recordEnginePerf(workerPerf);
+        markActionStage(null, "engine", { ...syncedDispatchSuccessPayload.perf, sync_context: syncContext });
         const finalizeStartedAt = performance.now();
         const finalized = await finalizeState(currentGame, st, {
           message: successMessage,
@@ -1938,12 +1970,20 @@ export function GameProvider({ children }) {
             }
             return;
           }
+          let multiplayerTraceId = null;
           try {
             if (isTargetSubmit) armTargetSubmitDebounce();
             const syncedCommand = serializeMultiplayerCommand(command, currentState);
             multiplayerSubmitInFlightRef.current = true;
+            multiplayerTraceId = beginActionTrace({
+              label: describeCommandLabel(command),
+              command: syncedCommand,
+              mode: "multiplayer",
+            });
             try {
               await submitMultiplayerCommand(syncedCommand, successMessage);
+              markActionStage(multiplayerTraceId, "submit returned");
+              completeActionTraceOnPaint(multiplayerTraceId);
               // Keep the explicit method choice within this interaction; a
               // render-driven dispatch would be dropped by the input cooldown.
               const nextState = stateRef.current;
@@ -1961,6 +2001,10 @@ export function GameProvider({ children }) {
           } catch (err) {
             multiplayerSubmitInFlightRef.current = false;
             if (isTargetSubmit) clearTargetSubmitDebounce();
+            completeActionTrace(multiplayerTraceId, {
+              outcome: "failed",
+              meta: { error: err instanceof Error ? err.message : String(err) },
+            });
             emitSyncFailureNotice(
               "Sync failed",
               err instanceof Error ? err.message : String(err)
@@ -1973,6 +2017,11 @@ export function GameProvider({ children }) {
 
         const decisionBefore = summarizeDecision(stateRef.current?.decision || null);
         const commandSummary = summarizeCommand(command);
+        const localTraceId = beginActionTrace({
+          label: describeCommandLabel(command),
+          command,
+          mode: "local",
+        });
 
         try {
           console.debug("[ironsmith] dispatch:start", {
@@ -2010,6 +2059,8 @@ export function GameProvider({ children }) {
           };
           console.info("[ironsmith] dispatch:success", dispatchSuccessPayload);
           recordPerfEvent("dispatch:success", dispatchSuccessPayload);
+          recordEnginePerf(workerPerf);
+          markActionStage(localTraceId, "engine", dispatchSuccessPayload.perf);
           const finalizeStartedAt = performance.now();
           await finalizeState(game, st, {
             message: successMessage,
@@ -2036,6 +2087,7 @@ export function GameProvider({ children }) {
               };
               console.info("[ironsmith] dispatch:paint", dispatchPaintPayload);
               recordPerfEvent("dispatch:paint", dispatchPaintPayload);
+              completeActionTrace(localTraceId, { outcome: "ok", meta: dispatchPaintPayload });
             });
           }
         } catch (err) {
@@ -2478,6 +2530,8 @@ export function GameProvider({ children }) {
     },
     [runAuditReplayWasmInteraction, setStatus]
   );
+
+  useEffect(() => startMainThreadMonitor(), []);
 
   useEffect(() => {
     if (typeof window === "undefined" || import.meta.env?.VITE_E2E_TEST !== "true") {

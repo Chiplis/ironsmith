@@ -506,7 +506,7 @@ export function usePeerLobby({
       }
       if (session.submittingAction) {
         setStatus("Waiting for the previous action to sync");
-        await waitForSubmissionIdle();
+        await timePeerSyncPhase("submit_action:wait_previous_action", {}, () => waitForSubmissionIdle());
         session = multiplayerRef.current;
         if (!session.matchStarted) {
           setStatus("Match has not started yet", true);
@@ -741,7 +741,7 @@ export function usePeerLobby({
             uiState: preSubmitState,
             enforceMatchClockObservationBounds: false,
           });
-          localSubmissionSnapshot = await createSequencedActionValidationSnapshot();
+          localSubmissionSnapshot = await timePeerSyncPhase("submit_action:validation_snapshot", {}, () => createSequencedActionValidationSnapshot());
           stagedMatchClockRuntime = stageLocalMatchClockAudit(clock);
           const appliedState = await applySyncedCommand(command, label || "", {
             actorIndex: session.localPlayerIndex,
@@ -920,7 +920,7 @@ export function usePeerLobby({
           }
           return signedActionIntent;
         };
-        const pendingIntentCleared = await waitForPendingActionIntentBeforeLocalSubmit(nextSequence);
+        const pendingIntentCleared = await timePeerSyncPhase("submit_action:wait_pending_intent", {}, () => waitForPendingActionIntentBeforeLocalSubmit(nextSequence));
         if (!pendingIntentCleared) {
           updateMultiplayer((prev) => ({ ...prev, submittingAction: false }));
           setStatus("Another action was signed first");
@@ -963,7 +963,7 @@ export function usePeerLobby({
 	          skewMs: 0,
 	          enforceObservationBounds: false,
 	        });
-        localSubmissionSnapshot = await createSequencedActionValidationSnapshot();
+        localSubmissionSnapshot = await timePeerSyncPhase("submit_action:validation_snapshot", {}, () => createSequencedActionValidationSnapshot());
         stagedMatchClockRuntime = stageLocalMatchClockAudit(clock);
         let cryptoRequirements = await timePeerSyncPhase(
           "submit_action:preview_requirements",

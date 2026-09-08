@@ -9,6 +9,8 @@ import urllib.request
 
 root = pathlib.Path(__file__).resolve().parents[3]
 cases = json.loads((root / 'web/ui/tests/card-frame-layout-cases.json').read_text())
+regressions = json.loads((root / 'web/ui/tests/card-frame-regression-cases.json').read_text())
+cases = list({case['slug']: case for case in cases + regressions}.values())
 destination = pathlib.Path(sys.argv[1])
 destination.mkdir(parents=True, exist_ok=True)
 catalog = {card['id']: card for card in json.loads((root / 'cards.json').read_text())}

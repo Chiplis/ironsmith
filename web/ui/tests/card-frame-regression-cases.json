@@ -1,0 +1,41 @@
+[
+  {
+    "slug": "omniscience-fdn-312",
+    "name": "Omniscience",
+    "id": "7c72dced-adae-4c66-af2a-0a1216953ab6",
+    "set": "fdn",
+    "collector_number": "312",
+    "families": [
+      "borderless-white-title"
+    ],
+    "layout": "normal",
+    "frame": "2015",
+    "source": "https://cards.scryfall.io/normal/front/7/c/7c72dced-adae-4c66-af2a-0a1216953ab6.jpg?1783909028",
+    "frame_effects": [
+      "enchantment",
+      "inverted"
+    ],
+    "border_color": "borderless",
+    "full_art": false
+  },
+  {
+    "slug": "omniscience-fdn-312-es",
+    "name": "Omniscience",
+    "id": "607d457c-f5f1-4380-bf17-12fc986b85e0",
+    "set": "fdn",
+    "collector_number": "312",
+    "families": [
+      "borderless-white-title",
+      "spanish-source"
+    ],
+    "layout": "normal",
+    "frame": "2015",
+    "source": "https://cards.scryfall.io/normal/front/6/0/607d457c-f5f1-4380-bf17-12fc986b85e0.jpg?1782782516",
+    "frame_effects": [
+      "enchantment",
+      "inverted"
+    ],
+    "border_color": "borderless",
+    "full_art": false
+  }
+]

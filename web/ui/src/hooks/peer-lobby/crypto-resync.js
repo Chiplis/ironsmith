@@ -111,6 +111,7 @@ import {
   ziffleKeyContextForCeremony,
   zifflePositionFromCommitment,
 } from "./shared.js";
+import { markActionStage } from "../../lib/action-diagnostics.js";
 
 export function usePeerLobbyCryptoResync(base, servicesRef) {
   const { actionCryptoRequirementsRef, actionHistoryRef, applySyncedCommand, applyingSequencedActionsRef, auditKeyPairRef, auditStateHashRef, awaitingStateResyncRef, clientConnectionsRef, drainingPendingSequencedActionsRef, gameRef, hostConnectionRef, ignoredActionIntentKeysRef, initialPublicCheckpointHashRef, liveAuditTranscriptRef, liveZiffleCeremoniesRef, localDisconnectObservationsRef, localRevealedOpeningsRef, localZiffleCeremonyLookupRef, localZiffleRevealInFlightRef, matchClockConfigRef, matchClockObservationExemptSequenceRef, matchClockRef, matchStartPayloadRef, multiplayerRef, outboundCryptoMaterialRequestsRef, peerConnectionsRef, peerRef, pendingSequencedActionsRef, privateViewDisclosuresRef, reconnectChallengesRef, relayedActionIdsRef, resyncWaitersRef, resyncingPeerIdsRef, setState, setStatus, signedActionQuorumVotesRef, stateRef, timeoutClaimInFlightRef, verifiedAuditOpeningsRef, verifiedShuffleProofsRef, ziffleHandRevealKeyRef, ziffleHandRevealQuickKeyRef, ziffleOpeningPositionsRef, ziffleRevealTokenCacheRef } = base;
@@ -4028,6 +4029,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
   async function publishCurrentRuntimeState(stateHint = null) {
     const currentGame = gameRef.current;
     if (!currentGame || typeof currentGame.uiState !== "function") return null;
+    const publishStartedAt = Date.now();
     const localIndex = resolveLocalPlayerIndex(multiplayerRef.current);
     if (
       localIndex != null
@@ -4047,6 +4049,10 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     );
     stateRef.current = nextState;
     setState(nextState);
+    markActionStage(null, "state published", {
+      publish_ms: Date.now() - publishStartedAt,
+      sequence: Number(multiplayerRef.current?.lastAppliedSequence || 0),
+    });
     return nextState;
   }
 
