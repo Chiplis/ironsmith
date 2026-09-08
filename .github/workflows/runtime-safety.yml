@@ -1,0 +1,31 @@
+name: Runtime safety
+
+on:
+  pull_request:
+    paths:
+      - "crates/ironsmith-engine/**"
+      - "crates/ironsmith-wasm/**"
+      - "crates/ironsmith-web-session/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/runtime-safety.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-safety-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  engine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install WASM target
+        run: rustup target add wasm32-unknown-unknown
+      - name: Check browser engine
+        run: cargo check -p ironsmith-engine-wasm --target wasm32-unknown-unknown
+      - name: Test runtime fault transaction marker
+        run: cargo test -p ironsmith-engine --lib runtime_fault_preserves_first_cause_and_is_consumed_once
