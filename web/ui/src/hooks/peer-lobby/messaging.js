@@ -1,3 +1,4 @@
+import { needsFullStateResync } from '../../lib/relay/resync.js';
 import { replayTrustedMatch } from '../../lib/relay/replay-trusted-match.js';
 import { readRelaySession, relayCheckpoint } from '../../lib/relay/session.js';
 import { PUBLIC_FORMATS, isRelayId, relayBaseUrl } from '../../lib/relay/formats.js';
@@ -74,6 +75,8 @@ import {
   toPublicPlayer,
   toPublicPlayers,
   useCallback,
+  useEffect,
+  useRef,
   validationCommandersForMatchPayload,
   validationDecksForMatchPayload,
   validationPlanarDecksForMatchPayload,
@@ -155,6 +158,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
   const waitForSubmissionIdle = useCallback((...args) => servicesRef.current.waitForSubmissionIdle(...args), [servicesRef]);
   const ziffleRoutePeerCandidates = useCallback((...args) => servicesRef.current.ziffleRoutePeerCandidates(...args), [servicesRef]);
   const ziffleTokensForPosition = useCallback((...args) => servicesRef.current.ziffleTokensForPosition(...args), [servicesRef]);
+  const lastForegroundRecoveryRef = useRef(0);
+  const resyncInProgressRef = useRef(false);
   const requestResync = useCallback((reason = "Resyncing with host...") => {
     const session = multiplayerRef.current;
     if (session.role !== "client" || !session.matchStarted) return false;
@@ -176,6 +181,36 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     return true;
   }, [setStatus, updateMultiplayer]);
 
+  useEffect(() => {
+    const recoverForegroundSession = () => {
+      if (document.visibilityState === "hidden") return;
+      const session = multiplayerRef.current;
+      if (!session.matchStarted || !isRelayId(session.lobbyId)) return;
+      if (session.submittingAction || resyncInProgressRef.current) return;
+      const now = Date.now();
+      if (now - lastForegroundRecoveryRef.current < 1000) return;
+      lastForegroundRecoveryRef.current = now;
+
+      const peer = peerRef.current;
+      if (peer?.disconnected || !peer?.open) {
+        try { peer?.reconnect?.(); } catch { /* normal reconnect loop will retry */ }
+        return;
+      }
+      if (session.role === "client") {
+        requestResync("Checking match state after returning to the tab...");
+      }
+    };
+
+    document.addEventListener("visibilitychange", recoverForegroundSession);
+    window.addEventListener("online", recoverForegroundSession);
+    window.addEventListener("pageshow", recoverForegroundSession);
+    return () => {
+      document.removeEventListener("visibilitychange", recoverForegroundSession);
+      window.removeEventListener("online", recoverForegroundSession);
+      window.removeEventListener("pageshow", recoverForegroundSession);
+    };
+  }, [requestResync]);
+
   const reportSyncFailure = useCallback(
     (body, resyncReason = "", fallbackStatus = body) => {
       emitSyncFailureNotice("Sync failed", body);
@@ -191,6 +226,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
   const applyStateResync = useCallback(
     async (message) => {
       awaitingStateResyncRef.current = true;
+      resyncInProgressRef.current = true;
+      try {
       if (multiplayerRef.current.submittingAction) {
         setStatus("Waiting for local action to settle before resync");
         const idle = await waitForSubmissionIdle(PROTOCOL_RESPONSE_TIMEOUT_MS);
@@ -645,6 +682,14 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         protocolVersion: PROTOCOL_VERSION,
         lastSequence,
       });
+      } catch (error) {
+        awaitingStateResyncRef.current = true;
+        updateMultiplayer(prev => ({ ...prev, submittingAction: false }));
+        setStatus("State recovery failed. Play is paused; return to this tab to retry.", true);
+        throw error;
+      } finally {
+        resyncInProgressRef.current = false;
+      }
     },
     [
       assertZiffleShuffleProofBoundToSignedMatch,
@@ -2809,12 +2854,12 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           }
 
           const requesterSequence = Number(message.lastSequence ?? 0);
-          if (
-            existingPlayer.connected !== false
-            && !message.forceCheckpoint
-            && Number.isSafeInteger(requesterSequence)
-            && requesterSequence === Number(session.lastAppliedSequence || 0)
-          ) {
+          if (!needsFullStateResync({
+            forceCheckpoint: message.forceCheckpoint === true || message.force === true,
+            connected: existingPlayer.connected,
+            requesterSequence,
+            hostSequence: session.lastAppliedSequence,
+          })) {
             clientConnectionsRef.current.set(conn.peer, conn);
             clearLocalDisconnectObservation(conn.peer, existingPlayer?.index);
             updateMultiplayer((prev) => ({
@@ -3919,6 +3964,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
               type: "resync_request",
               protocolVersion: PROTOCOL_VERSION,
               lastSequence: session.lastAppliedSequence,
+              forceCheckpoint: true,
             });
             setStatus(`Reconnected to match host ${hostTarget}`);
             return;

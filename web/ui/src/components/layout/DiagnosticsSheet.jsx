@@ -1,8 +1,9 @@
 import { cloneElement, isValidElement, useEffect, useState, useSyncExternalStore } from "react";
-import { Activity, ClipboardCopy, Eraser } from "lucide-react";
+import { Activity, Check, ClipboardCopy, Eraser } from "lucide-react";
 import { useGame } from "@/context/GameContext";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { readEngineDiagnostics } from "@/lib/engine-diagnostics";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import {
   diagnosticsVersion,
@@ -94,10 +95,11 @@ function verdict({ snapshot, peerWait, multiplayer }) {
 }
 
 export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTriggerClassName }) {
-  const { multiplayer, state } = useGame();
+  const { game, multiplayer, state } = useGame();
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [tick, setTick] = useState(0);
+  const [copied, setCopied] = useState(false);
   useSyncExternalStore(subscribeDiagnostics, diagnosticsVersion, diagnosticsVersion);
   // Ages keep counting while the sheet is open even when nothing new arrives.
   useEffect(() => {
@@ -113,19 +115,31 @@ export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTr
   const lobbyPlayers = Array.isArray(multiplayer?.players) ? multiplayer.players : [];
   const clock = multiplayer?.matchClock || null;
 
-  const report = () => exportDiagnostics({
+  const report = async () => {
+    const engine = await readEngineDiagnostics(game);
+    return exportDiagnostics({
       multiplayer: {
         mode: multiplayer?.mode, role: multiplayer?.role, lastAppliedSequence: multiplayer?.lastAppliedSequence,
         submittingAction: multiplayer?.submittingAction, peerWait, connectionWarnings: multiplayer?.connectionWarnings, matchClock: clock,
         players: lobbyPlayers,
       },
       game: { phase: state?.phase, step: state?.step, decision: state?.decision?.kind, priority_player: state?.priority_player, turn: state?.turn_number ?? state?.turn },
+      engine,
     }, state);
-  const handleCopy = async () => {
-    await copyTextToClipboard(`${JSON.stringify(report(), null, 2)}\n`);
   };
-  const handleDownload = () => {
-    const url = URL.createObjectURL(new Blob([JSON.stringify(report(), null, 2)], { type: "application/json" }));
+  const handleCopy = async () => {
+    try {
+      const payload = await report();
+      await copyTextToClipboard(`${JSON.stringify(payload, null, 2)}\n`);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setCopied(false);
+    }
+  };
+  const handleDownload = async () => {
+    const payload = await report();
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
     const link = document.createElement("a");
     link.href = url;
     link.download = `ironsmith-diagnostics-${Date.now()}.json`;
@@ -244,7 +258,8 @@ export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTr
 
                 <div className="diagnostics-toolbar">
                   <Button type="button" variant="secondary" size="sm" className="stone-pill" onClick={handleCopy}>
-                    <ClipboardCopy className="size-3.5" aria-hidden="true" /> Copy report
+                    {copied ? <Check className="size-3.5" aria-hidden="true" /> : <ClipboardCopy className="size-3.5" aria-hidden="true" />}
+                    {copied ? "Copied" : "Copy report"}
                   </Button>
                   <Button type="button" variant="secondary" size="sm" className="stone-pill" onClick={handleDownload}>
                     Download report

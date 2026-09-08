@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{Hash, Hasher};
 
@@ -21,12 +22,43 @@ const MAX_EXTRA_ACTIVATIONS: usize = 8;
 const MAX_PLANS_PER_SELECTION: usize = 16;
 const MAX_TOTAL_PLANS: usize = 32;
 
+/// Diagnostic counters for the most recent `plan_mana_payment` call.
+///
+/// These counters are intentionally observational: they do not change search
+/// ordering or legality.  The WASM adapter exposes them so a slow priority
+/// action can be correlated with planner work in a real match.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+pub struct ManaPaymentPerfMetrics {
+    pub visited_nodes: usize,
+    pub search_limited: bool,
+    pub plans_returned: usize,
+}
+
+thread_local! {
+    static LAST_MANA_PAYMENT_PERF: RefCell<ManaPaymentPerfMetrics> =
+        const { RefCell::new(ManaPaymentPerfMetrics { visited_nodes: 0, search_limited: false, plans_returned: 0 }) };
+}
+
+pub fn last_mana_payment_perf() -> ManaPaymentPerfMetrics {
+    LAST_MANA_PAYMENT_PERF.with(|slot| *slot.borrow())
+}
+
 /// Stateless entry point used by legality, runtime, and UI snapshot code.
 pub fn plan_mana_payment(
     game: &GameState,
     request: &ManaPaymentRequest,
 ) -> Result<Vec<ManaPaymentPlan>, ManaPaymentFailure> {
-    ManaPaymentPlanner::default().plan(game, request)
+    let mut planner = ManaPaymentPlanner::default();
+    let result = planner.plan_internal(game, request, false);
+    LAST_MANA_PAYMENT_PERF.with(|slot| {
+        *slot.borrow_mut() = ManaPaymentPerfMetrics {
+            visited_nodes: planner.visited_nodes,
+            search_limited: matches!(&result, Err(ManaPaymentFailure::SearchLimitReached)),
+            plans_returned: result.as_ref().map_or(0, Vec::len),
+        };
+    });
+    result
 }
 
 /// Return the first legal proposal discovered by the planner's ordered search.

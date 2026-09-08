@@ -22,7 +22,7 @@
     "test:hidden-info": "node tests/hidden-info-inventory.mjs",
     "test:wasm-real-engine": "node --test tests/wasm-real-engine-cheat.e2e.test.js",
     "formats:build": "node scripts/build-format-catalog.mjs",
-    "test:relay": "node --test tests/relay-format.test.mjs ../relay/tests/relay.test.mjs tests/relay-browser.test.mjs"
+    "test:relay": "node --test tests/relay-format.test.mjs tests/relay-resync.test.mjs ../relay/tests/relay.test.mjs tests/relay-browser.test.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -9,9 +9,10 @@ mod planner;
 
 pub use plan::*;
 pub use planner::{
-    ManaPaymentAnalysis, ManaPaymentPlanner, check_mana_payment, execute_mana_payment_plan,
-    mana_payment_activation_inventory, mana_payment_source_inventory, plan_first_mana_payment,
-    plan_mana_payment, unfunded_mana_payment_plan,
+    ManaPaymentAnalysis, ManaPaymentPerfMetrics, ManaPaymentPlanner, check_mana_payment,
+    execute_mana_payment_plan, last_mana_payment_perf, mana_payment_activation_inventory,
+    mana_payment_source_inventory, plan_first_mana_payment, plan_mana_payment,
+    unfunded_mana_payment_plan,
 };
 
 mod interactive;

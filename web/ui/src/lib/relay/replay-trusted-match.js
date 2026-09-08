@@ -10,7 +10,7 @@ export async function replayTrustedMatch(game, config, actions, perspective) {
   for (let index = 0; index < actions.length; index++) {
     const entry = actions[index];
     if (Number(entry.seq) !== index + 1) throw new Error('Saved match action transcript is incomplete');
-    const command = resolveSyncedCommand(entry.command);
+    const command = resolveSyncedCommand(entry.command, state);
     // Incomplete priority snapshots may contain only pass-priority. A stable
     // action reference can still be resolved and checked by the engine against
     // the current game; an index alone cannot identify a missing action safely.
