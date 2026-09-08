@@ -403,12 +403,21 @@ pub struct Grant {
 #[derive(Debug, Clone, Default)]
 pub struct GrantRegistry {
     /// All grants (unified storage).
-    pub grants: Vec<Grant>,
+    pub grants: crate::incremental::TrackedValue<Vec<Grant>>,
     next_shared_usage_id: u64,
-    shared_usage_remaining: std::collections::HashMap<SharedGrantUsageId, u32>,
+    shared_usage_remaining:
+        crate::incremental::TrackedValue<std::collections::HashMap<SharedGrantUsageId, u32>>,
 }
 
 impl GrantRegistry {
+    pub fn view_identity(
+        &self,
+    ) -> (
+        crate::incremental::ChangeCursor,
+        crate::incremental::ChangeCursor,
+    ) {
+        (self.grants.cursor(), self.shared_usage_remaining.cursor())
+    }
     /// Create a new empty registry.
     pub fn new() -> Self {
         Self::default()
@@ -1054,6 +1063,52 @@ impl GrantRegistry {
         active
     }
 
+    /// Classify a zone card against one pass-local active-grant snapshot.
+    /// This avoids rebuilding static grants once per rendered card.
+    pub fn zone_card_grant_kinds_from_snapshot(
+        &self,
+        game: &crate::game_state::GameState,
+        card_id: ObjectId,
+        zone: Zone,
+        player: PlayerId,
+        grants: &[Grant],
+    ) -> (bool, bool) {
+        let card = game.object(card_id);
+        let ctx = game.filter_context_for(player, None);
+        let mut kinds = (false, false);
+        for grant in grants
+            .iter()
+            .filter(|grant| grant.player == player && grant.zone == zone)
+        {
+            let applies = if let Some(target) = grant.target_id {
+                target == card_id
+                    || (!matches!(grant.source, GrantSource::StaticAbility { .. })
+                        && grant
+                            .target_stable_id
+                            .zip(card.map(|card| card.stable_id))
+                            .is_some_and(|(expected, actual)| expected == actual))
+            } else if let (Some(filter), Some(card)) = (&grant.filter, card) {
+                filter.matches(card, &grant_filter_context(&ctx, grant, game), game)
+            } else {
+                false
+            };
+            if !applies {
+                continue;
+            }
+            if matches!(grant.grantable, Grantable::PlayFrom) {
+                kinds.0 = true;
+            } else if !kinds.1
+                && materialize_granted_alternative_cast(game, card_id, grant.clone()).is_some()
+            {
+                kinds.1 = true;
+            }
+            if kinds.0 && kinds.1 {
+                break;
+            }
+        }
+        kinds
+    }
+
     fn static_grants(&self, game: &crate::game_state::GameState) -> Vec<Grant> {
         use crate::ability::AbilityKind;
         use crate::game_loop::player_matches_filter_with_combat;
@@ -1121,7 +1176,10 @@ impl GrantRegistry {
 
         for zone in [Zone::Graveyard, Zone::Exile, Zone::Command] {
             for_each_candidate_id_for_zone(game, Some(zone), |source_id| {
-                if game.battlefield.contains(&source_id) {
+                if game
+                    .object(source_id)
+                    .is_some_and(|object| object.zone == Zone::Battlefield)
+                {
                     return;
                 }
                 collect_from_source(source_id, false);
@@ -1219,6 +1277,75 @@ mod tests {
     use crate::target::PlayerFilter;
     use crate::types::CardType;
     use std::collections::HashMap;
+
+    #[test]
+    fn pass_local_grant_classification_matches_individual_queries() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let card = CardBuilder::new(crate::ids::CardId::from_raw(9985), "Granted card")
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        let ids: Vec<_> = (0..4)
+            .map(|_| game.create_object_from_card(&card, alice, Zone::Graveyard))
+            .collect();
+        let source = GrantSource::Effect {
+            source_id: ids[3],
+            expires_end_of_turn: game.turn.turn_number,
+        };
+        game.effect_store
+            .grant_registry
+            .grant_alternative_cast_to_card(
+                ids[0],
+                Zone::Graveyard,
+                alice,
+                AlternativeCastingMethod::Flashback {
+                    total_cost: crate::cost::TotalCost::mana(ManaCost::new()),
+                },
+                source,
+            );
+        game.effect_store
+            .grant_registry
+            .grant_to_filter_until_end_of_turn(
+                ObjectFilter::nonland(),
+                Zone::Graveyard,
+                alice,
+                Grantable::play_from(),
+                ids[3],
+                game.turn.turn_number,
+            );
+        for turn_delta in [0, 1] {
+            game.turn.turn_number += turn_delta;
+            let registry = &game.effect_store.grant_registry;
+            let snapshot = registry.active_grants(&game);
+            for id in &ids {
+                for player in [alice, bob] {
+                    assert_eq!(
+                        registry.zone_card_grant_kinds_from_snapshot(
+                            &game,
+                            *id,
+                            Zone::Graveyard,
+                            player,
+                            &snapshot
+                        ),
+                        (
+                            !registry
+                                .granted_play_from_for_card(&game, *id, Zone::Graveyard, player)
+                                .is_empty(),
+                            !registry
+                                .granted_alternative_casts_for_card(
+                                    &game,
+                                    *id,
+                                    Zone::Graveyard,
+                                    player
+                                )
+                                .is_empty()
+                        )
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn test_grant_registry_creation() {

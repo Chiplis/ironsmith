@@ -1,0 +1,2 @@
+// Reads may reuse an authoritative snapshot. Unknown methods are mutations.
+export const isGameRead = method => /^(snapshot|snapshotJson|uiState|last\w*Perf|lastWorkCounters|export\w+|autocompleteCardNames|get\w+|cardsMeetingThreshold|objectDetails|inspectorActions|preview\w+|registrySize|filterKnownCardNames|isKnownCardName|cardLoadDiagnostics|validateMatchConfig|runtimeVersion|createRuntimeSavepoint|releaseRuntimeSavepoint)$/.test(method);

@@ -3522,7 +3522,7 @@ impl StaticAbilityKind for Anthem {
             let mut effects = Vec::new();
             let candidate_ids: Vec<ObjectId> = attached_target
                 .map(|id| vec![id])
-                .unwrap_or_else(|| game.battlefield.clone());
+                .unwrap_or_else(|| game.battlefield.to_vec());
             for obj_id in candidate_ids {
                 let Some(obj) = game.object(obj_id) else {
                     continue;

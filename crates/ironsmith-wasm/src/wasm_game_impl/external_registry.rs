@@ -435,7 +435,15 @@ mod external_registry_tests {
             .registry
             .get("Lightning Bolt")
             .expect("replacement definition should be registered");
-        assert!(replaced.card.card_types.contains(&CardType::Creature));
+        if cfg!(feature = "dynamic-compile") {
+            assert!(replaced.card.card_types.contains(&CardType::Creature));
+        } else {
+            // Lean native builds accept source metadata but report that source
+            // compilation is unavailable; an explicit replacement cannot erase
+            // the existing playable definition when compilation fails.
+            assert!(!replaced.card.card_types.contains(&CardType::Creature));
+            assert!(wasm.external_compile_error_for_name("Lightning Bolt").is_some());
+        }
     }
 }
 

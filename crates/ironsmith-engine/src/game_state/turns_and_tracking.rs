@@ -2600,7 +2600,7 @@ impl GameState {
             return;
         }
 
-        self.mark_continuous_state_dirty();
+        self.mark_tapped_state_changed(id);
         let removed_continuous = self
             .effect_store
             .continuous_effects
@@ -2616,9 +2616,11 @@ impl GameState {
         });
         let removed_goad = self.effect_store.goad_effects.len() != goad_count;
 
-        if changed || removed_continuous || removed_restrictions || removed_goad {
-            self.update_cant_effects();
+        if removed_continuous || removed_restrictions || removed_goad {
+            self.mark_continuous_state_dirty();
         }
+        // Static restrictions may themselves depend on tapped state.
+        self.update_cant_effects();
     }
 
     fn mark_tapped_state_changed(&mut self, id: ObjectId) {

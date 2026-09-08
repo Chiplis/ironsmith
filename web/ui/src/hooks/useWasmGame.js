@@ -1,5 +1,7 @@
+import { createSnapshotDecoder } from "../lib/snapshot-channel.js";
 import { beginEngineRequest, endEngineRequest } from '../lib/action-diagnostics.js';
 import { useEffect, useRef, useState } from "react";
+import { isGameRead } from '../lib/game-methods.js';
 
 const MIN_INIT_PHASE_MS = 180;
 
@@ -15,6 +17,11 @@ const WORKER_METHODS = [
   "cardLoadDiagnostics",
   "cardsMeetingThreshold",
   "createCustomCard",
+  "createRuntimeSavepoint",
+  "restoreRuntimeSavepoint",
+  "releaseRuntimeSavepoint",
+  "replayTrustedMatch",
+  "replayTrustedActions",
   "dispatch",
   "drawCard",
   "drawOpeningHands",
@@ -181,6 +188,10 @@ export function useWasmGame() {
       if (workerEntry) workerEntry.pending = 0;
     };
 
+    const snapshotDecoder = createSnapshotDecoder();
+    let viewVersion = 0;
+    const snapshotVersions = new WeakMap();
+    let pendingMutations = 0;
     const callWorker = (method, args = []) =>
       new Promise((resolve, reject) => {
         if (disposed) {
@@ -188,10 +199,13 @@ export function useWasmGame() {
           return;
         }
         const id = nextRequestId++;
-        pending.set(id, { resolve, reject });
+        const mutation = !isGameRead(method);
+        if (mutation) { viewVersion++; pendingMutations++; }
+        const version = viewVersion;
+        pending.set(id, { resolve, reject, version, mutation });
         beginEngineRequest(id, method);
         try { worker.postMessage({ type: "call", id, method, args }); }
-        catch (error) { pending.delete(id); endEngineRequest(id); reject(error); }
+        catch (error) { pending.delete(id); if (mutation) pendingMutations--; endEngineRequest(id); reject(error); }
       });
 
     const selectZiffleWorker = () => {
@@ -287,6 +301,12 @@ export function useWasmGame() {
     };
 
     const gameProxy = createGameProxy(callWorker, callZiffleWorker);
+    gameProxy.supportsRuntimeSavepoints = false;
+    gameProxy.isCurrentSnapshot = state => state != null && pendingMutations === 0
+      && snapshotVersions.get(state) === viewVersion;
+    gameProxy.adoptSnapshotVersion = (state, source) => {
+      if (state && typeof state === 'object' && gameProxy.isCurrentSnapshot(source)) snapshotVersions.set(state, viewVersion);
+    };
     const priorityAnalysisListeners = new Set();
     let latestPriorityAnalysis = null;
     gameProxy.latestPriorityAnalysis = () => latestPriorityAnalysis;
@@ -349,16 +369,30 @@ export function useWasmGame() {
         return;
       }
       if (msg.type === "result") {
+        if (msg.snapshot) {
+          try { msg.result = snapshotDecoder.decode(msg.snapshot); }
+          catch (error) {
+            msg.ok = false; msg.error = error;
+            // The channel is ordered; a gap indicates a discarded response.
+            // A full snapshot reseeds it without applying partial state.
+            queueMicrotask(() => gameProxy.snapshot().catch(() => {}));
+          }
+        }
         const req = pending.get(msg.id);
         if (!req) return;
         pending.delete(msg.id);
+        if (req.mutation) pendingMutations--;
         endEngineRequest(msg.id);
+        if (msg.ok && msg.result && typeof msg.result === 'object' && 'decision' in msg.result) {
+          snapshotVersions.set(msg.result, req.version);
+        }
         if (msg.ok) req.resolve(msg.result);
         else req.reject(toError(msg.error));
         return;
       }
 
       if (msg.type === "ready") {
+        gameProxy.supportsRuntimeSavepoints = msg.runtimeSavepoints === true;
         finishReady().catch((err) => {
           if (!disposed) {
             setError(toError(err));

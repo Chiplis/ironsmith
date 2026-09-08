@@ -10,3 +10,5 @@ include!("sync_checkpoint.rs");
 include!("manabrew_compat.rs");
 
 include!("priority_analysis.rs");
+
+include!("runtime_savepoint.rs");

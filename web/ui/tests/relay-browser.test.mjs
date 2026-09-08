@@ -213,10 +213,11 @@ test('trusted host rejection restores a divergent guest instead of leaving it ah
   await guest.evaluate(async () => {
     const state = await window.__peerHarness.silentlyAddCard({ playerIndex: 1, cardName: 'Island' });
     const action = state.decision.actions.find(a => a.kind === 'cast_spell');
-    await window.__peerHarness.submitMultiplayerCommand({ type: 'priority_action', action_ref: action.action_ref }, 'Divergent action');
+    try { await window.__peerHarness.submitMultiplayerCommand({ type: 'priority_action', action_ref: action.action_ref }, 'Divergent action'); }
+    catch (error) { if (!error.message.includes('no longer available')) throw error; }
   });
   await wait(host, () => window.__peerHarness.lobbyState().statusEvents.some(e => JSON.stringify(e).includes('Trusted action is no longer available')));
-  await wait(guest, () => window.__peerHarness.lobbyState().multiplayer.lastAppliedSequence === 1);
+  await wait(guest, () => window.__peerHarness.lobbyState().statusEvents.some(e => e.message.includes('Resynced with trusted host at action 1')));
   await guest.evaluate(() => window.__peerHarness.submitMultiplayerCommand({ type: 'priority_action', action_ref: { kind: 'test_priority_action', actor: 1, sequence: 1 } }, 'Retry after repair'));
   for (const page of [host, guest]) await wait(page, () => window.__peerHarness.lobbyState().multiplayer.lastAppliedSequence === 2);
 });
@@ -239,7 +240,8 @@ test('failed foreground repair keeps actions paused and can retry', { timeout: 6
     socket.send = raw => {
       if (corrupt && raw.includes('state_resync')) {
         const frame = JSON.parse(raw);
-        frame.data = frame.data.replace('"match":{', '"match":null,"unused":{');
+        if (typeof frame.data === 'string') frame.data = frame.data.replace('"match":{', '"match":null,"unused":{');
+        else frame.data.text = frame.data.text.replace('"match":{', '"match":null,"unused":{');
         raw = JSON.stringify(frame); corrupt = false;
       }
       send(raw);
@@ -268,4 +270,103 @@ test('WebSocket rapid auto-pass keeps both action queues progressing', { timeout
   await host.evaluate(() => window.__peerHarness.startHostedMatch());
   for (const page of [host, guest]) await wait(page, () => window.__peerHarness.lobbyState().multiplayer.lastAppliedSequence >= 100);
   for (const page of [host, guest]) await page.evaluate(() => window.__peerHarness.setAutoPass(false));
+});
+
+test('durable append failure rolls back host without broadcasting acceptance', { timeout: 60000 }, async t => {
+  const { pages: [host, guest] } = await setup(t);
+  await host.evaluate(() => window.__peerHarness.createLobby({ name: 'Host', desiredPlayers: 2,
+    format: 'modern', transport: 'websocket', deckText: '60 Plains' }));
+  await wait(host, () => window.__peerHarness.lobbyState().multiplayer.mode === 'lobby');
+  const lobbyId = await host.evaluate(() => window.__peerHarness.lobbyState().multiplayer.lobbyId);
+  await guest.evaluate(lobbyId => window.__peerHarness.joinLobby({ name: 'Alice', lobbyId, deckText: '60 Island' }), lobbyId);
+  await wait(host, () => window.__peerHarness.lobbyState().multiplayer.players.length === 2 && window.__peerHarness.lobbyState().multiplayer.players.every(p => p.ready));
+  await host.evaluate(() => window.__peerHarness.startHostedMatch());
+  await wait(guest, () => window.__peerHarness.lobbyState().multiplayer.matchStarted);
+  const error = await host.evaluate(async () => {
+    const add = IDBObjectStore.prototype.add;
+    IDBObjectStore.prototype.add = function (...args) {
+      if (this.name === 'actions') { IDBObjectStore.prototype.add = add; throw new Error('simulated durable storage failure'); }
+      return add.apply(this, args);
+    };
+    try {
+      await window.__peerHarness.submitMultiplayerCommand({ type: 'priority_action', action_ref: { kind: 'test_priority_action', actor: 0, sequence: 0 } });
+      return 'unexpected success';
+    } catch (error) { return error.message; }
+    finally { IDBObjectStore.prototype.add = add; }
+  });
+  assert.match(error, /simulated durable storage failure/);
+  for (const page of [host, guest]) assert.equal(await page.evaluate(() => window.__peerHarness.lobbyState().multiplayer.lastAppliedSequence), 0);
+  await host.evaluate(() => window.__peerHarness.submitMultiplayerCommand({ type: 'priority_action', action_ref: { kind: 'test_priority_action', actor: 0, sequence: 0 } }));
+  for (const page of [host, guest]) await wait(page, () => window.__peerHarness.lobbyState().multiplayer.lastAppliedSequence === 1);
+});
+
+test('lost accepted action is retried and command IDs prevent duplicate application', { timeout: 60000 }, async t => {
+  const { pages: [host, guest] } = await setup(t);
+  await host.evaluate(() => window.__peerHarness.createLobby({ name: 'Host', desiredPlayers: 2,
+    format: 'modern', transport: 'websocket', deckText: '60 Plains' }));
+  await wait(host, () => window.__peerHarness.lobbyState().multiplayer.mode === 'lobby');
+  const lobbyId = await host.evaluate(() => window.__peerHarness.lobbyState().multiplayer.lobbyId);
+  await guest.evaluate(lobbyId => window.__peerHarness.joinLobby({ name: 'Alice', lobbyId, deckText: '60 Island' }), lobbyId);
+  await wait(host, () => window.__peerHarness.lobbyState().multiplayer.players.length === 2 && window.__peerHarness.lobbyState().multiplayer.players.every(p => p.ready));
+  await host.evaluate(() => window.__peerHarness.startHostedMatch());
+  await wait(guest, () => window.__peerHarness.lobbyState().multiplayer.matchStarted);
+  await host.evaluate(() => {
+    const socket = window.testSockets.find(s => s.readyState === 1 && s.url.includes('/rooms/')), send = socket.send.bind(socket);
+    let dropped = false;
+    socket.send = raw => {
+      if (!dropped && raw.includes('apply_action')) { dropped = true; return; }
+      send(raw);
+    };
+  });
+  await host.evaluate(() => window.__peerHarness.submitMultiplayerCommand({ type: 'priority_action', action_ref: { kind: 'test_priority_action', actor: 0, sequence: 0 } }));
+  await wait(guest, () => window.__peerHarness.lobbyState().multiplayer.lastAppliedSequence === 1);
+  await guest.evaluate(() => {
+    const socket = window.testSockets.find(s => s.readyState === 1 && s.url.includes('/rooms/')), send = socket.send.bind(socket);
+    socket.send = raw => { send(raw); if (raw.includes('trusted_command')) send(raw); };
+  });
+  await guest.evaluate(() => window.__peerHarness.submitMultiplayerCommand({ type: 'priority_action', action_ref: { kind: 'test_priority_action', actor: 1, sequence: 1 } }));
+  for (const page of [host, guest]) await wait(page, () => window.__peerHarness.lobbyState().multiplayer.lastAppliedSequence === 2);
+  await guest.waitForTimeout(1200);
+  for (const page of [host, guest]) assert.equal(await page.evaluate(() => window.__peerHarness.lobbyState().multiplayer.lastAppliedSequence), 2);
+});
+
+test('warm recovery transfers only a prefix-checked missing suffix', { timeout: 60000 }, async t => {
+  const { pages: [host, guest] } = await setup(t);
+  await host.evaluate(() => window.__peerHarness.createLobby({ name: 'Host', desiredPlayers: 2,
+    format: 'modern', transport: 'websocket', deckText: '60 Plains' }));
+  await wait(host, () => window.__peerHarness.lobbyState().multiplayer.mode === 'lobby');
+  const lobbyId = await host.evaluate(() => window.__peerHarness.lobbyState().multiplayer.lobbyId);
+  await guest.evaluate(lobbyId => window.__peerHarness.joinLobby({ name: 'Alice', lobbyId, deckText: '60 Island' }), lobbyId);
+  await wait(host, () => window.__peerHarness.lobbyState().multiplayer.players.length === 2 && window.__peerHarness.lobbyState().multiplayer.players.every(p => p.ready));
+  await host.evaluate(() => window.__peerHarness.startHostedMatch());
+  await wait(guest, () => window.__peerHarness.lobbyState().multiplayer.matchStarted);
+  await host.evaluate(() => {
+    const socket = window.testSockets.find(s => s.readyState === 1 && s.url.includes('/rooms/')), send = socket.send.bind(socket);
+    window.suffixEnvelope = null;
+    socket.send = raw => {
+      if (raw.includes('apply_action')) return;
+      const frame = JSON.parse(raw);
+      if (frame.data?.text?.includes('state_resync')) window.suffixEnvelope = JSON.parse(frame.data.text);
+      send(raw);
+    };
+  });
+  await guest.evaluate(() => {
+    const socket = window.testSockets.find(s => s.readyState === 1 && s.url.includes('/rooms/')), send = socket.send.bind(socket);
+    socket.send = raw => {
+      if (raw.includes('resync_request')) {
+        const frame = JSON.parse(raw), payload = JSON.parse(frame.data.text);
+        payload.forceCheckpoint = false; frame.data.text = JSON.stringify(payload); raw = JSON.stringify(frame);
+      }
+      send(raw);
+    };
+  });
+  await host.evaluate(() => window.__peerHarness.submitMultiplayerCommand({ type: 'priority_action', action_ref: { kind: 'test_priority_action', actor: 0, sequence: 0 } }));
+  await guest.evaluate(() => window.dispatchEvent(new Event('online')));
+  await wait(guest, () => window.__peerHarness.lobbyState().multiplayer.lastAppliedSequence === 1);
+  const recovery = await host.evaluate(() => window.suffixEnvelope);
+  assert.equal(recovery.suffix, true);
+  assert.equal(recovery.baseSequence, 0);
+  assert.equal(recovery.actions.length, 1);
+  assert.equal(recovery.checkpoint, undefined);
+  assert.equal(recovery.actions[0].prefixHash.length, 64);
 });

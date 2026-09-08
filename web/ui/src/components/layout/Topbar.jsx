@@ -1,4 +1,4 @@
-import { useGame } from "@/context/GameContext";
+import { useGame, useMatchClock } from "@/context/GameContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
 import useViewportLayout from "@/hooks/useViewportLayout";
 import { formatPhase, formatStep } from "@/lib/constants";
@@ -110,7 +110,7 @@ export default function Topbar({
     });
   };
   const connectionWarnings = multiplayer?.connectionWarnings || [];
-  const matchClock = multiplayer?.matchClock || multiplayer?.actionTimer || null;
+  const matchClock = useMatchClock();
   const matchClockEntries = Array.isArray(matchClock?.remainingMsByPlayer)
     ? matchClock.remainingMsByPlayer.map((remainingMs, index) => ({
         player: players.find((candidate) =>

@@ -7,11 +7,23 @@ import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
 import { LOOK_DONE_EVENT, LOOK_FADE_MS, lookViewKey, temporaryLookView, persistentLookCards, mergeLookCards } from "@/lib/look-pile";
 import { samePlayerId } from "@/lib/player-display";
 import { isFaceUpZoneCard, PILE_ZONES, zonePileCards } from "@/lib/zone-piles";
+import { cardArtCropUrl } from "@/lib/card-image-variants";
+import { prepareCardFrame } from "@/lib/card-frame-preparation";
 
 function ZoneArt({ card }) {
+  const imageRef = useRef(null);
   const name = isFaceUpZoneCard(card) ? card.name : null;
   const url = useScryfallImageUrl(name, "normal");
-  return url ? <img src={url} alt="" draggable={false} loading="lazy" referrerPolicy="no-referrer" />
+  useLayoutEffect(() => {
+    const source = imageRef.current?.parentElement;
+    if (!source) return undefined;
+    source.dataset.cardImageUrl = url;
+    return () => { delete source.dataset.cardImageUrl; };
+  }, [url]);
+  useEffect(() => {
+    if (url) void prepareCardFrame(cardArtCropUrl(url), card?.type_line).catch(() => {});
+  }, [url, card?.type_line]);
+  return url ? <img ref={imageRef} src={url} alt="" draggable={false} loading="lazy" referrerPolicy="no-referrer" />
     : <span className="zone-pile-placeholder" aria-hidden="true">{card ? "◇" : "—"}</span>;
 }
 
@@ -260,9 +272,14 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
       if (board) {
         const boardBounds = board.getBoundingClientRect();
         board.style.setProperty("--battlefield-objects-top", `${Math.max(0, top - boardBounds.top)}px`);
-        // Reserve the Look area even when it has no cards, keeping the stack
-        // boundary stable as temporary reveals appear and disappear.
-        board.style.setProperty("--look-area-bottom-offset", `${Math.max(0, boardBounds.bottom - piles.getBoundingClientRect().top)}px`);
+        const pilesBounds = piles.getBoundingClientRect();
+        const lookTop = Math.max(0, top - boardBounds.top);
+        const pileWidth = Math.min(56, cardWidth * 0.7);
+        // Keep Look above the stack, reserving its label and card height even
+        // between temporary reveals so the stack never jumps or overlaps it.
+        piles.style.setProperty("--look-area-top", `${boardBounds.top + lookTop - pilesBounds.top}px`);
+        piles.style.setProperty("--look-area-left", `${boardBounds.left + 70 - pilesBounds.left}px`);
+        board.style.setProperty("--stack-area-top", `${lookTop + 20 + pileWidth * 88 / 63 + 8}px`);
       }
     };
     const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(measure); };

@@ -1,6 +1,8 @@
-import { needsFullStateResync } from '../../lib/relay/resync.js';
-import { replayTrustedMatch } from '../../lib/relay/replay-trusted-match.js';
-import { readRelaySession, relayCheckpoint } from '../../lib/relay/session.js';
+import { RUNTIME_VERSION, assertRuntimeVersion } from "../../lib/runtime-version.js";
+import { withActionPrefixes, EMPTY_ACTION_PREFIX, actionPrefixHash } from '../../lib/accepted-actions.js';
+import { needsFullStateResync, matchingActionPrefix } from '../../lib/relay/resync.js';
+import { replayTrustedMatch, replayTrustedActions } from '../../lib/relay/replay-trusted-match.js';
+import { readRelaySession, relayCheckpoint, relayMatchId } from '../../lib/relay/session.js';
 import { PUBLIC_FORMATS, isRelayId, relayBaseUrl } from '../../lib/relay/formats.js';
 import { loadFormatCatalog, validateFormatDeck, assertFormatMatch } from '../../lib/relay/format-legality.js';
 import { buildPeerOptions, describePeerServer } from './shared.js';
@@ -160,7 +162,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
   const ziffleTokensForPosition = useCallback((...args) => servicesRef.current.ziffleTokensForPosition(...args), [servicesRef]);
   const lastForegroundRecoveryRef = useRef(0);
   const resyncInProgressRef = useRef(false);
-  const requestResync = useCallback((reason = "Resyncing with host...") => {
+  const requestResync = useCallback((reason = "Resyncing with host...", { forceCheckpoint = true } = {}) => {
     const session = multiplayerRef.current;
     if (session.role !== "client" || !session.matchStarted) return false;
     const conn = hostConnectionRef.current;
@@ -175,7 +177,9 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       type: "resync_request",
       protocolVersion: PROTOCOL_VERSION,
       lastSequence: session.lastAppliedSequence,
-      forceCheckpoint: true,
+      forceCheckpoint,
+      matchId: relayMatchId(matchStartPayloadRef.current),
+      prefixHash: actionHistoryRef.current.at(-1)?.prefixHash || EMPTY_ACTION_PREFIX,
     });
     setStatus(reason, true);
     return true;
@@ -236,10 +240,12 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         }
       }
       const matchPayload = message?.match;
+      assertRuntimeVersion(matchPayload);
       if (!matchPayload || typeof matchPayload !== "object") {
         throw new Error("Resync payload is missing match state");
       }
-      if (!message?.checkpoint || typeof message.checkpoint !== "object") {
+      if ((!message?.checkpoint || typeof message.checkpoint !== "object")
+          && !(message?.replayOnly === true && isTrustedMultiplayerSecurityMode(matchPayloadSecurityMode(matchPayload)))) {
         throw new Error("Resync payload is missing WASM checkpoint");
       }
 
@@ -268,6 +274,47 @@ export function usePeerLobbyMessaging(base, servicesRef) {
 
       if (!localEntry) {
         throw new Error("Local player is missing from the resync payload");
+      }
+
+      if (message.suffix === true) {
+        const baseSequence = Number(message.baseSequence);
+        if (!isTrustedMultiplayerSecurityMode(sessionSecurityMode(currentSession))
+            || !isTrustedMultiplayerSecurityMode(matchPayloadSecurityMode(matchPayload))
+            || relayMatchId(matchPayload) !== relayMatchId(matchStartPayloadRef.current)
+            || (matchPayload.currentHostPeerId || matchPayload.hostPeerId) !== currentSession.hostPeerId
+            || baseSequence !== Number(currentSession.lastAppliedSequence)
+            || !matchingActionPrefix(actionHistoryRef.current, baseSequence, message.basePrefix)) {
+          throw new Error("Recovery suffix does not extend the current accepted match");
+        }
+        const entries = message.actions;
+        if (!Array.isArray(entries) || Number(message.lastSequence) !== baseSequence + entries.length) throw new Error("Recovery suffix is incomplete");
+        let prefix = message.basePrefix;
+        for (let i = 0; i < entries.length; i++) {
+          const entry = entries[i];
+          prefix = actionPrefixHash(prefix, entry);
+          if (Number(entry.seq) !== baseSequence + i + 1 || entry.prefixHash !== prefix) throw new Error("Recovery suffix prefix mismatch");
+        }
+        const savepoint = await servicesRef.current.createSequencedActionValidationSnapshot();
+        let nextState;
+        try {
+          nextState = await replayTrustedActions(currentGame, entries, baseSequence);
+        } catch (error) {
+          await servicesRef.current.restoreSequencedActionValidationSnapshot(savepoint);
+          throw error;
+        } finally { await savepoint.release?.(); }
+        for (const entry of entries) await servicesRef.current.appendAppliedSequencedAction(entry);
+        stateRef.current = nextState;
+        setState(nextState);
+        restoreMatchClockRuntimeFromActionTranscript(actionHistoryRef.current, nextState, matchPayload);
+        const matchClock = alignMatchClockObservationFromHostSnapshot(matchPayload.currentMatchClock, nextState);
+        updateMultiplayer(prev => ({ ...prev, players: resyncPlayers, submittingAction: false,
+          matchClock, actionTimer: actionTimerSnapshotFromMatchClock(matchClock) }));
+        matchClockObservationExemptSequenceRef.current = Number(message.lastSequence) + 1;
+        awaitingStateResyncRef.current = false;
+        safeSend(hostConnectionRef.current, { type: "resync_ack", protocolVersion: PROTOCOL_VERSION, lastSequence: Number(message.lastSequence) });
+        setStatus(`Resynced with trusted host at action ${message.lastSequence}`);
+        await servicesRef.current.drainPendingSequencedActions();
+        return;
       }
 
 	      const actionEntries = Array.isArray(message?.actions)
@@ -375,13 +422,13 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         acceptedMatchPayload.currentHostPlayerIndex = expectedHostSeat;
         acceptedMatchPayload.currentPlayers = cloneMultiplayerPayload(acceptedSessionPlayers);
         matchStartPayloadRef.current = cloneMultiplayerPayload(acceptedMatchPayload);
-        actionHistoryRef.current = actionEntries.map((entry) => ({
+        actionHistoryRef.current = withActionPrefixes(actionEntries.map((entry) => ({
           ...cloneMultiplayerPayload(entry),
           securityMode: normalizeMultiplayerSecurityMode(
             entry.securityMode,
             MULTIPLAYER_SECURITY_TRUSTED
           ),
-        }));
+        })));
         actionCryptoRequirementsRef.current.clear();
         relayedActionIdsRef.current.clear();
         applyingSequencedActionsRef.current.clear();
@@ -405,7 +452,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           genesis: null,
           initialStateHash: INITIAL_AUDIT_STATE_HASH,
           initialPublicCheckpointHash: initialPublicCheckpointHashRef.current,
-          actions: actionHistoryRef.current.map((entry) => cloneMultiplayerPayload(entry)),
+          actions: actionHistoryRef.current,
         };
         clearAllPendingActionIntents();
         ignoredActionIntentKeysRef.current.clear();
@@ -642,7 +689,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         genesis: cloneMultiplayerPayload(acceptedMatchPayload.genesis),
         initialStateHash: INITIAL_AUDIT_STATE_HASH,
         initialPublicCheckpointHash: initialPublicCheckpointHashRef.current,
-        actions: actionHistoryRef.current.map((entry) => cloneMultiplayerPayload(entry)),
+        actions: actionHistoryRef.current,
       };
       clearAllPendingActionIntents();
       ignoredActionIntentKeysRef.current.clear();
@@ -763,6 +810,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       ready: false,
     }));
     const payload = {
+      runtimeVersion: RUNTIME_VERSION,
       type: "match_start",
       protocolVersion: PROTOCOL_VERSION,
       securityMode: MULTIPLAYER_SECURITY_TRUSTED,
@@ -931,6 +979,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     }
 
     const payload = {
+      runtimeVersion: RUNTIME_VERSION,
       type: "match_start",
       protocolVersion: PROTOCOL_VERSION,
       securityMode: MULTIPLAYER_SECURITY_VERIFIED,
@@ -1160,6 +1209,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       return;
     }
     const payload = {
+      runtimeVersion: RUNTIME_VERSION,
       type: "match_start",
       protocolVersion: PROTOCOL_VERSION,
       securityMode: MULTIPLAYER_SECURITY_VERIFIED,
@@ -1868,6 +1918,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           const proof = await signReconnectProofForChallenge(message);
           safeSend(conn, {
             type: "join_request",
+            runtimeVersion: RUNTIME_VERSION,
+            trustedProtocol: 2,
             protocolVersion: PROTOCOL_VERSION,
             name: multiplayerRef.current.localName || "Player",
             requestedPlayerIndex: Number(message.playerIndex),
@@ -2040,8 +2092,19 @@ export function usePeerLobbyMessaging(base, servicesRef) {
             };
           });
           return;
+        case "trusted_recovery_needed":
+          if (message.matchId === relayMatchId(matchStartPayloadRef.current)) requestResync("Recovering host acceptance", { forceCheckpoint: false });
+          return;
+        case "trusted_command_error":
+          servicesRef.current.rejectTrustedIntent(message);
+          return;
         case "apply_action": {
-          await applySequencedActionMessage(message);
+          if (isTrustedMultiplayerSecurityMode(sessionSecurityMode(multiplayerRef.current))
+              && message.matchId !== relayMatchId(matchStartPayloadRef.current)) return;
+          const result = await applySequencedActionMessage(message);
+          if (isTrustedMultiplayerSecurityMode(sessionSecurityMode(multiplayerRef.current))) {
+            servicesRef.current.acknowledgeTrustedAction(hostConnectionRef.current, message, result);
+          }
           return;
         }
         default:
@@ -2130,6 +2193,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       case "peer_ready":
         return;
       case "apply_action":
+        if (isTrustedMultiplayerSecurityMode(sessionSecurityMode(multiplayerRef.current))) return;
         await applySequencedActionMessage(message);
         return;
       case "ziffle_shuffle_step_request":
@@ -2264,11 +2328,11 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       } else {
         conn.on("open", () => { recordPeerState(conn.peer, "open"); beginHeartbeat(); });
       }
-      conn.on("data", (message) => {
+      conn.on("data", (message, transport) => {
         markConnectionAlive(heartbeatKey);
-        recordPeerMessage(conn.peer, "in", message?.type, approximateMessageBytes(message));
+        recordPeerMessage(conn.peer, "in", message?.type, transport?.bytes ?? approximateMessageBytes(message));
         if (handleConnectionHeartbeatMessage(conn, message)) return;
-        if (message?.type === "apply_action") {
+        if (message?.type === "apply_action" || message?.type === "trusted_command") {
           const queuedAtMs = Date.now();
           void enqueueAsync(peerMessageQueueRef, () => {
             const queueWaitMs = Date.now() - queuedAtMs;
@@ -2397,8 +2461,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       if (target === session.localPeerId) return true;
       const existingRoute = openZiffleRoute(target);
       if (existingRoute) {
-        safeSend(existingRoute, payload);
-        return true;
+        return safeSend(existingRoute, payload);
       }
       if (session.role === "host") {
         let conn = null;
@@ -2408,8 +2471,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           if (conn && conn.open !== false) break;
         }
         if (!conn || conn.open === false) return false;
-        safeSend(conn, payload);
-        return true;
+        return safeSend(conn, payload);
       }
       if (target === session.hostPeerId) {
         let conn = hostConnectionRef.current;
@@ -2420,16 +2482,14 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           conn = connectDirectPeer(target);
         }
         if (!conn || conn.open === false) return false;
-        safeSend(conn, payload);
-        return true;
+        return safeSend(conn, payload);
       }
       let conn = peerConnectionsRef.current.get(target);
       if (!conn || conn.open === false) {
         conn = connectDirectPeer(target);
       }
       if (!conn || conn.open === false) return false;
-      safeSend(conn, payload);
-      return true;
+      return safeSend(conn, payload);
     },
     [connectDirectPeer]
   );
@@ -2510,26 +2570,20 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       case "crypto_material_response":
         resolveCryptoMaterial(message);
         return;
-      case "apply_action": {
-        const result = await applySequencedActionMessage(message);
-        const session = multiplayerRef.current;
-        if (result?.rejected && isTrustedMultiplayerSecurityMode(sessionSecurityMode(session))) {
-          const match = buildHostedResyncPayload();
-          if (match) {
-            // Clients may have already applied and forwarded this speculative action.
-            // Repair every connected client to the host's accepted checkpoint.
-            for (const client of clientConnectionsRef.current.values()) {
-              if (!client.open) continue;
-              resyncingPeerIdsRef.current.add(client.peer);
-              try {
-                await sendHostedStateMessage(client, {
-                  type: "state_resync", protocolVersion: PROTOCOL_VERSION, match,
-                  rollbackFromSequence: Number(session.lastAppliedSequence || 0) + 1,
-                });
-              } catch (error) { finishPeerResync(client.peer); throw error; }
-            }
-          }
+      case "trusted_action_ack":
+        servicesRef.current.receiveTrustedAck(conn, message);
+        return;
+      case "trusted_command":
+        try { await servicesRef.current.acceptTrustedCommand(conn, message); }
+        catch (error) {
+          setStatus(toErrorMessage(error), true);
+          safeSend(conn, { type: "trusted_command_error", protocolVersion: PROTOCOL_VERSION,
+            commandId: message.commandId, reason: toErrorMessage(error) });
         }
+        return;
+      case "apply_action": {
+        if (isTrustedMultiplayerSecurityMode(sessionSecurityMode(multiplayerRef.current))) return;
+        await applySequencedActionMessage(message);
         return;
       }
       case "rng_commit_request":
@@ -2570,6 +2624,12 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           return;
         case "join_request": {
           const session = multiplayerRef.current;
+          if (isTrustedMultiplayerSecurityMode(sessionSecurityMode(session))
+              && (message.trustedProtocol !== 2 || message.runtimeVersion !== RUNTIME_VERSION)) {
+            safeSend(conn, { type: "reject", protocolVersion: PROTOCOL_VERSION,
+              reason: "Trusted multiplayer requires the same application and engine version on every seat" });
+            conn.close(); return;
+          }
           const relayRoom = isRelayId(session.lobbyId);
           const authenticatedSeat = session.players.find(player => player.peerId === conn.peer);
           const requestedPlayerIndex = relayRoom
@@ -2855,7 +2915,10 @@ export function usePeerLobbyMessaging(base, servicesRef) {
 
           const requesterSequence = Number(message.lastSequence ?? 0);
           if (!needsFullStateResync({
-            forceCheckpoint: message.forceCheckpoint === true || message.force === true,
+            forceCheckpoint: message.forceCheckpoint === true || message.force === true
+              || (isTrustedMultiplayerSecurityMode(sessionSecurityMode(session))
+                && (message.matchId !== relayMatchId(matchStartPayloadRef.current)
+                  || !matchingActionPrefix(actionHistoryRef.current, requesterSequence, message.prefixHash))),
             connected: existingPlayer.connected,
             requesterSequence,
             hostSequence: session.lastAppliedSequence,
@@ -2939,6 +3002,13 @@ export function usePeerLobbyMessaging(base, servicesRef) {
               protocolVersion: PROTOCOL_VERSION,
               match: matchPayload,
               lastSequence: nextSession.lastAppliedSequence,
+              requesterSequence,
+              requestPrefixHash: message.prefixHash,
+              requestMatchId: message.matchId,
+              forceCheckpoint: message.forceCheckpoint === true || message.force === true
+              || (isTrustedMultiplayerSecurityMode(sessionSecurityMode(session))
+                && (message.matchId !== relayMatchId(matchStartPayloadRef.current)
+                  || !matchingActionPrefix(actionHistoryRef.current, requesterSequence, message.prefixHash))),
               ...(isTrustedMultiplayerSecurityMode(sessionSecurityMode(nextSession))
                 && requesterSequence > nextSession.lastAppliedSequence
                 ? { rollbackFromSequence: Number(nextSession.lastAppliedSequence) + 1 } : {}),
@@ -3132,9 +3202,9 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       } else {
         conn.on("open", () => { recordPeerState(conn.peer, "open"); beginHeartbeat(); });
       }
-      conn.on("data", (message) => {
+      conn.on("data", (message, transport) => {
         markConnectionAlive(heartbeatKey);
-        recordPeerMessage(conn.peer, "in", message?.type, approximateMessageBytes(message));
+        recordPeerMessage(conn.peer, "in", message?.type, transport?.bytes ?? approximateMessageBytes(message));
         if (handleConnectionHeartbeatMessage(conn, message)) return;
         const handleError = (err) => {
           if (shouldSuppressProtocolMessageError(err, message)) return;
@@ -3147,7 +3217,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
               err?.syncedRollbackSequence == null ? null : Number(err.syncedRollbackSequence),
           });
         };
-        if (message?.type === "apply_action") {
+        if (message?.type === "apply_action" || message?.type === "trusted_command") {
           void enqueueAsync(clientMessageQueueRef, () =>
             handleClientMessage(conn, message)
           ).catch(handleError);
@@ -3156,6 +3226,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         // Acks must not wait behind actions that are blocked on those same acks.
         if (
           message?.type === "resync_ack"
+          || message?.type === "trusted_action_ack"
           || message?.type === "ziffle_shuffle_step_request"
           || message?.type === "ziffle_shuffle_step_response"
           || message?.type === "ziffle_reveal_token_request"
@@ -3558,6 +3629,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
             actionHistoryRef.current = [];
             updateMultiplayer(prev => ({ ...prev, lastAppliedSequence: 0, matchStarted: false }));
             await applyStateResync(resume);
+            await servicesRef.current.persistRelayCheckpoint();
             updateMultiplayer(prev => ({ ...prev, players: prev.players.map(player => ({
               ...player, connected: player.peerId === prev.localPeerId,
             })) }));
@@ -3964,7 +4036,9 @@ export function usePeerLobbyMessaging(base, servicesRef) {
               type: "resync_request",
               protocolVersion: PROTOCOL_VERSION,
               lastSequence: session.lastAppliedSequence,
-              forceCheckpoint: true,
+              forceCheckpoint: false,
+              matchId: relayMatchId(matchStartPayloadRef.current),
+              prefixHash: actionHistoryRef.current.at(-1)?.prefixHash || EMPTY_ACTION_PREFIX,
             });
             setStatus(`Reconnected to match host ${hostTarget}`);
             return;
@@ -3978,6 +4052,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           const requestedPlayerIndex = resolveReconnectPlayerIndex(session, targetLobby);
           const joinRequest = {
             type: "join_request",
+            runtimeVersion: RUNTIME_VERSION,
+            trustedProtocol: 2,
             protocolVersion: PROTOCOL_VERSION,
             name: localName,
             securityMode: sessionSecurityMode(session),
@@ -4019,12 +4095,12 @@ export function usePeerLobbyMessaging(base, servicesRef) {
             );
           }
         });
-        conn.on("data", (message) => {
+        conn.on("data", (message, transport) => {
           if (hostConnectionRef.current !== conn) return;
           markConnectionAlive(heartbeatKey);
-          recordPeerMessage(conn.peer, "in", message?.type, approximateMessageBytes(message));
+          recordPeerMessage(conn.peer, "in", message?.type, transport?.bytes ?? approximateMessageBytes(message));
           if (handleConnectionHeartbeatMessage(conn, message)) return;
-          if (message?.type === "apply_action") {
+          if (message?.type === "apply_action" || message?.type === "trusted_command") {
             const queuedAtMs = Date.now();
             void enqueueAsync(hostMessageQueueRef, () => {
               const queueWaitMs = Date.now() - queuedAtMs;

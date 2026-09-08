@@ -3832,7 +3832,7 @@ fn legal_exile_objects(
     zone: Zone,
 ) -> Vec<ObjectId> {
     let ids: Vec<ObjectId> = match zone {
-        Zone::Battlefield => game.battlefield.clone(),
+        Zone::Battlefield => game.battlefield.to_vec(),
         Zone::Hand => game
             .player(payer)
             .map(|p| p.hand.to_vec())
@@ -3841,7 +3841,7 @@ fn legal_exile_objects(
             .player(payer)
             .map(|p| p.graveyard.to_vec())
             .unwrap_or_default(),
-        Zone::Exile => game.exile.clone(),
+        Zone::Exile => game.exile.to_vec(),
         _ => Vec::new(),
     };
     let ctx = game.filter_context_for(payer, Some(source));

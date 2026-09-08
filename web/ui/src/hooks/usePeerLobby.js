@@ -1,3 +1,4 @@
+import { createValueStore } from "../lib/value-store.js";
 import {
   DISCONNECT_AUTO_FORFEIT_MS,
   DISCONNECT_FORFEIT_REASON,
@@ -79,6 +80,7 @@ import { usePeerLobbyConnections } from "./peer-lobby/connections.js";
 import { usePeerLobbyAuditMaterial } from "./peer-lobby/audit-material.js";
 import { usePeerLobbyCryptoResync } from "./peer-lobby/crypto-resync.js";
 import { usePeerLobbyValidation } from "./peer-lobby/validation.js";
+import { useTrustedSequencer } from "./peer-lobby/trusted-sequencer.js";
 import { usePeerLobbyMessaging } from "./peer-lobby/messaging.js";
 
 export function usePeerLobby({
@@ -92,6 +94,8 @@ export function usePeerLobby({
   const initialHeartbeatConfig = buildPeerHeartbeatConfig();
   const initialMatchClockConfig = buildMatchClockConfig();
   const [multiplayer, setMultiplayer] = useState(() => createEmptyState());
+  const matchClockStore = useRef(null);
+  if (!matchClockStore.current) matchClockStore.current = createValueStore();
   const peerRef = useRef(null);
   const hostConnectionRef = useRef(null);
   const clientConnectionsRef = useRef(new Map());
@@ -200,7 +204,7 @@ export function usePeerLobby({
 
   const servicesRef = useRef({});
   const peerLobbyBase = {
-    game, state, setState, setStatus, applySyncedCommand, multiplayer, setMultiplayer,
+    game, state, setState, setStatus, applySyncedCommand, multiplayer, setMultiplayer, matchClockStore,
     peerRef, hostConnectionRef, clientConnectionsRef, peerConnectionsRef, connectionHeartbeatsRef,
     matchStartPayloadRef, actionHistoryRef, gameRef, stateRef, multiplayerRef, peerOptionsRef,
     peerHeartbeatConfigRef, matchClockConfigRef, matchClockRef, timeoutClaimInFlightRef,
@@ -232,12 +236,15 @@ export function usePeerLobby({
   Object.assign(servicesRef.current, auditMaterial);
 
   const cryptoResync = usePeerLobbyCryptoResync(peerLobbyBase, servicesRef);
-  const { appendAppliedSequencedAction, buildLocalPrivateViewProofsForRequirements, buildMatchClockAuditForCommand, collectActionQuorumCertificate, collectDisconnectForfeitCertificateForCommand, collectProtocolResponseTimeoutCertificateForCommand, collectRemoteCryptoMaterialForRequirements, collectTimeoutCertificateForCommand, commitMatchClockAudit, createSequencedActionValidationSnapshot, currentHiddenRefForObjectId, currentStableIdForObjectId, filterOpeningsForCommandHiddenRefs, forfeitedPlayersForQuorum, freshCryptoRequirementsForSequence, injectCryptoMaterialForRequirements, leaveLobby, markMatchDisputed, protocolResponseTimeoutRoster, publishCurrentRuntimeState, relaySequencedAction, rememberActionCryptoRequirements, restoreMatchClockRuntime, revealPrivateAuditProofsForLocalViewer, stageLocalMatchClockAudit, teardownPeer, updateMatchClockForState, validateDisconnectForfeitCommand, validateProtocolResponseTimeoutCommand, validateTimeoutForfeitCommand, validateTrustedSequencedAction, verifyActionQuorumForMessage, verifyMatchClockAuditForAction, waitForPeerResyncs } = cryptoResync;
+  const { appendAppliedSequencedAction, buildLocalPrivateViewProofsForRequirements, buildMatchClockAuditForCommand, collectActionQuorumCertificate, collectDisconnectForfeitCertificateForCommand, collectProtocolResponseTimeoutCertificateForCommand, collectRemoteCryptoMaterialForRequirements, collectTimeoutCertificateForCommand, commitMatchClockAudit, createSequencedActionValidationSnapshot, currentHiddenRefForObjectId, currentStableIdForObjectId, filterOpeningsForCommandHiddenRefs, forfeitedPlayersForQuorum, freshCryptoRequirementsForSequence, injectCryptoMaterialForRequirements, leaveLobby, markMatchDisputed, protocolResponseTimeoutRoster, publishCurrentRuntimeState, relaySequencedAction, rememberActionCryptoRequirements, restoreMatchClockRuntime, revealPrivateAuditProofsForLocalViewer, stageLocalMatchClockAudit, teardownPeer, updateMatchClockForState, validateDisconnectForfeitCommand, validateProtocolResponseTimeoutCommand, validateTimeoutForfeitCommand, verifyActionQuorumForMessage, verifyMatchClockAuditForAction, waitForPeerResyncs } = cryptoResync;
   Object.assign(servicesRef.current, cryptoResync);
 
   const validation = usePeerLobbyValidation(peerLobbyBase, servicesRef);
   const { applyVerifiedShuffleProofs, buildLocalRngRevealsForRequirements, buildLocalShuffleProofsForRequirements, drainPendingSequencedActions, restoreSequencedActionValidationSnapshotIfCurrent, revealLocalZiffleHand, routePeerIdForPlayer, verifyShuffleProofsForRequirements, viewedCardsStateHint } = validation;
   Object.assign(servicesRef.current, validation);
+
+  const trustedSequencer = useTrustedSequencer(peerLobbyBase, servicesRef);
+  Object.assign(servicesRef.current, trustedSequencer);
 
   const messaging = usePeerLobbyMessaging(peerLobbyBase, servicesRef);
   const { broadcastLobbyState, createLobby, joinLobby, readyForRematch, startHostedMatch, startRematchSideboarding, updateRematchDecks } = messaging;
@@ -724,59 +731,9 @@ export function usePeerLobby({
         }
         const nextSequence = Number(multiplayerRef.current.lastAppliedSequence || 0) + 1;
         if (trustedMode) {
-          preSubmitState = gameRef.current ? await gameRef.current.uiState() : stateRef.current;
-          const expectedPreviousSequence = nextSequence - 1;
-          const latestAppliedSequenceBeforeApply = Number(multiplayerRef.current.lastAppliedSequence || 0);
-          const latestHistorySequenceBeforeApply = Number(
-            actionHistoryRef.current.at(-1)?.seq ?? latestAppliedSequenceBeforeApply
-          );
-          if (
-            awaitingStateResyncRef.current
-            || latestAppliedSequenceBeforeApply !== expectedPreviousSequence
-            || latestHistorySequenceBeforeApply !== expectedPreviousSequence
-          ) {
-            updateMultiplayer((prev) => ({ ...prev, submittingAction: false }));
-            setStatus("Another action was broadcast first");
-            return;
-          }
-          const clock = await buildMatchClockAuditForCommand({
-            command,
-            seq: nextSequence,
-            actorIndex: session.localPlayerIndex,
-            uiState: preSubmitState,
-          });
-          await validateTrustedSequencedAction({
-            command,
-            actorIndex: session.localPlayerIndex,
-            seq: nextSequence,
-            clock,
-            uiState: preSubmitState,
-            enforceMatchClockObservationBounds: false,
-          });
-          localSubmissionSnapshot = await timePeerSyncPhase("submit_action:validation_snapshot", {}, () => createSequencedActionValidationSnapshot());
-          stagedMatchClockRuntime = stageLocalMatchClockAudit(clock);
-          const appliedState = await applySyncedCommand(command, label || "", {
-            actorIndex: session.localPlayerIndex,
-            sequence: nextSequence,
-            publishState: false,
-          });
-          const message = {
-            type: "apply_action",
-            protocolVersion: PROTOCOL_VERSION,
-            securityMode: MULTIPLAYER_SECURITY_TRUSTED,
-            seq: nextSequence,
-            actorIndex: session.localPlayerIndex,
-            command,
-            label: label || "",
-            clock,
-          };
-          commitMatchClockAudit(clock, appliedState);
-          await appendAppliedSequencedAction(message);
+          await servicesRef.current.submitTrustedIntent(command, label || "");
           localSubmissionCommitted = true;
-          await publishCurrentRuntimeState(appliedState);
-          relaySequencedAction(message);
-          await drainPendingSequencedActions();
-          setStatus("Action broadcast to trusted peers");
+          setStatus("Action accepted by host");
           return;
         }
 	        const showLocalActionWait = (patch = {}) => {
@@ -1715,6 +1672,8 @@ export function usePeerLobby({
           return;
         }
         throw err;
+      } finally {
+        await localSubmissionSnapshot?.release?.();
       }
     },
     [
@@ -1845,14 +1804,9 @@ export function usePeerLobby({
       const session = multiplayerRef.current;
       if (!session.matchStarted || awaitingStateResyncRef.current) return;
 
-      let liveState = stateRef.current;
-      try {
-        if (gameRef.current && typeof gameRef.current.uiState === "function") {
-          liveState = await gameRef.current.uiState();
-        }
-      } catch {
-        liveState = stateRef.current;
-      }
+      // Game transitions update this view. Cosmetic clock ticks need only the
+      // accepted epoch; timeout submission revalidates against the engine.
+      const liveState = stateRef.current;
 
       const timer = updateMatchClockForState(liveState);
       if (
@@ -2077,6 +2031,7 @@ export function usePeerLobby({
   );
 
   return {
+    matchClockStore: matchClockStore.current,
     multiplayer,
     canStartHostedMatch: canHostedMatchStart(multiplayer),
     createLobby,

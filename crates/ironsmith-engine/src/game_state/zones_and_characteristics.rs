@@ -423,6 +423,8 @@ impl GameState {
             }
         }
 
+        self.object_store.changes.record(old_id);
+        self.object_store.render_changes.record(old_id);
         let old_object = ObjectStore::into_owned_object(self.objects.remove(&old_id)?);
         self.turn_store.forecast_revealed_hand_cards.remove(&old_id);
         let hidden_card_info = self.auxiliary_tracking_mut().hidden_cards.remove(&old_id);
@@ -850,7 +852,7 @@ impl GameState {
             .player(owner)
             .ok_or_else(|| "cannot ante for a missing player".to_string())?
             .library
-            .clone();
+            .to_vec();
         if candidates.is_empty() {
             return Err("cannot ante from an empty library".to_string());
         }
@@ -2151,6 +2153,11 @@ impl GameState {
     /// Removes an object from the game completely (e.g., tokens ceasing to exist).
     /// This does NOT create a new object - the object is simply gone.
     pub fn remove_object(&mut self, id: ObjectId) {
+        if !self.objects.contains_key(&id) { return; }
+        self.mark_continuous_state_dirty();
+        self.bump_mutation_revision();
+        self.object_store.changes.record(id);
+        self.object_store.render_changes.record(id);
         if let Some(obj) = self.objects.remove(&id).map(ObjectStore::into_owned_object) {
             if let Some(target) = obj.attached_to {
                 match target {
@@ -2189,22 +2196,22 @@ impl GameState {
         match zone {
             Zone::Battlefield => {
                 let before = self.battlefield.len();
-                self.battlefield.retain(|&x| x != id);
+                self.battlefield.remove_id(id);
                 removed = self.battlefield.len() != before;
             }
             Zone::Command => {
                 let before = self.command_zone.len();
-                self.command_zone.retain(|&x| x != id);
+                self.command_zone.remove_id(id);
                 removed = self.command_zone.len() != before;
             }
             Zone::Exile => {
                 let before = self.exile.len();
-                self.exile.retain(|&x| x != id);
+                self.exile.remove_id(id);
                 removed = self.exile.len() != before;
             }
             Zone::Ante => {
                 let before = self.ante.len();
-                self.ante.retain(|&x| x != id);
+                self.ante.remove_id(id);
                 removed = self.ante.len() != before;
             }
             Zone::Library => {
@@ -2214,7 +2221,7 @@ impl GameState {
                     == Some(id);
                 if let Some(player) = self.player_mut(owner) {
                     let before = player.library.len();
-                    player.library.retain(|&x| x != id);
+                    player.library.remove_id(id);
                     removed = player.library.len() != before;
                 }
                 if was_top {
@@ -2224,21 +2231,21 @@ impl GameState {
             Zone::Hand => {
                 if let Some(player) = self.player_mut(owner) {
                     let before = player.hand.len();
-                    player.hand.retain(|&x| x != id);
+                    player.hand.remove_id(id);
                     removed = player.hand.len() != before;
                 }
             }
             Zone::Graveyard => {
                 if let Some(player) = self.player_mut(owner) {
                     let before = player.graveyard.len();
-                    player.graveyard.retain(|&x| x != id);
+                    player.graveyard.remove_id(id);
                     removed = player.graveyard.len() != before;
                 }
             }
             Zone::OutsideGame => {
                 if let Some(player) = self.player_mut(owner) {
                     let before = player.sideboard.len();
-                    player.sideboard.retain(|&x| x != id);
+                    player.sideboard.remove_id(id);
                     removed = player.sideboard.len() != before;
                 }
             }
@@ -2494,9 +2501,15 @@ impl GameState {
 
     /// Gets a mutable reference to an object by ID.
     pub fn object_mut(&mut self, id: ObjectId) -> Option<&mut Object> {
+        if !self.objects.contains_key(&id) { return None; }
+        let counter = &self.runtime_cache.work_counters.generic_object_mutations;
+        counter.set(counter.get().saturating_add(1));
         self.mark_continuous_state_dirty();
-        self.stamp_object_modified(id);
-        self.object_store.object_mut(id)
+        let revision = self.bump_mutation_revision();
+        self.runtime_cache.characteristics_cache.bump_object_revision(id, revision);
+        let object = self.object_store.object_mut(id)?;
+        object.last_modified = revision;
+        Some(object)
     }
 
     pub(crate) fn objects_map(&self) -> &ObjectMap {
@@ -3271,7 +3284,7 @@ impl GameState {
                     phase: self.turn.phase,
                     step: self.turn.step,
                     change_effects,
-                    resolved: RefCell::new(FxMap::default()),
+                    resolved: RefCell::new(Default::default()),
                 });
             }
         }
@@ -3658,7 +3671,7 @@ impl GameState {
             .as_ref()
             .map(|state| state.hand_modifiers.clone())
             .unwrap_or_default();
-        for player in &mut self.players {
+        for player in self.players.get_mut_for_derived_update().iter_mut() {
             player.max_hand_size = 7_i32.saturating_add(
                 vanguard_hand_modifiers
                     .get(&player.id)

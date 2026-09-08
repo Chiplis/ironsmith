@@ -33,9 +33,9 @@ impl ExchangeZonesEffect {
             return Vec::new();
         };
         match zone {
-            Zone::Hand => player_state.hand.clone(),
-            Zone::Library => player_state.library.clone(),
-            Zone::Graveyard => player_state.graveyard.clone(),
+            Zone::Hand => player_state.hand.to_vec(),
+            Zone::Library => player_state.library.to_vec(),
+            Zone::Graveyard => player_state.graveyard.to_vec(),
             _ => Vec::new(),
         }
     }

@@ -648,6 +648,8 @@ impl WasmGame {
             priority_state,
             pregame: None,
             match_format: MatchFormatInput::Normal,
+            runtime_savepoints: HashMap::new(),
+            next_runtime_savepoint: 0,
             priority_analysis_job: None,
             inspector_analysis_job: None,
             pending_decision: None,
@@ -682,7 +684,7 @@ impl WasmGame {
             last_replay_execution_perf: None,
             last_advance_until_decision_perf: None,
             last_dispatch_perf: None,
-            snapshot_object_view_cache: SnapshotObjectViewCache::default(),
+            snapshot_object_view_cache: Box::default(),
             #[cfg(target_arch = "wasm32")]
             snapshot_js_encoding_cache: SnapshotJsEncodingCache::default(),
             manabrew_game_id: "ironsmith-uninitialized".to_string(),
@@ -1783,7 +1785,7 @@ impl WasmGame {
                 ));
             }
             if let Some(player) = self.game.player_mut(owner) {
-                player.library = reordered_library;
+                player.library = reordered_library.into();
             }
         }
         let mut seen = HashSet::new();

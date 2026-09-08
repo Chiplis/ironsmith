@@ -3,6 +3,24 @@ import { isRelayId, relayBaseUrl } from './formats.js';
 const id = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), n => n.toString(16).padStart(2, '0')).join('');
 const MAX_MESSAGE = 64 * 1024 * 1024;
 const CHUNK = 16000;
+const encoder = new TextEncoder();
+const bytes = value => encoder.encode(value).byteLength;
+const CONTROL = new Set(['peer_heartbeat', 'peer_heartbeat_ack', 'resync_ack', 'action_ack', 'action_error', 'apply_action', 'trusted_command', 'trusted_command_ack', 'trusted_action_ack', 'trusted_command_error', 'trusted_recovery_needed']);
+const FRAME_RATE = 160, FRAME_BURST = 8;
+const ASSEMBLY_TIMEOUT = 120_000;
+class Queue {
+  entries = []; head = 0;
+  get length() { return this.entries.length - this.head; }
+  push(value) { this.entries.push(value); }
+  first() { return this.entries[this.head]; }
+  remove() {
+    this.entries[this.head++] = null;
+    if (this.head >= 1024 && this.head * 2 >= this.entries.length) {
+      this.entries = this.entries.slice(this.head); this.head = 0;
+    }
+  }
+}
+
 class Events {
   listeners = new Map();
   on(type, fn) { this.listeners.set(type, [...(this.listeners.get(type) || []), fn]); return this; }
@@ -11,7 +29,10 @@ class Events {
 class RelayConnection extends Events {
   open = false;
   closed = false;
-  incoming = '';
+  incoming = new Map();
+  incomingBytes = 0;
+  nextMessage = 0;
+  wireVersion = 1;
   constructor(owner, peer, connectionId, metadata = {}) {
     super(); Object.assign(this, { owner, peer, connectionId, metadata });
     this.timeout = setTimeout(() => this.close(), 15000);
@@ -20,38 +41,67 @@ class RelayConnection extends Events {
   opened() { if (this.closed || this.open) return; clearTimeout(this.timeout); this.open = true; this.emit('open'); }
   receive(message) {
     if (this.closed) return;
-    if (message.type === 'answer') this.opened();
+    if (message.type === 'answer') { this.wireVersion = message.metadata?.relayWireVersion === 2 ? 2 : 1; this.opened(); }
     else if (message.type === 'close') this.close(false);
     else if (message.type === 'data') {
       const frame = message.data;
-      if (typeof frame !== 'string' || !['+', '.'].includes(frame[0]) || this.incoming.length + frame.length > MAX_MESSAGE) throw new Error('Invalid relay data');
-      this.incoming += frame.slice(1);
-      if (frame[0] === '.') {
-        const payload = JSON.parse(this.incoming); this.incoming = '';
+      // Accept legacy peers, but new peers identify chunks so control traffic
+      // can pass an unfinished bulk message without corrupting its assembly.
+      const legacy = typeof frame === 'string';
+      const messageId = legacy ? 'legacy' : frame?.id;
+      const text = legacy ? frame.slice(1) : frame?.text;
+      const last = legacy ? frame[0] === '.' : frame?.last;
+      if ((legacy && !['+', '.'].includes(frame[0])) || (!legacy && (frame?.v !== 2
+          || !Number.isSafeInteger(messageId) || messageId < 1 || typeof last !== 'boolean'))
+          || typeof text !== 'string') throw new Error('Invalid relay data');
+      let assembly = this.incoming.get(messageId);
+      if (!assembly) {
+        if (this.incoming.size >= 8) throw new Error('Too many partial relay messages');
+        assembly = { chunks: [], bytes: 0, index: 0, timer: setTimeout(() => {
+          this.emit('error', new Error('Relay message assembly timed out')); this.close();
+        }, ASSEMBLY_TIMEOUT) };
+        this.incoming.set(messageId, assembly);
+      }
+      if (!legacy && frame.index !== assembly.index) throw new Error('Out-of-order relay chunk');
+      const size = bytes(text);
+      if (assembly.bytes + size > MAX_MESSAGE || this.owner.incomingBytes + size > MAX_MESSAGE * 2) throw new Error('Relay message too large');
+      assembly.chunks.push(text); assembly.index++; assembly.bytes += size;
+      this.incomingBytes += size; this.owner.incomingBytes += size;
+      if (last) {
+        clearTimeout(assembly.timer); this.incoming.delete(messageId);
+        this.incomingBytes -= assembly.bytes; this.owner.incomingBytes -= assembly.bytes;
+        const payload = JSON.parse(assembly.chunks.join(''));
         if (['lobby_state', 'match_start'].includes(payload.type)) {
           const config = this.owner.config;
           if (payload.format !== config.format || payload.securityMode !== 'trusted') throw new Error('Lobby rules do not match the relay room');
         }
-        this.emit('data', payload);
+        this.emit('data', payload, { bytes: assembly.bytes });
       }
     }
   }
   send(payload) {
     if (!this.open) throw new Error('Relay connection closed');
-    const data = JSON.stringify(payload);
-    if (data.length > MAX_MESSAGE) throw new Error('Relay message too large');
-    const frames = [];
-    for (let offset = 0; offset < data.length;) {
+    const data = JSON.stringify(payload), size = bytes(data);
+    if (size > MAX_MESSAGE) throw new Error('Relay message too large');
+    let offset = 0, index = 0;
+    const messageId = ++this.nextMessage;
+    this.owner.enqueueMessage({ bytes: size, connection: this, next: () => {
       let end = Math.min(data.length, offset + CHUNK);
       if (end < data.length && data.charCodeAt(end - 1) >= 0xd800 && data.charCodeAt(end - 1) <= 0xdbff) end--;
-      frames.push({ type: 'data', to: this.peer, connectionId: this.connectionId, data: (end === data.length ? '.' : '+') + data.slice(offset, end) });
-      offset = end;
-    }
-    this.owner.sendBatch(frames);
+      const text = data.slice(offset, end); offset = end;
+      const last = end === data.length;
+      const frame = JSON.stringify({ type: 'data', to: this.peer, connectionId: this.connectionId,
+        data: this.wireVersion === 2 ? { v: 2, id: messageId, index: index++, last, text } : `${last ? '.' : '+'}${text}` });
+      return { frame, bytes: bytes(text), done: last };
+    } }, this.wireVersion === 2 && CONTROL.has(payload?.type));
+    return { bytes: size };
   }
+
   close(notify = true) {
     if (this.closed) return;
-    this.closed = true; this.open = false; clearTimeout(this.timeout); this.incoming = '';
+    this.closed = true; this.open = false; clearTimeout(this.timeout);
+    for (const assembly of this.incoming.values()) clearTimeout(assembly.timer);
+    this.incoming.clear(); this.owner.incomingBytes -= this.incomingBytes; this.incomingBytes = 0;
     this.owner.connections.delete(this.connectionId);
     if (notify && this.owner.open) this.signal('close');
     this.emit('close');
@@ -64,8 +114,12 @@ export class WebSocketPeer extends Events {
   destroyed = false;
   disconnected = true;
   connections = new Map();
-  queue = [];
+  queue = new Queue();
+  controlQueue = new Queue();
   queuedSize = 0;
+  incomingBytes = 0;
+  tokens = FRAME_BURST;
+  tokenTime = performance.now();
   constructor(peerId, options = {}) {
     super();
     this.options = { ...options, transport: 'websocket' };
@@ -120,7 +174,8 @@ export class WebSocketPeer extends Events {
           conn = new RelayConnection(this, msg.from, msg.connectionId, msg.metadata);
           this.connections.set(conn.connectionId, conn);
           this.emit('connection', conn);
-          conn.signal('answer'); conn.opened();
+          conn.wireVersion = msg.metadata?.relayWireVersion === 2 ? 2 : 1;
+          conn.signal('answer', { metadata: { relayWireVersion: 2 } }); conn.opened();
         } else if (conn?.peer === msg.from) conn.receive(msg);
       } catch (error) { this.emit('error', error); ws.close(1008, 'Invalid frame'); }
     };
@@ -128,7 +183,7 @@ export class WebSocketPeer extends Events {
       if (this.socket !== ws) return;
       this.open = false; this.disconnected = true;
       clearInterval(this.pingTimer); clearTimeout(this.flushTimer); clearInterval(this.advertiseTimer);
-      this.queue = []; this.queuedSize = 0;
+      this.queue = new Queue(); this.controlQueue = new Queue(); this.queuedSize = 0;
       for (const conn of [...this.connections.values()]) conn.close(false);
       if (event.code === 4001) {
         this.destroyed = true;
@@ -139,26 +194,57 @@ export class WebSocketPeer extends Events {
   }
   send(msg) { this.sendBatch([msg]); }
   sendBatch(messages) {
+    if (!messages.length) return;
     if (!this.open) throw new Error('Relay is disconnected');
     const serialized = messages.map(msg => JSON.stringify(msg));
-    const size = serialized.reduce((sum, s) => sum + s.length, 0);
-    if (size + this.queuedSize > MAX_MESSAGE * 2) throw new Error('Relay send queue full');
-    this.queue.push(...serialized); this.queuedSize += size; this.flush();
+    const size = serialized.reduce((sum, frame) => sum + bytes(frame), 0);
+    this.enqueueMessage({ bytes: size, next: (() => {
+      let index = 0;
+      return () => { const frame = serialized[index++]; return { frame, bytes: bytes(frame), done: index === serialized.length }; };
+    })() }, true);
+  }
+  enqueueMessage(message, control) {
+    if (!this.open) throw new Error('Relay is disconnected');
+    const limit = MAX_MESSAGE * 2 + (control ? 256 * 1024 : 0);
+    if (this.queuedSize + message.bytes > limit) {
+      const error = new Error('Relay send queue full'); error.code = 'RELAY_BACKPRESSURE'; throw error;
+    }
+    message.remainingBytes = message.bytes;
+    (control ? this.controlQueue : this.queue).push(message);
+    this.queuedSize += message.bytes;
+    this.flush();
   }
   flush() {
-    clearTimeout(this.flushTimer);
-    // Pacing avoids monopolizing the DO and bounds buffers on slow networks.
-    let count = 0;
-    while (this.open && this.queue.length && this.socket.bufferedAmount < 512 * 1024 && count++ < 8) {
-      const frame = this.queue.shift(); this.queuedSize -= frame.length; this.socket.send(frame);
+    clearTimeout(this.flushTimer); this.flushTimer = null;
+    const now = performance.now();
+    this.tokens = Math.min(FRAME_BURST, this.tokens + (now - this.tokenTime) * FRAME_RATE / 1000);
+    this.tokenTime = now;
+    while (this.open && (this.controlQueue.length || this.queue.length)
+        && this.socket.bufferedAmount < 512 * 1024 && this.tokens >= 1) {
+      const queue = this.controlQueue.length ? this.controlQueue : this.queue;
+      const message = queue.first();
+      if (message.connection?.closed) { this.queuedSize -= message.remainingBytes; queue.remove(); continue; }
+      const chunk = message.pendingChunk ||= message.next();
+      try { this.socket.send(chunk.frame); }
+      catch (error) {
+        this.emit('error', error);
+        this.socket.close();
+        return;
+      }
+      message.pendingChunk = null;
+      this.tokens--;
+      this.queuedSize -= chunk.bytes; message.remainingBytes -= chunk.bytes;
+      if (chunk.done) queue.remove();
     }
-    if (this.open && this.queue.length) this.flushTimer = setTimeout(() => this.flush(), 50);
+    if (this.open && (this.controlQueue.length || this.queue.length)) {
+      this.flushTimer = setTimeout(() => this.flush(), this.socket.bufferedAmount >= 512 * 1024 ? 25 : Math.max(1, Math.ceil((1 - this.tokens) * 1000 / FRAME_RATE)));
+    }
   }
   connect(peer, options = {}) {
     const conn = new RelayConnection(this, peer, id(), options.metadata);
     this.connections.set(conn.connectionId, conn);
     queueMicrotask(() => {
-      try { conn.signal('offer', { metadata: conn.metadata }); }
+      try { conn.signal('offer', { metadata: { ...conn.metadata, relayWireVersion: 2 } }); }
       catch (error) { conn.emit('error', error); conn.close(false); }
     });
     return conn;
@@ -177,7 +263,7 @@ export class WebSocketPeer extends Events {
     this.destroyed = true;
     clearInterval(this.pingTimer); clearInterval(this.advertiseTimer); clearTimeout(this.flushTimer);
     for (const conn of [...this.connections.values()]) conn.close(false);
-    this.open = false; this.disconnected = true; this.queue = []; this.queuedSize = 0;
+    this.open = false; this.disconnected = true; this.queue = new Queue(); this.controlQueue = new Queue(); this.queuedSize = 0;
     this.socket?.close(1000, 'Leaving lobby'); this.emit('close');
   }
 }

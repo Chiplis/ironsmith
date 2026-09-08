@@ -1,5 +1,5 @@
 import { localizedPrintingFlavor } from './printing-flavor.js';
-import { printingForImageFace } from './card-printing-face';
+import { printingForImageFace } from './card-printing-face.js';
 const BASIC_LAND_NAMES = new Set([
   "Plains",
   "Island",
@@ -269,15 +269,29 @@ function namedCardJsonUrls(cardName, printPreference = null) {
   return urls;
 }
 
-function nonFullArtSearchUrl(cardName, printPreference = null) {
+const STANDARD_PRINT_FILTER = "-is:fullart -border:borderless -frame:showcase -frame:extendedart -is:textless";
+
+function isStandardPrinting(card) {
+  return Boolean(card) && card.full_art !== true && card.textless !== true
+    && card.border_color !== "borderless"
+    && !(card.frame_effects || []).some(effect =>
+      ["showcase", "extendedart", "borderless"].includes(effect));
+}
+
+// Older baked assets lack treatment metadata; resolve those through Scryfall.
+function isVerifiedStandardLocalPrinting(card) {
+  return card?.standard_printing === true && isStandardPrinting(card);
+}
+
+function standardPrintingSearchUrl(cardName, printPreference = null) {
   const query = String(cardName || "").trim();
   if (!query) return "";
   const preference = normalizePrintPreference(printPreference);
-  const pieces = [`!"${query.replace(/"/g, '\\"')}"`, "-is:fullart"];
+  const pieces = [`!"${query.replace(/"/g, '\\"')}"`, STANDARD_PRINT_FILTER];
   if (preference?.setCode) pieces.push(`set:${preference.setCode}`);
   const params = new URLSearchParams({
     q: pieces.join(" "),
-    unique: "cards",
+    unique: "prints",
     order: "released",
     dir: "desc",
   });
@@ -361,6 +375,11 @@ export async function resolveScryfallFlavorText(imageUrl) {
   }
 }
 
+function imageUrlForResolvedCard(cardName, card, version) {
+  return card && !isStandardPrinting(card) && customCardArtUrl(cardName)
+    || imageUrlFromScryfallCard(card, version);
+}
+
 function cacheResolvedImageUrls(cardName, card, printPreference = null) {
   cacheImageFlavorText(card);
   const imageUris = card?.image_uris
@@ -370,7 +389,8 @@ function cacheResolvedImageUrls(cardName, card, printPreference = null) {
   if (!imageUris) return;
   for (const [version, url] of Object.entries(imageUris)) {
     if (!url) continue;
-    resolvedCardImageUrlCache.set(cardImageCacheKey(cardName, version, printPreference), String(url));
+    resolvedCardImageUrlCache.set(cardImageCacheKey(cardName, version, printPreference),
+      imageUrlForResolvedCard(cardName, card, version));
   }
 }
 
@@ -388,13 +408,13 @@ function localScryfallPayloadForName(payload, cardName) {
   const queryKey = customArtKey(cardName);
   const faces = Array.isArray(scryfall.faces) ? scryfall.faces : [];
   const exactFace = faces.find((face) => customArtKey(face?.name) === queryKey);
-  return exactFace || scryfall;
+  return exactFace ? { ...scryfall, ...exactFace } : scryfall;
 }
 
 function cacheLocalScryfallPayload(cardName, payload) {
   const scryfall = localScryfallPayloadForName(payload, cardName);
   cacheImageFlavorText(scryfall, false);
-  cacheImageUris(cardName, scryfall?.image_uris);
+  if (isVerifiedStandardLocalPrinting(scryfall)) cacheImageUris(cardName, scryfall.image_uris);
 }
 
 async function fetchLocalCardPayload(cardName) {
@@ -473,32 +493,59 @@ async function fetchScryfallCardJson(cardName, printPreference = null) {
   if (cardJsonCache.has(key)) return cardJsonCache.get(key);
 
   const request = (async () => {
-    if (!preference?.collectorNumber) {
-      const searchUrl = nonFullArtSearchUrl(query, preference);
-      if (searchUrl) {
-        const response = await fetchScryfallApiJson(searchUrl);
-        if (response.ok) {
-          const payload = await response.json();
-          const card = (Array.isArray(payload?.data) ? payload.data : [])
-            .find((candidate) => scryfallCardMatchesName(candidate, query));
-          if (card) {
+    let fallback = null;
+    // Honor an exact printing only if it meets the same policy as defaults.
+    if (preference?.collectorNumber) {
+      const response = await fetchScryfallApiJson(namedCardJsonUrls(query, preference)[0]);
+      if (response.ok) {
+        const card = await response.json();
+        if (scryfallCardMatchesName(card, query)) {
+          if (isStandardPrinting(card)) {
             cacheResolvedImageUrls(query, card, preference);
             return card;
           }
+          fallback = card;
         }
+      } else if (response.status !== 404) {
+        throw new Error(`Printing lookup failed: HTTP ${response.status}`);
       }
     }
 
-    for (const url of namedCardJsonUrls(query, preference)) {
+    // Search outside the requested set before accepting a special treatment.
+    for (const scope of preference?.setCode ? [preference, null] : [null]) {
+      let url = standardPrintingSearchUrl(query, scope);
+      while (url) {
+        const response = await fetchScryfallApiJson(url);
+        if (response.status === 404) break;
+        if (!response.ok) throw new Error(`Standard printing search failed: HTTP ${response.status}`);
+        const payload = await response.json();
+        const card = (payload.data || []).find(candidate =>
+          scryfallCardMatchesName(candidate, query) && isStandardPrinting(candidate)
+          && imageUrlFromScryfallCard(candidate));
+        if (card) {
+          cacheResolvedImageUrls(query, card, preference);
+          return card;
+        }
+        url = payload.has_more ? payload.next_page : null;
+      }
+    }
+
+    // A successful empty search establishes that no standard alternative exists.
+    if (fallback) {
+      cacheResolvedImageUrls(query, fallback, preference);
+      return fallback;
+    }
+    for (const url of new Set([...namedCardJsonUrls(query, preference), ...namedCardJsonUrls(query)])) {
       const response = await fetchScryfallApiJson(url);
       if (!response.ok) continue;
       const card = await response.json();
-      if (preference?.collectorNumber && !scryfallCardMatchesName(card, query)) {
-        continue;
-      }
-      if (!preference?.collectorNumber && card?.full_art === true) {
-        continue;
-      }
+      if (!scryfallCardMatchesName(card, query)) continue;
+      cacheResolvedImageUrls(query, card, preference);
+      return card;
+    }
+    const customUrl = customCardArtUrl(query);
+    if (customUrl) {
+      const card = { name: query, full_art: true, image_uris: { normal: customUrl } };
       cacheResolvedImageUrls(query, card, preference);
       return card;
     }
@@ -519,6 +566,7 @@ export function setCustomCardArtUrls(entries) {
     const key = customArtKey(entry?.name);
     if (!key) continue;
 
+    clearCachedCardImageUrls(entry.name);
     const artUrl = String(entry?.artUrl || "").trim();
     if (artUrl) {
       map[key] = artUrl;
@@ -562,8 +610,6 @@ export function scryfallImageUrl(cardName, version = "normal") {
   const query = String(cardName || "").trim();
   if (!query) return "";
   if (isHiddenCardName(query)) return HIDDEN_CARD_BACK_IMAGE_URL;
-  const customUrl = customCardArtUrl(query);
-  if (customUrl) return customUrl;
   const cached = resolvedCardImageUrlCache.get(cardImageCacheKey(query, version, preferredCardPrint(query)));
   if (cached) return cached;
   return "";
@@ -573,8 +619,6 @@ export async function resolveScryfallImageUrl(cardName, version = "normal") {
   const query = String(cardName || "").trim();
   if (!query) return "";
   if (isHiddenCardName(query)) return HIDDEN_CARD_BACK_IMAGE_URL;
-  const customUrl = customCardArtUrl(query);
-  if (customUrl) return customUrl;
 
   const preference = preferredCardPrint(query);
   const preferredKey = cardImageCacheKey(query, version, preference);
@@ -583,7 +627,7 @@ export async function resolveScryfallImageUrl(cardName, version = "normal") {
 
   if (preference) {
     const card = await fetchScryfallCardJson(query, preference).catch(() => null);
-    const resolved = imageUrlFromScryfallCard(card, version);
+    const resolved = imageUrlForResolvedCard(query, card, version);
     if (resolved) {
       resolvedCardImageUrlCache.set(preferredKey, resolved);
       return resolved;
@@ -596,7 +640,7 @@ export async function resolveScryfallImageUrl(cardName, version = "normal") {
 
   if (prefersLiveScryfallCard(query)) {
     const card = await fetchScryfallCardJson(query).catch(() => null);
-    const resolved = imageUrlFromScryfallCard(card, version);
+    const resolved = imageUrlForResolvedCard(query, card, version);
     if (resolved) {
       resolvedCardImageUrlCache.set(defaultKey, resolved);
       return resolved;
@@ -605,16 +649,16 @@ export async function resolveScryfallImageUrl(cardName, version = "normal") {
 
   const localPayload = await fetchLocalCardPayload(query).catch(() => null);
   const localScryfall = localScryfallPayloadForName(localPayload, query);
-  const localResolved = localScryfall?.full_art === true
-    ? ""
-    : imageUrlFromImageUris(localScryfall?.image_uris, version);
+  const localResolved = isVerifiedStandardLocalPrinting(localScryfall)
+    ? imageUrlFromImageUris(localScryfall.image_uris, version)
+    : "";
   if (localResolved) {
     resolvedCardImageUrlCache.set(defaultKey, localResolved);
     return localResolved;
   }
 
   const card = await fetchScryfallCardJson(query);
-  const resolved = imageUrlFromScryfallCard(card, version);
+  const resolved = imageUrlForResolvedCard(query, card, version);
   if (resolved) {
     resolvedCardImageUrlCache.set(defaultKey, resolved);
     return resolved;
@@ -773,11 +817,34 @@ function localizedCardPayload(card, locale) {
   };
 }
 
+const localizedImageRequests = new Map();
 export async function resolveScryfallLocalizedImageUrl(cardName, locale, version = "normal") {
   const targetLang = String(locale || "").trim().toLowerCase();
-  if (!targetLang || targetLang === "en") return "";
-  const translated = await fetchScryfallLocalizedCardTranslation(cardName, targetLang);
-  return imageUrlFromImageUris(translated?.imageUris, version);
+  if (!targetLang || targetLang === "en" || isHiddenCardName(cardName)) return "";
+  const key = `${targetLang}:${cardJsonCacheKey(cardName)}`;
+  if (!localizedImageRequests.has(key)) {
+    const request = (async () => {
+      const english = await fetchScryfallCardJson(cardName);
+      if (!english?.oracle_id) return null;
+      const params = new URLSearchParams({
+        q: `lang:${targetLang} oracleid:${english.oracle_id} ${STANDARD_PRINT_FILTER}`,
+        unique: "prints", order: "released", dir: "desc",
+      });
+      let url = `https://api.scryfall.com/cards/search?${params}`;
+      while (url) {
+        const response = await fetchScryfallApiJson(url);
+        if (response.status === 404) return null; // The hook uses the English printing.
+        if (!response.ok) throw new Error(`Localized printing search failed: HTTP ${response.status}`);
+        const payload = await response.json();
+        const card = (payload.data || []).find(card => isStandardPrinting(card) && imageUrlFromScryfallCard(card));
+        if (card) return card;
+        url = payload.has_more ? payload.next_page : null;
+      }
+      return null;
+    })().catch(error => { localizedImageRequests.delete(key); throw error; });
+    localizedImageRequests.set(key, request);
+  }
+  return imageUrlFromScryfallCard(await localizedImageRequests.get(key), version);
 }
 
 export async function fetchScryfallLocalizedCardTranslation(cardName, locale) {
@@ -853,6 +920,17 @@ export function resolveScryfallPrintingMetadata(imageUrl) {
   return request.then(printing => printingForImageFace(printing, imageUrl));
 }
 
+
+// Keep the same printing and face when retrying a localized frame in English.
+export async function resolveScryfallEnglishPrinting(imageUrl, printing) {
+  if (!printing?.lang || printing.lang === 'en' || !printing.set || !printing.collector_number) return null;
+  const response = await fetchScryfallApiJson(`https://api.scryfall.com/cards/${encodeURIComponent(printing.set)}/${encodeURIComponent(printing.collector_number)}/en`);
+  if (!response.ok) return null;
+  const english = await response.json();
+  if (english.lang !== 'en') return null;
+  const face = english.card_faces?.[/\/back\//.test(imageUrl) ? 1 : 0];
+  return face?.image_uris ? {...english, ...face} : english;
+}
 
 const setSymbolRequests = new Map();
 export function resolveScryfallSetSymbol(printing) {

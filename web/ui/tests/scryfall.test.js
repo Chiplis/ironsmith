@@ -8,6 +8,9 @@ import {
   resolveScryfallFlavorText,
   scryfallImageUrl,
   setCustomCardArtUrls,
+  setPreferredCardPrints,
+  fetchScryfallCardMeta,
+  resolveScryfallLocalizedImageUrl,
 } from "../src/lib/scryfall.js";
 
 function installLocalStorageMock() {
@@ -49,14 +52,14 @@ test("flavor lookup follows the displayed printing and face, including an empty 
   }
 });
 
-test("custom card art overrides Scryfall image lookup by card name", () => {
+test("custom art is stored but cannot bypass standard printing resolution", () => {
   installLocalStorageMock();
   setCustomCardArtUrls([
     { name: "Forge Test", artUrl: "https://example.test/art.jpg" },
   ]);
 
   assert.equal(customCardArtUrl("forge test"), "https://example.test/art.jpg");
-  assert.equal(scryfallImageUrl("Forge Test", "art_crop"), "https://example.test/art.jpg");
+  assert.equal(scryfallImageUrl("Forge Test", "art_crop"), "");
 });
 
 test("blank custom art removes an existing override", () => {
@@ -89,6 +92,7 @@ test("preloading resolves and caches Scryfall image URLs by card name", async ()
       ok: true,
       json: async () => ({
         scryfall: {
+          standard_printing: true,
           image_uris: {
             normal: "https://cards.example.test/cache-test-normal.jpg",
             art_crop: "https://cards.example.test/cache-test-art.jpg",
@@ -211,5 +215,116 @@ test("full-art local metadata is skipped for default Scryfall art", async () => 
     assert.equal(urls.length, 2);
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+for (const [label, treatment] of Object.entries({
+  borderless: { border_color: "borderless" },
+  showcase: { frame_effects: ["showcase"] },
+  extended: { frame_effects: ["extendedart"] },
+  textless: { textless: true },
+  legacy: {},
+})) {
+  test(`${label} local art cannot leak into the cache through metadata lookup`, async () => {
+    const originalFetch = globalThis.fetch;
+    const name = `Policy ${label}`;
+    globalThis.fetch = async url => {
+      if (String(url).startsWith("http://localhost/")) return {
+        ok: true, json: async () => ({ scryfall: {
+          ...treatment, image_uris: { normal: "bad-local" },
+        } }),
+      };
+      assert.match(new URL(url).searchParams.get("q"), /-border:borderless.*-frame:showcase.*-frame:extendedart.*-is:textless/);
+      return { ok: true, json: async () => ({ data: [
+        { name, full_art: true, image_uris: { normal: "bad-search" } },
+        { name, image_uris: { normal: "standard" } },
+      ] }) };
+    };
+    try {
+      await fetchScryfallCardMeta(name);
+      assert.equal(scryfallImageUrl(name), "");
+      assert.equal(await resolveScryfallImageUrl(name), "standard");
+      assert.equal(scryfallImageUrl(name), "standard");
+    } finally { globalThis.fetch = originalFetch; }
+  });
+}
+
+test("nonstandard exact preference searches other sets before falling back", async () => {
+  installLocalStorageMock();
+  const originalFetch = globalThis.fetch;
+  const name = "Preferred Policy";
+  setPreferredCardPrints([{ name, setCode: "tst", collectorNumber: "123" }]);
+  const queries = [];
+  globalThis.fetch = async url => {
+    if (String(url).endsWith("/tst/123")) return { ok: true, json: async () => ({
+      name, border_color: "borderless", image_uris: { normal: "bad-preference" },
+    }) };
+    const q = new URL(url).searchParams.get("q");
+    queries.push(q);
+    if (q.includes("set:tst")) return { ok: false, status: 404 };
+    return { ok: true, json: async () => ({ data: [{ name, image_uris: { normal: "other-set" } }] }) };
+  };
+  try {
+    assert.equal(await resolveScryfallImageUrl(name), "other-set");
+    assert.equal(queries.length, 2);
+    assert.equal(scryfallImageUrl(name), "other-set");
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+for (const status of [404, 503]) {
+  test(`special art fallback ${status === 404 ? "accepts an empty search" : "rejects a search failure"}`, async () => {
+    const originalFetch = globalThis.fetch;
+    const name = `Fallback Policy ${status}`;
+    let namedCalls = 0;
+    globalThis.fetch = async url => {
+      if (String(url).startsWith("http://localhost/")) return { ok: false, status: 404 };
+      if (String(url).includes("/search?")) return { ok: false, status };
+      namedCalls++;
+      return { ok: true, json: async () => ({ name, full_art: true, image_uris: { normal: "only-print" } }) };
+    };
+    try {
+      if (status === 404) assert.equal(await resolveScryfallImageUrl(name), "only-print");
+      else await assert.rejects(resolveScryfallImageUrl(name), /Standard printing search failed/);
+      assert.equal(namedCalls, status === 404 ? 1 : 0);
+    } finally { globalThis.fetch = originalFetch; }
+  });
+}
+
+test("localized image selection filters treatments independently of translated text", async () => {
+  const originalFetch = globalThis.fetch;
+  const name = "Localized Policy";
+  globalThis.fetch = async url => {
+    const q = new URL(url).searchParams.get("q");
+    if (q.includes("lang:es")) {
+      assert.match(q, /-is:fullart/);
+      return { ok: true, json: async () => ({ data: [
+        { border_color: "borderless", image_uris: { normal: "bad-localized" } },
+        { image_uris: { normal: "standard-localized" } },
+      ] }) };
+    }
+    return { ok: true, json: async () => ({ data: [{ name, oracle_id: "oracle-test", image_uris: { normal: "english" } }] }) };
+  };
+  try {
+    assert.equal(await resolveScryfallLocalizedImageUrl(name, "es"), "standard-localized");
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("custom art is used only after standard alternatives have been exhausted", async () => {
+  installLocalStorageMock();
+  const originalFetch = globalThis.fetch;
+  for (const available of [true, false]) {
+    const name = `Custom Policy ${available}`;
+    setCustomCardArtUrls([{ name, artUrl: "custom" }]);
+    globalThis.fetch = async url => {
+      if (String(url).startsWith("http://localhost/")) return { ok: false, status: 404 };
+      if (String(url).includes("/search?")) return available
+        ? { ok: true, json: async () => ({ data: [{ name, image_uris: { normal: "standard" } }] }) }
+        : { ok: false, status: 404 };
+      return { ok: true, json: async () => ({ name, full_art: true, image_uris: { normal: "special" } }) };
+    };
+    try {
+      assert.equal(await resolveScryfallImageUrl(name), available ? "standard" : "custom");
+      assert.equal(scryfallImageUrl(name), available ? "standard" : "custom");
+    } finally { globalThis.fetch = originalFetch; }
   }
 });

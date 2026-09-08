@@ -26,8 +26,11 @@ export function compileAndRegisterCardSources(
 
 export interface SplitWasmInput {
   engine?: RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
-  compiler?: RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
-  verifier?: RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
+  compiler?: false | RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
+  verifier?: false | RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 }
 
 export default function init(input?: SplitWasmInput | SplitWasmInput["engine"]): Promise<unknown>;
+
+export function initCompilerRuntime(input?: Exclude<SplitWasmInput["compiler"], false>): Promise<unknown>;
+export function initVerifierRuntime(input?: Exclude<SplitWasmInput["verifier"], false>): Promise<unknown>;

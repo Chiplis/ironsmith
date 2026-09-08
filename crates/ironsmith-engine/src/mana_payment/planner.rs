@@ -300,8 +300,21 @@ pub struct ManaPaymentPlanner {
     sliced: bool,
     remaining: usize,
     pending: bool,
-    search_index: usize,
-    searches: std::collections::HashMap<usize, CandidateSearch>,
+    outer: Option<PlanningCursor>,
+}
+
+#[derive(Debug)]
+struct PlanningCursor {
+    selections: std::vec::IntoIter<AlternativeSelection>,
+    pool_before: ManaPool,
+    plans: Vec<ManaPaymentPlan>,
+    active: Option<SelectionWork>,
+}
+#[derive(Debug)]
+struct SelectionWork {
+    selection: AlternativeSelection,
+    request: ManaPaymentRequest,
+    search: CandidateSearch,
 }
 
 #[derive(Debug, Clone)]
@@ -367,146 +380,80 @@ impl ManaPaymentPlanner {
             return Err(ManaPaymentFailure::ConflictingPreferences);
         }
 
-        let pool_before = player.mana_pool.clone();
-        let mut plans = Vec::new();
-        for selection in alternative_payment_selections(game, request) {
-            if plans.len() >= MAX_TOTAL_PLANS {
-                break;
-            }
-            let mut staged = game.clone();
-            for allocation in &selection.allocations {
-                match allocation.payment {
-                    super::PlannedPipPayment::Convoke(source)
-                    | super::PlannedPipPayment::Improvise(source) => staged.tap(source),
-                    _ => {}
+        let mut cursor = self.outer.take().unwrap_or_else(|| PlanningCursor {
+            selections: alternative_payment_selections(game, request).into_iter(),
+            pool_before: player.mana_pool.clone(),
+            plans: Vec::new(),
+            active: None,
+        });
+        loop {
+            if cursor.plans.len() >= MAX_TOTAL_PLANS || (stop_after_first && !cursor.plans.is_empty()) { break; }
+            if cursor.active.is_none() {
+                if self.sliced && self.remaining == 0 && cursor.selections.len() > 0 {
+                    self.pending = true;
+                    self.outer = Some(cursor);
+                    return Err(ManaPaymentFailure::SearchLimitReached);
                 }
-            }
-
-            let mut payment_request = request.clone();
-            payment_request.cost = crate::mana::ManaCost::from_pips(
-                selection
-                    .remaining
-                    .iter()
-                    .map(|slot| slot.alternatives.clone())
-                    .collect(),
-            );
-            for allocation in &selection.allocations {
-                let source = match allocation.payment {
-                    super::PlannedPipPayment::Convoke(source)
-                    | super::PlannedPipPayment::Improvise(source) => source,
-                    _ => continue,
-                };
-                payment_request
-                    .preferences
-                    .required_sources
-                    .retain(|required| *required != source);
-            }
-
-            let payable_without_activations = can_pay_request(&staged, &payment_request);
-            let seek_zero_life_plan = payment_request.allow_mana_abilities
-                && payable_without_activations
-                && !payment_request.preferences.prefer_life
-                && preview_life_to_pay(&staged, &payment_request) > 0;
-            let candidates = if payable_without_activations
-                && payment_request.preferences.required_sources.is_empty()
-                && payment_request.preferences.required_activations.is_empty()
-                && !seek_zero_life_plan
-            {
-                vec![(staged, Vec::new())]
-            } else if request.allow_mana_abilities {
-                self.visited_nodes = 0;
-                let depth_limit = expanded_pip_count(&payment_request)
-                    .saturating_add(MAX_EXTRA_ACTIVATIONS)
-                    .max(payment_request.preferences.required_activations.len())
-                    .max(1);
-                let found = self.search_candidates(
-                    staged,
-                    &payment_request,
-                    depth_limit,
-                    stop_after_first,
-                )?;
-                if found.is_empty() {
+                let Some(selection) = cursor.selections.next() else { break; };
+                if self.sliced { self.remaining = self.remaining.saturating_sub(1); }
+                let mut staged = game.clone();
+                for allocation in &selection.allocations {
+                    match allocation.payment {
+                        super::PlannedPipPayment::Convoke(source) | super::PlannedPipPayment::Improvise(source) => staged.tap(source),
+                        _ => {},
+                    }
+                }
+                let mut payment_request = request.clone();
+                payment_request.cost = crate::mana::ManaCost::from_pips(selection.remaining.iter()
+                    .map(|slot| slot.alternatives.clone()).collect());
+                for allocation in &selection.allocations {
+                    let source = match allocation.payment {
+                        super::PlannedPipPayment::Convoke(source) | super::PlannedPipPayment::Improvise(source) => source,
+                        _ => continue,
+                    };
+                    payment_request.preferences.required_sources.retain(|required| *required != source);
+                }
+                let payable = can_pay_request(&staged, &payment_request);
+                let seek_zero_life = payment_request.allow_mana_abilities && payable
+                    && !payment_request.preferences.prefer_life && preview_life_to_pay(&staged, &payment_request) > 0;
+                if payable && payment_request.preferences.required_sources.is_empty()
+                    && payment_request.preferences.required_activations.is_empty() && !seek_zero_life {
+                    let pool_after = staged.player(request.payer).ok_or(ManaPaymentFailure::MissingPlayer)?.mana_pool.clone();
+                    cursor.plans.push(build_plan(&staged, request, &payment_request, &selection,
+                        cursor.pool_before.clone(), pool_after, Vec::new()));
                     continue;
                 }
-                found
-            } else {
-                continue;
-            };
-            for (final_game, steps) in candidates {
-                let pool_after = final_game
-                    .player(request.payer)
-                    .map(|player| player.mana_pool.clone())
-                    .ok_or(ManaPaymentFailure::MissingPlayer)?;
-                plans.push(build_plan(
-                    &final_game,
-                    request,
-                    &payment_request,
-                    &selection,
-                    pool_before.clone(),
-                    pool_after,
-                    steps,
-                ));
-                if stop_after_first || plans.len() >= MAX_TOTAL_PLANS {
-                    break;
-                }
+                if !request.allow_mana_abilities { continue; }
+                let depth_limit = expanded_pip_count(&payment_request).saturating_add(MAX_EXTRA_ACTIVATIONS)
+                    .max(payment_request.preferences.required_activations.len()).max(1);
+                self.visited_nodes = 0;
+                let search = CandidateSearch::new(staged, &payment_request, depth_limit, stop_after_first, self.lazy_candidates);
+                cursor.active = Some(SelectionWork { selection, request: payment_request, search });
             }
-            if stop_after_first && !plans.is_empty() {
-                break;
+            let mut active = cursor.active.take().expect("prepared selection");
+            let mut unbounded = usize::MAX;
+            let budget = if self.sliced { &mut self.remaining } else { &mut unbounded };
+            let result = active.search.step(&active.request, budget);
+            self.visited_nodes = active.search.visited;
+            let Some(candidates) = result else {
+                cursor.active = Some(active);
+                self.outer = Some(cursor);
+                self.pending = true;
+                return Err(ManaPaymentFailure::SearchLimitReached);
+            };
+            for (final_game, steps) in candidates? {
+                let pool_after = final_game.player(request.payer)
+                    .ok_or(ManaPaymentFailure::MissingPlayer)?.mana_pool.clone();
+                cursor.plans.push(build_plan(&final_game, request, &active.request, &active.selection,
+                    cursor.pool_before.clone(), pool_after, steps));
+                if stop_after_first || cursor.plans.len() >= MAX_TOTAL_PLANS { break; }
             }
         }
-        plans.sort_by_key(|plan| plan.score);
-        plans.dedup_by_key(|plan| plan.id);
-        (!plans.is_empty())
-            .then_some(plans)
-            .ok_or(ManaPaymentFailure::NoLegalPlan)
+        cursor.plans.sort_by_key(|plan| plan.score);
+        cursor.plans.dedup_by_key(|plan| plan.id);
+        if cursor.plans.is_empty() { Err(ManaPaymentFailure::NoLegalPlan) } else { Ok(cursor.plans) }
     }
 
-    fn search_candidates(
-        &mut self,
-        game: GameState,
-        request: &ManaPaymentRequest,
-        depth_limit: usize,
-        stop_after_first: bool,
-    ) -> Result<Vec<(GameState, Vec<PlannedManaActivation>)>, ManaPaymentFailure> {
-        if self.sliced {
-            let index = self.search_index;
-            self.search_index += 1;
-            let search = self.searches.entry(index).or_insert_with(|| {
-                CandidateSearch::new(
-                    game,
-                    request,
-                    depth_limit,
-                    stop_after_first,
-                    self.lazy_candidates,
-                )
-            });
-            let result = search.step(request, &mut self.remaining);
-            self.visited_nodes = search.visited;
-            match result {
-                Some(result) => result,
-                None => {
-                    self.pending = true;
-                    Err(ManaPaymentFailure::SearchLimitReached)
-                }
-            }
-        } else {
-            let mut search = CandidateSearch::new(
-                game,
-                request,
-                depth_limit,
-                stop_after_first,
-                self.lazy_candidates,
-            );
-            {
-                let mut budget = usize::MAX;
-                let result = search
-                    .step(request, &mut budget)
-                    .expect("unbounded search completes");
-                self.visited_nodes = search.visited;
-                result
-            }
-        }
-    }
 }
 
 type Candidate = (GameState, Vec<PlannedManaActivation>);
@@ -789,7 +736,6 @@ impl ManaPaymentAnalysis {
         }
         self.planner.remaining = budget.max(1);
         self.planner.pending = false;
-        self.planner.search_index = 0;
         let result = self
             .planner
             .plan_internal(&self.game, &self.request, true)
@@ -802,7 +748,7 @@ impl ManaPaymentAnalysis {
         if self.planner.pending {
             None
         } else {
-            self.planner.searches.clear();
+            self.planner.outer = None;
             self.result = Some(result.clone());
             Some(result)
         }

@@ -929,12 +929,14 @@ export function buildExportedMatchOutcome({
 }
 
 export function safeSend(conn, payload) {
-  if (!conn || conn.open === false) return;
+  if (!conn || conn.open === false) return false;
   try {
-    conn.send(payload);
-    recordPeerMessage(conn.peer, "out", payload?.type, approximateMessageBytes(payload));
-  } catch {
-    // PeerJS can report stale connections as open until the next send.
+    const encoded = conn.send(payload);
+    recordPeerMessage(conn.peer, "out", payload?.type, encoded?.bytes ?? approximateMessageBytes(payload));
+    return true;
+  } catch (error) {
+    recordDiagnosticEvent("peer_send:failed", { peer: conn.peer, type: payload?.type, error: String(error?.message || error) });
+    return false;
   }
 }
 

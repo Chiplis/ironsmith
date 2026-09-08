@@ -1,3 +1,8 @@
+import { EMPTY_ACTION_PREFIX } from '../accepted-actions.js';
+export function matchingActionPrefix(actions, sequence, prefixHash) {
+  return Number.isSafeInteger(sequence) && sequence >= 0 && sequence <= actions.length
+    && prefixHash === (sequence === 0 ? EMPTY_ACTION_PREFIX : actions[sequence - 1]?.prefixHash);
+}
 export function needsFullStateResync({
   forceCheckpoint = false,
   connected = true,

@@ -2114,7 +2114,11 @@ fn attachment_scoped_effects_have_disjoint_scopes(
 }
 
 fn non_pt_group_has_no_dynamic_dependencies(effects: &[&ContinuousEffect]) -> bool {
-    if effects.iter().any(|effect| effect.condition.is_some()) {
+    if effects.iter().any(|effect| {
+        effect.condition.as_ref().is_some_and(|condition| {
+            !condition_is_invariant_in_layer(condition, effect.modification.layer())
+        })
+    }) {
         return false;
     }
 
@@ -2144,6 +2148,32 @@ fn non_pt_group_has_no_dynamic_dependencies(effects: &[&ContinuousEffect]) -> bo
     }
 
     true
+}
+
+/// A condition need not force baseline simulation when this layer cannot
+/// change anything it reads. Keep this whitelist small: unknown predicates
+/// (including player selectors that inspect objects) retain full simulation.
+///
+/// Card types are established in layer 4, before ability effects in layer 6.
+/// This only proves ordering independence *within* layer 6; the condition is
+/// still evaluated normally against calculated types, and all existing
+/// source-ability, target, and output dependency checks still run.
+fn condition_is_invariant_in_layer(condition: &crate::ConditionExpr, layer: Layer) -> bool {
+    use crate::ConditionExpr;
+    use crate::target::PlayerFilter;
+
+    match condition {
+        ConditionExpr::PlayerHasCardTypesInGraveyardOrMore { player, .. } => {
+            layer == Layer::Ability
+                && matches!(player, PlayerFilter::You | PlayerFilter::Specific(_))
+        }
+        ConditionExpr::Not(inner) => condition_is_invariant_in_layer(inner, layer),
+        ConditionExpr::And(left, right) | ConditionExpr::Or(left, right) => {
+            condition_is_invariant_in_layer(left, layer)
+                && condition_is_invariant_in_layer(right, layer)
+        }
+        _ => false,
+    }
 }
 
 fn modification_can_remove_static_ability_presence(modification: &Modification) -> bool {
@@ -3537,5 +3567,58 @@ mod tests {
             &effects,
             &GameState::new(vec!["Test".to_string()], 20)
         ));
+    }
+
+    #[test]
+    fn delirium_independent_ability_grants_do_not_require_a_baseline() {
+        let game = GameState::new(vec!["Test".to_string()], 20);
+        let condition = crate::ConditionExpr::PlayerHasCardTypesInGraveyardOrMore {
+            player: crate::target::PlayerFilter::You,
+            count: 4,
+        };
+        let mut flying =
+            create_test_effect(1, 10, Modification::AddAbility(StaticAbility::flying()))
+                .with_condition(condition.clone());
+        let must_attack = create_test_effect(
+            2,
+            20,
+            Modification::AddAbility(StaticAbility::must_attack()),
+        )
+        .with_condition(condition.clone());
+        assert!(!needs_baseline_dependency_sort(
+            &[&flying, &must_attack],
+            &game
+        ));
+
+        // Boolean composition is safe only if every leaf is invariant.
+        flying.condition = Some(crate::ConditionExpr::And(
+            Box::new(condition.clone()),
+            Box::new(crate::ConditionExpr::Not(Box::new(condition))),
+        ));
+        assert!(!needs_baseline_dependency_sort(
+            &[&flying, &must_attack],
+            &game
+        ));
+        flying.condition = Some(crate::ConditionExpr::YouControl(ObjectFilter::creature()));
+        assert!(needs_baseline_dependency_sort(
+            &[&flying, &must_attack],
+            &game
+        ));
+
+        // Layer 4 can change the counted types; it must retain simulation.
+        let first_type =
+            create_test_effect(3, 30, Modification::AddCardTypes(vec![CardType::Artifact]))
+                .with_condition(must_attack.condition.clone().unwrap());
+        let second_type =
+            create_test_effect(4, 40, Modification::AddCardTypes(vec![CardType::Creature]));
+        assert!(needs_baseline_dependency_sort(
+            &[&first_type, &second_type],
+            &game
+        ));
+
+        // Removing the originating static ability remains a dependency.
+        let grant = must_attack.with_originating_static_ability(StaticAbility::flying());
+        let removal = create_test_effect(5, 50, Modification::RemoveAllAbilities);
+        assert!(needs_baseline_dependency_sort(&[&grant, &removal], &game));
     }
 }

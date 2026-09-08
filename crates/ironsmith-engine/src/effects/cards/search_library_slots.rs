@@ -46,7 +46,7 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
             let search_viewer = chooser_id;
             let library_cards = game
                 .player(player_id)
-                .map(|player| player.library.clone())
+                .map(|player| player.library.to_vec())
                 .unwrap_or_default();
             view_hidden_candidate_objects(
                 game,
@@ -88,15 +88,15 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                     .player(player_id)
                     .map(|player| {
                         let candidates: Vec<ObjectId> = match slot.filter.zone {
-                            Some(Zone::Graveyard) => player.graveyard.clone(),
-                            Some(Zone::Library) => player.library.clone(),
+                            Some(Zone::Graveyard) => player.graveyard.to_vec(),
+                            Some(Zone::Library) => player.library.to_vec(),
                             None => player
                                 .library
                                 .iter()
                                 .chain(player.graveyard.iter())
                                 .copied()
                                 .collect(),
-                            _ => player.library.clone(),
+                            _ => player.library.to_vec(),
                         };
                         candidates
                             .into_iter()

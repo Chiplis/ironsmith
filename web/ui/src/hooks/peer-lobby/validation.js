@@ -1,3 +1,4 @@
+import { assertRuntimeVersion } from "../../lib/runtime-version.js";
 import { PUBLIC_FORMATS, isRelayId } from '../../lib/relay/formats.js';
 import { loadFormatCatalog, assertFormatMatch } from '../../lib/relay/format-legality.js';
 import {
@@ -337,6 +338,9 @@ export function usePeerLobbyValidation(base, servicesRef) {
         && bufferFutureSequencedAction(message, options)
       ) {
         setStatus(`Waiting for action ${session.lastAppliedSequence + 1}`);
+        if (isTrustedMultiplayerSecurityMode(sessionSecurityMode(session))) {
+          servicesRef.current.requestResync("Recovering missing accepted actions", { forceCheckpoint: false });
+        }
         return { buffered: true };
       }
       if (dryRun || options.throwOnOrderMismatch || throwOnFailure) {
@@ -352,7 +356,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
       return;
     }
 
-    const validationSnapshot = dryRun
+    const validationSnapshot = (dryRun || isTrustedMultiplayerSecurityMode(sessionSecurityMode(session)))
       ? await createSequencedActionValidationSnapshot()
       : null;
     let snapshotRestored = false;
@@ -416,6 +420,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
         const appliedState = await applySyncedCommand(message.command, message.label || "", {
           actorIndex: message.actorIndex,
           sequence: nextSequence,
+          preState: liveStateForClock,
           publishState: false,
         });
         if (dryRun) {
@@ -763,6 +768,8 @@ export function usePeerLobbyValidation(base, servicesRef) {
       if (!resynced) {
         throw err;
       }
+    } finally {
+      await validationSnapshot?.release?.();
     }
   }
 
@@ -4182,6 +4189,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
 
 	  const applyMatchStart = useCallback(
 	    async (payload, options = {}) => {
+      assertRuntimeVersion(payload);
 	      const currentGame = gameRef.current;
 	      if (!currentGame || typeof currentGame.startMatch !== "function") {
 	        throw new Error("Game engine is not ready for multiplayer");

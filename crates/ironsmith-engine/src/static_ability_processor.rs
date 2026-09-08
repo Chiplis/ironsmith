@@ -137,7 +137,7 @@ struct SourceStaticEffects {
 
 #[derive(Debug, Default, Clone)]
 pub(crate) struct StaticEffectsCache {
-    per_source: FxMap<ObjectId, SourceStaticEffects>,
+    per_source: crate::game_state::PersistentMap<ObjectId, SourceStaticEffects>,
 }
 
 fn static_effects_share_scope(a: &GeneratedStaticEffect, b: &GeneratedStaticEffect) -> bool {

@@ -945,7 +945,7 @@ pub fn get_cleanup_discard_spec(
         if excess > 0 {
             return Some((
                 active_player,
-                DiscardToHandSizeSpec::new(excess, player.hand.clone()),
+                DiscardToHandSizeSpec::new(excess, player.hand.to_vec()),
             ));
         }
     }

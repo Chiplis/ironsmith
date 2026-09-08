@@ -30,21 +30,21 @@ fn object_ids_in_zone(game: &GameState, player: PlayerId, zone: Zone) -> Vec<Obj
     match zone {
         Zone::Hand => game
             .player(player)
-            .map(|player| player.hand.clone())
+            .map(|player| player.hand.to_vec())
             .unwrap_or_default(),
         Zone::Graveyard => game
             .player(player)
-            .map(|player| player.graveyard.clone())
+            .map(|player| player.graveyard.to_vec())
             .unwrap_or_default(),
         Zone::Library => game
             .player(player)
-            .map(|player| player.library.clone())
+            .map(|player| player.library.to_vec())
             .unwrap_or_default(),
-        Zone::Exile => game.exile.clone(),
-        Zone::Battlefield => game.battlefield.clone(),
+        Zone::Exile => game.exile.to_vec(),
+        Zone::Battlefield => game.battlefield.to_vec(),
         Zone::Stack => game.stack.iter().map(|entry| entry.object_id).collect(),
-        Zone::Command => game.command_zone.clone(),
-        Zone::Ante => game.ante.clone(),
+        Zone::Command => game.command_zone.to_vec(),
+        Zone::Ante => game.ante.to_vec(),
         Zone::OutsideGame => Vec::new(),
     }
 }

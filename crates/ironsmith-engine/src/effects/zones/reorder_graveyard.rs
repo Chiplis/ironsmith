@@ -54,7 +54,7 @@ impl EffectExecutor for ReorderGraveyardEffect {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let graveyard = game
             .player(player_id)
-            .map(|p| p.graveyard.clone())
+            .map(|p| p.graveyard.to_vec())
             .unwrap_or_default();
 
         if graveyard.len() <= 1 {
@@ -66,7 +66,7 @@ impl EffectExecutor for ReorderGraveyardEffect {
         let ordered = normalize_order_response(ordered, &graveyard);
 
         if let Some(player) = game.player_mut(player_id) {
-            player.graveyard = ordered;
+            player.graveyard = ordered.into();
         }
 
         Ok(EffectOutcome::resolved())

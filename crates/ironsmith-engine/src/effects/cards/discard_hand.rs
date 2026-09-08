@@ -38,7 +38,7 @@ impl EffectExecutor for DiscardHandEffect {
 
         let hand_cards: Vec<_> = game
             .player(player_id)
-            .map(|p| p.hand.clone())
+            .map(|p| p.hand.to_vec())
             .unwrap_or_default();
 
         let count = hand_cards.len();

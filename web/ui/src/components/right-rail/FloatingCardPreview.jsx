@@ -473,8 +473,11 @@ export default function FloatingCardPreview({
   const stackPreview = renderedObjectId != null && getVisibleStackObjects(state).some((entry) =>
     [entry.id, entry.inspect_object_id].some((id) => id != null && String(id) === String(renderedObjectId))
   );
+  const zoneImagePreview = Boolean(renderedImageUrl && (
+    directZoneHover || (anchoredObjectId === renderedObjectId && anchoredCardPreview?.placement === "zone")
+  ));
   const visible = requestedObjectId != null && renderedObjectId === requestedObjectId
-    && readyObjectId === renderedObjectId;
+    && (readyObjectId === renderedObjectId || zoneImagePreview);
   const positionStyle = useMemo(
     () => (
       anchoredObjectId != null && renderedObjectId === anchoredObjectId
@@ -526,6 +529,14 @@ export default function FloatingCardPreview({
           onCardFrameReadyChange={onCardFrameReadyChange}
           interactiveActions={interactiveActions}
           onInteractiveAction={triggerInteractiveAction}
+        />
+      ) : null}
+      {visible && zoneImagePreview && readyObjectId !== renderedObjectId ? (
+        <img
+          src={renderedImageUrl}
+          alt={preparationName || "Card preview"}
+          referrerPolicy="no-referrer"
+          className="absolute inset-0 z-40 h-full w-full object-contain pointer-events-none"
         />
       ) : null}
     </aside>

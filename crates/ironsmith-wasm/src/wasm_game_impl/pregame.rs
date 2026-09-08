@@ -2089,7 +2089,7 @@ impl WasmGame {
     fn player_hand_ids(&self, player: PlayerId) -> Vec<ObjectId> {
         self.game
             .player(player)
-            .map(|player| player.hand.clone())
+            .map(|player| player.hand.to_vec())
             .unwrap_or_default()
     }
 

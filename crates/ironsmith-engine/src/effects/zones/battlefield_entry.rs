@@ -124,22 +124,22 @@ fn reserve_object_zone_position(
     let zone = current.zone;
     let owner = current.owner;
     let index = match zone {
-        Zone::Battlefield => game.battlefield.iter().position(|id| *id == object),
-        Zone::Command => game.command_zone.iter().position(|id| *id == object),
-        Zone::Exile => game.exile.iter().position(|id| *id == object),
-        Zone::Ante => game.ante.iter().position(|id| *id == object),
+        Zone::Battlefield => game.battlefield.position_of(object),
+        Zone::Command => game.command_zone.position_of(object),
+        Zone::Exile => game.exile.position_of(object),
+        Zone::Ante => game.ante.position_of(object),
         Zone::Library => game
             .player(owner)
-            .and_then(|player| player.library.iter().position(|id| *id == object)),
+            .and_then(|player| player.library.position_of(object)),
         Zone::Hand => game
             .player(owner)
-            .and_then(|player| player.hand.iter().position(|id| *id == object)),
+            .and_then(|player| player.hand.position_of(object)),
         Zone::Graveyard => game
             .player(owner)
-            .and_then(|player| player.graveyard.iter().position(|id| *id == object)),
+            .and_then(|player| player.graveyard.position_of(object)),
         Zone::OutsideGame => game
             .player(owner)
-            .and_then(|player| player.sideboard.iter().position(|id| *id == object)),
+            .and_then(|player| player.sideboard.position_of(object)),
         Zone::Stack => None,
     }?;
 
@@ -173,7 +173,7 @@ fn restore_reserved_zone_position(game: &mut GameState, reservation: ReservedZon
         return;
     }
 
-    let insert = |objects: &mut Vec<ObjectId>| {
+    let insert = |objects: &mut crate::zone_sequence::ZoneSequence| {
         if !objects.contains(&reservation.object) {
             objects.insert(reservation.index.min(objects.len()), reservation.object);
         }

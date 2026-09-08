@@ -60,6 +60,7 @@ use stack_snapshots::{
     insert_pending_stack_object_snapshots, pending_stack_preview_id,
 };
 
+mod bounded_cache;
 mod ui_snapshot;
 #[cfg(target_arch = "wasm32")]
 use ui_snapshot::SnapshotJsEncodingCache;
@@ -389,7 +390,7 @@ struct ManaPaymentView {
     planning_complete: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct ActiveViewedCards {
     viewer: PlayerId,
     subject: PlayerId,
@@ -1315,7 +1316,7 @@ fn append_static_visibility_views(game: &GameState, views: &mut Vec<ActiveViewed
                 viewer: public_viewer,
                 subject: player.id,
                 zone: Zone::Hand,
-                cards: player.hand.clone(),
+                cards: player.hand.to_vec(),
                 card_stable_ids: stable_ids_for_viewed_cards(game, &player.hand),
                 public: true,
                 source: None,
@@ -1652,8 +1653,8 @@ impl WasmGame {
             state.hidden_by_id.insert(object_id, card);
         }
         for player in &self.game.players {
-            state.libraries.insert(player.id, player.library.clone());
-            state.hands.insert(player.id, player.hand.clone());
+            state.libraries.insert(player.id, player.library.to_vec());
+            state.hands.insert(player.id, player.hand.to_vec());
             for &object_id in player.library.iter().chain(player.hand.iter()) {
                 if let Some(object) = self.game.object(object_id) {
                     state.stable_by_id.insert(object_id, object.stable_id);
@@ -3486,7 +3487,7 @@ enum ReplayDecisionAnswer {
 
 #[derive(Debug, Clone)]
 struct ReplayCheckpoint {
-    game: GameState,
+    game: Box<GameState>,
     trigger_queue: TriggerQueue,
     priority_state: PriorityLoopState,
     game_over: Option<GameResult>,
@@ -3987,6 +3988,8 @@ struct GrandMeleeHostLane {
 
 #[wasm_bindgen]
 pub struct WasmGame {
+    runtime_savepoints: HashMap<u32, Box<wasm_game_impl::RuntimeSavepoint>>,
+    next_runtime_savepoint: u32,
     priority_analysis_job: Option<Box<PriorityAnalysisJob>>,
     inspector_analysis_job: Option<Box<InspectorAnalysisJob>>,
     game: GameState,
@@ -4076,7 +4079,7 @@ pub struct WasmGame {
     last_advance_until_decision_perf: Option<AdvanceUntilDecisionPerfMetrics>,
     /// Timing breakdown for the most recent dispatch-like engine call.
     last_dispatch_perf: Option<DispatchPerfMetrics>,
-    snapshot_object_view_cache: SnapshotObjectViewCache,
+    snapshot_object_view_cache: Box<SnapshotObjectViewCache>,
     #[cfg(target_arch = "wasm32")]
     snapshot_js_encoding_cache: SnapshotJsEncodingCache,
     manabrew_game_id: String,

@@ -179,7 +179,7 @@ fn current_split_result_order(
 }
 
 fn reorder_zone_subset_in_place(
-    zone_objects: &mut [ObjectId],
+    zone_objects: &mut crate::zone_sequence::ZoneSequence,
     object_ids: &[ObjectId],
     desired_underlying_order: &[ObjectId],
 ) {
@@ -189,13 +189,15 @@ fn reorder_zone_subset_in_place(
 
     let object_set = object_ids.iter().copied().collect::<HashSet<_>>();
     let mut desired_iter = desired_underlying_order.iter().copied();
-    for entry in zone_objects.iter_mut() {
+    zone_objects.with_vec_mut(|ids| {
+    for entry in ids.iter_mut() {
         if object_set.contains(entry)
             && let Some(next_id) = desired_iter.next()
         {
             *entry = next_id;
         }
     }
+    });
 }
 
 fn apply_split_result_order(

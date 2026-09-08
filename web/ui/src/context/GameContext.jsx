@@ -7,7 +7,7 @@ import {
 } from "@/lib/action-diagnostics";
 import { mergePriorityAnalysis } from "@/lib/priority-analysis-scheduler.js";
 import { castingMethodChoiceForAction, finishExplicitCastingMethod } from "@/lib/casting-method-choice";
-import { useContext, useState, useCallback, useRef, useMemo, useEffect } from "react";
+import { useContext, useState, useCallback, useRef, useMemo, useEffect, useSyncExternalStore } from "react";
 import { useWasmGame } from "@/hooks/useWasmGame";
 import { usePeerLobby } from "@/hooks/usePeerLobby";
 import {
@@ -1556,7 +1556,8 @@ export function GameProvider({ children }) {
   );
 
   const applySyncedCommand = useCallback(
-    async (command, successMessage = "", syncContext = null) => {
+    async (command, successMessage = "", syncOptions = null) => {
+      const { preState, ...syncContext } = syncOptions || {};
       const currentGame = gameRef.current;
       if (!currentGame) {
         throw new Error("WASM game is not ready");
@@ -1564,7 +1565,8 @@ export function GameProvider({ children }) {
 
       let liveStateBefore = null;
       try {
-        liveStateBefore = await currentGame.uiState();
+        liveStateBefore = currentGame.isCurrentSnapshot?.(preState)
+          ? preState : await currentGame.uiState();
       } catch {
         liveStateBefore = stateRef.current;
       }
@@ -1633,6 +1635,7 @@ export function GameProvider({ children }) {
           clearViewedCards: true,
           publishState: syncContext?.publishState !== false,
         });
+        currentGame.adoptSnapshotVersion?.(finalized, st);
         const finalizeMs = performance.now() - finalizeStartedAt;
         const syncedDispatchTimingPayload = {
           command: commandSummary,
@@ -1706,6 +1709,7 @@ export function GameProvider({ children }) {
   );
 
   const {
+    matchClockStore,
     multiplayer,
     canStartHostedMatch,
     createLobby,
@@ -2692,6 +2696,7 @@ export function GameProvider({ children }) {
 
   const value = useMemo(
     () => ({
+      matchClockStore,
       game,
       state,
       setState,
@@ -2747,6 +2752,7 @@ export function GameProvider({ children }) {
       setExternalAutoPassGate,
     }),
     [
+      matchClockStore,
       game,
       state,
       loading,
@@ -2786,4 +2792,11 @@ export function useGame() {
   const ctx = useContext(GameContext);
   if (!ctx) throw new Error("useGame must be used within GameProvider");
   return ctx;
+}
+
+// Clock consumers subscribe directly so ticking time never republishes board state.
+// eslint-disable-next-line react-refresh/only-export-components
+export function useMatchClock() {
+  const { matchClockStore } = useGame();
+  return useSyncExternalStore(matchClockStore.subscribe, matchClockStore.getSnapshot, matchClockStore.getSnapshot);
 }

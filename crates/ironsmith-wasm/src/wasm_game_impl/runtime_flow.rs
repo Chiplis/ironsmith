@@ -975,7 +975,7 @@ impl WasmGame {
 
     fn capture_replay_checkpoint_tagged(&self, tag: &'static str) -> ReplayCheckpoint {
         ReplayCheckpoint {
-            game: self.game.clone(),
+            game: Box::new(self.game.clone()),
             trigger_queue: self.trigger_queue.clone(),
             priority_state: self.priority_state.clone(),
             game_over: self.game_over.clone(),
@@ -990,7 +990,7 @@ impl WasmGame {
 
     fn restore_replay_checkpoint(&mut self, checkpoint: &ReplayCheckpoint) {
         restore_id_counters(checkpoint.id_counters);
-        self.game = checkpoint.game.clone();
+        self.game = (*checkpoint.game).clone();
         self.trigger_queue = checkpoint.trigger_queue.clone();
         self.priority_state = checkpoint.priority_state.clone();
         self.game_over = checkpoint.game_over.clone();

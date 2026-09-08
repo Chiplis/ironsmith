@@ -68,7 +68,7 @@ impl EffectExecutor for ForEachObjectCorrelatedResultEffect {
         } else if let Some(zone) = self.filter.zone {
             game.zone_ids(zone).collect::<Vec<_>>()
         } else {
-            game.battlefield.clone()
+            game.battlefield.to_vec()
         };
         let matching = candidate_ids
             .into_iter()

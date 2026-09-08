@@ -959,3 +959,130 @@ fn unrelated_targets_skip_recursive_graveyard_condition_queries() {
         &game
     ));
 }
+
+fn delirium_layer_fixture() -> (GameState, ObjectId, Vec<ObjectId>) {
+    use crate::static_abilities::{Anthem, GrantAbility};
+    let mut game = dynamic_value_test_game();
+    let alice = PlayerId::from_index(0);
+    let card = CardBuilder::new(CardId::from_raw(91_000), "Conditional creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+    let condition = crate::ConditionExpr::PlayerHasCardTypesInGraveyardOrMore {
+        player: PlayerFilter::You,
+        count: 4,
+    };
+    game.object_mut(source).unwrap().abilities = vec![
+        Ability::static_ability(StaticAbility::new(
+            Anthem::for_source(2, 2).with_condition(condition.clone()),
+        )),
+        Ability::static_ability(StaticAbility::new(
+            GrantAbility::source(StaticAbility::flying()).with_condition(condition.clone()),
+        )),
+        Ability::static_ability(StaticAbility::new(
+            GrantAbility::source(StaticAbility::must_attack()).with_condition(condition),
+        )),
+    ]
+    .into();
+    let mut graveyard = Vec::new();
+    for (index, card_type) in [CardType::Land, CardType::Instant, CardType::Sorcery]
+        .into_iter()
+        .enumerate()
+    {
+        let card = CardBuilder::new(CardId::from_raw(91_001 + index as u32), "Graveyard card")
+            .card_types(vec![card_type])
+            .build();
+        graveyard.push(game.create_object_from_card(&card, alice, Zone::Graveyard));
+    }
+    (game, source, graveyard)
+}
+
+fn assert_delirium_characteristics(game: &GameState, source: ObjectId, active: bool) {
+    use crate::static_abilities::StaticAbilityId;
+    let chars = game.calculated_characteristics(source).unwrap();
+    assert_eq!(
+        (chars.power, chars.toughness),
+        if active {
+            (Some(3), Some(3))
+        } else {
+            (Some(1), Some(1))
+        }
+    );
+    for ability in [StaticAbilityId::Flying, StaticAbilityId::MustAttack] {
+        assert_eq!(
+            chars.static_abilities.iter().any(|a| a.id() == ability),
+            active
+        );
+    }
+}
+
+#[test]
+fn delirium_ability_ordering_preserves_graveyard_type_changes_and_zone_changes() {
+    let (mut game, source, graveyard) = delirium_layer_fixture();
+    game.refresh_continuous_state();
+    assert_delirium_characteristics(&game, source, false);
+
+    // A real layer-4 effect makes the land also an artifact. Printed types
+    // alone would incorrectly leave delirium off.
+    let type_effect = game
+        .effect_store
+        .continuous_effects
+        .add_effect(ContinuousEffect::new(
+            source,
+            PlayerId::from_index(0),
+            EffectTarget::Specific(graveyard[0]),
+            Modification::AddCardTypes(vec![CardType::Artifact]),
+        ));
+    game.refresh_continuous_state();
+    assert_delirium_characteristics(&game, source, true);
+    game.effect_store
+        .continuous_effects
+        .remove_effect(type_effect);
+    game.refresh_continuous_state();
+    assert_delirium_characteristics(&game, source, false);
+
+    let artifact = CardBuilder::new(CardId::from_raw(91_010), "Fourth type")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let artifact =
+        game.create_object_from_card(&artifact, PlayerId::from_index(0), Zone::Graveyard);
+    game.refresh_continuous_state();
+    assert_delirium_characteristics(&game, source, true);
+    game.turn.phase = crate::game_state::Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::BeginCombat);
+    game.refresh_continuous_state();
+    assert_delirium_characteristics(&game, source, true);
+    game.move_object_by_effect(artifact, Zone::Exile).unwrap();
+    game.refresh_continuous_state();
+    assert_delirium_characteristics(&game, source, false);
+}
+
+#[test]
+fn delirium_ability_ordering_preserves_source_ability_removal() {
+    let (mut game, source, graveyard) = delirium_layer_fixture();
+    game.effect_store
+        .continuous_effects
+        .add_effect(ContinuousEffect::new(
+            source,
+            PlayerId::from_index(0),
+            EffectTarget::Specific(graveyard[0]),
+            Modification::AddCardTypes(vec![CardType::Artifact]),
+        ));
+    game.refresh_continuous_state();
+    assert_delirium_characteristics(&game, source, true);
+    let removal = game
+        .effect_store
+        .continuous_effects
+        .add_effect(ContinuousEffect::new(
+            ObjectId::from_raw(91_020),
+            PlayerId::from_index(0),
+            EffectTarget::Specific(source),
+            Modification::RemoveAllAbilities,
+        ));
+    game.refresh_continuous_state();
+    assert_delirium_characteristics(&game, source, false);
+    game.effect_store.continuous_effects.remove_effect(removal);
+    game.refresh_continuous_state();
+    assert_delirium_characteristics(&game, source, true);
+}

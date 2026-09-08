@@ -72,6 +72,8 @@ pub mod game_state;
 pub mod grant;
 pub mod grant_registry;
 pub mod ids;
+pub mod incremental;
+pub mod zone_sequence;
 pub mod mana;
 pub mod mana_payment;
 pub mod marker;

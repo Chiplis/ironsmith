@@ -127,6 +127,13 @@
 .player-look-pile { pointer-events: auto; }
 .player-look-pile { position: absolute; top: 0; left: 0; }
 .player-look-pile .zone-pile-label { left: 0; right: auto; }
+.my-zone-board-shell .player-look-pile {
+  top: var(--look-area-top, 0px);
+  left: var(--look-area-left, 0px);
+}
+.my-zone-board-shell .player-look-pile .zone-pile-slot:first-child {
+  margin-top: 0;
+}
 .look-eye-effect {
   position: absolute;
   z-index: 2;
@@ -3395,7 +3402,7 @@ button:disabled,
 [data-my-zone][data-tools-expanded="true"] { z-index: auto !important; }
 .my-zone-board-shell > .my-zone-stack-rail {
   position: absolute;
-  inset: var(--battlefield-objects-top, 12px) auto var(--look-area-bottom-offset, 0px) 0;
+  inset: var(--stack-area-top, 12px) auto 0 0;
   left: calc(var(--zone-pile-width, 56px) + 14px);
   width: clamp(150px, 15vw, 210px);
   height: auto;
@@ -3403,6 +3410,14 @@ button:disabled,
 }
 .my-zone-board-shell--with-stack { display: block; }
 .stack-flow-reveal { width: 100%; height: 100%; max-height: 100%; min-height: 0; }
+.stack-inline-flow-rail .stack-timeline-body > .battlefield-rolling-panel-clip > div {
+  flex: 1;
+}
+.stack-inline-flow-rail .stack-timeline-scroll {
+  flex: 1;
+  max-height: none !important;
+  align-content: start;
+}
 .stack-timeline-body > .battlefield-rolling-panel-clip {
   display: flex;
   flex-direction: column;

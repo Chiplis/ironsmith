@@ -1,11 +1,28 @@
+import { indexFormatCatalog, installFormatAliases } from './format-catalog-index.js';
 import { PUBLIC_FORMATS } from './formats.js';
 let catalog;
 let loading;
 export async function loadFormatCatalog() {
-  if (!loading) loading = fetch(new URL('./format-catalog.generated.json', import.meta.url)).then(async response => {
+  const load = async () => {
+    if (typeof Worker === 'function') return new Promise((resolve, reject) => {
+      const worker = new Worker(new URL('../../workers/formatCatalogWorker.js', import.meta.url), { type: 'module' });
+      worker.onmessage = ({ data: result }) => {
+        worker.terminate();
+        if (result.error) { reject(new Error(result.error)); return; }
+        installFormatAliases(result.data.cards, result.aliases);
+        resolve(result.data);
+      };
+      worker.onerror = event => { worker.terminate(); reject(new Error(event.message || 'Could not load card legality catalog')); };
+      worker.postMessage({ type: 'load' });
+    });
+    const response = await fetch(new URL('./format-catalog.generated.json', import.meta.url));
     if (!response.ok) throw new Error('Card legality catalog unavailable. Try again before joining.');
     const data = await response.json();
     if (!data.cards || !data.sourceUpdatedAt) throw new Error('Invalid card legality catalog');
+    indexFormatCatalog(data.cards);
+    return data;
+  };
+  if (!loading) loading = load().then(data => {
     catalog = data;
     return data;
   }).catch(error => { loading = null; throw error; });
@@ -17,7 +34,7 @@ function lookup(cards, name) {
   const exact = cards[key(name)];
   if (exact) return exact;
   // Deck imports commonly use the front face of double-faced cards.
-  return Object.values(cards).find(card => key(card.name.split(' // ')[0]) === key(name));
+  return indexFormatCatalog(cards).get(key(name));
 }
 function copyLimit(card, format) {
   if (/\bBasic\b/.test(card.type) || /deck can have any number of cards named/i.test(card.rules)) return Infinity;
@@ -51,10 +68,12 @@ export function validateFormatDeck(format, deck = [], commanders = [], sideboard
   }
   const counts = new Map();
   const found = new Map();
-  for (const name of [...deck, ...sideboard, ...commanders]) {
+  const requested = new Map();
+  for (const name of [...deck, ...sideboard, ...commanders]) requested.set(name, (requested.get(name) || 0) + 1);
+  for (const [name, count] of requested) {
     const card = lookup(data.cards, name);
     if (!card) { errors.push(`Unknown card: ${name}.`); continue; }
-    counts.set(card.name, (counts.get(card.name) || 0) + 1);
+    counts.set(card.name, (counts.get(card.name) || 0) + count);
     found.set(card.name, card);
   }
   for (const [name, count] of counts) {

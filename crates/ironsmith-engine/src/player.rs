@@ -783,10 +783,10 @@ pub struct Player {
     pub attempted_draw_from_empty_library: bool,
 
     // Zones (stored as object IDs)
-    pub library: Vec<ObjectId>,
-    pub hand: Vec<ObjectId>,
-    pub graveyard: Vec<ObjectId>,
-    pub sideboard: Vec<ObjectId>,
+    pub library: crate::zone_sequence::ZoneSequence,
+    pub hand: crate::zone_sequence::ZoneSequence,
+    pub graveyard: crate::zone_sequence::ZoneSequence,
+    pub sideboard: crate::zone_sequence::ZoneSequence,
     pub attachments: Vec<ObjectId>,
 
     // Companion tracking (CR 103.2b, 116.2g, 702.139)
@@ -832,10 +832,10 @@ impl Player {
             has_won: false,
             has_left_game: false,
             attempted_draw_from_empty_library: false,
-            library: Vec::new(),
-            hand: Vec::new(),
-            graveyard: Vec::new(),
-            sideboard: Vec::new(),
+            library: crate::zone_sequence::ZoneSequence::new(),
+            hand: crate::zone_sequence::ZoneSequence::new(),
+            graveyard: crate::zone_sequence::ZoneSequence::new(),
+            sideboard: crate::zone_sequence::ZoneSequence::new(),
             attachments: Vec::new(),
             companion: None,
             companion_special_action_used: false,
@@ -1175,7 +1175,7 @@ impl Player {
         }
 
         let mut rng = ChaCha12Rng::seed_from_u64(seed);
-        self.library.shuffle(&mut rng);
+        self.library.with_vec_mut(|ids| ids.shuffle(&mut rng));
     }
 }
 

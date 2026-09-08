@@ -9,7 +9,6 @@ use rand::SeedableRng;
 use rand::seq::SliceRandom;
 use rand_chacha::ChaCha12Rng;
 
-use crate::FxMap;
 use crate::ability::{Ability, AbilityKind, ActivatedAbility};
 use crate::alternative_cast::CastingMethod;
 use crate::card::{Card, LinkedFaceLayout};
@@ -519,7 +518,7 @@ struct ExileTracking {
 #[derive(Debug, Clone, Default)]
 struct CombatTransientState {
     /// Soulbond pairings (stored bidirectionally: A -> B and B -> A).
-    soulbond_pairs: HashMap<ObjectId, ObjectId>,
+    soulbond_pairs: crate::incremental::TrackedValue<HashMap<ObjectId, ObjectId>>,
     /// Attack targets captured while paying Ninjutsu costs.
     ninjutsu_attack_targets: HashMap<ObjectId, Vec<crate::combat_state::AttackTarget>>,
     /// Attack targets captured while paying Sneak costs.
@@ -578,28 +577,33 @@ pub(crate) struct PendingSectorDesignationState {
 }
 
 /// Storage and denormalized zone indexes for live objects in the game.
-pub(crate) type ObjectMap = FxMap<ObjectId, Arc<Object>>;
+// Persistent HAMT nodes share unchanged structure between speculative games.
+// Game-visible iteration still uses the deterministic zone indexes.
+pub(crate) type PersistentMap<K, V> = im::HashMap<K, V, rustc_hash::FxBuildHasher>;
+pub(crate) type ObjectMap = PersistentMap<ObjectId, Arc<Object>>;
 
 #[derive(Debug, Clone, Default)]
 pub struct ObjectStore {
     objects: ObjectMap,
+    changes: crate::incremental::ChangeJournal<ObjectId>,
+    render_changes: crate::incremental::ChangeJournal<ObjectId>,
     /// Fast index: stable id -> current object id.
-    stable_id_index: FxMap<StableId, ObjectId>,
+    stable_id_index: PersistentMap<StableId, ObjectId>,
     /// Game-local cache for linked-face definitions so transform/split/disturb
     /// resolution doesn't depend on the shared runtime custom-card registry.
-    linked_face_definitions_by_id: HashMap<crate::ids::CardId, crate::cards::CardDefinition>,
-    linked_face_definitions_by_name: HashMap<String, crate::cards::CardDefinition>,
+    linked_face_definitions_by_id: PersistentMap<crate::ids::CardId, crate::cards::CardDefinition>,
+    linked_face_definitions_by_name: PersistentMap<String, crate::cards::CardDefinition>,
     /// Game-local Arc-backed payload cache for repeated objects from one card definition.
-    card_shared: HashMap<CardId, CardSharedHandles>,
+    card_shared: PersistentMap<CardId, CardSharedHandles>,
     /// Zone indexes (denormalized for efficiency).
-    pub battlefield: Vec<ObjectId>,
-    pub command_zone: Vec<ObjectId>,
-    pub exile: Vec<ObjectId>,
+    pub battlefield: crate::zone_sequence::ZoneSequence,
+    pub command_zone: crate::zone_sequence::ZoneSequence,
+    pub exile: crate::zone_sequence::ZoneSequence,
     /// Shared public ante zone (CR 407.2).
-    pub ante: Vec<ObjectId>,
+    pub ante: crate::zone_sequence::ZoneSequence,
     /// The full set of destination object IDs created by the most recent move
     /// of a given source object.
-    zone_change_result_objects: FxMap<ObjectId, Vec<ObjectId>>,
+    zone_change_result_objects: PersistentMap<ObjectId, Vec<ObjectId>>,
 }
 
 impl ObjectStore {
@@ -608,7 +612,10 @@ impl ObjectStore {
     }
 
     fn object_mut(&mut self, id: ObjectId) -> Option<&mut Object> {
-        self.objects.get_mut(&id).map(Arc::make_mut)
+        let object = self.objects.get_mut(&id)?;
+        self.changes.record(id);
+        self.render_changes.record(id);
+        Some(Arc::make_mut(object))
     }
 
     fn objects_map(&self) -> &ObjectMap {
@@ -889,6 +896,7 @@ struct EnterAsCopySourceCache {
 
 #[derive(Debug)]
 struct RuntimeCacheState {
+    observed_players: RefCell<Option<crate::incremental::ChangeCursor>>,
     random_state: Cell<u64>,
     irreversible_random_count: Cell<u64>,
     forced_die_rolls: RefCell<VecDeque<u32>>,
@@ -915,8 +923,9 @@ struct RuntimeCacheState {
     payment_restriction_presence: Cell<Option<PaymentRestrictionPresenceCache>>,
     enter_as_copy_sources: RefCell<Option<EnterAsCopySourceCache>>,
     static_effects_cache: RefCell<crate::static_ability_processor::StaticEffectsCache>,
-    trigger_registry: RefCell<Option<crate::triggers::check::TriggerRegistry>>,
+    trigger_registry: RefCell<Option<Arc<crate::triggers::check::TriggerRegistry>>>,
     object_snapshot_cache: RefCell<ObjectSnapshotCache>,
+    sba_candidates: RefCell<Box<crate::rules::state_based::SbaCandidateCache>>,
     characteristics_cache: CharacteristicsCache,
     work_counters: WorkCounters,
 }
@@ -924,6 +933,7 @@ struct RuntimeCacheState {
 impl Clone for RuntimeCacheState {
     fn clone(&self) -> Self {
         Self {
+            observed_players: RefCell::new(self.observed_players.borrow().clone()),
             random_state: Cell::new(self.random_state.get()),
             irreversible_random_count: Cell::new(self.irreversible_random_count.get()),
             forced_die_rolls: RefCell::new(self.forced_die_rolls.borrow().clone()),
@@ -951,6 +961,7 @@ impl Clone for RuntimeCacheState {
             static_effects_cache: RefCell::new(self.static_effects_cache.borrow().clone()),
             trigger_registry: RefCell::new(self.trigger_registry.borrow().clone()),
             object_snapshot_cache: RefCell::new(self.object_snapshot_cache.borrow().clone()),
+            sba_candidates: RefCell::new(self.sba_candidates.borrow().clone()),
             characteristics_cache: CharacteristicsCache::cloned_from(&self.characteristics_cache),
             work_counters: WorkCounters::default(),
         }
@@ -960,6 +971,7 @@ impl Clone for RuntimeCacheState {
 impl RuntimeCacheState {
     fn new(active_player: PlayerId) -> Self {
         Self {
+            observed_players: RefCell::new(None),
             random_state: Cell::new(GameState::normalize_random_seed(0)),
             irreversible_random_count: Cell::new(0),
             forced_die_rolls: RefCell::new(VecDeque::new()),
@@ -983,6 +995,7 @@ impl RuntimeCacheState {
             ),
             trigger_registry: RefCell::new(None),
             object_snapshot_cache: RefCell::new(ObjectSnapshotCache::default()),
+            sba_candidates: RefCell::new(Default::default()),
             characteristics_cache: CharacteristicsCache::default(),
             work_counters: WorkCounters::default(),
         }
@@ -997,15 +1010,15 @@ impl RuntimeCacheState {
 struct ObjectSnapshotCache {
     mutation_revision: u64,
     effect_revision: u64,
-    entries: FxMap<ObjectId, Arc<ObjectSnapshot>>,
+    entries: PersistentMap<ObjectId, Arc<ObjectSnapshot>>,
 }
 
 #[derive(Debug, Default)]
 struct CharacteristicsCache {
     epoch: Cell<u64>,
     effect_revision: Cell<u64>,
-    object_revisions: RefCell<FxMap<ObjectId, u64>>,
-    entries: RefCell<FxMap<ObjectId, CharacteristicsCacheEntry>>,
+    object_revisions: RefCell<PersistentMap<ObjectId, u64>>,
+    entries: RefCell<PersistentMap<ObjectId, CharacteristicsCacheEntry>>,
 }
 
 #[derive(Debug, Clone)]
@@ -1121,7 +1134,7 @@ struct ControllerCache {
     phase: Phase,
     step: Option<Step>,
     change_effects: Arc<Vec<ContinuousEffect>>,
-    resolved: RefCell<FxMap<ObjectId, PlayerId>>,
+    resolved: RefCell<PersistentMap<ObjectId, PlayerId>>,
 }
 
 impl ControllerCache {
@@ -1136,6 +1149,9 @@ impl ControllerCache {
 
 #[derive(Debug, Default)]
 struct WorkCounters {
+    continuous_global_invalidations: Cell<u64>,
+    continuous_local_invalidations: Cell<u64>,
+    generic_object_mutations: Cell<u64>,
     characteristics_full_recomputes: Cell<u64>,
     characteristics_cache_hits: Cell<u64>,
     static_ability_regens: Cell<u64>,
@@ -1152,6 +1168,9 @@ struct WorkCounters {
     derive(serde::Serialize, serde::Deserialize)
 )]
 pub struct WorkCounterSnapshot {
+    pub continuous_global_invalidations: u64,
+    pub continuous_local_invalidations: u64,
+    pub generic_object_mutations: u64,
     pub characteristics_full_recomputes: u64,
     pub characteristics_cache_hits: u64,
     pub static_ability_regens: u64,
@@ -1165,6 +1184,9 @@ pub struct WorkCounterSnapshot {
 impl WorkCounters {
     fn snapshot(&self) -> WorkCounterSnapshot {
         WorkCounterSnapshot {
+            continuous_global_invalidations: self.continuous_global_invalidations.get(),
+            continuous_local_invalidations: self.continuous_local_invalidations.get(),
+            generic_object_mutations: self.generic_object_mutations.get(),
             characteristics_full_recomputes: self.characteristics_full_recomputes.get(),
             characteristics_cache_hits: self.characteristics_cache_hits.get(),
             static_ability_regens: self.static_ability_regens.get(),
@@ -1389,7 +1411,7 @@ pub struct CantEffectTracker {
 
     /// Permanents that can't be destroyed (indestructible via effect, not ability).
     /// Note: Intrinsic indestructible keyword is checked separately on the object.
-    pub cant_be_destroyed: HashSet<ObjectId>,
+    pub cant_be_destroyed: crate::incremental::ObjectSet,
 
     /// Permanents that can't be regenerated.
     /// Example: "Target creature can't be regenerated this turn."
@@ -1397,7 +1419,7 @@ pub struct CantEffectTracker {
 
     /// Permanents that can't be sacrificed.
     /// Example: Sigarda, Host of Herons (for creatures you control)
-    pub cant_be_sacrificed: HashSet<ObjectId>,
+    pub cant_be_sacrificed: crate::incremental::ObjectSet,
 
     /// Per-player spell filters that cannot be cast.
     ///
@@ -3172,7 +3194,7 @@ impl StackEntry {
 #[derive(Debug, Clone)]
 pub struct GameState {
     // Players
-    pub players: Vec<Player>,
+    pub players: crate::incremental::TrackedValue<Vec<Player>>,
 
     // Objects and denormalized zone indexes
     pub object_store: ObjectStore,
@@ -3228,6 +3250,7 @@ pub struct GameState {
     metadata: MetadataStateStore,
     mutation_revision: u64,
     next_object_id: u64,
+    zone_view_changes: crate::incremental::ChangeJournal<()>,
     zone_revisions: ZoneRevisionSnapshot,
 
     /// Current combat state (Some during combat phase, None otherwise).
@@ -3298,6 +3321,7 @@ impl GameState {
     }
 
     fn auxiliary_tracking_mut(&mut self) -> &mut AuxiliaryTrackingState {
+        self.zone_view_changes.record(());
         Arc::make_mut(&mut self.auxiliary_tracking)
     }
 
@@ -3427,6 +3451,7 @@ impl GameState {
     }
 
     fn cast_permission_flags_mut(&mut self) -> &mut CastPermissionFlags {
+        self.zone_view_changes.record(());
         Arc::make_mut(&mut self.cast_permission_flags)
     }
 
@@ -3435,10 +3460,12 @@ impl GameState {
     }
 
     fn commander_tracking_mut(&mut self) -> &mut CommanderTracking {
+        self.zone_view_changes.record(());
         Arc::make_mut(&mut self.commander_tracking)
     }
 
     fn exile_tracking_mut(&mut self) -> &mut ExileTracking {
+        self.zone_view_changes.record(());
         Arc::make_mut(&mut self.exile_tracking)
     }
 
@@ -3461,7 +3488,7 @@ impl GameState {
             .unwrap_or(PlayerId::from_index(0));
 
         Self {
-            players,
+            players: players.into(),
             object_store: ObjectStore::default(),
             stack: Vec::new(),
             turn: TurnState::new(active_player),
@@ -3501,6 +3528,7 @@ impl GameState {
             },
             mutation_revision: 0,
             next_object_id: 1,
+            zone_view_changes: crate::incremental::ChangeJournal::default(),
             zone_revisions: ZoneRevisionSnapshot::default(),
             combat: None,
             has_day_night: false,
@@ -3769,6 +3797,8 @@ impl GameState {
     }
 
     pub(crate) fn mark_continuous_state_dirty(&self) {
+        let counter = &self.runtime_cache.work_counters.continuous_global_invalidations;
+        counter.set(counter.get().saturating_add(1));
         self.runtime_cache.payment_restriction_presence.set(None);
         self.runtime_cache.continuous_context_revision.set(
             self.runtime_cache
@@ -3783,10 +3813,24 @@ impl GameState {
     }
 
     pub(crate) fn continuous_context_revision(&self) -> u64 {
+        self.observe_player_mutations();
         self.runtime_cache.continuous_context_revision.get()
     }
 
+    fn observe_player_mutations(&self) {
+        let cursor = self.players.cursor();
+        let changed = self.runtime_cache.observed_players.borrow().as_ref() != Some(&cursor);
+        if changed {
+            *self.runtime_cache.observed_players.borrow_mut() = Some(cursor);
+            self.mark_continuous_state_dirty();
+        }
+    }
+
     fn mark_object_characteristics_dirty(&mut self, id: ObjectId) {
+        self.object_store.changes.record(id);
+        self.object_store.render_changes.record(id);
+        let counter = &self.runtime_cache.work_counters.continuous_local_invalidations;
+        counter.set(counter.get().saturating_add(1));
         let revision = self.bump_mutation_revision();
         self.runtime_cache
             .characteristics_cache
@@ -3846,6 +3890,36 @@ impl GameState {
         self.mutation_revision
     }
 
+    /// Cursor for object payload and typed object-local characteristic changes.
+    /// Global effects and zone order have separate invalidation domains.
+    pub fn object_change_cursor(&self) -> crate::incremental::ChangeCursor {
+        self.object_store.changes.cursor()
+    }
+
+    /// Broad derived-view invalidation; object-local changes use the journal.
+    pub fn derived_view_revision(&self) -> (u64, u64) {
+        (self.continuous_context_revision(), self.effect_store.continuous_effects.revision())
+    }
+
+    pub fn zone_view_identity(&self) -> (crate::incremental::ChangeCursor, (crate::incremental::ChangeCursor, crate::incremental::ChangeCursor)) {
+        (self.zone_view_changes.cursor(), self.effect_store.grant_registry.view_identity())
+    }
+
+    pub fn object_changes_since(
+        &self,
+        cursor: &crate::incremental::ChangeCursor,
+    ) -> Option<Vec<ObjectId>> {
+        self.object_store.changes.since(cursor)
+    }
+
+    pub fn render_change_cursor(&self) -> crate::incremental::ChangeCursor {
+        self.object_store.render_changes.cursor()
+    }
+
+    pub fn render_changes_since(&self, cursor: &crate::incremental::ChangeCursor) -> Option<Vec<ObjectId>> {
+        self.object_store.render_changes.since(cursor)
+    }
+
     pub fn zone_revisions(&self) -> ZoneRevisionSnapshot {
         self.zone_revisions
     }
@@ -3870,6 +3944,10 @@ impl GameState {
             .bump_static_ability_regens();
     }
 
+    pub(crate) fn sba_candidate_cache(&self) -> &RefCell<Box<crate::rules::state_based::SbaCandidateCache>> {
+        &self.runtime_cache.sba_candidates
+    }
+
     pub(crate) fn count_sba_scan_objects(&self, count: usize) {
         self.runtime_cache
             .work_counters
@@ -3886,10 +3964,10 @@ impl GameState {
         &self,
         key: crate::triggers::check::TriggerRegistryKey,
         build: impl FnOnce() -> crate::triggers::check::TriggerRegistry,
-    ) -> crate::triggers::check::TriggerRegistry {
+    ) -> Arc<crate::triggers::check::TriggerRegistry> {
         let mut cached = self.runtime_cache.trigger_registry.borrow_mut();
         if cached.as_ref().is_none_or(|registry| registry.key != key) {
-            *cached = Some(build());
+            *cached = Some(Arc::new(build()));
         }
         cached
             .as_ref()
@@ -3930,6 +4008,7 @@ impl GameState {
     }
 
     pub(crate) fn continuous_state_is_clean(&self) -> bool {
+        self.observe_player_mutations();
         !self.runtime_cache.continuous_state_dirty.get()
             && self.runtime_cache.continuous_state_revision.get()
                 == self.effect_store.continuous_effects.revision()
@@ -4352,7 +4431,7 @@ impl GameState {
             });
             return;
         };
-        let before_order = self.players[index].library.clone();
+        let before_order = self.players[index].library.to_vec();
         if let Some(transcript_order) = self.take_transcript_library_shuffle_order(player_id) {
             let mut id_map = HashMap::with_capacity(before_order.len());
             if transcript_order.before_order.len() == before_order.len()
@@ -4378,20 +4457,20 @@ impl GameState {
                     && after_set.len() == before_set.len()
                     && before_set.iter().all(|id| after_set.contains(id))
                 {
-                    self.players[index].library = localized_after;
+                    self.players[index].library = localized_after.into();
                 } else {
                     let mut rng = ChaCha12Rng::seed_from_u64(seed);
-                    self.players[index].library.shuffle(&mut rng);
+                    self.players[index].library.with_vec_mut(|ids| ids.shuffle(&mut rng));
                 }
             } else {
                 let mut rng = ChaCha12Rng::seed_from_u64(seed);
-                self.players[index].library.shuffle(&mut rng);
+                self.players[index].library.with_vec_mut(|ids| ids.shuffle(&mut rng));
             }
         } else {
             let mut rng = ChaCha12Rng::seed_from_u64(seed);
-            self.players[index].library.shuffle(&mut rng);
+            self.players[index].library.with_vec_mut(|ids| ids.shuffle(&mut rng));
         }
-        let after_order = self.players[index].library.clone();
+        let after_order = self.players[index].library.to_vec();
         if before_order.last() != after_order.last() {
             self.bump_library_top_revision(player_id);
         }
@@ -4448,14 +4527,14 @@ impl GameState {
         after_order: Vec<ObjectId>,
         reason: impl Into<String>,
     ) -> bool {
-        let Some(before_order) = self.player(player).map(|player| player.library.clone()) else {
+        let Some(before_order) = self.player(player).map(|player| player.library.to_vec()) else {
             return false;
         };
         if !Self::same_object_multiset(&before_order, &after_order) {
             return false;
         }
         if let Some(player_state) = self.player_mut(player) {
-            player_state.library = after_order.clone();
+            player_state.library = after_order.clone().into();
         }
         if before_order.last() != after_order.last() {
             self.bump_library_top_revision(player);
@@ -4473,11 +4552,7 @@ impl GameState {
         player: PlayerId,
         object: ObjectId,
     ) -> Option<usize> {
-        let index = self
-            .player(player)?
-            .library
-            .iter()
-            .position(|candidate| *candidate == object)?;
+        let index = self.player(player)?.library.position_of(object)?;
         let was_top = self.player(player)?.library.len().checked_sub(1) == Some(index);
         self.player_mut(player)?.library.remove(index);
         if was_top {
@@ -4493,7 +4568,7 @@ impl GameState {
         object: ObjectId,
         index: usize,
     ) -> bool {
-        let Some(library) = self.player(player).map(|state| state.library.clone()) else {
+        let Some(library) = self.player(player).map(|state| state.library.to_vec()) else {
             return false;
         };
         if library.contains(&object) {
@@ -4520,7 +4595,7 @@ impl GameState {
         card: ObjectId,
         reason: impl Into<String>,
     ) -> bool {
-        let Some(before_order) = self.player(player).map(|player| player.library.clone()) else {
+        let Some(before_order) = self.player(player).map(|player| player.library.to_vec()) else {
             return false;
         };
         if !before_order.contains(&card) {
@@ -4541,7 +4616,7 @@ impl GameState {
         card: ObjectId,
         reason: impl Into<String>,
     ) -> bool {
-        let Some(before_order) = self.player(player).map(|player| player.library.clone()) else {
+        let Some(before_order) = self.player(player).map(|player| player.library.to_vec()) else {
             return false;
         };
         if !before_order.contains(&card) {
@@ -4560,7 +4635,7 @@ impl GameState {
         position_from_top: usize,
         reason: impl Into<String>,
     ) -> bool {
-        let Some(before_order) = self.player(player).map(|player| player.library.clone()) else {
+        let Some(before_order) = self.player(player).map(|player| player.library.to_vec()) else {
             return false;
         };
         if !before_order.contains(&card) {
@@ -4584,7 +4659,7 @@ impl GameState {
         position_from_top: usize,
         reason: impl Into<String>,
     ) -> bool {
-        let Some(before_order) = self.player(player).map(|player| player.library.clone()) else {
+        let Some(before_order) = self.player(player).map(|player| player.library.to_vec()) else {
             return false;
         };
         if cards_in_insert_order.is_empty() {
@@ -4608,10 +4683,10 @@ impl GameState {
         let after_order = if let Some(player_state) = self.player_mut(player) {
             let position = position_from_top.max(1);
             let insert_idx = player_state.library.len().saturating_sub(position - 1);
-            player_state
-                .library
-                .splice(insert_idx..insert_idx, selected.iter().copied());
-            player_state.library.clone()
+            player_state.library.with_vec_mut(|ids| {
+                ids.splice(insert_idx..insert_idx, selected.iter().copied());
+            });
+            player_state.library.to_vec()
         } else {
             return false;
         };
@@ -5863,7 +5938,9 @@ impl GameState {
         let stable_id = object.stable_id;
 
         self.next_object_id = self.next_object_id.max(id.0.saturating_add(1));
+        self.object_store.changes.record(id);
         self.objects.insert(id, Arc::new(object));
+        self.object_store.render_changes.record(id);
         self.stable_id_index.insert(stable_id, id);
         self.bump_zone_revision(zone);
 

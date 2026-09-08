@@ -1019,7 +1019,7 @@ impl EffectExecutor for ManifestCardFromHandEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let hand = game
             .player(ctx.controller)
-            .map(|player| player.hand.clone())
+            .map(|player| player.hand.to_vec())
             .unwrap_or_default();
         if hand.is_empty() {
             return Ok(EffectOutcome::count(0));
@@ -1621,7 +1621,7 @@ impl EffectExecutor for AmplifyEffect {
 
         let candidates = game
             .player(ctx.controller)
-            .map(|player| player.hand.clone())
+            .map(|player| player.hand.to_vec())
             .unwrap_or_default()
             .into_iter()
             .filter(|&id| {
@@ -2640,7 +2640,7 @@ mod tests {
             None,
             None,
         );
-        let original_library = game.player(alice).expect("alice").library.clone();
+        let original_library = game.player(alice).expect("alice").library.to_vec();
         let mut dm = PromptingDecisionMaker;
         let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
 

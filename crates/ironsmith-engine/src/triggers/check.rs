@@ -1894,7 +1894,7 @@ fn build_trigger_registry(
 fn battlefield_trigger_registry(
     game: &GameState,
     view: &crate::derived_view::DerivedGameView<'_>,
-) -> TriggerRegistry {
+) -> std::sync::Arc<TriggerRegistry> {
     let key = trigger_registry_key(game);
     game.cached_trigger_registry(key, || build_trigger_registry(game, view, key))
 }

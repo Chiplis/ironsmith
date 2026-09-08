@@ -1,10 +1,11 @@
+import { createAsyncLimiter } from "../lib/bounded-async.js";
+import { createSnapshotEncoder } from "../lib/snapshot-channel.js";
+import { replayTrustedMatch, replayTrustedActions } from "../lib/relay/replay-trusted-match.js";
+import { compileWasmWithProgress } from "../lib/wasm-loading.js";
+import { createAdaptiveWorkBudget } from "../lib/adaptive-work-budget.js";
 import { createPriorityAnalysisScheduler } from "../lib/priority-analysis-scheduler.js";
-import initPreviewEngine, { WasmGame as PreviewGame } from "../../../wasm_demo/pkg/engine.js?target-preview";
-import { previewCastTargetDecision } from "../lib/cast-target-preview.js";
-import initWasm, { WasmGame, compileAndRegisterCardSources } from "../../../wasm_demo/pkg/ironsmith.js";
+import initWasm, { WasmGame } from "../../../wasm_demo/pkg/ironsmith.js";
 import engineWasmUrl from "../../../wasm_demo/pkg/engine_bg.wasm?url";
-import compilerWasmUrl from "../../../wasm_demo/pkg/compiler_bg.wasm?url";
-import verifierWasmUrl from "../../../wasm_demo/pkg/verifier_bg.wasm?url";
 
 const WASM_ESTIMATED_SIZE = 40_000_000;
 const DEMO_CARD_NAMES = [
@@ -27,20 +28,26 @@ const DEMO_CARD_NAMES = [
   "Unsummon",
 ];
 
+const snapshotEncoder = createSnapshotEncoder();
 let game = null;
 let callQueue = Promise.resolve();
 let pendingCallCount = 0;
 let backgroundCompileDone = false;
 let backgroundCompileTimer = null;
+const preloadBudget = createAdaptiveWorkBudget({ initial: 1, max: 16 });
 let lastRegistryLoaded = -1;
 let lastRegistryTotal = -1;
 let cardAssetsBaseUrl = null;
 let cardIndexPromise = null;
 const registeredCardRoutes = new Set();
 const previewCardSources = new Map();
-let previewEnginePromise = null;
+let latestTargetPreview;
+let previewWorker = null;
+const targetPreviews = new Map();
 let engineModule = null;
 const missingCardRoutes = new Set();
+const fetchSource = createAsyncLimiter(8);
+const sourceRequests = new Map();
 const knownRuntimeCardNames = new Set();
 const STABLE_CARD_ASSET_FETCH_OPTIONS = { cache: "no-cache" };
 const SNAPSHOT_METHODS = new Set([
@@ -88,7 +95,7 @@ const CARD_ZONE_KEYS = [
 
 // Unknown methods invalidate by default. Presentation reads cannot cancel a
 // long search merely because the user hovered a card or requested a snapshot.
-const ANALYSIS_READ_METHOD = /^(snapshot|snapshotJson|uiState|last\w*Perf|lastWorkCounters|export\w+|autocompleteCardNames|get\w+|cardsMeetingThreshold|objectDetails|inspectorActions|preview\w+|registrySize|filterKnownCardNames|isKnownCardName|cardLoadDiagnostics|validateMatchConfig)$/;
+const ANALYSIS_READ_METHOD = /^(snapshot|snapshotJson|uiState|last\w*Perf|lastWorkCounters|export\w+|autocompleteCardNames|get\w+|cardsMeetingThreshold|objectDetails|inspectorActions|preview\w+|registrySize|filterKnownCardNames|isKnownCardName|cardLoadDiagnostics|validateMatchConfig|createRuntimeSavepoint|releaseRuntimeSavepoint)$/;
 let priorityIdentity = null;
 let priorityViewRevision = 0;
 const priorityAnalysis = createPriorityAnalysisScheduler({
@@ -299,6 +306,7 @@ function collectNamesForMethod(method, args) {
     case "filterKnownCardNames":
       names.push(...(Array.isArray(args?.[0]) ? args[0] : []));
       break;
+    case "replayTrustedMatch":
     case "startMatch": {
       const config = args?.[0] || {};
       collectDeckNames(config, names);
@@ -356,7 +364,9 @@ function collectNamesForMethod(method, args) {
       break;
   }
   if (RUNTIME_EVALUATION_METHODS.has(method)) {
-    names.push(...knownRuntimeCardNames);
+    for (const name of knownRuntimeCardNames) {
+      if (!registeredCardRoutes.has(cardRouteKey(name))) names.push(name);
+    }
   }
   return compactCardNameList(names);
 }
@@ -393,7 +403,15 @@ async function loadCardIndex() {
   return cardIndexPromise;
 }
 
-async function fetchCardSource(name) {
+function fetchCardSource(name) {
+  const route = cardRouteKey(name);
+  if (!sourceRequests.has(route)) {
+    const request = fetchSource(() => fetchCardSourceUncached(name)).finally(() => sourceRequests.delete(route));
+    sourceRequests.set(route, request);
+  }
+  return sourceRequests.get(route);
+}
+async function fetchCardSourceUncached(name) {
   const route = cardRouteKey(name);
   if (!route || registeredCardRoutes.has(route) || missingCardRoutes.has(route)) {
     return null;
@@ -402,6 +420,7 @@ async function fetchCardSource(name) {
     registeredCardRoutes.add(route);
     return null;
   }
+  if (previewCardSources.has(route)) return previewCardSources.get(route);
   const url = cardAssetUrl(route);
   if (!url) return null;
   const response = await fetch(url, STABLE_CARD_ASSET_FETCH_OPTIONS);
@@ -429,7 +448,6 @@ async function fetchCardSource(name) {
     return null;
   }
   previewCardSources.set(route, payload);
-  registeredCardRoutes.add(route);
   const sourceNames = [
     payload?.canonicalName,
     payload?.group?.name,
@@ -443,7 +461,7 @@ async function fetchCardSource(name) {
   ];
   for (const sourceName of sourceNames) {
     const sourceRoute = cardRouteKey(sourceName);
-    if (sourceRoute) registeredCardRoutes.add(sourceRoute);
+    if (sourceRoute) previewCardSources.set(sourceRoute, payload);
   }
   return payload;
 }
@@ -511,7 +529,7 @@ function registerFetchedCardSources(sources) {
   return null;
 }
 
-async function ensureCardSourcesForNames(names) {
+async function prepareCardSourcesForNames(names) {
   if (
     !game
     || (
@@ -525,7 +543,7 @@ async function ensureCardSourcesForNames(names) {
   if (uniqueNames.length === 0) return;
   const sources = (await Promise.all(uniqueNames.map(fetchCardSource))).filter(Boolean);
   if (sources.length === 0) return;
-  registerFetchedCardSources(sources);
+  return sources;
 }
 
 async function currentSemanticThreshold() {
@@ -633,7 +651,7 @@ async function runBackgroundCompileStep() {
     return;
   }
   try {
-    const status = await game.preloadRegistryChunk(16);
+    const status = preloadBudget.run(units => game.preloadRegistryChunk(units));
     postRegistryStatus(status);
     if (status?.done) {
       backgroundCompileDone = true;
@@ -646,59 +664,11 @@ async function runBackgroundCompileStep() {
   scheduleBackgroundCompile(16);
 }
 
-async function fetchWasmWithProgress(url, onProgress) {
-  const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) throw new Error(`WASM fetch failed: HTTP ${response.status}`);
-
-  const contentLength = response.headers.get("content-length");
-  const parsedTotal = contentLength ? Number.parseInt(contentLength, 10) : NaN;
-  const total =
-    Number.isFinite(parsedTotal) && parsedTotal > 0
-      ? parsedTotal
-      : WASM_ESTIMATED_SIZE;
-
-  if (!response.body) {
-    const body = await response.arrayBuffer();
-    onProgress(1);
-    return {
-      wasmResponse: new Response(body, {
-        headers: { "content-type": "application/wasm" },
-      }),
-      downloadDone: Promise.resolve(),
-    };
-  }
-
-  const [progressBody, wasmBody] = response.body.tee();
-
-  const downloadDone = (async () => {
-    const reader = progressBody.getReader();
-    let received = 0;
-    let lastReported = 0;
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      received += value.byteLength;
-      const next = Math.min(received / total, 1);
-      if (next - lastReported >= 0.005 || next === 1) {
-        onProgress(next);
-        lastReported = next;
-      }
-    }
-    onProgress(1);
-  })();
-
-  return {
-    wasmResponse: new Response(wasmBody, {
-      headers: { "content-type": "application/wasm" },
-    }),
-    downloadDone,
-  };
-}
-
 async function handleInit(msg = {}) {
   try {
     clearBackgroundTimer();
+    snapshotEncoder.reset();
+    previewWorker?.terminate(); previewWorker = null; targetPreviews.clear();
     game = null;
     pendingCallCount = 0;
     backgroundCompileDone = false;
@@ -714,20 +684,10 @@ async function handleInit(msg = {}) {
     postProgress("module", 0);
 
     postProgress("download", 0);
-    const bust = `v=${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
-    const { wasmResponse, downloadDone } = await fetchWasmWithProgress(
-      `${engineWasmUrl}?${bust}`,
-      (p) => postProgress("download", p)
-    );
-
-    await downloadDone;
+    engineModule = await compileWasmWithProgress(engineWasmUrl,
+      (p) => postProgress("download", p), { estimatedSize: WASM_ESTIMATED_SIZE });
     postProgress("init", 1);
-    engineModule = await WebAssembly.compile(await wasmResponse.arrayBuffer());
-    await initWasm({
-      engine: engineModule,
-      compiler: `${compilerWasmUrl}?${bust}`,
-      verifier: `${verifierWasmUrl}?${bust}`,
-    });
+    await initWasm({ engine: engineModule, compiler: false, verifier: false });
     game = new WasmGame();
     game.setDeferredPriorityAnalysis(true);
     const status = readRegistryStatus();
@@ -739,7 +699,7 @@ async function handleInit(msg = {}) {
       }
     }
 
-    self.postMessage({ type: "ready" });
+    self.postMessage({ type: "ready", runtimeSavepoints: typeof game.createRuntimeSavepoint === "function" });
   } catch (err) {
     self.postMessage({ type: "error", error: serializeError(err) });
   }
@@ -750,11 +710,46 @@ function enqueueCall(task) {
   return callQueue;
 }
 
+function handleTargetPreview(id, args) {
+  latestTargetPreview = id;
+  for (const previous of targetPreviews.keys()) self.postMessage({ type: "result", id: previous, ok: true, result: null });
+  targetPreviews.clear();
+  previewWorker?.postMessage({ type: "cancel" });
+  pendingCallCount++;
+  enqueueCall(() => {
+    if (!game) throw new Error("Game is not initialized yet");
+    return { checkpoint: game.exportSyncCheckpoint(), identity: game.priorityAnalysisIdentity(), sources: [...new Map([...previewCardSources].map(([route, source]) => [source, route])).entries()].map(([source, route]) => [route, source]) };
+  }).then(input => {
+    if (id !== latestTargetPreview) { self.postMessage({ type: "result", id, ok: true, result: null }); return; }
+    if (!previewWorker) {
+      previewWorker = new Worker(new URL("./targetPreviewWorker.js", import.meta.url), { type: "module" });
+      previewWorker.onmessage = ({ data }) => {
+        const request = targetPreviews.get(data.id);
+        if (!request) return;
+        targetPreviews.delete(data.id);
+        const current = game?.priorityAnalysisIdentity() === request.identity;
+        self.postMessage(data.error && current
+          ? { type: "result", id: data.id, ok: false, error: { message: data.error } }
+          : { type: "result", id: data.id, ok: true, result: current ? data.result : null });
+      };
+      previewWorker.onerror = event => {
+        for (const id of targetPreviews.keys()) self.postMessage({ type: "result", id, ok: false, error: { message: event.message } });
+        targetPreviews.clear(); previewWorker.terminate(); previewWorker = null;
+      };
+    }
+    targetPreviews.set(id, { identity: input.identity });
+    previewWorker.postMessage({ type: "preview", id, module: engineModule,
+      checkpoint: input.checkpoint, sources: input.sources, actions: args[0], perspective: args[1] });
+  }).catch(error => self.postMessage({ type: "result", id, ok: false, error: serializeError(error) }))
+    .finally(() => { pendingCallCount--; priorityAnalysis.start(priorityViewRevision); });
+}
+
 function handleCall(msg) {
   const { id, method, args = [] } = msg;
+  if (method === "previewCastTargets") { handleTargetPreview(id, args); return; }
   if (!/^(snapshot|uiState|last\w*Perf|exportSyncCheckpoint|exportPublicAuditCheckpoint|autocompleteCardNames|getCardSemanticScore|cardsMeetingThreshold)$/.test(method)) {
     try {
-      console.debug(`[ironsmith] worker call: ${method} ${JSON.stringify(args).slice(0, 240)}`);
+      console.debug(`[ironsmith] worker call: ${method} ${JSON.stringify({ argumentCount: args.length, commandType: args[0]?.type })}`);
     } catch {
       console.debug(`[ironsmith] worker call: ${method}`);
     }
@@ -763,18 +758,35 @@ function handleCall(msg) {
   // Its bounded slices use that queue separately, yielding to game commands.
   if (method === "inspectorActions" && game) {
     priorityAnalysis.inspector(...args).then(result => {
-      self.postMessage({ type: "result", id, ok: true, result });
+      if (result && typeof result === "object" && "decision" in result) {
+        self.postMessage({ type: "result", id, ok: true, snapshot: snapshotEncoder.encode(result, { full: method === "snapshot" }) });
+      } else self.postMessage({ type: "result", id, ok: true, result });
     });
     return;
   }
   const enqueuedAt = nowMs();
+  const preparation = prepareCardSourcesForNames(collectNamesForMethod(method, args))
+    .then(sources => ({ sources }), error => ({ error }));
   pendingCallCount += 1;
   enqueueCall(async () => {
     if (!game) throw new Error("Game is not initialized yet");
-    if (!ANALYSIS_READ_METHOD.test(method)) priorityAnalysis.invalidate();
+    if (!ANALYSIS_READ_METHOD.test(method) && method !== "setPerspective") {
+      priorityAnalysis.invalidate();
+      latestTargetPreview = null;
+      previewWorker?.postMessage({ type: "cancel" });
+    }
     const startedAt = nowMs();
     const queueWaitMs = startedAt - enqueuedAt;
-    await ensureCardSourcesForNames(collectNamesForMethod(method, args));
+    const prepared = await preparation;
+    if (prepared.error) throw prepared.error;
+    if (prepared.sources?.length) {
+      registerFetchedCardSources([...new Set(prepared.sources)]);
+      for (const source of prepared.sources) {
+        const names = [source.canonicalName, source.group?.name, source.group?.combinedName,
+          ...(source.group?.faces || []).map(face => face.name)];
+        for (const name of names) if (name && cardNameAlreadyKnown(name)) registeredCardRoutes.add(cardRouteKey(name));
+      }
+    }
     if (method === "autocompleteCardNames") {
       return {
         result: await autocompleteFromCardIndex(args[0], args[1]),
@@ -800,23 +812,17 @@ function handleCall(msg) {
         registryStatus: readRegistryStatus(),
       };
     }
-    if (method === "previewCastTargets") {
-      // A distinct JS module owns distinct WASM memory and ID counters.
-      previewEnginePromise ||= initPreviewEngine({ module_or_path: engineModule })
-        .catch((error) => { previewEnginePromise = null; throw error; });
-      await previewEnginePromise;
-      return {
-        result: previewCastTargetDecision(PreviewGame, game.exportSyncCheckpoint(), args[1], args[0],
-          (preview) => compileAndRegisterCardSources(preview, [...previewCardSources.values()])),
-        registryStatus: readRegistryStatus(),
-      };
-    }
-    const fn = game[method];
+    const replayOptions = { yieldControl: () => new Promise(resolve => setTimeout(resolve, 0)) };
+    const fn = method === "replayTrustedMatch" ? (config, actions, perspective) => replayTrustedMatch(game, config, actions, perspective, replayOptions)
+      : method === "replayTrustedActions" ? (actions, sequence) => replayTrustedActions(game, actions, sequence, replayOptions)
+      : game[method];
     if (typeof fn !== "function") {
       throw new Error(`Unknown game method: ${method}`);
     }
+    const previousPerspectiveIdentity = method === "setPerspective" ? game.priorityAnalysisIdentity() : null;
     const wasmStartedAt = nowMs();
     const result = await fn.apply(game, args);
+    if (previousPerspectiveIdentity !== null && previousPerspectiveIdentity !== game.priorityAnalysisIdentity()) priorityAnalysis.invalidate();
     rememberCardNamesFromEngineResult(result);
     const wasmCallMs = nowMs() - wasmStartedAt;
     let snapshotPerf = null;
@@ -827,14 +833,15 @@ function handleCall(msg) {
     let replayExecutionPerfReadMs = 0;
     let advanceUntilDecisionPerf = null;
     let advanceUntilDecisionPerfReadMs = 0;
-    if (SNAPSHOT_METHODS.has(method)) {
+    const sampleDetailedPerf = id % 16 === 0 || wasmCallMs >= 16;
+    if (sampleDetailedPerf && SNAPSHOT_METHODS.has(method)) {
       const snapshotPerfStartedAt = nowMs();
       snapshotPerf = typeof game.lastSnapshotPerf === "function"
         ? await game.lastSnapshotPerf()
         : null;
       snapshotPerfReadMs = nowMs() - snapshotPerfStartedAt;
     }
-    if (DISPATCH_TRACE_METHODS.has(method)) {
+    if (sampleDetailedPerf && DISPATCH_TRACE_METHODS.has(method)) {
       const dispatchPerfStartedAt = nowMs();
       dispatchPerf = typeof game.lastDispatchPerf === "function"
         ? await game.lastDispatchPerf()
@@ -890,8 +897,8 @@ function handleCall(msg) {
           priorityViewRevision = priorityAnalysis.revision();
         }
         result.__priority_revision = priorityViewRevision;
-      }
-      self.postMessage({ type: "result", id, ok: true, result });
+        self.postMessage({ type: "result", id, ok: true, snapshot: snapshotEncoder.encode(result, { full: method === "snapshot" }) });
+      } else self.postMessage({ type: "result", id, ok: true, result });
     })
     .catch((err) => {
       self.postMessage({

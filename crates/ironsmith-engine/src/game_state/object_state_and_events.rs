@@ -32,6 +32,7 @@ impl GameState {
     /// Mark damage on an object.
     pub fn mark_damage(&mut self, id: ObjectId, amount: u32) {
         if amount > 0 {
+            self.object_store.changes.record(id);
             *self
                 .battlefield_flags_mut()
                 .damage_marked
@@ -42,6 +43,7 @@ impl GameState {
 
     /// Set the exact damage marked on an object.
     pub fn set_damage_marked(&mut self, id: ObjectId, amount: u32) {
+        self.object_store.changes.record(id);
         if amount == 0 {
             self.battlefield_flags_mut().damage_marked.remove(&id);
         } else {
@@ -53,6 +55,7 @@ impl GameState {
 
     /// Record that a creature was dealt nonzero damage by a source with deathtouch.
     pub fn mark_deathtouch_damage_since_sba(&mut self, id: ObjectId) {
+        self.object_store.changes.record(id);
         self.battlefield_flags_mut()
             .dealt_deathtouch_damage_since_sba
             .insert(id);
@@ -68,6 +71,9 @@ impl GameState {
 
     /// Clears the transient deathtouch-damage tracker used by SBA evaluation.
     pub fn clear_deathtouch_damage_since_sba(&mut self) {
+        for id in self.battlefield_flags.dealt_deathtouch_damage_since_sba.iter().copied() {
+            self.object_store.changes.record(id);
+        }
         self.battlefield_flags_mut()
             .dealt_deathtouch_damage_since_sba
             .clear();
@@ -171,6 +177,7 @@ impl GameState {
 
     /// Clear damage from an object.
     pub fn clear_damage(&mut self, id: ObjectId) {
+        self.object_store.changes.record(id);
         self.battlefield_flags_mut().damage_marked.remove(&id);
     }
 
@@ -261,6 +268,9 @@ impl GameState {
             return;
         }
 
+        for id in self.battlefield_flags.damage_marked.keys().copied() {
+            self.object_store.changes.record(id);
+        }
         let BattlefieldFlags {
             damage_marked,
             damage_persists,
@@ -1295,6 +1305,7 @@ impl GameState {
         if !self.legal_battle_protectors(battle).contains(&protector) {
             return false;
         }
+        self.object_store.changes.record(battle);
         self.battlefield_flags_mut()
             .battle_protectors
             .insert(battle, protector);
@@ -1389,6 +1400,7 @@ impl GameState {
     }
 
     pub fn clear_soulbond_pair(&mut self, object_id: ObjectId) {
+        if !self.combat_transients.soulbond_pairs.contains_key(&object_id) { return; }
         let transients = self.combat_transients_mut();
         let partner = transients.soulbond_pairs.remove(&object_id);
         if let Some(partner_id) = partner {
@@ -1400,6 +1412,8 @@ impl GameState {
         if !self.soulbond_pair_is_valid(left, right) {
             return;
         }
+        if self.combat_transients.soulbond_pairs.get(&left) == Some(&right)
+            && self.combat_transients.soulbond_pairs.get(&right) == Some(&left) { return; }
         self.clear_soulbond_pair(left);
         self.clear_soulbond_pair(right);
         let transients = self.combat_transients_mut();
@@ -1409,6 +1423,10 @@ impl GameState {
 
     pub(crate) fn soulbond_pairs(&self) -> &HashMap<ObjectId, ObjectId> {
         &self.combat_transients.soulbond_pairs
+    }
+
+    pub(crate) fn soulbond_identity(&self) -> crate::incremental::ChangeCursor {
+        self.combat_transients.soulbond_pairs.cursor()
     }
 
     pub fn soulbond_partner(&self, object_id: ObjectId) -> Option<ObjectId> {
@@ -1479,7 +1497,9 @@ impl GameState {
 
     /// Allow a player to keep looking at a face-down exiled card.
     pub fn grant_face_down_exile_view(&mut self, id: ObjectId, viewer: PlayerId) {
-        self.exile_tracking_mut()
+        self.object_store.changes.record(id);
+        self.object_store.render_changes.record(id);
+        Arc::make_mut(&mut self.exile_tracking)
             .face_down_exile_viewers
             .entry(id)
             .or_default()

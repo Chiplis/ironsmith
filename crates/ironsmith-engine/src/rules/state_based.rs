@@ -188,7 +188,7 @@ pub enum LoseReason {
     CommanderDamage,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct StateBasedActionContext {
     pending_chapter_ability_sources: HashSet<ObjectId>,
     pending_battle_defeat_sources: HashSet<ObjectId>,
@@ -234,6 +234,377 @@ impl StateBasedActionContext {
     }
 }
 
+// Categories depend on the exact calculated view, not printed card types.
+// An unchanged Arc means the characteristic revision is still valid. A broad
+// continuous invalidation supplies new Arcs and conservatively rebuilds flags.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ComplexSbaInputs {
+    pending: StateBasedActionContext,
+    stacked: Vec<(Option<ObjectId>, Option<ObjectId>)>,
+    attacked_battles: Vec<ObjectId>,
+    players: Vec<(PlayerId, bool)>,
+}
+impl ComplexSbaInputs {
+    fn capture(game: &GameState, context: &StateBasedActionContext) -> Self {
+        Self {
+            pending: context.clone(),
+            stacked: game
+                .stack
+                .iter()
+                .filter_map(|entry| {
+                    (entry.chapter_ability_source.is_some() || entry.battle_defeat_source.is_some())
+                        .then_some((entry.chapter_ability_source, entry.battle_defeat_source))
+                })
+                .collect(),
+            attacked_battles: game
+                .combat
+                .iter()
+                .flat_map(|combat| combat.attackers.iter())
+                .filter_map(|attacker| match attacker.target {
+                    crate::combat_state::AttackTarget::Battle(id) => Some(id),
+                    _ => None,
+                })
+                .collect(),
+            players: game
+                .players
+                .iter()
+                .map(|player| (player.id, player.is_in_game()))
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct SbaGroupResults {
+    roles: Vec<StateBasedAction>,
+    legends: Vec<StateBasedAction>,
+    worlds: Vec<StateBasedAction>,
+    engines: Vec<StateBasedAction>,
+    sectors: Vec<StateBasedAction>,
+    apnap: Vec<PlayerId>,
+    engine_players: Vec<(PlayerId, bool, Option<u8>)>,
+    sector_stack: bool,
+    has_sectors: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct SbaCandidateCache {
+    cleanup: TokenCleanupCache,
+    pairs: SbaPairCache,
+    groups: SbaGroupResults,
+    counter_actions: [im::OrdMap<u128, Vec<StateBasedAction>>; 2],
+    complex_inputs: Option<ComplexSbaInputs>,
+    order: crate::zone_sequence::ZoneOrder,
+    cursor: Option<crate::incremental::ChangeCursor>,
+    effects: Option<std::sync::Arc<Vec<crate::continuous::ContinuousEffect>>>,
+    context_revision: Option<SbaContextKey>,
+    entries: crate::game_state::PersistentMap<ObjectId, (u128, u16)>,
+    categories: [im::OrdMap<u128, ObjectId>; 10],
+    permanent_actions: im::OrdMap<u128, Vec<StateBasedAction>>,
+    restriction_cursors: [Option<crate::incremental::ChangeCursor>; 2],
+}
+#[derive(Default)]
+struct SbaCandidates {
+    counters: Vec<ObjectId>,
+    roles: Vec<ObjectId>,
+    legends: Vec<ObjectId>,
+    worlds: Vec<ObjectId>,
+    permanent_actions: Vec<StateBasedAction>,
+    engines: Vec<ObjectId>,
+    sculptors: Vec<ObjectId>,
+    creatures: Vec<ObjectId>,
+    exemptions: Vec<ObjectId>,
+    groups: SbaGroupResults,
+    counter_actions: [Vec<StateBasedAction>; 2],
+}
+impl SbaCandidates {
+    fn collect(
+        game: &GameState,
+        view: &crate::derived_view::DerivedGameView<'_>,
+        context: &StateBasedActionContext,
+    ) -> Self {
+        let mut cache = game.sba_candidate_cache().borrow_mut();
+        let membership = cache.order.synchronize(&game.battlefield);
+        let changes = cache
+            .cursor
+            .as_ref()
+            .and_then(|cursor| game.object_changes_since(cursor));
+        let effects = view.effects_arc();
+        let rebuild = membership.is_none()
+            || changes.is_none()
+            || cache.context_revision != Some(sba_context_key(game))
+            || cache
+                .effects
+                .as_ref()
+                .is_none_or(|old| !std::sync::Arc::ptr_eq(old, &effects));
+        let dirty: Vec<_> = if rebuild {
+            cache.entries.clear();
+            cache.permanent_actions.clear();
+            for actions in &mut cache.counter_actions {
+                actions.clear();
+            }
+            for category in &mut cache.categories {
+                category.clear();
+            }
+            game.battlefield.iter().copied().collect()
+        } else {
+            let mut dirty = changes.unwrap_or_default();
+            dirty.extend(membership.unwrap_or_default());
+            dirty.sort_unstable();
+            dirty.dedup();
+            dirty
+        };
+        game.count_sba_scan_objects(dirty.len());
+        view.prewarm_characteristics(&dirty);
+        let any_object_change = !dirty.is_empty();
+        let mut changed_flags = if rebuild { u16::MAX } else { 0 };
+        let mut permanent_dirty = dirty.clone();
+        for id in dirty {
+            if let Some((label, flags)) = cache.entries.remove(&id) {
+                changed_flags |= flags;
+                cache.permanent_actions.remove(&label);
+                for actions in &mut cache.counter_actions {
+                    actions.remove(&label);
+                }
+                for (i, category) in cache.categories.iter_mut().enumerate() {
+                    if flags & (1 << i) != 0 {
+                        category.remove(&label);
+                    }
+                }
+            }
+            let Some(label) = cache.order.label(id) else {
+                continue;
+            };
+            if game.is_phased_out(id) {
+                continue;
+            }
+            let Some(object) = game.object(id) else {
+                continue;
+            };
+            let Some(chars) = view.calculated_characteristics_arc(id) else {
+                continue;
+            };
+            let flags = u16::from(!object.counters.is_empty())
+                | (u16::from(
+                    chars.card_types.contains(&CardType::Enchantment)
+                        && chars.subtypes.contains(&Subtype::Aura)
+                        && chars.subtypes.contains(&Subtype::Role),
+                ) << 1)
+                | (u16::from(chars.supertypes.contains(&Supertype::Legendary)) << 2)
+                | (u16::from(chars.supertypes.contains(&Supertype::World)) << 3)
+                | (u16::from(
+                    object.attached_to.is_some()
+                        || chars.subtypes.contains(&Subtype::Aura)
+                        || chars.subtypes.contains(&Subtype::Saga)
+                        || chars.card_types.contains(&CardType::Battle),
+                ) << 4)
+                | (u16::from(
+                    chars
+                        .static_abilities
+                        .iter()
+                        .any(|ability| ability.id() == StaticAbilityId::StartYourEngines),
+                ) << 5)
+                | (u16::from(
+                    chars
+                        .static_abilities
+                        .iter()
+                        .any(|ability| ability.id() == StaticAbilityId::SpaceSculptor),
+                ) << 6)
+                | (u16::from(chars.card_types.contains(&CardType::Creature)) << 7)
+                | (u16::from(chars.static_abilities.iter().any(|ability| {
+                    matches!(
+                        ability.id(),
+                        StaticAbilityId::LegendRuleDoesntApply
+                            | StaticAbilityId::LegendRuleDoesntApplyToController
+                            | StaticAbilityId::LegendRuleDoesntApplyToControllerTokens
+                    )
+                })) << 8)
+                | (u16::from(chars.static_abilities.iter().any(|ability| {
+                    ability.id() == StaticAbilityId::LethalDamageToCreaturesYouControlUsesPower
+                })) << 9);
+            changed_flags |= flags;
+            cache.entries.insert(id, (label, flags));
+            for (i, category) in cache.categories.iter_mut().enumerate() {
+                if flags & (1 << i) != 0 {
+                    category.insert(label, id);
+                }
+            }
+        }
+        // These rules also depend on attachment legality and live stack/combat
+        // context. Their dependency indexes are independent of plain permanents.
+        if !cache.categories[4].is_empty() {
+            let inputs = ComplexSbaInputs::capture(game, context);
+            if !permanent_dirty.is_empty() || cache.complex_inputs.as_ref() != Some(&inputs) {
+                permanent_dirty.extend(cache.categories[4].values().copied());
+            }
+            cache.complex_inputs = Some(inputs);
+        } else {
+            cache.complex_inputs = None;
+        }
+        for (index, restrictions) in [
+            &game.effect_store.cant_effects.cant_be_destroyed,
+            &game.effect_store.cant_effects.cant_be_sacrificed,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            if let Some(changes) = cache.restriction_cursors[index]
+                .as_ref()
+                .and_then(|cursor| restrictions.changes_since(cursor))
+            {
+                permanent_dirty.extend(changes);
+            } else {
+                permanent_dirty.extend(game.battlefield.iter().copied());
+            }
+            cache.restriction_cursors[index] = Some(restrictions.cursor());
+        }
+        let power_lethal_controllers: HashSet<_> = if permanent_dirty.is_empty() {
+            HashSet::new()
+        } else {
+            cache.categories[9]
+                .values()
+                .copied()
+                .filter(|id| {
+                    view.object_has_static_ability_id(
+                        *id,
+                        StaticAbilityId::LethalDamageToCreaturesYouControlUsesPower,
+                    )
+                })
+                .filter_map(|id| game.controller_of_id(id))
+                .collect()
+        };
+        if !permanent_dirty.is_empty() && !cache.categories[9].is_empty() {
+            permanent_dirty.extend(cache.categories[7].values().copied());
+        }
+        permanent_dirty.sort_unstable();
+        permanent_dirty.dedup();
+        game.count_sba_scan_objects(permanent_dirty.len());
+        for id in permanent_dirty {
+            let Some(label) = cache.order.label(id) else {
+                continue;
+            };
+            let mut actions = Vec::new();
+            check_permanent_sbas_for_ids(
+                game,
+                view,
+                context,
+                &[id],
+                Some(&power_lethal_controllers),
+                &mut actions,
+            );
+            if actions.is_empty() {
+                cache.permanent_actions.remove(&label);
+            } else {
+                cache.permanent_actions.insert(label, actions);
+            }
+            let mut annihilation = Vec::new();
+            check_counter_annihilation(game, &[id], &mut annihilation);
+            let mut limits = Vec::new();
+            check_counter_limits_with_view(game, view, &[id], &mut limits);
+            for (index, actions) in [annihilation, limits].into_iter().enumerate() {
+                if actions.is_empty() {
+                    cache.counter_actions[index].remove(&label);
+                } else {
+                    cache.counter_actions[index].insert(label, actions);
+                }
+            }
+        }
+        let apnap = players_in_apnap_order(game);
+        let order_changed = cache.groups.apnap != apnap;
+        if changed_flags & (1 << 1) != 0 {
+            let candidates: Vec<_> = cache.categories[1].values().copied().collect();
+            cache.groups.roles.clear();
+            check_role_sbas_with_view(game, view, &candidates, &mut cache.groups.roles);
+        }
+        if changed_flags & ((1 << 2) | (1 << 8)) != 0
+            || order_changed
+            || (any_object_change && !cache.categories[8].is_empty())
+        {
+            let candidates: Vec<_> = cache.categories[2].values().copied().collect();
+            let exemptions: Vec<_> = cache.categories[8].values().copied().collect();
+            cache.groups.legends.clear();
+            check_legend_rule_with_view(
+                game,
+                view,
+                &candidates,
+                &exemptions,
+                &mut cache.groups.legends,
+            );
+        }
+        if changed_flags & (1 << 3) != 0 {
+            let candidates: Vec<_> = cache.categories[3].values().copied().collect();
+            cache.groups.worlds.clear();
+            check_world_rule_with_view(game, view, &candidates, &mut cache.groups.worlds);
+        }
+        let engine_players: Vec<_> = game
+            .players
+            .iter()
+            .map(|p| (p.id, p.is_in_game(), p.speed))
+            .collect();
+        if changed_flags & (1 << 5) != 0
+            || cache.groups.engine_players != engine_players
+            || (any_object_change && !cache.categories[5].is_empty())
+        {
+            let candidates: Vec<_> = cache.categories[5].values().copied().collect();
+            cache.groups.engines.clear();
+            check_start_engines_sbas_with_view(game, view, &candidates, &mut cache.groups.engines);
+            cache.groups.engine_players = engine_players;
+        }
+        let has_sectors = game.has_sector_designations();
+        let sector_stack = has_sectors
+            && game.stack.iter().any(|entry| {
+                entry.is_ability
+                    && entry.source_snapshot.as_ref().is_some_and(|source| {
+                        source.has_static_ability_id(StaticAbilityId::SpaceSculptor)
+                    })
+            });
+        if any_object_change
+            || rebuild
+            || order_changed
+            || cache.groups.has_sectors != has_sectors
+            || cache.groups.sector_stack != sector_stack
+        {
+            let sculptors: Vec<_> = cache.categories[6].values().copied().collect();
+            let creatures: Vec<_> = if sculptors.is_empty() {
+                Vec::new()
+            } else {
+                cache.categories[7].values().copied().collect()
+            };
+            cache.groups.sectors.clear();
+            check_space_sculptor_sbas_with_view(
+                game,
+                view,
+                &sculptors,
+                &creatures,
+                &mut cache.groups.sectors,
+            );
+            cache.groups.has_sectors = has_sectors;
+            cache.groups.sector_stack = sector_stack;
+        }
+        cache.groups.apnap = apnap;
+        cache.cursor = Some(game.object_change_cursor());
+        cache.effects = Some(effects);
+        cache.context_revision = Some(sba_context_key(game));
+        Self {
+            permanent_actions: cache
+                .permanent_actions
+                .values()
+                .flatten()
+                .cloned()
+                .collect(),
+            counter_actions: std::array::from_fn(|index| {
+                cache.counter_actions[index]
+                    .values()
+                    .flatten()
+                    .cloned()
+                    .collect()
+            }),
+            groups: cache.groups.clone(),
+            ..Self::default()
+        }
+    }
+}
+
 /// Check state-based actions and return a list of actions that need to be performed.
 ///
 /// This should be called whenever a player would receive priority.
@@ -263,41 +634,124 @@ pub(crate) fn check_state_based_actions_with_context(
     view: &crate::derived_view::DerivedGameView<'_>,
     context: &StateBasedActionContext,
 ) -> Vec<StateBasedAction> {
-    game.count_sba_scan_objects(game.battlefield.len());
-    view.prewarm_characteristics(&game.battlefield);
+    let actions = collect_state_based_actions(game, view, context, true);
+    #[cfg(feature = "shadow-continuous")]
+    assert_eq!(
+        actions,
+        collect_state_based_actions(game, view, context, false),
+        "incremental SBA candidates differ from full scan"
+    );
+    actions
+}
+
+fn collect_state_based_actions(
+    game: &GameState,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    context: &StateBasedActionContext,
+    incremental: bool,
+) -> Vec<StateBasedAction> {
+    if !incremental {
+        game.count_sba_scan_objects(game.battlefield.len());
+        view.prewarm_characteristics(&game.battlefield);
+    }
     let mut actions = Vec::new();
+    let candidates = if incremental {
+        SbaCandidates::collect(game, view, context)
+    } else {
+        SbaCandidates {
+            counters: game.battlefield.to_vec(),
+            roles: game.battlefield.to_vec(),
+            legends: game.battlefield.to_vec(),
+            worlds: game.battlefield.to_vec(),
+            permanent_actions: Vec::new(),
+            engines: game.battlefield.to_vec(),
+            sculptors: game.battlefield.to_vec(),
+            creatures: game.battlefield.to_vec(),
+            exemptions: game.battlefield.to_vec(),
+            ..SbaCandidates::default()
+        }
+    };
 
     // Check player state-based actions
     check_player_sbas(game, &mut actions);
     check_commander_zone_sbas(game, &mut actions);
-    check_start_engines_sbas_with_view(game, view, &mut actions);
+    if incremental {
+        actions.extend(candidates.groups.engines.iter().cloned());
+    } else {
+        check_start_engines_sbas_with_view(game, view, &candidates.engines, &mut actions);
+    }
     check_phenomenon_sba(game, context, &mut actions);
     check_scheme_sba(game, context, &mut actions);
 
     // Check permanent state-based actions
-    check_permanent_sbas_with_view(game, view, context, &mut actions);
+    if incremental {
+        actions.extend(candidates.permanent_actions.iter().cloned());
+    } else {
+        check_permanent_sbas_with_view(game, view, context, &mut actions);
+    }
 
     // Check Role Aura uniqueness (one Role Aura per controller per permanent)
-    check_role_sbas_with_view(game, view, &mut actions);
+    if incremental {
+        actions.extend(candidates.groups.roles.iter().cloned());
+    } else {
+        check_role_sbas_with_view(game, view, &candidates.roles, &mut actions);
+    }
 
     // Check token/copy cleanup
-    check_token_cleanup(game, &mut actions);
+    if incremental {
+        check_token_cleanup_incremental(game, &mut actions);
+    } else {
+        check_token_cleanup(game, &mut actions);
+    }
 
     // Check counter annihilation
-    check_counter_annihilation(game, &mut actions);
-    check_counter_limits_with_view(game, view, &mut actions);
+    if incremental {
+        actions.extend(candidates.counter_actions[0].iter().cloned());
+        actions.extend(candidates.counter_actions[1].iter().cloned());
+    } else {
+        check_counter_annihilation(game, &candidates.counters, &mut actions);
+        check_counter_limits_with_view(game, view, &candidates.counters, &mut actions);
+    }
 
     // Check soulbond pair validity
-    check_soulbond_pair_sbas_with_view(game, view, &mut actions);
+    if incremental {
+        check_soulbond_incremental(game, view, &mut actions);
+    } else {
+        check_soulbond_pair_sbas_with_view(game, view, &mut actions);
+    }
 
     // Check legend rule
-    check_legend_rule_with_view(game, view, &mut actions);
+    if incremental {
+        actions.extend(candidates.groups.legends.iter().cloned());
+    } else {
+        check_legend_rule_with_view(
+            game,
+            view,
+            &candidates.legends,
+            &candidates.exemptions,
+            &mut actions,
+        );
+    }
 
     // Check world rule
-    check_world_rule_with_view(game, view, &mut actions);
+    if incremental {
+        actions.extend(candidates.groups.worlds.iter().cloned());
+    } else {
+        check_world_rule_with_view(game, view, &candidates.worlds, &mut actions);
+    }
 
     // Space sculptor designation assignment/expiry (CR 704.5u, 702.158b-c).
-    check_space_sculptor_sbas_with_view(game, view, &mut actions);
+    if incremental {
+        actions.extend(candidates.groups.sectors.iter().cloned());
+    } else {
+        check_space_sculptor_sbas_with_view(
+            game,
+            view,
+            &candidates.sculptors,
+            &candidates.creatures,
+            &mut actions,
+        );
+    }
 
     actions
 }
@@ -398,10 +852,11 @@ fn players_in_apnap_order(game: &GameState) -> Vec<PlayerId> {
 fn check_space_sculptor_sbas_with_view(
     game: &GameState,
     view: &crate::derived_view::DerivedGameView<'_>,
+    sculptor_candidates: &[ObjectId],
+    creature_candidates: &[ObjectId],
     actions: &mut Vec<StateBasedAction>,
 ) {
-    let mut sculptors = game
-        .battlefield
+    let mut sculptors = sculptor_candidates
         .iter()
         .copied()
         .filter(|&object| !game.is_phased_out(object))
@@ -430,7 +885,7 @@ fn check_space_sculptor_sbas_with_view(
         .filter_map(|&object| game.current_controller(object))
         .collect::<HashSet<_>>();
     let mut creatures_by_controller = HashMap::<PlayerId, Vec<ObjectId>>::new();
-    for &object in &game.battlefield {
+    for &object in creature_candidates {
         if game.is_phased_out(object)
             || game.sector_designation(object).is_some()
             || !view.object_has_card_type(object, CardType::Creature)
@@ -470,6 +925,104 @@ fn check_space_sculptor_sbas_with_view(
     }
 }
 
+// Conditional static abilities can read turn context without adding a layer
+// effect. Include that context even when the effects snapshot stays identical.
+type SbaContextKey = (u64, u32, PlayerId, Option<PlayerId>, u8, Option<u8>);
+fn sba_context_key(game: &GameState) -> SbaContextKey {
+    (
+        game.continuous_context_revision(),
+        game.turn.turn_number,
+        game.turn.active_player,
+        game.turn.priority_player,
+        game.turn.phase as u8,
+        game.turn.step.map(|step| step as u8),
+    )
+}
+
+#[derive(Debug, Clone, Default)]
+struct SbaPairCache {
+    pairs_cursor: Option<crate::incremental::ChangeCursor>,
+    objects_cursor: Option<crate::incremental::ChangeCursor>,
+    effects: Option<std::sync::Arc<Vec<crate::continuous::ContinuousEffect>>>,
+    context: Option<SbaContextKey>,
+    membership: crate::game_state::PersistentMap<ObjectId, (usize, ObjectId, ObjectId)>,
+    invalid: im::OrdMap<usize, ObjectId>,
+}
+fn check_soulbond_incremental(
+    game: &GameState,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    actions: &mut Vec<StateBasedAction>,
+) {
+    let mut cache = game.sba_candidate_cache().borrow_mut();
+    let cache = &mut cache.pairs;
+    let pairs_cursor = game.soulbond_identity();
+    let effects = view.effects_arc();
+    let changes = cache
+        .objects_cursor
+        .as_ref()
+        .and_then(|cursor| game.object_changes_since(cursor));
+    let membership_changed = cache.pairs_cursor.as_ref() != Some(&pairs_cursor);
+    let broad = membership_changed
+        || changes.is_none()
+        || cache.context != Some(sba_context_key(game))
+        || cache
+            .effects
+            .as_ref()
+            .is_none_or(|old| !std::sync::Arc::ptr_eq(old, &effects));
+    if membership_changed {
+        cache.membership.clear();
+        cache.invalid.clear();
+        let mut seen = HashSet::new();
+        for (&left, &right) in game.soulbond_pairs() {
+            if !seen.insert(left) {
+                continue;
+            }
+            seen.insert(right);
+            let ordinal = cache.membership.len();
+            cache.membership.insert(left, (ordinal, left, right));
+            cache.membership.insert(right, (ordinal, left, right));
+        }
+    }
+    let dirty: std::collections::BTreeSet<_> = if broad {
+        cache.membership.values().copied().collect()
+    } else {
+        changes
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|id| cache.membership.get(id).copied())
+            .collect()
+    };
+    for (ordinal, left, right) in dirty {
+        game.count_sba_scan_objects(2);
+        let valid = match (game.object(left), game.object(right)) {
+            (Some(left_obj), Some(right_obj)) => {
+                left_obj.zone == Zone::Battlefield
+                    && right_obj.zone == Zone::Battlefield
+                    && game.controller_of(left_obj) == game.controller_of(right_obj)
+                    && view.object_has_card_type(left, CardType::Creature)
+                    && view.object_has_card_type(right, CardType::Creature)
+            }
+            _ => false,
+        };
+        if valid {
+            cache.invalid.remove(&ordinal);
+        } else {
+            cache.invalid.insert(ordinal, left);
+        }
+    }
+    cache.pairs_cursor = Some(pairs_cursor);
+    cache.objects_cursor = Some(game.object_change_cursor());
+    cache.effects = Some(effects);
+    cache.context = Some(sba_context_key(game));
+    actions.extend(
+        cache
+            .invalid
+            .values()
+            .copied()
+            .map(StateBasedAction::SoulbondUnpairs),
+    );
+}
+
 fn check_soulbond_pair_sbas_with_view(
     game: &GameState,
     view: &crate::derived_view::DerivedGameView<'_>,
@@ -502,9 +1055,10 @@ fn check_soulbond_pair_sbas_with_view(
 fn check_counter_limits_with_view(
     game: &GameState,
     view: &crate::derived_view::DerivedGameView<'_>,
+    candidates: &[ObjectId],
     actions: &mut Vec<StateBasedAction>,
 ) {
-    for &permanent in &game.battlefield {
+    for &permanent in candidates {
         if game.is_phased_out(permanent) {
             continue;
         }
@@ -619,6 +1173,7 @@ fn check_player_sbas(game: &GameState, actions: &mut Vec<StateBasedAction>) {
 fn check_start_engines_sbas_with_view(
     game: &GameState,
     view: &crate::derived_view::DerivedGameView<'_>,
+    candidates: &[ObjectId],
     actions: &mut Vec<StateBasedAction>,
 ) {
     for player in &game.players {
@@ -626,7 +1181,7 @@ fn check_start_engines_sbas_with_view(
             continue;
         }
 
-        let controls_start_your_engines = game.battlefield.iter().copied().any(|obj_id| {
+        let controls_start_your_engines = candidates.iter().copied().any(|obj_id| {
             !game.is_phased_out(obj_id)
                 && game.current_controller(obj_id) == Some(player.id)
                 && view.object_has_static_ability_id(obj_id, StaticAbilityId::StartYourEngines)
@@ -661,7 +1216,18 @@ fn check_permanent_sbas_with_view(
     context: &StateBasedActionContext,
     actions: &mut Vec<StateBasedAction>,
 ) {
-    for &obj_id in &game.battlefield {
+    check_permanent_sbas_for_ids(game, view, context, &game.battlefield, None, actions);
+}
+
+fn check_permanent_sbas_for_ids(
+    game: &GameState,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    context: &StateBasedActionContext,
+    ids: &[ObjectId],
+    power_lethal_controllers: Option<&HashSet<PlayerId>>,
+    actions: &mut Vec<StateBasedAction>,
+) {
+    for &obj_id in ids {
         if game.is_phased_out(obj_id) {
             continue;
         }
@@ -688,8 +1254,13 @@ fn check_permanent_sbas_with_view(
             // Creature with lethal damage dies (unless indestructible)
             let damage_marked = game.damage_on(obj_id);
             if damage_marked > 0 {
-                let lethal_damage_threshold =
-                    lethal_damage_threshold_for_creature(game, view, obj_id);
+                let lethal_damage_threshold = lethal_damage_threshold_for_creature_with_rule(
+                    game,
+                    view,
+                    obj_id,
+                    power_lethal_controllers
+                        .map(|controllers| controllers.contains(&game.controller_of(obj))),
+                );
                 if lethal_damage_threshold
                     .is_some_and(|threshold| threshold > 0 && damage_marked >= threshold as u32)
                     && !is_indestructible
@@ -846,15 +1417,26 @@ fn lethal_damage_threshold_for_creature(
     view: &crate::derived_view::DerivedGameView<'_>,
     creature_id: ObjectId,
 ) -> Option<i32> {
+    lethal_damage_threshold_for_creature_with_rule(game, view, creature_id, None)
+}
+
+fn lethal_damage_threshold_for_creature_with_rule(
+    game: &GameState,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    creature_id: ObjectId,
+    power_rule: Option<bool>,
+) -> Option<i32> {
     let creature = game.object(creature_id)?;
     let creature_controller = game.controller_of(creature);
-    let uses_power = game.battlefield.iter().any(|&source_id| {
-        !game.is_phased_out(source_id)
-            && game.controller_of_id(source_id) == Some(creature_controller)
-            && view.object_has_static_ability_id(
-                source_id,
-                StaticAbilityId::LethalDamageToCreaturesYouControlUsesPower,
-            )
+    let uses_power = power_rule.unwrap_or_else(|| {
+        game.battlefield.iter().any(|&source_id| {
+            !game.is_phased_out(source_id)
+                && game.controller_of_id(source_id) == Some(creature_controller)
+                && view.object_has_static_ability_id(
+                    source_id,
+                    StaticAbilityId::LethalDamageToCreaturesYouControlUsesPower,
+                )
+        })
     });
 
     if uses_power {
@@ -898,6 +1480,7 @@ fn is_damage_based_creature_death_sba(
 fn check_role_sbas_with_view(
     game: &GameState,
     view: &crate::derived_view::DerivedGameView<'_>,
+    candidates: &[ObjectId],
     actions: &mut Vec<StateBasedAction>,
 ) {
     use std::collections::HashMap;
@@ -905,7 +1488,7 @@ fn check_role_sbas_with_view(
     let mut roles_by_target_and_controller: HashMap<(ObjectId, PlayerId), Vec<ObjectId>> =
         HashMap::new();
 
-    for &obj_id in &game.battlefield {
+    for &obj_id in candidates {
         if game.is_phased_out(obj_id) {
             continue;
         }
@@ -974,6 +1557,120 @@ fn check_role_sbas_with_view(
 }
 
 /// Check for tokens not on battlefield and spell copies not on stack.
+#[derive(Debug, Clone, Default)]
+struct TokenZoneIndex {
+    order: crate::zone_sequence::ZoneOrder,
+    candidates: im::OrdMap<u128, ObjectId>,
+    labels: crate::game_state::PersistentMap<ObjectId, u128>,
+}
+impl TokenZoneIndex {
+    fn update(
+        &mut self,
+        game: &GameState,
+        zone: &crate::zone_sequence::ZoneSequence,
+        changed: Option<&[ObjectId]>,
+    ) {
+        let membership = self.order.synchronize(zone);
+        let dirty = if membership.is_none() || changed.is_none() {
+            self.candidates.clear();
+            self.labels.clear();
+            zone.iter().copied().collect::<Vec<_>>()
+        } else {
+            let mut dirty = membership.unwrap_or_default();
+            dirty.extend_from_slice(changed.unwrap_or_default());
+            dirty.sort_unstable();
+            dirty.dedup();
+            dirty
+        };
+        for id in dirty {
+            if let Some(label) = self.labels.remove(&id) {
+                self.candidates.remove(&label);
+            }
+            if let Some(label) = self.order.label(id)
+                && game
+                    .object(id)
+                    .is_some_and(|object| object.kind == crate::object::ObjectKind::Token)
+            {
+                self.labels.insert(id, label);
+                self.candidates.insert(label, id);
+            }
+        }
+    }
+}
+#[derive(Debug, Clone, Default)]
+struct TokenCleanupCache {
+    cursor: Option<crate::incremental::ChangeCursor>,
+    player_zones: crate::game_state::PersistentMap<(PlayerId, Zone), TokenZoneIndex>,
+    exile: TokenZoneIndex,
+    copies: im::OrdSet<ObjectId>,
+}
+fn check_token_cleanup_incremental(game: &GameState, actions: &mut Vec<StateBasedAction>) {
+    let mut cache = game.sba_candidate_cache().borrow_mut();
+    let cache = &mut cache.cleanup;
+    let changed = cache
+        .cursor
+        .as_ref()
+        .and_then(|cursor| game.object_changes_since(cursor));
+    for player in &game.players {
+        for (zone, ids) in [
+            (Zone::Graveyard, &player.graveyard),
+            (Zone::Hand, &player.hand),
+            (Zone::Library, &player.library),
+        ] {
+            let index = cache.player_zones.entry((player.id, zone)).or_default();
+            index.update(game, ids, changed.as_deref());
+            actions.extend(
+                index
+                    .candidates
+                    .values()
+                    .copied()
+                    .map(StateBasedAction::TokenCeasesToExist),
+            );
+        }
+    }
+    // Removed players cannot keep historical zone trees alive indefinitely.
+    cache
+        .player_zones
+        .retain(|(player, _), _| game.players.iter().any(|current| current.id == *player));
+    cache.exile.update(game, &game.exile, changed.as_deref());
+    actions.extend(
+        cache
+            .exile
+            .candidates
+            .values()
+            .copied()
+            .map(StateBasedAction::TokenCeasesToExist),
+    );
+    if let Some(changed) = changed {
+        for id in changed {
+            if game.object(id).is_some_and(|object| {
+                object.kind == crate::object::ObjectKind::SpellCopy && object.zone != Zone::Stack
+            }) {
+                cache.copies.insert(id);
+            } else {
+                cache.copies.remove(&id);
+            }
+        }
+    } else {
+        cache.copies = game
+            .objects_map()
+            .values()
+            .filter(|object| {
+                object.kind == crate::object::ObjectKind::SpellCopy && object.zone != Zone::Stack
+            })
+            .map(|object| object.id)
+            .collect();
+    }
+    actions.extend(
+        cache
+            .copies
+            .iter()
+            .copied()
+            .map(StateBasedAction::CopyCeasesToExist),
+    );
+    cache.cursor = Some(game.object_change_cursor());
+}
+
 fn check_token_cleanup(game: &GameState, actions: &mut Vec<StateBasedAction>) {
     // Check all zones except battlefield for tokens
     for player in &game.players {
@@ -1010,16 +1707,25 @@ fn check_token_cleanup(game: &GameState, actions: &mut Vec<StateBasedAction>) {
 
     // CR 704.5e applies to a spell copy in every zone other than the stack,
     // including destinations selected by a countering replacement effect.
-    for object in game.objects_in_deterministic_order() {
-        if object.kind == crate::object::ObjectKind::SpellCopy && object.zone != Zone::Stack {
-            actions.push(StateBasedAction::CopyCeasesToExist(object.id));
-        }
-    }
+    let mut copies: Vec<_> = game
+        .objects_map()
+        .values()
+        .filter(|object| {
+            object.kind == crate::object::ObjectKind::SpellCopy && object.zone != Zone::Stack
+        })
+        .map(|object| object.id)
+        .collect();
+    copies.sort_unstable();
+    actions.extend(copies.into_iter().map(StateBasedAction::CopyCeasesToExist));
 }
 
 /// Check for +1/+1 and -1/-1 counter annihilation.
-fn check_counter_annihilation(game: &GameState, actions: &mut Vec<StateBasedAction>) {
-    for &obj_id in &game.battlefield {
+fn check_counter_annihilation(
+    game: &GameState,
+    candidates: &[ObjectId],
+    actions: &mut Vec<StateBasedAction>,
+) {
+    for &obj_id in candidates {
         if game.is_phased_out(obj_id) {
             continue;
         }
@@ -1052,10 +1758,15 @@ fn check_counter_annihilation(game: &GameState, actions: &mut Vec<StateBasedActi
 fn check_legend_rule_with_view(
     game: &GameState,
     view: &crate::derived_view::DerivedGameView<'_>,
+    candidates: &[ObjectId],
+    exemptions: &[ObjectId],
     actions: &mut Vec<StateBasedAction>,
 ) {
+    if candidates.len() < 2 {
+        return;
+    }
     let mut controller_exemptions = Vec::new();
-    for &obj_id in &game.battlefield {
+    for &obj_id in exemptions {
         if game.is_phased_out(obj_id) {
             continue;
         }
@@ -1102,7 +1813,7 @@ fn check_legend_rule_with_view(
     let mut legends: Vec<((PlayerId, String), Vec<ObjectId>)> = Vec::new();
     let mut group_indexes: crate::FxMap<(PlayerId, String), usize> = crate::FxMap::default();
 
-    for &obj_id in &game.battlefield {
+    for &obj_id in candidates {
         if game.is_phased_out(obj_id) {
             continue;
         }
@@ -1166,10 +1877,10 @@ fn check_legend_rule_with_view(
 fn check_world_rule_with_view(
     game: &GameState,
     view: &crate::derived_view::DerivedGameView<'_>,
+    candidates: &[ObjectId],
     actions: &mut Vec<StateBasedAction>,
 ) {
-    let mut worlds = game
-        .battlefield
+    let mut worlds = candidates
         .iter()
         .copied()
         .filter(|&id| !game.is_phased_out(id))
@@ -2024,6 +2735,208 @@ mod tests {
     }
 
     #[test]
+    fn incremental_sba_unchanged_and_local_damage_work_does_not_scale_with_board() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let card = creature_card(9981, "Work counter creature", 2, 2);
+        let ids: Vec<_> = (0..512)
+            .map(|_| game.create_object_from_card(&card, alice, Zone::Battlefield))
+            .collect();
+        game.refresh_continuous_state();
+        let incremental = |game: &GameState| {
+            let view = crate::derived_view::DerivedGameView::new(game);
+            collect_state_based_actions(game, &view, &StateBasedActionContext::default(), true)
+        };
+        assert!(incremental(&game).is_empty());
+        let before = game.work_counters().objects_scanned_in_sba;
+        assert!(incremental(&game).is_empty());
+        assert_eq!(game.work_counters().objects_scanned_in_sba, before);
+        game.mark_damage(ids[123], 2);
+        assert_eq!(
+            incremental(&game),
+            vec![StateBasedAction::ObjectDies(ids[123])]
+        );
+        assert!(
+            game.work_counters().objects_scanned_in_sba - before <= 4,
+            "local damage must not rescan 512 permanents"
+        );
+        game.effect_store
+            .cant_effects
+            .cant_be_destroyed
+            .insert(ids[123]);
+        assert!(
+            incremental(&game).is_empty(),
+            "direct restriction mutation must invalidate a cached death"
+        );
+        let checkpoint = game.clone();
+        game.effect_store
+            .cant_effects
+            .cant_be_destroyed
+            .remove(&ids[123]);
+        assert_eq!(
+            incremental(&game),
+            vec![StateBasedAction::ObjectDies(ids[123])]
+        );
+        game = checkpoint;
+        game.clear_damage(ids[123]);
+        game.mark_damage(ids[321], 2);
+        let actual = incremental(&game);
+        let view = crate::derived_view::DerivedGameView::new(&game);
+        assert_eq!(
+            actual,
+            collect_state_based_actions(&game, &view, &StateBasedActionContext::default(), false)
+        );
+        assert_eq!(actual, vec![StateBasedAction::ObjectDies(ids[321])]);
+    }
+
+    #[test]
+    fn incremental_soulbond_rechecks_changed_pairs_and_preserves_branch_order() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let card = creature_card(9983, "Paired creature", 2, 2);
+        let ids: Vec<_> = (0..128)
+            .map(|_| game.create_object_from_card(&card, alice, Zone::Battlefield))
+            .collect();
+        for pair in ids.chunks_exact(2) {
+            game.set_soulbond_pair(pair[0], pair[1]);
+        }
+        game.refresh_continuous_state();
+        let compare = |game: &GameState| {
+            let view = crate::derived_view::DerivedGameView::new(game);
+            let mut actual = Vec::new();
+            let mut expected = Vec::new();
+            check_soulbond_incremental(game, &view, &mut actual);
+            check_soulbond_pair_sbas_with_view(game, &view, &mut expected);
+            assert_eq!(actual, expected);
+        };
+        compare(&game);
+        let before = game.work_counters().objects_scanned_in_sba;
+        compare(&game);
+        assert_eq!(game.work_counters().objects_scanned_in_sba, before);
+        game.mark_damage(ids[0], 1);
+        compare(&game);
+        assert_eq!(game.work_counters().objects_scanned_in_sba - before, 2);
+        let checkpoint = game.clone();
+        game.set_current_controller(ids[1], PlayerId::from_index(1));
+        compare(&game);
+        game.clear_soulbond_pair(ids[2]);
+        compare(&game);
+        game = checkpoint;
+        game.object_mut(ids[3]).unwrap().card_types.clear();
+        compare(&game);
+    }
+
+    #[test]
+    fn incremental_sba_observes_conditional_keyword_turn_changes_without_layer_effects() {
+        #[derive(Debug, Clone)]
+        struct IndestructibleOnYourTurn;
+        impl crate::static_abilities::StaticAbilityKind for IndestructibleOnYourTurn {
+            fn id(&self) -> StaticAbilityId {
+                StaticAbilityId::Indestructible
+            }
+            fn display(&self) -> String {
+                "Indestructible during your turn".into()
+            }
+            fn is_active(&self, game: &GameState, source: ObjectId) -> bool {
+                game.controller_of_id(source) == Some(game.turn.active_player)
+            }
+        }
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let card = creature_card(9987, "Turn conditional creature", 2, 2);
+        let id = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.object_mut(id)
+            .unwrap()
+            .abilities_mut()
+            .push(crate::ability::Ability::static_ability(
+                crate::static_abilities::StaticAbility::new(IndestructibleOnYourTurn),
+            ));
+        game.refresh_continuous_state();
+        game.mark_damage(id, 2);
+        assert!(!check_state_based_actions(&game).contains(&StateBasedAction::ObjectDies(id)));
+        game.turn.active_player = PlayerId::from_index(1);
+        assert!(check_state_based_actions(&game).contains(&StateBasedAction::ObjectDies(id)));
+        game.turn.active_player = alice;
+        assert!(!check_state_based_actions(&game).contains(&StateBasedAction::ObjectDies(id)));
+    }
+
+    #[test]
+    fn direct_player_mutation_invalidates_dynamic_sba_characteristics() {
+        use crate::continuous::{ContinuousEffect, EffectTarget, Modification, PtSublayer};
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let card = creature_card(9984, "Life dependent creature", 2, 2);
+        let id = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.effect_store
+            .continuous_effects
+            .add_effect(ContinuousEffect::new(
+                id,
+                alice,
+                EffectTarget::Specific(id),
+                Modification::SetPowerToughness {
+                    power: crate::effect::Value::Fixed(2),
+                    toughness: crate::effect::Value::LifeTotal(crate::target::PlayerFilter::You),
+                    sublayer: PtSublayer::CharacteristicDefining,
+                },
+            ));
+        assert!(!check_state_based_actions(&game).contains(&StateBasedAction::ObjectDies(id)));
+        let checkpoint = game.clone();
+        game.players[0].life = 0;
+        assert!(check_state_based_actions(&game).contains(&StateBasedAction::ObjectDies(id)));
+        game = checkpoint;
+        game.players[0].life = 3;
+        assert!(!check_state_based_actions(&game).contains(&StateBasedAction::ObjectDies(id)));
+        assert_eq!(game.calculated_toughness(id), Some(3));
+    }
+
+    #[test]
+    fn cleanup_indexes_match_full_scan_across_kind_changes_reorders_and_rollback() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let card = creature_card(9982, "Cleanup candidate", 2, 2);
+        let mut ids = Vec::new();
+        for player in [PlayerId::from_index(0), PlayerId::from_index(1)] {
+            for zone in [
+                Zone::Graveyard,
+                Zone::Hand,
+                Zone::Library,
+                Zone::Exile,
+                Zone::Command,
+            ] {
+                for _ in 0..3 {
+                    ids.push(game.create_object_from_card(&card, player, zone));
+                }
+            }
+        }
+        let compare = |game: &GameState| {
+            let mut actual = Vec::new();
+            let mut expected = Vec::new();
+            check_token_cleanup_incremental(game, &mut actual);
+            check_token_cleanup(game, &mut expected);
+            assert_eq!(actual, expected);
+        };
+        compare(&game);
+        for (index, id) in ids.iter().copied().enumerate() {
+            game.object_mut(id).unwrap().kind = if index % 2 == 0 {
+                crate::object::ObjectKind::Token
+            } else {
+                crate::object::ObjectKind::SpellCopy
+            };
+            compare(&game);
+        }
+        let checkpoint = game.clone();
+        game.players[0].library.reverse();
+        game.exile.reverse();
+        compare(&game);
+        for id in ids.iter().take(5) {
+            game.remove_object(*id);
+            compare(&game);
+        }
+        game = checkpoint;
+        game.players[1].graveyard.reverse();
+        compare(&game);
+    }
+
+    #[test]
     fn legend_rule_violations_use_stable_apnap_order() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = PlayerId::from_index(0);
@@ -2148,7 +3061,7 @@ mod tests {
             .collect();
 
         game.refresh_continuous_state();
-        game.prewarm_calculated_characteristics(&game.battlefield.clone());
+        game.prewarm_calculated_characteristics(&game.battlefield.to_vec());
         let before = game.work_counters();
 
         apply_legend_rule_choice_from_group(&mut game, legends[0], &legends);

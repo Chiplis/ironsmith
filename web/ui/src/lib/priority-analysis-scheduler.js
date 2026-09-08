@@ -1,8 +1,12 @@
+import { createAdaptiveWorkBudget } from './adaptive-work-budget.js';
 /** Cooperative background work on the engine's immutable priority snapshot.
  * Every slice is a separate task, so queued game commands run between slices.
  */
 export function createPriorityAnalysisScheduler({ game, busy, enqueue, publish, fail,
-  schedule = (fn) => setTimeout(fn, 0), cancel = clearTimeout, budget = 128 }) {
+  schedule = (fn) => setTimeout(fn, 0), cancel = clearTimeout, budget = 128,
+  now = () => performance.now(), reportSlice = () => {} }) {
+  const priorityBudget = createAdaptiveWorkBudget({ initial: Math.min(8, budget), max: budget, now, report: reportSlice });
+  const inspectorBudget = createAdaptiveWorkBudget({ initial: 1, max: 4, now, report: reportSlice });
   let revision = 0;
   const previews = new Map();
   const queue = [];
@@ -34,7 +38,7 @@ export function createPriorityAnalysisScheduler({ game, busy, enqueue, publish, 
       if (busy()) { timer = schedule(tick); return; }
       enqueue(() => {
         if (token !== String(revision)) return;
-        const decision = game().stepPriorityAnalysis(token, budget);
+        const decision = priorityBudget.run(units => game().stepPriorityAnalysis(token, units));
         if (decision === false) { stop(); start(); return; }
         if (decision) {
           stop();
@@ -72,7 +76,7 @@ export function createPriorityAnalysisScheduler({ game, busy, enqueue, publish, 
           game().beginInspectorAnalysis(token, ...entry.args);
           begun = true;
         }
-        const result = game().stepInspectorAnalysis(token, 4);
+        const result = inspectorBudget.run(units => game().stepInspectorAnalysis(token, units));
         if (result === null) timer = schedule(tick);
         else finish(result === false ? [] : result);
       }).catch(() => {

@@ -2422,3 +2422,29 @@ fn source_block_history_tracks_blocker_and_blocked_attacker_separately() {
     assert!(!game.source_blocked_or_became_blocked_since_last_upkeep(blocker, alice));
     assert!(!game.source_blocked_or_became_blocked_since_last_upkeep(attacker, alice));
 }
+
+#[test]
+fn ordinary_untap_keeps_unrelated_characteristics_warm_and_clones_independent() {
+    use crate::card::PowerToughness;
+    use crate::zone::Zone;
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let alice = PlayerId::from_index(0);
+    let creature = CardDefinitionBuilder::new(CardId::from_raw(90_011), "Cache Test Creature")
+        .card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(2, 2)).build();
+    let ids: Vec<_> = (0..200).map(|_| game.create_object_from_definition(&creature, alice, Zone::Battlefield)).collect();
+    game.tap(ids[0]);
+    game.refresh_continuous_state();
+    game.prewarm_calculated_characteristics(&ids);
+    let before = game.work_counters();
+    let mut branch = game.clone();
+    branch.untap(ids[0]);
+    branch.prewarm_calculated_characteristics(&ids);
+    assert!(game.is_tapped(ids[0]));
+    assert!(!branch.is_tapped(ids[0]));
+    assert!(branch.work_counters().characteristics_full_recomputes <= 1);
+    assert_eq!(branch.work_counters().continuous_global_invalidations, 0);
+    assert_eq!(game.work_counters(), before);
+    branch.object_mut(ids[1]).unwrap().name = "Changed in branch".into();
+    assert_eq!(game.object(ids[1]).unwrap().name.as_str(), "Cache Test Creature");
+    assert_eq!(game.battlefield, branch.battlefield);
+}

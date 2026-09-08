@@ -2599,18 +2599,18 @@ impl WasmGame {
                 player.has_lost = player_checkpoint.has_lost;
                 player.has_won = player_checkpoint.has_won;
                 player.has_left_game = player_checkpoint.has_left_game;
-                player.library = object_ids(player_checkpoint.library.clone());
-                player.hand = object_ids(player_checkpoint.hand.clone());
-                player.graveyard = object_ids(player_checkpoint.graveyard.clone());
-                player.sideboard = object_ids(player_checkpoint.sideboard.clone());
+                player.library = object_ids(player_checkpoint.library.clone()).into();
+                player.hand = object_ids(player_checkpoint.hand.clone()).into();
+                player.graveyard = object_ids(player_checkpoint.graveyard.clone()).into();
+                player.sideboard = object_ids(player_checkpoint.sideboard.clone()).into();
                 player.commanders = object_ids(player_checkpoint.commanders.clone());
             }
         }
 
-        self.game.battlefield = object_ids(checkpoint.battlefield.clone());
-        self.game.exile = object_ids(checkpoint.exile.clone());
-        self.game.command_zone = object_ids(checkpoint.command.clone());
-        self.game.ante = object_ids(checkpoint.ante.clone());
+        self.game.battlefield = object_ids(checkpoint.battlefield.clone()).into();
+        self.game.exile = object_ids(checkpoint.exile.clone()).into();
+        self.game.command_zone = object_ids(checkpoint.command.clone()).into();
+        self.game.ante = object_ids(checkpoint.ante.clone()).into();
         self.game.planechase = checkpoint
             .planechase
             .as_ref()

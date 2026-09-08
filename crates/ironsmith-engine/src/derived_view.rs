@@ -1,5 +1,5 @@
 use crate::filter::ObjectFilterExt as _;
-use std::cell::RefCell;
+use std::cell::{OnceCell, RefCell};
 use std::collections::HashSet;
 
 use crate::FxMap;
@@ -31,7 +31,7 @@ use crate::zone::Zone;
 pub(crate) struct DerivedGameView<'a> {
     game: &'a GameState,
     all_effects: Arc<Vec<ContinuousEffect>>,
-    battlefield_characteristic_scope: BattlefieldCharacteristicScope,
+    battlefield_characteristic_scope: OnceCell<BattlefieldCharacteristicScope>,
     use_game_characteristics_cache: bool,
     characteristics: RefCell<FxMap<ObjectId, Option<Arc<CalculatedCharacteristics>>>>,
     abilities_cache: RefCell<FxMap<ObjectId, Rc<Vec<Ability>>>>,
@@ -365,10 +365,7 @@ impl<'a> DerivedGameView<'a> {
         game.count_derived_view_rebuild();
         Self {
             game,
-            battlefield_characteristic_scope: battlefield_characteristic_scope(
-                game,
-                all_effects.as_slice(),
-            ),
+            battlefield_characteristic_scope: OnceCell::new(),
             all_effects,
             use_game_characteristics_cache: true,
             characteristics: RefCell::new(FxMap::default()),
@@ -406,10 +403,7 @@ impl<'a> DerivedGameView<'a> {
         let all_effects = Arc::new(all_effects);
         Self {
             game,
-            battlefield_characteristic_scope: battlefield_characteristic_scope(
-                game,
-                all_effects.as_slice(),
-            ),
+            battlefield_characteristic_scope: OnceCell::new(),
             all_effects,
             use_game_characteristics_cache: false,
             characteristics: RefCell::new(FxMap::default()),
@@ -1720,7 +1714,9 @@ impl<'a> DerivedGameView<'a> {
         if self.game.is_face_down(object_id) {
             return true;
         }
-        self.battlefield_characteristic_scope.includes(object_id)
+        self.battlefield_characteristic_scope
+            .get_or_init(|| battlefield_characteristic_scope(self.game, &self.all_effects))
+            .includes(object_id)
     }
 }
 

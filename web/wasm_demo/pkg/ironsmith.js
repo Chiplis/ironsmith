@@ -81,6 +81,16 @@ export function compileAndRegisterCardSources(game, input) {
       ?? source?.canonicalName
       ?? "unknown card source";
     try {
+      // The browser engine already includes source compilation for custom cards.
+      // Reuse it when the standalone compiler has deliberately not been loaded.
+      // Baked artifacts retain the faster artifact-only path.
+      if (!compilerInitialization && !source?.artifacts?.length && source?.group
+          && typeof registerSourceInEngine === "function") {
+        const registered = registerSourceInEngine.call(game, source);
+        summary.loaded += Number(registered?.loaded ?? 0);
+        if (Array.isArray(registered?.failed)) summary.failed.push(...registered.failed);
+        continue;
+      }
       const registered = game.registerCompiledCardSourceArtifacts(
         source,
         sourceArtifacts(source),
@@ -220,6 +230,16 @@ const verifierMethods = {
 };
 
 let initialized;
+let compilerInitialization;
+let verifierInitialization;
+export function initCompilerRuntime(input) {
+  compilerInitialization ||= initCompiler(wasmInitOptions(input)).catch(error => { compilerInitialization = null; throw error; });
+  return compilerInitialization;
+}
+export function initVerifierRuntime(input) {
+  verifierInitialization ||= initVerifier(wasmInitOptions(input)).catch(error => { verifierInitialization = null; throw error; });
+  return verifierInitialization;
+}
 
 function wasmInitOptions(input) {
   if (input === undefined) return undefined;
@@ -290,11 +310,11 @@ export default function init(input) {
       : { engine: input };
   initialized = Promise.all([
     initEngine(wasmInitOptions(splitInput.engine)),
-    initCompiler(wasmInitOptions(splitInput.compiler)),
-    initVerifier(wasmInitOptions(splitInput.verifier)),
+    splitInput.compiler === false ? null : initCompilerRuntime(splitInput.compiler),
+    splitInput.verifier === false ? null : initVerifierRuntime(splitInput.verifier),
   ]).then(([engine]) => {
     installCompatibilityMethods();
     return engine;
-  });
+  }).catch(error => { initialized = null; throw error; });
   return initialized;
 }

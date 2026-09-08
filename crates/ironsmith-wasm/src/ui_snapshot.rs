@@ -1,9 +1,6 @@
+use super::bounded_cache::BoundedCache;
 use std::cell::RefCell;
-#[cfg(target_arch = "wasm32")]
-use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
-#[cfg(target_arch = "wasm32")]
-use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use serde::Serialize;
@@ -66,6 +63,7 @@ struct BattlefieldGroupKey {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct PermanentObjectViewCacheKey {
+    dependency_revision: u64,
     object_id: ObjectId,
     object_revision: u64,
     continuous_revision: u64,
@@ -84,6 +82,7 @@ struct PermanentObjectViewCacheKey {
 
 #[derive(Debug, Clone)]
 struct PermanentObjectView {
+    characteristics: Option<Arc<ironsmith::continuous::CalculatedCharacteristics>>,
     id: u64,
     stable_id: u64,
     name: String,
@@ -102,10 +101,688 @@ const SNAPSHOT_OBJECT_VIEW_CACHE_LIMIT: usize = 8_192;
 
 #[derive(Debug, Default)]
 pub(super) struct SnapshotObjectViewCache {
-    battlefield: RefCell<HashMap<PermanentObjectViewCacheKey, Arc<PermanentObjectView>>>,
+    battlefield: RefCell<
+        BoundedCache<
+            PermanentObjectViewCacheKey,
+            Arc<PermanentObjectView>,
+            SNAPSHOT_OBJECT_VIEW_CACHE_LIMIT,
+        >,
+    >,
+    dependency_clock: std::cell::Cell<u64>,
+    dependency_revisions: RefCell<HashMap<ObjectId, u64>>,
+    groups: RefCell<IncrementalBattlefieldGroups>,
+    hands: RefCell<HashMap<PlayerId, IncrementalZoneCards<HandCardSnapshot>>>,
+    zones: RefCell<HashMap<(PlayerId, Zone), IncrementalZoneCards<ZoneCardSnapshot>>>,
+    looks: RefCell<HashMap<(PlayerId, Zone), IncrementalZoneCards<ViewedCardSnapshot>>>,
+    combined_looks: RefCell<HashMap<PlayerId, CombinedLookCards>>,
+    grant_sources: RefCell<IncrementalGrantSources>,
+}
+
+#[derive(Debug, Default)]
+struct IncrementalGrantSources {
+    cursor: Option<ironsmith::incremental::ChangeCursor>,
+    sources: HashSet<ObjectId>,
+}
+impl IncrementalGrantSources {
+    fn update(&mut self, game: &GameState) -> bool {
+        let dirty = if let Some(changed) = self
+            .cursor
+            .as_ref()
+            .and_then(|cursor| game.render_changes_since(cursor))
+        {
+            changed
+        } else {
+            self.sources.clear();
+            game.objects_in_deterministic_order()
+                .iter()
+                .map(|object| object.id)
+                .collect()
+        };
+        for id in dirty {
+            let potential = game.object(id).is_some_and(|object|
+                matches!(object.zone, Zone::Battlefield | Zone::Graveyard | Zone::Exile | Zone::Command)
+                && object.abilities.iter().any(|ability| matches!(&ability.kind,
+                    ironsmith::ability::AbilityKind::Static(ability) if ability.grant_spec().is_some())));
+            if potential {
+                self.sources.insert(id);
+            } else {
+                self.sources.remove(&id);
+            }
+        }
+        self.cursor = Some(game.render_change_cursor());
+        !self.sources.is_empty() || !game.effect_store.grant_registry.grants.is_empty()
+    }
+}
+
+#[derive(Debug, Default)]
+struct CombinedLookCards {
+    top: Option<ViewedCardSnapshot>,
+    hand: Arc<Vec<Arc<ViewedCardSnapshot>>>,
+    exile: Arc<Vec<Arc<ViewedCardSnapshot>>>,
+    output: Arc<Vec<Arc<ViewedCardSnapshot>>>,
+}
+fn viewed_card_snapshot(object: &ironsmith::object::Object) -> ViewedCardSnapshot {
+    ViewedCardSnapshot {
+        id: object.id.0,
+        stable_id: object.stable_id.0.0,
+        name: object.name.to_string(),
+        oracle_text: object.compiled_card_text.to_string(),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ZoneRenderKey {
+    perspective: PlayerId,
+    revision: Option<(u64, u64)>,
+    grant_inputs: Option<ironsmith::incremental::ChangeCursor>,
+    auxiliary: Option<(
+        ironsmith::incremental::ChangeCursor,
+        (
+            ironsmith::incremental::ChangeCursor,
+            ironsmith::incremental::ChangeCursor,
+        ),
+    )>,
+    turn: Option<(u32, PlayerId, Option<PlayerId>, u8, Option<u8>)>,
+    viewed: Option<ActiveViewedCards>,
+    visibility: u8,
+}
+impl ZoneRenderKey {
+    fn new(
+        game: &GameState,
+        perspective: PlayerId,
+        viewed: Option<&ActiveViewedCards>,
+        visibility: u8,
+    ) -> Self {
+        Self {
+            perspective,
+            revision: Some(game.derived_view_revision()),
+            grant_inputs: None,
+            auxiliary: Some(game.zone_view_identity()),
+            turn: Some((
+                game.turn.turn_number,
+                game.turn.active_player,
+                game.turn.priority_player,
+                game.turn.phase as u8,
+                game.turn.step.map(|step| step as u8),
+            )),
+            viewed: viewed.cloned(),
+            visibility,
+        }
+    }
+    fn raw_card_fields(mut self) -> Self {
+        self.revision = None;
+        self.auxiliary = None;
+        self.turn = None;
+        self
+    }
+}
+
+#[derive(Debug)]
+struct IncrementalZoneCards<T> {
+    order: ironsmith::zone_sequence::ZoneOrder,
+    cursor: Option<ironsmith::incremental::ChangeCursor>,
+    key: Option<ZoneRenderKey>,
+    by_id: HashMap<ObjectId, Arc<T>>,
+    labels: HashMap<ObjectId, u128>,
+    ordered: std::collections::BTreeMap<u128, Arc<T>>,
+    output: Arc<Vec<Arc<T>>>,
+    rendered: usize,
+}
+impl<T> Default for IncrementalZoneCards<T> {
+    fn default() -> Self {
+        Self {
+            order: Default::default(),
+            cursor: None,
+            key: None,
+            by_id: HashMap::new(),
+            labels: HashMap::new(),
+            ordered: Default::default(),
+            output: Arc::new(Vec::new()),
+            rendered: 0,
+        }
+    }
+}
+impl<T: PartialEq> IncrementalZoneCards<T> {
+    fn update(
+        &mut self,
+        game: &GameState,
+        zone: &ironsmith::zone_sequence::ZoneSequence,
+        key: ZoneRenderKey,
+        reverse: bool,
+        mut render: impl FnMut(ObjectId) -> Option<T>,
+    ) -> Arc<Vec<Arc<T>>> {
+        let membership = self.order.synchronize(zone);
+        let changes = self
+            .cursor
+            .as_ref()
+            .and_then(|cursor| game.render_changes_since(cursor));
+        let rebuild = membership.is_none() || changes.is_none() || self.key.as_ref() != Some(&key);
+        let mut output_changed = rebuild;
+        let mut dirty = if rebuild {
+            self.ordered.clear();
+            self.labels.clear();
+            self.by_id.retain(|id, _| self.order.label(*id).is_some());
+            zone.iter().copied().collect::<Vec<_>>()
+        } else {
+            let mut dirty = changes.unwrap_or_default();
+            dirty.extend(membership.unwrap_or_default());
+            dirty
+        };
+        dirty.sort_unstable();
+        dirty.dedup();
+        for id in dirty {
+            let old_label = self.labels.get(&id).copied();
+            let new_label = self.order.label(id);
+            let new = if new_label.is_some() {
+                self.rendered += 1;
+                render(id)
+            } else {
+                None
+            };
+            match new {
+                Some(new) => {
+                    let value = match self.by_id.get(&id) {
+                        Some(old) if old.as_ref() == &new => old.clone(),
+                        _ => Arc::new(new),
+                    };
+                    let label = new_label.expect("rendered zone member has an order label");
+                    let unchanged = old_label == Some(label)
+                        && self
+                            .by_id
+                            .get(&id)
+                            .is_some_and(|old| Arc::ptr_eq(old, &value));
+                    if !unchanged {
+                        if let Some(old) = old_label {
+                            self.ordered.remove(&old);
+                        }
+                        self.ordered.insert(label, value.clone());
+                        self.labels.insert(id, label);
+                        self.by_id.insert(id, value);
+                        output_changed = true;
+                    }
+                }
+                None => {
+                    if let Some(label) = self.labels.remove(&id) {
+                        self.ordered.remove(&label);
+                        output_changed = true;
+                    }
+                    self.by_id.remove(&id);
+                }
+            }
+        }
+        if output_changed {
+            let mut output: Vec<_> = self.ordered.values().cloned().collect();
+            if reverse {
+                output.reverse();
+            }
+            if self.output.len() != output.len()
+                || !self
+                    .output
+                    .iter()
+                    .zip(&output)
+                    .all(|(a, b)| Arc::ptr_eq(a, b))
+            {
+                self.output = Arc::new(output);
+            }
+        }
+        self.cursor = Some(game.render_change_cursor());
+        self.key = Some(key);
+        self.output.clone()
+    }
+}
+
+#[derive(Debug, Default)]
+struct IncrementalBattlefieldGroups {
+    objects_updated: usize,
+    groups_rebuilt: usize,
+    order: ironsmith::zone_sequence::ZoneOrder,
+    cursor: Option<ironsmith::incremental::ChangeCursor>,
+    revision: Option<((u64, u64), u32, PlayerId, Option<PlayerId>, u8, Option<u8>)>,
+    protected: HashSet<ObjectId>,
+    dependencies: HashMap<ObjectId, HashSet<ObjectId>>,
+    dependents: HashMap<ObjectId, HashSet<ObjectId>>,
+    visibility_cursor: Option<ironsmith::incremental::ChangeCursor>,
+    visibility_candidates: HashSet<ObjectId>,
+    visibility: HashMap<ObjectId, (PlayerId, u8)>,
+    membership: HashMap<ObjectId, (PlayerId, BattlefieldGroupKey, u128)>,
+    members: HashMap<(PlayerId, BattlefieldGroupKey), std::collections::BTreeMap<u128, ObjectId>>,
+    snapshots: HashMap<(PlayerId, BattlefieldGroupKey), Arc<PermanentSnapshot>>,
+    player_outputs: HashMap<PlayerId, (Arc<Vec<Arc<PermanentSnapshot>>>, usize)>,
+    empty: Arc<Vec<Arc<PermanentSnapshot>>>,
+}
+
+impl IncrementalBattlefieldGroups {
+    fn update(
+        &mut self,
+        game: &GameState,
+        protected: &HashSet<ObjectId>,
+        views: &SnapshotObjectViewCache,
+    ) {
+        let membership = self.order.synchronize(&game.battlefield);
+        let changed = self
+            .cursor
+            .as_ref()
+            .and_then(|cursor| game.render_changes_since(cursor));
+        let revision = (
+            game.derived_view_revision(),
+            game.turn.turn_number,
+            game.turn.active_player,
+            game.turn.priority_player,
+            game.turn.phase as u8,
+            game.turn.step.map(|step| step as u8),
+        );
+        let rebuild = membership.is_none() || changed.is_none() || self.revision != Some(revision);
+        let mut dirty = if rebuild {
+            self.membership.clear();
+            self.members.clear();
+            self.snapshots.clear();
+            self.visibility_candidates.clear();
+            self.visibility.clear();
+            self.player_outputs.clear();
+            self.dependencies.clear();
+            self.dependents.clear();
+            game.battlefield.iter().copied().collect::<Vec<_>>()
+        } else {
+            let mut dirty = changed.unwrap_or_default();
+            dirty.extend(membership.unwrap_or_default());
+            dirty.extend(self.protected.symmetric_difference(protected).copied());
+            dirty
+        };
+        if !rebuild {
+            let mut pending = dirty.clone();
+            let mut seen: HashSet<_> = dirty.iter().copied().collect();
+            while let Some(id) = pending.pop() {
+                if let Some(dependents) = self.dependents.get(&id) {
+                    for dependent in dependents.iter().copied() {
+                        if seen.insert(dependent) {
+                            dirty.push(dependent);
+                            pending.push(dependent);
+                        }
+                    }
+                }
+            }
+        } else {
+            views
+                .dependency_revisions
+                .borrow_mut()
+                .retain(|id, _| self.order.label(*id).is_some());
+        }
+        dirty.sort_unstable();
+        dirty.dedup();
+        let refresh_visibility = !dirty.is_empty()
+            || self
+                .visibility_cursor
+                .as_ref()
+                .and_then(|cursor| game.object_changes_since(cursor))
+                .is_none_or(|changes| !changes.is_empty());
+        self.visibility_cursor = Some(game.object_change_cursor());
+        self.objects_updated += dirty.len();
+        game.prewarm_calculated_characteristics(&dirty);
+        let mut affected = HashSet::new();
+        for id in dirty {
+            views.invalidate_dependency(id);
+            if let Some(previous) = self.dependencies.remove(&id) {
+                for dependency in previous {
+                    if let Some(dependents) = self.dependents.get_mut(&dependency) {
+                        dependents.remove(&id);
+                        if dependents.is_empty() {
+                            self.dependents.remove(&dependency);
+                        }
+                    }
+                }
+            }
+            self.visibility_candidates.remove(&id);
+            self.visibility.remove(&id);
+            if let Some((player, key, label)) = self.membership.remove(&id) {
+                let group = (player, key);
+                if let Some(members) = self.members.get_mut(&group) {
+                    members.remove(&label);
+                }
+                affected.insert(group);
+            }
+            let Some(label) = self.order.label(id) else {
+                continue;
+            };
+            let Some(object) = game.object(id) else {
+                continue;
+            };
+            let player = game.current_controller(id).unwrap_or(object.owner);
+            let dependencies: HashSet<_> = object
+                .attachments
+                .iter()
+                .copied()
+                .chain(object.attached_to.and_then(|target| target.object_id()))
+                .collect();
+            for dependency in dependencies.iter().copied() {
+                self.dependents.entry(dependency).or_default().insert(id);
+            }
+            if !dependencies.is_empty() {
+                self.dependencies.insert(id, dependencies);
+            }
+
+            let view = views.battlefield_view(game, object);
+            if view.characteristics.as_ref().is_some_and(|chars| {
+                chars.static_abilities.iter().any(|ability| {
+                    matches!(
+                        ability.id(),
+                        StaticAbilityId::LookAtTopCardOfLibrary
+                            | StaticAbilityId::AllPlayersLookAtYourTopLibraryCard
+                            | StaticAbilityId::AllPlayersLookAtTopCardsOfLibraries
+                            | StaticAbilityId::OpponentsPlayWithHandsRevealed
+                    )
+                })
+            }) {
+                self.visibility_candidates.insert(id);
+            }
+
+            let key = BattlefieldGroupKey {
+                lane: view.lane,
+                name: view.name.clone(),
+                tapped: view.tapped,
+                characteristic_signature: view.characteristic_signature.clone(),
+                counter_signature: view.counter_signature.clone(),
+                token: view.token,
+                force_single_object: protected.contains(&id).then_some(id.0),
+            };
+            self.membership.insert(id, (player, key.clone(), label));
+            let group = (player, key);
+            self.members
+                .entry(group.clone())
+                .or_default()
+                .insert(label, id);
+            affected.insert(group);
+        }
+        if refresh_visibility {
+            for id in self.visibility_candidates.iter().copied() {
+                let flags = [
+                    StaticAbilityId::LookAtTopCardOfLibrary,
+                    StaticAbilityId::AllPlayersLookAtYourTopLibraryCard,
+                    StaticAbilityId::AllPlayersLookAtTopCardsOfLibraries,
+                    StaticAbilityId::OpponentsPlayWithHandsRevealed,
+                ]
+                .into_iter()
+                .enumerate()
+                .fold(0u8, |flags, (bit, ability)| {
+                    flags | (u8::from(game.object_has_static_ability_id(id, ability)) << bit)
+                });
+                if let Some(object) = game.object(id) {
+                    self.visibility.insert(
+                        id,
+                        (game.current_controller(id).unwrap_or(object.owner), flags),
+                    );
+                }
+            }
+        }
+        let dirty_players: HashSet<_> = affected.iter().map(|(player, _)| *player).collect();
+        for group in affected {
+            if self
+                .members
+                .get(&group)
+                .is_none_or(|members| members.is_empty())
+            {
+                self.members.remove(&group);
+                self.snapshots.remove(&group);
+                continue;
+            }
+            let members = &self.members[&group];
+            let (snapshots, _) =
+                grouped_battlefield_for_ids(game, members.values().copied(), protected, views);
+            self.groups_rebuilt += 1;
+            debug_assert_eq!(snapshots.len(), 1);
+            self.snapshots.insert(
+                group,
+                Arc::new(snapshots.into_iter().next().expect("nonempty group")),
+            );
+        }
+        for player in dirty_players {
+            let output = self.collect_for_player(player);
+            self.player_outputs.insert(player, output);
+        }
+        self.player_outputs
+            .retain(|player, _| game.players.iter().any(|current| current.id == *player));
+        self.cursor = Some(game.render_change_cursor());
+        self.revision = Some(revision);
+        self.protected.clone_from(protected);
+    }
+
+    fn visibility_for_player(
+        &self,
+        game: &GameState,
+        perspective: PlayerId,
+        player: PlayerId,
+    ) -> (bool, bool) {
+        let own = perspective == player || game.controlling_player_for(player) == perspective;
+        let top = self.visibility.values().any(|(controller, flags)| {
+            flags & 4 != 0 || (*controller == player && (flags & 2 != 0 || (own && flags & 1 != 0)))
+        });
+        let hand = self
+            .visibility
+            .values()
+            .any(|(controller, flags)| *controller != player && flags & 8 != 0);
+        (top, hand)
+    }
+
+    fn for_player(&self, player: PlayerId) -> (Arc<Vec<Arc<PermanentSnapshot>>>, usize) {
+        self.player_outputs
+            .get(&player)
+            .cloned()
+            .unwrap_or_else(|| (self.empty.clone(), 0))
+    }
+
+    fn collect_for_player(&self, player: PlayerId) -> (Arc<Vec<Arc<PermanentSnapshot>>>, usize) {
+        let mut groups: Vec<_> = self
+            .snapshots
+            .iter()
+            .filter(|((owner, _), _)| *owner == player)
+            .collect();
+        groups.sort_unstable_by(|(left, _), (right, _)| {
+            let a = &left.1;
+            let b = &right.1;
+            a.lane
+                .cmp(&b.lane)
+                .then_with(|| a.name.cmp(&b.name))
+                .then_with(|| a.tapped.cmp(&b.tapped))
+                .then_with(|| a.token.cmp(&b.token))
+                .then_with(|| {
+                    self.members[*left]
+                        .first_key_value()
+                        .map(|(_, id)| *id)
+                        .cmp(&self.members[*right].first_key_value().map(|(_, id)| *id))
+                })
+        });
+        let total = groups.iter().map(|(_, snapshot)| snapshot.count).sum();
+        (
+            Arc::new(
+                groups
+                    .into_iter()
+                    .map(|(_, snapshot)| snapshot.clone())
+                    .collect(),
+            ),
+            total,
+        )
+    }
 }
 
 impl SnapshotObjectViewCache {
+    fn invalidate_dependency(&self, id: ObjectId) {
+        let next = self
+            .dependency_clock
+            .get()
+            .checked_add(1)
+            .expect("snapshot dependency generation exhausted");
+        self.dependency_clock.set(next);
+        self.dependency_revisions.borrow_mut().insert(id, next);
+    }
+
+    fn persistent_look_cards(
+        &self,
+        game: &GameState,
+        owner: PlayerId,
+        perspective: PlayerId,
+        library_top: bool,
+        hand_revealed: bool,
+    ) -> Arc<Vec<Arc<ViewedCardSnapshot>>> {
+        let Some(player) = game.players.iter().find(|player| player.id == owner) else {
+            return Arc::new(Vec::new());
+        };
+        let top = library_top
+            .then(|| {
+                player
+                    .library
+                    .last()
+                    .and_then(|id| game.object(*id))
+                    .map(viewed_card_snapshot)
+            })
+            .flatten();
+        let mut looks = self.looks.borrow_mut();
+        let exile = looks.entry((owner, Zone::Exile)).or_default().update(
+            game,
+            &game.exile,
+            ZoneRenderKey::new(game, perspective, None, 0),
+            false,
+            |id| {
+                let object = game.object(id)?;
+                (object.owner == owner
+                    && game.is_face_down(id)
+                    && game.can_player_look_at_face_down_exiled_card(id, perspective))
+                .then(|| viewed_card_snapshot(object))
+            },
+        );
+        let hand = looks.entry((owner, Zone::Hand)).or_default().update(
+            game,
+            &player.hand,
+            ZoneRenderKey::new(game, perspective, None, u8::from(hand_revealed)).raw_card_fields(),
+            false,
+            |id| {
+                if !hand_revealed {
+                    return None;
+                }
+                game.object(id).map(viewed_card_snapshot)
+            },
+        );
+        let mut combined = self.combined_looks.borrow_mut();
+        let cached = combined.entry(owner).or_default();
+        if cached.top != top
+            || !Arc::ptr_eq(&cached.hand, &hand)
+            || !Arc::ptr_eq(&cached.exile, &exile)
+        {
+            cached.output = Arc::new(
+                top.iter()
+                    .cloned()
+                    .map(Arc::new)
+                    .chain(exile.iter().cloned())
+                    .chain(hand.iter().cloned())
+                    .collect(),
+            );
+            cached.top = top;
+            cached.hand = hand;
+            cached.exile = exile;
+        }
+        cached.output.clone()
+    }
+
+    fn hand_cards(
+        &self,
+        game: &GameState,
+        owner: PlayerId,
+        perspective: PlayerId,
+        viewed: Option<&ActiveViewedCards>,
+        visibility: u8,
+    ) -> Arc<Vec<Arc<HandCardSnapshot>>> {
+        let Some(player) = game.players.iter().find(|player| player.id == owner) else {
+            return Arc::new(Vec::new());
+        };
+        let key = ZoneRenderKey::new(game, perspective, viewed, visibility).raw_card_fields();
+        self.hands.borrow_mut().entry(owner).or_default().update(
+            game,
+            &player.hand,
+            key,
+            true,
+            |id| {
+                if visibility != 2
+                    && !(visibility == 1
+                        && viewed.is_some_and(|view| view.contains_object(game, id)))
+                {
+                    return None;
+                }
+                let object = game.object(id)?;
+                Some(HandCardSnapshot {
+                    id: object.id.0,
+                    stable_id: object.stable_id.0.0,
+                    name: object.name.to_string(),
+                    mana_cost: object.mana_cost.as_ref().map(|cost| cost.to_oracle()),
+                    oracle_text: object.compiled_card_text.to_string(),
+                    power_toughness: match (object.power(), object.toughness()) {
+                        (Some(power), Some(toughness)) => Some(format!("{power}/{toughness}")),
+                        _ => None,
+                    },
+                    loyalty: object.loyalty(),
+                    defense: object.defense(),
+                    card_types: object
+                        .card_types
+                        .iter()
+                        .map(|kind| kind.name().to_string())
+                        .collect(),
+                })
+            },
+        )
+    }
+
+    fn zone_cards(
+        &self,
+        game: &GameState,
+        owner: PlayerId,
+        perspective: PlayerId,
+        zone: Zone,
+        viewed: Option<&ActiveViewedCards>,
+        grants: &std::cell::OnceCell<Vec<ironsmith::grant_registry::Grant>>,
+        potential_grants: bool,
+    ) -> Arc<Vec<Arc<ZoneCardSnapshot>>> {
+        let Some(player) = game.players.iter().find(|player| player.id == owner) else {
+            return Arc::new(Vec::new());
+        };
+        let (ids, filter_owner) = match zone {
+            Zone::Graveyard => (&player.graveyard, false),
+            Zone::Exile => (&game.exile, true),
+            Zone::Command => (&game.command_zone, true),
+            Zone::Ante => (&game.ante, true),
+            Zone::OutsideGame => (&player.sideboard, false),
+            _ => unreachable!("zone card projection has a public-zone or sideboard input"),
+        };
+        let visible = zone != Zone::OutsideGame || owner == perspective;
+        let mut key = ZoneRenderKey::new(game, perspective, viewed, u8::from(visible));
+        if potential_grants {
+            key.grant_inputs = Some(game.object_change_cursor());
+        } else {
+            key.revision = None;
+            if !matches!(zone, Zone::Exile | Zone::Command) {
+                key.auxiliary = None;
+                key.turn = None;
+            }
+        }
+        self.zones
+            .borrow_mut()
+            .entry((owner, zone))
+            .or_default()
+            .update(game, ids, key, zone != Zone::Ante, |id| {
+                if !visible {
+                    return None;
+                }
+                let object = game.object(id)?;
+                if filter_owner && object.owner != owner {
+                    return None;
+                }
+                Some(build_zone_card_snapshot_with_grants(
+                    game,
+                    perspective,
+                    viewed,
+                    object,
+                    zone,
+                    Some(grants),
+                ))
+            })
+    }
+
     fn battlefield_view(
         &self,
         game: &GameState,
@@ -114,6 +791,12 @@ impl SnapshotObjectViewCache {
         let tapped = game.is_tapped(obj.id);
         let counter_signature = counter_signature_for_group(obj);
         let key = PermanentObjectViewCacheKey {
+            dependency_revision: self
+                .dependency_revisions
+                .borrow()
+                .get(&obj.id)
+                .copied()
+                .unwrap_or(0),
             object_id: obj.id,
             object_revision: obj.last_modified,
             continuous_revision: game.effect_store.continuous_effects.revision(),
@@ -130,11 +813,16 @@ impl SnapshotObjectViewCache {
             counter_signature,
         };
 
-        if let Some(view) = self.battlefield.borrow().get(&key).cloned() {
+        let current = game.calculated_characteristics_arc(obj.id);
+        if let Some(view) = self.battlefield.borrow_mut().get(&key).cloned()
+            && match (&view.characteristics, &current) {
+                (Some(before), Some(after)) => Arc::ptr_eq(before, after),
+                (None, None) => true,
+                _ => false,
+            }
+        {
             return view;
         }
-
-        let current = game.current_characteristics(obj.id);
         let current_card_types = current
             .as_ref()
             .map(|chars| chars.card_types.as_slice())
@@ -163,6 +851,7 @@ impl SnapshotObjectViewCache {
             .unwrap_or_else(|| obj.compiled_card_text.to_string());
         let counter_signature = key.counter_signature.clone();
         let view = Arc::new(PermanentObjectView {
+            characteristics: current.clone(),
             id: obj.id.0,
             stable_id: obj.stable_id.0.0,
             name,
@@ -178,9 +867,6 @@ impl SnapshotObjectViewCache {
         });
 
         let mut cache = self.battlefield.borrow_mut();
-        if cache.len() >= SNAPSHOT_OBJECT_VIEW_CACHE_LIMIT {
-            cache.clear();
-        }
         cache.insert(key, view.clone());
         view
     }
@@ -192,30 +878,85 @@ enum SnapshotEncodedSubtreeKind {
     Permanent,
     HandCard,
     ZoneCard,
+    ViewedCard,
 }
 
 #[cfg(target_arch = "wasm32")]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct SnapshotEncodedSubtreeKey {
     kind: SnapshotEncodedSubtreeKind,
-    hash: u64,
+    id: u64,
 }
 
 #[cfg(target_arch = "wasm32")]
 #[derive(Debug, Clone)]
 struct SnapshotEncodedSubtreeValue {
-    fingerprint: String,
+    content: EncodedSubtreeContent,
     value: JsValue,
 }
 
 #[cfg(target_arch = "wasm32")]
+#[derive(Debug, Clone)]
+enum EncodedSubtreeContent {
+    Permanent(Arc<PermanentSnapshot>),
+    Hand(Arc<HandCardSnapshot>),
+    Zone(Arc<ZoneCardSnapshot>),
+    Viewed(Arc<ViewedCardSnapshot>),
+}
+#[cfg(target_arch = "wasm32")]
+trait CachedSubtree {
+    fn object_id(&self) -> u64;
+    fn matches(&self, previous: &EncodedSubtreeContent) -> bool;
+    fn to_cached(&self) -> EncodedSubtreeContent;
+}
+#[cfg(target_arch = "wasm32")]
+macro_rules! cached_subtree {
+    ($kind:ty, $variant:ident) => {
+        impl CachedSubtree for Arc<$kind> {
+            fn object_id(&self) -> u64 { self.id }
+            fn matches(&self, previous: &EncodedSubtreeContent) -> bool {
+                matches!(previous, EncodedSubtreeContent::$variant(value) if Arc::ptr_eq(value, self))
+            }
+            fn to_cached(&self) -> EncodedSubtreeContent { EncodedSubtreeContent::$variant(self.clone()) }
+        }
+    };
+}
+#[cfg(target_arch = "wasm32")]
+cached_subtree!(PermanentSnapshot, Permanent);
+#[cfg(target_arch = "wasm32")]
+cached_subtree!(ViewedCardSnapshot, Viewed);
+#[cfg(target_arch = "wasm32")]
+cached_subtree!(HandCardSnapshot, Hand);
+#[cfg(target_arch = "wasm32")]
+cached_subtree!(ZoneCardSnapshot, Zone);
+
+#[cfg(target_arch = "wasm32")]
 const SNAPSHOT_JS_ENCODING_CACHE_LIMIT: usize = 16_384;
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Debug, Clone)]
+// Owning references prevent pointer-address reuse while array keys are cached.
+#[allow(dead_code)]
+enum EncodedArrayIdentity {
+    Permanents(Arc<Vec<Arc<PermanentSnapshot>>>),
+    Hand(Arc<Vec<Arc<HandCardSnapshot>>>),
+    Zone(Arc<Vec<Arc<ZoneCardSnapshot>>>),
+    Viewed(Arc<Vec<Arc<ViewedCardSnapshot>>>),
+}
 
 #[derive(Debug, Default)]
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 pub(super) struct SnapshotJsEncodingCache {
     #[cfg(target_arch = "wasm32")]
-    subtrees: RefCell<HashMap<SnapshotEncodedSubtreeKey, SnapshotEncodedSubtreeValue>>,
+    subtrees: RefCell<
+        BoundedCache<
+            SnapshotEncodedSubtreeKey,
+            SnapshotEncodedSubtreeValue,
+            SNAPSHOT_JS_ENCODING_CACHE_LIMIT,
+        >,
+    >,
+    #[cfg(target_arch = "wasm32")]
+    arrays: RefCell<BoundedCache<(u8, usize), (EncodedArrayIdentity, JsValue), 512>>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -331,10 +1072,11 @@ impl SnapshotJsEncodingCache {
             self.encode_zone_cards(&player.sideboard_cards)?.as_ref(),
         )?;
         self.set_serde(&object, "library_top", &player.library_top)?;
-        self.set_serde(
+        self.set_value(
             &object,
             "persistent_look_cards",
-            &player.persistent_look_cards,
+            self.encode_viewed_cards(&player.persistent_look_cards)?
+                .as_ref(),
         )?;
         self.set_serde(&object, "graveyard_top", &player.graveyard_top)?;
         self.set_value(
@@ -346,30 +1088,95 @@ impl SnapshotJsEncodingCache {
         Ok(object.into())
     }
 
-    fn encode_permanents(&self, permanents: &[PermanentSnapshot]) -> Result<JsValue, JsValue> {
-        let array = js_sys::Array::new();
-        for permanent in permanents {
-            array.push(
-                &self.encode_cached_subtree(SnapshotEncodedSubtreeKind::Permanent, permanent)?,
-            );
+    fn encode_array(
+        &self,
+        key: (u8, usize),
+        identity: EncodedArrayIdentity,
+        build: impl FnOnce() -> Result<JsValue, JsValue>,
+    ) -> Result<JsValue, JsValue> {
+        if let Some((_, value)) = self.arrays.borrow_mut().get(&key) {
+            return Ok(value.clone());
         }
-        Ok(array.into())
+        let value = build()?;
+        freeze_snapshot_subtree(&value);
+        self.arrays
+            .borrow_mut()
+            .insert(key, (identity, value.clone()));
+        Ok(value)
     }
 
-    fn encode_hand_cards(&self, cards: &[HandCardSnapshot]) -> Result<JsValue, JsValue> {
-        let array = js_sys::Array::new();
-        for card in cards {
-            array.push(&self.encode_cached_subtree(SnapshotEncodedSubtreeKind::HandCard, card)?);
-        }
-        Ok(array.into())
+    fn encode_permanents(
+        &self,
+        cards: &Arc<Vec<Arc<PermanentSnapshot>>>,
+    ) -> Result<JsValue, JsValue> {
+        self.encode_array(
+            (0, Arc::as_ptr(cards) as usize),
+            EncodedArrayIdentity::Permanents(cards.clone()),
+            || {
+                let array = js_sys::Array::new();
+                for card in cards.iter() {
+                    array.push(
+                        &self.encode_cached_subtree(SnapshotEncodedSubtreeKind::Permanent, card)?,
+                    );
+                }
+                Ok(array.into())
+            },
+        )
     }
-
-    fn encode_zone_cards(&self, cards: &[ZoneCardSnapshot]) -> Result<JsValue, JsValue> {
-        let array = js_sys::Array::new();
-        for card in cards {
-            array.push(&self.encode_cached_subtree(SnapshotEncodedSubtreeKind::ZoneCard, card)?);
-        }
-        Ok(array.into())
+    fn encode_hand_cards(
+        &self,
+        cards: &Arc<Vec<Arc<HandCardSnapshot>>>,
+    ) -> Result<JsValue, JsValue> {
+        self.encode_array(
+            (1, Arc::as_ptr(cards) as usize),
+            EncodedArrayIdentity::Hand(cards.clone()),
+            || {
+                let array = js_sys::Array::new();
+                for card in cards.iter() {
+                    array.push(
+                        &self.encode_cached_subtree(SnapshotEncodedSubtreeKind::HandCard, card)?,
+                    );
+                }
+                Ok(array.into())
+            },
+        )
+    }
+    fn encode_zone_cards(
+        &self,
+        cards: &Arc<Vec<Arc<ZoneCardSnapshot>>>,
+    ) -> Result<JsValue, JsValue> {
+        self.encode_array(
+            (2, Arc::as_ptr(cards) as usize),
+            EncodedArrayIdentity::Zone(cards.clone()),
+            || {
+                let array = js_sys::Array::new();
+                for card in cards.iter() {
+                    array.push(
+                        &self.encode_cached_subtree(SnapshotEncodedSubtreeKind::ZoneCard, card)?,
+                    );
+                }
+                Ok(array.into())
+            },
+        )
+    }
+    fn encode_viewed_cards(
+        &self,
+        cards: &Arc<Vec<Arc<ViewedCardSnapshot>>>,
+    ) -> Result<JsValue, JsValue> {
+        self.encode_array(
+            (3, Arc::as_ptr(cards) as usize),
+            EncodedArrayIdentity::Viewed(cards.clone()),
+            || {
+                let array = js_sys::Array::new();
+                for card in cards.iter() {
+                    array.push(
+                        &self
+                            .encode_cached_subtree(SnapshotEncodedSubtreeKind::ViewedCard, card)?,
+                    );
+                }
+                Ok(array.into())
+            },
+        )
     }
 
     fn encode_cached_subtree<T>(
@@ -378,13 +1185,14 @@ impl SnapshotJsEncodingCache {
         value: &T,
     ) -> Result<JsValue, JsValue>
     where
-        T: Serialize + std::fmt::Debug,
+        T: Serialize + CachedSubtree,
     {
-        let fingerprint = format!("{value:?}");
-        let hash = hash_snapshot_fingerprint(&fingerprint);
-        let key = SnapshotEncodedSubtreeKey { kind, hash };
-        if let Some(cached) = self.subtrees.borrow().get(&key)
-            && cached.fingerprint == fingerprint
+        let key = SnapshotEncodedSubtreeKey {
+            kind,
+            id: value.object_id(),
+        };
+        if let Some(cached) = self.subtrees.borrow_mut().get(&key)
+            && value.matches(&cached.content)
         {
             return Ok(cached.value.clone());
         }
@@ -394,13 +1202,10 @@ impl SnapshotJsEncodingCache {
         })?;
         freeze_snapshot_subtree(&encoded);
         let mut subtrees = self.subtrees.borrow_mut();
-        if subtrees.len() >= SNAPSHOT_JS_ENCODING_CACHE_LIMIT {
-            subtrees.clear();
-        }
         subtrees.insert(
             key,
             SnapshotEncodedSubtreeValue {
-                fingerprint,
+                content: value.to_cached(),
                 value: encoded.clone(),
             },
         );
@@ -425,13 +1230,6 @@ impl SnapshotJsEncodingCache {
     ) -> Result<(), JsValue> {
         js_sys::Reflect::set(object, &JsValue::from_str(key), value).map(|_| ())
     }
-}
-
-#[cfg(target_arch = "wasm32")]
-fn hash_snapshot_fingerprint(fingerprint: &str) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    fingerprint.hash(&mut hasher);
-    hasher.finish()
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -536,23 +1334,31 @@ fn static_ability_signature(
     }
 }
 
-fn attached_to_signature(game: &GameState, obj: &ironsmith::object::Object) -> String {
+fn attached_to_signature(
+    game: &GameState,
+    obj: &ironsmith::object::Object,
+    visiting: &mut HashSet<ObjectId>,
+) -> String {
     match obj.attached_to {
         Some(AttachmentTarget::Object(id)) => game
             .object(id)
-            .map(|target| object_characteristic_signature(game, target, false))
+            .map(|target| object_characteristic_signature_inner(game, target, false, visiting))
             .unwrap_or_else(|| "object:missing".to_string()),
         Some(AttachmentTarget::Player(id)) => format!("player:{}", id.0),
         None => "-".to_string(),
     }
 }
 
-fn attachment_signature(game: &GameState, obj: &ironsmith::object::Object) -> String {
+fn attachment_signature(
+    game: &GameState,
+    obj: &ironsmith::object::Object,
+    visiting: &mut HashSet<ObjectId>,
+) -> String {
     let mut parts = obj
         .attachments
         .iter()
         .filter_map(|attachment_id| game.object(*attachment_id))
-        .map(|attachment| object_characteristic_signature(game, attachment, false))
+        .map(|attachment| object_characteristic_signature_inner(game, attachment, false, visiting))
         .collect::<Vec<_>>();
     parts.sort_unstable();
     if parts.is_empty() {
@@ -567,6 +1373,18 @@ fn object_characteristic_signature(
     obj: &ironsmith::object::Object,
     include_attachments: bool,
 ) -> String {
+    object_characteristic_signature_inner(game, obj, include_attachments, &mut HashSet::new())
+}
+
+fn object_characteristic_signature_inner(
+    game: &GameState,
+    obj: &ironsmith::object::Object,
+    include_attachments: bool,
+    visiting: &mut HashSet<ObjectId>,
+) -> String {
+    if !visiting.insert(obj.id) {
+        return "attachment_cycle:".to_owned();
+    }
     let current = game.current_characteristics(obj.id);
     let name = current
         .as_ref()
@@ -634,12 +1452,12 @@ fn object_characteristic_signature(
     let supertype_signature =
         sorted_name_signature(supertypes, |supertype| supertype.name().to_string());
     let attachment_part = if include_attachments {
-        attachment_signature(game, obj)
+        attachment_signature(game, obj, visiting)
     } else {
         "-".to_string()
     };
 
-    [
+    let signature = [
         format!("owner:{}", obj.owner.0),
         format!("controller:{}", controller.0),
         format!("kind:{}", obj.kind.name()),
@@ -674,10 +1492,12 @@ fn object_characteristic_signature(
         format!("counters:{}", counter_signature_for_group(obj)),
         format!("abilities:{}", ability_signature(abilities)),
         format!("static:{}", static_ability_signature(static_abilities)),
-        format!("attached_to:{}", attached_to_signature(game, obj)),
+        format!("attached_to:{}", attached_to_signature(game, obj, visiting)),
         format!("attachments:{attachment_part}"),
     ]
-    .join("\n")
+    .join("\n");
+    visiting.remove(&obj.id);
+    signature
 }
 
 pub(super) fn counter_snapshots_for_object(
@@ -808,22 +1628,33 @@ pub(super) fn grouped_battlefield_for_player(
     grouped_battlefield_for_player_with_cache(game, player, protected_ids, &object_view_cache)
 }
 
+#[cfg(test)]
 fn grouped_battlefield_for_player_with_cache(
     game: &GameState,
     player: PlayerId,
     protected_ids: &HashSet<ObjectId>,
     object_view_cache: &SnapshotObjectViewCache,
 ) -> (Vec<PermanentSnapshot>, usize) {
+    let ids = game.battlefield.iter().copied().filter(|id| {
+        game.object(*id)
+            .is_some_and(|object| game.current_controller(*id).unwrap_or(object.owner) == player)
+    });
+    grouped_battlefield_for_ids(game, ids, protected_ids, object_view_cache)
+}
+
+fn grouped_battlefield_for_ids(
+    game: &GameState,
+    ids: impl Iterator<Item = ObjectId>,
+    protected_ids: &HashSet<ObjectId>,
+    object_view_cache: &SnapshotObjectViewCache,
+) -> (Vec<PermanentSnapshot>, usize) {
     let mut grouped: HashMap<BattlefieldGroupKey, Vec<Arc<PermanentObjectView>>> = HashMap::new();
     let mut total = 0usize;
 
-    for object_id in &game.battlefield {
-        let Some(obj) = game.object(*object_id) else {
+    for object_id in ids {
+        let Some(obj) = game.object(object_id) else {
             continue;
         };
-        if game.current_controller(obj.id).unwrap_or(obj.owner) != player {
-            continue;
-        }
         total += 1;
 
         let force_single = protected_ids.contains(&obj.id).then_some(obj.id.0);
@@ -880,6 +1711,7 @@ fn grouped_battlefield_for_player_with_cache(
                 .map(|view| view.counters.clone())
                 .unwrap_or_default();
             PermanentSnapshot {
+                view_identity: PermanentViewIdentity(members.clone()),
                 id,
                 stable_id,
                 name,
@@ -901,11 +1733,12 @@ fn grouped_battlefield_for_player_with_cache(
     (snapshots, total)
 }
 
-fn pseudo_hand_glow_kind_for_zone_card(
+fn pseudo_hand_glow_kind_with_grants(
     game: &GameState,
     perspective: PlayerId,
     object: &ironsmith::object::Object,
     zone: Zone,
+    grants: Option<&std::cell::OnceCell<Vec<ironsmith::grant_registry::Grant>>>,
 ) -> Option<&'static str> {
     if object.zone != zone
         || matches!(
@@ -920,21 +1753,34 @@ fn pseudo_hand_glow_kind_for_zone_card(
         return Some("extra");
     }
 
-    if !game
-        .effect_store
-        .grant_registry
-        .granted_play_from_for_card(game, object.id, zone, perspective)
-        .is_empty()
-    {
+    let kinds = if let Some(grants) = grants {
+        game.effect_store
+            .grant_registry
+            .zone_card_grant_kinds_from_snapshot(
+                game,
+                object.id,
+                zone,
+                perspective,
+                grants.get_or_init(|| game.effect_store.grant_registry.active_grants(game)),
+            )
+    } else {
+        (
+            !game
+                .effect_store
+                .grant_registry
+                .granted_play_from_for_card(game, object.id, zone, perspective)
+                .is_empty(),
+            !game
+                .effect_store
+                .grant_registry
+                .granted_alternative_casts_for_card(game, object.id, zone, perspective)
+                .is_empty(),
+        )
+    };
+    if kinds.0 {
         return Some("play-from");
     }
-
-    if !game
-        .effect_store
-        .grant_registry
-        .granted_alternative_casts_for_card(game, object.id, zone, perspective)
-        .is_empty()
-    {
+    if kinds.1 {
         return Some("extra");
     }
 
@@ -949,6 +1795,7 @@ fn pseudo_hand_glow_kind_for_zone_card(
         .then_some("extra")
 }
 
+#[cfg(test)]
 fn battlefield_has_static_ability(game: &GameState, ability_id: StaticAbilityId) -> bool {
     game.object_store.battlefield.iter().any(|id| {
         game.object(*id)
@@ -956,6 +1803,7 @@ fn battlefield_has_static_ability(game: &GameState, ability_id: StaticAbilityId)
     })
 }
 
+#[cfg(test)]
 fn can_view_own_library_top(game: &GameState, player: PlayerId) -> bool {
     game.object_store.battlefield.iter().any(|id| {
         game.object(*id).is_some_and(|object| {
@@ -965,6 +1813,7 @@ fn can_view_own_library_top(game: &GameState, player: PlayerId) -> bool {
     })
 }
 
+#[cfg(test)]
 fn library_top_revealed_by_static_ability(game: &GameState, player: PlayerId) -> bool {
     game.object_store.battlefield.iter().any(|id| {
         game.object(*id).is_some_and(|object| {
@@ -977,6 +1826,7 @@ fn library_top_revealed_by_static_ability(game: &GameState, player: PlayerId) ->
     })
 }
 
+#[cfg(test)]
 fn can_view_library_top(game: &GameState, perspective: PlayerId, player: PlayerId) -> bool {
     if (perspective == player || game.controlling_player_for(player) == perspective)
         && can_view_own_library_top(game, player)
@@ -991,6 +1841,7 @@ fn can_view_library_top(game: &GameState, perspective: PlayerId, player: PlayerI
     battlefield_has_static_ability(game, StaticAbilityId::AllPlayersLookAtTopCardsOfLibraries)
 }
 
+#[cfg(test)]
 fn hand_revealed_by_static_ability(game: &GameState, player: PlayerId) -> bool {
     game.object_store.battlefield.iter().any(|id| {
         game.object(*id).is_some_and(|object| {
@@ -1010,9 +1861,20 @@ fn build_zone_card_snapshot(
     object: &ironsmith::object::Object,
     zone: Zone,
 ) -> ZoneCardSnapshot {
+    build_zone_card_snapshot_with_grants(game, perspective, viewed_cards, object, zone, None)
+}
+
+fn build_zone_card_snapshot_with_grants(
+    game: &GameState,
+    perspective: PlayerId,
+    viewed_cards: Option<&ActiveViewedCards>,
+    object: &ironsmith::object::Object,
+    zone: Zone,
+    grants: Option<&std::cell::OnceCell<Vec<ironsmith::grant_registry::Grant>>>,
+) -> ZoneCardSnapshot {
     let visible = object_visible_to_perspective(game, perspective, viewed_cards, object.id);
     let pseudo_hand_glow_kind = visible
-        .then(|| pseudo_hand_glow_kind_for_zone_card(game, perspective, object, zone))
+        .then(|| pseudo_hand_glow_kind_with_grants(game, perspective, object, zone, grants))
         .flatten()
         .map(str::to_string);
     let power_toughness = visible
@@ -1056,8 +1918,21 @@ fn build_zone_card_snapshot(
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+// Retaining the Arc identities makes cache lookup collision-free and avoids
+// reformatting or comparing oracle text on unchanged battlefield groups.
+#[derive(Debug, Clone)]
+struct PermanentViewIdentity(Vec<Arc<PermanentObjectView>>);
+impl PartialEq for PermanentViewIdentity {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.len() == other.0.len() && self.0.iter().zip(&other.0).all(|(a, b)| Arc::ptr_eq(a, b))
+    }
+}
+impl Eq for PermanentViewIdentity {}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub(super) struct PermanentSnapshot {
+    #[serde(skip)]
+    view_identity: PermanentViewIdentity,
     pub(super) id: u64,
     pub(super) stable_id: u64,
     pub(super) name: String,
@@ -1074,7 +1949,7 @@ pub(super) struct PermanentSnapshot {
     pub(super) counters: Vec<CounterSnapshot>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub(super) struct CounterSnapshot {
     pub(super) kind: String,
     pub(super) amount: u32,
@@ -1375,16 +2250,16 @@ pub(super) struct PlayerSnapshot {
     pub(super) graveyard_size: usize,
     pub(super) command_size: usize,
     pub(super) ante_size: usize,
-    pub(super) hand_cards: Vec<HandCardSnapshot>,
-    pub(super) graveyard_cards: Vec<ZoneCardSnapshot>,
-    pub(super) exile_cards: Vec<ZoneCardSnapshot>,
-    pub(super) command_cards: Vec<ZoneCardSnapshot>,
-    pub(super) ante_cards: Vec<ZoneCardSnapshot>,
-    pub(super) sideboard_cards: Vec<ZoneCardSnapshot>,
+    pub(super) hand_cards: Arc<Vec<Arc<HandCardSnapshot>>>,
+    pub(super) graveyard_cards: Arc<Vec<Arc<ZoneCardSnapshot>>>,
+    pub(super) exile_cards: Arc<Vec<Arc<ZoneCardSnapshot>>>,
+    pub(super) command_cards: Arc<Vec<Arc<ZoneCardSnapshot>>>,
+    pub(super) ante_cards: Arc<Vec<Arc<ZoneCardSnapshot>>>,
+    pub(super) sideboard_cards: Arc<Vec<Arc<ZoneCardSnapshot>>>,
     pub(super) library_top: Option<String>,
-    pub(super) persistent_look_cards: Vec<ViewedCardSnapshot>,
+    pub(super) persistent_look_cards: Arc<Vec<Arc<ViewedCardSnapshot>>>,
     pub(super) graveyard_top: Option<String>,
-    pub(super) battlefield: Vec<PermanentSnapshot>,
+    pub(super) battlefield: Arc<Vec<Arc<PermanentSnapshot>>>,
     pub(super) battlefield_total: usize,
 }
 
@@ -1400,7 +2275,7 @@ pub(super) struct ViewedCardsSnapshot {
     pub(super) description: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub(super) struct ViewedCardSnapshot {
     pub(super) id: u64,
     pub(super) stable_id: u64,
@@ -1449,7 +2324,7 @@ fn resolve_viewed_card(
     (id, stable_id.0.0, format!("Card #{}", id.0), String::new())
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub(super) struct HandCardSnapshot {
     pub(super) id: u64,
     pub(super) stable_id: u64,
@@ -1462,7 +2337,7 @@ pub(super) struct HandCardSnapshot {
     pub(super) card_types: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub(super) struct ZoneCardSnapshot {
     pub(super) id: u64,
     pub(super) stable_id: u64,
@@ -1538,7 +2413,7 @@ impl GameSnapshot {
                     .filter_map(|ability| ability.source_id.parse::<u64>().ok().map(ObjectId)),
             );
         }
-        let mut characteristic_ids = game.battlefield.clone();
+        let mut characteristic_ids = Vec::new();
         characteristic_ids.extend(game.stack.iter().map(|entry| entry.object_id));
         if let Some(stack_id) = pending_cast_stack_id {
             characteristic_ids.push(stack_id);
@@ -1546,16 +2421,37 @@ impl GameSnapshot {
         characteristic_ids.sort_unstable();
         characteristic_ids.dedup();
         game.prewarm_calculated_characteristics(&characteristic_ids);
+        object_view_cache
+            .groups
+            .borrow_mut()
+            .update(game, &protected_ids, object_view_cache);
+        object_view_cache
+            .hands
+            .borrow_mut()
+            .retain(|owner, _| game.players.iter().any(|player| player.id == *owner));
+        object_view_cache
+            .zones
+            .borrow_mut()
+            .retain(|(owner, _), _| game.players.iter().any(|player| player.id == *owner));
+        object_view_cache
+            .looks
+            .borrow_mut()
+            .retain(|(owner, _), _| game.players.iter().any(|player| player.id == *owner));
+        object_view_cache
+            .combined_looks
+            .borrow_mut()
+            .retain(|owner, _| game.players.iter().any(|player| player.id == *owner));
+        let potential_grants = object_view_cache.grant_sources.borrow_mut().update(game);
+        let active_grants = std::cell::OnceCell::new();
+        if !potential_grants {
+            let _ = active_grants.set(Vec::new());
+        }
         let players = game
             .players
             .iter()
             .map(|p| {
-                let (battlefield, battlefield_total) = grouped_battlefield_for_player_with_cache(
-                    game,
-                    p.id,
-                    &protected_ids,
-                    object_view_cache,
-                );
+                let (battlefield, battlefield_total) =
+                    object_view_cache.groups.borrow().for_player(p.id);
                 let is_perspective_player = p.id == perspective;
                 let controls_player = game.controlling_player_for(p.id) == perspective;
                 let visible_hand_view = viewed_cards.filter(|view| {
@@ -1565,151 +2461,90 @@ impl GameSnapshot {
                             || view.viewer == perspective
                             || game.controlling_player_for(view.viewer) == perspective)
                 });
-                let hand_revealed_by_static = hand_revealed_by_static_ability(game, p.id);
+                let (can_view_library_top, hand_revealed_by_static) = object_view_cache
+                    .groups
+                    .borrow()
+                    .visibility_for_player(game, perspective, p.id);
                 let can_view_hand = is_perspective_player
                     || controls_player
                     || game.can_review_teammate_hand(perspective, p.id)
                     || visible_hand_view.is_some()
                     || hand_revealed_by_static;
-                let can_view_library_top = can_view_library_top(game, perspective, p.id);
+
                 // Only ongoing permissions belong here; resolution views have their own lifetime.
-                let persistent_look_cards = p
-                    .library
-                    .last()
-                    .copied()
-                    .filter(|_| can_view_library_top)
-                    .into_iter()
-                    .chain(game.exile.iter().copied().filter(|id| {
-                        game.object(*id).is_some_and(|object| object.owner == p.id)
-                            && game.is_face_down(*id)
-                            && game.can_player_look_at_face_down_exiled_card(*id, perspective)
-                    }))
-                    .chain(p.hand.iter().copied().filter(|_| hand_revealed_by_static))
-                    .filter_map(|id| game.object(id))
-                    .map(|object| ViewedCardSnapshot {
-                        id: object.id.0,
-                        stable_id: object.stable_id.0.0,
-                        name: object.name.to_string(),
-                        oracle_text: object.compiled_card_text.to_string(),
-                    })
-                    .collect();
+                let persistent_look_cards = object_view_cache.persistent_look_cards(
+                    game,
+                    p.id,
+                    perspective,
+                    can_view_library_top,
+                    hand_revealed_by_static,
+                );
                 PlayerSnapshot {
                     persistent_look_cards,
                     can_view_hand,
                     can_view_library_top,
-                    hand_cards: if can_view_hand {
-                        p.hand
-                            .iter()
-                            .rev()
-                            .filter(|id| {
-                                is_perspective_player
-                                    || controls_player
-                                    || game.can_review_teammate_hand(perspective, p.id)
-                                    || hand_revealed_by_static
-                                    || visible_hand_view
-                                        .is_some_and(|view| view.contains_object(game, **id))
-                            })
-                            .filter_map(|id| game.object(*id))
-                            .map(|o| {
-                                let mana_cost = o.mana_cost.as_ref().map(|mc| mc.to_oracle());
-                                let power_toughness = match (o.power(), o.toughness()) {
-                                    (Some(p), Some(t)) => Some(format!("{p}/{t}")),
-                                    _ => None,
-                                };
-                                HandCardSnapshot {
-                                    id: o.id.0,
-                                    stable_id: o.stable_id.0.0,
-                                    name: o.name.to_string(),
-                                    mana_cost,
-                                    oracle_text: o.compiled_card_text.to_string(),
-                                    power_toughness,
-                                    loyalty: o.loyalty(),
-                                    defense: o.defense(),
-                                    card_types: o
-                                        .card_types
-                                        .iter()
-                                        .map(|ct| ct.name().to_string())
-                                        .collect(),
-                                }
-                            })
-                            .collect()
-                    } else {
-                        Vec::new()
-                    },
-                    graveyard_cards: p
-                        .graveyard
-                        .iter()
-                        .rev()
-                        .filter_map(|id| game.object(*id))
-                        .map(|o| {
-                            build_zone_card_snapshot(
-                                game,
-                                perspective,
-                                viewed_cards,
-                                o,
-                                Zone::Graveyard,
-                            )
-                        })
-                        .collect(),
-                    exile_cards: game
-                        .exile
-                        .iter()
-                        .rev()
-                        .filter_map(|id| game.object(*id))
-                        .filter(|o| o.owner == p.id)
-                        .map(|o| {
-                            build_zone_card_snapshot(
-                                game,
-                                perspective,
-                                viewed_cards,
-                                o,
-                                Zone::Exile,
-                            )
-                        })
-                        .collect(),
-                    command_cards: game
-                        .command_zone
-                        .iter()
-                        .rev()
-                        .filter_map(|id| game.object(*id))
-                        .filter(|o| o.owner == p.id)
-                        .map(|o| {
-                            build_zone_card_snapshot(
-                                game,
-                                perspective,
-                                viewed_cards,
-                                o,
-                                Zone::Command,
-                            )
-                        })
-                        .collect(),
-                    ante_cards: game
-                        .ante
-                        .iter()
-                        .filter_map(|id| game.object(*id))
-                        .filter(|o| o.owner == p.id)
-                        .map(|o| {
-                            build_zone_card_snapshot(game, perspective, viewed_cards, o, Zone::Ante)
-                        })
-                        .collect(),
-                    sideboard_cards: if is_perspective_player {
-                        p.sideboard
-                            .iter()
-                            .rev()
-                            .filter_map(|id| game.object(*id))
-                            .map(|o| {
-                                build_zone_card_snapshot(
-                                    game,
-                                    perspective,
-                                    viewed_cards,
-                                    o,
-                                    Zone::OutsideGame,
-                                )
-                            })
-                            .collect()
-                    } else {
-                        Vec::new()
-                    },
+                    hand_cards: object_view_cache.hand_cards(
+                        game,
+                        p.id,
+                        perspective,
+                        visible_hand_view,
+                        if is_perspective_player
+                            || controls_player
+                            || game.can_review_teammate_hand(perspective, p.id)
+                            || hand_revealed_by_static
+                        {
+                            2
+                        } else if can_view_hand {
+                            1
+                        } else {
+                            0
+                        },
+                    ),
+                    graveyard_cards: object_view_cache.zone_cards(
+                        game,
+                        p.id,
+                        perspective,
+                        Zone::Graveyard,
+                        viewed_cards,
+                        &active_grants,
+                        potential_grants,
+                    ),
+                    exile_cards: object_view_cache.zone_cards(
+                        game,
+                        p.id,
+                        perspective,
+                        Zone::Exile,
+                        viewed_cards,
+                        &active_grants,
+                        potential_grants,
+                    ),
+                    command_cards: object_view_cache.zone_cards(
+                        game,
+                        p.id,
+                        perspective,
+                        Zone::Command,
+                        viewed_cards,
+                        &active_grants,
+                        potential_grants,
+                    ),
+                    ante_cards: object_view_cache.zone_cards(
+                        game,
+                        p.id,
+                        perspective,
+                        Zone::Ante,
+                        viewed_cards,
+                        &active_grants,
+                        potential_grants,
+                    ),
+                    sideboard_cards: object_view_cache.zone_cards(
+                        game,
+                        p.id,
+                        perspective,
+                        Zone::OutsideGame,
+                        viewed_cards,
+                        &active_grants,
+                        potential_grants,
+                    ),
                     library_top: can_view_library_top
                         .then(|| {
                             p.library
@@ -1740,18 +2575,28 @@ impl GameSnapshot {
                     hand_size: p.hand.len(),
                     library_size: p.library.len(),
                     graveyard_size: p.graveyard.len(),
-                    command_size: game
-                        .command_zone
-                        .iter()
-                        .filter_map(|id| game.object(*id))
-                        .filter(|o| o.owner == p.id)
-                        .count(),
-                    ante_size: game
-                        .ante
-                        .iter()
-                        .filter_map(|id| game.object(*id))
-                        .filter(|o| o.owner == p.id)
-                        .count(),
+                    command_size: object_view_cache
+                        .zone_cards(
+                            game,
+                            p.id,
+                            perspective,
+                            Zone::Command,
+                            viewed_cards,
+                            &active_grants,
+                            potential_grants,
+                        )
+                        .len(),
+                    ante_size: object_view_cache
+                        .zone_cards(
+                            game,
+                            p.id,
+                            perspective,
+                            Zone::Ante,
+                            viewed_cards,
+                            &active_grants,
+                            potential_grants,
+                        )
+                        .len(),
                 }
             })
             .collect();
@@ -3171,6 +4016,305 @@ mod tests {
                 .iter()
                 .any(|permanent| permanent.member_ids.contains(&bear.0) && permanent.tapped),
             "second snapshot should not reuse the stale untapped view: {tapped_battlefield:?}"
+        );
+    }
+
+    #[test]
+    fn incremental_zone_views_retain_arrays_and_render_only_changed_raw_cards() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let card = test_bears_card();
+        let hand: Vec<_> = (0..128)
+            .map(|_| game.create_object_from_card(&card, alice, Zone::Hand))
+            .collect();
+        let grave: Vec<_> = (0..128)
+            .map(|_| game.create_object_from_card(&card, alice, Zone::Graveyard))
+            .collect();
+        let cache = SnapshotObjectViewCache::default();
+        let grants = std::cell::OnceCell::new();
+        let _ = grants.set(Vec::new());
+        let first_hand = cache.hand_cards(&game, alice, alice, None, 2);
+        let first_grave =
+            cache.zone_cards(&game, alice, alice, Zone::Graveyard, None, &grants, false);
+        assert!(Arc::ptr_eq(
+            &first_hand,
+            &cache.hand_cards(&game, alice, alice, None, 2)
+        ));
+        assert!(Arc::ptr_eq(
+            &first_grave,
+            &cache.zone_cards(&game, alice, alice, Zone::Graveyard, None, &grants, false)
+        ));
+        assert_eq!(cache.hands.borrow()[&alice].rendered, 128);
+        game.object_mut(hand[19]).unwrap().name = "Renamed hand card".into();
+        let second_hand = cache.hand_cards(&game, alice, alice, None, 2);
+        assert_eq!(cache.hands.borrow()[&alice].rendered, 129);
+        assert!(Arc::ptr_eq(&first_hand[0], &second_hand[0]));
+        assert_eq!(
+            second_hand
+                .iter()
+                .find(|card| card.id == hand[19].0)
+                .unwrap()
+                .name,
+            "Renamed hand card"
+        );
+        assert!(Arc::ptr_eq(
+            &first_grave,
+            &cache.zone_cards(&game, alice, alice, Zone::Graveyard, None, &grants, false)
+        ));
+        game.object_mut(grave[7]).unwrap().name = "Renamed graveyard card".into();
+        let second_grave =
+            cache.zone_cards(&game, alice, alice, Zone::Graveyard, None, &grants, false);
+        assert_eq!(
+            cache.zones.borrow()[&(alice, Zone::Graveyard)].rendered,
+            129
+        );
+        assert!(Arc::ptr_eq(&first_grave[0], &second_grave[0]));
+        let expected: Vec<_> = game.players[0]
+            .graveyard
+            .iter()
+            .rev()
+            .map(|id| {
+                build_zone_card_snapshot(
+                    &game,
+                    alice,
+                    None,
+                    game.object(*id).unwrap(),
+                    Zone::Graveyard,
+                )
+            })
+            .collect();
+        assert_eq!(
+            serde_json::to_value(second_grave).unwrap(),
+            serde_json::to_value(expected).unwrap()
+        );
+    }
+
+    #[test]
+    fn incremental_exile_visibility_handles_grants_expiry_perspective_and_rollback() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let card = test_bears_card();
+        let first = game.create_object_from_card(&card, alice, Zone::Exile);
+        let second = game.create_object_from_card(&card, alice, Zone::Exile);
+        game.set_face_down(first);
+        game.set_face_down(second);
+        let cache = SnapshotObjectViewCache::default();
+        let grants = std::cell::OnceCell::new();
+        let _ = grants.set(Vec::new());
+        let hidden = cache.zone_cards(&game, alice, bob, Zone::Exile, None, &grants, false);
+        assert!(
+            hidden
+                .iter()
+                .all(|card| card.oracle_text.is_empty() && card.name == hidden_object_label())
+        );
+        let checkpoint = game.clone();
+        game.grant_face_down_exile_view(first, bob);
+        let visible = cache.zone_cards(&game, alice, bob, Zone::Exile, None, &grants, false);
+        assert_eq!(
+            cache.zones.borrow()[&(alice, Zone::Exile)].rendered,
+            3,
+            "one permission grant should re-render one card"
+        );
+        assert_eq!(
+            visible.iter().find(|card| card.id == first.0).unwrap().name,
+            "Grizzly Bears"
+        );
+        assert_eq!(
+            visible
+                .iter()
+                .find(|card| card.id == second.0)
+                .unwrap()
+                .name,
+            hidden_object_label()
+        );
+        let alice_view = cache.zone_cards(&game, alice, alice, Zone::Exile, None, &grants, false);
+        assert!(
+            alice_view
+                .iter()
+                .all(|card| card.name == hidden_object_label())
+        );
+        let view = ActiveViewedCards {
+            viewer: bob,
+            subject: alice,
+            zone: Zone::Exile,
+            cards: vec![second],
+            card_stable_ids: vec![game.object(second).unwrap().stable_id],
+            public: false,
+            source: None,
+            description: "Temporary reveal".into(),
+        };
+        let both = cache.zone_cards(&game, alice, bob, Zone::Exile, Some(&view), &grants, false);
+        assert!(both.iter().all(|card| card.name == "Grizzly Bears"));
+        let expired = cache.zone_cards(&game, alice, bob, Zone::Exile, None, &grants, false);
+        assert_eq!(
+            expired
+                .iter()
+                .find(|card| card.id == second.0)
+                .unwrap()
+                .name,
+            hidden_object_label()
+        );
+        game = checkpoint;
+        let restored = cache.zone_cards(&game, alice, bob, Zone::Exile, None, &grants, false);
+        assert!(
+            restored
+                .iter()
+                .all(|card| card.name == hidden_object_label())
+        );
+    }
+
+    #[test]
+    fn attachment_cycles_have_finite_group_signatures() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let card = test_bears_card();
+        let first = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let second = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.object_mut(first).unwrap().attached_to = Some(AttachmentTarget::Object(second));
+        game.object_mut(second).unwrap().attached_to = Some(AttachmentTarget::Object(first));
+        let signature = object_characteristic_signature(&game, game.object(first).unwrap(), true);
+        assert!(signature.contains("attachment_cycle:"));
+        assert!(signature.len() < 10000);
+    }
+
+    #[test]
+    fn incremental_visibility_matches_full_rules_through_control_and_removal() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let card = CardDefinitionBuilder::new(CardId::from_raw(9986), "Visibility source")
+            .card_types(vec![CardType::Enchantment])
+            .with_ability(ironsmith::ability::Ability::static_ability(
+                ironsmith::static_abilities::StaticAbility::look_at_top_card_of_library(),
+            ))
+            .with_ability(ironsmith::ability::Ability::static_ability(
+                ironsmith::static_abilities::StaticAbility::opponents_play_with_hands_revealed(),
+            ))
+            .build();
+        let source = game.create_object_from_definition(&card, alice, Zone::Battlefield);
+        let views = SnapshotObjectViewCache::default();
+        let mut groups = IncrementalBattlefieldGroups::default();
+        let compare = |game: &GameState, groups: &mut IncrementalBattlefieldGroups| {
+            groups.update(game, &HashSet::new(), &views);
+            for perspective in [alice, bob] {
+                for player in [alice, bob] {
+                    assert_eq!(
+                        groups.visibility_for_player(game, perspective, player),
+                        (
+                            can_view_library_top(game, perspective, player),
+                            hand_revealed_by_static_ability(game, player)
+                        )
+                    );
+                }
+            }
+        };
+        compare(&game, &mut groups);
+        game.set_current_controller(source, bob);
+        compare(&game, &mut groups);
+        let checkpoint = game.clone();
+        game.remove_object(source);
+        compare(&game, &mut groups);
+        game = checkpoint;
+        compare(&game, &mut groups);
+    }
+
+    #[test]
+    fn incremental_attachment_groups_match_full_rebuild_after_local_and_global_edits() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let card = test_bears_card();
+        let bear = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let other = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let role = game.create_object_from_definition(
+            &cursed_role_token_definition(),
+            alice,
+            Zone::Battlefield,
+        );
+        assert!(game.attach_object_to_target(role, AttachmentTarget::Object(bear)));
+        let views = SnapshotObjectViewCache::default();
+        let mut groups = IncrementalBattlefieldGroups::default();
+        let protected = HashSet::new();
+        let compare = |game: &GameState, groups: &mut IncrementalBattlefieldGroups| {
+            groups.update(game, &protected, &views);
+            for player in [alice, bob] {
+                let (full, _) = grouped_battlefield_for_player(game, player, &protected);
+                assert_eq!(
+                    serde_json::to_value(groups.for_player(player).0).unwrap(),
+                    serde_json::to_value(full).unwrap()
+                );
+            }
+        };
+        compare(&game, &mut groups);
+        game.tap(role);
+        compare(&game, &mut groups);
+        assert!(game.attach_object_to_target(role, AttachmentTarget::Object(other)));
+        compare(&game, &mut groups);
+        game.set_current_controller(role, bob);
+        compare(&game, &mut groups);
+        game.remove_object(role);
+        compare(&game, &mut groups);
+    }
+
+    #[test]
+    fn incremental_groups_reuse_unchanged_members_and_match_full_rebuild_after_rollback() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let card = test_bears_card();
+        let first = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let second = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.refresh_continuous_state();
+        let protected = HashSet::from([first, second]);
+        let views = SnapshotObjectViewCache::default();
+        let mut groups = IncrementalBattlefieldGroups::default();
+        groups.update(&game, &protected, &views);
+        let original = groups.for_player(alice).0;
+        let checkpoint = game.clone();
+        game.mark_damage(first, 1);
+        groups.update(&game, &protected, &views);
+        assert!(Arc::ptr_eq(&original, &groups.for_player(alice).0));
+        groups.update(&game, &protected, &views);
+        assert_eq!(groups.objects_updated, 2);
+        assert_eq!(groups.groups_rebuilt, 2);
+        game.tap(first);
+        groups.update(&game, &protected, &views);
+        assert_eq!(
+            groups.objects_updated, 3,
+            "one local mutation must visit one object"
+        );
+        assert_eq!(groups.groups_rebuilt, 3);
+        let after = groups.for_player(alice).0;
+        let unchanged = after.iter().find(|group| group.id == second.0).unwrap();
+        assert!(Arc::ptr_eq(
+            unchanged,
+            original.iter().find(|group| group.id == second.0).unwrap()
+        ));
+        let (full, _) = grouped_battlefield_for_player(&game, alice, &protected);
+        assert_eq!(
+            serde_json::to_value(&after).unwrap(),
+            serde_json::to_value(full).unwrap()
+        );
+        game = checkpoint;
+        game.tap(second);
+        groups.update(&game, &protected, &views);
+        let (full, _) = grouped_battlefield_for_player(&game, alice, &protected);
+        assert_eq!(
+            serde_json::to_value(groups.for_player(alice).0).unwrap(),
+            serde_json::to_value(full).unwrap()
+        );
+        game.battlefield.reverse();
+        groups.update(&game, &HashSet::new(), &views);
+        let (full, _) = grouped_battlefield_for_player(&game, alice, &HashSet::new());
+        assert_eq!(
+            serde_json::to_value(groups.for_player(alice).0).unwrap(),
+            serde_json::to_value(full).unwrap()
         );
     }
 

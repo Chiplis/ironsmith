@@ -145,7 +145,7 @@ export class LobbyRoom {
       // Ignore client-supplied sender identity; prohibit cross-room traffic by lookup.
       send(target, { type: msg.type, from: state.peer, connectionId: msg.connectionId,
         ...(msg.type === 'data' ? { data: msg.data } : {}),
-        ...(msg.type === 'offer' ? { metadata: msg.metadata || {} } : {}) });
+        ...(['offer', 'answer'].includes(msg.type) ? { metadata: msg.metadata || {} } : {}) });
     } catch (error) {
       send(ws, { type: 'error', message: error.message });
       ws.close(1008, 'Invalid relay request');

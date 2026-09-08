@@ -1,4 +1,7 @@
-import { relayCheckpoint } from '../../lib/relay/session.js';
+import { matchingActionPrefix } from '../../lib/relay/resync.js';
+import { relayMatchId } from '../../lib/relay/session.js';
+import { initializeRelayMatch, appendRelayAction } from '../../lib/relay/session.js';
+import { immutableAction, actionCursor, restoreActionCursor, actionPrefixHash, EMPTY_ACTION_PREFIX } from '../../lib/accepted-actions.js';
 import { isRelayId } from '../../lib/relay/formats.js';
 import {
   DISCONNECT_AUTO_FORFEIT_MS,
@@ -1938,17 +1941,19 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 	        session,
 	        matchPayloadSecurityMode(payload.match, MULTIPLAYER_SECURITY_VERIFIED)
 	      );
-	      const checkpoint =
-	        isVerifiedMultiplayerSecurityMode(securityMode)
-	        && peerIndex != null
-	        && typeof currentGame.exportRedactedSyncCheckpoint === "function"
-	          ? await currentGame.exportRedactedSyncCheckpoint(peerIndex)
-	          : await currentGame.exportSyncCheckpoint();
-	      const serializedCheckpoint = cloneMultiplayerPayload(checkpoint);
-	      const actions = (actionHistoryRef.current || [])
-	        .map((entry) => cloneMultiplayerPayload(entry));
-	      const lastSequence = Number(actions.at(-1)?.seq ?? 0);
-	      const resyncEnvelope = isVerifiedMultiplayerSecurityMode(securityMode)
+	      const trusted = isTrustedMultiplayerSecurityMode(securityMode);
+      const baseSequence = Number(payload.requesterSequence);
+      const suffix = trusted && !payload.forceCheckpoint
+        && payload.requestMatchId === relayMatchId(payload.match)
+        && matchingActionPrefix(actionHistoryRef.current, baseSequence, payload.requestPrefixHash);
+      const checkpoint = trusted ? null
+        : peerIndex != null && typeof currentGame.exportRedactedSyncCheckpoint === "function"
+          ? await currentGame.exportRedactedSyncCheckpoint(peerIndex)
+          : await currentGame.exportSyncCheckpoint();
+      const serializedCheckpoint = checkpoint;
+      const actions = suffix ? actionHistoryRef.current.slice(baseSequence) : actionHistoryRef.current;
+      const lastSequence = Number(actionHistoryRef.current.at(-1)?.seq ?? 0);
+      const resyncEnvelope = isVerifiedMultiplayerSecurityMode(securityMode)
         ? await buildSignedResyncEnvelope({
             keyPair: auditKeyPairRef.current,
             matchId: payload.match?.auditMatchId || currentAuditMatchId(),
@@ -1970,7 +1975,8 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
           conn.peer,
           peerIndex
         ),
-        checkpoint: serializedCheckpoint,
+        ...(trusted ? { replayOnly: true, ...(suffix ? { suffix: true, baseSequence, basePrefix: payload.requestPrefixHash } : {}) }
+          : { checkpoint: serializedCheckpoint }),
         actions,
         ...(resyncEnvelope ? { resyncEnvelope } : {}),
       });
@@ -1996,6 +2002,10 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 
   function relaySequencedAction(message) {
     if (!message || message.type !== "apply_action") return;
+    if (isTrustedMultiplayerSecurityMode(sessionSecurityMode(multiplayerRef.current))) {
+      servicesRef.current.publishTrustedAction(message);
+      return;
+    }
     const relayKey = sequencedActionRelayKey(message);
     if (relayedActionIdsRef.current.has(relayKey)) return;
     relayedActionIdsRef.current.add(relayKey);
@@ -3997,28 +4007,30 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 
   async function appendAppliedSequencedAction(message) {
     const nextSequence = Number(message.seq || 0);
-    actionHistoryRef.current = [
-      ...actionHistoryRef.current,
-      {
-        seq: nextSequence,
-        actorIndex: Number(message.actorIndex),
-        command: cloneMultiplayerPayload(message.command),
-        label: String(message.label || ""),
-        securityMode: normalizeMultiplayerSecurityMode(
-          message.securityMode,
-          message.audit ? MULTIPLAYER_SECURITY_VERIFIED : MULTIPLAYER_SECURITY_TRUSTED
-        ),
-        clock: cloneMultiplayerPayload(message.clock),
-        audit: cloneMultiplayerPayload(message.audit),
-      },
-    ];
+    if (nextSequence !== actionHistoryRef.current.length + 1) throw new Error("Accepted action does not extend transcript");
+    const action = {
+      seq: nextSequence,
+      actorIndex: Number(message.actorIndex),
+      command: message.command,
+      label: String(message.label || ""),
+      securityMode: normalizeMultiplayerSecurityMode(message.securityMode,
+        message.audit ? MULTIPLAYER_SECURITY_VERIFIED : MULTIPLAYER_SECURITY_TRUSTED),
+      clock: message.clock,
+      audit: message.audit,
+      ...(message.commandId ? { commandId: message.commandId } : {}),
+    };
+    const prefixHash = actionPrefixHash(actionHistoryRef.current.at(-1)?.prefixHash || EMPTY_ACTION_PREFIX, action);
+    if (message.prefixHash && message.prefixHash !== prefixHash) throw new Error("Accepted action prefix mismatch");
+    const entry = immutableAction({ ...action, prefixHash });
+    const session = multiplayerRef.current;
+    if (isRelayId(session.lobbyId) && session.role === "host" && session.matchStarted) {
+      const started = performance.now();
+      await appendRelayAction(session.lobbyId, matchStartPayloadRef.current, session, entry);
+      markActionStage(null, "durable acceptance", { sequence: nextSequence, persist_ms: performance.now() - started });
+    }
+    actionHistoryRef.current.push(entry);
     if (liveAuditTranscriptRef.current) {
-      liveAuditTranscriptRef.current = {
-        ...liveAuditTranscriptRef.current,
-        actions: actionHistoryRef.current.map((entry) =>
-          cloneMultiplayerPayload(entry)
-        ),
-      };
+      liveAuditTranscriptRef.current = { ...liveAuditTranscriptRef.current, actions: actionHistoryRef.current };
     }
     clearPendingActionIntent({
       matchId: message.audit?.matchId || currentAuditMatchId(),
@@ -4040,11 +4052,8 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     if (!isRelayId(session.lobbyId) || session.role !== "host" || !session.matchStarted) return;
     const match = buildHostedResyncPayload();
     if (!match) return;
-    await relayCheckpoint(session.lobbyId, {
-      match, session: cloneMultiplayerPayload(session),
-      checkpoint: cloneMultiplayerPayload(await gameRef.current.exportSyncCheckpoint()),
-      actions: cloneMultiplayerPayload(actionHistoryRef.current),
-      lastSequence: session.lastAppliedSequence,
+    await initializeRelayMatch(session.lobbyId, {
+      match, session, actions: actionHistoryRef.current,
     });
   }
 
@@ -4055,6 +4064,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     const localIndex = resolveLocalPlayerIndex(multiplayerRef.current);
     if (
       localIndex != null
+      && Number(stateHint?.perspective ?? stateRef.current?.perspective) !== Number(localIndex)
       && typeof currentGame.setPerspective === "function"
     ) {
       try {
@@ -4065,7 +4075,8 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       }
     }
     const nextState = await preserveViewedCardsFromHint(
-      await currentGame.uiState(),
+      currentGame.isCurrentSnapshot?.(stateHint) && Number(stateHint.perspective) === Number(localIndex)
+        ? stateHint : await currentGame.uiState(),
       stateHint,
       currentGame,
     );
@@ -4075,7 +4086,6 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       publish_ms: Date.now() - publishStartedAt,
       sequence: Number(multiplayerRef.current?.lastAppliedSequence || 0),
     });
-    await persistRelayCheckpoint();
     return nextState;
   }
 
@@ -4088,28 +4098,36 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     ) {
       throw new Error("Game engine cannot sandbox action quorum validation");
     }
+    const trusted = isTrustedMultiplayerSecurityMode(sessionSecurityMode(multiplayerRef.current));
+    const runtimeHandle = currentGame.supportsRuntimeSavepoints
+      ? await currentGame.createRuntimeSavepoint() : null;
+    let released = false;
     return {
-      checkpoint: await currentGame.exportSyncCheckpoint(),
-      state: cloneMultiplayerPayload(stateRef.current),
-      actionHistory: actionHistoryRef.current.map((entry) => cloneMultiplayerPayload(entry)),
+      runtimeHandle,
+      release: async () => {
+        if (released || runtimeHandle == null) return;
+        released = true;
+        await currentGame.releaseRuntimeSavepoint(runtimeHandle);
+      },
+      checkpoint: runtimeHandle == null ? await currentGame.exportSyncCheckpoint() : null,
+      state: stateRef.current,
+      actionHistoryCursor: actionCursor(actionHistoryRef.current),
       liveAuditTranscript: liveAuditTranscriptRef.current
-        ? cloneMultiplayerPayload(liveAuditTranscriptRef.current)
+        ? { ...liveAuditTranscriptRef.current, actions: null }
         : null,
-      matchStartPayload: matchStartPayloadRef.current
-        ? cloneMultiplayerPayload(matchStartPayloadRef.current)
-        : null,
+      matchStartPayload: matchStartPayloadRef.current,
       auditStateHash: auditStateHashRef.current,
       initialPublicCheckpointHash: initialPublicCheckpointHashRef.current,
       lastAppliedSequence: Number(multiplayerRef.current.lastAppliedSequence || 0),
       matchClock: cloneMultiplayerPayload(matchClockRef.current),
       matchClockConfig: cloneMultiplayerPayload(matchClockConfigRef.current),
-      actionCryptoRequirements: new Map(
+      actionCryptoRequirements: trusted ? null : new Map(
         [...actionCryptoRequirementsRef.current.entries()].map(([seq, requirements]) => [
           seq,
           cloneMultiplayerPayload(requirements),
         ])
       ),
-	      relayedActionIds: [...relayedActionIdsRef.current],
+	      relayedActionIds: trusted ? null : [...relayedActionIdsRef.current],
 	      ziffleHandRevealKey: ziffleHandRevealKeyRef.current,
 	      ziffleHandRevealQuickKey: ziffleHandRevealQuickKeyRef.current,
 	    };
@@ -4119,7 +4137,9 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     if (!snapshot) return;
     const currentGame = gameRef.current;
     const localPlayer = resolveLocalPlayerIndex(multiplayerRef.current);
-    if (
+    if (snapshot.runtimeHandle != null) {
+      await currentGame.restoreRuntimeSavepoint(snapshot.runtimeHandle);
+    } else if (
       currentGame
       && snapshot.checkpoint
       && typeof currentGame.importSyncCheckpoint === "function"
@@ -4129,9 +4149,9 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
         localPlayer ?? multiplayerRef.current.localPlayerIndex ?? 0
       );
     }
-    actionHistoryRef.current = snapshot.actionHistory.map((entry) => cloneMultiplayerPayload(entry));
+    actionHistoryRef.current = restoreActionCursor(snapshot.actionHistoryCursor);
     liveAuditTranscriptRef.current = snapshot.liveAuditTranscript
-      ? cloneMultiplayerPayload(snapshot.liveAuditTranscript)
+      ? { ...snapshot.liveAuditTranscript, actions: actionHistoryRef.current }
       : null;
     matchStartPayloadRef.current = snapshot.matchStartPayload
       ? cloneMultiplayerPayload(snapshot.matchStartPayload)
@@ -4140,13 +4160,13 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     initialPublicCheckpointHashRef.current = snapshot.initialPublicCheckpointHash || "";
     matchClockConfigRef.current = cloneMultiplayerPayload(snapshot.matchClockConfig);
     matchClockRef.current = cloneMultiplayerPayload(snapshot.matchClock);
-    actionCryptoRequirementsRef.current = new Map(
+    if (snapshot.actionCryptoRequirements) actionCryptoRequirementsRef.current = new Map(
       [...snapshot.actionCryptoRequirements.entries()].map(([seq, requirements]) => [
         seq,
         cloneMultiplayerPayload(requirements),
       ])
     );
-	    relayedActionIdsRef.current = new Set(snapshot.relayedActionIds || []);
+	    if (snapshot.relayedActionIds) relayedActionIdsRef.current = new Set(snapshot.relayedActionIds);
 	    ziffleHandRevealKeyRef.current = snapshot.ziffleHandRevealKey;
 	    ziffleHandRevealQuickKeyRef.current = snapshot.ziffleHandRevealQuickKey || "";
     const restoredState = currentGame && typeof currentGame.uiState === "function"

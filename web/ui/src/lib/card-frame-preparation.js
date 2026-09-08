@@ -1,4 +1,4 @@
-import { resolveScryfallFlavorText, resolveScryfallPrintingMetadata, resolveScryfallSetSymbol } from './scryfall';
+import { resolveScryfallEnglishPrinting, resolveScryfallFlavorText, resolveScryfallPrintingMetadata, resolveScryfallSetSymbol } from './scryfall';
 import { fullCardImageUrl, preloadCardFrameSource, sampleCardFrameColors } from './card-frame-colors';
 import { cardTypography } from './card-typography';
 import {registrationForImage, registrationForPrinting, registrationGeometryIsUsable} from './card-region-layout';
@@ -59,7 +59,8 @@ export function prepareCardFrame(imageUrl, typeLine = '') {
     const printing = await resolveScryfallPrintingMetadata(imageUrl);
     const typographyRequest = prepareTypography(printing);
     const setSymbolRequest = resolveScryfallSetSymbol(printing);
-    const preparedTypography = await typographyRequest;
+    let preparedTypography = await typographyRequest;
+    let framePrinting = printing;
     const catalog = (await import('./card-region-catalog.generated.js')).default;
     const scanUrl = fullCardImageUrl(imageUrl);
     let registration = registrationForImage(catalog, scanUrl);
@@ -78,21 +79,42 @@ export function prepareCardFrame(imageUrl, typeLine = '') {
     }
     const registeredScan = registeredScanUrl && registeredScanUrl !== scanUrl
       ? decodeImage(registeredScanUrl).then(() => true, () => false) : Promise.resolve(true);
-    const style = invalidRegistration
+    let style = invalidRegistration
       ? {'--source-frame-status': 'original', '--source-frame-fallback-reason': 'registration-geometry'}
       : registration ? {} : await sampleCardFrameColors(scanUrl, {
       typography: preparedTypography, printing, setSymbolUrl: await setSymbolRequest,
     });
+    // Retry offscreen, publishing only a complete mask. The stage's preview
+    // continues to use imageUrl, and a failed English attempt leaves the
+    // original localized fallback intact (including its typography/flavor).
+    if (!registration && !style?.['--source-frame-image'] && printing?.lang && printing.lang !== 'en') {
+      try {
+        const english = await resolveScryfallEnglishPrinting(imageUrl, printing);
+        const englishUrl = fullCardImageUrl(english?.image_uris?.normal || english?.image_uris?.large);
+        if (englishUrl && englishUrl !== scanUrl) {
+          const englishTypography = await prepareTypography(english);
+          const englishStyle = await sampleCardFrameColors(englishUrl, {
+            typography: englishTypography, printing: english,
+            setSymbolUrl: await resolveScryfallSetSymbol(english),
+          });
+          if (englishStyle?.['--source-frame-image']) {
+            style = englishStyle;
+            preparedTypography = englishTypography;
+            framePrinting = english;
+          }
+        }
+      } catch { /* Preserve the translated original if the retry is unavailable. */ }
+    }
     // CSS backgrounds and border images have their own decode step, even
     // after the canvas work has produced their data URLs.
     const urls = new Set(Object.values(style || {}).flatMap(value =>
       Array.from(String(value).matchAll(/url\("([^"]+)"\)/g), match => match[1])
     ));
-    const [typography, flavorText, artReady] = await Promise.all([
-      typographyRequest, flavor, art, registeredScan,
+    const [flavorText, artReady] = await Promise.all([
+      flavor, art, registeredScan,
       Promise.allSettled([...urls].map(decodeImage)),
     ]);
-    const result = {key, registration, printing, imageUrl, originalImageUrl: registeredScanUrl || scanUrl || imageUrl, style, typography, flavorText, artReady};
+    const result = {key, registration, printing: framePrinting, imageUrl, originalImageUrl: registeredScanUrl || scanUrl || imageUrl, style, typography: preparedTypography, flavorText, artReady};
     if (fullCardImageUrl(imageUrl) && !style) {
       if (preparations.get(key) === entry) preparations.delete(key);
     } else entry.result = result;

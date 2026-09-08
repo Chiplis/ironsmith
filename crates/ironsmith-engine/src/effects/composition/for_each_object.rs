@@ -60,7 +60,7 @@ fn matching_objects(
         let candidate_ids: Vec<_> = if let Some(zone) = effect.filter.zone {
             game.zone_ids(zone).collect()
         } else {
-            game.battlefield.clone()
+            game.battlefield.to_vec()
         };
         candidate_ids
             .into_iter()

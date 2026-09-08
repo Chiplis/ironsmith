@@ -1,6 +1,6 @@
 import { cloneElement, isValidElement, useEffect, useState, useSyncExternalStore } from "react";
 import { Activity, Check, ClipboardCopy, Eraser } from "lucide-react";
-import { useGame } from "@/context/GameContext";
+import { useGame, useMatchClock } from "@/context/GameContext";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { readEngineDiagnostics } from "@/lib/engine-diagnostics";
@@ -113,7 +113,7 @@ export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTr
   const peerWait = multiplayer?.peerWait || null;
   const players = state?.players || [];
   const lobbyPlayers = Array.isArray(multiplayer?.players) ? multiplayer.players : [];
-  const clock = multiplayer?.matchClock || null;
+  const clock = useMatchClock();
 
   const report = async () => {
     const engine = await readEngineDiagnostics(game);

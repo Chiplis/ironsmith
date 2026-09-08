@@ -1,3 +1,4 @@
+import { differsBeyondClock } from "../../lib/value-store.js";
 import { saveRelayLobby } from '../../lib/relay/session.js';
 import {
   ACTION_INTENT_DOMAIN,
@@ -285,8 +286,11 @@ export function usePeerLobbyConnections(base, servicesRef) {
       actionSubmissionStartedAtMsRef.current = 0;
     }
     multiplayerRef.current = normalized;
-    try { saveRelayLobby(normalized); } catch { /* Transport reports unavailable persistent storage on connect. */ }
-    setMultiplayer(normalized);
+    try { saveRelayLobby(normalized, previous); } catch { /* Transport reports unavailable persistent storage on connect. */ }
+    base.matchClockStore?.current.set(normalized.matchClock || normalized.actionTimer || null);
+    // Clock epochs live in a separate subscription; board consumers only see
+    // semantic session changes. Check the raw next object before warning shaping.
+    if (differsBeyondClock(previous, next)) setMultiplayer(normalized);
     if (!normalized.submittingAction) {
       resolveSubmissionIdleWaiters();
     }
