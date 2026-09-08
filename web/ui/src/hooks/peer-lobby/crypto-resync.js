@@ -3993,6 +3993,9 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     actionHistoryRef.current = [
       ...actionHistoryRef.current,
       {
+        type: "apply_action",
+        protocolVersion: Number(message.protocolVersion || PROTOCOL_VERSION),
+        requestId: String(message.requestId || ""),
         seq: nextSequence,
         actorIndex: Number(message.actorIndex),
         command: cloneMultiplayerPayload(message.command),

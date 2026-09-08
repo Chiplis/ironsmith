@@ -120,6 +120,31 @@ export function usePeerLobbyMessaging(base, servicesRef) {
   const emitZiffleDiagnosticNotice = useCallback((...args) => servicesRef.current.emitZiffleDiagnosticNotice(...args), [servicesRef]);
   const ensureAuditIdentity = useCallback((...args) => servicesRef.current.ensureAuditIdentity(...args), [servicesRef]);
   const ensureDirectPeerConnections = useCallback((...args) => servicesRef.current.ensureDirectPeerConnections(...args), [servicesRef]);
+  const replayLocalActionsForRepair = useCallback((conn) => {
+    const session = multiplayerRef.current;
+    if (!conn?.open || !isRelayId(session.lobbyId) || session.localPlayerIndex == null) return 0;
+    const actions = (actionHistoryRef.current || [])
+      .filter((entry) => Number(entry?.actorIndex) === Number(session.localPlayerIndex))
+      .slice(-32);
+    for (const action of actions) {
+      safeSend(conn, {
+        ...cloneMultiplayerPayload(action),
+        type: "apply_action",
+        protocolVersion: PROTOCOL_VERSION,
+        requestId: String(action.requestId || `repair-action:${session.lobbyId}:${session.localPeerId}:${action.seq}`),
+        replayedAfterDisconnect: true,
+      });
+    }
+    if (actions.length > 0) {
+      recordDiagnosticEvent("relay_action:repair_replay", {
+        count: actions.length,
+        first_sequence: Number(actions[0]?.seq || 0),
+        last_sequence: Number(actions.at(-1)?.seq || 0),
+        peer: String(conn.peer || ""),
+      });
+    }
+    return actions.length;
+  }, []);
   const ensureZiffleIdentity = useCallback((...args) => servicesRef.current.ensureZiffleIdentity(...args), [servicesRef]);
   const finishPeerResync = useCallback((...args) => servicesRef.current.finishPeerResync(...args), [servicesRef]);
   const handleActionIntentCancelMessage = useCallback((...args) => servicesRef.current.handleActionIntentCancelMessage(...args), [servicesRef]);
@@ -171,6 +196,11 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       submittingAction: false,
     }));
     awaitingStateResyncRef.current = true;
+    // WebSockets are ordered and reliable while connected, but a frame queued
+    // at the instant the network drops may never reach the host. Replaying the
+    // bounded local transcript is safe because sequenced actions are
+    // idempotent; the host applies a missing action once or ignores a duplicate.
+    replayLocalActionsForRepair(conn);
     safeSend(conn, {
       type: "resync_request",
       protocolVersion: PROTOCOL_VERSION,
@@ -179,7 +209,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     });
     setStatus(reason, true);
     return true;
-  }, [setStatus, updateMultiplayer]);
+  }, [replayLocalActionsForRepair, setStatus, updateMultiplayer]);
 
   useEffect(() => {
     const recoverForegroundSession = () => {

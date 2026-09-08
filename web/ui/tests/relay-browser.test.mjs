@@ -64,7 +64,22 @@ test('WebSocket lobby validates decks and resumes guest and host after socket dr
   await guest.evaluate(() => window.testSockets.filter(s => s.url.includes('/rooms/')).forEach(s => s.close()));
   await wait(host, async () => (await window.__peerHarness.lobbyState()).multiplayer.players.some(p => p.connected === false));
   try { await wait(host, async () => (await window.__peerHarness.lobbyState()).multiplayer.players.every(p => p.connected !== false)); } catch(e) { console.error('GUEST STATUS', await guest.evaluate(async () => (await window.__peerHarness.lobbyState()).statusEvents)); throw e; }
+  await guest.evaluate(() => {
+    const socket = window.testSockets.filter(s => s.url.includes('/rooms/') && s.readyState === WebSocket.OPEN).at(-1);
+    const send = socket.send.bind(socket);
+    socket.send = data => {
+      try {
+        const frame = JSON.parse(data);
+        if (frame.type === 'data' && String(frame.data || '').includes('"type":"apply_action"')) return;
+      } catch { /* forward non-JSON WebSocket control frames */ }
+      send(data);
+    };
+    window.restoreRelaySend = () => { socket.send = send; };
+  });
   await guest.evaluate(() => window.__peerHarness.submitMultiplayerCommand({ type: 'priority_action', action_ref: { kind: 'test_priority_action', actor: 1, sequence: 1 } }, 'After reconnect'));
+  await wait(guest, async () => (await window.__peerHarness.lobbyState()).multiplayer.lastAppliedSequence >= 2);
+  assert.equal((await host.evaluate(() => window.__peerHarness.lobbyState())).multiplayer.lastAppliedSequence, 1);
+  await guest.evaluate(() => { window.restoreRelaySend(); window.dispatchEvent(new PageTransitionEvent('pageshow')); });
   for (const page of [host, guest]) await wait(page, async () => (await window.__peerHarness.lobbyState()).multiplayer.lastAppliedSequence >= 2);
   await host.evaluate(() => window.testSockets.filter(s => s.url.includes('/rooms/')).forEach(s => s.close()));
   await wait(guest, async () => (await window.__peerHarness.lobbyState()).multiplayer.players.some(p => p.connected === false));
