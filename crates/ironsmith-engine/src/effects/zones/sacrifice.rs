@@ -44,7 +44,7 @@ fn choose_objects_to_sacrifice(
         .filter(|(id, obj)| {
             game.controller_of(obj) == player_id
                 && filter.matches(obj, &filter_ctx, game)
-                && game.can_be_sacrificed(*id)
+                && game.can_be_sacrificed_with_cause(*id, &ctx.cause)
         })
         .map(|(id, _)| id)
         .collect();
@@ -92,7 +92,7 @@ fn max_sacrifice_cost_x(
             .filter(|(id, obj)| {
                 game.controller_of(obj) == player_id
                     && filter.matches(obj, &filter_ctx, game)
-                    && game.can_be_sacrificed(*id)
+                    && game.can_be_sacrificed_with_cause(*id, &ctx.cause)
             })
             .count() as u32,
     )
@@ -352,7 +352,7 @@ impl EffectExecutor for SacrificeEffect {
                 .filter(|(id, obj)| {
                     game.controller_of(obj) == player_id
                         && self.filter.matches(obj, &filter_ctx, game)
-                        && game.can_be_sacrificed(*id)
+                        && game.can_be_sacrificed_with_cause(*id, &ctx.cause)
                 })
                 .map(|(id, _)| id)
                 .collect();
@@ -446,7 +446,7 @@ impl SacrificeEffect {
             .filter(|(id, obj)| {
                 game.controller_of(obj) == player_id
                     && self.filter.matches(obj, &filter_ctx, game)
-                    && game.can_be_sacrificed(*id)
+                    && game.can_be_sacrificed_with_cause(*id, &ctx.cause)
             })
             .map(|(id, _)| id)
             .collect();
@@ -830,7 +830,7 @@ fn sacrifice_target_object(
     ctx: &mut ExecutionContext,
     object_id: ObjectId,
 ) -> Result<(bool, Option<TriggerEvent>), ExecutionError> {
-    if !game.can_be_sacrificed(object_id) {
+    if !game.can_be_sacrificed_with_cause(object_id, &ctx.cause) {
         return Ok((false, None));
     }
     if !game.battlefield.contains(&object_id) {
@@ -1004,6 +1004,102 @@ mod tests {
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()
+    }
+
+    #[test]
+    fn cause_filtered_sacrifice_protection_distinguishes_effects_and_payments() {
+        use crate::events::cause::{
+            CauseFilter, CauseType, CauseTypeFilter, ControllerFilter, EventCause,
+        };
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        for (cause_controller, cause_type, protected) in [
+            (bob, CauseType::Effect, true),
+            (bob, CauseType::Cost, true),
+            (alice, CauseType::Effect, false),
+            (alice, CauseType::Cost, false),
+            (bob, CauseType::GameRule, false),
+        ] {
+            for explicit in [false, true] {
+                let mut game = setup_game();
+                let definition = CardDefinitionBuilder::new(CardId::new(), "Sacrifice Protector")
+                    .card_types(vec![CardType::Enchantment])
+                    .with_ability(Ability::static_ability(StaticAbility::restriction(
+                        Restriction::BeSacrificedByCause {
+                            filter: ObjectFilter::creature().controlled_by(PlayerFilter::You),
+                            cause: CauseFilter {
+                                cause_type: Some(CauseTypeFilter::OneOf(vec![
+                                    CauseType::Effect,
+                                    CauseType::Cost,
+                                ])),
+                                source_filter: None,
+                                controller_filter: Some(ControllerFilter::Opponent),
+                            },
+                        },
+                        String::new(),
+                    )))
+                    .build();
+                let protector =
+                    game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+                let creature = create_creature_on_battlefield(&mut game, "Bear", alice);
+                game.update_cant_effects();
+                let cause = EventCause {
+                    cause_type,
+                    source: Some(protector),
+                    source_controller: Some(cause_controller),
+                };
+                let mut ctx = ExecutionContext::new_default(protector, alice).with_cause(cause);
+                if explicit {
+                    ctx.targets
+                        .push(crate::effects::ResolvedTarget::Object(creature));
+                }
+                SacrificeEffect::you(ObjectFilter::creature(), 1)
+                    .execute(&mut game, &mut ctx)
+                    .unwrap();
+                assert_eq!(
+                    game.battlefield.contains(&creature),
+                    protected,
+                    "{cause_controller:?} {cause_type:?} explicit={explicit}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn cause_filtered_protection_survives_simultaneous_selection_and_expires_with_source() {
+        use crate::events::cause::{CauseFilter, CauseType, CauseTypeFilter, ControllerFilter, EventCause};
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Sacrifice Protector")
+            .card_types(vec![CardType::Enchantment])
+            .with_ability(Ability::static_ability(StaticAbility::restriction(
+                Restriction::BeSacrificedByCause {
+                    filter: ObjectFilter::creature().controlled_by(PlayerFilter::You),
+                    cause: CauseFilter {
+                        cause_type: Some(CauseTypeFilter::OneOf(vec![CauseType::Effect, CauseType::Cost])),
+                        source_filter: None,
+                        controller_filter: Some(ControllerFilter::Opponent),
+                    },
+                }, String::new(),
+            )))
+            .build();
+        let protector = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let alice_creature = create_creature_on_battlefield(&mut game, "Alice Bear", alice);
+        let bob_creature = create_creature_on_battlefield(&mut game, "Bob Bear", bob);
+        game.update_cant_effects();
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, bob).with_cause(EventCause::from_effect(source, bob));
+        EachPlayerSacrificesEffect::new(ObjectFilter::creature(), 1, PlayerFilter::Any)
+            .execute(&mut game, &mut ctx).unwrap();
+        assert!(game.battlefield.contains(&alice_creature));
+        assert!(!game.battlefield.contains(&bob_creature));
+        // Losing the static ability must remove its cached restriction.
+        game.object_mut(protector).unwrap().abilities_mut().clear();
+        game.update_cant_effects();
+        SacrificeTargetEffect::new(ChooseSpec::SpecificObject(alice_creature))
+            .execute(&mut game, &mut ctx).unwrap();
+        assert!(!game.battlefield.contains(&alice_creature));
     }
 
     #[test]

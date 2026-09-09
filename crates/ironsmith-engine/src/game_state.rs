@@ -1418,8 +1418,10 @@ pub struct CantEffectTracker {
     pub cant_be_regenerated: HashSet<ObjectId>,
 
     /// Permanents that can't be sacrificed.
-    /// Example: Sigarda, Host of Herons (for creatures you control)
     pub cant_be_sacrificed: crate::incremental::ObjectSet,
+
+    /// Object, protected cause, and controller of the restriction's source.
+    pub cant_be_sacrificed_by_cause: Vec<(ObjectId, ironsmith_core::CauseFilter, PlayerId)>,
 
     /// Per-player spell filters that cannot be cast.
     ///
@@ -1836,6 +1838,8 @@ impl CantEffectTracker {
         self.cant_be_destroyed.extend(other.cant_be_destroyed);
         self.cant_be_regenerated.extend(other.cant_be_regenerated);
         self.cant_be_sacrificed.extend(other.cant_be_sacrificed);
+        self.cant_be_sacrificed_by_cause
+            .extend(other.cant_be_sacrificed_by_cause);
         for (player, filters) in other.cant_cast_filters {
             for restriction in filters {
                 self.add_cant_cast_filter_from_source(
@@ -1914,6 +1918,7 @@ impl CantEffectTracker {
         self.cant_be_destroyed.clear();
         self.cant_be_regenerated.clear();
         self.cant_be_sacrificed.clear();
+        self.cant_be_sacrificed_by_cause.clear();
         self.cant_cast_filters.clear();
         self.cast_spells_only_as_sorcery.clear();
         self.cant_activate_non_mana_abilities.clear();
@@ -5771,6 +5776,30 @@ impl GameState {
     /// Can the permanent be sacrificed?
     pub fn can_be_sacrificed(&self, permanent: ObjectId) -> bool {
         self.effect_store.cant_effects.can_be_sacrificed(permanent)
+    }
+
+    /// Check sacrifice protection against the initiating effect or payment.
+    pub fn can_be_sacrificed_with_cause(
+        &self,
+        permanent: ObjectId,
+        cause: &ironsmith_core::EventCause,
+    ) -> bool {
+        use crate::events::cause::CauseFilterRuntimeExt as _;
+        self.can_be_sacrificed(permanent)
+            && !self
+                .effect_store
+                .cant_effects
+                .cant_be_sacrificed_by_cause
+                .iter()
+                .any(|(object, filter, controller)| {
+                    *object == permanent
+                        && filter.matches_with_context_controller(
+                            cause,
+                            self,
+                            *controller,
+                            *controller,
+                        )
+                })
     }
 
     /// Can the creature be blocked?

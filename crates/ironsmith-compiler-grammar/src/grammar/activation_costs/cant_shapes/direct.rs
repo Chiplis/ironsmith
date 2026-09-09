@@ -80,6 +80,7 @@ pub enum DirectCantFact {
     SourceCantBlock,
     SourceCantAttackItsOwner,
     PermanentsYouControlCantBeSacrificed,
+    OpponentCausesCantMakeYouSacrifice,
     SourceCantBeBlocked,
     TemporaryUnblockable,
     SourceCantAttackAlone,
@@ -109,6 +110,12 @@ fn parse_special_direct_cant_fact<'a>(input: &mut LexStream<'a>) -> WResult<Dire
         parse_max_speed_restriction,
         parse_temporary_unblockable,
         parse_player_gain_life_replacement,
+        (
+            primitives::phrase(&["spells", "and", "abilities", "your", "opponents", "control"]),
+            parse_cant,
+            primitives::phrase(&["cause", "you", "to", "sacrifice", "permanents"]),
+        )
+            .value(DirectCantFact::OpponentCausesCantMakeYouSacrifice),
         parse_domain_attack_tax,
     ))
     .parse_next(input)

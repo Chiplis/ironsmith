@@ -1783,6 +1783,13 @@ fn predicate_uses_implicit_it_reference(predicate: &PredicateAst) -> bool {
 pub fn restriction_references_tag(restriction: &crate::effect::Restriction, tag: &str) -> bool {
     use crate::effect::Restriction;
 
+    if let Restriction::BeSacrificedByCause { filter, cause } = restriction {
+        return std::iter::once(filter)
+            .chain(cause.source_filter.iter())
+            .any(|filter| {
+                restriction_references_tag(&Restriction::BeSacrificed(filter.clone()), tag)
+            });
+    }
     let maybe_filter = match restriction {
         Restriction::Attack(filter)
         | Restriction::Block(filter)

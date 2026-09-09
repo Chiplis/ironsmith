@@ -5590,6 +5590,14 @@ fn bind_unresolved_it_in_restriction(
     use crate::effect::Restriction;
 
     match restriction {
+        Restriction::BeSacrificedByCause { filter, cause } => {
+            bind_unresolved_it_in_filter(filter, seed_tag)
+                + cause
+                    .source_filter
+                    .as_mut()
+                    .map_or(0, |source| bind_unresolved_it_in_filter(source, seed_tag))
+        }
+
         Restriction::Attack(filter)
         | Restriction::Block(filter)
         | Restriction::MustBeBlocked(filter)

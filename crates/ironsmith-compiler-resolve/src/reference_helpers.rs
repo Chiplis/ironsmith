@@ -1069,6 +1069,18 @@ pub fn resolve_restriction_it_tag(
         Restriction::BeRegenerated(filter) => {
             Restriction::be_regenerated(resolve_it_tag(filter, refs)?)
         }
+        Restriction::BeSacrificedByCause { filter, cause } => {
+            let mut cause = cause.clone();
+            cause.source_filter = cause
+                .source_filter
+                .as_ref()
+                .map(|source| resolve_it_tag(source, refs))
+                .transpose()?;
+            Restriction::BeSacrificedByCause {
+                filter: resolve_it_tag(filter, refs)?,
+                cause,
+            }
+        }
         Restriction::BeSacrificed(filter) => {
             Restriction::be_sacrificed(resolve_it_tag(filter, refs)?)
         }

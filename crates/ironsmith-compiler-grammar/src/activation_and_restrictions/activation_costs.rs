@@ -62,6 +62,19 @@ fn direct_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilityS
         DirectCantFact::SourceCantAttack => StaticAbility::cant_attack(),
         DirectCantFact::SourceCantBlock => StaticAbility::cant_block(),
         DirectCantFact::SourceCantAttackItsOwner => StaticAbility::cant_attack_its_owner(),
+        DirectCantFact::OpponentCausesCantMakeYouSacrifice => StaticAbility::restriction(
+            crate::effect::Restriction::BeSacrificedByCause {
+                filter: ObjectFilter::permanent().controlled_by(PlayerFilter::You),
+                cause: ironsmith_core::CauseFilter {
+                    cause_type: Some(ironsmith_core::CauseTypeFilter::OneOf(vec![
+                        ironsmith_core::CauseType::Effect, ironsmith_core::CauseType::Cost,
+                    ])),
+                    source_filter: None,
+                    controller_filter: Some(ironsmith_core::ControllerFilter::Opponent),
+                },
+            },
+            format_negated_restriction_display(tokens),
+        ),
         DirectCantFact::PermanentsYouControlCantBeSacrificed => {
             StaticAbility::permanents_you_control_cant_be_sacrificed()
         }
@@ -764,6 +777,13 @@ pub fn parse_cant_clause(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
         return Ok(Some(ability));
     }
 
+    if let Some(resolution) = direct_cant_static_ability(tokens) {
+        match resolution {
+            StaticAbilityShapeResolution::Ability(ability) => return Ok(Some(ability)),
+            StaticAbilityShapeResolution::Decline => return Ok(None),
+        }
+    }
+
     if let Some(parsed) = parse_cant_restriction_clause(tokens)?
         && parsed.target.is_none()
         && matches!(
@@ -792,13 +812,6 @@ pub fn parse_cant_clause(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
         return Ok(Some(ability));
     }
 
-    if let Some(resolution) = direct_cant_static_ability(tokens) {
-        match resolution {
-            StaticAbilityShapeResolution::Ability(ability) => return Ok(Some(ability)),
-            StaticAbilityShapeResolution::Decline => return Ok(None),
-        }
-    }
-
     if let Some(parsed) = parse_negated_object_restriction_clause(tokens)?
         && parsed.target.is_none()
     {
@@ -814,6 +827,24 @@ pub fn parse_cant_clause(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
 mod tests {
     use super::super::super::util::tokenize_line;
     use super::*;
+
+    #[test]
+    fn opponent_caused_sacrifice_protection_is_a_typed_static_restriction() {
+        let tokens = tokenize_line(
+            "Spells and abilities your opponents control can't cause you to sacrifice permanents.",
+            0,
+        );
+        let ability = parse_cant_clause(&tokens)
+            .unwrap()
+            .expect("sacrifice protection must be static");
+        let debug = format!("{ability:#?}");
+        assert!(debug.contains("BeSacrificedByCause"), "{debug}");
+        assert!(debug.contains("Opponent"), "{debug}");
+        assert!(
+            debug.contains("Cost"),
+            "opponent-requested payments must be included: {debug}"
+        );
+    }
 
     #[test]
     fn extra_turn_attack_restriction_is_a_typed_condition() {

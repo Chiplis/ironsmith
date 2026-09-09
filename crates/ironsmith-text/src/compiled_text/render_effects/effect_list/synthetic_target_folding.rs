@@ -271,6 +271,13 @@ fn restriction_references_identity(
             object_filter_references_identity(blockers, identity)
                 || object_filter_references_identity(attacker, identity)
         }
+        Restriction::BeSacrificedByCause { filter, cause } => {
+            object_filter_references_identity(filter, identity)
+                || cause
+                    .source_filter
+                    .as_ref()
+                    .is_some_and(|source| object_filter_references_identity(source, identity))
+        }
         Restriction::ActivateAbilitiesOf(filter)
         | Restriction::ActivateTapAbilitiesOf(filter)
         | Restriction::ActivateNonManaAbilitiesOf(filter)

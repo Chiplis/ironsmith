@@ -55,7 +55,7 @@ impl CauseFilterRuntimeExt for CauseFilter {
                 ControllerFilter::You => cause.source_controller == Some(affected_player),
                 ControllerFilter::Opponent => cause
                     .source_controller
-                    .is_some_and(|controller| controller != affected_player),
+                    .is_some_and(|controller| game.are_opponents(affected_player, controller)),
                 ControllerFilter::ContextController => {
                     cause.source_controller == Some(context_controller)
                 }
@@ -74,6 +74,30 @@ impl CauseFilterRuntimeExt for CauseFilter {
 mod tests {
     use super::*;
     use crate::ids::ObjectId;
+
+    #[test]
+    fn opponent_cause_filter_respects_teams_and_captured_controller() {
+        let mut game = GameState::new(
+            vec!["Alice".into(), "Bob".into(), "Carol".into(), "Dan".into()],
+            20,
+        );
+        let [alice, bob, carol, dan] = [0, 1, 2, 3].map(PlayerId::from_index);
+        game.set_teams(vec![vec![alice, bob], vec![carol, dan]])
+            .unwrap();
+        let filter = CauseFilter::any().with_controller(ControllerFilter::Opponent);
+        // The source need not still exist for its captured controller to matter.
+        for (controller, expected) in [(alice, false), (bob, false), (carol, true), (dan, true)] {
+            assert_eq!(
+                filter.matches(
+                    &EventCause::from_effect(ObjectId::from_raw(999), controller),
+                    &game,
+                    alice
+                ),
+                expected
+            );
+        }
+        assert!(!filter.matches(&EventCause::from_game_rule(), &game, alice));
+    }
 
     #[test]
     fn test_cause_type_is_effect_like() {
