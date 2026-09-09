@@ -4536,12 +4536,18 @@ pub(super) fn parse_ability_of_object_trigger_tail_lexed(
     let Some(tail) = trigger_grammar::parse_ability_of_object_tail(tail_tokens) else {
         return Ok(None);
     };
-    let mut filter = parse_object_filter_lexed(&tail_tokens[tail.filter], false).map_err(|_| {
+    let filter_tokens = &tail_tokens[tail.filter];
+    let mut filter = parse_object_filter_lexed(filter_tokens, false).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported activated-ability trigger source filter (clause: '{}')",
             tail_words.join(" ")
         ))
     })?;
+    if filter_tokens.windows(3).any(|tokens| {
+        tokens[0].is_word("on") && tokens[1].is_word("the") && tokens[2].is_word("battlefield")
+    }) {
+        filter.set_activation_source_battlefield_surface(true);
+    }
     if tail.chosen_type_reference {
         filter.chosen_creature_type = true;
     }

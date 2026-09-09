@@ -297,3 +297,5 @@ mod graveyard_threshold_discount;
 mod creature_leader_control;
 
 mod power_difference_counters;
+
+mod activation_source_zone;

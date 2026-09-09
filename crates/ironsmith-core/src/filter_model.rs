@@ -631,6 +631,9 @@ pub struct ObjectFilterUnionSurface {
     /// relative clause. The ordinary zone and history predicate remain the
     /// executable semantics; this retains only the authored surface.
     entered_battlefield_explicit_surface: bool,
+    /// Explicit location in an activated-ability source clause.
+    #[cfg_attr(feature = "serde", serde(default))]
+    activation_source_battlefield_surface: bool,
     /// Oracle used the causative entry surface `a player puts ... onto the
     /// battlefield`. The ordinary zone-change trigger and triggering-object
     /// controller relation remain the executable semantics.
@@ -693,6 +696,7 @@ impl ObjectFilterUnionSurface {
             graveyard_entry_history: None,
             global_characteristic_domain: None,
             entered_battlefield_explicit_surface: false,
+            activation_source_battlefield_surface: false,
             player_puts_onto_battlefield_surface: false,
             you_had_entry_surface: false,
             mana_source_spent_trailing_if_surface: false,
@@ -1083,6 +1087,15 @@ impl ObjectFilterUnionSurface {
 
     pub const fn global_characteristic_domain(self) -> Option<GlobalCharacteristicDomainSurface> {
         self.global_characteristic_domain
+    }
+
+    pub const fn with_activation_source_battlefield_surface(mut self, explicit: bool) -> Self {
+        self.activation_source_battlefield_surface = explicit;
+        self
+    }
+
+    pub const fn activation_source_battlefield_surface(self) -> bool {
+        self.activation_source_battlefield_surface
     }
 
     pub const fn with_entered_battlefield_explicit_surface(mut self, explicit: bool) -> Self {
@@ -2598,8 +2611,16 @@ impl ObjectFilter {
         self.union_surface.global_characteristic_domain()
     }
 
-    /// Preserve whether Oracle explicitly named the battlefield in this
-    /// current-turn entry clause without changing filter matching.
+    /// Preserve an explicit battlefield location in an activation source.
+    pub fn set_activation_source_battlefield_surface(&mut self, explicit: bool) {
+        self.union_surface = self.union_surface.with_activation_source_battlefield_surface(explicit);
+    }
+
+    pub const fn has_activation_source_battlefield_surface(&self) -> bool {
+        self.union_surface.activation_source_battlefield_surface()
+    }
+
+    /// Preserve the explicit battlefield wording of a current-turn entry clause.
     pub fn set_entered_battlefield_explicit_surface(&mut self, explicit: bool) {
         self.union_surface = self
             .union_surface
