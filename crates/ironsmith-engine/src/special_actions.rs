@@ -3248,16 +3248,10 @@ fn pay_component_without_execution_context(
                 cost_ctx.decision_maker,
             );
         }
-        if game.try_pay_mana_cost_with_reason(
-            cost_ctx.payer,
-            Some(cost_ctx.source),
-            &adjusted_cost,
-            0,
-            cost_ctx.reason,
-        ) {
-            return Ok(());
-        }
-        return Err(CostPaymentError::InsufficientMana);
+        return crate::costs::pay_mana_cost_with_choices(
+            game, cost_ctx.payer, Some(cost_ctx.source), &adjusted_cost, 0,
+            cost_ctx.reason, cost_ctx.decision_maker,
+        );
     }
     if let Some(dynamic_mana) = component.dynamic_mana_cost_ref() {
         if let Some(static_base) = dynamic_mana.resolved_static_base() {
@@ -3278,16 +3272,10 @@ fn pay_component_without_execution_context(
                     cost_ctx.decision_maker,
                 );
             }
-            if game.try_pay_mana_cost_with_reason(
-                cost_ctx.payer,
-                Some(cost_ctx.source),
-                &adjusted_cost,
-                0,
-                cost_ctx.reason,
-            ) {
-                return Ok(());
-            }
-            return Err(CostPaymentError::InsufficientMana);
+            return crate::costs::pay_mana_cost_with_choices(
+                game, cost_ctx.payer, Some(cost_ctx.source), &adjusted_cost, 0,
+                cost_ctx.reason, cost_ctx.decision_maker,
+            );
         }
         return Err(CostPaymentError::Other(
             "dynamic mana cost requires an execution context".to_string(),
@@ -3309,10 +3297,9 @@ fn pay_component_in_context(
         let resolved = resolve_dynamic_mana_cost(game, dynamic_mana, execution_ctx)?;
         let adjusted_cost =
             game.adjust_mana_cost_for_payment_reason(payer, Some(source), &resolved, reason);
-        if game.try_pay_mana_cost_with_reason(payer, Some(source), &adjusted_cost, 0, reason) {
-            return Ok(());
-        }
-        return Err(CostPaymentError::InsufficientMana);
+        return crate::costs::pay_mana_cost_with_choices(
+            game, payer, Some(source), &adjusted_cost, 0, reason, execution_ctx.decision_maker,
+        );
     }
     let mut cost_ctx = CostContext::new(source, payer, execution_ctx.decision_maker)
         .with_reason(reason)
