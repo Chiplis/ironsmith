@@ -392,3 +392,55 @@ mod tests {
         );
     }
 }
+
+/// Pair two independently tagged creations only when their permanent size
+/// assignments agree. Render each complete bundle under the same controller
+/// before comparing, so token instance IDs cannot affect the shared wording.
+pub(in crate::compiled_text) fn describe_shared_dynamic_token_pair(
+    effects: &[Effect],
+) -> Option<String> {
+    let [first, first_pt, second, second_pt] = effects else {
+        return None;
+    };
+    let first_tagged = first.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let second_tagged = second.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let first_create = first_tagged
+        .effect
+        .downcast_ref::<crate::effects::CreateTokenEffect>()?;
+    let second_create = second_tagged
+        .effect
+        .downcast_ref::<crate::effects::CreateTokenEffect>()?;
+    let first_set = unwrap_basic_tag_wrappers(first_pt)
+        .downcast_ref::<crate::effects::SetBasePowerToughnessEffect>()?;
+    let second_set = unwrap_basic_tag_wrappers(second_pt)
+        .downcast_ref::<crate::effects::SetBasePowerToughnessEffect>()?;
+    if first_create.controller != PlayerFilter::You
+        || first_create.controller_target.is_some()
+        || second_create.controller_target.is_some()
+        || first_set.power != second_set.power
+        || first_set.toughness != second_set.toughness
+        || first_create.count != second_create.count
+    {
+        return None;
+    }
+    let other = match &second_create.controller {
+        PlayerFilter::TaggedPlayer(_) | PlayerFilter::ChosenPlayer => "that player",
+        PlayerFilter::Target(inner) if **inner == PlayerFilter::Opponent => "target opponent",
+        PlayerFilter::Target(inner) if **inner == PlayerFilter::Any => "target player",
+        _ => return None,
+    };
+    let first_rendered = describe_create_token_then_set_base_pt_bundle(&[first, first_pt])?;
+    let mut normalized_create = second_create.clone();
+    normalized_create.controller = PlayerFilter::You;
+    let mut normalized_tagged = second_tagged.clone();
+    *normalized_tagged.effect = Effect::new(normalized_create);
+    let normalized = Effect::new(normalized_tagged);
+    let second_rendered = describe_create_token_then_set_base_pt_bundle(&[&normalized, second_pt])?;
+    if first_rendered != second_rendered || first_rendered.contains('.') {
+        return None;
+    }
+    Some(format!(
+        "You and {other} each create {}",
+        first_rendered.strip_prefix("Create ")?
+    ))
+}

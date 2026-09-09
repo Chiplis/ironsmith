@@ -4161,6 +4161,12 @@ pub(super) fn describe_coordinated_sequence(
         return Some(rendered);
     }
     if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
+        && sequence.result_label.is_none()
+        && let Some(rendered) = describe_shared_dynamic_token_pair(&sequence.effects)
+    {
+        return Some(rendered);
+    }
+    if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
         && let Some(rendered) = describe_shared_actor_token_creation_list(&sequence.effects)
     {
         return Some(rendered);
