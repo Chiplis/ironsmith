@@ -17,6 +17,7 @@ pub enum ForEachEffectAst {
         effects: Vec<EffectAst>,
     },
     ForEachPlayersFiltered {
+        sequential: bool,
         filter: PlayerFilter,
         effects: Vec<EffectAst>,
     },

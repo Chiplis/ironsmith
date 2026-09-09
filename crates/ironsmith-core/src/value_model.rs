@@ -433,6 +433,9 @@ pub enum TurnHistoryCount {
     },
     /// Counters of the requested kind put on matching objects this turn.
     CountersPutOn {
+        /// Restricts the player responsible for placing the counters.
+        #[cfg_attr(feature = "serde", serde(default))]
+        source_controller: Option<PlayerFilter>,
         counter_type: Option<CounterType>,
         filter: ObjectFilter,
     },
@@ -555,6 +558,7 @@ pub enum Value {
     /// each contribute only one to this value.
     DistinctCounterTypesAmong(ObjectFilter),
     DistinctNames(ObjectFilter),
+    DistinctManaValues(ObjectFilter),
     DistinctPowers(ObjectFilter),
     TurnHistoryCount(TurnHistoryCount),
     CreaturesDiedThisTurn,
@@ -920,6 +924,7 @@ pub enum Restriction {
     BeDestroyed(ObjectFilter),
     BeRegenerated(ObjectFilter),
     BeSacrificed(ObjectFilter),
+    BeSacrificedByCause { filter: ObjectFilter, cause: crate::CauseFilter },
     HaveCountersPlaced(ObjectFilter),
     BeTargeted(ObjectFilter),
     BeTargetedFrom(ObjectFilter, ObjectFilter),
@@ -1386,6 +1391,7 @@ pub enum PermanentLeftBattlefieldControlSurface {
 )]
 #[derive(TagKeyWalk)]
 pub enum TurnHistoryCondition {
+    ObjectAttackedDuringControllersLastTurn(ObjectFilter),
     SpellsCastLastTurnAtLeast(u32),
     SourceCrewedByAtLeast {
         count: u32,
@@ -1755,6 +1761,7 @@ pub enum Condition {
         symbol: Option<ManaSymbol>,
     },
     SnowManaOfAnySpellColorSpentToCastThisSpell,
+    TriggeringSpellSnowManaOfAnySpellColorSpentToCast,
     SameColorManaSpentToCastThisSpellAtLeast(u32),
     ColorsOfManaSpentToCastThisSpellOrMore(u32),
     YouControlCommander,
@@ -1871,6 +1878,7 @@ pub enum Condition {
     SourceIsAttacking,
     SourceIsBlocking,
     SourceIsSoulbondPaired,
+    SourceSoulbondPartnerMatches(ObjectFilter),
     TurnHistory(TurnHistoryCondition),
     PlayerGraveyardHasCardsAtLeast {
         player: crate::PlayerId,

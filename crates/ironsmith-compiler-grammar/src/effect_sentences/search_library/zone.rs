@@ -48,3 +48,31 @@ pub fn parse_for_each_put_into_graveyard_this_way_sentence(
         effects,
     })]))
 }
+
+/// Iterate the actual revealed objects with their remembered characteristics.
+pub fn parse_for_each_revealed_this_way_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(shape) = search_grammar::parse_search_for_each_way_shape_lexed(tokens) else {
+        return Ok(None);
+    };
+    if shape.kind != search_grammar::SearchForEachWayKind::Revealed {
+        return Ok(None);
+    }
+    let (Some(filter_tokens), Some(effect_tokens)) = (shape.iterated_filter_tokens, shape.effect_tokens) else {
+        return Ok(None);
+    };
+    if filter_tokens.is_empty() || effect_tokens.is_empty() { return Ok(None); }
+    let mut filter = parse_object_filter_lexed(filter_tokens, false)?;
+    filter.zone = None;
+    filter.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Revealed));
+    let effects = parse_effect_chain(effect_tokens)?;
+    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+        tag: crate::tag::CompilerReferenceTag::PublicRevealed.bind(),
+        effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::ItMatchedLastKnown(filter),
+            if_true: effects,
+            if_false: Vec::new(),
+        })],
+    })]))
+}

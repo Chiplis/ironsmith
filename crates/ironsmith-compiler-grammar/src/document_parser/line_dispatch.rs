@@ -693,6 +693,48 @@ pub(super) fn attach_compiler_trigger_facts(
         let recognized_special =
             semantic_grammar::parse_special_triggered_program_tokens(&triggered.full_parse_tokens);
         let special_triggered_program = match recognized_special {
+            Some(semantic_grammar::SpecialTriggeredProgram::OpponentLandMajoritySearch) => {
+                let trigger = super::super::activation_and_restrictions::parse_trigger_clause_lexed_with_context(
+                    context,
+                    &triggered.trigger_parse_tokens,
+                )?;
+                let mut basic_land = crate::ObjectFilter::land().with_supertype(crate::types::Supertype::Basic);
+                basic_land.zone = None;
+                basic_land.set_explicit_card_noun(true);
+                let effects = vec![
+                    crate::host::EffectAst::subject_verb_explicit_target_only_for_chooser(
+                        crate::TargetAst::Player(
+                            crate::PlayerFilter::OpponentWithMoreControlledObjectsThan {
+                                player: Box::new(crate::PlayerFilter::Active),
+                                filter: Box::new(crate::ObjectFilter::land()),
+                            },
+                            Some(crate::TextSpan::synthetic()),
+                        ),
+                        crate::PlayerAst::Active,
+                    ),
+                    crate::host::EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
+                        player: crate::PlayerAst::Active,
+                        effects: vec![crate::host::EffectAst::subject_verb_search_library(
+                            basic_land,
+                            crate::Zone::Battlefield,
+                            crate::PlayerAst::Active,
+                            crate::PlayerAst::Active,
+                            crate::effect::SearchSelectionMode::Exact,
+                            false,
+                            None,
+                            true,
+                            crate::ChoiceCount::exactly(1),
+                            None,
+                            None,
+                            crate::effect::SearchResultReferenceSurface::ThatCard,
+                            false,
+                            false,
+                            false,
+                        )],
+                    }),
+                ];
+                Some((trigger, effects))
+            }
             Some(semantic_grammar::SpecialTriggeredProgram::OpponentCreatureMajorityConsult) => {
                 let trigger = super::super::activation_and_restrictions::parse_trigger_clause_lexed_with_context(
                     context,
@@ -864,7 +906,16 @@ pub(super) fn attach_compiler_trigger_facts(
             }
             _ => None,
         };
-        let direct = if let Some(program) = special_triggered_program {
+        let x_cost_trigger = semantic_grammar::parse_spell_or_activated_ability_x_cost_trigger_tokens(
+            &triggered.info.source_tokens, &triggered.trigger_parse_tokens, &triggered.effect_parse_tokens,
+        );
+        let direct = if let Some(shape) = x_cost_trigger {
+            // The complete grammar owns both trigger domains and their shared
+            // qualification. Parse the actual consequence after that condition.
+            triggered.intervening_if = None;
+            crate::semantic_line_parsing::parse_effect_sentences_preserving_source_boundaries(shape.effect_tokens)
+                .map(|effects| Some((crate::semantic_line_parsing::spell_or_activated_ability_x_cost_trigger_spec(), effects)))
+        } else if let Some(program) = special_triggered_program {
             Ok(Some(program))
         } else if let Some(cost) = nested_combat_cost {
             super::super::activation_and_restrictions::parse_trigger_clause_lexed_with_context(
@@ -913,6 +964,9 @@ pub(super) fn attach_compiler_trigger_facts(
                     &triggered.effect_parse_tokens,
                 )?;
                 let effects = linked_token_effects
+                .or_else(|| crate::semantic_line_parsing::exact_atomic_return_as_aura_bundle(
+                    &triggered.effect_parse_tokens,
+                ))
                 .or_else(|| crate::semantic_line_parsing::end_of_combat_destroy_then_next_end_step_counter_program(
                     &triggered.effect_parse_tokens,
                 ))
@@ -955,6 +1009,8 @@ pub(super) fn attach_compiler_trigger_facts(
             &mut effects,
         );
         preserve_named_source_exile_surface(context, &triggered.info.source_tokens, &mut effects);
+        crate::util::recognize_unique_source_action_surface(&mut effects, &triggered.info.source_tokens, "untap");
+        crate::util::recognize_transformed_source_return_pronoun(&mut effects, &triggered.info.source_tokens);
         preserve_named_source_transform_surface(
             context,
             &triggered.info.source_tokens,

@@ -31,6 +31,7 @@ fn grant_duration_source(
             source_id: source,
             expires_end_of_turn: u32::MAX,
         },
+        GrantDuration::UntilYourNextTurn => GrantSource::until_player_next_turn_start(source, player, game.turn.turn_number),
         GrantDuration::UntilYourNextTurnEnd => GrantSource::until_player_next_turn_end(
             source,
             player,
@@ -61,7 +62,8 @@ impl EffectExecutor for GrantBySpecEffect {
             let duration = match self.duration {
                 GrantDuration::UntilEndOfTurn => crate::effect::Until::EndOfTurn,
                 GrantDuration::Forever => crate::effect::Until::Forever,
-                GrantDuration::UntilYourNextTurnEnd => crate::effect::Until::YourNextTurn,
+                GrantDuration::UntilYourNextTurn => crate::effect::Until::YourNextTurn,
+                GrantDuration::UntilYourNextTurnEnd => crate::effect::Until::YourNextTurnEnd,
             };
             let effect = crate::effects::ApplyContinuousEffect::new(
                 EffectTarget::Filter(self.spec.filter.clone()),

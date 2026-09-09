@@ -633,6 +633,22 @@ pub fn consult_cast_effects(
     Ok(cast_effects)
 }
 
+pub fn if_you_dont_result_predicate(tokens: &[OwnedLexToken]) -> crate::cards::builders::IfResultPredicate {
+    use crate::cards::builders::IfResultPredicate;
+    if let Some(prefix) = if_you_dont_prefix_len(tokens)
+        && let Some(comma) = tokens.iter().position(|token| token.is_comma())
+        && prefix <= comma
+        && crate::lexer::token_word_refs(&tokens[prefix..comma]) == ["draw", "a", "card", "this", "way"] {
+        let mut result = ironsmith_core::PriorEffectResultSurface::new(
+            ironsmith_core::PriorEffectAction::Drawn, ObjectFilter::default(),
+            ironsmith_core::PriorEffectResultActor::You, ironsmith_core::PriorEffectResultQuantifier::One,
+        );
+        result.negated = true;
+        return IfResultPredicate::PriorEffectResult(result);
+    }
+    IfResultPredicate::ExplicitDidNot
+}
+
 pub fn parse_if_you_dont_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -932,5 +948,21 @@ mod tests {
         };
         assert_eq!(subject.player, PlayerAst::That);
         assert_eq!(*player, PlayerAst::That);
+    }
+}
+
+#[cfg(test)]
+mod vote_counted_tests {
+    use ironsmith_compiler::ParseCardText;
+    #[test]
+    fn vote_counted_consult_semantic_shape() {
+        let tokens = crate::lexer::lex_line("Reveal cards from the top of your library until you reveal a creature card for each wild vote", 0).unwrap();
+        let parsed = super::parse_consult_traversal_sentence(&tokens).unwrap();
+        assert!(parsed.is_some());
+        let builder = ironsmith_compiler_lowering::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Council Probe")
+            .card_types(vec![crate::types::CardType::Sorcery]);
+        let (definition, trace) = crate::parse_trace::capture(|| builder.parse_text("Starting with you, each player votes for wild or free. Reveal cards from the top of your library until you reveal a creature card for each wild vote. Put those creature cards onto the battlefield, then shuffle the rest into your library. You may put a permanent card from your hand onto the battlefield for each free vote."));
+        let definition = definition.unwrap();
+        assert!(format!("{definition:#?}").contains("ConsultTopOfLibrary"), "{}", trace.render());
     }
 }

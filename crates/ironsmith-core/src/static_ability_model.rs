@@ -602,6 +602,14 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     /// A cost that must be paid for a matching creature to block a matching
     /// attacker. The total cost is locked from this payload when blockers are
     /// declared (CR 509.1d), rather than recomputed during payment.
+    /// A cost per matching attacker attacking this ability's controller or
+    /// optionally a planeswalker they control.
+    AttackCost {
+        attackers: ObjectFilter,
+        covers_planeswalkers: bool,
+        cost: TotalCost<C>,
+        display: String,
+    },
     BlockCost {
         blockers: ObjectFilter,
         blocker_is_attached_to_source: bool,
@@ -1683,6 +1691,8 @@ where
                     display,
                 }
             }
+            StaticAbilityPayload::AttackCost { attackers, covers_planeswalkers, cost, display } =>
+                StaticAbilityPayload::AttackCost { attackers, covers_planeswalkers, cost: map_total_cost(cost, map_cost)?, display },
             StaticAbilityPayload::BlockCost {
                 blockers,
                 blocker_is_attached_to_source,
@@ -2081,6 +2091,7 @@ where
                         added_subtypes: spec.added_subtypes,
                         added_abilities,
                         set_base_power_toughness: spec.set_base_power_toughness,
+                        added_abilities_source_filter: spec.added_abilities_source_filter.clone(),
                         set_base_power_toughness_from_self: spec
                             .set_base_power_toughness_from_self,
                     },
@@ -3726,6 +3737,12 @@ impl<
             payload: StaticAbilityPayload::CantAttackUnlessCondition { condition, display },
         }
     }
+    pub fn attack_cost(attackers: ObjectFilter, covers_planeswalkers: bool, cost: TotalCost<C>, display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self { id: Some(StaticAbilityId::AttackCost), label: display.clone(),
+            payload: StaticAbilityPayload::AttackCost { attackers, covers_planeswalkers, cost, display } }
+    }
+
     pub fn block_cost(
         blockers: ObjectFilter,
         attackers: ObjectFilter,

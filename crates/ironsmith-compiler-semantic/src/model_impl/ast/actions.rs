@@ -656,6 +656,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("filter", filter)
                 .field("duration", duration)
                 .finish(),
+            Self::Replacements(ReplacementActionAst::RegisterEnterWithCountersReplacement {
+                filter, counter_type, count, mode,
+            }) => f.debug_struct("RegisterEnterWithCountersReplacement")
+                .field("filter", filter).field("counter_type", counter_type)
+                .field("count", count).field("mode", mode).finish(),
             Self::Replacements(ReplacementActionAst::RegisterNextBatchEnterWithCounters {
                 filter,
                 counter_type,
@@ -764,13 +769,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 target,
                 all,
                 owner_library_destination,
-                possessive_owner_subject,
+                possessive_owner_subject, shuffle_subject_library,
             }) => f
                 .debug_struct("ShuffleObjectsIntoLibrary")
                 .field("target", target)
                 .field("all", all)
                 .field("owner_library_destination", owner_library_destination)
                 .field("possessive_owner_subject", possessive_owner_subject)
+                .field("shuffle_subject_library", shuffle_subject_library)
                 .finish(),
             Self::Grants(GrantActionAst::GrantProtectionChoice {
                 target,
@@ -1315,6 +1321,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             }) => f
                 .debug_struct("SetBasePower")
                 .field("power", power)
+                .field("target", target)
+                .field("duration", duration)
+                .finish(),
+            Self::Characteristics(CharacteristicActionAst::SetBaseToughness {
+                toughness,
+                target,
+                duration,
+            }) => f
+                .debug_struct("SetBaseToughness")
+                .field("toughness", toughness)
                 .field("target", target)
                 .field("duration", duration)
                 .finish(),
@@ -2219,8 +2235,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::TurnStructure(TurnStructureActionAst::SkipMainPhasesThisTurn) => f.write_str("SkipMainPhasesThisTurn"),
             Self::TurnStructure(TurnStructureActionAst::SkipCombatPhasesThisTurn) => f.write_str("SkipCombatPhasesThisTurn"),
             Self::TurnStructure(TurnStructureActionAst::SkipDrawStep) => f.write_str("SkipDrawStep"),
-            Self::TurnStructure(TurnStructureActionAst::AdditionalPhases { phases }) => {
-                f.debug_tuple("AdditionalPhases").field(phases).finish()
+            Self::TurnStructure(TurnStructureActionAst::AdditionalPhases { phases, after_main_phase }) => {
+                f.debug_tuple("AdditionalPhases").field(phases).field(after_main_phase).finish()
             }
             Self::ZoneMoves(ZoneMoveActionAst::PlayFromGraveyardUntilEot) => f.write_str("PlayFromGraveyardUntilEot"),
             Self::Control(ControlActionAst::ControlPlayer { player, duration }) => f
@@ -2271,6 +2287,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::KeywordActions(KeywordActionAst::Suspect { target }) => f.debug_tuple("Suspect").field(target).finish(),
             Self::KeywordActions(KeywordActionAst::ClearSuspected { target }) => {
                 f.debug_tuple("ClearSuspected").field(target).finish()
+            }
+            Self::KeywordActions(KeywordActionAst::ClearGoad { target }) => {
+                f.debug_tuple("ClearGoad").field(target).finish()
             }
             Self::Damage(DamageActionAst::HealDamage { target, amount }) => f
                 .debug_struct("HealDamage")

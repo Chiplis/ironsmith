@@ -13,7 +13,7 @@ pub(super) fn parse_combat_damage_history_participant(
     let sources = parse_object_filter(history.source_tokens, false)?;
     let normalized = prepend_that_player_subject(history.effect_tokens);
     let effects = parse_maybe_effects(&normalized, false, true)?;
-    Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+    Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
         filter: PlayerFilter::was_dealt_combat_damage_by_sources_this_game(
             iteration_filter,
             sources,

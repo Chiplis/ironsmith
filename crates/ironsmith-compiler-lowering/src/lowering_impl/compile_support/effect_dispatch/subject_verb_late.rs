@@ -21,6 +21,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
         SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalPhases { .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeMonarch)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearSuspected { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearGoad { .. })
             | SubjectVerbActionAst::Control(ControlActionAst::ControlPlayer { .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Convert { .. })
             | SubjectVerbActionAst::Stack(StackActionAst::Counter { .. })
@@ -1033,7 +1034,17 @@ pub(super) fn compile_subject_verb_late(
             }
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
-            let mut effect = if spec.count().is_single() && !*face_down {
+            // Exile retains affected-object LKI for "creatures exiled this way"
+            // and other linked follow-ups. A generic move's explicit result
+            // instead describes the new zone object. Keep that path only for
+            // actor/plural presentation fields that ExileEffect cannot carry.
+            let has_explicit_actor = !matches!(
+                player,
+                PlayerAst::Implicit | PlayerAst::Target | PlayerAst::TargetOpponent
+            );
+            let mut effect = if spec.count().is_single() && !*face_down
+                && (has_explicit_actor || *target_plural_surface)
+            {
                 let mut move_effect =
                     crate::effects::MoveToZoneEffect::new(spec.clone(), Zone::Exile, true);
                 if !matches!(
@@ -1933,8 +1944,10 @@ pub(super) fn compile_subject_verb_late(
                 Effect::skip_draw_step_player(subject.into_player_filter())
             })
         }
-        SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalPhases { phases }) => {
-            Ok((vec![Effect::additional_phases(phases.clone())], Vec::new()))
+        SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalPhases { phases, after_main_phase }) => {
+            let mut effect = crate::effects::AdditionalPhasesEffect::new(phases.clone());
+            effect.after_main_phase = *after_main_phase;
+            Ok((vec![Effect::new(effect)], Vec::new()))
         }
         SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PlayFromGraveyardUntilEot) => {
             compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
@@ -2096,7 +2109,7 @@ pub(super) fn compile_subject_verb_late(
             let emblem = compile_emblem_description(emblem)?;
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let filter = subject.clone_player_filter();
-            let effect = if matches!(&filter, PlayerFilter::You) {
+            let effect = if matches!(&filter, PlayerFilter::You | PlayerFilter::IteratedPlayer) {
                 Effect::create_emblem(emblem)
             } else {
                 Effect::for_players(filter, vec![Effect::create_emblem(emblem)])
@@ -2199,6 +2212,28 @@ pub(super) fn compile_subject_verb_late(
             );
             Ok((vec![effect], choices))
         }
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearGoad { target }) => {
+            let Some(target) = target else {
+                return Ok(Some((vec![Effect::clear_all_goad()], Vec::new())));
+            };
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let spec = if choices.is_empty() {
+                match spec {
+                    ChooseSpec::Object(filter) => ChooseSpec::All(filter),
+                    other => other,
+                }
+            } else {
+                spec
+            };
+            let effect = tag_object_target_effect(
+                Effect::clear_goad(spec.clone()),
+                &spec,
+                ctx,
+                "no_longer_goaded",
+            );
+            Ok((vec![effect], choices))
+        }
         SubjectVerbActionAst::Damage(DamageActionAst::HealDamage { target, amount }) => {
             compile_tagged_effect_for_target(target, ctx, "healed", |spec| match amount {
                 Some(amount) => Effect::heal_damage(spec, amount.clone()),
@@ -2279,16 +2314,9 @@ pub(super) fn compile_subject_verb_late(
             let chooser = subject.clone_player_filter();
             let target_prelude = subject.target_prelude();
             let refs = current_reference_env(ctx);
-            let bare_it_with_source_antecedent = !*one_of_referenced_set
-                && !refs.iterated_object
-                && refs.has_source_object_antecedent()
-                && refs.known_last_object_tag().is_none_or(|tag| {
-                    tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
-                        && !refs.last_it_choice_is_set
-                })
-                && object_filter_as_tagged_reference(filter).is_some_and(|tag| {
-                    tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
-                });
+            let bare_it_with_source_antecedent = crate::reference_helpers::sacrifice_filter_uses_source_antecedent(
+                filter, *one_of_referenced_set, &refs,
+            );
             let mut resolved_filter = if bare_it_with_source_antecedent {
                 ObjectFilter::source()
             } else {

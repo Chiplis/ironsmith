@@ -75,6 +75,7 @@ pub enum DoesntUntapDuringUntapStepSpec<'a> {
     Attached {
         subject_tokens: &'a [OwnedLexToken],
         tail_tokens: &'a [OwnedLexToken],
+        during_your_untap_step: bool,
     },
 }
 
@@ -1379,7 +1380,7 @@ fn parse_source_doesnt_untap_during_your_untap_step_prefix<'a>(
 
 fn parse_attached_doesnt_untap_during_controller_untap_step_line<'a>(
     input: &mut LexStream<'a>,
-) -> Result<(), ErrMode<ContextError>> {
+) -> Result<bool, ErrMode<ContextError>> {
     (
         winnow::combinator::alt((
             primitives::phrase(&["enchanted", "creature"]),
@@ -1389,9 +1390,19 @@ fn parse_attached_doesnt_untap_during_controller_untap_step_line<'a>(
             primitives::phrase(&["equipped", "creature"]),
             primitives::phrase(&["equipped", "permanent"]),
         )),
-        parse_dependent_doesnt_untap_during_controller_untap_step,
+        winnow::combinator::alt((
+            parse_dependent_doesnt_untap_during_controller_untap_step.value(false),
+            (
+                winnow::combinator::alt((
+                    primitives::kw("doesn't").void(),
+                    primitives::kw("doesnt").void(),
+                    (primitives::kw("does"), primitives::kw("not")).void(),
+                )),
+                primitives::phrase(&["untap", "during", "your", "untap", "step"]),
+            ).value(true),
+        )),
     )
-        .void()
+        .map(|(_, during_your_untap_step)| during_your_untap_step)
         .parse_next(input)
 }
 
@@ -1469,7 +1480,7 @@ pub fn parse_doesnt_untap_during_untap_step_spec_lexed(
         if tokens.len() < subject_len {
             continue;
         }
-        if let Some(((), tail_tokens)) = primitives::parse_prefix(
+        if let Some((during_your_untap_step, tail_tokens)) = primitives::parse_prefix(
             tokens,
             parse_attached_doesnt_untap_during_controller_untap_step_line,
         ) {
@@ -1477,6 +1488,7 @@ pub fn parse_doesnt_untap_during_untap_step_spec_lexed(
             return Some(DoesntUntapDuringUntapStepSpec::Attached {
                 subject_tokens: &tokens[..subject_len],
                 tail_tokens,
+                during_your_untap_step,
             });
         }
     }

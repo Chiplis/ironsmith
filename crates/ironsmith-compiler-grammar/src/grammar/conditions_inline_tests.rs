@@ -399,3 +399,17 @@ fn typed_event_references_and_actions_preserve_condition_semantics() {
         })
     );
 }
+
+#[test]
+fn shared_subject_status_disjunction_preserves_each_alternative() {
+    use crate::cards::builders::{PredicateAst, SourcePredicateAst};
+    let tokens = crate::lexer::lex_line("this creature is enchanted or equipped", 0).unwrap();
+    assert_eq!(parse_subject_status_disjunction_condition(&tokens), Some(PredicateAst::Or(
+        Box::new(PredicateAst::Source(SourcePredicateAst::SourceIsEnchanted)),
+        Box::new(PredicateAst::Source(SourcePredicateAst::SourceIsEquipped)),
+    )));
+    for text in ["this creature is enchanted or equipped and red", "this creature is enchanted or a player", "an opponent is enchanted or equipped"] {
+        let tokens = crate::lexer::lex_line(text, 0).unwrap();
+        assert!(parse_subject_status_disjunction_condition(&tokens).is_none(), "{text}");
+    }
+}

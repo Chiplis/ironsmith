@@ -160,6 +160,24 @@ pub(crate) fn resolve_source_object_id(
     if game.object(ctx.source).is_some() {
         return Some(ctx.source);
     }
+    // A zone-change trigger may refer to the new object created by that
+    // transition. Its recorded destination identity is authoritative: after
+    // another zone change, following the stable card would affect a new object.
+    if let Some(event) = ctx.triggering_event.as_ref()
+        .and_then(|event| event.downcast::<crate::events::ZoneChangeEvent>())
+        && event.objects.contains(&ctx.source)
+        && !event.result_objects.is_empty()
+    {
+        let source_snapshot = ctx.source_snapshot.as_ref().or_else(|| {
+            event.snapshots.iter().find(|snapshot| snapshot.object_id == ctx.source)
+        });
+        return event.result_objects.iter().copied().find(|id| {
+            game.object(*id).is_some_and(|object| {
+                object.zone == event.to && source_snapshot
+                    .is_some_and(|snapshot| snapshot.stable_id == object.stable_id)
+            })
+        });
+    }
     ctx.source_snapshot
         .as_ref()
         .and_then(|snapshot| game.find_object_by_stable_id(snapshot.stable_id))
@@ -1331,6 +1349,30 @@ pub fn resolve_value(
                 .filter(|obj| filter.matches(obj, &filter_ctx, game))
             {
                 seen.insert(obj.name.as_str());
+            }
+            Ok(seen.len() as i32)
+        }
+        Value::DistinctManaValues(filter) => {
+            let filter_ctx = ctx.filter_context(game);
+            if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+                let mut seen: HashSet<i32> = HashSet::new();
+                for snapshot in snapshots
+                    .iter()
+                    .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+                {
+                    seen.insert(crate::filter::snapshot_mana_value_for_filter(snapshot));
+                }
+                return Ok(seen.len() as i32);
+            }
+            let candidate_ids = value_candidate_ids_for_filter(game, filter, ctx);
+
+            let mut seen: HashSet<i32> = HashSet::new();
+            for obj in candidate_ids
+                .iter()
+                .filter_map(|&id| game.object(id))
+                .filter(|obj| filter.matches(obj, &filter_ctx, game))
+            {
+                seen.insert(crate::filter::object_mana_value_for_filter(obj));
             }
             Ok(seen.len() as i32)
         }
@@ -3398,7 +3440,8 @@ fn matching_object_targets_for_spec(
         let assigned: Vec<ObjectId> = ctx
             .target_assignments
             .iter()
-            .filter(|assignment| assignment.spec == *spec || assignment.spec.base() == spec.base())
+            .filter(|assignment| assignment.spec == *spec || assignment.spec.base() == spec.base()
+                || crate::targeting::target_spec_matches_chooser_assignment(spec, &assignment.spec))
             .flat_map(|assignment| ctx.targets[assignment.range.clone()].iter())
             .filter_map(|target| match target {
                 ResolvedTarget::Object(id) => Some(*id),
@@ -3430,7 +3473,8 @@ fn matching_player_targets_for_spec(
         let assigned: Vec<PlayerId> = ctx
             .target_assignments
             .iter()
-            .filter(|assignment| assignment.spec == *spec || assignment.spec.base() == spec.base())
+            .filter(|assignment| assignment.spec == *spec || assignment.spec.base() == spec.base()
+                || crate::targeting::target_spec_matches_chooser_assignment(spec, &assignment.spec))
             .flat_map(|assignment| ctx.targets[assignment.range.clone()].iter())
             .filter_map(|target| match target {
                 ResolvedTarget::Player(id) => Some(*id),
@@ -3490,6 +3534,7 @@ pub fn validate_target(
         (
             _,
             ChooseSpec::Target(inner)
+            | ChooseSpec::SurfaceHinted { spec: inner, .. }
             | ChooseSpec::WithCount(inner, _)
             | ChooseSpec::WithCountValue(inner, _, _),
         ) => validate_target(game, target, inner, ctx),
@@ -5811,6 +5856,30 @@ mod tests {
             3,
             "pure tagged filters should evaluate against their tagged objects, even off the battlefield"
         );
+    }
+
+    #[test]
+    fn current_tagged_count_excludes_departed_and_returned_new_objects() {
+        use crate::snapshot::ObjectSnapshot;
+        let mut game = new_test_game();
+        let alice = game.players[0].id;
+        let source = game.new_object_id();
+        let card = CardBuilder::new(crate::ids::CardId::new(), "Chosen permanent")
+            .card_types(vec![CardType::Artifact]).build();
+        let chosen = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.set_tagged_objects("chosen", vec![ObjectSnapshot::from_object(game.object(chosen).unwrap(), &game)]);
+        let historical = crate::filter::ObjectFilter::tagged("chosen").in_zone(Zone::Battlefield);
+        let mut current = historical.clone();
+        current.match_current_state = true;
+        assert_eq!(resolve_value(&game, &Value::Count(current.clone()), &ctx).unwrap(), 1);
+        let exiled = game.move_object_by_effect(chosen, Zone::Exile).unwrap();
+        assert_eq!(resolve_value(&game, &Value::Count(current.clone()), &ctx).unwrap(), 0);
+        assert_eq!(resolve_value(&game, &Value::Count(historical.clone()), &ctx).unwrap(), 1);
+        game.move_object_by_effect(exiled, Zone::Battlefield).unwrap();
+        assert_eq!(resolve_value(&game, &Value::Count(current), &ctx).unwrap(), 0,
+            "returning the same card creates a new object, not a surviving chosen permanent");
+        assert_eq!(resolve_value(&game, &Value::Count(historical), &ctx).unwrap(), 1);
     }
 
     #[test]

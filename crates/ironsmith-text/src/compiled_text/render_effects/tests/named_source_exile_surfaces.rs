@@ -12,6 +12,10 @@ fn render_named_creature(name: &str, text: &str) -> String {
 fn activated_self_exile_uses_the_complete_authored_short_name() {
     for (name, text) in [
         (
+            "Aria, Grove Keeper",
+            "{4}{G}: Exile Aria, Grove Keeper, then return her to the battlefield transformed under her owner's control.",
+        ),
+        (
             "Clive, Ifrit's Dominant",
             "{4}{R}{R}, {T}: Exile Clive, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
         ),

@@ -788,6 +788,7 @@ fn evaluate_value(
                 source: Some(source),
                 source_snapshot: None,
                 caster: None,
+                prospective_cast: None,
                 active_player: None,
                 opponents: Vec::new(),
                 teammates: Vec::new(),
@@ -824,6 +825,7 @@ fn evaluate_value(
                 source: Some(source),
                 source_snapshot: None,
                 caster: None,
+                prospective_cast: None,
                 active_player: None,
                 opponents: Vec::new(),
                 teammates: Vec::new(),
@@ -1674,6 +1676,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::ColorPairsAmong(_)
         | Value::DistinctCounterTypesAmong(_)
         | Value::DistinctNames(_)
+        | Value::DistinctManaValues(_)
         | Value::DistinctPowers(_)
         | Value::TurnHistoryCount(_)
         | Value::CreaturesDiedThisTurn

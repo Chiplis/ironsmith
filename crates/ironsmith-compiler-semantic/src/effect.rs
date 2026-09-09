@@ -1051,6 +1051,7 @@ impl Effect {
             filter: _filter,
             effects: _effects,
             starting_with_controller: false,
+            sequential: false,
             stop_after_first_happened: false,
         })
     }
@@ -1063,6 +1064,7 @@ impl Effect {
             filter,
             effects,
             starting_with_controller: true,
+            sequential: false,
             stop_after_first_happened: false,
         })
     }
@@ -1072,6 +1074,7 @@ impl Effect {
             filter: crate::target::PlayerFilter::Opponent,
             effects,
             starting_with_controller: false,
+            sequential: false,
             stop_after_first_happened: false,
         })
     }
@@ -1791,6 +1794,14 @@ impl Effect {
         Self::new(crate::effects::ClearSuspectedEffect::all())
     }
 
+    pub fn clear_goad(target: crate::target::ChooseSpec) -> Self {
+        Self::new(crate::effects::ClearGoadEffect::new(target))
+    }
+
+    pub fn clear_all_goad() -> Self {
+        Self::new(crate::effects::ClearGoadEffect::all())
+    }
+
     pub fn return_from_graveyard_to_hand(target: crate::target::ChooseSpec) -> Self {
         Self::new(crate::effects::ReturnFromGraveyardToHandEffect::new(
             target, false,
@@ -1949,7 +1960,7 @@ impl Effect {
         player: crate::target::PlayerFilter,
     ) -> Self {
         Self::new(crate::effects::InvestigateEffect::new(
-            count.into().into_unhinted(),
+            count.into(),
             player,
         ))
     }
@@ -2511,7 +2522,9 @@ impl Effect {
     }
 
     pub fn tag_all(self, tag: impl Into<crate::tag::TagKey>) -> Self {
-        self.tag(tag)
+        let mut tagged = crate::effects::TaggedEffect::new(tag.into(), self);
+        tagged.outcome_only = true;
+        Self::new(tagged)
     }
 
     pub fn tag_attached_to_source(tag: impl Into<crate::tag::TagKey>) -> Self {

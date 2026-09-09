@@ -4,6 +4,12 @@ pub fn parse_emblem_action(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Option<EffectAst> {
+    if let Some(shape) = emblem_shapes::parse_damaged_player_emblem_payload_tokens(tokens) {
+        return Some(EffectAst::ForEach(crate::cards::builders::ForEachEffectAst::ForEachTaggedPlayer {
+            tag: crate::tag::CompilerReferenceTag::Damaged0.bind(),
+            effects: vec![EffectAst::subject_verb_create_emblem(PlayerAst::Implicit, parse_emblem_description_ast(shape))],
+        }));
+    }
     let shape = emblem_shapes::parse_emblem_payload_tokens(tokens)?;
     let subject = subject.or_else(|| {
         shape

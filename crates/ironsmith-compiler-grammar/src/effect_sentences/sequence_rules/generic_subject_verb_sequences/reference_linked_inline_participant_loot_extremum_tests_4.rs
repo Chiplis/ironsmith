@@ -32,7 +32,7 @@ fn preserves_participant_fanout_and_greatest_mana_value_ties() {
     };
     assert!(matches!(
         effect.as_ref(),
-        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { filter, effects })
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { filter, effects, .. })
             if *filter == PlayerFilter::excluding(
                 PlayerFilter::Any,
                 PlayerFilter::excluding(PlayerFilter::NotYou, PlayerFilter::Defending),

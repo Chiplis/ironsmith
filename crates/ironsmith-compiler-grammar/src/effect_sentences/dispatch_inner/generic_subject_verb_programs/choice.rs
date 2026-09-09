@@ -156,7 +156,7 @@ pub(super) fn parse_generic_player_vote_received_effects(
             effects,
         })));
     }
-    Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+    Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
         filter,
         effects: vec![EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
             count: Value::PlayerVoteCount(PlayerFilter::IteratedPlayer),

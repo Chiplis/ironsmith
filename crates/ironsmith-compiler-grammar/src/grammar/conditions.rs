@@ -1103,6 +1103,12 @@ fn finish_ownership_condition(
     })
 }
 
+pub fn parse_subject_status_disjunction_condition(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    status_shapes::parse_subject_status_disjunction(tokens)
+}
+
 pub fn parse_subject_status_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<SubjectStatusConditionAst> {

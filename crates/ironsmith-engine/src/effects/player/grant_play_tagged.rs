@@ -202,6 +202,14 @@ impl EffectExecutor for GrantPlayTaggedEffect {
         };
         let snapshots = ctx.get_tagged_all(self.tag.as_str()).cloned().or_else(|| {
             (self.tag.as_str() == "__source_exiled__").then(|| {
+                let linked = game.get_exiled_with_source_links(ctx.source)
+                    .iter()
+                    .filter_map(|id| game.object(*id))
+                    .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, game))
+                    .collect::<Vec<_>>();
+                if !linked.is_empty() {
+                    return linked;
+                }
                 ctx.tagged_objects
                     .iter()
                     .filter(|(tag, _)| tag.as_str().starts_with("__sentence_helper_exiled"))
@@ -462,6 +470,30 @@ mod tests {
             }
             _ => panic!("expected effect grant source"),
         }
+    }
+
+    #[test]
+    fn source_exile_permission_reads_links_from_prior_abilities() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let source = ObjectId::from_raw(101);
+        let other_source = ObjectId::from_raw(102);
+        let card = CardBuilder::new(CardId::from_raw(11), "Exiled Probe").build();
+        let linked = game.create_object_from_card(&card, alice, Zone::Exile);
+        let unrelated = game.create_object_from_card(&card, alice, Zone::Exile);
+        game.add_exiled_with_source_link(source, linked);
+        game.add_exiled_with_source_link(other_source, unrelated);
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        GrantPlayTaggedEffect::new(
+            crate::tag::SOURCE_EXILED_TAG,
+            PlayerFilter::You,
+            GrantPlayTaggedDuration::UntilEndOfTurn,
+            true,
+            false,
+        ).execute(&mut game, &mut ctx).unwrap();
+        assert!(game.effect_store.grant_registry.card_can_play_from_zone(&game, linked, Zone::Exile, alice));
+        assert!(!game.effect_store.grant_registry.card_can_play_from_zone(&game, unrelated, Zone::Exile, alice));
     }
 
     #[test]

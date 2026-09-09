@@ -137,6 +137,8 @@ pub struct IterationContext {
 /// Combat-linked player selections available during execution.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CombatExecutionContext {
+    /// Schedule group created by this resolution's most recent added combat.
+    pub last_added_combat_order: Option<u64>,
     /// The defending player for combat triggers.
     pub defending_player: Option<PlayerId>,
     /// The attacking player for combat triggers.
@@ -189,6 +191,9 @@ pub struct ManaExecutionContext {
 /// Ephemeral replacement effects scoped to the current resolution path.
 #[derive(Debug, Clone, Default)]
 pub struct ReplacementExecutionContext {
+    /// Source counter additions being proposed during battlefield entry.
+    /// Their replacements run on the combined ETB event, not the source-zone card.
+    pub entry_counter_source: Option<ObjectId>,
     pub additional_replacement_effects: Vec<ReplacementEffect>,
     pub suppressed_replacement_effects: HashSet<ReplacementEffectId>,
     pub suppressed_replacement_effect_keys: HashSet<ReplacementEffectKey>,

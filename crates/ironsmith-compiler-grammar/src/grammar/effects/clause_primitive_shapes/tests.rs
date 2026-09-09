@@ -180,3 +180,21 @@ fn parses_duration_trigger_prefixes() {
         Some(TriggerClauseIntroShape::Event)
     );
 }
+
+#[test]
+fn temporal_fight_reference_is_not_a_second_fight() {
+    let tokens = lex_line("The creature you control gets +2/+2 until end of turn before it fights if you control a creature with power 4 or greater.", 0).unwrap();
+    assert!(parse_fight_shape(&tokens).is_none());
+}
+
+#[test]
+fn power_damage_both_word_orders_bind_itself_to_the_actor() {
+    for text in ["Target creature deals damage equal to its power to itself.", "Target creature deals damage to itself equal to its power."] {
+        let tokens = lex_line(text, 0).unwrap();
+        let shape = parse_power_damage_shape(&tokens).unwrap().unwrap();
+        assert!(matches!(shape.target, PowerDamageTargetShape::Source));
+    }
+    let tokens = lex_line("That artifact deals damage equal to its power to this creature.", 0).unwrap();
+    let shape = parse_power_damage_shape(&tokens).unwrap().unwrap();
+    assert!(matches!(shape.target, PowerDamageTargetShape::Tokens(_)));
+}

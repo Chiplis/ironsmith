@@ -53,7 +53,7 @@ fn combat_player_damage_target_effect(
             )],
         }),
         combat_grammar::CombatPlayerDamageTargetShape::EachOtherPlayer => {
-            EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+            EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
                 filter: PlayerFilter::NotYou,
                 effects: vec![EffectAst::subject_verb_damage(
                     amount,
@@ -107,7 +107,7 @@ fn combat_simple_damage_target_ast(
 }
 
 fn damage_each_other_opponent(amount: Value) -> EffectAst {
-    EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+    EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
         filter: PlayerFilter::excluding(PlayerFilter::Opponent, PlayerFilter::DamagedPlayer),
         effects: vec![EffectAst::subject_verb_damage(
             amount,

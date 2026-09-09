@@ -62,7 +62,7 @@ fn effect_ast_contains_sacrifice(effect: &EffectAst) -> bool {
         | EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy { effects, .. }) => {
             effects.iter().any(effect_ast_contains_sacrifice)
         }
-        EffectAst::TagAffected { effect, .. } => effect_ast_contains_sacrifice(effect),
+        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => effect_ast_contains_sacrifice(effect),
         EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             if_true, if_false, ..
         })

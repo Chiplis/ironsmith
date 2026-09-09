@@ -131,6 +131,7 @@ impl CompilerDerivedTag {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CompilerIndexedTag {
     LinkedFanoutPrimary,
+    LinkedFanoutPrimaryAffected,
     LinkedFanoutGroup,
     DrawReplacementAll,
     DrawReplacementMatch,
@@ -142,6 +143,7 @@ impl CompilerIndexedTag {
     const fn stem(self) -> &'static str {
         match self {
             Self::LinkedFanoutPrimary => "linked_fanout_primary",
+            Self::LinkedFanoutPrimaryAffected => "linked_fanout_primary_affected",
             Self::LinkedFanoutGroup => "linked_fanout_group",
             Self::DrawReplacementAll => "draw_replacement_all",
             Self::DrawReplacementMatch => "draw_replacement_match",

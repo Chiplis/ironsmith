@@ -502,6 +502,11 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         if action == ironsmith_core::PriorEffectAction::Tapped {
             filter.zone.get_or_insert(Zone::Battlefield);
         }
+        // Milling moves cards from a library to a graveyard. Establish that
+        // zone before the creature noun's default battlefield inference.
+        if action == ironsmith_core::PriorEffectAction::Milled {
+            filter.zone.get_or_insert(Zone::Graveyard);
+        }
         filter.set_prior_effect_action_surface(Some(action));
         let relation = if action_start
             .checked_sub(1)

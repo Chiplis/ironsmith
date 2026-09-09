@@ -38,6 +38,8 @@ pub enum CastStage {
     /// Need to announce hybrid/Phyrexian mana payment choices (per 601.2b).
     /// These choices are locked in before targets are chosen.
     AnnouncingCost,
+    /// Choose the creature type needed to determine legal targets.
+    ChoosingCreatureType,
     /// Need to choose targets.
     ChoosingTargets,
     /// The controller must choose which eligible player will make the next
@@ -74,6 +76,7 @@ impl CastStage {
             CastStage::ChoosingX => "choosing X",
             CastStage::ChoosingOptionalCosts => "choosing optional costs",
             CastStage::AnnouncingCost => "announcing costs",
+            CastStage::ChoosingCreatureType => "choosing creature type",
             CastStage::ChoosingTargets => "choosing targets",
             CastStage::ChoosingTargetChooser => "choosing target chooser",
             CastStage::ChoosingDistribution => "choosing distribution",

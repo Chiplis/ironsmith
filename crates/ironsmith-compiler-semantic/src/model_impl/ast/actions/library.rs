@@ -34,6 +34,7 @@ pub enum LibraryActionAst {
         all: bool,
         owner_library_destination: bool,
         possessive_owner_subject: bool,
+        shuffle_subject_library: bool,
     },
     PutTaggedRemainderOnBottomOfLibrary {
         tag: TagRef,

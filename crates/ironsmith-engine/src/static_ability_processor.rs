@@ -304,6 +304,8 @@ pub fn generate_continuous_effects_from_static_abilities(
                     );
                 }
             }
+            object_effects.extend(generate_granted_late_static_effects(game, object_id, &registered_effects, &abilities)
+                .into_iter().map(|effect| GeneratedStaticEffect { effect }));
             assign_inferred_static_effect_groups(
                 &mut object_effects,
                 object_id,
@@ -446,11 +448,78 @@ fn generate_static_effects_for_source(
             );
         }
     }
+    object_effects.extend(generate_granted_late_static_effects(game, object_id, registered_effects, &abilities)
+        .into_iter().map(|effect| GeneratedStaticEffect { effect }));
     assign_inferred_static_effect_groups(&mut object_effects, object_id, &mut next_group_ordinal);
     object_effects
         .into_iter()
         .map(|generated| generated.effect)
         .collect()
+}
+
+/// Resolution-granted static abilities may themselves generate effects in
+/// later layers. Read their recipients after ability grants/removals without
+/// replacing the earlier text-box abilities used for layers before six.
+fn generate_granted_late_static_effects(
+    game: &GameState,
+    object_id: ObjectId,
+    registered: &[ContinuousEffect],
+    text_abilities: &[crate::ability::Ability],
+) -> Vec<ContinuousEffect> {
+    use crate::continuous::{Modification, PtSublayer};
+    if !registered.iter().any(|effect| matches!(effect.modification,
+        Modification::AddAbility(_) | Modification::AddAbilityGeneric(_))) {
+        return Vec::new();
+    }
+    let Some(object) = game.object(object_id) else { return Vec::new(); };
+    if object.zone != Zone::Battlefield { return Vec::new(); }
+    let before_pt = registered.iter().filter(|effect| effect.modification.layer() <= Layer::Ability)
+        .cloned().collect::<Vec<_>>();
+    let Some(chars) = crate::continuous::calculate_characteristics_with_effects(
+        object_id, game.objects_map(), &before_pt, &game.battlefield, game.commander_objects(), game,
+    ) else { return Vec::new(); };
+    let mut result = Vec::new();
+    for ability in &chars.abilities {
+        let AbilityKind::Static(granted) = &ability.kind else { continue; };
+        if !ability.functions_in(&Zone::Battlefield) || text_abilities.iter().any(|original|
+            matches!(&original.kind, AbilityKind::Static(original) if original.instance_id() == granted.instance_id())) {
+            continue;
+        }
+        for mut effect in granted.generate_effects(object_id, chars.controller, game) {
+            if effect.modification.layer() <= Layer::Ability { continue; }
+            // An ability acquired through a grant is not an intrinsic CDA.
+            if let Modification::SetPowerToughness { sublayer, .. }
+                | Modification::SetPower { sublayer, .. }
+                | Modification::SetToughness { sublayer, .. } = &mut effect.modification
+                && *sublayer == PtSublayer::CharacteristicDefining {
+                *sublayer = PtSublayer::Setting;
+            }
+            effect.source_type = EffectSourceType::StaticAbility;
+            effect.originating_static_ability = Some(granted.clone());
+            effect.timestamp = registered.iter().filter(|candidate| match &candidate.modification {
+                Modification::AddAbility(ability) => ability.instance_id() == granted.instance_id(),
+                Modification::AddAbilityGeneric(ability) => matches!(&ability.kind, AbilityKind::Static(ability) if ability.instance_id() == granted.instance_id()),
+                _ => false,
+            }).filter(|candidate| {
+                if !crate::continuous::continuous_effect_condition_is_active(candidate, game) { return false; }
+                if let EffectSourceType::Resolution { locked_targets } = &candidate.source_type {
+                    return locked_targets.contains(&object_id);
+                }
+                match &candidate.applies_to {
+                    EffectTarget::AllPermanents => true,
+                    EffectTarget::AllCreatures => chars.card_types.contains(&crate::types::CardType::Creature),
+                    EffectTarget::Specific(id) => *id == object_id,
+                    EffectTarget::Source => candidate.source == object_id,
+                    EffectTarget::Filter(filter) => crate::continuous::filter_matches_with_characteristics(
+                        filter, object, &chars, game, candidate.controller, candidate.source),
+                    EffectTarget::AttachedTo(id) => game.object(*id).is_some_and(|source|
+                        source.attached_to == Some(crate::object::AttachmentTarget::Object(object_id))),
+                }
+            }).map(|candidate| candidate.timestamp).max().unwrap_or(effect.timestamp);
+            result.push(effect);
+        }
+    }
+    result
 }
 
 /// Get all continuous effects including both registered effects and static ability effects.

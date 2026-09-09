@@ -170,16 +170,31 @@ pub fn parse_sacrifice(
         }
         let filter = parse_object_filter_lexed(filter_tokens, false)?;
         let tag = crate::util::helper_tag_for_tokens(tokens, "sacrificed");
-        let mut effects = vec![
-            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-                filter,
-                count: choice_count,
-                count_value: None,
-                player,
-                tag: crate::tag::TagRef::of(tag.clone()),
-            }),
-            EffectAst::subject_verb_sacrifice_all(PlayerAst::That, ObjectFilter::tagged(tag)),
-        ];
+        // Fixed counts use the sacrifice effect's own controlled-permanent
+        // selection; this keeps the chooser and sacrificing actor identical.
+        let mut effects = if !choice_count.dynamic_x
+            && !choice_count.random
+            && choice_count.max == Some(choice_count.min)
+            && !opponent_chooses_object
+        {
+            let count = u32::try_from(choice_count.min).map_err(|_| {
+                CardTextError::ParseError("sacrifice count exceeds the supported range".into())
+            })?;
+            vec![EffectAst::subject_verb_sacrifice(
+                player, filter, count, None,
+            )]
+        } else {
+            vec![
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                    filter,
+                    count: choice_count,
+                    count_value: None,
+                    player,
+                    tag: crate::tag::TagRef::of(tag.clone()),
+                }),
+                EffectAst::subject_verb_sacrifice_all(PlayerAst::That, ObjectFilter::tagged(tag)),
+            ]
+        };
         if let Some(followup_tokens) = followup_tokens {
             if followup_tokens.is_empty() {
                 return Err(CardTextError::ParseError(format!(

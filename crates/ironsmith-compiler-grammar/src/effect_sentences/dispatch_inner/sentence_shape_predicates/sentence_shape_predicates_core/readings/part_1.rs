@@ -75,6 +75,12 @@ pub(super) fn read_becomes_word_view(
     // typed animation before generic coordination can reinterpret
     // `except it has ...` as an independent battlefield anthem.
     if super::super::super::super::parse_leading_player_may_lexed(tokens).is_none()
+        // A leading control clause owns the copy instruction. Including it
+        // in the subject erases the result gate and can turn a source noun
+        // into a mass creature filter.
+        && !tokens.first().is_some_and(|token| {
+            token.is_any_word(&["if", "when", "whenever", "unless", "at", "as"])
+        })
         && let Some(become_word_idx) =
             crate::slice_primitives::select_last_position(&words, |word| {
                 matches!(*word, "become" | "becomes")
@@ -309,7 +315,7 @@ pub(super) fn read_if_you_dont(
         super::super::super::super::dispatch_entry::parse_if_you_dont_sentence(tokens)?
     {
         return Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-            predicate: crate::cards::builders::IfResultPredicate::ExplicitDidNot,
+            predicate: crate::effect_sentences::dispatch_entry::if_you_dont_result_predicate(tokens),
             effects,
         })]));
     }

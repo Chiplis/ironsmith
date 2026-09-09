@@ -25,12 +25,31 @@ impl EffectExecutor for RegisterFutureZoneReplacementEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let frozen = freeze_tagged_filter_context(&self.filter, ctx);
+        let mut filter = self.filter.clone();
+        if self.mode == crate::effects::ReplacementApplyMode::OneShot
+            && self.from_zone == Some(crate::zone::Zone::Stack)
+        {
+            // An already-cast spell is a particular stack object. A returned
+            // card cast again is a new spell, while a permission tagged before
+            // casting must still be able to follow its card onto the stack.
+            for constraint in &mut filter.tagged_constraints {
+                if constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    && frozen.get(&constraint.tag).is_some_and(|snapshots| {
+                        !snapshots.is_empty()
+                            && snapshots.iter().all(|snapshot| snapshot.zone == crate::zone::Zone::Stack)
+                    })
+                {
+                    constraint.relation = crate::filter::TaggedOpbjectRelation::SameObjectId;
+                }
+            }
+        }
         let mut matcher = crate::events::zones::matchers::WouldChangeZoneMatcher::new(
-            self.filter.clone(),
+            filter,
             self.from_zone,
             self.to_zone,
         )
-        .with_frozen_tagged_objects(freeze_tagged_filter_context(&self.filter, ctx));
+        .with_frozen_tagged_objects(frozen);
         if let Some(cause_filter) = self.cause_filter.clone() {
             matcher = matcher.with_cause_filter(cause_filter);
         }
@@ -56,6 +75,11 @@ impl EffectExecutor for RegisterFutureZoneReplacementEffect {
                 game.effect_store
                     .replacement_effects
                     .add_until_end_of_turn_effect(replacement);
+            }
+            crate::effects::ReplacementApplyMode::UntilYourNextTurn => {
+                game.effect_store.replacement_effects.add_until_next_turn_effect(
+                    replacement, ctx.controller, game.turn.turn_number,
+                );
             }
             crate::effects::ReplacementApplyMode::Resolution => {
                 game.effect_store
@@ -241,6 +265,31 @@ mod tests {
         let cast_after = game.find_object_by_stable_id(cast_stable).unwrap();
         assert_eq!(game.object(cast_after).unwrap().zone, Zone::Exile);
         assert!(game.effect_store.replacement_effects.effects().is_empty());
+    }
+
+    #[test]
+    fn one_shot_cast_spell_replacement_does_not_follow_a_later_cast() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature(&mut game, alice, "Replacement source");
+        let spell = create_spell(&mut game, alice, "Cast spell");
+        let tag = crate::tag::TagKey::from("cast_spell");
+        let snapshot = crate::snapshot::ObjectSnapshot::from_object(game.object(spell).unwrap(), &game);
+        let effect = RegisterFutureZoneReplacementEffect::new(
+            ObjectFilter::tagged(tag.clone()).in_zone(Zone::Stack),
+            Some(Zone::Stack), Some(Zone::Graveyard), Zone::Exile,
+            ReplacementApplyMode::OneShot,
+        );
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        ctx.set_tagged_objects(tag, vec![snapshot]);
+        effect.execute(&mut game, &mut ctx).unwrap();
+        let returned = game.move_object_by_effect(spell, Zone::Hand).unwrap();
+        let recast = game.move_object_by_effect(returned, Zone::Stack).unwrap();
+        let stable = game.object(recast).unwrap().stable_id;
+        move_to_graveyard(&mut game, &mut ctx, recast);
+        let final_id = game.find_object_by_stable_id(stable).unwrap();
+        assert_eq!(game.object(final_id).unwrap().zone, Zone::Graveyard);
     }
 
     #[test]

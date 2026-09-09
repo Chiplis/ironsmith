@@ -29,8 +29,39 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         ));
     }
 
+    // This qualification constrains the announced targets. Keep the choice
+    // in the target predicate, rather than appending a resolution-time choice.
+    let choice_phrase = ["of", "the", "creature", "type", "of", "your", "choice"];
+    if tokens.iter().any(|token| token.is_word("target"))
+        && let Some(choice_start) = tokens.windows(choice_phrase.len()).position(|window| {
+            window.iter().zip(choice_phrase).all(|(token, word)| token.is_word(word))
+        })
+        && choice_start > 0
+    {
+        // Keep following qualifications (such as the source graveyard) in the
+        // ordinary target parser, alongside the count and ownership rules.
+        let mut qualified_tokens = tokens[..choice_start].to_vec();
+        qualified_tokens.extend_from_slice(&tokens[choice_start + choice_phrase.len()..]);
+        let mut target = parse_target_phrase_inner(&qualified_tokens)?;
+        let filter = crate::effect_sentences::target_object_filter_mut(&mut target)
+            .ok_or_else(|| CardTextError::ParseError("creature-type choice requires object targets".into()))?;
+        filter.chosen_creature_type = true;
+        return Ok(target);
+    }
+
     let token_word_view = TokenWordView::new(tokens);
     let token_words = token_word_view.to_word_refs();
+    // Definite player references retain the prior player binding before
+    // article stripping would turn them into an unrestricted player set.
+    if token_words == ["the", "player"] {
+        return Ok(TargetAst::Player(PlayerFilter::IteratedPlayer, None));
+    }
+    if crate::word_primitives::parse_any_sequence_complete(&token_words, &[&["the", "token"], &["the", "tokens"]]) {
+        let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
+        filter.source_surface = Some(SourceReferenceSurface::ThisPermanentType(token_words.join(" ")));
+        return Ok(TargetAst::Object(filter, None, token_slice_span(tokens)));
+    }
+
     if let Some(kind) = sacrificed_object_kind(&token_words) {
         let _ = kind;
         let span = token_slice_span(tokens);
@@ -102,12 +133,31 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         return Ok(TargetAst::AttackedPlayerOrPlaneswalker(None));
     }
 
+    // A demonstrative union refers to the earlier selected recipient. It is
+    // not a new selection from all permanents and players. Keeping the tag
+    // lets self-replacement lowering reuse the original declared target.
+    if crate::word_primitives::parse_any_sequence_complete(
+        &token_words,
+        &[
+            &["that", "permanent", "or", "player"],
+            &["that", "creature", "or", "player"],
+        ],
+    ) {
+        return Ok(TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.bind(),
+            token_slice_span(tokens),
+        ));
+    }
+
     // Recognize an exact `this <permanent type>` source surface before the
     // generic target head consumes `this` as a demonstrative prefix.  Once
     // consumed, only the object noun remains and the phrase would otherwise
     // widen from the source permanent to every matching permanent.
     if let Some(surface) = this_source_surface_for_words(&token_words) {
         let span = token_slice_span(tokens);
+        if token_words == ["this", "card"] {
+            return Ok(TargetAst::Object(ObjectFilter::source().with_source_surface(surface), None, span));
+        }
         let _ = surface;
         return Ok(TargetAst::Source(span));
     }
@@ -273,8 +323,14 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         &remaining_words,
         CREATURE_TAPPED_FOR_THIS_SPELL_COST_PATTERN,
     ) {
+        // Cost payment identifies this permanent, not later incarnations of its card.
+        let mut filter = ObjectFilter::exact_tagged(crate::tag::CompilerReferenceTag::TapCost0.bind());
+        filter.set_additional_cost_object_surface(Some(ironsmith_core::AdditionalCostObjectSurface::new(
+            ironsmith_core::AdditionalCostObjectAction::TappedForSpellCost,
+            ironsmith_core::SacrificedObjectKind::Creature,
+        )));
         return Ok(wrap_target_count(
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::TapCost0.bind(), span),
+            TargetAst::Object(filter, None, span),
             target_count,
         ));
     }

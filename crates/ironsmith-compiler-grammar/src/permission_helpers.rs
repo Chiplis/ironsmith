@@ -1583,6 +1583,15 @@ pub fn parse_additional_land_plays_clause_lexed(
     )))
 }
 
+fn next_turn_permission_grant_duration(tokens: &[OwnedLexToken]) -> Result<crate::grant::GrantDuration, CardTextError> {
+    // The shared permission lifetime historically groups both next-turn
+    // boundaries. Retain the actual grammatical duration when lowering a grant.
+    Ok(match crate::search_library_support::parse_restriction_duration_lexed(tokens)? {
+        Some((Until::YourNextTurn, _)) => crate::grant::GrantDuration::UntilYourNextTurn,
+        _ => crate::grant::GrantDuration::UntilYourNextTurnEnd,
+    })
+}
+
 pub fn parse_cast_spells_as_though_they_had_flash_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -1600,7 +1609,7 @@ pub fn parse_cast_spells_as_though_they_had_flash_clause(
         {
             let duration = match lifetime {
                 PermissionLifetime::UntilYourNextTurn => {
-                    crate::grant::GrantDuration::UntilYourNextTurnEnd
+                    next_turn_permission_grant_duration(tokens)?
                 }
                 _ => crate::grant::GrantDuration::UntilEndOfTurn,
             };
@@ -2204,7 +2213,7 @@ pub fn parse_cast_or_play_tagged_clause(
                 | PermissionLifetime::UntilYourNextTurn),
         }) if player == PlayerAst::Implicit || player == PlayerAst::You => {
             let duration = if lifetime == PermissionLifetime::UntilYourNextTurn {
-                crate::grant::GrantDuration::UntilYourNextTurnEnd
+                next_turn_permission_grant_duration(tokens)?
             } else {
                 crate::grant::GrantDuration::UntilEndOfTurn
             };

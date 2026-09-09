@@ -230,6 +230,7 @@ impl OutcomeObjectMemory {
                 x_value: None,
                 cast_order_this_turn: None,
                 mana_spent_to_cast: crate::player::ManaPool::default(),
+                snow_mana_spent_to_cast: crate::player::ManaPool::default(),
                 mana_sources_spent_to_cast: Vec::new(),
                 counters: std::collections::HashMap::new(),
                 is_token: self.is_token,
@@ -959,7 +960,7 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
                 if outcome
                     .execution_facts
                     .iter()
-                    .any(|fact| matches!(fact, ExecutionFact::ManaPaid { .. }))
+                    .any(|fact| matches!(fact, ExecutionFact::ManaPaid { .. } | ExecutionFact::Accepted))
                 {
                     return true;
                 }
@@ -980,12 +981,8 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
                             || outcome.value.something_happened()))
             }
             Self::DidNotHappen => !Self::Happened.evaluate_outcome(outcome),
-            Self::SearchedLibrary => outcome.execution_facts.iter().any(|fact| {
-                matches!(
-                    fact,
-                    ExecutionFact::ChosenObjectMemory(memory)
-                        if memory.iter().any(|object| object.zone == Zone::Library)
-                )
+            Self::SearchedLibrary => outcome.events.iter().any(|event| {
+                event.downcast::<crate::events::SearchLibraryEvent>().is_some()
             }),
             Self::HappenedNotReplaced => {
                 Self::Happened.evaluate_outcome(outcome)
@@ -1013,7 +1010,17 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
             // `IfEffect` evaluator handles it.
             Self::PlayerAffectedObjectHasGreatestManaValue { .. } => false,
             Self::PriorEffectResult(surface) => {
+                if surface.negated {
+                    let mut positive = surface.clone();
+                    positive.negated = false;
+                    return !Self::PriorEffectResult(positive).evaluate_outcome(outcome);
+                }
                 if !prior_result_filter_has_lki_constraints(&surface.filter) {
+                    if surface.action == crate::effect::PriorEffectAction::Drawn {
+                        let drawn: u32 = outcome.events_of_type::<crate::events::CardsDrawnEvent>()
+                            .map(|event| event.amount()).sum();
+                        return drawn >= surface.required_count.unwrap_or(1);
+                    }
                     return Self::Happened.evaluate_outcome(outcome);
                 }
                 outcome.affected_object_memory().is_some_and(|memories| {
@@ -1479,6 +1486,13 @@ impl RestrictionExt for Restriction {
                         && filter.matches(obj, &ctx, game)
                     {
                         tracker.cant_be_regenerated.insert(obj_id);
+                    }
+                }
+            }
+            Restriction::BeSacrificedByCause { filter, cause } => {
+                for &id in &game.battlefield {
+                    if let Some(object) = game.object(id) && filter.matches(object, &ctx, game) {
+                        tracker.sacrifice_cause_restrictions.push((id, cause.clone(), controller));
                     }
                 }
             }
@@ -1981,6 +1995,18 @@ impl Effect {
     pub fn clear_all_suspected() -> Self {
         use crate::effects::ClearSuspectedEffect;
         Self::new(ClearSuspectedEffect::all())
+    }
+
+    /// Create an "explore" effect for a chosen object.
+    pub fn clear_goad(target: ChooseSpec) -> Self {
+        use crate::effects::ClearGoadEffect;
+        Self::new(ClearGoadEffect::new(target))
+    }
+
+    /// Create an "all suspected creatures are no longer suspected" effect.
+    pub fn clear_all_goad() -> Self {
+        use crate::effects::ClearGoadEffect;
+        Self::new(ClearGoadEffect::all())
     }
 
     /// Create an "explore" effect for a chosen object.
@@ -4951,7 +4977,7 @@ mod tests {
     }
 
     #[test]
-    fn test_predicate_searched_library_uses_chosen_object_memory_zone() {
+    fn test_predicate_searched_library_uses_search_event_even_without_a_find() {
         fn memory_in_zone(zone: Zone) -> OutcomeObjectMemory {
             let object_id = ObjectId::from_raw(1);
             OutcomeObjectMemory {
@@ -4976,8 +5002,13 @@ mod tests {
         let graveyard_choice = EffectOutcome::resolved()
             .with_chosen_object_memory(vec![memory_in_zone(Zone::Graveyard)]);
 
-        assert!(EffectPredicate::SearchedLibrary.evaluate_outcome(&library_choice));
+        assert!(!EffectPredicate::SearchedLibrary.evaluate_outcome(&library_choice));
         assert!(!EffectPredicate::SearchedLibrary.evaluate_outcome(&graveyard_choice));
+        let search = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::SearchLibraryEvent::new(PlayerId::from_index(0), Some(PlayerId::from_index(0))),
+            crate::provenance::ProvNodeId::default());
+        assert!(EffectPredicate::SearchedLibrary.evaluate_outcome(&EffectOutcome::count(0).with_event(search.clone())));
+        assert!(EffectPredicate::SearchedLibrary.evaluate_outcome(&graveyard_choice.with_event(search)));
         assert!(!EffectPredicate::SearchedLibrary.evaluate_outcome(&EffectOutcome::resolved()));
     }
 
@@ -5155,5 +5186,19 @@ mod tests {
         // "Draw cards equal to the damage dealt"
         let value = Value::EffectValue(EffectId(0));
         assert!(matches!(value, Value::EffectValue(EffectId(0))));
+    }
+}
+
+#[cfg(test)]
+mod accepted_optional_result_tests {
+    use super::*;
+    #[test]
+    fn accepted_zero_result_satisfies_if_you_do_but_terminal_failure_does_not() {
+        let accepted = EffectOutcome::count(0).with_execution_fact(ExecutionFact::Accepted);
+        assert!(EffectPredicate::Happened.evaluate_outcome(&accepted));
+        assert!(!EffectPredicate::DidNotHappen.evaluate_outcome(&accepted));
+        let impossible = accepted.with_execution_fact(ExecutionFact::Impossible);
+        assert!(!EffectPredicate::Happened.evaluate_outcome(&impossible));
+        assert!(!EffectPredicate::Happened.evaluate_outcome(&EffectOutcome::declined()));
     }
 }

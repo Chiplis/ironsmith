@@ -535,6 +535,18 @@ pub fn parse_payment_clause_as_total_cost(
         return Ok(Some(ironsmith_core::TotalCost::one_of(vec![left, right])));
     }
 
+    // After an outer "pays" clause, life costs may omit their own pay verb.
+    if trimmed.last().is_some_and(|token| token.is_word("life")) {
+        let amount_tokens = &trimmed[..trimmed.len() - 1];
+        if let Some((amount, used)) = parse_value(amount_tokens)
+            && used == amount_tokens.len()
+        {
+            return Ok(Some(ironsmith_core::TotalCost::from_cost(
+                crate::model::CompilerCost::Life(amount),
+            )));
+        }
+    }
+
     match parse_dynamic_payment_clause_as_total_cost(&trimmed)? {
         DynamicPaymentParse::Parsed(dynamic_cost) => return Ok(Some(dynamic_cost)),
         DynamicPaymentParse::Rejected => {

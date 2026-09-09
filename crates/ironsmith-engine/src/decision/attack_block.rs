@@ -150,9 +150,15 @@ fn can_declare_attack_target_preview(
     attacker: &crate::object::Object,
     defending_player: PlayerId,
     generic_attack_tax: u32,
+    target: &AttackTarget,
     abilities: &[crate::static_abilities::StaticAbility],
     view: &DerivedGameView<'_>,
 ) -> bool {
+    if let AttackTarget::Player(player) = target
+        && !game.can_attack_player_directly(attacker.id, *player)
+    {
+        return false;
+    }
     if !crate::rules::combat::can_attack_defending_player_with_view(
         attacker,
         defending_player,
@@ -182,10 +188,42 @@ fn can_declare_attack_target_preview(
         )
     });
 
-    total_generic_cost == 0
-        || view
-            .potential_mana(game.controller_of(attacker))
-            .can_pay(&generic_mana_cost(total_generic_cost), 0)
+    let mut pips = generic_mana_cost(total_generic_cost).pips().to_vec();
+    let mut has_typed_tax = false;
+    for &source in &game.battlefield {
+        let Some(object) = game.object(source) else { continue; };
+        let controller = game.controller_of(object);
+        for ability in static_abilities_for_attack_preview(view, object) {
+            let Some(cost) = ability.attack_cost_for_declaration(
+                game, source, controller, attacker.id, target,
+            ) else { continue; };
+            has_typed_tax = true;
+            let ironsmith_core::TotalCostKind::All(components) = cost.kind() else {
+                // Alternative and nonmana costs are validated during the declaration.
+                continue;
+            };
+            let mut dm = crate::decision::AutoPassDecisionMaker;
+            let mut ctx = crate::effects::ExecutionContext::new(source, controller, &mut dm);
+            for component in components {
+                if let Some(mana) = component.mana_cost_ref() {
+                    pips.extend_from_slice(mana.pips());
+                } else if let Some(dynamic) = component.dynamic_mana_cost_ref() {
+                    let Ok(mana) = crate::special_actions::resolve_dynamic_mana_cost(game, dynamic, &mut ctx) else {
+                        return false;
+                    };
+                    pips.extend_from_slice(mana.pips());
+                }
+            }
+        }
+    }
+    if !has_typed_tax {
+        return total_generic_cost == 0 || view.potential_mana(game.controller_of(attacker))
+            .can_pay(&generic_mana_cost(total_generic_cost), 0);
+    }
+    super::mana::can_pay_mana_cost_with_available_sources(
+        game, game.controller_of(attacker), None, &crate::mana::ManaCost::from_pips(pips), 0,
+        crate::costs::PaymentReason::Other, &crate::player::ManaSpendPolicy::default(), false, view,
+    )
 }
 
 /// Compute legal attackers for the active player.
@@ -288,6 +326,7 @@ pub(crate) fn compute_legal_attackers_with_view(
                 perm,
                 *defending_player,
                 generic_attack_tax,
+                target,
                 &abilities,
                 view,
             ) {

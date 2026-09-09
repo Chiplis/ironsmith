@@ -65,6 +65,10 @@ pub enum CompiledContinuousModification<StaticAbility, Ability> {
         power: Value,
         sublayer: CompiledPtSublayer,
     },
+    SetToughness {
+        toughness: Value,
+        sublayer: CompiledPtSublayer,
+    },
     DoesntUntap,
     MakeColorless,
     SwitchPowerToughness,

@@ -180,6 +180,7 @@ pub(in crate::compiled_text) fn describe_end_combat_destroy_then_next_end_counte
         || !result.else_.is_empty()
         || result.per_player_result
         || result.prior_result_replacement_surface
+        || surface.negated
         || surface.action != ironsmith_core::PriorEffectAction::Destroyed
         || surface.actor != ironsmith_core::PriorEffectResultActor::Passive
         || surface.quantifier != ironsmith_core::PriorEffectResultQuantifier::One

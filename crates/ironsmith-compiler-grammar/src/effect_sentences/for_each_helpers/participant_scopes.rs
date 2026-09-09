@@ -62,7 +62,7 @@ pub(super) fn wrap_players(filter: &PlayerFilter, effects: Vec<EffectAst>) -> Ef
     if *filter == PlayerFilter::Any {
         EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })
     } else {
-        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
             filter: filter.clone(),
             effects,
         })
@@ -153,7 +153,11 @@ pub fn parse_for_each_player_clause(
         slot_chooser,
     };
     match for_each_player_readings::read(&input) {
-        ParseOutcome::Match(matched) => return Ok(Some(matched.value.value)),
+        ParseOutcome::Match(matched) => return Ok(Some(if outer.participant_is_actor {
+            matched.value.value
+        } else {
+            sequential_participant_body(matched.value.value)
+        })),
         ParseOutcome::NoMatch => {}
         ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
@@ -194,5 +198,5 @@ pub fn parse_for_each_player_clause(
         stabilize_standalone_participant_choice_tag(&mut effects, outer.inner_tokens);
     }
     let iteration_filter = reanchor_other_player_copy_filter(iteration_filter, &effects);
-    Ok(Some(wrap_players(&iteration_filter, effects)))
+    Ok(Some(if outer.participant_is_actor { wrap_players(&iteration_filter, effects) } else { sequential_participant_body(wrap_players(&iteration_filter, effects)) }))
 }

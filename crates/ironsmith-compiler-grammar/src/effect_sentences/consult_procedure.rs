@@ -211,7 +211,7 @@ fn first_statement(
         {
             return Some(Statement::MatchedMove);
         }
-        if effect_grammar::parse_consult_move_bottom_shape(tokens).is_some() {
+        if effect_grammar::parse_consult_move_bottom_shape(&stripped).is_some() {
             return Some(Statement::MoveBottom);
         }
     }
@@ -613,15 +613,22 @@ pub(super) fn continue_with(
             );
         }
         Statement::MoveBottom => {
-            match effect_grammar::parse_consult_move_bottom_shape(tokens)
+            group.gate_on_result |= gate_on_result;
+            match effect_grammar::parse_consult_move_bottom_shape(&stripped)
                 .expect("the statement was recognized")
             {
-                ConsultMoveBottomShape::MatchedToBattlefieldAndShuffle => {
-                    let remainder = TargetAst::Object(
-                        ObjectFilter::tagged(all_tag).not_tagged(match_tag.clone()),
-                        None,
-                        None,
-                    );
+                ConsultMoveBottomShape::MatchedToBattlefieldAndShuffle { target_plural_surface, explicit_revealed_others, coordinated } => {
+                    let mut remainder_filter = ObjectFilter::tagged(all_tag).not_tagged(match_tag.clone()).in_zone(
+                            match mode {
+                                LibraryConsultModeAst::Reveal => Zone::Library,
+                                LibraryConsultModeAst::Exile => Zone::Exile,
+                            },
+                        );
+                    if explicit_revealed_others {
+                        remainder_filter.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::All));
+                        remainder_filter.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Revealed));
+                    }
+                    let remainder = TargetAst::Object(remainder_filter, None, None);
                     group.followups.push(
                         EffectAst::subject_verb_move_to_zone(
                             TargetAst::Tagged(crate::tag::TagRef::of(match_tag), None),
@@ -631,13 +638,25 @@ pub(super) fn continue_with(
                             false,
                             None,
                         )
-                        .with_move_to_zone_plural_surface(),
+                        .with_move_to_zone_plural_surface_if(target_plural_surface),
                     );
                     group
                         .followups
                         .push(EffectAst::subject_verb_shuffle_objects_into_library(
-                            player, remainder,
+                            match player {
+                                // The consult has already introduced this player.
+                                // Resolve the player antecedent rather than the
+                                // newly matched card's controller or owner.
+                                PlayerAst::ItsController | PlayerAst::ItsOwner => PlayerAst::That,
+                                other => other,
+                            }, remainder,
                         ));
+                    if coordinated {
+                        let effects = group.followups.split_off(group.followups.len() - 2);
+                        group.followups.push(EffectAst::Coordinated {
+                            effects, leading_duration: false, result_conjunction: gate_on_result,
+                        });
+                    }
                 }
                 ConsultMoveBottomShape::MoveMatchAndBottom {
                     zone,

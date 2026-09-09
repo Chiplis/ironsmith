@@ -283,6 +283,10 @@ pub fn has_extended_effect_head_tokens(tokens: &[OwnedLexToken]) -> bool {
         || is_must_block_if_able(tokens)
         || is_phase_clause(tokens)
         || is_choose_target_prelude(tokens)
+        || matches!(crate::grammar::effects::clause_dispatch_shapes::parse_direct_clause_shape(tokens),
+            Some(crate::grammar::effects::clause_dispatch_shapes::DirectClauseShape::TurnTaggedFaceUp
+                | crate::grammar::effects::clause_dispatch_shapes::DirectClauseShape::TurnSourceExiledFaceUp))
+        || crate::grammar::effects::clause_dispatch_shapes::parse_turn_target_face_up_shape(tokens).is_some()
 }
 
 pub fn preserve_and_reason(

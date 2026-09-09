@@ -594,6 +594,7 @@ fn activated_effect_body_routes_multicolor_animation_before_broad_cant() {
 #[test]
 fn cant_grammar_declines_mixed_action_restriction_coordination() {
     for text in [
+        "That creature can't be blocked this turn and has base power and toughness 1/1 until end of turn.",
         "Target creature can't block this turn and becomes a Coward in addition to its other types until end of turn.",
         "This artifact becomes a 2/2 blue and black Horror artifact creature until end of turn and can't be blocked this turn.",
     ] {
@@ -1024,8 +1025,8 @@ fn activated_conditional_instead_chain_lowers_every_replacement_action() {
     assert!(
         replacement_sequence.effects.iter().any(|effect| {
             unwrap_tagged_runtime_effect(effect)
-                .downcast_ref::<crate::effects::MoveToZoneEffect>()
-                .is_some_and(|movement| movement.zone == Zone::Exile)
+                .downcast_ref::<crate::effects::ExileEffect>()
+                .is_some()
         }) && replacement_sequence.effects.iter().any(|effect| {
             unwrap_tagged_runtime_effect(effect)
                 .downcast_ref::<crate::effects::ReturnToHandEffect>()
@@ -1358,7 +1359,7 @@ fn for_each_opponent_imperative_create_keeps_controller_as_actor() {
     assert!(
         matches!(
             direct_for_each,
-            EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { ref effects })
+            EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { filter: PlayerFilter::Opponent, sequential: true, ref effects })
                 if matches!(
                     effects.as_slice(),
                     [EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -1375,7 +1376,7 @@ fn for_each_opponent_imperative_create_keeps_controller_as_actor() {
     );
     let effects = parse_effect_sentence_lexed(&tokens)
         .expect("quantified imperative create should parse completely");
-    let [EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects: nested })] = effects.as_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { filter: PlayerFilter::Opponent, sequential: true, effects: nested })] = effects.as_slice() else {
         panic!("expected one quantified opponent loop, got {effects:#?}");
     };
     assert!(
@@ -1399,7 +1400,7 @@ fn for_each_opponent_imperative_create_keeps_controller_as_actor() {
     .expect("explicit participant create should lex");
     let effects = parse_effect_sentence_lexed(&explicit)
         .expect("explicit participant create should parse completely");
-    let [EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects: nested })] = effects.as_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { filter: PlayerFilter::Opponent, sequential: true, effects: nested })] = effects.as_slice() else {
         panic!("expected one explicit opponent loop, got {effects:#?}");
     };
     assert!(
@@ -3796,7 +3797,7 @@ fn inline_mill_then_put_all_matching_uses_the_exact_milled_collection() {
         panic!("expected tagged mill, exact matching capture, and tagged move: {sequence:#?}");
     };
     let milled_tag = match tagged_mill {
-        EffectAst::TagAffected { tag, .. } => tag,
+        EffectAst::TagAffected { tag, .. } | EffectAst::TagReferenced { tag, .. } => tag,
         other => panic!("expected the mill to preserve an affected-card tag: {other:#?}"),
     };
     let SubjectVerbActionAst::TagMatchingObjects {
@@ -3886,8 +3887,8 @@ fn or_action_clause_preserves_secondary_or_inside_sacrifice_filter() {
 
     let debug = format!("{parsed:?}");
     assert!(
-        debug.contains("UnlessAction"),
-        "expected or-action lowering to use unless-action AST, got {debug}"
+        debug.contains("ChooseOneOf"),
+        "expected a resolution-time action choice, got {debug}"
     );
     assert!(
         debug.contains("Discard"),
@@ -3986,7 +3987,7 @@ fn or_action_clause_accepts_an_explicit_source_gain_choice_branch() {
         .expect("the explicit source gain branch should be recognized");
     let debug = format!("{parsed:#?}");
 
-    assert!(debug.contains("UnlessAction"), "{debug}");
+    assert!(debug.contains("ChooseOneOf"), "{debug}");
     assert!(debug.contains("PutCounters"), "{debug}");
     assert!(
         debug.contains("GrantAbilitiesChoiceToTarget")
@@ -3999,7 +4000,7 @@ fn or_action_clause_accepts_an_explicit_source_gain_choice_branch() {
     let routed = parse_effect_sentence_lexed(&tokens)
         .expect("whole-sentence dispatch should preserve both choice branches");
     assert!(
-        matches!(routed.as_slice(), [EffectAst::Conditionals(ConditionalEffectAst::UnlessAction { .. })]),
+        matches!(routed.as_slice(), [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { .. })]),
         "the broad gain parser must not consume the leading counter action: {routed:#?}"
     );
 
@@ -4027,14 +4028,12 @@ fn or_action_clause_reuses_the_primary_explicit_target_for_a_demonstrative_branc
     let parsed = super::parse_or_action_clause_lexed(&tokens)
         .expect("shared-target action choice should parse")
         .expect("outer action choice should be recognized");
-    let EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
-        effects,
-        alternative,
-        ..
-    }) = parsed
-    else {
+    let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes }) = parsed else {
         panic!("expected a typed outer action choice");
     };
+    let [first, second] = modes.as_slice() else { panic!("expected two action branches"); };
+    let effects = &first.effects;
+    let alternative = &second.effects;
 
     let primary_target = effects
         .iter()
@@ -4313,7 +4312,7 @@ fn quantified_other_player_subject_uses_not_you_filter() {
         lex_line("Each other player draws a card.", 0).expect("filtered fanout should lex");
     let effects = parse_effect_chain_lexed(&tokens).expect("filtered fanout should parse");
     let [
-        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
             filter,
             effects: nested,
         }),
@@ -4337,7 +4336,7 @@ fn quantified_other_player_may_stays_inside_filtered_fanout() {
         .expect("optional filtered fanout should lex");
     let effects = parse_effect_chain_lexed(&tokens).expect("optional filtered fanout should parse");
     let [
-        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
             filter,
             effects: nested,
         }),
@@ -4802,4 +4801,34 @@ fn serial_mill_draw_discard_keeps_every_action() {
     let effects = parse_effect_sentences_lexed(&tokens).unwrap();
     let debug = format!("{effects:#?}");
     assert!(debug.contains("Mill") && debug.contains("Draw") && debug.contains("Discard"), "{debug}");
+}
+
+#[test]
+fn or_action_face_up_and_counter_branches_preserve_both_orders() {
+    for text in ["Turn that creature face up or put a +1/+1 counter on it.",
+        "Put a +1/+1 counter on that creature or turn it face up."] {
+        let tokens = lex_line(text, 0).unwrap();
+        let parsed = super::parse_or_action_clause_lexed(&tokens).unwrap().unwrap();
+        let debug = format!("{parsed:?}");
+        assert!(debug.contains("ChooseOneOf") && debug.contains("TurnFaceUp") && debug.contains("PutCounters"));
+        assert!(!debug.contains("UnlessAction"));
+    }
+}
+
+#[test]
+fn explicit_player_followup_is_not_inside_preceding_may() {
+    for text in [
+        "You may draw a card, and each opponent draws a card.",
+        "You may draw a card, and each player gains 1 life.",
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let effects = parse_effect_chain_lexed(&tokens).unwrap();
+        let [EffectAst::Coordinated { effects, .. }] = effects.as_slice() else { panic!("{effects:#?}") };
+        assert_eq!(effects.len(), 2);
+        assert!(matches!(&effects[0], EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. })));
+        assert!(!matches!(&effects[1], EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. }) | EffectAst::Permissions(PermissionEffectAst::May { .. })));
+    }
+    let tokens = lex_line("You may draw a card and discard a card.", 0).unwrap();
+    let effects = parse_effect_chain_lexed(&tokens).unwrap();
+    assert!(matches!(effects.as_slice(), [EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. })]), "shared-subject actions belong to one optional instruction: {effects:#?}");
 }

@@ -25,7 +25,12 @@ impl EffectExecutor for AdditionalPhasesEffect {
             AdditionalPhase::Combat => Phase::Combat,
             AdditionalPhase::Main => Phase::NextMain,
         });
-        game.add_additional_phase_group(phases);
+        let order = game.add_additional_phase_group(phases);
+        ctx.combat.last_added_combat_order = if self.phases.contains(&AdditionalPhase::Combat) {
+            order
+        } else {
+            None
+        };
         Ok(EffectOutcome::resolved())
     }
 }

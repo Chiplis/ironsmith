@@ -173,9 +173,11 @@ fn bare_vanishing_adds_decay_triggers_without_entry_counter_ability() {
     );
     assert!(
         triggered[1].contains("CounterRemovedFromTrigger")
-            && triggered[1].contains("SourceHasNoCounter(Time)")
+            && triggered[1].contains("counter_type: Some(Time)")
+            && triggered[1].contains("last: true")
+            && triggered[1].contains("intervening_if: None")
             && triggered[1].contains("SacrificeTargetEffect"),
-        "the second decay trigger must sacrifice the counterless source: {}",
+        "the second decay trigger must sacrifice its source when the last time counter is removed: {}",
         triggered[1]
     );
 }

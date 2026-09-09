@@ -91,6 +91,10 @@ fn prepare_shuffle_objects_action_from_ids(
         );
     }
 
+    if effect.shuffle_subject_library {
+        push_unique_player(&mut players_to_shuffle, resolve_player_filter(game, &effect.player, ctx)?);
+    }
+
     Ok(PreparedShuffleObjectsAction {
         objects,
         players_to_shuffle,
@@ -145,6 +149,11 @@ fn execute_prepared_shuffle_objects_action(
         }
 
         let from_zone = obj.zone;
+        // Revealed cards stay in their library. Shuffling that remainder is
+        // not a zone change and must preserve its object identities.
+        if from_zone == Zone::Library {
+            continue;
+        }
         let pre_snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
         match process_zone_change_with_additional_effects(
             game,
@@ -287,6 +296,51 @@ mod tests {
             .card_types(vec![crate::types::CardType::Creature])
             .build();
         game.create_object_from_card(&card, owner, zone)
+    }
+
+    #[test]
+    fn explicit_shuffle_participant_is_deduplicated_with_selected_owners() {
+        for include_subject in [false, true] {
+            for owner_index in [None, Some(0), Some(1)] {
+                let mut game = setup_game();
+                let alice = PlayerId::from_index(0);
+                if let Some(index) = owner_index {
+                    create_card_in_zone(&mut game, PlayerId::from_index(index), Zone::Graveyard, "Selected");
+                }
+                let source = game.new_object_id();
+                let mut ctx = ExecutionContext::new_default(source, alice);
+                let mut effect = ShuffleObjectsIntoLibraryEffect::new(
+                    ChooseSpec::All(ObjectFilter::default().in_zone(Zone::Graveyard)), PlayerFilter::You)
+                    .with_owner_library_destination();
+                effect.shuffle_subject_library = include_subject;
+                let outcome = effect.execute(&mut game, &mut ctx).unwrap();
+                let mut shuffled: Vec<_> = outcome.events.iter()
+                    .filter_map(|event| event.downcast::<ShuffleLibraryEvent>().map(|event| event.player))
+                    .collect();
+                let mut expected = vec![PlayerId::from_index(owner_index.unwrap_or(0))];
+                if include_subject && owner_index == Some(1) { expected.push(alice); }
+                shuffled.sort(); expected.sort();
+                assert_eq!(shuffled, expected, "include={include_subject}; owner={owner_index:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn shuffle_objects_already_in_library_preserves_identity_and_emits_only_shuffle() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let first = create_card_in_zone(&mut game, alice, Zone::Library, "A");
+        let second = create_card_in_zone(&mut game, alice, Zone::Library, "B");
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let effect = ShuffleObjectsIntoLibraryEffect::new(
+            ChooseSpec::All(ObjectFilter::default().in_zone(Zone::Library)), PlayerFilter::You);
+        let outcome = effect.execute(&mut game, &mut ctx).unwrap();
+        let library = &game.player(alice).unwrap().library;
+        assert_eq!(library.len(), 2);
+        assert!(library.contains(&first) && library.contains(&second));
+        assert_eq!(outcome.events.len(), 1);
+        assert!(outcome.events[0].downcast::<ShuffleLibraryEvent>().is_some());
     }
 
     #[test]

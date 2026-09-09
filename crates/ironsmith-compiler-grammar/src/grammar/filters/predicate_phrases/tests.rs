@@ -3938,3 +3938,22 @@ fn exiled_source_state_is_a_zone_predicate() -> Result<(), CardTextError> {
     }
     Ok(())
 }
+
+#[test]
+fn intrinsic_counter_condition_rejects_other_subjects_and_extra_actions() {
+    for text in [
+        "it has five or more +1/+1 counters on it",
+        "this creature has exactly five +1/+1 counters on it",
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        assert!(parse_intrinsic_source_counter_condition(&tokens).is_some(), "{text}");
+    }
+    for text in [
+        "that creature has five or more +1/+1 counters on it",
+        "it has five or more +1/+1 counters on that creature",
+        "it has five or more +1/+1 counters on it and pay {2}",
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        assert!(parse_intrinsic_source_counter_condition(&tokens).is_none(), "{text}");
+    }
+}

@@ -316,6 +316,10 @@ pub enum PriorEffectResultQuantifier {
 #[derive(Debug, Clone, PartialEq)]
 #[derive(TagKeyWalk)]
 pub struct PriorEffectResultSurface {
+    /// Invert the complete filtered result predicate (for example, no matching
+    /// cards were revealed), rather than matching individual nonmatching cards.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub negated: bool,
     pub action: PriorEffectAction,
     /// Authored present-tense zone-change wording for an exile result gate.
     #[cfg_attr(feature = "serde", serde(default))]
@@ -342,6 +346,7 @@ impl PriorEffectResultSurface {
         quantifier: PriorEffectResultQuantifier,
     ) -> Self {
         Self {
+            negated: false,
             action,
             put_into_exile_surface: false,
             filter,
@@ -465,6 +470,7 @@ impl GrantPlayTaggedSurface {
 pub enum ReplacementApplyMode {
     OneShot,
     UntilEndOfTurn,
+    UntilYourNextTurn,
     Resolution,
 }
 
@@ -1682,13 +1688,25 @@ impl<E> WithIdEffect<E> {
 pub struct TaggedEffect<E> {
     pub tag: crate::tag::TagKey,
     pub effect: Box<E>,
+    /// Record only the action's affected set, including an empty result.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub outcome_only: bool,
 }
 
 impl<E> TaggedEffect<E> {
+    pub fn with_effect<T>(&self, effect: T) -> TaggedEffect<T> {
+        TaggedEffect {
+            tag: self.tag.clone(),
+            effect: Box::new(effect),
+            outcome_only: self.outcome_only,
+        }
+    }
+
     pub fn new(tag: impl Into<crate::tag::TagKey>, effect: E) -> Self {
         Self {
             tag: tag.into(),
             effect: Box::new(effect),
+            outcome_only: false,
         }
     }
 }
@@ -4095,6 +4113,25 @@ pub struct ClearSuspectedEffect {
 }
 
 impl ClearSuspectedEffect {
+    pub fn new(target: ChooseSpec) -> Self {
+        Self {
+            target: Some(target),
+        }
+    }
+
+    pub const fn all() -> Self {
+        Self { target: None }
+    }
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
+pub struct ClearGoadEffect {
+    pub target: Option<ChooseSpec>,
+}
+
+impl ClearGoadEffect {
     pub fn new(target: ChooseSpec) -> Self {
         Self {
             target: Some(target),

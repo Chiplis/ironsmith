@@ -69,3 +69,22 @@ fn parses_all_special_triggered_programs() {
         Some(SpecialTriggeredProgram::OpponentCombatAttackPile)
     );
 }
+
+#[test]
+fn land_majority_search_requires_all_participant_and_search_roles() {
+    let text = "At the beginning of each player's upkeep, that player chooses target player who controls more lands than they do and is their opponent. The first player may search their library for a basic land card, put that card onto the battlefield, then shuffle.";
+    assert_eq!(parse(text), Some(SpecialTriggeredProgram::OpponentLandMajoritySearch));
+    for (from, to) in [
+        ("that player chooses", "you choose"),
+        ("more lands", "fewer lands"),
+        ("than they do", "than you do"),
+        ("and is their opponent", "and is your opponent"),
+        ("The first player", "The second player"),
+        ("a basic land card", "a land card"),
+        ("onto the battlefield", "into their hand"),
+        ("then shuffle.", "then shuffle. Draw a card."),
+    ] {
+        let variant = text.replace(from, to);
+        assert_ne!(parse(&variant), Some(SpecialTriggeredProgram::OpponentLandMajoritySearch), "{variant}");
+    }
+}

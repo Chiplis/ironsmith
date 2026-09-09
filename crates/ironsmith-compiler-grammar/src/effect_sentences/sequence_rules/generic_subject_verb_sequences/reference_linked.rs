@@ -268,7 +268,7 @@ pub fn parse_controller_defending_loot_then_greatest_mana_value_followup(
         PlayerFilter::Any,
         PlayerFilter::excluding(PlayerFilter::NotYou, PlayerFilter::Defending),
     );
-    let loot = EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+    let loot = EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
         filter: participants,
         effects: vec![
             EffectAst::subject_verb(

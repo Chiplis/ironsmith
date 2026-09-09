@@ -478,6 +478,7 @@ fn destroy_all_split_preserves_branch_scoped_collection_surface() {
         panic!("expected one full-sentence destroy-all effect, got {full_effects:#?}");
     };
     assert_eq!(full_filter.any_of.len(), 3, "{full_filter:#?}");
+    assert_eq!(full_filter, filter, "leading Then must preserve every branch restriction");
     assert!(
         full_filter.has_conjunctive_set_surface(),
         "{full_filter:#?}"
@@ -544,8 +545,9 @@ fn exile_up_to_one_each_target_type_uses_captured_target_clauses() {
         .expect("exile repeated target type parser should match");
     let debug = format!("{effects:#?}");
 
-    assert_eq!(effects.len(), 4, "{debug}");
-    assert_eq!(debug.matches("ChooseObjects").count(), 3, "{debug}");
+    assert_eq!(effects.len(), 3, "{debug}");
+    assert!(!debug.contains("ChooseObjects"), "{debug}");
+    assert_eq!(debug.matches("WithCount").count(), 3, "{debug}");
     assert!(debug.contains("Artifact"), "{debug}");
     assert!(debug.contains("Creature"), "{debug}");
     assert!(debug.contains("Enchantment"), "{debug}");

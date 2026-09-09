@@ -327,11 +327,9 @@ fn read_conditional_enters_with_counters(
     // the prefix and leaves an apparently unconditional ability grant.
     if tokens.first().is_some_and(|token| token.is_word("if"))
         && tokens.iter().any(|token| token.is_word("enters"))
-        && let Some(abilities) = parse_enters_with_counters_line(tokens)?
+        && let Some(abilities) = parse_enters_with_counters_ast_line(tokens)?
     {
-        return Ok(Some(
-            abilities.into_iter().map(StaticAbilityAst::from).collect(),
-        ));
+        return Ok(Some(abilities));
     }
     Ok(None)
 }

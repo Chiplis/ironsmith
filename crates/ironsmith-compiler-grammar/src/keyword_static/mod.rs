@@ -766,7 +766,8 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("as"),
         ],
         "parse_attached_has_and_loses_keywords_line"
-        | "parse_attached_has_keywords_and_is_goaded_line" => vec![
+        | "parse_attached_has_keywords_and_is_goaded_line"
+        | "parse_attached_is_goaded_line" => vec![
             StaticAbilityLineHeadHint::Single("enchanted"),
             StaticAbilityLineHeadHint::Single("equipped"),
             StaticAbilityLineHeadHint::Single("fortified"),
@@ -1388,6 +1389,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_untap_during_each_other_players_untap_step_line),
         single_static_ability_ast_passthrough_rule!(parse_doesnt_untap_during_untap_step_line),
         multi_static_ability_ast_rule!(parse_attached_restrictions_with_ignore_special_action_line),
+        multi_static_ability_ast_rule!(parse_attached_is_goaded_line),
         multi_static_ability_ast_rule!(parse_attached_has_keywords_and_is_goaded_line),
         multi_static_ability_ast_rule!(parse_equipped_creature_has_line),
         multi_static_ability_ast_rule!(parse_enchanted_creature_has_line),
@@ -3056,6 +3058,21 @@ fn comma_separated_anthem_subject_is_not_split_into_sibling_abilities() {
 }
 
 pub fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<StaticAbility> {
+    let words = crate::lexer::token_word_refs(tokens);
+    let normalized = words.iter().map(|word| if matches!(*word, "can't" | "cannot") { "cant" } else { *word }).collect::<Vec<_>>();
+    if normalized == ["spells", "and", "abilities", "your", "opponents", "control", "cant", "cause", "you", "to", "sacrifice", "permanents"] {
+        return Some(StaticAbility::restriction(
+            crate::effect::Restriction::BeSacrificedByCause {
+                filter: ObjectFilter::permanent().you_control(),
+                cause: ironsmith_core::CauseFilter {
+                    cause_type: Some(ironsmith_core::CauseTypeFilter::OneOf(vec![ironsmith_core::CauseType::Effect, ironsmith_core::CauseType::Cost])),
+                    source_filter: None,
+                    controller_filter: Some(ironsmith_core::ControllerFilter::Opponent),
+                },
+            },
+            "Spells and abilities your opponents control can't cause you to sacrifice permanents.".to_string(),
+        ));
+    }
     if tokens.is_empty() {
         return None;
     }
@@ -4288,6 +4305,7 @@ pub fn parse_enter_as_copy_as_enters_line(
                     added_subtypes: Vec::new(),
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
+                    added_abilities_source_filter: None,
                     set_base_power_toughness_from_self: false,
                 },
                 render_token_slice(tokens).trim().to_string(),
@@ -4329,6 +4347,7 @@ pub fn parse_enter_as_copy_as_enters_line(
                     added_subtypes: Vec::new(),
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
+                    added_abilities_source_filter: None,
                     set_base_power_toughness_from_self: false,
                 },
                 display,
@@ -4374,6 +4393,7 @@ pub fn parse_enter_as_copy_as_enters_line(
             let mut removed_supertypes = Vec::new();
             let mut added_subtypes = Vec::new();
             let mut added_abilities = Vec::new();
+            let mut added_abilities_source_filter = None;
             let mut set_base_power_toughness = None;
             let mut set_base_power_toughness_from_self = false;
 
@@ -4399,7 +4419,20 @@ pub fn parse_enter_as_copy_as_enters_line(
                             }
                         }
                     }
-                    keyword_static_lines::CopyExceptionShape::Abilities { ability_tokens } => {
+                    keyword_static_lines::CopyExceptionShape::Abilities { ability_tokens, source_filter_tokens } => {
+                        added_abilities_source_filter = if let Some(tokens) = source_filter_tokens {
+                            let (subject, missing) = keyword_static_lines::split_copy_source_missing_ability_tokens(tokens)
+                                .ok_or_else(|| CardTextError::ParseError("unsupported conditional copy ability predicate".into()))?;
+                            let actions = parse_ability_line(missing).ok_or_else(|| CardTextError::ParseError("unsupported copy source keyword predicate".into()))?;
+                            let [action] = actions.as_slice() else { return Err(CardTextError::ParseError("copy source predicate requires one keyword".into())); };
+                            let mut filter = parse_object_filter(subject, false)?;
+                            let marker = match action {
+                                KeywordAction::Vanishing(_) => "vanishing".to_string(),
+                                other => other.display_text().to_ascii_lowercase(),
+                            };
+                            filter.excluded_ability_markers.push(marker);
+                            Some(filter)
+                        } else { None };
                         added_abilities =
                             parse_added_copy_abilities(ability_tokens, &clause_words)?;
                     }
@@ -4500,6 +4533,7 @@ pub fn parse_enter_as_copy_as_enters_line(
                     added_subtypes,
                     added_abilities,
                     set_base_power_toughness,
+                    added_abilities_source_filter,
                     set_base_power_toughness_from_self,
                     removed_supertypes,
                 },

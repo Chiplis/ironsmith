@@ -370,7 +370,7 @@ fn read_if_you_dont(input: &SentencePrelude<'_>) -> Result<Option<Vec<EffectAst>
     let tokens = input.tokens;
     if let Some(effects) = super::super::dispatch_entry::parse_if_you_dont_sentence(tokens)? {
         return Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-            predicate: crate::cards::builders::IfResultPredicate::ExplicitDidNot,
+            predicate: crate::effect_sentences::dispatch_entry::if_you_dont_result_predicate(tokens),
             effects,
         })]));
     }

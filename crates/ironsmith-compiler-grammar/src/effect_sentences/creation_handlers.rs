@@ -375,6 +375,7 @@ fn append_inline_token_embedded_rule(
             (&creature.name, &mut creature.rules.token_rules)
         }
         TokenDefinitionSpec::Artifact(artifact) => (&artifact.name, &mut artifact.token_rules),
+        TokenDefinitionSpec::Enchantment(enchantment) => (&enchantment.name, &mut enchantment.token_rules),
         _ => return false,
     };
     let Some(rule) = crate::grammar::token_definitions::parse_embedded_token_rule_tokens(
@@ -1391,7 +1392,7 @@ pub fn parse_create(
             match filter {
                 PlayerFilter::Opponent => EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }),
                 PlayerFilter::Any => EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }),
-                other => EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+                other => EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
                     filter: other.clone(),
                     effects,
                 }),
@@ -1467,12 +1468,15 @@ pub fn parse_create(
                 granted_abilities,
                 loses_soulbond,
             ) = parse_copy_modifiers_from_tail(&tail_words)?;
-            let granted_abilities = granted_abilities
+            let mut granted_abilities: Vec<_> = granted_abilities
                 .into_iter()
                 .map(|ability| {
                     GrantedAbilityAst::StaticAbility(Box::new(StaticAbilityAst::Static(ability)))
                 })
                 .collect();
+            for ability in parse_inline_copy_granted_abilities(&tail_tokens) {
+                merge_inline_copy_granted_ability(&mut granted_abilities, ability);
+            }
             let half_pt = tail_surface.has(CreateWord::Half)
                 && tail_surface.has(CreateWord::Power)
                 && tail_surface.has(CreateWord::Toughness);
@@ -1498,8 +1502,14 @@ pub fn parse_create(
             if player == PlayerAst::Implicit {
                 player = PlayerAst::You;
             }
-            let (sacrifice_at_next_end_step, exile_at_next_end_step, next_end_step_player) =
+            let (sacrifice_at_next_end_step, _, sacrifice_player) =
                 parse_next_end_step_token_delay_flags(&tail_words);
+            // A quoted exile instruction is an intrinsic copied ability, not
+            // a delayed instruction belonging to the creating spell.
+            let outside_quotes = tokens_outside_double_quoted_rules(&tail_tokens);
+            let (_, exile_at_next_end_step, exile_player) =
+                parse_next_end_step_token_delay_flags(&token_word_refs(&outside_quotes));
+            let next_end_step_player = if sacrifice_at_next_end_step { sacrifice_player } else { exile_player };
             let sacrifice_at_next_end_step_ability_surface = sacrifice_at_next_end_step
                 .then(|| quoted_copy_sacrifice_ability_surface(&tail_tokens))
                 .flatten();
@@ -3169,6 +3179,7 @@ mod tests {
         assert!(matches!(
             hornbeetle.unhinted(),
             Value::TurnHistoryCount(TurnHistoryCount::CountersPutOn {
+                source_controller: Some(PlayerFilter::You),
                 counter_type: Some(crate::object::CounterType::PlusOnePlusOne),
                 filter,
             }) if filter.card_types == [CardType::Creature]
@@ -3237,6 +3248,20 @@ mod tests {
                 })
             ));
         }
+    }
+
+    #[test]
+    fn quoted_copy_exception_exile_is_an_intrinsic_trigger() {
+        let tokens = lex_line("Create a token that's a copy of target creature, except it has haste and \"At the beginning of the end step, exile this token.\"", 0).unwrap();
+        let abilities = parse_inline_copy_granted_abilities(&tokens);
+        assert!(!abilities.is_empty(), "the quoted end-step ability must parse: {abilities:#?}");
+        let parsed = parse_create(&tokens, None).unwrap();
+        let EffectAst::SubjectVerb(subject_verb) = parsed else { panic!("expected token creation"); };
+        let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
+            granted_abilities, exile_at_next_end_step, ..
+        }) = subject_verb.action else { panic!("expected explicit-source copy"); };
+        assert!(!exile_at_next_end_step, "an intrinsic trigger must not also become a delayed trigger");
+        assert!(granted_abilities.iter().any(|ability| abilities.contains(ability)), "{granted_abilities:#?}");
     }
 
     #[test]

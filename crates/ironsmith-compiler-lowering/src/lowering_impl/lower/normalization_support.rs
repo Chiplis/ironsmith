@@ -137,17 +137,17 @@ fn normalize_line_ast(
     state: &mut RewriteNormalizationState,
 ) -> Result<NormalizedLineAst, CardTextError> {
     let mut normalized_chunks = Vec::with_capacity(chunks.len());
-    let source_pronoun_enters_with_counter_surface = semantic_facts
+    let source_reference_enters_with_counter_surface = semantic_facts
         .statement
         .as_enters_effect_program
         .as_ref()
-        .is_some_and(|facts| facts.source_pronoun_enters_with_counter_surface);
+        .is_some_and(|facts| facts.source_reference_enters_with_counter_surface);
     for chunk in chunks {
         normalize_line_chunk(
             chunk,
             state,
             &mut normalized_chunks,
-            source_pronoun_enters_with_counter_surface,
+            source_reference_enters_with_counter_surface,
         )?;
     }
 
@@ -173,7 +173,7 @@ fn normalize_line_chunk(
     chunk: LineAst,
     state: &mut RewriteNormalizationState,
     normalized_chunks: &mut Vec<NormalizedLineChunk>,
-    source_pronoun_enters_with_counter_surface: bool,
+    source_reference_enters_with_counter_surface: bool,
 ) -> Result<(), CardTextError> {
     if let LineAst::Multiple(chunks) = chunk {
         for chunk in chunks {
@@ -181,7 +181,7 @@ fn normalize_line_chunk(
                 chunk,
                 state,
                 normalized_chunks,
-                source_pronoun_enters_with_counter_surface,
+                source_reference_enters_with_counter_surface,
             )?;
         }
         return Ok(());
@@ -212,7 +212,7 @@ fn normalize_line_chunk(
             }
         }
         LineAst::Statement { mut effects } => {
-            if source_pronoun_enters_with_counter_surface {
+            if source_reference_enters_with_counter_surface {
                 resolve_as_enters_source_counter_grants(&mut effects);
             }
             let mut imports = state.statement_reference_imports();
@@ -340,36 +340,27 @@ fn normalize_line_chunk(
 /// surface; this traversal then retargets only the matching typed
 /// entry-counter grant.
 fn resolve_as_enters_source_counter_grants(effects: &mut [EffectAst]) {
-    fn retarget(effect: &mut EffectAst) {
+    for effect in effects {
         if let EffectAst::SubjectVerb(subject_verb) = effect
             && let SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
-                target, abilities, ..
-            }) = &mut subject_verb.action
-            && matches!(target, TargetAst::Tagged(_, _))
-            && abilities.iter().any(|ability| {
-                matches!(
-                    ability,
-                    GrantedAbilityAst::StaticAbility(static_ability)
-                        if matches!(
-                            static_ability.as_ref(),
-                            StaticAbilityAst::Static(ability)
-                                if matches!(
-                                    ability.payload,
-                                    ironsmith_core::StaticAbilityPayload::EntersWithCountersValue { .. }
-                                )
-                        )
-                )
-            })
+                target, abilities, duration, ..
+            }) = &subject_verb.action
+            && matches!(target, TargetAst::Tagged(_, _) | TargetAst::Source(_))
+            && *duration == ironsmith_core::Until::Forever
+            && let [GrantedAbilityAst::StaticAbility(static_ability)] = abilities.as_slice()
+            && let StaticAbilityAst::Static(ability) = static_ability.as_ref()
+            && let ironsmith_core::StaticAbilityPayload::EntersWithCountersValue { counter, count } = &ability.payload
         {
-            *target = TargetAst::Source(None);
+            // This program runs during entry preparation. Its source counter
+            // additions are transferred to the entering object; granting a
+            // future entry replacement to the source-zone card is too late.
+            *effect = EffectAst::subject_verb_put_counters(
+                *counter, count.clone(), TargetAst::Source(None), None, false,
+            );
         }
         crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
             resolve_as_enters_source_counter_grants(nested);
         });
-    }
-
-    for effect in effects {
-        retarget(effect);
     }
 }
 

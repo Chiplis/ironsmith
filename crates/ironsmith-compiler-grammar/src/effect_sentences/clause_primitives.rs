@@ -1263,6 +1263,7 @@ pub fn parse_anaphoric_object_deals_damage_clause(
                 &["that", "token"],
                 &["that", "creature"],
                 &["that", "land"],
+                &["that", "artifact"],
                 &["that", "permanent"],
                 &["that", "card"],
             ],
@@ -1306,11 +1307,13 @@ pub fn parse_anaphoric_object_deals_damage_clause(
         if crate::word_primitives::parse_sequence_complete(source_words, &["it"]) {
             filter.source_surface = Some(crate::target::SourceReferenceSurface::ThisPermanentType("it".to_string()));
         }
-        if crate::word_primitives::parse_sequence_complete(source_words, &["that", "land"]) {
+        if crate::word_primitives::parse_any_sequence_complete(
+            source_words, &[&["that", "land"], &["that", "artifact"]],
+        ) {
             // Identity remains the typed trigger-object constraint while the
             // authored demonstrative is explicit rendering provenance.
             filter.source_surface = Some(crate::target::SourceReferenceSurface::ThisPermanentType(
-                "that land".to_string(),
+                source_words.join(" "),
             ));
         }
         TargetAst::Object(filter, None, source_span)
@@ -1445,7 +1448,7 @@ pub fn parse_deal_damage_equal_to_power_clause(
             )],
         }))),
         clause_shapes::PowerDamageTargetShape::EachOtherPlayer => {
-            Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+            Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
                 filter: PlayerFilter::NotYou,
                 effects: vec![EffectAst::subject_verb_damage_with_source(
                     source,

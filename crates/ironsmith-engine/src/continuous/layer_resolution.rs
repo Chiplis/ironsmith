@@ -1764,6 +1764,19 @@ pub(super) fn resolve_value_with_context(
             });
             seen.len() as i32
         }
+        Value::DistinctManaValues(filter) => {
+            use std::collections::HashSet;
+
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
+
+            let mut seen: HashSet<i32> = HashSet::new();
+            for_each_filter_candidate(ctx, filter, |obj| {
+                if filter.matches_non_recursive(obj, &filter_ctx, ctx.game) {
+                    seen.insert(crate::filter::object_mana_value_for_filter(obj));
+                }
+            });
+            seen.len() as i32
+        }
         Value::DistinctPowers(filter) => {
             use std::collections::HashSet;
 

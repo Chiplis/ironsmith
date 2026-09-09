@@ -28,7 +28,7 @@ use super::sentence_helpers::*;
 use super::subject_verb_primitives::SubjectVerbPrimitiveClause;
 use super::{Verb, find_verb, parse_effect_chain, parse_effect_sentence_lexed};
 use crate::cards::builders::{
-    CardTextError, EffectAst, GrantedAbilityAst, IfResultPredicate, KeywordAction, LineAst,
+    CardTextError, EffectAst, GrantedAbilityAst, GrantActionAst, StatChangeActionAst, IfResultPredicate, KeywordAction, LineAst,
     ParsedAbility, PlayerAst, PredicateAst, ReferenceImports, StaticAbilityAst, SubjectAst,
     SubjectVerbActionAst, SubjectVerbEffectAst, TagKey, TargetAst, TextSpan, TriggerSpec, PermissionEffectAst, PlayerPredicateAst,
 };
@@ -906,6 +906,9 @@ fn token_definition_source_identity(
             creature.card_types.clone(),
             creature.subtypes.clone(),
         ),
+        TokenDefinitionSpec::Enchantment(enchantment) => (
+            enchantment.name.clone(), vec![CardType::Enchantment], enchantment.subtypes.clone(),
+        ),
         TokenDefinitionSpec::Artifact(artifact) => (
             artifact.name.clone(),
             vec![CardType::Artifact],
@@ -1113,7 +1116,8 @@ fn parse_temporary_escape_grant(
     let grant_duration = match duration {
         Until::Forever => crate::grant::GrantDuration::Forever,
         Until::EndOfTurn => crate::grant::GrantDuration::UntilEndOfTurn,
-        Until::YourNextTurn | Until::YourNextTurnEnd => {
+        Until::YourNextTurn => crate::grant::GrantDuration::UntilYourNextTurn,
+        Until::YourNextTurnEnd => {
             crate::grant::GrantDuration::UntilYourNextTurnEnd
         }
         _ => return Ok(None),
@@ -1776,6 +1780,80 @@ pub fn parse_simple_ability_modifier_clause(
     parse_simple_ability_modifier_clause_lexed(tokens, losing)
 }
 
+fn subject_has_creature_type_choice(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::lexer::token_word_refs(tokens);
+    crate::word_primitives::sequence_occurs(&words, &["creature", "type", "of", "your", "choice"])
+}
+
+fn patch_creature_type_choice_effect(effect: &mut EffectAst) -> bool {
+    // Compound gain sentences wrap their members in coordination nodes;
+    // patch through them.
+    match effect {
+        EffectAst::Coordination(coordination) => {
+            let mut patched = false;
+            for inner in coordination.effects_mut() {
+                patched |= patch_creature_type_choice_effect(inner);
+            }
+            return patched;
+        }
+        EffectAst::Coordinated { effects, .. } | EffectAst::Sequence { effects, .. } => {
+            let mut patched = false;
+            for inner in effects.iter_mut() {
+                patched |= patch_creature_type_choice_effect(inner);
+            }
+            return patched;
+        }
+        _ => {}
+    }
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect else {
+        return false;
+    };
+    match action {
+        SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll { filter, .. })
+        | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll { filter, .. })
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll { filter, .. })
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceAll { filter, .. }) => {
+            filter.chosen_creature_type = true;
+            true
+        }
+        SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
+            target: TargetAst::Object(filter, _, _),
+            ..
+        })
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
+            target: TargetAst::Object(filter, _, _),
+            ..
+        }) => {
+            filter.chosen_creature_type = true;
+            true
+        }
+        _ => false,
+    }
+}
+
+pub(super) fn patch_creature_type_choice_effects(effects: &mut Vec<EffectAst>) -> bool {
+    let mut patched = false;
+    for effect in effects.iter_mut() {
+        patched |= patch_creature_type_choice_effect(effect);
+    }
+    if patched {
+        effects.insert(
+            0,
+            EffectAst::subject_verb_choose_creature_type(PlayerAst::You, vec![]),
+        );
+    }
+    patched
+}
+
+fn with_inline_creature_type_choice(tokens: &[OwnedLexToken], mut effects: Vec<EffectAst>) -> Vec<EffectAst> {
+    let subject = gain_shapes::parse_get_then_ability_shape(tokens).map(|shape| shape.subject_tokens)
+        .or_else(|| gain_shapes::parse_gain_then_get_shape(tokens).map(|shape| shape.subject_tokens));
+    if subject.is_some_and(subject_has_creature_type_choice) {
+        patch_creature_type_choice_effects(&mut effects);
+    }
+    effects
+}
+
 pub fn parse_gain_ability_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1826,6 +1904,11 @@ fn parse_complete_simple_source_gain_ability_sentence(
             .is_some_and(|token| token.kind == TokenKind::Quote);
     let subject_tokens = trim_commas(shape.subject_tokens);
     let subject_words = GainAbilityWordView::new(&subject_tokens).to_word_refs();
+    // A source reference followed by a conversion is a compound action,
+    // not a complete simple grant. The compound reader preserves both arms.
+    if gain_shapes::find_become_verb(&subject_words).is_some() {
+        return Ok(None);
+    }
     let target = if let Some(target) = source_target_from_subject_tokens(&subject_tokens) {
         target
     } else {
@@ -1893,7 +1976,7 @@ fn parse_gain_ability_sentence_inner(
     }
 
     Ok(parse_gain_ability_sentence_with_subject(tokens, None)?
-        .map(|effects| coordinated_gain_surface(tokens, effects)))
+        .map(|effects| with_inline_creature_type_choice(tokens, coordinated_gain_surface(tokens, effects))))
 }
 
 pub fn parse_gain_ability_sentence_with_typed_subject(
@@ -1902,7 +1985,7 @@ pub fn parse_gain_ability_sentence_with_typed_subject(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     Ok(
         parse_gain_ability_sentence_with_subject(tokens, Some(subject_tokens))?
-            .map(|effects| coordinated_gain_surface(tokens, effects)),
+            .map(|effects| with_inline_creature_type_choice(tokens, coordinated_gain_surface(tokens, effects))),
     )
 }
 

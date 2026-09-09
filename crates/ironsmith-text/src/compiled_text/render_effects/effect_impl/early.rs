@@ -29,6 +29,24 @@
         return String::new();
     }
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        if matches!(sequence.surface,
+            ironsmith_core::SequenceSurface::Coordinated
+                | ironsmith_core::SequenceSurface::ResultConjunction { leading_duration: false })
+            && let Some(text) = describe_lose_life_then_create_shared_dynamic_branch(&sequence.effects)
+        {
+            return text;
+        }
+        if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
+            && let Some(text) = describe_targeted_pump_then_grant_same_objects(&sequence.effects)
+        {
+            return text;
+        }
+        if let Some(text) = describe_choose_color_reveal_hand_and_discard(&sequence.effects) {
+            return text;
+        }
+        if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
+            && let Some(text) = describe_opponent_and_you_draw(&sequence.effects)
+        { return text; }
         if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
             && let Some(text) = describe_hand_reveal_and_same_actor_exile(&sequence.effects)
         { return text; }
@@ -120,6 +138,9 @@
                 &sequence.effects,
             )
         {
+            return compact;
+        }
+        if let Some(compact) = super::describe_shared_recipient_counter_pair(&sequence.effects) {
             return compact;
         }
         if sequence.surface == ironsmith_core::SequenceSurface::SentenceLeadingThen {
@@ -759,6 +780,8 @@
         return "Ascend".to_string();
     }
     if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
+        if let Some(compact) = describe_joint_player_sacrifice_loop(for_players) { return compact; }
+        if let Some(compact) = describe_sequential_mill_return_unless_payment(for_players) { return compact; }
         if let Some(compact) = describe_for_players_choose_types_then_sacrifice_rest(for_players)
             .or_else(|| describe_for_players_choice_complement(for_players)) {
             return compact;
@@ -844,6 +867,9 @@
             return format!(
                 "Deal damage to each {each_player} who {relative} equal to the difference"
             );
+        }
+        if let Some(compact) = describe_for_players_keep_hand_then_shuffle_remainder(for_players) {
+            return compact;
         }
         if let Some(compact) =
             describe_for_players_choose_each_graveyard_then_owner_shuffle(for_players)
@@ -1785,10 +1811,13 @@
                 {
                     "Put each card exiled with this artifact into its owner's graveyard".to_string()
                 } else {
-                    let target = describe_simple_exiled_card_target(&move_to_zone.target)
+                    let target = describe_owned_exile_card_target(&move_to_zone.target)
+                        .or_else(|| describe_simple_exiled_card_target(&move_to_zone.target))
                         .unwrap_or_else(|| target.clone());
                     if let Some(owner) = &contextual_destination {
                         format!("Put {target} into {owner} graveyard")
+                    } else if choose_spec_allows_multiple(&move_to_zone.target) {
+                        format!("Put {target} into their owners' graveyards")
                     } else {
                         format!("Put {target} into its owner's graveyard")
                     }
@@ -2088,6 +2117,17 @@
         return text;
     }
     if let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>() {
+        if !exile.face_down && !exile.turn_face_up
+            && let ChooseSpec::WithCount(inner, count) = &exile.spec
+            && count.is_single() && !count.random
+            && let ChooseSpec::Object(filter) = inner.as_ref()
+            && filter.owner.is_none() && filter.controller.is_none()
+            && filter.prior_effect_action_surface() == Some(crate::effect::PriorEffectAction::Milled)
+            && let Some(card) = describe_milled_graveyard_count_filter(filter)
+            && let Some(noun) = card.strip_suffix(" milled this way")
+        {
+            return format!("Exile {} from among the cards milled this way", with_indefinite_article(noun));
+        }
         let face_down_suffix = if exile.face_down { " face down" } else { "" };
         if !exile.face_down
             && let ChooseSpec::All(filter) = &exile.spec
@@ -3298,7 +3338,18 @@
             return format!("For each player, {inner_text} unless they pay {payment_text}");
         }
 
-        let inner_text = describe_effect_list(&unless_pays.effects);
+        let mut inner_text = describe_effect_list(&unless_pays.effects);
+        // A trailing condition continues the granting instruction. Keep the
+        // duration outside its quoted ability, without a sentence-ending period
+        // between that ability and the condition.
+        if let [inner] = unless_pays.effects.as_slice()
+            && let Some(continuous) = inner.downcast_ref::<crate::effects::ApplyContinuousEffect>()
+            && continuous.until == Until::EndOfTurn
+            && let Some(grant) = inner_text.strip_prefix("Until end of turn, ")
+            && let Some(grant) = grant.trim_end_matches('.').strip_suffix(".\"")
+        {
+            inner_text = format!("{}\" until end of turn", capitalize_first(grant));
+        }
         if let Some(action_text) = action_payment_text(&payment_text) {
             return format!("{} unless {} {}", inner_text, payer, action_text);
         }
@@ -5239,6 +5290,21 @@
     if let Some(shuffle_objects) =
         effect.downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()
     {
+        if shuffle_objects.owner_library_destination
+            && shuffle_objects.shuffle_subject_library
+            && shuffle_objects.player == PlayerFilter::You
+            && let ChooseSpec::All(filter) = shuffle_objects.target.base()
+            && let [source, graveyard] = filter.any_of.as_slice()
+            && *source == ObjectFilter::source()
+        {
+            let mut expected_graveyard = ObjectFilter::default().in_zone(Zone::Graveyard);
+            expected_graveyard.owner = Some(PlayerFilter::You);
+            let mut remainder = filter.clone();
+            remainder.any_of.clear();
+            if *graveyard == expected_graveyard && remainder == ObjectFilter::default() {
+                return "Shuffle this permanent and your graveyard into their owner's library".to_string();
+            }
+        }
         if shuffle_objects.owner_library_destination {
             let (target_text, singular) = match shuffle_objects.target.base() {
                 ChooseSpec::Source | ChooseSpec::Tagged(_) => ("it".to_string(), true),
@@ -6216,6 +6282,9 @@
         return prompt.description().to_string();
     }
     if let Some(turn_face_up) = effect.downcast_ref::<crate::effects::TurnFaceUpEffect>() {
+        if matches!(&turn_face_up.target, ChooseSpec::SurfaceHinted { .. }) {
+            return format!("Turn {} face up", describe_choose_spec(&turn_face_up.target));
+        }
         let target = match turn_face_up.target.base() {
             ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::SOURCE_EXILED_TAG => {
                 "the exiled card".to_string()
@@ -6234,6 +6303,7 @@
         };
     }
     if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
+        if let Some(rendered) = describe_surviving_chosen_count_search(conditional) { return rendered; }
         if conditional.surface == ironsmith_core::ConditionalSurface::LeadingIf
             && conditional.if_false.is_empty()
             && let crate::effect::Condition::TaggedObjectMatches(tag, filter) =
@@ -6266,6 +6336,12 @@
             );
         }
         if conditional.surface == ironsmith_core::ConditionalSurface::TrailingIf {
+            let finish_condition = |mut rendered: String| {
+                if !conditional.if_false.is_empty() {
+                    rendered.push_str(&format!(". Otherwise, {}", lowercase_first(&describe_effect_list(&conditional.if_false))));
+                }
+                rendered
+            };
             // A trailing condition owns the outer `if ...` surface, but its
             // action branch can still begin with a lowering-only shared target
             // declaration. Fold that declaration before broader clause-list
@@ -6300,16 +6376,13 @@
             if let Some(filter) = local_target_filter {
                 let desc = filter.description();
                 if let Some(rest) = desc.strip_prefix("permanent with ") {
-                    return format!("{effect_text} if it has {rest}");
+                    return finish_condition(format!("{effect_text} if it has {rest}"));
                 }
                 if let Some(rest) = desc.strip_prefix("creature with ") {
-                    return format!("{effect_text} if it has {rest}");
+                    return finish_condition(format!("{effect_text} if it has {rest}"));
                 }
             }
-            return format!(
-                "{effect_text} if {}",
-                describe_condition(&conditional.condition)
-            );
+            return finish_condition(format!("{effect_text} if {}", describe_condition(&conditional.condition)));
         }
         if conditional.surface == ironsmith_core::ConditionalSurface::TrailingUnless {
             let effect_text = describe_effect_clause_list(&conditional.if_true)
@@ -6626,6 +6699,12 @@
                 && let Some(shuffle) =
                     if_effect.then[0].downcast_ref::<crate::effects::ShuffleLibraryEffect>()
             {
+                if if_effect.per_player_result
+                    && shuffle.player == PlayerFilter::IteratedPlayer
+                    && shuffle.target_spec.is_none()
+                {
+                    return "Then each player who searched their library this way shuffles".to_string();
+                }
                 let player = describe_player_filter(&shuffle.player);
                 if player == "you" {
                     return "If you search your library this way, shuffle your library".to_string();

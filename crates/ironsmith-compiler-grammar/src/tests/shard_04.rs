@@ -5027,3 +5027,25 @@ fn vision_quest_search_threshold_shuffle_keeps_three_typed_steps() {
         "{parsed:#?}"
     );
 }
+
+#[test]
+fn imperative_participant_loop_scopes_mill_and_payment_sequentially() {
+    let lexed = lex_line("For each opponent, you mill a card, then return that card from your graveyard to your hand unless that player pays 3 life.", 0).unwrap();
+    let parsed = super::super::clause_support::parse_effect_sentences_lexed(&lexed).unwrap();
+    let debug = format!("{parsed:#?}");
+    assert_eq!(debug.matches("ForEachPlayersFiltered").count(), 1, "{debug}");
+    assert!(debug.contains("sequential: true"), "{debug}");
+    assert!(debug.contains("UnlessPays"), "{debug}");
+}
+
+#[test]
+fn chosen_permanent_followup_iterates_objects_instead_of_repeating_shared_tag() {
+    let text = "For each opponent, choose up to one target artifact or enchantment that player controls. For each permanent chosen this way, its controller may exile it. Then if one or more of the chosen permanents are still on the battlefield, you search your library for up to that many land cards, put them onto the battlefield tapped, then shuffle.";
+    let lexed = lex_line(text, 0).unwrap();
+    let parsed = super::super::clause_support::parse_effect_sentences_lexed(&lexed).unwrap();
+    let debug = format!("{parsed:#?}");
+    assert!(debug.contains("ForEachObject"), "{debug}");
+    assert!(debug.contains("match_current_state: true"), "{debug}");
+    assert!(debug.contains("Conditional"), "{debug}");
+    assert!(!debug.contains("RepeatEffects"), "{debug}");
+}

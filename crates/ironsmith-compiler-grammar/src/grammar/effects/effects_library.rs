@@ -34,7 +34,7 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     if parse_each_chosen_player_search_put_top_shape(tokens).is_some() {
         let mut filter = ObjectFilter::default();
         filter.zone = Some(Zone::Library);
-        return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+        return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
             filter: PlayerFilter::target_player(),
             effects: vec![EffectAst::subject_verb_search_library(
                 filter,
@@ -60,6 +60,13 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     let Some(head_split) = split_search_library_sentence_head_lexed(tokens) else {
         return Ok(None);
     };
+
+    // A leading condition belongs to the complete search program. Let the
+    // conditional grammar claim it rather than treating it as an actor.
+    let leading_words = crate::lexer::token_word_refs(head_split.subject_tokens);
+    if leading_words.starts_with(&["if"]) || leading_words.starts_with(&["then", "if"]) {
+        return Ok(None);
+    }
 
     let subject_prelude = parse_search_library_leading_effect_prelude_lexed(
         head_split.subject_tokens,
@@ -164,8 +171,35 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     let count_prefix = parse_search_library_count_prefix_lexed(count_tokens);
     let mut count = count_prefix.count;
     let search_mode = count_prefix.search_mode;
-    let count_used = count_prefix.count_used;
+    let mut count_used = count_prefix.count_used;
     let mut prefix_count_value = count_prefix.count_value;
+
+    // A comparative player choice supplies both operands for a following
+    // "number of ... equal to the difference" search. Bind the chosen-player
+    // tag before lowering the ordinary dynamic-count search.
+    let mut filter_end = filter_end;
+    if primitives::parse_prefix(count_tokens, primitives::phrase(&["a", "number", "of"])).is_some()
+        && let Some((suffix, _, rest)) = primitives::find_prefix(count_tokens, || primitives::phrase(&["equal", "to", "the", "difference"]))
+        && rest.is_empty()
+        && suffix > 3
+        && let Some(EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Choices(crate::cards::builders::ChoiceActionAst::ChoosePlayer {
+                filter: PlayerFilter::OpponentWithMoreControlledObjectsThan { player, filter }, tag, ..
+            }), ..
+        })) = leading_effects.last()
+    {
+        let mut chosen = filter.as_ref().clone();
+        chosen.controller = Some(PlayerFilter::TaggedPlayer(tag.clone().into()));
+        let mut reference = filter.as_ref().clone();
+        reference.controller = Some(player.as_ref().clone());
+        prefix_count_value = Some(Value::Add(
+            Box::new(Value::Count(chosen)),
+            Box::new(Value::Scaled(Box::new(Value::Count(reference)), -1)),
+        ).with_surface_hint(ironsmith_core::ValueSurfaceHint::Difference));
+        count = ChoiceCount::dynamic_x();
+        count_used = 3;
+        filter_end = for_idx + 1 + suffix;
+    }
 
     let filter_start = for_idx + 1 + count_used;
     if filter_start >= filter_end {
@@ -458,14 +492,11 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             None,
         ));
         if shuffle && zones_have(&zones, Zone::Library) {
-            sequence.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-                predicate: IfResultPredicate::SearchedLibrary,
-                effects: vec![EffectAst::subject_verb(
+            sequence.push(EffectAst::subject_verb(
                     SubjectVerbRoleAst::LibraryOwner,
                     player,
                     SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
-                )],
-            }));
+                ));
         }
         sequence
     } else if !has_explicit_destination {
@@ -484,14 +515,11 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             sequence.push(EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(chosen_tag.clone())));
         }
         if shuffle && zones_have(&search_zones, Zone::Library) {
-            sequence.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-                predicate: IfResultPredicate::SearchedLibrary,
-                effects: vec![EffectAst::subject_verb(
+            sequence.push(EffectAst::subject_verb(
                     SubjectVerbRoleAst::LibraryOwner,
                     player,
                     SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
-                )],
-            }));
+                ));
         }
         sequence
     } else if let Some(search_zones) = search_zones_override
@@ -522,15 +550,24 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             && zones_have(&search_zones, Zone::Library)
             && !trailing_that_player_shuffle
         {
-            sequence.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-                predicate: IfResultPredicate::SearchedLibrary,
-                effects: vec![EffectAst::subject_verb(
+            sequence.push(EffectAst::subject_verb(
                     SubjectVerbRoleAst::LibraryOwner,
                     shuffle_player,
                     SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
-                )],
-            }));
+                ));
         }
+        if destination == Zone::Exile {
+            // The selected cards are one exile action. Tag its actual outcome
+            // separately from the searched set so source-zone follow-ups
+            // exclude cards whose zone change was replaced.
+            sequence.push(EffectAst::TagAffected {
+                effect: Box::new(EffectAst::subject_verb_exile(
+                    TargetAst::Tagged(crate::tag::TagRef::of(chosen_tag.clone()), span_from_tokens(tokens)),
+                    face_down_exile,
+                )),
+                tag: helper_tag_for_tokens(tokens, "exiled"),
+            });
+        } else {
         let mut per_tag_effects = vec![EffectAst::subject_verb_move_to_zone(
             TargetAst::Tagged(crate::tag::TagRef::of(chosen_tag.clone()), span_from_tokens(tokens)),
             destination,
@@ -551,18 +588,16 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             tag: crate::tag::TagRef::of(chosen_tag.clone()),
             effects: per_tag_effects,
         }));
+        }
         if shuffle
             && !(destination == Zone::Library && zones_have(&search_zones, Zone::Library))
             && !trailing_that_player_shuffle
         {
-            sequence.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-                predicate: IfResultPredicate::SearchedLibrary,
-                effects: vec![EffectAst::subject_verb(
+            sequence.push(EffectAst::subject_verb(
                     SubjectVerbRoleAst::LibraryOwner,
                     shuffle_player,
                     SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
-                )],
-            }));
+                ));
         }
         sequence
     } else if split_battlefield_and_hand {
@@ -814,7 +849,7 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         effects = vec![match filter {
             PlayerFilter::Opponent => EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }),
             PlayerFilter::Any => EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }),
-            other => EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+            other => EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
                 filter: other,
                 effects,
             }),
@@ -850,7 +885,7 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     }
 
     if wrap_each_target_player {
-        effects = vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+        effects = vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
             filter: PlayerFilter::target_player(),
             effects,
         })];

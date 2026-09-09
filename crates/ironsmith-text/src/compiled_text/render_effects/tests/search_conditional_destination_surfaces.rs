@@ -15,7 +15,9 @@ fn loyal_inventor_rejoins_search_and_correlated_destinations() {
     );
     let debug = format!("{definition:#?}");
     assert!(debug.contains("RevealTaggedEffect"), "{debug}");
-    assert!(debug.contains("SearchedLibrary"), "{debug}");
+    // The authored shuffle is unconditional inside the accepted search action.
+    assert!(debug.contains("ShuffleLibraryEffect"), "{debug}");
+    assert!(!debug.contains("SearchedLibrary"), "{debug}");
     assert!(debug.contains("PlayerControls"), "{debug}");
     assert!(debug.contains("DidNotHappen"), "{debug}");
 }

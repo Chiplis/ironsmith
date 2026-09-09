@@ -288,7 +288,7 @@ pub fn replacement_effect_with_target(
             replacement_effect_with_target(&tagged.effect, previous_target)
     {
         return Some(crate::effect::Effect::new(
-            crate::effects::TaggedEffect::new(tagged.tag.clone(), rewritten_inner),
+            tagged.with_effect(rewritten_inner),
         ));
     }
     if let Some(destroy) = effect.downcast_ref::<crate::effects::DestroyEffect>()

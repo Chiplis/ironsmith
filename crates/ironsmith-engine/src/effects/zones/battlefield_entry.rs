@@ -18,12 +18,14 @@ pub(crate) enum BattlefieldEntryController {
 }
 
 /// Config for moving an object to the battlefield through ETB processing.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct BattlefieldEntryOptions {
     pub controller: BattlefieldEntryController,
     pub tapped: bool,
     pub transformed: bool,
     pub initial_counters: Vec<(crate::object::CounterType, u32)>,
+    /// One-shot continuous modifications that define how this object enters.
+    pub entry_modifications: Vec<crate::continuous::Modification>,
 }
 
 impl BattlefieldEntryOptions {
@@ -33,6 +35,7 @@ impl BattlefieldEntryOptions {
             tapped,
             transformed: false,
             initial_counters: Vec::new(),
+            entry_modifications: Vec::new(),
         }
     }
 
@@ -42,6 +45,7 @@ impl BattlefieldEntryOptions {
             tapped,
             transformed: false,
             initial_counters: Vec::new(),
+            entry_modifications: Vec::new(),
         }
     }
 
@@ -51,6 +55,7 @@ impl BattlefieldEntryOptions {
             tapped,
             transformed: false,
             initial_counters: Vec::new(),
+            entry_modifications: Vec::new(),
         }
     }
 
@@ -59,6 +64,14 @@ impl BattlefieldEntryOptions {
         counters: Vec<(crate::object::CounterType, u32)>,
     ) -> Self {
         self.initial_counters = counters;
+        self
+    }
+
+    pub(crate) fn with_entry_modifications(
+        mut self,
+        modifications: Vec<crate::continuous::Modification>,
+    ) -> Self {
+        self.entry_modifications = modifications;
         self
     }
 
@@ -280,6 +293,37 @@ fn apnap_position(game: &GameState, player: PlayerId) -> usize {
         .unwrap_or(usize::MAX)
 }
 
+fn apply_entry_modifications(
+    game: &mut GameState,
+    ctx: &ExecutionContext,
+    object: ObjectId,
+    options: &BattlefieldEntryOptions,
+) -> Vec<crate::continuous::ContinuousEffectId> {
+    if options.entry_modifications.is_empty() {
+        return Vec::new();
+    }
+    let group = game.effect_store.continuous_effects.next_effect_group_id();
+    let ids = options
+        .entry_modifications
+        .iter()
+        .map(|modification| {
+            game.effect_store.continuous_effects.add_effect(
+                crate::continuous::ContinuousEffect::new(
+                    ctx.source,
+                    ctx.controller,
+                    crate::continuous::EffectTarget::Specific(object),
+                    modification.clone(),
+                )
+                .with_group(group),
+            )
+        })
+        .collect();
+    if !options.entry_modifications.is_empty() {
+        game.refresh_continuous_state();
+    }
+    ids
+}
+
 fn finish_battlefield_entry(
     game: &mut GameState,
     ctx: &ExecutionContext,
@@ -348,6 +392,17 @@ pub(crate) fn move_to_battlefield_batch_with_options(
         if apply_entry_definition(&mut working, *object_id, &definition) {
             transformed_entry_states.insert(index, (original, definition));
         }
+    }
+    // The replacement proposal must see the characteristics the returning
+    // effect gives the entering object, before any entry replacements match.
+    let mut provisional_effects = Vec::new();
+    for (object, options) in &requests {
+        provisional_effects.extend(apply_entry_modifications(
+            &mut working,
+            ctx,
+            *object,
+            options,
+        ));
     }
     let eligible_indices = requests
         .iter()
@@ -479,6 +534,7 @@ pub(crate) fn move_to_battlefield_batch_with_options(
         if let Some((_, transformed_definition)) = transformed_entry_states.get(&index) {
             apply_entry_definition(&mut working, result.new_id, transformed_definition);
         }
+        apply_entry_modifications(&mut working, ctx, result.new_id, options);
         outcomes[index] = finish_battlefield_entry(&mut working, ctx, old_zone, options, result);
     }
 
@@ -494,6 +550,10 @@ pub(crate) fn move_to_battlefield_batch_with_options(
         }
     }
 
+    for id in provisional_effects {
+        working.effect_store.continuous_effects.remove_effect(id);
+    }
+    working.refresh_continuous_state();
     *game = working;
     outcomes
 }

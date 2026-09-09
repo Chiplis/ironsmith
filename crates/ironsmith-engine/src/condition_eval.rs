@@ -1579,8 +1579,20 @@ fn evaluate_value_comparison(
     operator: crate::effect::ValueComparisonOperator,
     right: &Value,
     triggering_event: Option<&TriggerEvent>,
+    defending_player: Option<PlayerId>,
+    attacking_player: Option<PlayerId>,
 ) -> bool {
     let mut ctx = ExecutionContext::new_default(source, controller);
+    if let Some(attached) = game.object(source)
+        .and_then(|source| source.attached_to.as_ref())
+        .and_then(|target| target.object_id())
+        .and_then(|id| game.object(id))
+    {
+        let snapshot = crate::snapshot::ObjectSnapshot::from_object(attached, game);
+        for tag in ["enchanted", "equipped"] {
+            ctx.set_tagged_objects(tag, vec![snapshot.clone()]);
+        }
+    }
     if let Some(event) = triggering_event {
         ctx = ctx.with_triggering_event(event.clone());
         if let Some(snapshot) = event.snapshot() {
@@ -1598,6 +1610,10 @@ fn evaluate_value_comparison(
             );
         }
     }
+    // Explicit declaration context takes precedence over any event-derived
+    // combat context; ordinary callers leave these fields unspecified.
+    if let Some(player) = defending_player { ctx.combat.defending_player = Some(player); }
+    if let Some(player) = attacking_player { ctx.combat.attacking_player = Some(player); }
     let source_exiled = game
         .get_exiled_with_source_links(source)
         .iter()
@@ -2315,6 +2331,24 @@ fn evaluate_turn_history_condition(
                     .iter()
                     .any(|snapshot| snapshot.stable_id == stable_id)
             }),
+        TurnHistoryCondition::ObjectAttackedDuringControllersLastTurn(filter) => {
+            let mut filter_ctx = FilterContext::new(ctx.controller).with_source(ctx.source);
+            if let Some(attached) = game.object(ctx.source)
+                .and_then(|source| source.attached_to.as_ref())
+                .and_then(|target| target.object_id())
+                .and_then(|id| game.object(id))
+            {
+                let snapshot = crate::snapshot::ObjectSnapshot::from_object(attached, game);
+                for tag in ["enchanted", "equipped"] {
+                    filter_ctx.tagged_objects.insert(crate::tag::TagKey::from(tag), vec![snapshot.clone()]);
+                }
+            }
+            game.battlefield.iter().filter_map(|id| game.object(*id)).any(|object| {
+                filter.matches(object, &filter_ctx, game)
+                    && game.last_turn_history_for_player(game.controller_of(object))
+                        .is_some_and(|history| history.creatures_attacked_this_turn.contains(&object.id))
+            })
+        }
         TurnHistoryCondition::SourceAttackedThisTurn { .. } => {
             game.creature_attacked_this_turn(ctx.source)
         }
@@ -2794,10 +2828,20 @@ fn evaluate_condition_shared_core(
             triggering_spell_colored_mana_spent_at_least(game, ctx.triggering_event, *amount),
         ),
         Condition::SnowManaOfAnySpellColorSpentToCastThisSpell => {
-            let Some(source_obj) = game.object(ctx.source) else {
-                return Some(false);
-            };
-            Some(source_obj.mana_spent_to_cast.total() > 0)
+            Some(game.object(ctx.source).is_some_and(|object| {
+                let snapshot = crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game);
+                matching_snow_mana_was_spent(&snapshot)
+            }))
+        }
+        Condition::TriggeringSpellSnowManaOfAnySpellColorSpentToCast => {
+            Some(ctx.triggering_event
+                .and_then(|event| event.downcast::<crate::events::SpellCastEvent>())
+                .is_some_and(|cast| {
+                    game.object(cast.spell).filter(|object| object.zone == crate::zone::Zone::Stack)
+                        .map_or_else(|| cast.snapshot.as_ref().is_some_and(matching_snow_mana_was_spent), |object| {
+                            matching_snow_mana_was_spent(&crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
+                        })
+                }))
         }
         Condition::SameColorManaSpentToCastThisSpellAtLeast(amount) => {
             let Some(source_obj) = game.object(ctx.source) else {
@@ -3089,6 +3133,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::SourceIsInZone(..) => {}
         Condition::ManaSpentToCastThisSpellAtLeast { .. } => {}
         Condition::SnowManaOfAnySpellColorSpentToCastThisSpell => {}
+        Condition::TriggeringSpellSnowManaOfAnySpellColorSpentToCast => {}
         Condition::SameColorManaSpentToCastThisSpellAtLeast(..) => {}
         Condition::ColorsOfManaSpentToCastThisSpellOrMore(..) => {}
         Condition::YouControlCommander => {}
@@ -3145,6 +3190,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::SourceIsAttacking => {}
         Condition::SourceIsBlocking => {}
         Condition::SourceIsSoulbondPaired => {}
+        Condition::SourceSoulbondPartnerMatches(_) => {}
         Condition::TurnHistory(..) => {}
         Condition::XValueAtLeast(..) => {}
         Condition::Custom(..) => {}
@@ -3284,6 +3330,8 @@ pub fn evaluate_condition_external(
             *operator,
             right,
             ctx.triggering_event,
+            ctx.defending_player,
+            ctx.attacking_player,
         );
     }
     if let Condition::ValueIsPrime(value) = condition {
@@ -3700,24 +3748,14 @@ pub fn evaluate_condition_external(
                 })
                 .any(|obj| filter.matches(obj, &filter_ctx, game))
         }
-        Condition::PlayerHasAtLeast {
-            player,
-            filter,
-            count,
-        } => {
-            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
-                return false;
-            };
-            let filter_ctx =
-                condition_filter_context(game, player_id, ctx.source, player, ctx.triggering_event);
-            let matches = condition_objects_for_zone(game, filter.zone)
-                .filter(|obj| {
-                    condition_object_matches_player_zone(game, obj, player_id, filter.zone)
-                })
-                .filter(|obj| filter.matches(obj, &filter_ctx, game))
-                .count();
-            matches >= *count as usize
-        }
+        Condition::PlayerHasAtLeast { player, filter, count } =>
+            matching_condition_players_external(game, ctx, player).into_iter().any(|player_id| {
+                let filter_ctx = condition_filter_context(game, player_id, ctx.source, player, ctx.triggering_event);
+                condition_objects_for_zone(game, filter.zone)
+                    .filter(|obj| condition_object_matches_player_zone(game, obj, player_id, filter.zone))
+                    .filter(|obj| filter.matches(obj, &filter_ctx, game))
+                    .count() >= *count as usize
+            }),
         Condition::PlayerControlsExactly {
             player,
             filter,
@@ -4089,6 +4127,9 @@ pub fn evaluate_condition_external(
             .as_ref()
             .is_some_and(|combat| crate::combat_state::is_blocking(combat, ctx.source)),
         Condition::SourceIsSoulbondPaired => game.is_soulbond_paired(ctx.source),
+        Condition::SourceSoulbondPartnerMatches(filter) => game.soulbond_partner(ctx.source)
+            .and_then(|id| game.object(id))
+            .is_some_and(|partner| filter.matches(partner, &crate::filter::FilterContext::new(ctx.controller).with_source(ctx.source), game)),
         Condition::TurnHistory(_) => unreachable!("handled by shared condition evaluator"),
         Condition::StableObjectIsTopOfLibrary {
             stable_id,
@@ -4162,6 +4203,7 @@ pub fn evaluate_condition_external(
         | Condition::ManaSpentToCastThisSpellAtLeast { .. }
         | Condition::ColoredManaSpentToCastThisSpellAtLeast(_)
         | Condition::SnowManaOfAnySpellColorSpentToCastThisSpell
+        | Condition::TriggeringSpellSnowManaOfAnySpellColorSpentToCast
         | Condition::SameColorManaSpentToCastThisSpellAtLeast(_)
         | Condition::ColorsOfManaSpentToCastThisSpellOrMore(_)
         | Condition::PlayerGraveyardHasCardsAtLeast { .. }
@@ -4384,7 +4426,7 @@ fn evaluate_condition_simple(
         right,
     } = condition
     {
-        return evaluate_value_comparison(game, controller, source, left, *operator, right, None);
+        return evaluate_value_comparison(game, controller, source, left, *operator, right, None, None, None);
     }
     if let Condition::ValueIsPrime(value) = condition {
         return evaluate_value_is_prime(game, controller, source, value, None);
@@ -4486,34 +4528,10 @@ fn evaluate_condition_simple(
             }
             true
         }
-        Condition::PlayerHasAtLeast {
-            player,
-            filter,
-            count,
-        } => {
-            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
-                return false;
-            };
-            let opponents: Vec<PlayerId> = game
-                .players
-                .iter()
-                .filter(|p| p.id != player_id)
-                .map(|p| p.id)
-                .collect();
-            let mut ctx = crate::filter::FilterContext::new(player_id)
-                .with_source(source)
-                .with_opponents(opponents);
-            if *player == PlayerFilter::IteratedPlayer {
-                ctx = ctx.with_iterated_player(Some(player_id));
-            }
-            let matches = condition_objects_for_zone(game, filter.zone)
-                .filter(|obj| {
-                    condition_object_matches_player_zone(game, obj, player_id, filter.zone)
-                })
-                .filter(|obj| filter.matches(obj, &ctx, game))
-                .count();
-            matches >= *count as usize
-        }
+        Condition::PlayerHasAtLeast { player, filter, count } =>
+            matching_condition_players_simple(game, controller, player).into_iter().any(|player_id| {
+                condition_count_for_player(game, source, player, player_id, filter) >= *count as usize
+            }),
         Condition::PlayerControlsBasicLandTypesAmongLandsOrMore { player, count } => {
             use crate::types::Subtype;
             use std::collections::HashSet;
@@ -4900,6 +4918,9 @@ fn evaluate_condition_simple(
         | Condition::TriggeringObjectHadCountersPutFirstTimeThisTurn
         | Condition::TriggeringObjectHadToAttackThisCombat
         | Condition::TriggeringObjectHadCounters { .. } => false,
+        Condition::SourceSoulbondPartnerMatches(filter) => game.soulbond_partner(source)
+            .and_then(|id| game.object(id))
+            .is_some_and(|partner| filter.matches(partner, &crate::filter::FilterContext::new(controller).with_source(source), game)),
         Condition::ControlCreaturesTotalPowerAtLeast(_)
         | Condition::CardInYourGraveyard { .. }
         | Condition::ActivationTiming(_)
@@ -5014,6 +5035,7 @@ fn evaluate_condition_simple(
         | Condition::ManaSpentToCastThisSpellAtLeast { .. }
         | Condition::ColoredManaSpentToCastThisSpellAtLeast(_)
         | Condition::SnowManaOfAnySpellColorSpentToCastThisSpell
+        | Condition::TriggeringSpellSnowManaOfAnySpellColorSpentToCast
         | Condition::SameColorManaSpentToCastThisSpellAtLeast(_)
         | Condition::ColorsOfManaSpentToCastThisSpellOrMore(_)
         | Condition::PlayerGraveyardHasCardsAtLeast { .. }
@@ -5338,22 +5360,15 @@ fn evaluate_condition(
 
             Ok(true)
         }
-        Condition::PlayerHasAtLeast {
-            player,
-            filter,
-            count,
-        } => {
-            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
-            let mut filter_ctx = ctx.filter_context(game);
-            filter_ctx.iterated_player = Some(player_id);
-            let matches = condition_objects_for_zone(game, filter.zone)
-                .filter(|obj| {
-                    condition_object_matches_player_zone(game, obj, player_id, filter.zone)
-                })
-                .filter(|obj| filter.matches(obj, &filter_ctx, game))
-                .count();
-            Ok(matches >= *count as usize)
-        }
+        Condition::PlayerHasAtLeast { player, filter, count } =>
+            Ok(matching_condition_players_exec(game, ctx, player)?.into_iter().any(|player_id| {
+                let mut filter_ctx = ctx.filter_context(game);
+                filter_ctx.iterated_player = Some(player_id);
+                condition_objects_for_zone(game, filter.zone)
+                    .filter(|obj| condition_object_matches_player_zone(game, obj, player_id, filter.zone))
+                    .filter(|obj| filter.matches(obj, &filter_ctx, game))
+                    .count() >= *count as usize
+            })),
         Condition::PlayerControlsBasicLandTypesAmongLandsOrMore { player, count } => {
             use crate::types::Subtype;
             use std::collections::HashSet;
@@ -6297,6 +6312,9 @@ fn evaluate_condition(
             .as_ref()
             .is_some_and(|combat| crate::combat_state::is_blocking(combat, ctx.source))),
         Condition::SourceIsSoulbondPaired => Ok(game.is_soulbond_paired(ctx.source)),
+        Condition::SourceSoulbondPartnerMatches(filter) => Ok(game.soulbond_partner(ctx.source)
+            .and_then(|id| game.object(id))
+            .is_some_and(|partner| filter.matches(partner, &ctx.filter_context(game), game))),
         Condition::TurnHistory(_) => unreachable!("handled by shared condition evaluator"),
         Condition::XValueAtLeast(min) => Ok(ctx.x_value.unwrap_or(0) >= *min),
         Condition::Custom(_)
@@ -6333,6 +6351,7 @@ fn evaluate_condition(
         | Condition::SourceIsInZone(_)
         | Condition::ManaSpentToCastThisSpellAtLeast { .. }
         | Condition::SnowManaOfAnySpellColorSpentToCastThisSpell
+        | Condition::TriggeringSpellSnowManaOfAnySpellColorSpentToCast
         | Condition::SameColorManaSpentToCastThisSpellAtLeast(_)
         | Condition::ColorsOfManaSpentToCastThisSpellOrMore(_)
         | Condition::PlayerGraveyardHasCardsAtLeast { .. }
@@ -6347,4 +6366,12 @@ fn evaluate_condition(
             unreachable!("handled before resolution match")
         }
     }
+}
+
+fn matching_snow_mana_was_spent(snapshot: &crate::snapshot::ObjectSnapshot) -> bool {
+    use crate::color::Color;
+    let spent = &snapshot.snow_mana_spent_to_cast;
+    [(Color::White, spent.white), (Color::Blue, spent.blue), (Color::Black, spent.black),
+        (Color::Red, spent.red), (Color::Green, spent.green)]
+        .into_iter().any(|(color, amount)| amount > 0 && snapshot.colors.contains(color))
 }

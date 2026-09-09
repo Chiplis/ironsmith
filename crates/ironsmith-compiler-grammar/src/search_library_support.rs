@@ -15,8 +15,9 @@ use crate::keyword_static::parse_value_binding_clause;
 use crate::target::ObjectFilter;
 use crate::types::{CardType, Subtype};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum SearchLibraryManaConstraint {
+    ManaValues(Vec<crate::filter::Comparison>),
     Equal(u32),
     LessThanOrEqual(u32),
     GreaterThanOrEqual(u32),
@@ -161,9 +162,10 @@ pub fn parse_restriction_duration_lexed(
 pub fn extract_search_library_mana_constraint(
     filter_tokens: &[OwnedLexToken],
 ) -> Option<(Vec<OwnedLexToken>, SearchLibraryManaConstraint)> {
-    let (clause_token_start, clause_token_end) =
-        find_token_word_sequence_span(filter_tokens, &["with", "mana", "cost"])
-            .or_else(|| find_token_word_sequence_span(filter_tokens, &["with", "mana", "value"]))?;
+    let cost_span = find_token_word_sequence_span(filter_tokens, &["with", "mana", "cost"]);
+    let is_mana_value = cost_span.is_none();
+    let (clause_token_start, clause_token_end) = cost_span
+        .or_else(|| find_token_word_sequence_span(filter_tokens, &["with", "mana", "value"]))?;
     let base_filter_tokens = trim_commas(&filter_tokens[..clause_token_start]);
     if base_filter_tokens.is_empty() {
         return None;
@@ -183,6 +185,7 @@ pub fn extract_search_library_mana_constraint(
         None
     };
     let parse_exact_mana_cost_clause = |tokens: &[OwnedLexToken]| -> Option<crate::mana::ManaCost> {
+        if is_mana_value { return None; }
         let mana = super::grammar::leaf::parse_leaf_mana_cost_prefix_tokens(tokens)?;
         if mana.consumed != tokens.len() {
             return None;
@@ -231,6 +234,17 @@ pub fn extract_search_library_mana_constraint(
         }
     };
 
+    let constraint = if is_mana_value {
+        use crate::filter::Comparison;
+        let comparisons = match constraint {
+            SearchLibraryManaConstraint::Equal(value) => vec![Comparison::Equal(value as i32)],
+            SearchLibraryManaConstraint::LessThanOrEqual(value) => vec![Comparison::LessThanOrEqual(value as i32)],
+            SearchLibraryManaConstraint::GreaterThanOrEqual(value) => vec![Comparison::GreaterThanOrEqual(value as i32)],
+            SearchLibraryManaConstraint::OneOf(values) => values.into_iter().map(|value| Comparison::Equal(value as i32)).collect(),
+            _ => return None,
+        };
+        SearchLibraryManaConstraint::ManaValues(comparisons)
+    } else { constraint };
     Some((base_filter_tokens, constraint))
 }
 
@@ -254,6 +268,19 @@ pub fn apply_search_library_mana_constraint(
     };
 
     match constraint {
+        SearchLibraryManaConstraint::ManaValues(mut comparisons) => {
+            if comparisons.len() == 1 {
+                filter.mana_value = comparisons.pop();
+            } else {
+                let base = filter.clone();
+                *filter = ObjectFilter::default();
+                filter.any_of = comparisons.into_iter().map(|comparison| {
+                    let mut branch = base.clone();
+                    branch.mana_value = Some(comparison);
+                    branch
+                }).collect();
+            }
+        }
         SearchLibraryManaConstraint::Equal(value) => {
             filter.has_mana_cost = true;
             filter.no_x_in_cost = true;

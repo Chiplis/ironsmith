@@ -376,3 +376,12 @@ fn permanent_marker_preserves_the_full_permanent_type_union() {
 fn simple_parser_keeps_complex_that_type_phrase_out_of_its_language() {
     assert!(parse_simple_object_filter_words(&["that", "type"], false).is_none());
 }
+
+#[test]
+fn goaded_is_a_typed_object_filter_flag() {
+    let filter = parse("goaded creature you control");
+    assert!(filter.goaded);
+    assert_eq!(filter.card_types, vec![CardType::Creature]);
+    assert_eq!(filter.controller, Some(PlayerFilter::You));
+    assert_eq!(filter.description(), "a goaded creature you control");
+}

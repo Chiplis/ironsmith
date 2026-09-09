@@ -32,7 +32,7 @@ pub use dispositions::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConsultMoveBottomShape {
-    MatchedToBattlefieldAndShuffle,
+    MatchedToBattlefieldAndShuffle { target_plural_surface: bool, explicit_revealed_others: bool, coordinated: bool },
     MoveMatchAndBottom {
         zone: Zone,
         battlefield_tapped: bool,
@@ -117,6 +117,7 @@ fn put_those_cards_then_shuffle_revealed_remainder(
     sequence_any_phrase(&[
         &["put", "those", "cards", "onto", "the", "battlefield"],
         &["put", "those", "cards", "onto", "battlefield"],
+        &["put", "those", "creature", "cards", "onto", "the", "battlefield"],
     ])
     .parse_next(input)?;
     opt(crate::grammar::primitives::comma()).parse_next(input)?;
@@ -128,6 +129,7 @@ fn put_those_cards_then_shuffle_revealed_remainder(
         &[
             "then", "shuffle", "rest", "of", "revealed", "cards", "into", "your", "library",
         ],
+        &["then", "shuffle", "the", "rest", "into", "your", "library"],
     ])
     .parse_next(input)?;
     finish_sequence_words(input)
@@ -140,11 +142,36 @@ fn is_put_those_cards_then_shuffle_revealed_remainder(tokens: &[OwnedLexToken]) 
         .is_ok()
 }
 
+fn single_match_then_shuffle_revealed_others(input: &mut LexStream<'_>) -> winnow::error::ModalResult<bool> {
+    let other_player = winnow::combinator::alt((
+        sequence_any_phrase(&[
+            &["the", "player", "puts", "that", "card", "onto", "the", "battlefield"],
+            &["that", "player", "puts", "that", "card", "onto", "the", "battlefield"],
+        ]).map(|_| true),
+        sequence_phrase(&["put", "that", "card", "onto", "the", "battlefield"]).map(|_| false),
+    )).parse_next(input)?;
+    opt(crate::grammar::primitives::comma()).parse_next(input)?;
+    let coordinated = winnow::combinator::alt((
+        sequence_any_phrase(&[&["then", "shuffles"], &["then", "shuffle"]]).map(|_| false),
+        sequence_phrase(&["and", "shuffle"]).map(|_| true),
+    )).parse_next(input)?;
+    sequence_phrase(&["all", "other", "cards", "revealed", "this", "way", "into"]).parse_next(input)?;
+    if other_player { sequence_phrase(&["their", "library"]).parse_next(input)?; }
+    else { sequence_phrase(&["your", "library"]).parse_next(input)?; }
+    finish_sequence_words(input)?;
+    Ok(coordinated)
+}
+
 pub fn parse_consult_move_bottom_shape(tokens: &[OwnedLexToken]) -> Option<ConsultMoveBottomShape> {
     // An explicit attach action is a separate instruction between the move
     // and the remainder, not an entry modifier consumed by this shape.
     if tokens.iter().any(|token| token.is_any_word(&["attach", "attaches"])) {
         return None;
+    }
+    if let Ok(coordinated) = single_match_then_shuffle_revealed_others.parse_next(&mut LexStream::new(tokens)) {
+        return Some(ConsultMoveBottomShape::MatchedToBattlefieldAndShuffle {
+            target_plural_surface: false, explicit_revealed_others: true, coordinated,
+        });
     }
     let special = is_put_those_cards_then_shuffle_revealed_remainder(tokens)
         || (starts_sequence(tokens, &[&["put", "all"]])
@@ -155,7 +182,7 @@ pub fn parse_consult_move_bottom_shape(tokens: &[OwnedLexToken]) -> Option<Consu
             && contains_sequence_word(tokens, "rest")
             && contains_sequence_word(tokens, "library"));
     if special {
-        return Some(ConsultMoveBottomShape::MatchedToBattlefieldAndShuffle);
+        return Some(ConsultMoveBottomShape::MatchedToBattlefieldAndShuffle { target_plural_surface: true, explicit_revealed_others: false, coordinated: false });
     }
 
     let (zone, battlefield_tapped) = if starts_sequence(tokens, HAND_PREFIXES) {
@@ -357,7 +384,7 @@ mod tests {
             parse_consult_move_bottom_shape(&lex(
                 "Put those cards onto the battlefield, then shuffle the rest of the revealed cards into your library"
             )),
-            Some(ConsultMoveBottomShape::MatchedToBattlefieldAndShuffle)
+            Some(ConsultMoveBottomShape::MatchedToBattlefieldAndShuffle { target_plural_surface: true, explicit_revealed_others: false, coordinated: false })
         );
 
         assert_eq!(

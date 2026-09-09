@@ -14,6 +14,7 @@ pub struct OpponentDrainSentenceShape<'a> {
 #[derive(Clone, Copy, Debug)]
 pub struct RevealSelectedHandShape<'a> {
     pub descriptor_tokens: &'a [OwnedLexToken],
+    pub your_hand: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -83,23 +84,20 @@ pub fn parse_opponent_drain_sentence_shape(
         .then_some(OpponentDrainSentenceShape { where_tokens })
 }
 
-fn hand_suffix<'a>(input: &mut crate::lexer::LexStream<'a>) -> winnow::error::ModalResult<()> {
+fn hand_suffix<'a>(input: &mut crate::lexer::LexStream<'a>) -> winnow::error::ModalResult<bool> {
     alt((
-        primitives::phrase(&["in", "your", "hand"]),
-        primitives::phrase(&["in", "your", "hands"]),
-        primitives::phrase(&["from", "your", "hand"]),
-        primitives::phrase(&["from", "your", "hands"]),
-        primitives::phrase(&["in", "their", "hand"]),
-        primitives::phrase(&["in", "their", "hands"]),
-        primitives::phrase(&["from", "their", "hand"]),
-        primitives::phrase(&["from", "their", "hands"]),
-    ))
-    .parse_next(input)
+        primitives::any_phrase(&[
+            &["in", "your", "hand"], &["in", "your", "hands"],
+            &["from", "your", "hand"], &["from", "your", "hands"],
+        ]).value(true),
+        primitives::any_phrase(&[
+            &["in", "their", "hand"], &["in", "their", "hands"],
+            &["from", "their", "hand"], &["from", "their", "hands"],
+        ]).value(false),
+    )).parse_next(input)
 }
 
-fn each_player_may_prefix<'a>(
-    input: &mut crate::lexer::LexStream<'a>,
-) -> winnow::error::ModalResult<()> {
+fn each_player_may_prefix<'a>(input: &mut crate::lexer::LexStream<'a>) -> winnow::error::ModalResult<()> {
     primitives::phrase(&["each", "player", "may"]).parse_next(input)
 }
 
@@ -115,9 +113,16 @@ pub fn parse_reveal_selected_hand_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<RevealSelectedHandShape<'_>> {
     let (_, body) = primitives::parse_prefix(tokens, primitives::kw("reveal"))?;
-    let (suffix_offset, _, _) = primitives::find_prefix(body, || hand_suffix)?;
+    parse_reveal_selected_hand_tail_shape(body)
+}
+
+pub fn parse_reveal_selected_hand_tail_shape(body: &[OwnedLexToken]) -> Option<RevealSelectedHandShape<'_>> {
+    let (suffix_offset, your_hand, rest) = primitives::find_prefix(body, || hand_suffix)?;
+    if !crate::util::trim_edge_punctuation_tokens(rest).is_empty() {
+        return None;
+    }
     let descriptor_tokens = trim_lexed_commas(body.get(..suffix_offset)?);
-    (!descriptor_tokens.is_empty()).then_some(RevealSelectedHandShape { descriptor_tokens })
+    (!descriptor_tokens.is_empty()).then_some(RevealSelectedHandShape { descriptor_tokens, your_hand })
 }
 
 fn reveal_verb<'a>(input: &mut crate::lexer::LexStream<'a>) -> winnow::error::ModalResult<()> {

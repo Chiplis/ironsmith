@@ -53,11 +53,16 @@ pub fn parse_take_extra_turn_sentence(
 
 pub fn parse_additional_phase_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     replacement_grammar::parse_additional_phases_shape(tokens)
-        .map(|shape| EffectAst::subject_verb_additional_phases(shape.phases))
+        .map(|shape| EffectAst::subject_verb_additional_phases_with_main_surface(shape.phases, shape.after_main_phase))
 }
 pub fn parse_destroy_or_exile_all_split_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = if tokens.first().is_some_and(|token| token.is_word("then")) {
+        &tokens[1..]
+    } else {
+        tokens
+    };
     let Some(shape) = replacement_grammar::parse_split_all_shape(tokens) else {
         return Ok(None);
     };
@@ -343,7 +348,7 @@ pub fn parse_exile_up_to_one_each_target_type_sentence(
         return Ok(None);
     };
 
-    let mut filters = Vec::new();
+    let mut effects = Vec::new();
     for filter_tokens in shape.filter_tokens {
         let mut filter = parse_object_filter(filter_tokens, false).map_err(|_| {
             CardTextError::ParseError(format!(
@@ -357,29 +362,17 @@ pub fn parse_exile_up_to_one_each_target_type_sentence(
         if filter.controller.is_none() {
             filter.controller = Some(PlayerFilter::Any);
         }
-        filters.push(filter);
+        let span = crate::util::span_from_tokens(filter_tokens);
+        effects.push(EffectAst::subject_verb_exile(
+            TargetAst::WithCount(
+                Box::new(TargetAst::Object(filter, span, span)),
+                ChoiceCount::up_to(1),
+            ),
+            false,
+        ));
     }
 
-    if filters.len() < 2 {
-        return Ok(None);
-    }
-
-    let tag = helper_tag_for_tokens(tokens, "exiled");
-    let mut effects = filters
-        .into_iter()
-        .map(|filter| EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-            filter,
-            count: ChoiceCount::up_to(1),
-            count_value: None,
-            player: PlayerAst::You,
-            tag: crate::tag::TagRef::of(tag.clone()),
-        }))
-        .collect::<Vec<_>>();
-    effects.push(EffectAst::subject_verb_exile(
-        TargetAst::Tagged(crate::tag::TagRef::of(tag), None),
-        false,
-    ));
-
+    if effects.len() < 2 { return Ok(None); }
     Ok(Some(effects))
 }
 

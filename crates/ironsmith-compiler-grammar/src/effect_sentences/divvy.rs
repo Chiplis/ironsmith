@@ -276,7 +276,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             .not_tagged(crate::tag::CompilerReferenceTag::DivvyPile.bind());
 
         return Ok(Some(vec![
-            EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+            EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
                 filter: PlayerFilter::Opponent,
                 effects: vec![EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
                     filter: ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer),
@@ -286,7 +286,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                     tag: crate::tag::CompilerReferenceTag::DivvyPile.bind(),
                 })],
             }),
-            EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+            EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
                 filter: PlayerFilter::Opponent,
                 effects: vec![EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
                     player: PlayerAst::You,
@@ -320,7 +320,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
     }
 
     if shape == DivvySequenceShape::DefendingCreaturePilesBlock {
-        return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+        return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
             filter: PlayerFilter::Defending,
             effects: vec![
                 EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {

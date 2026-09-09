@@ -101,7 +101,7 @@ pub use cards::{
 };
 pub use combat::{
     AssignNoCombatDamageEffect, CombatDamagePreventionTarget, EnterAttackingEffect,
-    ExchangeValueKind, ExchangeValueOperand, ExchangeValuesEffect, FightEffect, GoadEffect,
+    ExchangeValueKind, ExchangeValueOperand, ExchangeValuesEffect, FightEffect, GoadEffect, ClearGoadEffect,
     GrantAbilitiesAllEffect, GrantAbilitiesTargetEffect, MeleeEffect,
     ModifyPowerToughnessAllEffect, ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect,
     PreventAllCombatDamageEffect, PreventAllCombatDamageFromEffect, PreventAllDamageEffect,
@@ -197,7 +197,7 @@ pub use player::{
 };
 pub use replacement::{
     ApplyReplacementEffect, RegisterDamagedBySourceZoneReplacementEffect,
-    RegisterDrawReplacementEffect, RegisterEnterTappedReplacementEffect,
+    RegisterDrawReplacementEffect, RegisterEnterTappedReplacementEffect, RegisterEnterWithCountersReplacementEffect,
     RegisterEnterUnderControlReplacementEffect, RegisterFutureZoneReplacementEffect,
     RegisterManaReplacementEffect, RegisterNextBatchEnterWithCountersEffect,
     RegisterZoneReplacementEffect, ReplacementApplyMode,

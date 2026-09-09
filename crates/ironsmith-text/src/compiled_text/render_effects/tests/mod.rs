@@ -113,3 +113,162 @@ mod temporary_escape_grant_surfaces;
 mod token_copy_followup_surfaces;
 mod token_definition_cleanup;
 mod trailing_unless;
+
+mod counter_placement_condition;
+mod copied_end_step_ability;
+mod search_shuffle_event;
+
+mod conditional_quoted_grant;
+
+mod attached_mixed_grants;
+
+mod searched_player_shuffle;
+
+mod revealed_hand_cast;
+
+mod same_name_exile_investigate;
+
+mod aggregate_choice_complement;
+mod leading_duration_quoted_grant;
+mod extraction_hand_draw;
+
+mod hand_choice_reveal;
+
+mod independent_exile_targets;
+
+mod conditional_attachment_attack;
+
+mod max_speed_source_bonus;
+
+mod source_combat_unless;
+
+mod source_block_unless;
+
+mod source_counter_combat;
+
+mod trailing_if_combat;
+
+mod opposing_player_block;
+
+mod relative_opponent_choice;
+
+mod conditional_copy_vanishing;
+
+mod vote_outcome_pairs;
+
+mod exiled_card_token_watcher;
+
+mod filtered_blocking_life_cost;
+
+mod chosen_hand_free_cast;
+
+mod aggregate_discount_temporary_grant;
+
+mod kicker_entry_activated_grant;
+
+mod attached_token_attack_contract;
+
+mod counter_threshold_transform;
+
+mod madness_total_cost;
+
+mod animation_granted_land_count;
+
+mod ferocious_before_fight;
+
+mod named_self_exile_transform;
+
+mod hand_remainder_shuffle;
+
+mod initiative_and_token_coordination;
+
+mod aura_combat_transform_restriction;
+
+mod attack_keyword_progression;
+
+mod damaged_target_player_or_controller;
+
+mod paid_color_hand_discard;
+
+mod combat_face_up_or_counter;
+
+mod manifest_dread_counter_bundle;
+
+mod unbound_x_cost_trigger;
+
+mod lavabrink_counter_sacrifice;
+
+mod biting_palm_reflexive;
+
+mod scaled_free_cast;
+
+mod conditional_damage_replacement;
+
+mod starting_life_anthem;
+
+mod damage_emblem_recipients;
+
+mod source_damage_transform;
+
+mod kicked_damage_replacement;
+
+mod opponent_target_copy;
+
+mod per_opponent_mill_payment;
+mod chosen_permanent_exile_search;
+
+mod conditional_draw_fallback;
+
+mod paid_color_hand_damage;
+
+mod chosen_die_entry_counters;
+
+mod source_pump_keyword_target_debuff;
+
+mod revealed_entry_count;
+
+mod next_turn_flash_entry;
+
+mod chosen_added_combat;
+
+mod chosen_power_difference;
+mod conditional_attacker_untap;
+mod destroyed_controller_damage;
+
+mod tapped_additional_cost;
+
+mod processed_entry_counters;
+
+mod self_subtype_defender;
+
+mod revealed_land_modifier;
+mod returned_aura_ability;
+mod shared_type_copy;
+mod source_power_combat_gate;
+mod greatest_power_discount;
+
+mod sticker_target_modifier;
+
+mod snow_cast_entry;
+
+mod base_plus_entry_counters;
+
+mod conditional_attacker_bonus;
+mod counter_gated_combat_prevention;
+mod milled_card_source_copy;
+mod destroyed_artifact_damage;
+
+mod subtype_attack_group;
+
+mod chosen_pair_sacrifice;
+
+mod first_x_counter_discount;
+
+mod chosen_type_compound_pump;
+
+mod enchanted_repeat_cast_copy;
+
+mod damage_target_type_condition;
+
+mod attached_source_counter_release;
+

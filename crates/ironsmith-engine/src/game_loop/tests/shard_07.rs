@@ -2049,6 +2049,7 @@ pub(super) fn test_enter_as_copy_applies_copied_enters_with_echo_counter() {
                     added_subtypes: Vec::new(),
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
+                    added_abilities_source_filter: None,
                     set_base_power_toughness_from_self: false,
                 },
                 "You may have this creature enter as a copy of any creature on the battlefield."
@@ -2111,6 +2112,7 @@ pub(super) fn test_enter_as_copy_can_set_base_power_toughness_from_entering_obje
                     added_subtypes: Vec::new(),
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
+                    added_abilities_source_filter: None,
                     set_base_power_toughness_from_self: true,
                 },
                 "You may have this creature enter as a copy of any creature on the battlefield, except its power and toughness are equal to this creature's power and toughness."
@@ -2166,6 +2168,7 @@ pub(super) fn test_enter_as_copy_can_set_base_power_toughness_from_entering_stac
                     added_subtypes: Vec::new(),
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
+                    added_abilities_source_filter: None,
                     set_base_power_toughness_from_self: true,
                 },
                 "You may have this creature enter as a copy of any creature on the battlefield, except its power and toughness are equal to this creature's power and toughness."
@@ -2215,6 +2218,7 @@ pub(super) fn test_static_source_can_make_matching_creatures_enter_as_copy_of_it
                     added_subtypes: Vec::new(),
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
+                    added_abilities_source_filter: None,
                     set_base_power_toughness_from_self: false,
                 },
                 "Creatures you control enter as a copy of this creature.".to_string(),
@@ -2298,6 +2302,7 @@ pub(super) fn test_enter_as_copy_can_remove_legendary_add_artifact_and_add_myria
                         )],
                     )],
                     set_base_power_toughness: None,
+                    added_abilities_source_filter: None,
                     set_base_power_toughness_from_self: false,
                 },
                 "You may have this creature enter as a copy of any creature on the battlefield, except it isn't legendary, is an artifact in addition to its other types, and has myriad."
@@ -2387,6 +2392,7 @@ pub(super) fn test_enter_as_copy_with_no_candidates_keeps_original_characteristi
                         )],
                     )],
                     set_base_power_toughness: None,
+                    added_abilities_source_filter: None,
                     set_base_power_toughness_from_self: false,
                 },
                 "You may have this creature enter as a copy of any creature on the battlefield, except it isn't legendary, is an artifact in addition to its other types, and has myriad."

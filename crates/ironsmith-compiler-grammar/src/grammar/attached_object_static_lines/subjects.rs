@@ -310,3 +310,12 @@ mod tests {
         ));
     }
 }
+
+/// A complete attached-object static goad designation.
+pub fn parse_attached_is_goaded_tokens(tokens: &[OwnedLexToken]) -> Option<AttachedSubject> {
+    let mut input = LexStream::new(tokens);
+    let subject = primitives::take_leaf(&mut input, parse_attached_subject_lexed)?;
+    primitives::take_leaf(&mut input, semantic_phrase(&["is", "goaded"]))?;
+    primitives::take_leaf(&mut input, semantic_finish)?;
+    Some(subject)
+}

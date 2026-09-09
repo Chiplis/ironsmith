@@ -130,6 +130,10 @@ pub enum StaticAbilityAst {
         display: String,
         condition: Option<PredicateAst>,
     },
+    EntryReplacementWithGrantedAbilities {
+        entry: crate::model::CompilerStaticAbilityCore,
+        abilities: Vec<ParsedAbility>,
+    },
     SoulbondSharedObjectAbility {
         ability: ParsedAbility,
     },

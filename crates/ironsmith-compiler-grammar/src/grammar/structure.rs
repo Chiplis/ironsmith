@@ -223,6 +223,7 @@ pub struct LeadingResultPrefixSpec<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TrailingIfClauseSpec<'a> {
     pub leading_tokens: &'a [OwnedLexToken],
+    pub predicate_tokens: &'a [OwnedLexToken],
     pub predicate: PredicateAst,
 }
 
@@ -1106,6 +1107,44 @@ pub fn split_if_clause_lexed(
     tokens: &[OwnedLexToken],
     mut parse_effects: impl FnMut(&[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError>,
 ) -> Result<IfClauseSplitSpec, CardTextError> {
+    // Quantified chosen-object survival supplies both a live existence gate
+    // and the local antecedent for “that many” in a subsequent search.
+    if let Some(comma) = tokens.iter().position(|token| token.is_comma()) {
+        let predicate = &tokens[..comma];
+        let words = crate::lexer::token_word_refs(predicate);
+        const PREFIX: &[&str] = &["if", "one", "or", "more", "of", "the", "chosen"];
+        const SUFFIX: &[&str] = &["are", "still", "on", "the", "battlefield"];
+        if words.starts_with(PREFIX) && words.ends_with(SUFFIX)
+            && predicate.len() > PREFIX.len() + SUFFIX.len()
+        {
+            let object_tokens = &predicate[PREFIX.len()..predicate.len() - SUFFIX.len()];
+            let mut filter = crate::object_filters::parse_object_filter(object_tokens, false)?
+                .in_zone(crate::zone::Zone::Battlefield)
+                .match_tagged(crate::tag::CompilerReferenceTag::It.key(), crate::filter::TaggedOpbjectRelation::IsTaggedObject);
+            filter.match_current_state = true;
+            filter.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Chosen));
+            let count = Value::Count(filter);
+            let mut effects = parse_effects(&tokens[comma + 1..])?;
+            fn bind_search_count(effects: &mut [EffectAst], count: &Value) {
+                for effect in effects {
+                    if let EffectAst::SubjectVerb(subject) = effect
+                        && let SubjectVerbActionAst::ZoneMoves(crate::cards::builders::ZoneMoveActionAst::SearchLibrary { count_value: Some(value), .. }) = &mut subject.action
+                        && matches!(value.unhinted(), Value::EventValue(ironsmith_core::EventValueSpec::Amount)) {
+                            *value = count.clone();
+                        }
+                    crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| bind_search_count(nested, count));
+                }
+            }
+            bind_search_count(&mut effects, &count);
+            return Ok(IfClauseSplitSpec {
+                predicate: IfClausePredicateSpec::Conditional(PredicateAst::ValueComparison {
+                    left: count, operator: ValueComparisonOperator::GreaterThan, right: Value::Fixed(0),
+                }),
+                effects,
+            });
+        }
+    }
+
     if let Some(tie_choice) = super::conditions::parse_player_life_tie_choice_condition(tokens) {
         let tied_players = tie_choice.tied_players;
         let mut effects = vec![EffectAst::subject_verb_choose_player(

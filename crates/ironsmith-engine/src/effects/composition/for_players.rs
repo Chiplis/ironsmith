@@ -41,6 +41,8 @@ pub struct ForPlayersEffect {
     pub effects: Vec<Effect>,
     /// Whether iteration should begin with the effect controller and proceed in turn order.
     pub starting_with_controller: bool,
+    /// Complete the body for one player before proceeding to the next.
+    pub sequential: bool,
     /// Whether iteration should stop after the first player whose effects happened.
     pub stop_after_first_happened: bool,
 }
@@ -52,6 +54,7 @@ impl ForPlayersEffect {
             filter,
             effects,
             starting_with_controller: false,
+            sequential: false,
             stop_after_first_happened: false,
         }
     }
@@ -61,6 +64,7 @@ impl ForPlayersEffect {
             filter,
             effects,
             starting_with_controller: true,
+            sequential: false,
             stop_after_first_happened: false,
         }
     }
@@ -359,7 +363,7 @@ impl EffectExecutor for ForPlayersEffect {
         // order and carries no unit grouping.
         let simultaneous_effects = flatten_sequences_for_simultaneous_units(&self.effects);
 
-        if !self.starting_with_controller
+        if !self.sequential && !self.starting_with_controller
             && !self.stop_after_first_happened
             && let Some(unsupported) = simultaneous_effects.iter().find(|effect| {
                 !effect.0.supports_simultaneous_player_action()
@@ -373,11 +377,19 @@ impl EffectExecutor for ForPlayersEffect {
             )));
         }
 
-        if self.starting_with_controller || self.stop_after_first_happened {
+        if self.sequential || self.starting_with_controller || self.stop_after_first_happened {
             // An explicit starting player describes a sequential instruction
             // ("starting with ..."), as does stopping after the first player
             // whose action happened. Preserve player-major execution there.
+            let incoming_tags = ctx.tagged_objects.clone();
+            let mut completed_tags = std::collections::HashMap::new();
             for (player_index, &player_id) in players.iter().enumerate() {
+                if self.sequential {
+                    // Each body sees the outer scope, never another player's
+                    // local result. Its complete results remain available to
+                    // plural references after the loop finishes.
+                    ctx.tagged_objects = incoming_tags.clone();
+                }
                 let mut stop = false;
                 ctx.with_temp_iterated_player(Some(player_id), |ctx| {
                     for effect in &self.effects {
@@ -393,9 +405,15 @@ impl EffectExecutor for ForPlayersEffect {
                     stop = self.stop_after_first_happened && count > 0;
                     Ok::<(), ExecutionError>(())
                 })?;
+                if self.sequential {
+                    merge_tagged_object_sets(&mut completed_tags, &ctx.tagged_objects);
+                }
                 if stop {
                     break;
                 }
+            }
+            if self.sequential {
+                ctx.tagged_objects = completed_tags;
             }
         } else {
             // CR 608.2f: choices for a simultaneous each-player action are
@@ -835,6 +853,45 @@ mod tests {
                 (alice, "first action".to_string()),
                 (bob, "second action".to_string()),
                 (cara, "second action".to_string()),
+                (alice, "second action".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn sequential_player_loop_completes_each_body_in_turn_order() {
+        let mut game = GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string(), "Cara".to_string()],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let cara = PlayerId::from_index(2);
+        game.turn.active_player = bob;
+        game.turn_store.turn_order = vec![alice, bob, cara];
+
+        let source = game.new_object_id();
+        let mut decisions = RecordChoiceOrder::default();
+        let mut ctx = ExecutionContext::new(source, alice, &mut decisions);
+        let mut effect = ForPlayersEffect::new(
+            PlayerFilter::Any,
+            vec![
+                Effect::new(RecordIteratedPlayerChoice("first action")),
+                Effect::new(RecordIteratedPlayerChoice("second action")),
+            ],
+        );
+        effect.sequential = true;
+        effect.execute(&mut game, &mut ctx)
+        .expect("each-player effect should resolve");
+
+        assert_eq!(
+            decisions.prompts,
+            vec![
+                (bob, "first action".to_string()),
+                (bob, "second action".to_string()),
+                (cara, "first action".to_string()),
+                (cara, "second action".to_string()),
+                (alice, "first action".to_string()),
                 (alice, "second action".to_string()),
             ]
         );
@@ -1394,6 +1451,37 @@ mod tests {
         ))
         .tag(created_tag.clone());
         let effect = ForPlayersEffect::new(PlayerFilter::Opponent, vec![create]);
+
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("per-opponent token creation should resolve");
+
+        let created = ctx
+            .get_tagged_all(&created_tag)
+            .expect("the complete created result set should remain tagged");
+        assert_eq!(
+            created.len(),
+            4,
+            "two tokens for each of two opponents must feed the plural follow-up"
+        );
+    }    #[test]
+    fn sequential_results_accumulate_for_plural_followup() {
+        let mut game = GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string(), "Cara".to_string()],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let created_tag = crate::tag::TagKey::from("created_for_each_opponent");
+        let create = Effect::new(crate::effects::CreateTokenEffect::new(
+            crate::cards::tokens::treasure_token_definition(),
+            2,
+            PlayerFilter::You,
+        ))
+        .tag(created_tag.clone());
+        let mut effect = ForPlayersEffect::new(PlayerFilter::Opponent, vec![create]);
+        effect.sequential = true;
 
         let source = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(source, alice);

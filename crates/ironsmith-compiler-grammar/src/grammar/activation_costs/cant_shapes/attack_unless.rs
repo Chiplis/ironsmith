@@ -28,12 +28,18 @@ use crate::zone::Zone;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AttackUnlessScope {
     Attack,
+    Block,
     AttackOrBlock,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AttackUnlessSurface {
     SourceStatus,
+    SourceCharacteristic,
+    PlayerEmptyHand,
+    PlayerHandCount,
+    PlayerAchievement,
+    PlayerGraveyardCount,
     ControllerCastCreatureSpellThisTurn,
     ControllerCastNoncreatureSpellThisTurn,
     ControllerControlsMoreCreatures,
@@ -100,9 +106,16 @@ pub fn parse_attack_unless_condition_tokens(
         return None;
     }
 
+    // A relative comparison owns its entire clause and must not fall back
+    // to an ordinary controlled-object filter.
+    let opposing_count_comparison = capture.scope == AttackUnlessScope::Block
+        && primitives::parse_prefix(capture.tail_tokens, primitives::phrase(&["you", "control", "more"])).is_some();
     let parsed = crate::grammar::primitives::probe_all(
         capture.tail_tokens,
-        move |input: &mut LexStream<'_>| parse_requirement_lexed(input, capture.scope),
+        move |input: &mut LexStream<'_>| {
+            if opposing_count_comparison { parse_controls_more_than_attacking_player(input) }
+            else { parse_requirement_lexed(input, capture.scope) }
+        },
         "attack-unless-requirement",
     )?;
 
@@ -141,6 +154,7 @@ fn parse_attack_unless_head_lexed(input: &mut LexStream<'_>) -> WResult<AttackUn
         primitives::phrase(&["attack", "or", "block", "unless"])
             .value(AttackUnlessScope::AttackOrBlock),
         primitives::phrase(&["attack", "unless"]).value(AttackUnlessScope::Attack),
+        primitives::phrase(&["block", "unless"]).value(AttackUnlessScope::Block),
     ))
     .parse_next(input)
 }
@@ -151,7 +165,7 @@ fn parse_requirement_lexed(
 ) -> WResult<ParsedRequirement> {
     match scope {
         AttackUnlessScope::Attack => alt((
-            alt((parse_source_status_requirement, parse_cast_spell_this_turn)),
+            alt((parse_paired_partner_requirement, parse_source_status_requirement, parse_source_characteristic_requirement, parse_player_empty_hand_requirement, parse_player_graveyard_requirement, parse_player_condition_requirement, parse_cast_spell_this_turn)),
             parse_controls_more,
             parse_mountain_present,
             parse_there_are_count,
@@ -162,8 +176,11 @@ fn parse_requirement_lexed(
             parse_controller_control_requirement,
         ))
         .parse_next(input),
-        AttackUnlessScope::AttackOrBlock => alt((
-            parse_source_status_requirement,
+        AttackUnlessScope::AttackOrBlock | AttackUnlessScope::Block => alt((
+            parse_paired_partner_requirement, parse_source_status_requirement, parse_source_characteristic_requirement,
+            parse_player_empty_hand_requirement,
+            parse_player_graveyard_requirement,
+            parse_player_condition_requirement,
             parse_counted_controller_control_requirement,
             parse_controller_control_requirement,
             parse_there_are_exile_count,
@@ -172,16 +189,106 @@ fn parse_requirement_lexed(
     }
 }
 
+fn parse_player_condition_requirement(input: &mut LexStream<'_>) -> WResult<ParsedRequirement> {
+    let tokens = take_remaining_tokens(input)?;
+    let (surface, condition) = if let Some(condition) =
+        conditions::parse_player_cards_in_hand_condition(tokens).and_then(|shape| shape.condition_expr())
+    {
+        (AttackUnlessSurface::PlayerHandCount, condition)
+    } else if let Some(condition) =
+        conditions::parse_player_achievement_condition(tokens).and_then(|shape| shape.condition_expr())
+    {
+        (AttackUnlessSurface::PlayerAchievement, condition)
+    } else {
+        return Err(primitives::backtrack_err("player requirement", "hand count or achievement condition"));
+    };
+    Ok(ParsedRequirement {
+        surface,
+        condition: CantAttackUnlessConditionSpec::SourceCondition(condition),
+    })
+}
+
+fn parse_player_graveyard_requirement(input: &mut LexStream<'_>) -> WResult<ParsedRequirement> {
+    let player = alt((
+        primitives::phrase(&["an", "opponent"]).value(PlayerAst::Opponent),
+        primitives::phrase(&["a", "player"]).value(PlayerAst::Any),
+    )).parse_next(input)?;
+    primitives::kw("has").parse_next(input)?;
+    let count = parse_minimum_count_lexed.parse_next(input)?;
+    primitives::phrase(&["cards", "in", "their", "graveyard"]).parse_next(input)?;
+    Ok(ParsedRequirement {
+        surface: AttackUnlessSurface::PlayerGraveyardCount,
+        condition: CantAttackUnlessConditionSpec::SourceCondition(
+            PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast {
+                player,
+                filter: ObjectFilter::default().in_zone(Zone::Graveyard),
+                count,
+            }),
+        ),
+    })
+}
+
+fn parse_player_empty_hand_requirement(input: &mut LexStream<'_>) -> WResult<ParsedRequirement> {
+    let players = alt((
+        primitives::phrase(&["a", "player"]).value(PlayerFilter::Any),
+        primitives::phrase(&["an", "opponent"]).value(PlayerFilter::Opponent),
+    )).parse_next(input)?;
+    primitives::phrase(&["has", "no", "cards", "in", "hand"]).parse_next(input)?;
+    Ok(ParsedRequirement {
+        surface: AttackUnlessSurface::PlayerEmptyHand,
+        condition: CantAttackUnlessConditionSpec::SourceCondition(PredicateAst::ValueComparison {
+            left: Value::CountPlayersWithCardsInHandAtLeast(players.clone(), 1),
+            operator: ValueComparisonOperator::LessThan,
+            right: Value::CountPlayers(players),
+        }),
+    })
+}
+
+fn parse_paired_partner_requirement(input: &mut LexStream<'_>) -> WResult<ParsedRequirement> {
+    alt((primitives::phrase(&["it's", "paired", "with"]),
+         primitives::phrase(&["it", "is", "paired", "with"]))).parse_next(input)?;
+    let tokens = take_remaining_tokens(input)?;
+    let filter = filters::parse_object_filter_with_grammar_entrypoint(tokens, false)
+        .map_err(|_| primitives::backtrack_err("paired partner", "partner object filter"))?;
+    Ok(ParsedRequirement {
+        surface: AttackUnlessSurface::SourceStatus,
+        condition: CantAttackUnlessConditionSpec::SourceCondition(PredicateAst::Bound(Box::new(
+            crate::ConditionExpr::SourceSoulbondPartnerMatches(filter),
+        ))),
+    })
+}
+
 fn parse_source_status_requirement(input: &mut LexStream<'_>) -> WResult<ParsedRequirement> {
     let tokens = take_remaining_tokens(input)?;
-    let status = conditions::parse_subject_status_condition(tokens)
+    let condition = conditions::parse_subject_status_condition(tokens)
         .filter(|status| matches!(status.subject, conditions::StatusConditionSubjectAst::Source))
-        .ok_or_else(|| primitives::backtrack_err("source status", "source status condition"))?;
-    let condition = status.condition_expr()
+        .and_then(|status| status.condition_expr())
+        .or_else(|| filters::parse_intrinsic_source_counter_condition(tokens))
         .ok_or_else(|| primitives::backtrack_err("source status", "supported status condition"))?;
     Ok(ParsedRequirement {
         surface: AttackUnlessSurface::SourceStatus,
         condition: CantAttackUnlessConditionSpec::SourceCondition(condition),
+    })
+}
+
+fn parse_source_characteristic_requirement(input: &mut LexStream<'_>) -> WResult<ParsedRequirement> {
+    let left = alt((
+        primitives::phrase(&["its", "power", "is"]).value(Value::PowerOf(Box::new(crate::target::ChooseSpec::Source))),
+        primitives::phrase(&["its", "toughness", "is"]).value(Value::ToughnessOf(Box::new(crate::target::ChooseSpec::Source))),
+    )).parse_next(input)?;
+    let tokens = take_remaining_tokens(input)?;
+    let (comparison, used) = crate::util::parse_quantity_comparison_prefix(tokens, false, false, "source characteristic")
+        .map_err(|_| primitives::backtrack_err("source characteristic", "numeric comparison"))?;
+    if !crate::lexer::token_word_refs(&tokens[used..]).is_empty() {
+        return Err(primitives::backtrack_err("source characteristic", "complete comparison"));
+    }
+    let (operator, value) = crate::util::comparison_to_value_comparison_operator(comparison)
+        .ok_or_else(|| primitives::backtrack_err("source characteristic", "supported comparison"))?;
+    Ok(ParsedRequirement {
+        surface: AttackUnlessSurface::SourceCharacteristic,
+        condition: CantAttackUnlessConditionSpec::SourceCondition(PredicateAst::ValueComparison {
+            left, operator, right: Value::Fixed(value),
+        }),
     })
 }
 
@@ -229,6 +336,25 @@ fn parse_controls_more(input: &mut LexStream<'_>) -> WResult<ParsedRequirement> 
     Ok(ParsedRequirement {
         surface,
         condition: CantAttackUnlessConditionSpec::ControllerControlsMoreThanDefendingPlayer(filter),
+    })
+}
+
+fn parse_controls_more_than_attacking_player(input: &mut LexStream<'_>) -> WResult<ParsedRequirement> {
+    primitives::phrase(&["you", "control", "more"]).parse_next(input)?;
+    let (surface, mut own) = alt((
+        primitives::kw("creatures").value((AttackUnlessSurface::ControllerControlsMoreCreatures, ObjectFilter::creature())),
+        primitives::kw("lands").value((AttackUnlessSurface::ControllerControlsMoreLands, ObjectFilter::land())),
+    )).parse_next(input)?;
+    primitives::phrase(&["than", "attacking", "player"]).parse_next(input)?;
+    own.controller = Some(PlayerFilter::You);
+    let mut opposing = own.clone();
+    opposing.controller = Some(PlayerFilter::Attacking);
+    Ok(ParsedRequirement {
+        surface,
+        condition: CantAttackUnlessConditionSpec::SourceCondition(PredicateAst::ValueComparison {
+            left: Value::Count(own), operator: ValueComparisonOperator::GreaterThan,
+            right: Value::Count(opposing),
+        }),
     })
 }
 
@@ -533,6 +659,20 @@ fn parse_controller_control_requirement_inner(
 ) -> WResult<ParsedRequirement> {
     peek(primitives::phrase(&["you", "control"])).parse_next(input)?;
     let control_tokens = take_remaining_tokens(input)?;
+    // A coordinated payment is a second requirement, not a property of an
+    // object the player controls. Leave it to a compound requirement parser.
+    if primitives::find_prefix(control_tokens, || (
+        alt((primitives::kw("and"), primitives::kw("or"))),
+        opt(primitives::kw("you")),
+        alt((
+            primitives::kw("pay"), primitives::kw("sacrifice"),
+            primitives::kw("discard"), primitives::kw("tap"),
+            primitives::kw("untap"), primitives::kw("return"),
+            primitives::kw("exile"),
+        )),
+    ).void()).is_some() {
+        return Err(primitives::backtrack_err("controller condition", "separate payment action"));
+    }
     let parsed = conditions::parse_control_condition(
         control_tokens,
         conditions::ControlConditionOptions {
@@ -809,4 +949,61 @@ mod tests {
             ]
         );
     }
+    #[test]
+    fn player_requirements_preserve_the_whole_condition() {
+        for text in [
+            "This creature can't attack or block unless you have the city's blessing.",
+            "This creature can't attack or block unless you have one or fewer cards in hand.",
+            "This creature can't attack unless you have seven or more cards in hand.",
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            assert!(parse_attack_unless_condition_tokens(&tokens).is_some(), "{text}");
+        }
+        for text in [
+            "This creature can't attack or block unless you have the city's blessing and pay {2}.",
+            "This creature can't attack unless you have seven or more cards in hand and sacrifice a creature.",
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            assert!(parse_attack_unless_condition_tokens(&tokens).is_none(), "{text}");
+        }
+    }
+
+    #[test]
+    fn block_scope_preserves_the_complete_requirement() {
+        let parsed = parse("This creature can't block unless you control another Zombie.").unwrap();
+        assert_eq!(parsed.scope, AttackUnlessScope::Block);
+        for text in [
+            "This creature can't block unless you control more creatures than attacking player.",
+            "This creature can't block unless you control more lands than attacking player.",
+        ] {
+            assert_eq!(parse(text).unwrap().scope, AttackUnlessScope::Block);
+        }
+        for text in [
+            "This creature can't block unless you control more creatures than attacking player and pay {2}.",
+            "This creature can't block unless you control another Zombie and pay {2}.",
+            "This creature can't block unless you control another Zombie and sacrifice a creature.",
+            "This creature can't block unless you control another Zombie or you discard a card.",
+        ] {
+            assert!(parse(text).is_none(), "{text}");
+        }
+    }
+
+    #[test]
+    fn source_characteristic_requirements_keep_axis_and_comparison() {
+        for (text, power, operator, value) in [
+            ("This creature can't attack or block unless its power is 6 or greater.", true, ValueComparisonOperator::GreaterThanOrEqual, 6),
+            ("This creature can't attack unless its power is less than 4.", true, ValueComparisonOperator::LessThan, 4),
+            ("This creature can't block unless its toughness is 3 or less.", false, ValueComparisonOperator::LessThanOrEqual, 3),
+        ] {
+            let fact = parse(text).expect(text);
+            assert_eq!(fact.surface, AttackUnlessSurface::SourceCharacteristic);
+            let CantAttackUnlessConditionSpec::SourceCondition(PredicateAst::ValueComparison { left, operator: actual, right }) = fact.condition else { panic!("expected source comparison") };
+            assert_eq!(actual, operator);
+            assert_eq!(right, Value::Fixed(value));
+            let expected = if power { Value::PowerOf(Box::new(crate::target::ChooseSpec::Source)) } else { Value::ToughnessOf(Box::new(crate::target::ChooseSpec::Source)) };
+            assert_eq!(left, expected);
+        }
+        assert!(parse("This creature can't attack unless its power is 6 or greater and you control a Forest.").is_none());
+    }
+
 }

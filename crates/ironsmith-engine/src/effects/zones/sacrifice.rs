@@ -44,7 +44,7 @@ fn choose_objects_to_sacrifice(
         .filter(|(id, obj)| {
             game.controller_of(obj) == player_id
                 && filter.matches(obj, &filter_ctx, game)
-                && game.can_be_sacrificed(*id)
+                && game.can_be_sacrificed_with_cause(*id, &ctx.cause)
         })
         .map(|(id, _)| id)
         .collect();
@@ -92,7 +92,7 @@ fn max_sacrifice_cost_x(
             .filter(|(id, obj)| {
                 game.controller_of(obj) == player_id
                     && filter.matches(obj, &filter_ctx, game)
-                    && game.can_be_sacrificed(*id)
+                    && game.can_be_sacrificed_with_cause(*id, &ctx.cause)
             })
             .count() as u32,
     )
@@ -352,7 +352,7 @@ impl EffectExecutor for SacrificeEffect {
                 .filter(|(id, obj)| {
                     game.controller_of(obj) == player_id
                         && self.filter.matches(obj, &filter_ctx, game)
-                        && game.can_be_sacrificed(*id)
+                        && game.can_be_sacrificed_with_cause(*id, &ctx.cause)
                 })
                 .map(|(id, _)| id)
                 .collect();
@@ -446,7 +446,7 @@ impl SacrificeEffect {
             .filter(|(id, obj)| {
                 game.controller_of(obj) == player_id
                     && self.filter.matches(obj, &filter_ctx, game)
-                    && game.can_be_sacrificed(*id)
+                    && game.can_be_sacrificed_with_cause(*id, &ctx.cause)
             })
             .map(|(id, _)| id)
             .collect();
@@ -505,6 +505,7 @@ fn sacrifice_selected_objects(
     let mut sacrifice_events = Vec::new();
 
     for id in to_sacrifice {
+        if !game.can_be_sacrificed_with_cause(id, &ctx.cause) { continue; }
         let pre_snapshot = game
             .object(id)
             .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
@@ -830,7 +831,7 @@ fn sacrifice_target_object(
     ctx: &mut ExecutionContext,
     object_id: ObjectId,
 ) -> Result<(bool, Option<TriggerEvent>), ExecutionError> {
-    if !game.can_be_sacrificed(object_id) {
+    if !game.can_be_sacrificed_with_cause(object_id, &ctx.cause) {
         return Ok((false, None));
     }
     if !game.battlefield.contains(&object_id) {

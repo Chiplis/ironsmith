@@ -782,8 +782,8 @@ pub(super) fn format_alternative_method(
                 format!("{} ({})", cost_desc, condition_desc),
             )
         }
-        AlternativeCastingMethod::Madness { cost } => {
-            let cost_desc = format_mana_cost_simple(cost);
+        AlternativeCastingMethod::Madness { total_cost } => {
+            let cost_desc = total_cost.display();
             ("Madness".to_string(), cost_desc)
         }
         AlternativeCastingMethod::Miracle { cost } => {
@@ -2118,6 +2118,23 @@ pub(super) fn continue_to_targets_or_mana_payment(
     pending: PendingCast,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
+    if let Some(types) = pending_spell_creature_type_options(game, &pending) {
+        if types.is_empty() {
+            state.rollback_action(game);
+            return Err(GameLoopError::ActionCancelled("No creature type permits the required targets".into()));
+        }
+        let options = crate::types::SubtypeFamily::Creature.all_subtypes().iter().enumerate()
+            .filter(|(_, subtype)| types.contains(subtype))
+            .map(|(index, subtype)| crate::decisions::context::SelectableOption::new(index, subtype.to_string()))
+            .collect();
+        let context = crate::decisions::context::SelectOptionsContext::new(
+            pending.caster, Some(pending.spell_id), "Choose a creature type", options, 1, 1);
+        let mut pending = pending;
+        pending.stage = CastStage::ChoosingCreatureType;
+        state.pending_cast = Some(pending);
+        return Ok(GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::SelectOptions(context)));
+    }
+
     // Validate that we can still pay the cost after hybrid choices
     // This is necessary because max_x was calculated assuming life payment for Phyrexian pips,
     // but the player may have chosen mana payment instead

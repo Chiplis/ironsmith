@@ -1,5 +1,67 @@
 use super::*;
 
+pub(super) fn describe_for_players_keep_hand_then_shuffle_remainder(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    if for_players.starting_with_controller || for_players.stop_after_first_happened {
+        return None;
+    }
+    let subject = match for_players.filter {
+        PlayerFilter::Any => "Each player",
+        PlayerFilter::Opponent => "Each opponent",
+        PlayerFilter::NotYou => "Each other player",
+        _ => return None,
+    };
+    let [choose, shuffle] = for_players.effects.as_slice() else {
+        return None;
+    };
+    let choose = structural_unwrap_render_wrappers(choose)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let shuffle = structural_unwrap_render_wrappers(shuffle)
+        .downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()?;
+    if choose.chooser != PlayerFilter::IteratedPlayer
+        || choose.count_value.is_some()
+        || choose.aggregate_constraint.is_some()
+        || choose.is_search
+        || choose.reveal
+        || choose.count.random
+        || choose.top_only
+        || choose.bottom_only
+        || !choose.additional_zones.is_empty()
+        || choose.zone != Some(Zone::Hand)
+        || shuffle.player != PlayerFilter::IteratedPlayer
+        || shuffle.owner_library_destination
+        || shuffle.possessive_owner_subject
+    {
+        return None;
+    }
+    let mut selected_filter = choose.filter.clone();
+    selected_filter.union_surface = Default::default();
+    let mut expected = ObjectFilter::default();
+    expected.zone = Some(Zone::Hand);
+    expected.owner = Some(PlayerFilter::IteratedPlayer);
+    if selected_filter != expected {
+        return None;
+    }
+    let ChooseSpec::All(remainder) = shuffle.target.base() else {
+        return None;
+    };
+    let mut remainder = remainder.clone();
+    remainder.union_surface = Default::default();
+    if remainder != expected.not_tagged(choose.tag.clone()) {
+        return None;
+    }
+    let count = describe_choice_count(&choose.count);
+    let noun = if choose.count.min == 1 && choose.count.max == Some(1) {
+        "card"
+    } else {
+        "cards"
+    };
+    Some(format!(
+        "{subject} chooses {count} {noun} in their hand, then shuffles the rest into their library"
+    ))
+}
+
 pub(super) fn describe_for_players_choose_each_graveyard_then_owner_shuffle(
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {
@@ -2120,6 +2182,9 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
         if let Some(minimum) = constraint.minimum.as_ref() {
             let minimum = describe_value(minimum);
             selection.push_str(&format!(" with total {metric} {minimum} or greater"));
+        } else if constraint.maximum.has_surface_hint(ValueSurfaceHint::WhereXIs) {
+            let maximum = describe_value(&constraint.maximum);
+            selection.push_str(&format!(" with total {metric} X or less, where X is {maximum}"));
         } else if matches!(constraint.maximum.unhinted(), Value::Fixed(_)) {
             let maximum = describe_value(&constraint.maximum);
             selection.push_str(&format!(" with total {metric} {maximum} or less"));
@@ -3303,6 +3368,16 @@ pub(super) fn append_battlefield_entry_counter_surface(
         let counter_phrase = battlefield_entry_counter_phrase(counter, additional);
         let clause = match counter.surface {
             ironsmith_core::BattlefieldEntryCounterSurface::Inline => {
+                if counter.amount.has_surface_hint(ValueSurfaceHint::EqualToAfterTarget) {
+                    let basis = if counter.amount.has_surface_hint(ValueSurfaceHint::PriorEffectResult)
+                        && matches!(counter.amount.unhinted(), Value::EffectValue(_)) {
+                        "that result".to_string()
+                    } else { describe_value(&counter.amount) };
+                    let modifier = if additional { "additional " } else { "" };
+                    rendered.push_str(&format!(" with a number of {modifier}{} counters on it equal to {basis}", describe_counter_type(counter.counter_type)));
+                    index += 1;
+                    continue;
+                }
                 rendered.push_str(" with ");
                 rendered.push_str(&counter_phrase);
                 rendered.push_str(" on it");
@@ -4071,8 +4146,13 @@ pub(super) fn describe_exile_top_clause(
                 "their library"
             };
             let action = exile_clause.strip_prefix("Exile ")?;
+            let verb = if exile_top.player == PlayerFilter::You {
+                "exile"
+            } else {
+                "exiles"
+            };
             format!(
-                "{actor} exiles {}",
+                "{actor} {verb} {}",
                 action.replace(&owner_library, pronoun_library)
             )
         } else {

@@ -147,7 +147,7 @@ fn reflexive_targeted_graveyard_cast_keeps_target_x_and_replacement_scope() {
     let debug = format!("{body:#?}");
     assert!(debug.contains("TargetOnly"), "{debug}");
     let target_filter = body.iter().find_map(|effect| match effect {
-        EffectAst::TagAffected { effect, .. } => match effect.as_ref() {
+        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => match effect.as_ref() {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
                     SubjectVerbActionAst::TargetOnly {
@@ -370,7 +370,7 @@ fn targeted_graveyard_cast_keeps_one_shot_any_type_mana_permission() {
     let debug = format!("{effects:#?}");
     assert!(debug.contains("mana_spend_mode: AnyType"), "{debug}");
     let target_filter = effects.iter().find_map(|effect| match effect {
-        EffectAst::TagAffected { effect, .. } => match effect.as_ref() {
+        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => match effect.as_ref() {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
                     SubjectVerbActionAst::TargetOnly {

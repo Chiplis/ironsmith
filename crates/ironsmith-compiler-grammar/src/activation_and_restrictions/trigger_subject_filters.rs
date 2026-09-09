@@ -814,7 +814,16 @@ pub fn parse_spell_activity_trigger(
                 filter_tokens = prefix_tokens;
             }
         }
-        let filter = normalize_cast_count_filter(parse_filter(filter_tokens)?);
+        let mut filter = normalize_cast_count_filter(parse_filter(filter_tokens)?);
+        // An ordinal before the X-qualified spell noun counts matching X
+        // spells. Keep this distinct from a trailing overall cast-count gate.
+        if exact_spells_this_turn == Some(1)
+            && crate::word_primitives::sequence_occurs(&clause_words, &["your", "first", "spell", "with"])
+            && let Some(filter) = filter.as_mut().filter(|filter| filter.has_x_in_cost)
+        {
+            filter.first_spell_cast_each_turn = true;
+            filter.cast_by = Some(PlayerFilter::IteratedPlayer);
+        }
         return Ok(Some(TriggerSpec::SpellCast {
             filter,
             mana_source_filter: None,

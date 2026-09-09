@@ -149,26 +149,9 @@ fn read_put_counter_choice_sequence(
 fn read_shared_counter_target(
     input: &PutCounterSequence<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause = input.clause;
-    if let Some(shape) = counter_shapes::parse_shared_counter_target_tokens(clause.tokens()) {
-        let target = parse_target_phrase(shape.target_tokens)?;
-        let effects = shape
-            .descriptors
-            .into_iter()
-            .map(|descriptor| {
-                EffectAst::subject_verb_put_counters(
-                    descriptor.counter_type,
-                    Value::Fixed(descriptor.count as i32),
-                    target.clone(),
-                    None,
-                    false,
-                )
-            })
-            .collect();
-        return Ok(Some(effects));
-    }
-    Ok(None)
+    parse_shared_counter_target(input.clause.tokens())
 }
+
 fn read_counter_followup(
     input: &PutCounterSequence<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {

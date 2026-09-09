@@ -2924,7 +2924,7 @@ pub(super) fn rewrite_lexed_permission_helpers_preserve_until_next_turn_flash_gr
                     crate::cards::builders::SubjectVerbActionAst::Grants(GrantActionAst::GrantBySpec {
                         spec,
                         player: crate::cards::builders::PlayerAst::You,
-                        duration: crate::grant::GrantDuration::UntilYourNextTurnEnd,
+                        duration: crate::grant::GrantDuration::UntilYourNextTurn,
                     }) if spec.filter.card_types == vec![CardType::Sorcery]
                         && spec.zone == crate::zone::Zone::Hand
                 )
@@ -4036,10 +4036,10 @@ pub(super) fn rewrite_lowering_choose_from_opponent_graveyard_or_hand_keeps_choi
     ));
     let exile = effects
         .iter()
-        .find_map(|effect| super::find_nested_effect::<crate::effects::MoveToZoneEffect>(effect))
+        .find_map(|effect| super::find_nested_effect::<crate::effects::ExileEffect>(effect))
         .expect("chosen card should be exiled");
     assert!(matches!(
-        &exile.target,
+        &exile.spec,
         crate::target::ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     ));
 

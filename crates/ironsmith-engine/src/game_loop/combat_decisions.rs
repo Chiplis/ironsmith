@@ -322,8 +322,57 @@ struct PreparedAttackerDeclaration {
 }
 
 #[derive(Debug, Clone)]
+struct ImposedAttackCost {
+    payer: PlayerId,
+    source: ObjectId,
+    ability_controller: PlayerId,
+    cost: crate::cost::TotalCost,
+    display: String,
+}
+
+fn imposed_attack_costs(
+    game: &GameState,
+    attacker: ObjectId,
+    target: &AttackTarget,
+    effects: &[crate::continuous::ContinuousEffect],
+) -> Vec<ImposedAttackCost> {
+    let Some(object) = game.object(attacker) else { return Vec::new(); };
+    let payer = game.controller_of(object);
+    let mut costs = Vec::new();
+    for &source in &game.battlefield {
+        let Some(object) = game.object(source) else { continue; };
+        let ability_controller = game.controller_of(object);
+        for ability in static_abilities_for_object_with_effects(game, source, effects) {
+            if let Some(cost) = ability.attack_cost_for_declaration(
+                game, source, ability_controller, attacker, target,
+            ) {
+                costs.push(ImposedAttackCost {
+                    payer, source, ability_controller, cost, display: ability.display(),
+                });
+            }
+        }
+    }
+    costs
+}
+
+fn imposed_attack_cost_requires_payment(game: &GameState, imposed: &ImposedAttackCost) -> bool {
+    fn requires_payment(cost: &crate::cost::TotalCost) -> bool {
+        match cost.kind() {
+            ironsmith_core::TotalCostKind::All(components) => components.iter().any(|component| {
+                component.mana_cost_ref().is_none_or(|mana| !mana.is_empty())
+            }),
+            ironsmith_core::TotalCostKind::OneOf(branches) => branches.iter().all(requires_payment),
+        }
+    }
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    lock_combat_cost(game, imposed.source, imposed.ability_controller, imposed.cost.clone(), &mut dm)
+        .map(|cost| requires_payment(&cost)).unwrap_or(true)
+}
+
+#[derive(Debug, Clone)]
 struct PreparedAttackDeclarations {
     declarations: Vec<PreparedAttackerDeclaration>,
+    imposed_costs: Vec<ImposedAttackCost>,
     total_generic_attack_mana_cost: u32,
     generic_attack_mana_costs: std::collections::HashMap<PlayerId, u32>,
     has_post_tap_attack_costs: bool,
@@ -375,6 +424,7 @@ fn prepare_attacker_declarations_internal(
     let mut attackers_per_defending_player: HashMap<PlayerId, u32> = HashMap::new();
     let mut generic_attack_mana_costs: HashMap<PlayerId, u32> = HashMap::new();
     let mut has_post_tap_attack_costs = false;
+    let mut imposed_costs = Vec::new();
     let mut requirements_obeyed = 0usize;
     let mut prepared = Vec::with_capacity(declarations.len());
 
@@ -466,6 +516,7 @@ fn prepare_attacker_declarations_internal(
                 optional_attack_cost_prompts.push((ability_index, prompt));
             }
         }
+        imposed_costs.extend(imposed_attack_costs(game, decl.creature, &decl.target, all_effects));
         requirements_obeyed +=
             attack_requirement_score_for_target(game, creature, &abilities, &decl.target);
 
@@ -551,9 +602,10 @@ fn prepare_attacker_declarations_internal(
 
     Ok(PreparedAttackDeclarations {
         declarations: prepared,
+        has_post_tap_attack_costs: has_post_tap_attack_costs || total_generic_attack_mana_cost > 0 || !imposed_costs.is_empty(),
+        imposed_costs,
         total_generic_attack_mana_cost,
         generic_attack_mana_costs,
-        has_post_tap_attack_costs: has_post_tap_attack_costs || total_generic_attack_mana_cost > 0,
     })
 }
 
@@ -607,6 +659,8 @@ fn attack_declaration_obeying_more_requirements_exists(
                         view.effects(),
                     ) > 0;
                     has_creature_cost || has_defender_tax
+                        || imposed_attack_costs(game, attacker.id, target, view.effects()).iter()
+                            .any(|cost| imposed_attack_cost_requires_payment(game, cost))
                 })
                 .collect::<Vec<_>>();
             let maximum_score = target_scores.iter().copied().max().unwrap_or(0);
@@ -786,6 +840,21 @@ pub fn preview_required_attack_mana_cost(
     Ok(prepare_attacker_declarations(game, combat, declarations)?.total_generic_attack_mana_cost)
 }
 
+pub fn preview_attack_cost_needs_mana_window(
+    game: &GameState,
+    combat: &CombatState,
+    declarations: &[AttackerDeclaration],
+) -> Result<bool, GameLoopError> {
+    fn has_mana(cost: &crate::cost::TotalCost) -> bool {
+        match cost.kind() {
+            ironsmith_core::TotalCostKind::All(components) => components.iter().any(crate::costs::Cost::is_mana_cost),
+            ironsmith_core::TotalCostKind::OneOf(branches) => branches.iter().any(has_mana),
+        }
+    }
+    let prepared = prepare_attacker_declarations(game, combat, declarations)?;
+    Ok(prepared.total_generic_attack_mana_cost > 0 || prepared.imposed_costs.iter().any(|cost| has_mana(&cost.cost)))
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct AttackDeclarationTransaction {
     prepared: PreparedAttackDeclarations,
@@ -877,6 +946,16 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
         .map(|prepared_decl| prepared_decl.declaration.creature)
         .collect::<Vec<_>>();
 
+    let mut locked_imposed_costs = prepared.imposed_costs.iter().map(|imposed| {
+        let cost = lock_combat_cost(game, imposed.source, imposed.ability_controller,
+            imposed.cost.clone(), decision_maker).map_err(|error| {
+                ResponseError::InvalidAttackers(format!(
+                    "Could not determine required attack cost ({}): {error}", imposed.display
+                ))
+            })?;
+        Ok::<_, GameLoopError>(LockedCombatCost { payer: imposed.payer, source: imposed.source, cost, display: imposed.display.clone() })
+    }).collect::<Result<Vec<_>, _>>()?;
+
     for prepared_decl in &prepared.declarations {
         let creature_source = prepared_decl.declaration.creature;
         let creature_controller = prepared_decl.controller;
@@ -906,29 +985,23 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
     }
 
     for payer in game.turn_players() {
-        let amount = prepared
-            .generic_attack_mana_costs
-            .get(&payer)
-            .copied()
-            .unwrap_or(0);
-        if amount == 0 {
-            continue;
-        }
-        let tax_cost = generic_mana_cost(amount);
-        if !game.can_pay_mana_cost(payer, None, &tax_cost, 0) {
-            return Err(ResponseError::InvalidAttackers(format!(
-                "Cannot pay required attack cost of {{{}}}",
-                amount
-            ))
-            .into());
-        }
-        if !game.try_pay_mana_cost(payer, None, &tax_cost, 0) {
-            return Err(ResponseError::InvalidAttackers(format!(
-                "Failed to pay required attack cost of {{{}}}",
-                amount
-            ))
-            .into());
-        }
+        let amount = prepared.generic_attack_mana_costs.get(&payer).copied().unwrap_or(0);
+        if amount == 0 { continue; }
+        let source = prepared.declarations.iter().find(|declaration| declaration.controller == payer)
+            .expect("attack mana cost payer has a declaration").declaration.creature;
+        locked_imposed_costs.push(LockedCombatCost {
+            payer, source, cost: crate::cost::TotalCost::mana(generic_mana_cost(amount)),
+            display: format!("Required attack cost of {{{amount}}}"),
+        });
+    }
+    for locked in order_locked_combat_costs(game, locked_imposed_costs, true, decision_maker)? {
+        let cost = ordered_locked_combat_cost(game, &locked, true, decision_maker)?;
+        crate::special_actions::pay_total_cost_with_choice(
+            game, locked.payer, locked.source, &cost,
+            crate::costs::PaymentReason::Other, decision_maker,
+        ).map_err(|error| ResponseError::InvalidAttackers(format!(
+            "Cannot pay required attack cost ({}): {error}", locked.display
+        )))?;
     }
 
     // Costs may have removed or changed control of chosen creatures. Build the
@@ -1036,7 +1109,7 @@ pub(crate) fn begin_attack_declaration_transaction(
     trigger_queue: &mut TriggerQueue,
     declarations: &[AttackerDeclaration],
 ) -> Result<AttackDeclarationTransaction, GameLoopError> {
-    let prepared = prepare_attacker_declarations(game, combat, declarations)?;
+    let mut prepared = prepare_attacker_declarations(game, combat, declarations)?;
     if !prepared.has_post_tap_attack_costs {
         return Err(GameLoopError::InvalidState(
             "attack declaration transaction requested without an attack cost".to_string(),
@@ -1048,6 +1121,22 @@ pub(crate) fn begin_attack_declaration_transaction(
     let trigger_queue_checkpoint = trigger_queue.clone();
     let (tapped_events, queued_tapped_events_before_costs) =
         tap_prepared_attackers(game, trigger_queue, &prepared);
+
+    // The total is determined before the player activates mana abilities.
+    // Those abilities can change permanents counted by a dynamic tax.
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    for imposed in &mut prepared.imposed_costs {
+        match lock_combat_cost(game, imposed.source, imposed.ability_controller, imposed.cost.clone(), &mut dm) {
+            Ok(cost) => imposed.cost = cost,
+            Err(error) => {
+                *game = *game_checkpoint;
+                *trigger_queue = trigger_queue_checkpoint;
+                return Err(ResponseError::InvalidAttackers(format!(
+                    "Could not determine required attack cost ({}): {error}", imposed.display
+                )).into());
+            }
+        }
+    }
 
     Ok(AttackDeclarationTransaction {
         prepared,
@@ -1237,14 +1326,14 @@ pub fn apply_multiplayer_blocker_declarations(
 }
 
 #[derive(Debug, Clone)]
-struct LockedBlockCost {
+struct LockedCombatCost {
     payer: PlayerId,
     source: ObjectId,
     cost: crate::cost::TotalCost,
     display: String,
 }
 
-fn lock_block_cost(
+fn lock_combat_cost(
     game: &GameState,
     source: ObjectId,
     ability_controller: PlayerId,
@@ -1270,7 +1359,7 @@ fn locked_block_costs_for_declarations(
     game: &GameState,
     pairs: &[(ObjectId, ObjectId)],
     decision_maker: &mut dyn DecisionMaker,
-) -> Result<Vec<LockedBlockCost>, GameLoopError> {
+) -> Result<Vec<LockedCombatCost>, GameLoopError> {
     use std::collections::HashSet;
 
     let view = DerivedGameView::new(game);
@@ -1316,13 +1405,13 @@ fn locked_block_costs_for_declarations(
                         ))
                     })?;
                 let display = ability.display();
-                let cost = lock_block_cost(game, source, ability_controller, cost, decision_maker)
+                let cost = lock_combat_cost(game, source, ability_controller, cost, decision_maker)
                     .map_err(|error| {
                         ResponseError::InvalidBlockers(format!(
                             "Could not determine required blocking cost ({display}): {error}"
                         ))
                     })?;
-                locked.push(LockedBlockCost {
+                locked.push(LockedCombatCost {
                     payer,
                     source,
                     cost,
@@ -1334,9 +1423,10 @@ fn locked_block_costs_for_declarations(
     Ok(locked)
 }
 
-fn ordered_locked_block_cost(
+fn ordered_locked_combat_cost(
     game: &GameState,
-    locked: &LockedBlockCost,
+    locked: &LockedCombatCost,
+    attacking: bool,
     decision_maker: &mut dyn DecisionMaker,
 ) -> Result<crate::cost::TotalCost, GameLoopError> {
     let ironsmith_core::TotalCostKind::All(components) = locked.cost.kind() else {
@@ -1356,7 +1446,7 @@ fn ordered_locked_block_cost(
     let context = crate::decisions::context::SelectOptionsContext::new(
         locked.payer,
         Some(locked.source),
-        "Choose the order to pay blocking-cost components",
+        if attacking { "Choose the order to pay attack-cost components" } else { "Choose the order to pay blocking-cost components" },
         options,
         components.len(),
         components.len(),
@@ -1370,9 +1460,7 @@ fn ordered_locked_block_cost(
         || unique.len() != components.len()
         || order.iter().any(|index| *index >= components.len())
     {
-        return Err(ResponseError::InvalidBlockers(
-            "Invalid blocking-cost payment order".to_string(),
-        )
+        return Err(if attacking { ResponseError::InvalidAttackers("Invalid attack-cost payment order".into()) } else { ResponseError::InvalidBlockers("Invalid blocking-cost payment order".into()) }
         .into());
     }
     Ok(crate::cost::TotalCost::from_costs(
@@ -1383,11 +1471,12 @@ fn ordered_locked_block_cost(
     ))
 }
 
-fn order_locked_block_costs(
+fn order_locked_combat_costs(
     game: &GameState,
-    locked_costs: Vec<LockedBlockCost>,
+    locked_costs: Vec<LockedCombatCost>,
+    attacking: bool,
     decision_maker: &mut dyn DecisionMaker,
-) -> Result<Vec<LockedBlockCost>, GameLoopError> {
+) -> Result<Vec<LockedCombatCost>, GameLoopError> {
     let mut payer_order = Vec::new();
     for locked in &locked_costs {
         if !payer_order.contains(&locked.payer) {
@@ -1419,7 +1508,7 @@ fn order_locked_block_costs(
         let context = crate::decisions::context::SelectOptionsContext::new(
             payer,
             None,
-            "Choose the order to pay blocking costs",
+            if attacking { "Choose the order to pay attack costs" } else { "Choose the order to pay blocking costs" },
             options,
             payer_costs.len(),
             payer_costs.len(),
@@ -1433,14 +1522,21 @@ fn order_locked_block_costs(
             || unique.len() != payer_costs.len()
             || choice.iter().any(|index| *index >= payer_costs.len())
         {
-            return Err(ResponseError::InvalidBlockers(
-                "Invalid blocking-cost payment order".to_string(),
-            )
+            return Err(if attacking { ResponseError::InvalidAttackers("Invalid attack-cost payment order".into()) } else { ResponseError::InvalidBlockers("Invalid blocking-cost payment order".into()) }
             .into());
         }
         ordered.extend(choice.into_iter().map(|index| payer_costs[index].1.clone()));
     }
     Ok(ordered)
+}
+
+fn ordered_locked_block_cost(game: &GameState, locked: &LockedCombatCost,
+    decision_maker: &mut dyn DecisionMaker) -> Result<crate::cost::TotalCost, GameLoopError> {
+    ordered_locked_combat_cost(game, locked, false, decision_maker)
+}
+fn order_locked_block_costs(game: &GameState, costs: Vec<LockedCombatCost>,
+    decision_maker: &mut dyn DecisionMaker) -> Result<Vec<LockedCombatCost>, GameLoopError> {
+    order_locked_combat_costs(game, costs, false, decision_maker)
 }
 
 #[derive(Debug, Clone)]
@@ -1607,7 +1703,7 @@ fn apply_blocker_declarations_internal(
 struct PreparedBlockerDeclarations {
     pairs: Vec<(ObjectId, ObjectId)>,
     next_combat: CombatState,
-    locked_costs: Vec<LockedBlockCost>,
+    locked_costs: Vec<LockedCombatCost>,
     defending_player: Option<PlayerId>,
 }
 
@@ -1986,6 +2082,78 @@ mod declaration_batch_tests {
         AttackCostCondition, CantAttackUnlessConditionSpec, StaticAbility,
     };
     use crate::target::PlayerFilter;
+
+    #[test]
+    fn typed_attack_cost_dynamic_amount_uses_defenders_board() {
+        use crate::mana::ManaSymbol;
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let attacker = create_attacker(&mut game, alice, "Attacker", false);
+        let enchantment = CardBuilder::new(CardId::new(), "Enchantment")
+            .card_types(vec![CardType::Enchantment]).build();
+        let source = game.create_object_from_card(&enchantment, bob, Zone::Battlefield);
+        let extra = game.create_object_from_card(&enchantment, bob, Zone::Battlefield);
+        for _ in 0..4 { game.create_object_from_card(&enchantment, alice, Zone::Battlefield); }
+        let dynamic = ironsmith_core::DynamicManaCost::generic_equal_to(crate::effect::Value::Count(
+            crate::target::ObjectFilter::enchantment().you_control(),
+        ));
+        game.object_mut(source).unwrap().abilities_mut().push(Ability::static_ability(
+            StaticAbility::attack_cost(crate::target::ObjectFilter::creature(), true,
+                crate::cost::TotalCost::from_costs(vec![crate::costs::Cost::dynamic_mana(dynamic)]),
+                "Dynamic attack tax")
+        ));
+        game.refresh_continuous_state();
+        assert!(crate::decision::compute_legal_attackers(&game, &CombatState::default()).is_empty());
+        game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Colorless, 2);
+        assert_eq!(crate::decision::compute_legal_attackers(&game, &CombatState::default()).len(), 1);
+        let mut combat = CombatState::default();
+        let mut triggers = TriggerQueue::new();
+        let transaction = begin_attack_declaration_transaction(&mut game, &combat, &mut triggers,
+            &[AttackerDeclaration { creature: attacker, target: AttackTarget::Player(bob) }]
+        ).unwrap();
+        // A mana ability can change the counted battlefield during the window.
+        game.move_object_by_effect(extra, Zone::Graveyard).unwrap();
+        let mut dm = crate::decision::AutoPassDecisionMaker;
+        finish_attack_declaration_transaction(transaction, &mut game, &mut combat, &mut triggers, &mut dm)
+            .expect("the tax was locked at two before the mana window changed the count");
+        assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0);
+        assert_eq!(combat.attackers.len(), 1);
+    }
+
+    #[test]
+    fn typed_attack_cost_payment_is_per_attacker_and_atomic() {
+        use crate::mana::{ManaCost, ManaSymbol};
+        for (life, count, succeeds) in [(20, 2, true), (3, 2, false), (3, 1, true)] {
+            let mut game = setup_game();
+            let alice = PlayerId::from_index(0);
+            let bob = PlayerId::from_index(1);
+            game.player_mut(alice).unwrap().life = life;
+            let attackers = (0..count).map(|i| create_attacker(
+                &mut game, alice, &format!("Attacker {i}"), false,
+            )).collect::<Vec<_>>();
+            let tax = CardBuilder::new(CardId::new(), "Phyrexian attack tax")
+                .card_types(vec![CardType::Artifact]).build();
+            let source = game.create_object_from_card(&tax, bob, Zone::Battlefield);
+            game.object_mut(source).unwrap().abilities_mut().push(Ability::static_ability(
+                StaticAbility::attack_cost(crate::target::ObjectFilter::creature(), false,
+                    crate::cost::TotalCost::from_costs(vec![crate::costs::Cost::mana(
+                        ManaCost::from_pips(vec![vec![ManaSymbol::White, ManaSymbol::Life(2)]])
+                    )]), "Phyrexian attack tax")
+            ));
+            game.refresh_continuous_state();
+            let declarations = attackers.iter().map(|&creature| AttackerDeclaration {
+                creature, target: AttackTarget::Player(bob),
+            }).collect::<Vec<_>>();
+            let mut combat = CombatState::default();
+            let mut triggers = TriggerQueue::new();
+            let result = apply_attacker_declarations(&mut game, &mut combat, &mut triggers, &declarations);
+            assert_eq!(result.is_ok(), succeeds, "life={life}, count={count}: {result:?}");
+            assert_eq!(game.player(alice).unwrap().life, if succeeds { life - 2 * count } else { life });
+            assert_eq!(combat.attackers.len(), if succeeds { count as usize } else { 0 });
+            for attacker in attackers { assert_eq!(game.is_tapped(attacker), succeeds); }
+        }
+    }
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()
@@ -3042,7 +3210,7 @@ mod declaration_batch_tests {
         let cost = crate::cost::TotalCost::from_cost(crate::costs::Cost::dynamic_mana(dynamic));
         let mut decision_maker = crate::decision::AutoPassDecisionMaker;
 
-        let locked = lock_block_cost(&game, source, alice, cost, &mut decision_maker)
+        let locked = lock_combat_cost(&game, source, alice, cost, &mut decision_maker)
             .expect("the declaration-time value should resolve");
         assert_eq!(
             locked
@@ -3137,7 +3305,7 @@ mod declaration_batch_tests {
         let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
         let source = create_attacker(&mut game, alice, "Ordered Cost Source", false);
-        let locked = LockedBlockCost {
+        let locked = LockedCombatCost {
             payer: bob,
             source,
             cost: crate::cost::TotalCost::from_costs(vec![

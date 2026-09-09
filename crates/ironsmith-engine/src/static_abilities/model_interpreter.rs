@@ -461,6 +461,7 @@ impl StaticAbilityModelInterpreter {
                         .map(Self::ability_from_model)
                         .collect(),
                     set_base_power_toughness: spec.set_base_power_toughness,
+                    added_abilities_source_filter: spec.added_abilities_source_filter.clone(),
                     set_base_power_toughness_from_self: spec.set_base_power_toughness_from_self,
                 })
             }
@@ -1153,6 +1154,8 @@ impl StaticAbilityModelInterpreter {
                 Self::cant_attack_unless_condition_from_model(condition),
                 display.clone(),
             ),
+            ironsmith_core::StaticAbilityPayload::AttackCost { attackers, covers_planeswalkers, cost, display } =>
+                StaticAbility::attack_cost(attackers.clone(), *covers_planeswalkers, cost.clone(), display.clone()),
             ironsmith_core::StaticAbilityPayload::BlockCost {
                 blockers,
                 blocker_is_attached_to_source,
@@ -1520,6 +1523,7 @@ impl StaticAbilityModelInterpreter {
                             .map(Self::ability_from_model)
                             .collect(),
                         set_base_power_toughness: spec.set_base_power_toughness,
+                        added_abilities_source_filter: spec.added_abilities_source_filter.clone(),
                         set_base_power_toughness_from_self: spec
                             .set_base_power_toughness_from_self,
                     },
@@ -2426,6 +2430,12 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             blocker,
             attacker,
         )
+    }
+
+    fn attack_cost_model(&self) -> Option<&super::AttackCost> { self.leaf_static_ability()?.attack_cost_model() }
+    fn attack_cost_for_declaration(&self, game: &GameState, source: ObjectId, controller: PlayerId,
+        attacker: ObjectId, target: &crate::combat_state::AttackTarget) -> Option<crate::cost::TotalCost> {
+        self.leaf_static_ability()?.attack_cost_for_declaration(game, source, controller, attacker, target)
     }
 
     fn block_cost_model(&self) -> Option<&super::BlockCost> {

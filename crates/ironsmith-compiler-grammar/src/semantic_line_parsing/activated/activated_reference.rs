@@ -48,7 +48,7 @@ fn authored_name_tokens_for_span(
     let name: Vec<OwnedLexToken> = covered[first_name..]
         .iter()
         .take_while(|token| !token.is_word("and"))
-        .filter(|token| !matches!(token.kind, TokenKind::Comma | TokenKind::Period))
+        .filter(|token| token.kind != TokenKind::Period)
         .map(|token| (*token).clone())
         .collect();
     (!name.is_empty()).then_some(name)
@@ -131,83 +131,6 @@ pub(super) fn recognize_named_source_action_surfaces(info: &LineInfo, effects: &
         *target = TargetAst::Object(ObjectFilter::source_with_surface(surface), None, *span);
     }
 
-    fn authored_return_surface(info: &LineInfo) -> Option<crate::target::SourceReferenceSurface> {
-        let tokens = info.source_tokens.as_slice();
-        if !tokens.iter().any(|token| token.is_word("exile")) {
-            return None;
-        }
-        crate::grammar::source_surface_shapes::parse_unique_pronoun_operand_after(tokens, "return")
-            .map(|shape| shape.surface)
-    }
-
-    fn transformed_source_return_count(effects: &[EffectAst]) -> usize {
-        let mut count = 0;
-        for effect in effects {
-            if let EffectAst::SubjectVerb(subject_verb) = effect
-                && matches!(
-                    &subject_verb.action,
-                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
-                        target: TargetAst::Source(_),
-                        controller: ReturnControllerAst::Owner,
-                        transformed: true,
-                        ..
-                    }) | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
-                        target: TargetAst::Source(_),
-                        zone: Zone::Battlefield,
-                        battlefield_controller: ReturnControllerAst::Owner,
-                        battlefield_transformed: true,
-                        ..
-                    })
-                )
-            {
-                count += 1;
-            }
-            crate::model::visit::for_each_nested_effects(effect, true, |nested| {
-                count += transformed_source_return_count(nested)
-            });
-        }
-        count
-    }
-
-    fn apply_return_surface(
-        effects: &mut [EffectAst],
-        surface: &crate::target::SourceReferenceSurface,
-    ) {
-        for effect in effects {
-            if let EffectAst::SubjectVerb(subject_verb) = effect {
-                let target = match &mut subject_verb.action {
-                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
-                        target,
-                        controller: ReturnControllerAst::Owner,
-                        transformed: true,
-                        ..
-                    })
-                    | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
-                        target,
-                        zone: Zone::Battlefield,
-                        battlefield_controller: ReturnControllerAst::Owner,
-                        battlefield_transformed: true,
-                        ..
-                    }) => Some(target),
-                    _ => None,
-                };
-                if let Some(target) = target
-                    && let TargetAst::Source(span) = target
-                {
-                    let span = *span;
-                    *target = TargetAst::Object(
-                        ObjectFilter::source_with_surface(surface.clone()),
-                        None,
-                        span,
-                    );
-                }
-            }
-            for_each_nested_effects_mut(effect, true, |nested| {
-                apply_return_surface(nested, surface)
-            });
-        }
-    }
-
     fn apply(info: &LineInfo, effects: &mut [EffectAst]) {
         for effect in effects {
             if let EffectAst::SubjectVerb(subject_verb) = effect {
@@ -229,11 +152,8 @@ pub(super) fn recognize_named_source_action_surfaces(info: &LineInfo, effects: &
     }
 
     apply(info, effects);
-    if transformed_source_return_count(effects) == 1
-        && let Some(surface) = authored_return_surface(info)
-    {
-        apply_return_surface(effects, &surface);
-    }
+    crate::util::recognize_unique_source_action_surface(effects, &info.source_tokens, "exile");
+    crate::util::recognize_transformed_source_return_pronoun(effects, &info.source_tokens);
 }
 
 #[cfg(test)]

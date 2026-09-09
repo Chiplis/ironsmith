@@ -503,6 +503,8 @@ pub struct Object {
     /// Mana actually spent to cast this object while it was a spell.
     /// Used by conditional text like "if at least three blue mana was spent to cast this spell".
     pub mana_spent_to_cast: ManaPool,
+    /// Mana spent from sources that were snow when they produced it, by actual color.
+    pub snow_mana_spent_to_cast: ManaPool,
     /// Non-copiable static abilities granted until end of turn while this object is a spell or
     /// permanent. Stack-to-battlefield movement preserves these grants for the permanent that
     /// spell becomes; other zone changes clear them.
@@ -680,6 +682,7 @@ impl Object {
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
+            snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: Vec::new(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
@@ -759,6 +762,7 @@ impl Object {
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
+            snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: Vec::new(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
@@ -1011,6 +1015,7 @@ impl Object {
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
+            snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: Vec::new(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
@@ -1085,6 +1090,7 @@ impl Object {
             optional_costs_paid: OptionalCostsPaid::default(),
             // Tokens are never cast.
             mana_spent_to_cast: ManaPool::default(),
+            snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: Vec::new(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
@@ -1148,6 +1154,7 @@ impl Object {
             optional_costs: source.optional_costs.clone(),
             optional_costs_paid: source.optional_costs_paid.clone(),
             mana_spent_to_cast: source.mana_spent_to_cast.clone(),
+            snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: source.temporary_static_ability_grants.clone(),
             x_value: source.x_value,
             keyword_payment_contributions_to_cast: source
@@ -1214,6 +1221,7 @@ impl Object {
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
+            snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: Vec::new(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
@@ -1279,6 +1287,7 @@ impl Object {
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
+            snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: Vec::new(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
@@ -1945,6 +1954,7 @@ impl Object {
             optional_costs: handles.optional_costs.clone(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
+            snow_mana_spent_to_cast: ManaPool::default(),
             temporary_static_ability_grants: Vec::new(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
@@ -2472,4 +2482,38 @@ mod tests {
         // And counters are preserved (non-copiable)
         assert_eq!(clone.counters.get(&CounterType::PlusOnePlusOne), Some(&1));
     }
+    #[test]
+    fn spell_copy_does_not_inherit_snow_mana_payment() {
+        let card = CardBuilder::new(CardId::new(), "Snow-paid Spell")
+            .card_types(vec![CardType::Creature]).build();
+        let alice = PlayerId::from_index(0);
+        let mut source = Object::from_card(ObjectId::from_raw(1), &card, alice, Zone::Stack);
+        source.snow_mana_spent_to_cast.green = 2;
+        source.x_value = Some(3);
+        let copy = Object::spell_copy_of(&source, ObjectId::from_raw(2), alice);
+        assert_eq!(copy.snow_mana_spent_to_cast.total(), 0);
+        assert_eq!(copy.x_value, Some(3));
+        assert_eq!(source.snow_mana_spent_to_cast.green, 2);
+    }
+
+    #[test]
+    fn snow_payment_survives_resolution_but_not_a_later_zone_instance() {
+        let mut game = crate::game_state::GameState::new(vec!["Alice".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::new(), "Snow-paid Creature").card_types(vec![CardType::Creature]).build();
+        for resolves in [false, true] {
+            let spell = game.create_object_from_card(&card, alice, Zone::Stack);
+            game.object_mut(spell).unwrap().snow_mana_spent_to_cast.green = 1;
+            let current = if resolves {
+                let entered = game.move_object_by_effect(spell, Zone::Battlefield).unwrap();
+                assert_eq!(game.object(entered).unwrap().snow_mana_spent_to_cast.green, 1);
+                entered
+            } else { spell };
+            let graveyard = game.move_object_by_effect(current, Zone::Graveyard).unwrap();
+            assert_eq!(game.object(graveyard).unwrap().snow_mana_spent_to_cast.total(), 0);
+            let recast = game.move_object_by_effect(graveyard, Zone::Stack).unwrap();
+            assert_eq!(game.object(recast).unwrap().snow_mana_spent_to_cast.total(), 0);
+        }
+    }
+
 }

@@ -1815,19 +1815,24 @@ impl CardDefinitionBuilder {
         }
 
         builder
-            .with_ability(crate::ability::Ability::triggered(
+            .with_ability({
+                let mut ability = crate::ability::Ability::triggered(
                 crate::triggers::Trigger::beginning_of_upkeep(crate::target::PlayerFilter::You),
                 vec![crate::effect::Effect::remove_counters(
                     crate::object::CounterType::Time,
                     1,
                     crate::target::ChooseSpec::Source,
                 )],
-            ))
+            );
+                if let crate::ability::AbilityKind::Triggered(triggered) = &mut ability.kind {
+                    triggered.intervening_if = Some(crate::effect::Condition::SourceHasCounterAtLeast { counter_type: crate::object::CounterType::Time, count: 1, surface: Default::default() });
+                }
+                ability
+            })
             .with_ability(crate::ability::Ability::triggered(
-                crate::triggers::Trigger::custom(
-                    "vanishing-last-time-counter-removed",
-                    "when the last time counter is removed".to_string(),
-                ),
+                crate::triggers::Trigger::new(crate::triggers::CounterRemovedFromTrigger::new(
+                    crate::target::ObjectFilter::source(),
+                ).counter_type(crate::object::CounterType::Time).last()),
                 vec![crate::effect::Effect::sacrifice_source()],
             ))
     }

@@ -51,6 +51,12 @@ pub enum ReplacementActionAst {
         filter: ObjectFilter,
         duration: ZoneReplacementDurationAst,
     },
+    RegisterEnterWithCountersReplacement {
+        filter: ObjectFilter,
+        counter_type: CounterType,
+        count: Value,
+        mode: crate::effects::ReplacementApplyMode,
+    },
     RegisterNextBatchEnterWithCounters {
         filter: ObjectFilter,
         counter_type: CounterType,

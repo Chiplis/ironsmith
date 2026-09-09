@@ -10,7 +10,11 @@ fn revealed_cards_compare_against_a_different_card_in_the_revealed_set() {
     let effects = parse_effect_sentences_lexed(&tokens)
         .expect("correlated revealed-card sentence should parse");
 
-    let reveal_tag = effects.iter().find_map(|effect| match effect {
+    let reveal_effects = match effects.first() {
+        Some(EffectAst::Sequence { effects }) => effects.as_slice(),
+        _ => effects.as_slice(),
+    };
+    let reveal_tag = reveal_effects.iter().find_map(|effect| match effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTagged { tag }),
             ..

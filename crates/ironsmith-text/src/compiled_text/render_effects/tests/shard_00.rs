@@ -2997,6 +2997,7 @@ pub(super) fn each_player_may_discard_draw_commander_value_compaction_preserves_
             )),
         ]))],
         starting_with_controller: false,
+        sequential: false,
         stop_after_first_happened: false,
     })];
 
@@ -4887,7 +4888,7 @@ pub(super) fn id_backed_graveyard_move_token_count_renders_put_this_way() {
 
     assert_eq!(
         describe_effect_list(&effects),
-        "Put all cards in exile into its owner's graveyard. Create a Treasure token for each card put into a graveyard this way"
+        "Put all cards in exile into their owners' graveyards. Create a Treasure token for each card put into a graveyard this way"
     );
 }
 
@@ -5812,6 +5813,7 @@ pub(super) fn for_each_opponent_life_loss_you_gain_shared_count_uses_x_surface()
                 PlayerFilter::IteratedPlayer,
             ))],
             starting_with_controller: false,
+            sequential: false,
             stop_after_first_happened: false,
         }),
         Effect::new(crate::effects::GainLifeEffect::you(party)),

@@ -1093,6 +1093,38 @@ pub struct RegisterEnterTappedReplacementEffect {
     pub mode: ReplacementApplyMode,
 }
 
+/// Registers an entry-counter replacement over future matching entrants.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq)]
+#[derive(TagKeyWalk)]
+pub struct RegisterEnterWithCountersReplacementEffect {
+    /// Objects selected now whose next entry is modified; their current object
+    /// identities are frozen so a later zone incarnation does not qualify.
+    pub objects: Option<ChooseSpec>,
+    /// Known type of the referenced object when this instruction was created.
+    /// This names the object without requiring it to retain that type at entry.
+    pub object_reference_type: Option<crate::types::CardType>,
+    pub filter: crate::filter_model::ObjectFilter,
+    pub counter_type: CounterType,
+    pub count: Value,
+    pub mode: ReplacementApplyMode,
+}
+
+impl RegisterEnterWithCountersReplacementEffect {
+    pub fn new(
+        filter: crate::filter_model::ObjectFilter,
+        counter_type: CounterType,
+        count: Value,
+        mode: ReplacementApplyMode,
+    ) -> Self {
+        Self { objects: None, object_reference_type: None, filter, counter_type, count, mode }
+    }
+    pub fn with_objects(mut self, objects: ChooseSpec) -> Self {
+        self.objects = Some(objects);
+        self
+    }
+}
+
 /// Registers a turn-scoped replacement for the next simultaneous batch in
 /// which one or more matching permanents would enter. Every matching member
 /// of that batch enters with the additional counters, then the replacement is
@@ -2440,11 +2472,13 @@ pub enum AdditionalPhase {
 #[derive(TagKeyWalk)]
 pub struct AdditionalPhasesEffect {
     pub phases: Vec<AdditionalPhase>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub after_main_phase: bool,
 }
 
 impl AdditionalPhasesEffect {
     pub fn new(phases: Vec<AdditionalPhase>) -> Self {
-        Self { phases }
+        Self { phases, after_main_phase: false }
     }
 
     pub fn combat() -> Self {
@@ -3322,6 +3356,9 @@ pub struct ShuffleObjectsIntoLibraryEffect {
     /// Preserve a possessive grammatical subject such as "Target creature's
     /// owner" instead of the equivalent "The owner of target creature."
     pub possessive_owner_subject: bool,
+    /// Shuffle the explicit player even when no selected object belongs to them.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub shuffle_subject_library: bool,
 }
 
 impl ShuffleObjectsIntoLibraryEffect {
@@ -3331,6 +3368,7 @@ impl ShuffleObjectsIntoLibraryEffect {
             player,
             owner_library_destination: false,
             possessive_owner_subject: false,
+            shuffle_subject_library: false,
         }
     }
 
@@ -3475,6 +3513,8 @@ pub enum RestrictionStart {
     #[default]
     Immediate,
     NextTurn(PlayerFilter),
+    /// Only during the combat created by the preceding additional-phase effect.
+    LastAddedCombatPhase,
 }
 
 /// Authored placement of a temporary restriction's duration.
@@ -4846,6 +4886,9 @@ pub struct UnlessActionEffect<E> {
 pub struct ForPlayersEffect<E> {
     pub filter: PlayerFilter,
     pub effects: Vec<E>,
+    /// Complete the body for one player before proceeding to the next.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub sequential: bool,
     pub starting_with_controller: bool,
     pub stop_after_first_happened: bool,
 }

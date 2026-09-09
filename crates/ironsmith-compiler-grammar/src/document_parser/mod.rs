@@ -2391,7 +2391,10 @@ fn try_parse_labeled_line_dispatch(
         // `Hellbent`. When the authored body names its source, build the parse
         // view with card metadata first so a creature does not degrade to the
         // untyped subject `this` before the static grammar sees it.
+        // Max speed carries a gameplay condition, so retain the dedicated
+        // labeled dispatch below instead of treating it as presentation only.
         if looks_like_ability_word_label(label_tokens, false)
+            && !label.eq_ignore_ascii_case("max speed")
             && !looks_like_leading_conditional_self_replacement(&body_line.tokens)
             && !split_activation_text_tokens_lexed(&body_line.tokens)
                 .is_some_and(|(cost, _)| looks_like_activation_cost_prefix(&cost))
@@ -3303,6 +3306,29 @@ pub fn recognize_document_with_context(
                     idx = dispatch_remaining_preprocessed_line(line_context, preprocessed, idx, line, allow_unsupported, &mut lines)?;
                     continue;
                 }
+                if let Some(PreprocessedItem::Line(next)) = preprocessed.items.get(idx + 1)
+                    && let Some(effects) = crate::effect_sentences::parse_fight_with_before_modifier(&line.tokens, &next.tokens)?
+                {
+                    let mut tokens = line.tokens.clone();
+                    tokens.extend_from_slice(&next.tokens);
+                    lines.push(RecognizedLine::Statement(RecognizedStatementLine {
+                        info: line.info.clone(),
+                        text: format!("{} {}", line.info.normalized.normalized, next.info.normalized.normalized),
+                        parse_tokens: tokens,
+                        parse_groups: vec![line.tokens.clone(), next.tokens.clone()],
+                        parsed_effects: Some(effects),
+                    }));
+                    idx += 2;
+                    continue;
+                }
+                if let Some(abilities) = parse_named_attachment_counter_release(line_context, line)? {
+                    lines.push(RecognizedLine::Static(RecognizedStaticLine {
+                        info: line.info.clone(), parse_tokens: line.tokens.clone(), chosen_option: None,
+                        parsed: Some(Box::new(LineAst::StaticAbilities(abilities))),
+                    }));
+                    idx += 1;
+                    continue;
+                }
                 if try_push_complete_typed_static_line(line, &mut lines)? {
                     idx += 1;
                     continue;
@@ -3395,6 +3421,15 @@ fn dispatch_remaining_preprocessed_line(
         lines,
     )? {
         return Ok(next_idx);
+    }
+    if let Some(ability) = parse_named_source_counter_discount(line_context, line)? {
+        lines.push(RecognizedLine::Static(RecognizedStaticLine {
+            info: line.info.clone(),
+            parse_tokens: line.tokens.clone(),
+            chosen_option: None,
+            parsed: Some(Box::new(LineAst::StaticAbility(ability))),
+        }));
+        return Ok(idx + 1);
     }
     if try_push_complete_typed_statement(line, lines)? {
         return Ok(idx + 1);
@@ -3975,6 +4010,213 @@ fn rewrite_named_source_gain_line(
         return Ok(None);
     }
     Ok(Some(Box::new(rewritten_line)))
+}
+
+// Cost parsing without card context cannot bind an authored proper name to
+// the discount source. Bind only a proven counter-reference suffix here and
+// preserve its name on the executable source selector.
+/// Preserve an attachment's named counter-removal target inside a carried
+/// quoted grant. The contextless static grammar cannot recognize proper names.
+fn parse_named_attachment_counter_release(
+    context: ParseContextView<'_>,
+    line: &PreprocessedLine,
+) -> Result<Option<Vec<crate::cards::builders::StaticAbilityAst>>, CardTextError> {
+    use crate::cards::builders::{
+        CounterActionAst, StaticAbilityAst, SubjectVerbActionAst, TargetAst, ZoneMoveActionAst,
+    };
+    let quotes: Vec<_> = line
+        .info
+        .source_tokens
+        .iter()
+        .enumerate()
+        .filter(|(_, t)| t.kind == TokenKind::Quote)
+        .map(|(i, _)| i)
+        .collect();
+    let [start, end] = quotes.as_slice() else {
+        return Ok(None);
+    };
+    let body = &line.info.source_tokens[start + 1..*end];
+    // An explicit self-reference in the granted ability denotes its holder.
+    // Leave mixed holder/attachment programs to the contextual general parser.
+    if body.iter().any(|t| t.is_word("this")) {
+        return Ok(None);
+    }
+    let Some(surface) = crate::util::authored_named_source_reference_surface(context, body) else {
+        return Ok(None);
+    };
+    for introducer in ["from", "destroy"] {
+        let matches = body
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.is_word(introducer))
+            .filter(|(i, _)| {
+                let reference = body[i + 1..]
+                    .iter()
+                    .take_while(|t| t.kind != TokenKind::Period)
+                    .cloned()
+                    .collect::<Vec<_>>();
+                let words = crate::lexer::parser_token_word_refs(&reference);
+                crate::util::source_reference_surface_for_words_with_context(context, &words)
+                    .as_ref()
+                    == Some(&surface)
+            })
+            .count();
+        if matches != 1 {
+            return Ok(None);
+        }
+    }
+    let Some(normalized) =
+        normalize_named_source_tokens_with_context(context, &line.info.source_tokens)
+    else {
+        return Ok(None);
+    };
+    let Some(mut abilities) =
+        crate::keyword_static::parse_carried_attached_subject_line(&normalized)?
+    else {
+        return Ok(None);
+    };
+    fn bind(
+        effects: &mut [crate::model::ast::EffectAst],
+        surface: &crate::target::SourceReferenceSurface,
+        counts: &mut [usize; 2],
+    ) {
+        for effect in effects {
+            if let crate::model::ast::EffectAst::Conditionals(
+                crate::model::ast::ConditionalEffectAst::Conditional { predicate, .. },
+            ) = effect
+                && let crate::model::ast::PredicateAst::Source(
+                    crate::model::ast::SourcePredicateAst::SourceHasNoCounter(counter),
+                ) = predicate
+            {
+                *predicate = crate::model::ast::PredicateAst::Source(
+                    crate::model::ast::SourcePredicateAst::SourceMatches(
+                        crate::target::ObjectFilter::source_with_surface(surface.clone())
+                            .without_counter_type(*counter),
+                    ),
+                );
+            }
+            if let crate::model::ast::EffectAst::SubjectVerb(subject) = effect {
+                let candidate = match &mut subject.action {
+                    SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters {
+                        target,
+                        ..
+                    }) => Some((target, 0)),
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy {
+                        target, ..
+                    }) => Some((target, 1)),
+                    _ => None,
+                };
+                if let Some((target, index)) = candidate {
+                    match target {
+                        TargetAst::Source(span) => {
+                            *target = TargetAst::Object(
+                                crate::target::ObjectFilter::source_with_surface(surface.clone()),
+                                None,
+                                *span,
+                            );
+                            counts[index] += 1;
+                        }
+                        TargetAst::Object(filter, _, _) if filter.source => {
+                            filter.source_surface = Some(surface.clone());
+                            counts[index] += 1;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+                bind(nested, surface, counts)
+            });
+        }
+    }
+    let mut counts = [0, 0];
+    for ability in &mut abilities {
+        if let StaticAbilityAst::AttachedObjectAbilityGrant { ability, .. } = ability {
+            if let Some(effects) = &mut ability.effects_ast {
+                bind(effects, &surface, &mut counts);
+            }
+        }
+    }
+    if counts != [1, 1] {
+        return Ok(None);
+    }
+    Ok(Some(abilities))
+}
+
+fn parse_named_source_counter_discount(
+    context: ParseContextView<'_>,
+    line: &PreprocessedLine,
+) -> Result<Option<crate::cards::builders::StaticAbilityAst>, CardTextError> {
+    use crate::grammar::{keyword_static_lines as shapes, static_keyword_facts::mid};
+    let Some(boundary) = mid::parse_cost_component_boundary(&line.tokens, 0) else {
+        return Ok(None);
+    };
+    let tail = &line.tokens[boundary.cost_token + 1..];
+    let Some(shapes::DynamicCostValueShape::CounterReference(reference)) =
+        shapes::parse_dynamic_cost_value_shape_tokens(tail)
+    else {
+        return Ok(None);
+    };
+    if !matches!(
+        reference.reference_kind,
+        shapes::CounterReferenceKind::Other
+    ) {
+        return Ok(None);
+    }
+    let words = crate::lexer::parser_token_word_refs(reference.reference_tokens);
+    let Some(surface) =
+        crate::util::source_reference_surface_for_words_with_context(context, &words)
+    else {
+        return Ok(None);
+    };
+    let Some(first) = reference.reference_tokens.first() else {
+        return Ok(None);
+    };
+    let Some(start) = line
+        .tokens
+        .iter()
+        .position(|token| std::ptr::eq(token, first))
+    else {
+        return Ok(None);
+    };
+    let mut normalized = line.tokens.clone();
+    normalized.splice(
+        start..start + reference.reference_tokens.len(),
+        crate::lexer::synthetic_word_tokens(["this", "source"]),
+    );
+    let Some(mut ability) = parse_spells_cost_modifier_line(&normalized)? else {
+        return Ok(None);
+    };
+    let ironsmith_core::StaticAbilityPayload::CostReduction(reduction) = &mut ability.payload
+    else {
+        return Ok(None);
+    };
+    fn bind(value: &mut crate::effect::Value, surface: &ironsmith_core::SourceReferenceSurface) {
+        use crate::effect::Value;
+        match value {
+            Value::CountersOnSource(counter) => {
+                *value = Value::CountersOn(
+                    Box::new(crate::util::source_choose_spec_for_surface(surface.clone())),
+                    Some(*counter),
+                )
+            }
+            Value::CountersOn(target, _)
+                if matches!(target.as_ref(), crate::target::ChooseSpec::Source) =>
+            {
+                *target = Box::new(crate::util::source_choose_spec_for_surface(surface.clone()));
+            }
+            Value::SurfaceHinted { value, .. } => bind(value, surface),
+            Value::Add(left, right) | Value::Min(left, right) => {
+                bind(left, surface);
+                bind(right, surface);
+            }
+            _ => {}
+        }
+    }
+    bind(&mut reduction.amount, &surface);
+    Ok(Some(crate::cards::builders::StaticAbilityAst::Static(
+        ability,
+    )))
 }
 
 fn try_push_named_source_dispatch(
