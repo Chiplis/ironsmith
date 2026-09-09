@@ -298,6 +298,7 @@ const LABELED_ABILITY_FIRST_WORDS: &[&str] = &[
     "surge",
     "threshold",
     "undergrowth",
+    "void",
     "ward",
 ];
 
