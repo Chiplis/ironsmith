@@ -1065,7 +1065,8 @@ pub fn bind_implicit_player_context(effect: &mut EffectAst, player: PlayerAst) {
     match effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             subject,
-            action: SubjectVerbActionAst::Stack(StackActionAst::RetargetStackObject { .. }),
+            action: SubjectVerbActionAst::Stack(StackActionAst::RetargetStackObject { .. })
+                | SubjectVerbActionAst::Control(ControlActionAst::GainControl { .. }),
         }) => {
             if matches!(subject.player, PlayerAst::Implicit) {
                 subject.player = player;

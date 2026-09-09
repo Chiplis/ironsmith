@@ -3563,6 +3563,23 @@ pub(crate) fn parse_complete_investigate_statement(
 pub(crate) fn parse_complete_simple_subject_verb_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    // A relative player subject remains the actor of its simple action.
+    // Select the current leader at resolution instead of discarding the
+    // qualifier and falling back to the ability controller.
+    if let Some((_, relative_tokens)) = crate::grammar::primitives::parse_prefix(
+        tokens, crate::grammar::primitives::phrase(&["the", "player"]),
+    )
+        && let Some(relative) = effect_grammar::for_each_shapes::parse_relative_control_clause_shape(relative_tokens)
+        && relative.controls_most
+        && let Some(mut effect) = parse_complete_simple_subject_verb_sentence(relative.effect_tokens)?
+    {
+        let filter = crate::object_filters::parse_object_filter(relative.filter_tokens, false)?;
+        super::chain_carry::bind_implicit_player_context(&mut effect, PlayerAst::That);
+        return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+            filter: PlayerFilter::ControlsMost { filter: Box::new(filter) },
+            effects: vec![effect], sequential: false,
+        })));
+    }
     // A sentence with a trailing condition is the conditional statement's.
     if crate::grammar::structure::split_trailing_if_clause_lexed(tokens).is_some() {
         return Ok(None);
