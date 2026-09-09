@@ -8,7 +8,6 @@ use crate::costs::{CostContext, CostPayer, CostPaymentResult};
 use crate::effect::Effect;
 use crate::effects::{CostExecutableEffect, CostValidationError};
 use crate::effects::{ExecutionContext, execute_effect};
-use crate::events::cause::EventCause;
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 
@@ -392,8 +391,9 @@ impl CostPayer for CostEffect {
             .map(crate::effects::ResolvedTarget::Object)
             .collect();
 
+        let cause = ctx.event_cause();
         let mut exec_ctx = ExecutionContext::new(ctx.source, ctx.payer, &mut *ctx.decision_maker)
-            .with_cause(EventCause::from_cost(ctx.source, ctx.payer))
+            .with_cause(cause)
             .with_tagged_objects(existing_tags)
             .with_cost_choice_targets(chosen_targets)
             .with_provenance(ctx.provenance);

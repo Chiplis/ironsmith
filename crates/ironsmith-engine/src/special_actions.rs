@@ -2431,6 +2431,7 @@ pub(crate) fn can_pay_total_cost_with_reason_in_context(
                     crate::costs::CostContext::new(source, payer, execution_ctx.decision_maker)
                         .with_reason(reason)
                         .with_provenance(execution_ctx.provenance);
+                cost_ctx.requesting_effect_cause = Some(execution_ctx.cause.clone());
                 cost_ctx.x_value = execution_ctx.x_value;
                 cost_ctx.tagged_objects = speculative_tagged_objects.clone();
                 adjusted_component.0.can_pay(game, &cost_ctx)?;
@@ -3085,10 +3086,12 @@ fn pay_selected_cost_without_execution_context(
     game.validate_cost_for_payment_reason(payer, source, cost, reason)?;
 
     let (paid_x_value, paid_tags) = {
+        let requesting_effect_cause = cost_ctx.requesting_effect_cause.clone();
         let mut selected_ctx = CostContext::new(source, payer, &mut *cost_ctx.decision_maker)
             .with_reason(reason)
             .with_pre_chosen_cards(vec![chosen_id])
             .with_provenance(provenance);
+        selected_ctx.requesting_effect_cause = requesting_effect_cause;
         selected_ctx.x_value = x_value;
         selected_ctx.tagged_objects = tagged_objects;
 
@@ -3305,6 +3308,7 @@ fn pay_component_in_context(
     let mut cost_ctx = CostContext::new(source, payer, execution_ctx.decision_maker)
         .with_reason(reason)
         .with_provenance(provenance);
+    cost_ctx.requesting_effect_cause = Some(execution_ctx.cause.clone());
     cost_ctx.x_value = execution_ctx.x_value;
     cost_ctx.tagged_objects = execution_ctx.tagged_objects.clone();
     let result = pay_component_without_execution_context(game, component, &mut cost_ctx);
@@ -3464,7 +3468,7 @@ fn resolve_cost_choice(
                 target_id,
                 Zone::Battlefield,
                 Zone::Graveyard,
-                crate::events::cause::EventCause::from_cost(ctx.source, ctx.payer),
+                ctx.event_cause(),
                 ctx.decision_maker,
             ) {
                 EventOutcome::Prevented | EventOutcome::NotApplicable => {
@@ -3519,7 +3523,7 @@ fn resolve_cost_choice(
                 return Err(CostPaymentError::InsufficientCardsInHand);
             }
 
-            let cause = EventCause::from_cost(ctx.source, ctx.payer);
+            let cause = ctx.event_cause();
             for card_id in to_discard {
                 let result = execute_discard(
                     game,
@@ -4038,6 +4042,61 @@ mod tests {
     use crate::static_abilities::StaticAbility;
     use crate::types::CardType;
     use crate::zone::Zone;
+
+    #[test]
+    fn sacrifice_payment_retains_requesting_effect_controller() {
+        use crate::costs::PaymentReason;
+        use crate::events::cause::{CauseType, EventCause};
+        use crate::filter::ObjectFilter;
+        for candidates in [1, 2] {
+            for reason in [PaymentReason::Effect, PaymentReason::CastSpell] {
+                let mut game = setup_game();
+                let alice = PlayerId::from_index(0);
+                let bob = PlayerId::from_index(1);
+                let source_card = CardBuilder::new(CardId::new(), "Requesting permanent")
+                    .card_types(vec![CardType::Artifact])
+                    .build();
+                let source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+                let creature = CardBuilder::new(CardId::new(), "Payment creature")
+                    .card_types(vec![CardType::Creature])
+                    .power_toughness(PowerToughness::fixed(2, 2))
+                    .build();
+                for _ in 0..candidates {
+                    game.create_object_from_card(&creature, alice, Zone::Battlefield);
+                }
+                // The ability was controlled by Bob even though its source is now Alice's.
+                let mut ctx = ExecutionContext::new_default(source, bob)
+                    .with_cause(EventCause::from_effect(source, bob));
+                let cost = crate::cost::TotalCost::from_cost(crate::costs::Cost::sacrifice(
+                    ObjectFilter::creature(),
+                ));
+                pay_total_cost_with_choice_in_context(
+                    &mut game, alice, source, &cost, reason, &mut ctx,
+                )
+                .unwrap();
+                assert_eq!(game.player(alice).unwrap().graveyard.len(), 1);
+                let moves = game
+                    .effect_store
+                    .pending_trigger_events
+                    .iter()
+                    .filter_map(|event| event.downcast::<crate::events::ZoneChangeEvent>())
+                    .filter(|event| event.to == Zone::Graveyard)
+                    .collect::<Vec<_>>();
+                assert_eq!(moves.len(), 1);
+                assert_eq!(moves[0].cause.cause_type, CauseType::Cost);
+                assert_eq!(moves[0].cause.source, Some(source));
+                assert_eq!(
+                    moves[0].cause.source_controller,
+                    Some(if reason == PaymentReason::Effect {
+                        bob
+                    } else {
+                        alice
+                    }),
+                    "{reason:?}, candidates={candidates}"
+                );
+            }
+        }
+    }
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()
