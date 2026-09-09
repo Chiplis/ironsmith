@@ -397,6 +397,9 @@ impl EffectExecutor for MoveToZoneEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let moves_source = matches!(self.target.base(), ChooseSpec::Source);
+        if moves_source && crate::effects::helpers::resolve_source_object_id(game, ctx).is_none() {
+            return Ok(EffectOutcome::target_invalid());
+        }
         let mut object_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
         // When a tag snapshot carries a stale ObjectId (the tagged object
         // changed zones since the snapshot was taken), resolve through
@@ -419,7 +422,7 @@ impl EffectExecutor for MoveToZoneEffect {
             // object, moving "that card" simply does nothing and later
             // instructions in the same sequence still resolve.
             return if matches!(self.target.base(), ChooseSpec::Tagged(_)) {
-                Ok(EffectOutcome::resolved())
+                Ok(EffectOutcome::count(0))
             } else {
                 Ok(EffectOutcome::target_invalid())
             };

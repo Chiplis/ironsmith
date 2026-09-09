@@ -177,6 +177,7 @@ fn value_references_identity(value: &Value, identity: &SyntheticTargetIdentity<'
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
         | Value::DistinctNames(filter)
+        | Value::DistinctManaValues(filter)
         | Value::DistinctPowers(filter) => object_filter_references_identity(filter, identity),
         Value::StaticAbilitiesAmong { filter, .. } => {
             object_filter_references_identity(filter, identity)
@@ -270,6 +271,10 @@ fn restriction_references_identity(
         | Restriction::BeTargetedFrom(blockers, attacker) => {
             object_filter_references_identity(blockers, identity)
                 || object_filter_references_identity(attacker, identity)
+        }
+        Restriction::BeSacrificedByCause { filter, cause } => {
+            object_filter_references_identity(filter, identity)
+                || cause.source_filter.as_ref().is_some_and(|filter| object_filter_references_identity(filter, identity))
         }
         Restriction::ActivateAbilitiesOf(filter)
         | Restriction::ActivateTapAbilitiesOf(filter)

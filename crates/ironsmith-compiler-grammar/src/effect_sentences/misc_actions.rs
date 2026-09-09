@@ -661,7 +661,7 @@ pub fn parse_scry(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
-    let (count, _) = parse_value(tokens).ok_or_else(|| {
+    let (count, used) = parse_value(tokens).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "missing scry count (clause: '{}')",
             crate::lexer::token_word_refs(tokens).join(" ")
@@ -670,18 +670,19 @@ pub fn parse_scry(
 
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
-    Ok(subject_verb_player_effect(
+    let effect = subject_verb_player_effect(
         SubjectVerbRoleAst::Chooser,
-        player,
+        player.clone(),
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Scry { count }),
-    ))
+    );
+    finish_counted_library_action(effect, &tokens[used..], player)
 }
 
 pub fn parse_surveil(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
-    let (count, _) = parse_value(tokens).ok_or_else(|| {
+    let (count, used) = parse_value(tokens).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "missing surveil count (clause: '{}')",
             crate::lexer::token_word_refs(tokens).join(" ")
@@ -690,11 +691,33 @@ pub fn parse_surveil(
 
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
-    Ok(subject_verb_player_effect(
+    let effect = subject_verb_player_effect(
         SubjectVerbRoleAst::Chooser,
-        player,
+        player.clone(),
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Surveil { count }),
-    ))
+    );
+    finish_counted_library_action(effect, &tokens[used..], player)
+}
+
+fn finish_counted_library_action(
+    effect: EffectAst,
+    trailing: &[OwnedLexToken],
+    player: PlayerAst,
+) -> Result<EffectAst, CardTextError> {
+    let trailing = trim_commas(trailing);
+    let Some((head, tail)) = trailing.split_first() else {
+        return Ok(effect);
+    };
+    if !head.is_word("then") {
+        return Ok(effect);
+    }
+    let mut followup = crate::effect_sentences::chain_carry::parse_effect_chain(tail)?;
+    for effect in &mut followup {
+        crate::effect_sentences::chain_carry::bind_implicit_player_context(effect, player.clone());
+    }
+    let mut effects = vec![effect];
+    effects.extend(followup);
+    Ok(EffectAst::Sequence { effects })
 }
 
 #[cfg(test)]

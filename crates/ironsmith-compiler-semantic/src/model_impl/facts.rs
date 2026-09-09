@@ -45,10 +45,11 @@ pub struct AsEntersEffectProgramFacts {
     pub also_turns_face_up: bool,
     pub turns_face_up_only: bool,
     pub uses_enters_with_counter_surface: bool,
-    /// The program contains the source-relative follow-up `it enters with`.
+    /// The program contains an entry-counter follow-up referring to `it` or
+    /// the explicit noun used for the enclosing source.
     /// This distinguishes the entering source from an object selected by an
     /// earlier optional cost in the same replacement program.
-    pub source_pronoun_enters_with_counter_surface: bool,
+    pub source_reference_enters_with_counter_surface: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -302,7 +303,9 @@ impl EffectLoweringContext {
         self.last_object_tag = frame.last_object_tag;
         self.snapshot_tag_aliases = frame.snapshot_tag_aliases;
         self.last_it_choice_is_set = frame.last_it_choice_is_set;
-        self.last_exiled_collection_tag = frame.last_exiled_collection_tag;
+        // ReferenceEnv does not model the concrete exile collection. Preserve
+        // this lowering-only memory, like its plural flag, across annotations.
+        // Full lexical-scope restoration still uses apply_lowering_frame.
         self.last_player_filter = frame.last_player_filter;
         self.source_object_antecedent = frame.source_object_antecedent;
         self.iterated_player = frame.iterated_player;

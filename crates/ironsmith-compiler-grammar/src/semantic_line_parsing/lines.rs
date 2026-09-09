@@ -155,9 +155,9 @@ use trigger_reconciliation::{
     is_gate_partition_core_word_program, is_gate_partition_word_program, is_parley_word_program,
     recognize_authored_correlated_trigger_programs,
     recognize_dynamic_zone_change_group_token_creation, recognize_serial_target_pt_modifiers,
-    spell_or_activated_ability_x_cost_trigger_spec,
 };
 pub use trigger_reconciliation::{
+    spell_or_activated_ability_x_cost_trigger_spec,
     dynamic_zone_change_group_token_creation_from_authored_trigger,
     end_of_combat_destroy_then_next_end_step_counter_program,
 };
@@ -2504,7 +2504,7 @@ use lines_permission_programs::exact_dynamic_exile_permission_bundle;
 pub use lines_permission_programs::is_authored_dynamic_exile_permission_bundle;
 #[path = "lines/lines_zone.rs"]
 mod lines_zone_programs;
-use lines_zone_programs::exact_atomic_return_as_aura_bundle;
+pub use lines_zone_programs::exact_atomic_return_as_aura_bundle;
 
 #[path = "lines/spell_cast_trigger_filters.rs"]
 mod spell_cast_trigger_filters;

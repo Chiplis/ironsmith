@@ -6,6 +6,7 @@
 use super::{StaticAbility, StaticAbilityId, StaticAbilityKind};
 use crate::effect::Restriction;
 use crate::effect::RestrictionExt as _;
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::{CantEffectTracker, GameState};
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
@@ -625,6 +626,50 @@ pub struct RuleRestriction {
 }
 
 impl RuleRestriction {
+    fn conditional_block_parts(&self) -> Option<(&ObjectFilter, &crate::ConditionExpr)> {
+        if !self.additional_restrictions.is_empty() { return None; }
+        let Restriction::Block(blockers) = &self.restriction else { return None; };
+        Some((blockers, self.condition.as_ref()?))
+    }
+
+    fn conditional_block_tracker(
+        &self, game: &GameState, source: ObjectId, controller: PlayerId,
+    ) -> Option<CantEffectTracker> {
+        let (blockers, condition) = self.conditional_block_parts()?;
+        let filter_ctx = game.filter_context_for_combat(controller, Some(source), None, None);
+        let players = game.players.iter().filter(|player| player.is_in_game())
+            .map(|player| player.id).collect::<Vec<_>>();
+        let mut tracker = CantEffectTracker::default();
+        for &blocker in &game.battlefield {
+            let Some(object) = game.object(blocker) else { continue; };
+            if !blockers.matches(object, &filter_ctx, game) { continue; }
+            let defending_player = game.controller_of(object);
+            let prohibited = players.iter().copied().filter(|&attacking_player| {
+                crate::condition_eval::evaluate_condition_external(game, condition,
+                    &crate::condition_eval::ExternalEvaluationContext {
+                        controller, source,
+                        defending_player: Some(defending_player),
+                        attacking_player: Some(attacking_player),
+                        filter_source: Some(source), iterated_player: None,
+                        triggering_event: None, trigger_identity: None,
+                        ability_index: None, options: Default::default(),
+                    })
+            }).collect::<std::collections::HashSet<_>>();
+            // Conditions independent of the opposing player still produce a
+            // global block prohibition, including when no attackers exist.
+            if !players.is_empty() && prohibited.len() == players.len() {
+                tracker.cant_block.insert(blocker);
+            } else {
+                for &attacker in &game.battlefield {
+                    if game.object(attacker).is_some_and(|object| prohibited.contains(&game.controller_of(object))) {
+                        tracker.cant_block_specific_attackers.entry(blocker).or_default().insert(attacker);
+                    }
+                }
+            }
+        }
+        Some(tracker)
+    }
+
     pub fn new(restriction: Restriction, display: String) -> Self {
         Self {
             restriction,
@@ -776,6 +821,9 @@ impl StaticAbilityKind for RuleRestriction {
         let Some(condition) = &self.condition else {
             return true;
         };
+        // Blocking conditions are evaluated with the actual opposing player
+        // while building the pair restrictions, rather than in a global context.
+        if self.conditional_block_parts().is_some() { return true; }
         let controller = match game.object(source) {
             Some(object) => game.controller_of(object),
             None => return false,
@@ -796,6 +844,10 @@ impl StaticAbilityKind for RuleRestriction {
     }
 
     fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
+        if let Some(tracker) = self.conditional_block_tracker(game, source, controller) {
+            game.effect_store.cant_effects.merge(tracker);
+            return;
+        }
         let mut tracker = CantEffectTracker::default();
         self.restriction
             .apply(game, &mut tracker, controller, Some(source), None);

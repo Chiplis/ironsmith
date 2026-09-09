@@ -276,8 +276,22 @@ impl EffectExecutor for CantEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let restriction = normalize_restriction_for_resolution(&self.restriction, ctx, game);
+        if self.start == RestrictionStart::LastAddedCombatPhase {
+            // A missing phase cannot turn a phase-bound restriction into an
+            // immediate restriction on an unrelated combat.
+            if let Some(order) = ctx.combat.last_added_combat_order {
+                game.add_restriction_effect_with_start_and_tagged_objects(
+                    restriction, self.duration.clone(), ctx.source, ctx.controller,
+                    ctx.iteration.iterated_player, None, ctx.tagged_objects.clone(),
+                );
+                game.effect_store.restriction_effects.last_mut().unwrap()
+                    .starts_in_added_combat = Some(order);
+                game.update_cant_effects();
+            }
+            return Ok(EffectOutcome::resolved());
+        }
         let starts_next_turn_of = match &self.start {
-            RestrictionStart::Immediate => None,
+            RestrictionStart::Immediate | RestrictionStart::LastAddedCombatPhase => None,
             RestrictionStart::NextTurn(player) => Some(
                 crate::effects::helpers::resolve_player_filter(game, player, ctx)?,
             ),
@@ -352,6 +366,43 @@ mod tests {
     use crate::target::{ObjectFilter, PlayerFilter};
     use crate::types::CardType;
     use crate::zone::Zone;
+
+    #[test]
+    fn added_combat_restriction_waits_through_other_combats_and_expires() {
+        for expire_pending in [false, true] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = PlayerId::from_index(0);
+            let mut ctx = ExecutionContext::new_default(game.new_object_id(), alice);
+            let restriction = CantEffect::starting(
+                Restriction::gain_life(PlayerFilter::Any), Until::EndOfCombat,
+                RestrictionStart::LastAddedCombatPhase,
+            );
+            // No preceding phase must not accidentally register a global rule.
+            restriction.execute(&mut game, &mut ctx).unwrap();
+            assert!(game.effect_store.restriction_effects.is_empty());
+            crate::effects::AdditionalPhasesEffect {
+                phases: vec![crate::effects::AdditionalPhase::Combat],
+                after_main_phase: false,
+            }.execute(&mut game, &mut ctx).unwrap();
+            restriction.execute(&mut game, &mut ctx).unwrap();
+            assert!(game.can_gain_life(alice));
+            game.add_additional_phase_group([Phase::Combat]);
+            game.pop_additional_phase();
+            assert!(game.can_gain_life(alice));
+            game.cleanup_restrictions_end_of_combat();
+            assert_eq!(game.effect_store.restriction_effects.len(), 1);
+            if expire_pending {
+                game.cleanup_restrictions_end_of_turn();
+                assert!(game.effect_store.restriction_effects.is_empty());
+            } else {
+                game.pop_additional_phase();
+                assert!(!game.can_gain_life(alice));
+                game.cleanup_restrictions_end_of_combat();
+                assert!(game.can_gain_life(alice));
+                assert!(game.effect_store.restriction_effects.is_empty());
+            }
+        }
+    }
 
     #[test]
     fn cant_effect_blocks_life_gain() {

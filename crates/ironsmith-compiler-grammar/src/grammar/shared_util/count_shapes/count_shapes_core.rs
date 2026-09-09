@@ -246,6 +246,18 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
             value_helper_shapes::parse_prior_effect_action(this_way_subject)
         {
             let mut filter_words = &this_way_subject[..action_start];
+            // A past-controller qualification applies to the producer's LKI,
+            // rather than to ownership in the destination zone.
+            let historical_controller = if permission_shapes::suffix_words(filter_words, &["they", "controlled"]) {
+                filter_words = &filter_words[..filter_words.len() - 2];
+                Some(PlayerFilter::IteratedPlayer)
+            } else if permission_shapes::suffix_words(filter_words, &["you", "controlled"]) {
+                filter_words = &filter_words[..filter_words.len() - 2];
+                Some(PlayerFilter::You)
+            } else if permission_shapes::suffix_words(filter_words, &["that", "player", "controlled"]) {
+                filter_words = &filter_words[..filter_words.len() - 3];
+                Some(PlayerFilter::IteratedPlayer)
+            } else { None };
             let player = if permission_shapes::suffix_words(filter_words, &["they"])
                 || permission_shapes::suffix_words(filter_words, &["their"])
             {
@@ -275,6 +287,9 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
                 && let Some(mut filter) = coordinated_stack_filter
                     .or_else(|| parse_for_each_object_filter_words(filter_words, head.other))
             {
+                if let Some(controller) = historical_controller {
+                    filter.controller = Some(controller);
+                }
                 let action_words = &this_way_subject[action_start..];
                 if action == ironsmith_core::PriorEffectAction::Returned
                     && permission_shapes::suffix_words(

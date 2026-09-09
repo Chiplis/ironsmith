@@ -172,6 +172,98 @@ pub fn authored_named_source_reference_surface(
     None
 }
 
+/// Preserve an authored return pronoun on a unique transformed source return.
+/// This applies equally to activated and triggered resolution programs.
+pub fn recognize_transformed_source_return_pronoun(
+    effects: &mut [crate::cards::builders::EffectAst],
+    authored_tokens: &[OwnedLexToken],
+) {
+    use crate::cards::builders::{EffectAst, ReturnControllerAst};
+    fn authored_return_surface(
+        tokens: &[OwnedLexToken],
+    ) -> Option<crate::target::SourceReferenceSurface> {
+        if !tokens.iter().any(|token| token.is_word("exile")) {
+            return None;
+        }
+        crate::grammar::source_surface_shapes::parse_unique_pronoun_operand_after(tokens, "return")
+            .map(|shape| shape.surface)
+    }
+
+    fn transformed_source_return_count(effects: &[EffectAst]) -> usize {
+        let mut count = 0;
+        for effect in effects {
+            if let EffectAst::SubjectVerb(subject_verb) = effect
+                && matches!(
+                    &subject_verb.action,
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
+                        target: TargetAst::Source(_),
+                        controller: ReturnControllerAst::Owner,
+                        transformed: true,
+                        ..
+                    }) | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+                        target: TargetAst::Source(_),
+                        zone: Zone::Battlefield,
+                        battlefield_controller: ReturnControllerAst::Owner,
+                        battlefield_transformed: true,
+                        ..
+                    })
+                )
+            {
+                count += 1;
+            }
+            crate::model::visit::for_each_nested_effects(effect, true, |nested| {
+                count += transformed_source_return_count(nested)
+            });
+        }
+        count
+    }
+
+    fn apply_return_surface(
+        effects: &mut [EffectAst],
+        surface: &crate::target::SourceReferenceSurface,
+    ) {
+        for effect in effects {
+            if let EffectAst::SubjectVerb(subject_verb) = effect {
+                let target = match &mut subject_verb.action {
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
+                        target,
+                        controller: ReturnControllerAst::Owner,
+                        transformed: true,
+                        ..
+                    })
+                    | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+                        target,
+                        zone: Zone::Battlefield,
+                        battlefield_controller: ReturnControllerAst::Owner,
+                        battlefield_transformed: true,
+                        ..
+                    }) => Some(target),
+                    _ => None,
+                };
+                if let Some(target) = target
+                    && let TargetAst::Source(span) = target
+                {
+                    let span = *span;
+                    *target = TargetAst::Object(
+                        ObjectFilter::source_with_surface(surface.clone()),
+                        None,
+                        span,
+                    );
+                }
+            }
+            crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+                apply_return_surface(nested, surface)
+            });
+        }
+    }
+
+    if transformed_source_return_count(effects) == 1
+        && let Some(surface) = authored_return_surface(authored_tokens)
+    {
+        apply_return_surface(effects, &surface);
+    }
+}
+
 /// Restore the authored alias on one unambiguous source-exile action.
 ///
 /// Some document forms normalize a card name before their effect parser is
@@ -184,10 +276,24 @@ pub fn recognize_unique_named_source_exile_surface(
     effects: &mut [crate::cards::builders::EffectAst],
     authored_tokens: &[OwnedLexToken],
 ) {
-    fn authored_surface(tokens: &[OwnedLexToken]) -> Option<SourceReferenceSurface> {
+    recognize_unique_source_action_surface(effects, authored_tokens, "exile");
+}
+
+/// Carry an unambiguous authored operand onto an already resolved source action.
+/// Runtime source identity is preserved; only its typed presentation is added.
+pub fn recognize_unique_source_action_surface(
+    effects: &mut [crate::cards::builders::EffectAst],
+    authored_tokens: &[OwnedLexToken],
+    action_word: &str,
+) {
+    fn authored_surface(tokens: &[OwnedLexToken], action_word: &str) -> Option<SourceReferenceSurface> {
+        if tokens.iter().filter(|token| token.is_word(action_word)).count() != 1 {
+            return None;
+        }
         crate::grammar::source_surface_shapes::parse_unique_named_operand_after(
-            None, tokens, "exile",
+            None, tokens, action_word,
         )
+        .or_else(|| crate::grammar::source_surface_shapes::parse_unique_pronoun_operand_after(tokens, action_word))
         .map(|shape| shape.surface)
     }
 
@@ -203,7 +309,7 @@ pub fn recognize_unique_named_source_exile_surface(
         }
     }
 
-    fn source_exile_target(effect: &crate::cards::builders::EffectAst) -> Option<&TargetAst> {
+    fn source_action_target<'a>(effect: &'a crate::cards::builders::EffectAst, action_word: &str) -> Option<&'a TargetAst> {
         let crate::cards::builders::EffectAst::SubjectVerb(subject_verb) = effect else {
             return None;
         };
@@ -213,23 +319,24 @@ pub fn recognize_unique_named_source_exile_surface(
                 target,
                 zone: Zone::Exile,
                 ..
-            }) => Some(target),
+            }) if action_word == "exile" => Some(target),
+            SubjectVerbActionAst::PermanentState(crate::cards::builders::PermanentStateActionAst::Untap { target }) if action_word == "untap" => Some(target),
             _ => None,
         }
     }
 
-    fn candidate_count(effects: &[crate::cards::builders::EffectAst]) -> usize {
+    fn candidate_count(effects: &[crate::cards::builders::EffectAst], action_word: &str) -> usize {
         let mut count = 0;
         for effect in effects {
-            count += source_exile_target(effect).is_some_and(plain_source_target) as usize;
+            count += source_action_target(effect, action_word).is_some_and(plain_source_target) as usize;
             crate::model::visit::for_each_nested_effects(effect, true, |nested| {
-                count += candidate_count(nested)
+                count += candidate_count(nested, action_word)
             });
         }
         count
     }
 
-    fn apply(effects: &mut [crate::cards::builders::EffectAst], surface: &SourceReferenceSurface) {
+    fn apply(effects: &mut [crate::cards::builders::EffectAst], surface: &SourceReferenceSurface, action_word: &str) {
         for effect in effects {
             if let crate::cards::builders::EffectAst::SubjectVerb(subject_verb) = effect {
                 let target = match &mut subject_verb.action {
@@ -238,7 +345,8 @@ pub fn recognize_unique_named_source_exile_surface(
                         target,
                         zone: Zone::Exile,
                         ..
-                    }) => Some(target),
+                    }) if action_word == "exile" => Some(target),
+                    SubjectVerbActionAst::PermanentState(crate::cards::builders::PermanentStateActionAst::Untap { target }) if action_word == "untap" => Some(target),
                     _ => None,
                 };
                 if let Some(target) = target
@@ -260,16 +368,16 @@ pub fn recognize_unique_named_source_exile_surface(
                 }
             }
             crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
-                apply(nested, surface)
+                apply(nested, surface, action_word)
             });
         }
     }
 
-    let Some(surface) = authored_surface(authored_tokens) else {
+    let Some(surface) = authored_surface(authored_tokens, action_word) else {
         return;
     };
-    if candidate_count(effects) == 1 {
-        apply(effects, &surface);
+    if candidate_count(effects, action_word) == 1 {
+        apply(effects, &surface, action_word);
     }
 }
 
@@ -1531,6 +1639,16 @@ mod tests {
     }
 
     #[test]
+    fn parse_target_phrase_retains_creature_type_of_your_choice() {
+        let tokens = lex_line("target creatures of the creature type of your choice", 0).unwrap();
+        let target = parse_target_phrase(&tokens).unwrap();
+        let TargetAst::Object(filter, target_span, _) = target else { panic!("targeted object required"); };
+        assert!(target_span.is_some());
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert!(filter.chosen_creature_type, "the target must match the announced creature type");
+    }
+
+    #[test]
     fn parse_target_phrase_recognizes_nonattacking_nonblocking_target_creature() {
         let tokens = lex_line("target nonattacking, nonblocking creature", 0).unwrap();
         let target = parse_target_phrase(&tokens)
@@ -2338,24 +2456,16 @@ pub fn parse_madness_line(
     let Some(fact) = keyword_line_facts::parse_madness_line_tokens(tokens) else {
         return Ok(None);
     };
-    let mana_cost = match fact.cost {
-        MadnessCostFact::RepeatedMana(mana_cost) => mana_cost,
+    let total_cost = match fact.cost {
+        MadnessCostFact::RepeatedMana(mana_cost) => ironsmith_core::TotalCost::<crate::model::CompilerCost>::mana(mana_cost),
         MadnessCostFact::ActivationTokens(cost_tokens) => {
             if cost_tokens.is_empty() {
-                return Err(CardTextError::ParseError(
-                    "madness keyword missing mana cost".to_string(),
-                ));
+                return Err(CardTextError::ParseError("madness keyword missing cost".to_string()));
             }
             parse_activation_cost(cost_tokens)?
-                .mana_cost()
-                .cloned()
-                .ok_or_else(|| {
-                    CardTextError::ParseError("madness keyword missing mana symbols".to_string())
-                })?
         }
     };
-
-    Ok(Some(AlternativeCastingMethod::Madness { cost: mana_cost }))
+    Ok(Some(AlternativeCastingMethod::Madness { total_cost }))
 }
 
 pub fn parse_madness_line_lexed(
@@ -2980,4 +3090,17 @@ pub fn parse_if_conditional_alternative_cost_line_lexed(
     line_tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     parse_if_conditional_alternative_cost_line(tokens, line_tokens)
+}
+
+#[cfg(test)]
+#[test]
+fn demonstrative_union_targets_reference_the_prior_recipient() {
+    for text in ["that permanent or player", "that creature or player"] {
+        let target = parse_target_phrase(&lex_line(text, 0).unwrap()).unwrap();
+        assert!(matches!(target, TargetAst::Tagged(tag, _) if tag == crate::tag::CompilerReferenceTag::It.bind()));
+    }
+    for text in ["a permanent or player", "target creature or player"] {
+        let target = parse_target_phrase(&lex_line(text, 0).unwrap()).unwrap();
+        assert!(matches!(target, TargetAst::ObjectOrPlayer(..)), "{text}: {target:?}");
+    }
 }

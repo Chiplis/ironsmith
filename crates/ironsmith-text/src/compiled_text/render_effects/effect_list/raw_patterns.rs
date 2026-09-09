@@ -699,6 +699,9 @@
     }
 
 
+    if let Some(compact) = describe_conditional_bonus_before_fight(&raw_effects) {
+        return compact;
+    }
     if let Some(compact) = describe_targeted_conditional_action_then_fight(&raw_effects) {
         return compact;
     }

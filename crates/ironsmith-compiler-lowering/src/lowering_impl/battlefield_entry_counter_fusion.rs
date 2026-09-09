@@ -447,10 +447,7 @@ fn attach_counter_to_producer(
                 .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>(
             ) {
                 let replacement = return_effect.clone().with_entry_counter(counter.clone());
-                return Some(Effect::new(crate::effects::TaggedEffect::new(
-                    tagged.tag.clone(),
-                    Effect::new(replacement),
-                )));
+                return Some(Effect::new(tagged.with_effect(Effect::new(replacement))));
             }
             if let Some(move_effect) = tagged
                 .effect
@@ -458,10 +455,7 @@ fn attach_counter_to_producer(
                 && move_effect.zone == Zone::Battlefield
             {
                 let replacement = move_effect.clone().with_entry_counter(counter.clone());
-                return Some(Effect::new(crate::effects::TaggedEffect::new(
-                    tagged.tag.clone(),
-                    Effect::new(replacement),
-                )));
+                return Some(Effect::new(tagged.with_effect(Effect::new(replacement))));
             }
             if let Some(return_all) = tagged
                 .effect
@@ -483,17 +477,11 @@ fn attach_counter_to_producer(
                 replacement.controller_surface_explicit = return_all.controller_surface_explicit;
                 replacement.verb_surface = return_all.verb_surface;
                 replacement = replacement.with_entry_counter(counter.clone());
-                return Some(Effect::new(crate::effects::TaggedEffect::new(
-                    tagged.tag.clone(),
-                    Effect::new(replacement),
-                )));
+                return Some(Effect::new(tagged.with_effect(Effect::new(replacement))));
             }
         }
         let replacement = attach_counter_to_producer(&tagged.effect, tag, counter)?;
-        return Some(Effect::new(crate::effects::TaggedEffect::new(
-            tagged.tag.clone(),
-            replacement,
-        )));
+        return Some(Effect::new(tagged.with_effect(replacement)));
     }
     if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
         let replacement = attach_counter_to_producer(&with_id.effect, tag, counter)?;
@@ -647,10 +635,7 @@ impl OptionalObjectFilter for BattlefieldEntryCounterSpec {
 
 fn fuse_nested_effect(effect: &Effect) -> Effect {
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
-        return Effect::new(crate::effects::TaggedEffect::new(
-            tagged.tag.clone(),
-            fuse_nested_effect(&tagged.effect),
-        ));
+        return Effect::new(tagged.with_effect(fuse_nested_effect(&tagged.effect)));
     }
     if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
         return Effect::with_id(with_id.id.0, fuse_nested_effect(&with_id.effect));

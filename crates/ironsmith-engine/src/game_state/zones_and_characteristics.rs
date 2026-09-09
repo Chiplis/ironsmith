@@ -147,6 +147,7 @@ impl GameState {
         source: ObjectId,
         controller: PlayerId,
         programs: Vec<crate::resolution::ResolutionProgram>,
+        preparing_entry: bool,
         decision_maker: &mut dyn crate::decision::DecisionMaker,
     ) -> Result<AsEntersProgramExecution, crate::game_loop::GameLoopError> {
         if programs.is_empty() {
@@ -172,6 +173,7 @@ impl GameState {
                         source, controller,
                     ))
                     .with_provenance(provenance);
+            context.replacement.entry_counter_source = preparing_entry.then_some(source);
             let _ = crate::game_loop::execute_resolution_program(
                 self,
                 &mut context,
@@ -212,7 +214,7 @@ impl GameState {
                 },
             )
             .collect::<Vec<_>>();
-        self.execute_immediate_effect_programs(source, controller, programs, decision_maker)
+        self.execute_immediate_effect_programs(source, controller, programs, !for_turn_face_up, decision_maker)
     }
 
     pub(crate) fn execute_as_transforms_effect_programs(
@@ -230,7 +232,7 @@ impl GameState {
             .filter_map(as_transforms_effect_program_from_ability)
             .collect::<Vec<_>>();
         let execution =
-            self.execute_immediate_effect_programs(source, controller, programs, decision_maker)?;
+            self.execute_immediate_effect_programs(source, controller, programs, false, decision_maker)?;
         if let Some(object) = self.object_mut(source) {
             merge_retained_tagged_objects(
                 &mut object.cast_tagged_objects,
@@ -631,6 +633,9 @@ impl GameState {
         }
         if !preserve_x_value {
             new_object.x_value = None;
+        }
+        if !(old_zone == Zone::Stack && new_zone == Zone::Battlefield) {
+            new_object.snow_mana_spent_to_cast = crate::player::ManaPool::default();
         }
         if !preserve_cast_tags {
             new_object.cast_tagged_objects.clear();
@@ -1337,6 +1342,9 @@ impl GameState {
                 }
             }
             if let Some(spec) = static_ability.reveal_from_hand_choice_as_enters() {
+                choices.as_enters_tagged_objects.insert(
+                    crate::tag::TagKey::from(crate::effects::PUBLIC_REVEALED_TAG), Vec::new(),
+                );
                 let filter_ctx = self.filter_context_for(prospective_controller, Some(old_id));
                 let candidates = self
                     .player(prospective_controller)
@@ -1390,6 +1398,13 @@ impl GameState {
                         .filter(|selected| candidate_ids.contains(selected))
                         .take(max)
                         .collect::<Vec<_>>();
+                    if revealed.len() >= min {
+                        let snapshots = revealed.iter().filter_map(|id| self.object(*id))
+                            .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, self)).collect();
+                        choices.as_enters_tagged_objects.insert(
+                            crate::tag::TagKey::from(crate::effects::PUBLIC_REVEALED_TAG), snapshots,
+                        );
+                    }
                     if revealed.len() >= min && !revealed.is_empty() {
                         for viewer_idx in 0..self.players.len() {
                             let viewer = crate::ids::PlayerId::from_index(viewer_idx as u8);

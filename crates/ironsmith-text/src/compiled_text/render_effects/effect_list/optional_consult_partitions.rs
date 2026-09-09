@@ -42,6 +42,15 @@ fn describe_optional_consult_then_battlefield_partition(
         return None;
     };
     consult_effect.downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
+    let mut refs = vec![consult_effect];
+    refs.extend(followups.iter());
+    if let Some((compact, consumed)) = describe_single_consult_move_shuffle(&refs)
+        && consumed == refs.len()
+    {
+        let (consult_text, disposition) = compact.rsplit_once(". ")?;
+        let reveal = consult_text.strip_prefix("Reveal ")?;
+        return Some(format!("You may reveal {reveal}. If you do, {}", lowercase_first(disposition)));
+    }
     let [move_effect, remainder_effect] = followups else {
         return None;
     };

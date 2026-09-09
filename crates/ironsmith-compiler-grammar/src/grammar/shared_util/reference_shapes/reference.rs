@@ -77,7 +77,9 @@ pub(super) fn filter_keyword_constraint_for_words(
     if let Some(id) = static_id {
         return Some(Static(id));
     }
-    if permission_shapes::exact_words(words, &["decayed"]) {
+    if permission_shapes::exact_words(words, &["soulbond"]) {
+        Some(Marker("soulbond"))
+    } else if permission_shapes::exact_words(words, &["decayed"]) {
         Some(Marker("decayed"))
     } else if permission_shapes::exact_words(words, &["fading"]) {
         Some(Marker("fading"))

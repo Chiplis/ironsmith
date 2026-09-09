@@ -178,13 +178,7 @@ pub(super) fn post_rule_revealed_same_mana_value_as_another_iterator(
         return Ok(None);
     }
 
-    let Some(revealed_tag) = state.effects.iter().rev().find_map(|effect| match effect {
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTagged { tag }),
-            ..
-        }) => Some(tag.clone()),
-        _ => None,
-    }) else {
+    let Some(revealed_tag) = crate::effect_sentences::dispatch_entry::last_unconditional_reveal_tag(&state.effects) else {
         return Ok(None);
     };
 

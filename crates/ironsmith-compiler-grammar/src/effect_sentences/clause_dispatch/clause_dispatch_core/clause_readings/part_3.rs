@@ -534,6 +534,10 @@ pub(super) fn read_target_player_choose_objects_with_count(
     input: &Clause<'_>,
 ) -> Result<Option<EffectAst>, CardTextError> {
     let tokens = input.tokens;
+    if clause_grammar::parse_choose_target_shape(tokens).is_some() {
+        return Ok(None);
+    }
+
     let restriction_duration_shape = if find_negation_span(tokens).is_some() {
         effect_grammar::parse_search_restriction_duration_shape_lexed(tokens)?
     } else {

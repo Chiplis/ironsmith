@@ -425,6 +425,69 @@ pub(super) fn rewrite_player_counter_conditional_anthem_compiles_without_parse_l
 }
 
 #[test]
+pub(super) fn attack_or_block_source_status_is_a_static_restriction() {
+    for (text, expected) in [
+        ("This creature can't attack or block unless it's equipped.", "SourceIsEquipped"),
+        ("This creature can't attack or block unless it's enchanted.", "SourceIsEnchanted"),
+    ] {
+        let compiled = super::super::compile_card_text(
+            CardDefinitionBuilder::new(CardId::new(), "Status Restriction Probe")
+                .card_types(vec![CardType::Creature]), text, false,
+        ).expect("status-conditioned restriction should compile");
+        assert!(compiled.definition.spell_effect.is_none());
+        let debug = format!("{:#?}", compiled.definition.abilities);
+        assert!(debug.contains("AttackOrBlock"), "{debug}");
+        assert!(debug.contains("Not("), "{debug}");
+        assert!(debug.contains(expected), "{debug}");
+    }
+}
+
+#[test]
+pub(super) fn attack_or_block_control_condition_is_a_static_restriction() {
+    for (text, expected) in [
+        ("This creature can't attack or block unless you control another Giant.", "Giant"),
+        ("This creature can't attack or block unless you control another creature with power 4 or greater.", "GreaterThanOrEqual"),
+    ] {
+        let compiled = super::super::compile_card_text(
+            CardDefinitionBuilder::new(CardId::new(), "Restriction Probe")
+                .card_types(vec![CardType::Creature]), text, false,
+        ).expect("control-conditioned restriction should compile");
+        assert!(compiled.definition.spell_effect.is_none());
+        let debug = format!("{:#?}", compiled.definition.abilities);
+        assert!(debug.contains("AttackOrBlock"), "{debug}");
+        assert!(debug.contains("Not("), "{debug}");
+        assert!(debug.contains(expected), "{debug}");
+        assert!(debug.contains("other: true"), "{debug}");
+    }
+}
+
+#[test]
+pub(super) fn labeled_turn_animation_preserves_source_and_timing() {
+    for text in [
+        "Bear Form — During your turn, this creature is a Bear with base power and toughness 4/2.",
+        "Wolf Form — During your turn, this creature is a Wolf with base power and toughness 3/5.",
+    ] {
+        let compiled = super::super::compile_card_text(
+            CardDefinitionBuilder::new(CardId::from_raw(1), "Animation Probe")
+                .card_types(vec![CardType::Creature]),
+            text,
+            false,
+        ).expect("labeled animation should compile");
+        let mut modifications = 0;
+        for ability in &compiled.definition.abilities {
+            let AbilityKind::Static(static_ability) = &ability.kind else { continue };
+            let StaticAbilityPayload::Conditional { ability, condition } = &static_ability.payload else { continue };
+            if let StaticAbilityPayload::SetCardTypes { filter, .. } = &ability.payload {
+                assert!(filter.source, "{filter:#?}");
+                assert!(format!("{condition:?}").contains("YourTurn"), "{condition:?}");
+                modifications += 1;
+            }
+        }
+        assert_eq!(modifications, 1, "{:#?}", compiled.definition.abilities);
+    }
+}
+
+#[test]
 pub(super) fn rewrite_conditional_vehicle_type_identity_lowers_as_static_with_condition() {
     for (name, text, condition_fragments, expects_source_surface) in [
         (
@@ -1252,6 +1315,27 @@ pub(super) fn rewrite_grammar_trigger_duplication_as_long_as_prefix_splitter_mat
 }
 
 #[test]
+pub(super) fn labeled_next_spell_grants_keep_activation_costs() {
+    for (text, sacrifice) in [
+        ("Gift of Chaos — {3}, {T}: The next noncreature spell you cast this turn has cascade.", false),
+        ("Jolly Gutpipes — {2}, {T}, Sacrifice a creature: The next creature spell you cast this turn has cascade.", true),
+    ] {
+        let compiled = super::super::compile_card_text(
+            CardDefinitionBuilder::new(CardId::new(), "Labeled Activation Probe")
+                .card_types(vec![CardType::Creature]), text, false,
+        ).expect("labeled next-spell activation should compile");
+        let activated = compiled.definition.abilities.iter().find_map(|ability| {
+            if let AbilityKind::Activated(activated) = &ability.kind { Some(activated) } else { None }
+        }).expect("must retain an activated ability");
+        let cost = format!("{:?}", activated.mana_cost);
+        assert!(cost.contains("Tap"), "{cost}");
+        assert_eq!(cost.contains("Sacrifice"), sacrifice, "{cost}");
+        let effects = format!("{:?}", activated.effects);
+        assert!(effects.contains("GrantNextSpell"), "{effects}");
+    }
+}
+
+#[test]
 pub(super) fn rewrite_lexed_next_spell_cascade_grants_parse_natively() {
     let single_tokens = lex_line(
         "The next noncreature spell you cast this turn has cascade.",
@@ -1963,7 +2047,7 @@ pub(super) fn bare_exiled_cards_in_sequence_bind_to_recent_exiled_result() {
             && rendered.contains("ConsultTopOfLibraryEffect")
             && rendered.contains("Artifact")
             && rendered.contains("Creature")
-            && rendered.contains("zone: Exile")
+            && rendered.contains("ExileEffect")
             && rendered.contains("zone: Battlefield")
             && rendered.contains("__exiled_collection")
             && !rendered.contains("__source_exiled__"),
@@ -3185,8 +3269,8 @@ pub(super) fn rewrite_search_library_helper_parsers_track_mana_and_same_name_suf
     assert_eq!(token_word_refs(&base_filter), vec!["artifact", "card"]);
     assert!(matches!(
         constraint,
-        crate::search_library_support::SearchLibraryManaConstraint::OneOf(values)
-            if values == vec![2, 3]
+        crate::search_library_support::SearchLibraryManaConstraint::ManaValues(values)
+            if values == vec![crate::filter::Comparison::Equal(2), crate::filter::Comparison::Equal(3)]
     ));
 
     let same_name_tokens = lex_line("creature card with the same name as that card", 0)
@@ -4528,4 +4612,27 @@ pub(super) fn definite_player_damage_followup_keeps_the_end_step_participant() {
     assert!(debug.contains("PriorEffectMetric"), "{debug}");
     assert!(compact.contains("target:Player(IteratedPlayer"), "{debug}");
     assert!(!compact.contains("target:Player(Any"), "{debug}");
+}
+
+#[test]
+pub(super) fn kicked_counter_entry_preserves_quoted_activated_ability() {
+    let text = "Kicker {1}{U} and/or {B}\nIf this creature was kicked with its {1}{U} kicker, it enters with two +1/+1 counters on it and with flying.\nIf this creature was kicked with its {B} kicker, it enters with a +1/+1 counter on it and with \"Pay 3 life: Regenerate this creature.\"";
+    let parsed = super::super::compile_card_text(
+        CardDefinitionBuilder::new(CardId::from_raw(1), "Anavolver").card_types(vec![CardType::Creature]), text, false).unwrap();
+    assert!(parsed.definition.spell_effect.is_none(), "entry replacement must not become a resolving spell effect");
+    let debug = format!("{:?}", parsed.definition.abilities);
+    assert!(debug.contains("Regenerate"), "entry must retain the quoted activated ability");
+    assert_eq!(parsed.definition.abilities.len(), 2, "one entry replacement per kicker");
+}
+
+#[test]
+pub(super) fn aura_token_embedded_trigger_stays_inside_creation() {
+    let effects = "Create a white Aura enchantment token named Contract attached to target creature an opponent controls. The token has enchant creature and \"Whenever enchanted creature attacks, it gets +2/+0 until end of turn if it's attacking one of your opponents. Otherwise, its controller loses 2 life.\"";
+    for triggered in [false, true] {
+        let text = if triggered { format!("Whenever Scriv enters or attacks, {}", effects.replacen("Create", "create", 1)) } else { effects.into() };
+        let parsed = super::super::compile_card_text(CardDefinitionBuilder::new(CardId::from_raw(1), "Scriv, the Obligator")
+            .card_types(vec![CardType::Creature]), &text, false).unwrap_or_else(|error| panic!("triggered={triggered}: {error:?}"));
+        let debug = format!("{:?} {:?}", parsed.definition.abilities, parsed.definition.spell_effect);
+        assert!(debug.contains("CreateToken"), "triggered={triggered}: token creation cannot be replaced by the quoted trigger");
+    }
 }

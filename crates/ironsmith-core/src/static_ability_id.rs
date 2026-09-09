@@ -110,6 +110,7 @@ pub enum StaticAbilityId {
     CantAttackYouOrPlaneswalkersUnlessControllerPaysPerAttacker,
     CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl,
     BlockCost,
+    AttackCost,
     CantBlock,
     MayAssignDamageAsUnblocked,
     YouAssignCombatDamageOfCreaturesAttackingYou,
@@ -422,6 +423,7 @@ impl StaticAbilityId {
             | CantAttackYouOrPlaneswalkersUnlessControllerPaysPerAttacker
             | CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl
             | BlockCost
+            | AttackCost
             | CantBlock
             | MayAssignDamageAsUnblocked
             | YouAssignCombatDamageOfCreaturesAttackingYou
@@ -771,6 +773,7 @@ impl StaticAbilityId {
                 | CantAttackYouOrPlaneswalkersUnlessControllerPaysPerAttacker
                 | CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl
                 | BlockCost
+            | AttackCost
                 | CantBlock
                 | MayAssignDamageAsUnblocked
                 | YouAssignCombatDamageOfCreaturesAttackingYou

@@ -107,6 +107,11 @@ pub fn parse_return_same_subtypes_shape(
 ) -> Option<ReturnSameSubtypesShape<'_>> {
     primitives::parse_prefix(tokens, primitives::kw("return"))?;
     let (return_tokens, subtype_tokens) = split_once(tokens, &["do", "the", "same", "for"])?;
+    let return_tokens = if return_tokens.last().is_some_and(|token| token.is_word("then")) {
+        trim_lexed_commas(&return_tokens[..return_tokens.len() - 1])
+    } else {
+        return_tokens
+    };
     let subtypes = crate::grammar::primitives::probe_all(
         subtype_tokens,
         (subtype_list, primitives::sentence_end()).map(|(subtypes, _)| subtypes),
@@ -150,15 +155,20 @@ pub fn parse_choose_sequence_shape(tokens: &[OwnedLexToken]) -> Option<ChooseSeq
     })
 }
 
-pub fn parse_return_create_shape(tokens: &[OwnedLexToken]) -> Option<ReturnCreateShape<'_>> {
+/// The return handler receives its complement after the leading verb is consumed.
+pub fn parse_return_create_tail_shape(tokens: &[OwnedLexToken]) -> Option<ReturnCreateShape<'_>> {
     let (return_tokens, create_tokens) = split_once(tokens, &["then"])?;
-    let (_, return_tail) = primitives::parse_prefix(return_tokens, primitives::kw("return"))?;
     let (_, create_tail) = primitives::parse_prefix(create_tokens, primitives::kw("create"))?;
-    (!trim_lexed_commas(return_tail).is_empty() && !trim_lexed_commas(create_tail).is_empty())
-        .then_some(ReturnCreateShape {
-            return_tokens,
-            create_tokens,
-        })
+    (!trim_lexed_commas(create_tail).is_empty()).then_some(ReturnCreateShape {
+        return_tokens,
+        create_tokens,
+    })
+}
+
+pub fn parse_return_create_shape(tokens: &[OwnedLexToken]) -> Option<ReturnCreateShape<'_>> {
+    let shape = parse_return_create_tail_shape(tokens)?;
+    let (_, return_tail) = primitives::parse_prefix(shape.return_tokens, primitives::kw("return"))?;
+    (!trim_lexed_commas(return_tail).is_empty()).then_some(shape)
 }
 
 fn marker_anywhere<'a, O, P>(tokens: &'a [OwnedLexToken], parser: P) -> bool
@@ -321,6 +331,14 @@ mod tests {
         .unwrap();
         let shape = parse_return_same_subtypes_shape(&tokens).expect("return-same shape");
         assert_eq!(shape.subtypes, vec![Subtype::Goblin, Subtype::Zombie]);
+
+        let tokens = lex_line(
+            "return a Pirate card from your graveyard to your hand, then do the same for Vampire, Dinosaur, and Merfolk",
+            0,
+        ).unwrap();
+        let shape = parse_return_same_subtypes_shape(&tokens).expect("return-same shape with then");
+        assert_eq!(shape.subtypes, vec![Subtype::Vampire, Subtype::Dinosaur, Subtype::Merfolk]);
+        assert_eq!(shape.return_tokens.last().and_then(OwnedLexToken::as_word), Some("hand"));
 
         let tokens = lex_line(
             "return target creature to its owners hand then create a token",

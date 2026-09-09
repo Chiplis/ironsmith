@@ -25,6 +25,8 @@ pub struct AbilityActivatedEvent {
     pub activation_cost_has_tap: bool,
     /// Chosen X value for abilities whose activation cost contained X.
     pub x_value: Option<u32>,
+    /// Identity of the specific activated stack entry, independent of its source object.
+    pub stack_entry_provenance: Option<crate::provenance::ProvNodeId>,
     /// Last-known snapshot of the source at activation time.
     pub snapshot: Option<ObjectSnapshot>,
     /// The specific ability that was activated, including continuous-effect grants.
@@ -46,6 +48,7 @@ impl AbilityActivatedEvent {
             activation_cost_has_x: false,
             activation_cost_has_tap: false,
             x_value: None,
+            stack_entry_provenance: None,
             snapshot: None,
             activated_ability: None,
             mana_sources_spent: Vec::new(),
@@ -55,6 +58,11 @@ impl AbilityActivatedEvent {
     /// Mark whether the activated ability was a loyalty ability.
     pub fn with_loyalty_ability(mut self, is_loyalty_ability: bool) -> Self {
         self.is_loyalty_ability = is_loyalty_ability;
+        self
+    }
+
+    pub fn with_stack_entry_provenance(mut self, provenance: Option<crate::provenance::ProvNodeId>) -> Self {
+        self.stack_entry_provenance = provenance;
         self
     }
 

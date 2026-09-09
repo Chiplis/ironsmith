@@ -19,7 +19,7 @@ fn choice_is_optional_and_scoped_to_the_milled_result() {
     )
     .expect("exact mill-result cast pair");
     let mill_tag = effects.iter().find_map(|effect| match effect {
-        EffectAst::TagAffected { tag, .. } => Some(tag),
+        EffectAst::TagAffected { tag, .. } | EffectAst::TagReferenced { tag, .. } => Some(tag),
         _ => None,
     });
     let Some(mill_tag) = mill_tag else {

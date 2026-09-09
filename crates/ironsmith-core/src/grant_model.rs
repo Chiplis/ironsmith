@@ -237,6 +237,8 @@ pub enum GrantDuration {
     Forever,
     /// Until end of turn.
     UntilEndOfTurn,
+    /// Until the controller's next turn begins.
+    UntilYourNextTurn,
     /// Until the end of the controller's next turn.
     UntilYourNextTurnEnd,
 }
@@ -1735,7 +1737,7 @@ where
             }
             return format!(
                 "{may_prefix} cast {} as though they had flash",
-                castable_filter_description(&self.filter)
+                pluralize_castable_spell_subject(castable_filter_description(&self.filter))
             );
         }
         format!(

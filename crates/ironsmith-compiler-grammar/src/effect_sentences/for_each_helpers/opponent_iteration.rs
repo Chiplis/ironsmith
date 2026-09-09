@@ -5,7 +5,7 @@ pub(super) fn wrap_opponents(filter: &PlayerFilter, effects: Vec<EffectAst>) -> 
     if *filter == PlayerFilter::Opponent {
         EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })
     } else {
-        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
             filter: filter.clone(),
             effects,
         })
@@ -56,7 +56,11 @@ pub fn parse_for_each_opponent_clause(
         read_by_cache: Default::default(),
     };
     match for_each_opponent_readings::read(&input) {
-        ParseOutcome::Match(matched) => return Ok(Some(matched.value.value)),
+        ParseOutcome::Match(matched) => return Ok(Some(if outer.participant_is_actor {
+            matched.value.value
+        } else {
+            sequential_participant_body(matched.value.value)
+        })),
         ParseOutcome::NoMatch => {}
         ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
@@ -118,5 +122,11 @@ pub fn parse_for_each_opponent_clause(
         );
         stabilize_standalone_participant_choice_tag(&mut effects, outer.inner_tokens);
     }
-    Ok(Some(wrap_opponents(&iteration_filter, effects)))
+    Ok(Some(if outer.participant_is_actor {
+        wrap_opponents(&iteration_filter, effects)
+    } else {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+            filter: iteration_filter, effects, sequential: true,
+        })
+    }))
 }

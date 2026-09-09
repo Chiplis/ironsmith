@@ -280,23 +280,25 @@ pub fn parse_shuffle_graveyard_into_library_sentence(
         let has_source_and_graveyard_clause = shape.has_source_and_graveyard_clause;
         let has_hand_clause = shape.has_hand_clause;
         if has_source_and_graveyard_clause {
-            effects.push(EffectAst::subject_verb_move_to_zone(
-                TargetAst::Source(None),
-                Zone::Library,
-                false,
-                ReturnControllerAst::Preserve,
-                false,
-                None,
-            ));
-            if owner_library_destination {
-                effects.push(EffectAst::subject_verb(
-                    SubjectVerbRoleAst::LibraryOwner,
-                    PlayerAst::ItsOwner,
-                    SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
-                ));
-            }
-            effects.push(EffectAst::subject_verb_shuffle_graveyard_into_library(
+            let mut graveyard = parse_object_filter_lexed(&target_tokens[3..], false)?;
+            graveyard.zone = Some(Zone::Graveyard);
+            let mut graveyard_target = TargetAst::Object(graveyard, None, None);
+            apply_shuffle_subject_graveyard_owner_context(&mut graveyard_target, subject);
+            let TargetAst::Object(graveyard, _, _) = graveyard_target else { unreachable!() };
+            let filter = ObjectFilter {
+                any_of: vec![ObjectFilter::source(), graveyard],
+                ..Default::default()
+            };
+            effects.push(EffectAst::subject_verb(
+                SubjectVerbRoleAst::LibraryOwner,
                 player,
+                SubjectVerbActionAst::Library(LibraryActionAst::ShuffleObjectsIntoLibrary {
+                    target: TargetAst::Object(filter, None, None),
+                    all: true,
+                    owner_library_destination,
+                    possessive_owner_subject: false,
+                    shuffle_subject_library: true,
+                }),
             ));
         } else if has_hand_clause {
             let words = crate::lexer::token_word_refs(tokens);
@@ -790,7 +792,7 @@ mod core_programs;
 pub use core_programs::{parse_earthbend_sentence, parse_enchant_sentence};
 #[path = "search_library/zone.rs"]
 mod zone_programs;
-pub use zone_programs::parse_for_each_put_into_graveyard_this_way_sentence;
+pub use zone_programs::{parse_for_each_put_into_graveyard_this_way_sentence, parse_for_each_revealed_this_way_sentence};
 #[path = "search_library/resource.rs"]
 mod resource_programs;
 use resource_programs::bind_sacrificed_snapshot_controller;

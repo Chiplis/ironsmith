@@ -153,8 +153,11 @@ impl TriggerMatcher for SpellCastTrigger {
                 .turn_history
                 .spells_cast_by_player(e.caster)
         };
+        let matching_ordinal = self.filter.as_ref().and_then(|filter| {
+            if filter.first_spell_cast_each_turn { Some(1) } else { filter.spell_cast_ordinal_each_turn }
+        });
         if let Some(exact_spells) = self.exact_spells_this_turn {
-            if cast_count != exact_spells {
+            if matching_ordinal != Some(exact_spells) && cast_count != exact_spells {
                 return false;
             }
         } else if let Some(min_spells) = self.min_spells_this_turn
@@ -224,7 +227,7 @@ impl TriggerMatcher for SpellCastTrigger {
                 // a spell from their hand` use IteratedPlayer in the object
                 // owner filter. During trigger matching, that participant is
                 // the event's caster.
-                let mut filter_ctx = ctx.filter_ctx.clone().with_iterated_player(Some(e.caster));
+                let mut filter_ctx = ctx.filter_ctx.clone().with_iterated_player(Some(e.caster)).with_caster(Some(e.caster));
                 for (tag, snapshots) in &obj.cast_tagged_objects {
                     let retained = filter_ctx.tagged_objects.entry(tag.clone()).or_default();
                     for snapshot in snapshots {
@@ -680,6 +683,14 @@ fn describe_single_creature_target_excluding_source(filter: &ObjectFilter) -> Op
 }
 
 fn describe_spell_filter(filter: &ObjectFilter) -> String {
+    // The surrounding trigger renders this matching ordinal and its caster.
+    if filter.first_spell_cast_each_turn || filter.spell_cast_ordinal_each_turn.is_some() {
+        let mut base = filter.clone();
+        base.first_spell_cast_each_turn = false;
+        base.spell_cast_ordinal_each_turn = None;
+        if base.cast_by == Some(PlayerFilter::IteratedPlayer) { base.cast_by = None; }
+        return describe_spell_filter(&base);
+    }
     if let Some(description) = describe_single_creature_target_excluding_source(filter) {
         return description;
     }

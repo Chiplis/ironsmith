@@ -357,7 +357,7 @@ use ironsmith_compiler::ParseCardText;
             Some(&PlayerFilter::Opponent)
         );
         let [
-            EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+            EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
                 filter: player_filter,
                 effects: per_opponent,
             }),

@@ -197,6 +197,7 @@ mod tests {
                 x_value: None,
                 cast_order_this_turn: None,
                 mana_spent_to_cast: crate::player::ManaPool::default(),
+                snow_mana_spent_to_cast: crate::player::ManaPool::default(),
                 mana_sources_spent_to_cast: Vec::new(),
                 counters: std::collections::HashMap::new(),
                 is_token: false,
@@ -220,6 +221,32 @@ mod tests {
 
         assert!(game.is_goaded(ObjectId::from_raw(1)));
         assert!(!game.is_goaded(ObjectId::from_raw(2)));
+    }
+
+    #[test]
+    fn clear_goad_executor_respects_controller_filter_and_all_mode() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let own = ObjectId::from_raw(1);
+        let other = ObjectId::from_raw(2);
+        game.add_object(battlefield_creature(1, "Own", alice, 1, 1));
+        game.add_object(battlefield_creature(2, "Other", bob, 1, 1));
+        let source = ObjectId::from_raw(100);
+        game.add_goad_effect(own, bob, Until::Forever, source);
+        game.add_goad_effect(other, alice, Until::Forever, source);
+        let mut filter = ObjectFilter::creature();
+        filter.controller = Some(crate::filter::PlayerFilter::You);
+        let mut dm = AutoPassDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        ClearGoadEffect::new(ChooseSpec::All(filter)).execute(&mut game, &mut ctx).unwrap();
+        assert!(!game.is_goaded(own));
+        assert!(game.is_goaded(other));
+        game.add_goad_effect(own, bob, Until::Forever, source);
+        assert!(game.is_goaded(own));
+        ClearGoadEffect::all().execute(&mut game, &mut ctx).unwrap();
+        assert!(!game.is_goaded(own));
+        assert!(!game.is_goaded(other));
     }
 
     #[test]
@@ -249,4 +276,24 @@ mod tests {
             "a rest-of-game goad designation must not expire on the goading player's next turn"
         );
     }
+}
+
+
+pub use ironsmith_core::ClearGoadEffect;
+
+impl EffectExecutor for ClearGoadEffect {
+    fn execute(&self, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<EffectOutcome, ExecutionError> {
+        let objects = if let Some(target) = &self.target {
+            resolve_objects_for_effect(game, ctx, target)?
+        } else { game.battlefield.clone() };
+        let mut count = 0;
+        for id in objects {
+            if game.object(id).is_some_and(|object| object.zone == Zone::Battlefield) && game.current_is_creature(id) {
+                game.clear_goad(id);
+                count += 1;
+            }
+        }
+        Ok(EffectOutcome::count(count))
+    }
+    fn get_target_spec(&self) -> Option<&ChooseSpec> { self.target.as_ref() }
 }

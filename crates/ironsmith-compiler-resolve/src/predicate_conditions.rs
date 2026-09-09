@@ -247,18 +247,9 @@ pub fn resolve_condition_from_predicate(
             let player = resolve_non_target_player_filter(*player, &refs)?;
             let mut resolved = resolve_it_tag(filter, &refs)?;
             resolved.zone = None;
-            if player == PlayerFilter::Any {
-                return Ok(Condition::PlayerControlsExactly {
-                    player,
-                    filter: resolved,
-                    count: 0,
-                });
-            }
-            Condition::Not(Box::new(Condition::PlayerControls {
-                player,
-                filter: resolved,
-            }))
+            Condition::PlayerControlsExactly { player, filter: resolved, count: 0 }
         }
+
         PredicateAst::Player(PlayerPredicateAst::PlayerControlsMost { player, filter }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             let mut resolved = resolve_it_tag(filter, &refs)?;

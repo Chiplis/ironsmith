@@ -22,7 +22,8 @@ pub(super) fn active_target_assignments_for_effect(
         && let Some(profile) = effect.target_selection_profile()
     {
         if let Some(next) = assignments.get(*cursor)
-            && (next.spec == *profile.spec || next.spec.base() == profile.spec.base())
+            && (next.spec == *profile.spec || next.spec.base() == profile.spec.base()
+                || (profile.chooser.is_some() && crate::targeting::target_spec_matches_chooser_assignment(profile.spec, &next.spec)))
         {
             *cursor += 1;
             return vec![next.clone()];
@@ -54,7 +55,8 @@ pub(super) fn active_target_assignments_for_effect(
 
     if let Some(profile) = effect.target_selection_profile()
         && let Some(next) = assignments.get(*cursor)
-        && (next.spec == *profile.spec || next.spec.base() == profile.spec.base())
+        && (next.spec == *profile.spec || next.spec.base() == profile.spec.base()
+                || (profile.chooser.is_some() && crate::targeting::target_spec_matches_chooser_assignment(profile.spec, &next.spec)))
     {
         *cursor += 1;
         return vec![next.clone()];

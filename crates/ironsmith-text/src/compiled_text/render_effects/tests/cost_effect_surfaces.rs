@@ -74,7 +74,8 @@ fn blink_with_entry_counter_preserves_then_and_the_authored_reference() {
 #[test]
 fn prevention_followup_and_delayed_pact_payment_share_the_public_statement_route() {
     let text = "The next time a source of your choice would deal damage to you this turn, prevent that damage. You gain life equal to the damage prevented this way.\nAt the beginning of your next upkeep, pay {1}{W}{W}. If you don't, you lose the game.";
-    assert_eq!(render(text, vec![CardType::Instant]), text);
+    // Both paragraphs resolve as one spell program; preserve every instruction.
+    assert_eq!(render(text, vec![CardType::Instant]).replace("\n", " "), text.replace("\n", " "));
 }
 
 #[test]

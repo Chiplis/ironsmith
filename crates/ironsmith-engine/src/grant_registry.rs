@@ -40,6 +40,12 @@ pub enum GrantSource {
         duration_player: PlayerId,
         expires_end_of_turn: u32,
     },
+    EffectUntilPlayerNextTurnStart {
+        source_id: ObjectId,
+        duration_player: PlayerId,
+        created_turn: u32,
+        departure_boundary: Option<u32>,
+    },
     /// From a resolving effect that lasts until the same source object next
     /// successfully exiles a card.
     EffectUntilSourceExilesAnother {
@@ -75,6 +81,10 @@ pub enum GrantSource {
 }
 
 impl GrantSource {
+    pub fn until_player_next_turn_start(source_id: ObjectId, duration_player: PlayerId, created_turn: u32) -> Self {
+        Self::EffectUntilPlayerNextTurnStart { source_id, duration_player, created_turn, departure_boundary: None }
+    }
+
     /// Create a grant sourced from a resolving effect that lasts through end of turn.
     pub fn until_end_of_turn(source_id: ObjectId, turn: u32) -> Self {
         GrantSource::Effect {
@@ -107,6 +117,7 @@ impl GrantSource {
     pub fn source_id(&self) -> ObjectId {
         match self {
             GrantSource::Effect { source_id, .. } => *source_id,
+            GrantSource::EffectUntilPlayerNextTurnStart { source_id, .. } => *source_id,
             GrantSource::EffectUntilPlayerNextTurnEnd { source_id, .. } => *source_id,
             GrantSource::EffectUntilSourceExilesAnother { source_id, .. } => *source_id,
             GrantSource::EffectWhileControlled { source_id, .. } => *source_id,
@@ -119,6 +130,13 @@ impl GrantSource {
     /// Check if this grant is still valid.
     pub fn is_valid(&self, game: &crate::game_state::GameState) -> bool {
         match self {
+            GrantSource::EffectUntilPlayerNextTurnStart { duration_player, created_turn, departure_boundary, .. } => {
+                departure_boundary.map_or(
+                    !(game.turn.turn_number > *created_turn && game.is_active_player(*duration_player)),
+                    |boundary| game.turn.turn_number < boundary,
+                )
+            }
+
             GrantSource::Effect {
                 expires_end_of_turn,
                 ..
@@ -180,6 +198,9 @@ impl GrantSource {
     /// Check if this grant is still valid using raw data (for cleanup).
     pub fn is_valid_raw(&self, turn_number: u32, battlefield: &[ObjectId]) -> bool {
         match self {
+            GrantSource::EffectUntilPlayerNextTurnStart { departure_boundary, .. } =>
+                departure_boundary.is_none_or(|boundary| turn_number < boundary),
+
             GrantSource::Effect {
                 expires_end_of_turn,
                 ..
@@ -211,6 +232,7 @@ impl GrantSource {
 /// Normalized lifetime for a grant.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GrantLifetime {
+    UntilPlayerNextTurnStart { source_id: ObjectId, player: PlayerId, created_turn: u32, departure_boundary: Option<u32> },
     /// Valid until the end of the specified turn.
     UntilEndOfTurn { source_id: ObjectId, turn: u32 },
     UntilSourceExilesAnother {
@@ -239,6 +261,7 @@ pub enum GrantLifetime {
 impl GrantLifetime {
     pub fn source_id(&self) -> ObjectId {
         match self {
+            GrantLifetime::UntilPlayerNextTurnStart { source_id, .. } => *source_id,
             GrantLifetime::UntilEndOfTurn { source_id, .. } => *source_id,
             GrantLifetime::UntilSourceExilesAnother { source_id, .. } => *source_id,
             GrantLifetime::WhileSourceOnBattlefield(source_id) => *source_id,
@@ -252,6 +275,9 @@ impl GrantLifetime {
 impl GrantSource {
     pub fn lifetime(&self) -> GrantLifetime {
         match self {
+            GrantSource::EffectUntilPlayerNextTurnStart { source_id, duration_player, created_turn, departure_boundary } =>
+                GrantLifetime::UntilPlayerNextTurnStart { source_id: *source_id, player: *duration_player, created_turn: *created_turn, departure_boundary: *departure_boundary },
+
             GrantSource::Effect {
                 expires_end_of_turn,
                 source_id,
@@ -964,6 +990,7 @@ impl GrantRegistry {
         self.grants.retain(|grant| {
             !matches!(&grant.source,
                 GrantSource::Effect { source_id: sid, .. } |
+                GrantSource::EffectUntilPlayerNextTurnStart { source_id: sid, .. } |
                 GrantSource::EffectUntilPlayerNextTurnEnd { source_id: sid, .. } |
                 GrantSource::EffectWhileControlled { source_id: sid, .. } |
                 GrantSource::EffectWhileStableCardOnTopOfLibrary { source_id: sid, .. } |
@@ -981,6 +1008,11 @@ impl GrantRegistry {
     /// a later surviving player's turn.
     pub fn prepare_for_departing_player(&mut self, player: PlayerId, expires_end_of_turn: u32) {
         for grant in &mut self.grants {
+            if let GrantSource::EffectUntilPlayerNextTurnStart { duration_player, departure_boundary, .. } = &mut grant.source
+                && *duration_player == player
+            {
+                *departure_boundary = Some(expires_end_of_turn.saturating_add(1));
+            }
             if let GrantSource::EffectUntilPlayerNextTurnEnd {
                 duration_player,
                 expires_end_of_turn: grant_expiry,
@@ -993,6 +1025,19 @@ impl GrantRegistry {
         }
     }
 
+    pub fn expire_at_turn_start(&mut self, turn: u32, active_players: &[PlayerId]) {
+        self.grants.retain(|grant| match &grant.source {
+            GrantSource::EffectUntilPlayerNextTurnStart { duration_player, created_turn, departure_boundary, .. } => {
+                departure_boundary.map_or(
+                    !(turn > *created_turn && active_players.contains(duration_player)),
+                    |boundary| turn < boundary,
+                )
+            }
+            _ => true,
+        });
+        self.cleanup_orphaned_shared_usage();
+    }
+
     /// Remove grants tied to a physical card's continuous presence in a zone.
     pub fn remove_stable_card_grants_for_zone(&mut self, stable_id: StableId, zone: Zone) {
         self.grants
@@ -1003,6 +1048,8 @@ impl GrantRegistry {
     /// Clean up expired grants (call at end of turn).
     pub fn cleanup_expired(&mut self, turn_number: u32, battlefield: &[ObjectId]) {
         self.grants.retain(|grant| match &grant.source {
+            GrantSource::EffectUntilPlayerNextTurnStart { departure_boundary, .. } =>
+                departure_boundary.is_none_or(|boundary| turn_number.saturating_add(1) < boundary),
             GrantSource::Effect {
                 expires_end_of_turn,
                 ..

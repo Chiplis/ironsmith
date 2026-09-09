@@ -2239,6 +2239,17 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             )
         }
         ChooseSpec::Object(filter) => {
+            if let Some(surface) = filter.additional_cost_object_surface() {
+                let mut rest = filter.clone();
+                rest.set_additional_cost_object_surface(None);
+                rest.tagged_constraints.clear();
+                if rest == ObjectFilter::default()
+                    && filter.tagged_constraints.len() == 1
+                    && matches!(filter.tagged_constraints[0].relation, crate::filter::TaggedOpbjectRelation::IsTaggedObject | crate::filter::TaggedOpbjectRelation::SameObjectId)
+                {
+                    return surface.description();
+                }
+            }
             if let Some(zone_union) =
                 describe_shared_creature_battlefield_or_graveyard_filter(filter)
             {
@@ -4569,6 +4580,21 @@ pub(crate) fn describe_prior_effect_metric_basis(
         let noun = if plural { "cards" } else { "card" };
         return format!("{noun} returned to your hand this way");
     }
+    if query.action == Some(crate::effect::PriorEffectAction::PutIntoGraveyard)
+        && let Some(controller) = query.filter.as_ref().and_then(|filter| filter.controller.as_ref())
+    {
+        // This query matches captured pre-move characteristics, so control
+        // is historical rather than ownership in the destination graveyard.
+        let mut unqualified = query.clone();
+        unqualified.filter.as_mut().unwrap().controller = None;
+        let noun = prior_effect_query_noun(&unqualified, plural);
+        let player = if *controller == PlayerFilter::IteratedPlayer {
+            "they".to_string()
+        } else {
+            describe_player_filter(controller)
+        };
+        return format!("{noun} {player} controlled that {} put into a graveyard this way", if plural { "were" } else { "was" });
+    }
     let noun = prior_effect_query_noun(query, plural);
     match query.action {
         Some(action) => format!(
@@ -4716,7 +4742,7 @@ pub(crate) fn describe_explicit_where_x_surface(value: &Value) -> Option<&'stati
     }
     if value.has_surface_hint(ValueSurfaceHint::PriorEffectResult)
         && !matches!(value.unhinted(), Value::Add(_, _)) {
-        return Some("the result");
+        return Some(if matches!(value.unhinted(), Value::EffectMetric { metric: crate::effect::EffectMetric::OtherNumber, .. }) { "the other result" } else { "the result" });
     }
     if value.has_surface_hint(ValueSurfaceHint::ManaValueOfPermanentExiledThisWay) {
         return Some("the mana value of the permanent exiled this way");
@@ -4804,6 +4830,7 @@ pub(crate) fn describe_turn_history_for_each_basis(value: &Value) -> Option<Stri
             ))
         }
         Value::TurnHistoryCount(TurnHistoryCount::CountersPutOn {
+            source_controller,
             counter_type,
             filter,
         }) => {
@@ -4822,7 +4849,8 @@ pub(crate) fn describe_turn_history_for_each_basis(value: &Value) -> Option<Stri
                 |counter_type| format!("{} counter", counter_type.description()),
             );
             Some(format!(
-                "{counter} you've put on {subject}{controlled} this turn"
+                "{counter} {} on {subject}{controlled} this turn",
+                source_controller.as_ref().map_or_else(|| "put".to_string(), |player| if player == &PlayerFilter::You { "you've put".to_string() } else { format!("{} has put", describe_player_filter(player)) })
             ))
         }
         Value::TurnHistoryCount(TurnHistoryCount::Sacrificed { player, filter }) => {
@@ -4996,13 +5024,15 @@ fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
             describe_player_filter(player)
         ),
         TurnHistoryCount::CountersPutOn {
+            source_controller,
             counter_type,
             filter,
         } => format!(
-            "the number of {} counters put on {} this turn",
+            "the number of {} counters {} on {} this turn",
             counter_type.map_or("".to_string(), |counter_type| counter_type
                 .description()
                 .to_string()),
+            source_controller.as_ref().map_or_else(|| "put".to_string(), |player| format!("{} put", describe_player_filter(player))),
             pluralize_noun_phrase(&describe_for_each_filter(filter))
         ),
         TurnHistoryCount::CreaturesAttackedWith { player, filter } => format!(
@@ -5271,7 +5301,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
             }
             if hints.contains(&ironsmith_core::ValueSurfaceHint::PriorEffectResult)
                 && !matches!(value.unhinted(), Value::Add(_, _)) {
-                return "the result".to_string();
+                return if matches!(value.unhinted(), Value::EffectMetric { metric: crate::effect::EffectMetric::OtherNumber, .. }) { "the other result" } else { "the result" }.to_string();
             }
             if hints.contains(
                 &ironsmith_core::ValueSurfaceHint::IndefiniteCommanderReference,
@@ -5623,6 +5653,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
         ),
         Value::DistinctNames(filter) => format!(
             "the number of differently named {}",
+            describe_count_filter_value_subject(filter)
+        ),
+        Value::DistinctManaValues(filter) => format!(
+            "the number of different mana values among {}",
             describe_count_filter_value_subject(filter)
         ),
         Value::DistinctPowers(filter) => format!(

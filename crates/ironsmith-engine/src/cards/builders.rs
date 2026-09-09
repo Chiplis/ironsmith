@@ -3637,22 +3637,28 @@ impl CardDefinitionBuilder {
             ));
         }
         builder
-            .with_ability(Ability::triggered(
+            .with_ability({
+                let mut ability = Ability::triggered(
                 Trigger::beginning_of_upkeep(PlayerFilter::You),
                 vec![Effect::remove_counters(
                     CounterType::Time,
                     1,
                     ChooseSpec::Source,
                 )],
-            ))
+            );
+                if let crate::ability::AbilityKind::Triggered(triggered) = &mut ability.kind {
+                    triggered.intervening_if = Some(crate::effect::Condition::SourceHasCounterAtLeast { counter_type: crate::object::CounterType::Time, count: 1, surface: Default::default() });
+                }
+                ability
+            })
             .with_ability(Ability {
                 kind: AbilityKind::Triggered(TriggeredAbility {
-                    trigger: Trigger::counter_removed_from(ObjectFilter::source()),
+                    trigger: Trigger::new(crate::triggers::CounterRemovedFromTrigger::new(ObjectFilter::source()).counter_type(CounterType::Time).last()),
                     effects: crate::resolution::ResolutionProgram::from_effects(vec![
                         Effect::sacrifice_source(),
                     ]),
                     choices: vec![],
-                    intervening_if: Some(Condition::SourceHasNoCounter(CounterType::Time)),
+                    intervening_if: None,
                     presentation_label: None,
                 }),
                 functional_zones: vec![Zone::Battlefield],
@@ -4328,7 +4334,7 @@ impl CardDefinitionBuilder {
     /// Add madness with the given cost.
     pub fn madness(mut self, cost: ManaCost) -> Self {
         self.alternative_casts
-            .push(AlternativeCastingMethod::Madness { cost });
+            .push(AlternativeCastingMethod::Madness { total_cost: crate::cost::TotalCost::mana(cost) });
         self
     }
 

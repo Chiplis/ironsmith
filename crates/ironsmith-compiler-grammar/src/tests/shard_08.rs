@@ -5,6 +5,43 @@ use ironsmith_compiler::ParseCardText;
 use ironsmith_compiler_lowering::CardDefinitionBuilder;
 
 #[test]
+pub(super) fn inline_creature_type_choice_pumps_choose_before_modifying()
+-> Result<(), CardTextError> {
+    for text in [
+        "Destroy all creatures of the creature type of your choice.",
+        "Creatures of the creature type of your choice get +X/+X until end of turn.",
+        "Creatures of the creature type of your choice get -3/-3 until end of turn.",
+        "Creatures of the creature type of your choice get +0/+4 until end of turn.",
+        "Creatures of the creature type of your choice get +2/+2 and gain trample until end of turn.",
+        "Creatures of the creature type of your choice gain trample and get +2/+2 until end of turn.",
+        "Creatures of the creature type of your choice get +2/+2 and lose flying until end of turn.",
+    ] {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Chromatic Probe")
+            .card_types(vec![CardType::Instant])
+            .parse_text(text)?;
+        let program = definition.spell_effect.as_ref().expect("spell program");
+        let debug = format!("{program:#?}");
+        assert!(debug.contains("ChooseCreatureType"), "{debug}");
+        assert!(debug.contains("chosen_creature_type: true"), "{debug}");
+    }
+    Ok(())
+}
+
+#[test]
+pub(super) fn same_line_spell_sentences_do_not_create_paragraph_boundaries()
+-> Result<(), CardTextError> {
+    for text in ["Draw a card. Scry 2.", "Draw three cards. Proliferate."] {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Sentence Boundary Probe")
+            .card_types(vec![CardType::Sorcery])
+            .parse_text(text)?;
+        let program = definition.spell_effect.as_ref().expect("spell program");
+        assert!(program.segments.len() >= 2, "{program:#?}");
+        assert!(program.segments.iter().all(|segment| !segment.starts_new_source_line), "{program:#?}");
+    }
+    Ok(())
+}
+
+#[test]
 pub(super) fn distinct_spell_source_lines_survive_as_resolution_provenance()
 -> Result<(), CardTextError> {
     let definition = CardDefinitionBuilder::new(CardId::new(), "Source Line Variant")
@@ -542,5 +579,213 @@ pub(super) fn fire_magic_lowers_tiered_labels_costs_and_exactly_one_mode()
             "Firaga — {5} — Fire Magic deals 3 damage to each creature",
         ]
     );
+    Ok(())
+}
+
+#[test]
+pub(super) fn temporary_source_exile_permission_keeps_persistent_pool() -> Result<(), CardTextError> {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Chromatic Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text("{T}: Until end of turn, you may play cards exiled with this creature.")?;
+    let debug = format!("{definition:#?}");
+    assert!(debug.contains("GrantPlayTaggedEffect"), "{debug}");
+    assert!(debug.contains("__source_exiled__"), "{debug}");
+    assert!(!debug.contains("__sentence_helper_exiled"), "{debug}");
+    assert!(debug.contains("UntilEndOfTurn"), "{debug}");
+    Ok(())
+}
+
+#[test]
+pub(super) fn reveal_selected_hand_cards_keeps_choice_and_filter() -> Result<(), CardTextError> {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Chromatic Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Reveal any number of creature cards with power 5 or greater from your hand.")?;
+    let debug = format!("{:?}", definition.spell_effect);
+    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(debug.contains("Reveal"), "{debug}");
+    assert!(debug.contains("GreaterThanOrEqual(5)"), "{debug}");
+    Ok(())
+}
+
+#[test]
+pub(super) fn activated_reveal_selection_keeps_count_and_filter() -> Result<(), CardTextError> {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Chromatic Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text("{T}: Reveal any number of creature cards with power 5 or greater from your hand. Add {G} for each card revealed this way.")?;
+    let debug = format!("{definition:?}");
+    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(debug.contains("GreaterThanOrEqual(5)"), "{debug}");
+    Ok(())
+}
+
+#[test]
+pub(super) fn activated_reveal_comparison_keeps_other_card_relation() -> Result<(), CardTextError> {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Chromatic Probe")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("{T}: Reveal up to five nonland cards from your hand. For each of those cards that has the same mana value as another card revealed this way, create a Treasure token.")?;
+    let debug = format!("{definition:?}");
+    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(debug.contains("SameManaValueAsAnotherTagged"), "{debug}");
+    Ok(())
+}
+
+#[test]
+pub(super) fn transform_then_untap_preserves_both_instructions() -> Result<(), CardTextError> {
+    for text in [
+        "{T}: Transform this land, then untap it.",
+        "{1}, {T}, Sacrifice a creature: Put a soul counter on this land. Then if there are three or more soul counters on it, remove those counters, transform it, then untap it. Activate only as a sorcery.",
+    ] {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Chromatic Probe")
+            .card_types(vec![CardType::Land]).parse_text(text)?;
+        let debug = format!("{definition:?}");
+        assert!(debug.contains("TransformEffect"), "{debug}");
+        assert!(debug.contains("UntapEffect"), "{debug}");
+    }
+    Ok(())
+}
+
+#[test]
+pub(super) fn repeated_counter_placements_keep_both_recipients() -> Result<(), CardTextError> {
+    for text in [
+        "{T}: Put a -1/-1 counter on this creature and a -1/-1 counter on target creature.",
+        "{2}, {T}: Put a +1/+1 counter on this creature and a +1/+1 counter on up to one target commander creature you control.",
+    ] {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Chromatic Probe")
+            .card_types(vec![CardType::Creature]).parse_text(text)?;
+        let debug = format!("{definition:?}");
+        assert_eq!(debug.matches("PutCountersEffect {").count(), 2, "{debug}");
+        if text.contains("up to one") {
+            assert!(debug.contains("is_commander: true"), "{debug}");
+            assert!(debug.contains("ChoiceCount { min: 0, max: Some(1)"), "{debug}");
+        }
+    }
+    Ok(())
+}
+
+#[test]
+pub(super) fn repeated_return_subtypes_preserves_every_return() -> Result<(), CardTextError> {
+    for text in [
+        "Return a Pirate card from your graveyard to your hand, then do the same for Vampire, Dinosaur, and Merfolk.",
+        "Return an Elf card from your graveyard to your hand, then do the same for Goblin and Zombie.",
+    ] {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Chromatic Probe")
+            .card_types(vec![CardType::Sorcery]).parse_text(text)?;
+        let debug = format!("{:?}", definition.spell_effect);
+        let expected_subtypes = if text.contains("Pirate") { vec!["Pirate", "Vampire", "Dinosaur", "Merfolk"] } else { vec!["Elf", "Goblin", "Zombie"] };
+        assert_eq!(debug.matches("ReturnFromGraveyardToHandEffect {").count(), expected_subtypes.len(), "{debug}");
+        assert_eq!(debug.matches("ChoiceCount { min: 1, max: Some(1)").count(), expected_subtypes.len(), "{debug}");
+        for subtype in expected_subtypes {
+            assert!(debug.contains(&format!("subtypes: [{subtype}]")), "missing {subtype}: {debug}");
+        }
+    }
+    Ok(())
+}
+
+#[test]
+pub(super) fn ordinal_counter_keeps_cast_order_restriction() -> Result<(), CardTextError> {
+    for name in ["Second Guess", "Chromatic Probe"] {
+        let definition = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Instant])
+            .parse_text("Counter target spell that's the second spell cast this turn.")?;
+        let debug = format!("{:?}", definition.spell_effect);
+        assert!(debug.contains("TargetSpellCastOrderThisTurn(2)"), "{debug}");
+    }
+    Ok(())
+}
+
+#[test]
+pub(super) fn return_then_create_preserves_the_token_effect() -> Result<(), CardTextError> {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Chromatic Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Until end of turn, target creature you control gains \"When this creature dies, return it to the battlefield tapped under its owner's control, then create a Wicked Role token attached to it.\"")?;
+    let debug = format!("{definition:?}");
+    assert!(debug.contains("CreateTokenEffect"), "{debug}");
+    assert!(debug.contains("Wicked"), "{debug}");
+    assert!(debug.contains("AttachObjectsEffect"), "{debug}");
+    assert!(debug.contains("tapped: true"), "{debug}");
+    assert!(debug.contains("battlefield_controller: Owner"), "{debug}");
+    assert!(debug.contains("target: Tagged(TagKey(\"returned_0\"))"), "{debug}");
+    Ok(())
+}
+
+#[test]
+fn shared_counter_list_keeps_all_types_and_followup() -> Result<(), CardTextError> {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Counter List Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Put a +1/+1 counter, a reach counter, and a deathtouch counter on target creature. Untap it.")?;
+    let program = definition.spell_effect.as_ref().unwrap();
+    let debug = format!("{program:#?}");
+    assert_eq!(debug.matches("PutCountersEffect {").count(), 3, "{debug}");
+    assert!(debug.contains("counter_type: Reach"), "{debug}");
+    assert!(debug.contains("counter_type: Deathtouch"), "{debug}");
+    assert!(debug.contains("UntapEffect"), "{debug}");
+    Ok(())
+}
+
+#[test]
+fn counter_payment_mana_value_refers_to_the_countered_target() -> Result<(), CardTextError> {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Payment Reference Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Counter target spell unless its controller pays {X}, where X is its mana value.")?;
+    let debug = format!("{:#?}", definition.spell_effect.as_ref().unwrap());
+    let payment = debug.split("x_value: Some(").nth(1).expect("dynamic X payment");
+    assert!(payment.trim_start().starts_with("ManaValueOf(\n"), "{payment}");
+    assert!(payment.contains("Target("), "{payment}");
+    assert!(!payment.contains("Source,"), "{payment}");
+    Ok(())
+}
+
+#[test]
+fn surveil_then_counter_keeps_payment_and_selected_spell() -> Result<(), CardTextError> {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Library Counter Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Choose target spell. Surveil 2, then counter the chosen spell unless its controller pays {1} for each card in your graveyard.")?;
+    let debug = format!("{:#?}", definition.spell_effect.as_ref().unwrap());
+    assert!(debug.contains("SurveilEffect"), "{debug}");
+    assert!(debug.contains("CounterEffect"), "{debug}");
+    assert!(debug.contains("UnlessPaysEffect"), "{debug}");
+    assert!(debug.contains("Graveyard"), "{debug}");
+    Ok(())
+}
+
+#[test]
+fn counted_library_actions_keep_then_followups() -> Result<(), CardTextError> {
+    for action in ["Scry", "Surveil"] {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Library Followup Probe")
+            .card_types(vec![CardType::Sorcery])
+            .parse_text(&format!("{action} 2, then draw three cards."))?;
+        let debug = format!("{:#?}", definition.spell_effect.as_ref().unwrap());
+        assert!(debug.contains(&format!("{action}Effect")), "{debug}");
+        assert!(debug.contains("DrawCardsEffect"), "{debug}");
+        assert!(debug.contains("3,"), "{debug}");
+    }
+    Ok(())
+}
+
+#[test]
+fn library_search_mana_value_does_not_become_exact_mana_cost() -> Result<(), CardTextError> {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Mana Search Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Search your library for an instant or sorcery card with mana value 1, reveal it, put it into your hand, then shuffle.")?;
+    let debug = format!("{:#?}", definition.spell_effect.as_ref().unwrap());
+    assert!(!debug.contains("exact_mana_cost: Some"), "{debug}");
+    assert!(debug.contains("mana_value: Some"), "{debug}");
+    assert!(!debug.contains("no_x_in_cost: true"), "{debug}");
+    Ok(())
+}
+
+#[test]
+fn conditional_untap_last_attack_remains_a_static_restriction() -> Result<(), CardTextError> {
+    for text in [
+        "This creature doesn't untap during your untap step if it attacked during your last turn.",
+        "Enchant creature\nEnchanted creature doesn't untap during its controller's untap step if it attacked during its controller's last turn.",
+    ] {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Conditional Untap Probe")
+            .card_types(vec![if text.starts_with("Enchant") { CardType::Enchantment } else { CardType::Creature }]).parse_text(text)?;
+        let debug = format!("{definition:#?}");
+        assert!(debug.contains("ObjectAttackedDuringControllersLastTurn"), "{debug}");
+        assert!(debug.contains("DoesntUntap"), "{debug}");
+        assert!(!debug.contains("UntapEffect"), "{debug}");
+    }
     Ok(())
 }

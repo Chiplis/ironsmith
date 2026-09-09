@@ -116,6 +116,7 @@ pub fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness { target, .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature { target, .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness { target, .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach { target, .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpByLastEffect { target, .. })
             | SubjectVerbActionAst::Control(ControlActionAst::GainControl { target, .. })

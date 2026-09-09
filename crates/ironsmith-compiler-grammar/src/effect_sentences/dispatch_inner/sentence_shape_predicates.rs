@@ -1077,6 +1077,17 @@ fn parse_bounded_x_mana_payment_sentence(tokens: &[OwnedLexToken]) -> Option<Vec
     }])
 }
 
+fn parse_complete_become_before_effect_chain(
+    tokens: &[OwnedLexToken],
+) -> Result<Vec<EffectAst>, CardTextError> {
+    // Copy exceptions belong to one action even when separated by a comma.
+    // Keep that action intact inside a conditional body before chain splitting.
+    if let Some(effect) = crate::effect_sentences::dispatch_entry::parse_complete_become_statement(tokens)? {
+        return Ok(vec![effect]);
+    }
+    super::parse_effect_chain_lexed(tokens)
+}
+
 fn parse_gain_ability_before_effect_chain(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {

@@ -8,7 +8,6 @@ use crate::costs::{CostContext, CostPayer, CostPaymentResult};
 use crate::effect::Effect;
 use crate::effects::{CostExecutableEffect, CostValidationError};
 use crate::effects::{ExecutionContext, execute_effect};
-use crate::events::cause::EventCause;
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 
@@ -79,6 +78,12 @@ fn tagged_sacrifice_cost_precheck(
     ctx: &CostContext,
 ) -> Option<Result<(), CostPaymentError>> {
     let effect = transparent_cost_effect(effect);
+    if let Some(target) = effect.downcast_ref::<crate::effects::SacrificeTargetEffect>()
+        && matches!(target.target.base(), crate::target::ChooseSpec::Source)
+        && !game.can_be_sacrificed_with_cause(ctx.source, &ctx.event_cause())
+    {
+        return Some(Err(CostPaymentError::NoValidSacrificeTarget));
+    }
     let (filter, count, player) = if let Some(effect) =
         effect.downcast_ref::<crate::effects::SacrificeEffect>()
     {
@@ -89,7 +94,7 @@ fn tagged_sacrifice_cost_precheck(
         return None;
     };
 
-    if filter.tagged_constraints.is_empty() {
+    if filter.tagged_constraints.is_empty() && game.effect_store.cant_effects.sacrifice_cause_restrictions.is_empty() {
         return None;
     }
 
@@ -124,9 +129,13 @@ fn tagged_sacrifice_cost_precheck(
                 .map_or(0, Vec::len)
         }
         _ => {
-            return Some(Err(CostPaymentError::Other(
-                "dynamic sacrifice cost amount is unsupported".to_string(),
-            )));
+            let mut exec = ExecutionContext::new_default(ctx.source, ctx.payer)
+                .with_tagged_objects(ctx.tagged_objects.clone());
+            exec.x_value = ctx.x_value;
+            match crate::effects::helpers::resolve_value(game, count, &exec) {
+                Ok(value) => value.max(0) as usize,
+                Err(error) => return Some(Err(CostPaymentError::Other(format!("sacrifice amount: {error:?}")))),
+            }
         }
     };
 
@@ -147,7 +156,7 @@ fn tagged_sacrifice_cost_precheck(
             game.controller_of(obj) == ctx.payer
                 && (!lands_only || obj.has_card_type(crate::types::CardType::Land))
                 && filter.matches(obj, &filter_ctx, game)
-                && game.can_be_sacrificed(*id)
+                && game.can_be_sacrificed_with_cause(*id, &ctx.event_cause())
         })
         .count();
 
@@ -392,8 +401,9 @@ impl CostPayer for CostEffect {
             .map(crate::effects::ResolvedTarget::Object)
             .collect();
 
+        let cause = ctx.event_cause();
         let mut exec_ctx = ExecutionContext::new(ctx.source, ctx.payer, &mut *ctx.decision_maker)
-            .with_cause(EventCause::from_cost(ctx.source, ctx.payer))
+            .with_cause(cause)
             .with_tagged_objects(existing_tags)
             .with_cost_choice_targets(chosen_targets)
             .with_provenance(ctx.provenance);
@@ -767,6 +777,77 @@ mod tests {
 
     fn create_test_game() -> GameState {
         GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20)
+    }
+
+    #[test]
+    fn cause_filtered_sacrifice_protection_blocks_opponent_effects_and_requested_costs() {
+        use crate::costs::PaymentReason;
+        use crate::effects::EffectExecutor;
+        use crate::events::cause::{CauseFilter, CauseType, CauseTypeFilter, ControllerFilter};
+        for opponent_requested in [false, true] {
+            for reason in [None, Some(PaymentReason::Effect), Some(PaymentReason::CastSpell)] {
+                let mut game = create_test_game();
+                let alice = PlayerId::from_index(0);
+                let bob = PlayerId::from_index(1);
+                let protection_card = CardBuilder::new(CardId::new(), "Protection Source")
+                    .card_types(vec![CardType::Enchantment]).build();
+                let protection = game.create_object_from_card(&protection_card, alice, Zone::Battlefield);
+                let restriction = crate::effect::Restriction::BeSacrificedByCause {
+                    filter: crate::target::ObjectFilter::permanent().you_control(),
+                    cause: CauseFilter { cause_type: Some(CauseTypeFilter::OneOf(vec![CauseType::Effect, CauseType::Cost])),
+                        source_filter: None, controller_filter: Some(ControllerFilter::Opponent) },
+                };
+                game.object_mut(protection).unwrap().abilities = std::sync::Arc::new(vec![crate::ability::Ability::static_ability(
+                    crate::static_abilities::StaticAbility::restriction(restriction, "Opponent sacrifice protection".into()))]);
+                let source_card = CardBuilder::new(CardId::new(), "Request Source").card_types(vec![CardType::Sorcery]).build();
+                let source = game.create_object_from_card(&source_card, alice, Zone::Stack);
+                let victim = CardBuilder::new(CardId::new(), "Victim").card_types(vec![CardType::Creature]).build();
+                let victim = game.create_object_from_card(&victim, alice, Zone::Battlefield);
+                game.update_cant_effects();
+                assert!(game.can_be_sacrificed(victim), "must not impose an unconditional prohibition");
+                let mut ctx = ExecutionContext::new_default(source, if opponent_requested { bob } else { alice });
+                let allowed = !opponent_requested || reason == Some(PaymentReason::CastSpell);
+                if let Some(reason) = reason {
+                    let cost = crate::cost::TotalCost::from_cost(crate::costs::Cost::sacrifice(crate::target::ObjectFilter::creature()));
+                    let result = crate::special_actions::pay_total_cost_with_choice_in_context(&mut game, alice, source, &cost, reason, &mut ctx);
+                    assert_eq!(result.is_ok(), allowed, "payment {reason:?}, opponent={opponent_requested}: {result:?}");
+                } else {
+                    SacrificeEffect::player(crate::target::ObjectFilter::creature(), 1, PlayerFilter::Specific(alice))
+                        .execute(&mut game, &mut ctx).unwrap();
+                }
+                assert_eq!(game.battlefield.contains(&victim), !allowed, "{reason:?}, opponent={opponent_requested}");
+            }
+        }
+    }
+
+    #[test]
+    fn sacrifice_payment_event_preserves_requesting_effect_controller() {
+        use crate::costs::PaymentReason;
+        for reason in [PaymentReason::Effect, PaymentReason::CastSpell] {
+            for candidates in [1, 2] {
+                let mut game = create_test_game();
+                let alice = PlayerId::from_index(0);
+                let bob = PlayerId::from_index(1);
+                let source_card = CardBuilder::new(CardId::new(), "Requesting Spell")
+                    .card_types(vec![CardType::Sorcery]).build();
+                let source = game.create_object_from_card(&source_card, bob, Zone::Stack);
+                let victim = CardBuilder::new(CardId::new(), "Sacrifice Candidate")
+                    .card_types(vec![CardType::Creature]).build();
+                for _ in 0..candidates { game.create_object_from_card(&victim, alice, Zone::Battlefield); }
+                game.take_pending_trigger_events();
+                let cost = crate::cost::TotalCost::from_cost(crate::costs::Cost::sacrifice(crate::target::ObjectFilter::creature()));
+                let mut ctx = ExecutionContext::new_default(source, bob);
+                crate::special_actions::pay_total_cost_with_choice_in_context(
+                    &mut game, alice, source, &cost, reason, &mut ctx,
+                ).expect("sacrifice payment should succeed");
+                assert_eq!(game.player(alice).unwrap().graveyard.len(), 1);
+                let events = game.take_pending_trigger_events();
+                let event = events.iter().find_map(|e| e.downcast::<crate::events::ZoneChangeEvent>()).unwrap();
+                assert_eq!(event.cause.cause_type, crate::events::cause::CauseType::Cost);
+                assert_eq!(event.cause.source, Some(source));
+                assert_eq!(event.cause.source_controller, Some(if reason == PaymentReason::Effect { bob } else { alice }), "{reason:?}, {candidates}");
+            }
+        }
     }
 
     #[test]

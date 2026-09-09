@@ -565,6 +565,12 @@ pub struct CantSentencePreparedClause {
 pub fn prepare_cant_sentence_restriction_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<CantSentencePreparedClause>, CardTextError> {
+    // This complete coordination belongs to the compound effect reader.
+    // Extracting the first restriction duration would discard the following
+    // affirmative base-power/toughness change before statement dispatch.
+    if parse_cant_blocked_base_power_toughness_tokens(tokens).is_some() {
+        return Ok(None);
+    }
     let duration_surface = parse_search_restriction_duration_shape_lexed(tokens)?
         .filter(|shape| shape.placement == SearchRestrictionDurationPlacement::Prefix)
         .map(|shape| match shape.duration {

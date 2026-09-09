@@ -40,3 +40,17 @@ fn targeted_creature_leave_watcher_reuses_delayed_target_choice() {
         "the leave watcher must be restricted to the chosen target: {parsed:#?}"
     );
 }
+
+#[test]
+fn created_token_leave_followup_keeps_its_delayed_trigger() {
+    let followup = crate::lexer::lex_line("When that token leaves the battlefield, put the exiled card into your hand.", 0).unwrap();
+    let standalone = parse_effect_sentences_lexed(&followup).expect("standalone delayed followup");
+    assert!(matches!(standalone.as_slice(), [EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectLeavesBattlefield { .. })]));
+    let tokens = crate::lexer::lex_line(
+        "Exile the top card of your library face down and look at it. Create a 2/2 colorless Spirit creature token. When that token leaves the battlefield, put the exiled card into your hand.", 0).unwrap();
+    let (result, trace) = crate::parse_trace::capture(|| parse_effect_sentences_lexed(&tokens));
+    let effects = result.unwrap_or_else(|error| panic!("{error:?}\n{}", trace.render()));
+    assert!(effects.iter().any(|effect| matches!(effect,
+        EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectLeavesBattlefield { .. })
+    )), "must register a delayed watcher instead of immediately moving the card: {effects:#?}");
+}

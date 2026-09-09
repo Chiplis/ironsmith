@@ -2907,6 +2907,23 @@ pub fn parse_untap_during_each_other_players_untap_step_line(
     ))
 }
 
+fn parse_attacked_during_controllers_last_turn(
+    tokens: &[OwnedLexToken],
+    filter: ObjectFilter,
+) -> Option<PredicateAst> {
+    let words = crate::lexer::token_word_refs(tokens);
+    let matches = [
+        &["it", "attacked", "during", "your", "last", "turn"][..],
+        &["it", "attacked", "during", "its", "controllers", "last", "turn"],
+        &["it", "attacked", "during", "its", "controller's", "last", "turn"],
+        &["it", "attacked", "during", "its", "controller", "last", "turn"],
+        &["it", "attacked", "during", "its", "controller", "s", "last", "turn"],
+    ].iter().any(|phrase| crate::word_primitives::parse_sequence_complete(&words, phrase));
+    matches.then(|| PredicateAst::Bound(Box::new(crate::ConditionExpr::TurnHistory(
+        ironsmith_core::TurnHistoryCondition::ObjectAttackedDuringControllersLastTurn(filter),
+    ))))
+}
+
 pub fn parse_doesnt_untap_during_untap_step_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
@@ -2927,7 +2944,10 @@ pub fn parse_doesnt_untap_during_untap_step_line(
                         clause_display
                     )));
                 }
-                let condition = parse_static_condition_clause(&condition_tokens)?;
+                let condition = match parse_attacked_during_controllers_last_turn(&condition_tokens, ObjectFilter::source()) {
+                    Some(condition) => condition,
+                    None => parse_static_condition_clause(&condition_tokens)?,
+                };
                 return Ok(Some(StaticAbilityAst::ConditionalStaticAbility {
                     ability: Box::new(StaticAbilityAst::Static(StaticAbility::doesnt_untap())),
                     condition,
@@ -2942,16 +2962,18 @@ pub fn parse_doesnt_untap_during_untap_step_line(
         Some(DoesntUntapDuringUntapStepSpec::Attached {
             subject_tokens,
             tail_tokens,
+            during_your_untap_step,
         }) => {
             let subject = render_token_slice(subject_tokens);
-            let text = format!("{subject} doesn't untap during its controller's untap step");
+            let step_owner = if during_your_untap_step { "your" } else { "its controller's" };
+            let text = format!("{subject} doesn't untap during {step_owner} untap step");
             let condition = if tail_tokens.is_empty() {
                 None
             } else {
                 let clause_display = render_token_slice(tokens);
                 if tail_tokens
                     .first()
-                    .is_none_or(|token| token.as_word() != Some("unless"))
+                    .is_none_or(|token| !token.is_any_word(&["unless", "if"]))
                 {
                     return Err(CardTextError::ParseError(format!(
                         "unsupported trailing attached untap-step clause (clause: '{}')",
@@ -2965,10 +2987,40 @@ pub fn parse_doesnt_untap_during_untap_step_line(
                         clause_display
                     )));
                 }
-                Some(PredicateAst::Not(Box::new(parse_static_condition_clause(
-                    &condition_tokens,
-                )?)))
+                let tag = if subject_tokens.first().is_some_and(|token| token.is_word("equipped")) {
+                    crate::tag::CompilerReferenceTag::Equipped
+                } else { crate::tag::CompilerReferenceTag::Enchanted };
+                let mut predicate = match parse_attacked_during_controllers_last_turn(&condition_tokens, ObjectFilter::tagged(tag.bind())) {
+                    Some(predicate) => predicate,
+                    None => parse_static_condition_clause(&condition_tokens)?,
+                };
+                // A possessive pronoun in the attached subject's condition
+                // refers to that permanent, not to the Aura or Equipment.
+                if condition_tokens.first().is_some_and(|token| token.is_word("it"))
+                    && let PredicateAst::CountComparison {
+                        count: crate::static_abilities::AnthemCountExpression::CountersOnSource(counter),
+                        comparison: crate::effect::Comparison::GreaterThanOrEqual(minimum),
+                        ..
+                    } = &predicate
+                {
+                    predicate = PredicateAst::ValueComparison {
+                        left: Value::CountersOn(Box::new(crate::target::ChooseSpec::Tagged(tag.bind().into())), Some(*counter)),
+                        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                        right: Value::Fixed(*minimum),
+                    };
+                }
+                Some(if tail_tokens[0].is_word("unless") {
+                    PredicateAst::Not(Box::new(predicate))
+                } else { predicate })
             };
+            // DoesntUntap applies during the affected permanent's natural untap.
+            // For an Aura's "your" step, grant it only on the Aura controller's turn.
+            let condition = if during_your_untap_step {
+                Some(match condition {
+                    Some(condition) => PredicateAst::And(Box::new(condition), Box::new(PredicateAst::YourTurn)),
+                    None => PredicateAst::YourTurn,
+                })
+            } else { condition };
             Ok(Some(StaticAbilityAst::AttachedStaticAbilityGrant {
                 ability: Box::new(StaticAbilityAst::Static(StaticAbility::doesnt_untap())),
                 display: text,
@@ -5639,6 +5691,16 @@ mod tests {
     }
 
     #[test]
+    fn first_x_spell_counter_discount_retains_both_constraints() {
+        let tokens = lex_line("The first spell you cast with {X} in its mana cost each turn costs {1} less to cast for each +1/+1 counter on this creature.", 0).unwrap();
+        let ability = parse_spells_cost_modifier_line(&tokens).unwrap().unwrap();
+        let ironsmith_core::StaticAbilityPayload::CostReduction(reduction) = &ability.payload else { panic!("{ability:#?}") };
+        assert!(reduction.filter.has_x_in_cost, "{reduction:#?}");
+        assert!(reduction.filter.first_spell_cast_each_turn);
+        assert!(format!("{:?}", reduction.amount).contains("PlusOnePlusOne"), "{reduction:#?}");
+    }
+
+    #[test]
     fn first_matching_spell_during_each_own_turn_is_typed_and_conditioned() {
         let tokens = lex_line(
             "The first non-Lemur creature spell with flying you cast during each of your turns costs {1} less to cast.",
@@ -5756,5 +5818,32 @@ mod tests {
             damager_filter_surface.as_deref(),
             Some("a source you controlled")
         );
+    }
+}
+
+#[cfg(test)]
+mod attached_your_untap_tests {
+    use super::*;
+    #[test]
+    fn attached_your_untap_full_card_dispatch() {
+        use ironsmith_compiler::ParseCardText;
+        let (result, trace) = crate::parse_trace::capture(|| {
+            ironsmith_compiler_lowering::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Cocoon")
+                .card_types(vec![crate::types::CardType::Enchantment])
+                .subtypes(vec![crate::types::Subtype::Aura])
+                .parse_text("Enchant creature\nEnchanted creature doesn't untap during your untap step if this Aura has a pupa counter on it.")
+        });
+        let definition = result.unwrap();
+        assert!(!format!("{:?}", definition.spell_effect).contains("UntapEffect"), "{}\n{:#?}", trace.render(), definition.spell_effect);
+    }
+
+    #[test]
+    fn attached_your_untap_retains_step_owner_and_counter_condition() {
+        let tokens = crate::lexer::lex_line("Enchanted creature doesn't untap during your untap step if this Aura has a pupa counter on it.", 0).unwrap();
+        let parsed = parse_doesnt_untap_during_untap_step_line(&tokens).unwrap().expect("conditional attached restriction");
+        let StaticAbilityAst::AttachedStaticAbilityGrant { condition: Some(condition), .. } = parsed else { panic!("conditional attached grant required"); };
+        let text = format!("{condition:?}");
+        assert!(text.contains("YourTurn"), "{text}");
+        assert!(text.contains("pupa"), "{text}");
     }
 }

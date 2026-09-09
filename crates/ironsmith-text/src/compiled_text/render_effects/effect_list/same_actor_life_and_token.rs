@@ -1,6 +1,6 @@
 use super::*;
 
-/// Preserve the shared player subject for the common life-change/token pair.
+/// Preserve the shared player subject for the player-action/token pair.
 ///
 /// The generic coordinated fallback intentionally turns a leading `You ...`
 /// clause into an imperative. That is correct for many resolving spell
@@ -8,21 +8,24 @@ use super::*;
 /// `lose 1 life and you create ...` when the second action retains its
 /// explicit actor surface. Prove that both executable actions belong to the
 /// controller before rendering the subject once.
-pub(in crate::compiled_text) fn describe_you_life_change_and_create_token(
+pub(in crate::compiled_text) fn describe_you_action_and_create_token(
     effects: &[Effect],
 ) -> Option<String> {
-    let [life_root, create_root] = effects else {
+    let [action_root, create_root] = effects else {
         return None;
     };
 
-    let life_effect = structural_unwrap_render_wrappers(life_root);
-    let life_is_yours = life_effect
+    let action_effect = structural_unwrap_render_wrappers(action_root);
+    let action_is_yours = action_effect
         .downcast_ref::<crate::effects::GainLifeEffect>()
         .is_some_and(|gain| gain.player == ChooseSpec::Player(PlayerFilter::You))
-        || life_effect
+        || action_effect
             .downcast_ref::<crate::effects::LoseLifeEffect>()
-            .is_some_and(|lose| lose.player == ChooseSpec::Player(PlayerFilter::You));
-    if !life_is_yours {
+            .is_some_and(|lose| lose.player == ChooseSpec::Player(PlayerFilter::You))
+        || action_effect
+            .downcast_ref::<crate::effects::TakeInitiativeEffect>()
+            .is_some_and(|initiative| initiative.player == PlayerFilter::You);
+    if !action_is_yours {
         return None;
     }
 
@@ -35,15 +38,15 @@ pub(in crate::compiled_text) fn describe_you_life_change_and_create_token(
         return None;
     }
 
-    let life = describe_effect(life_root);
-    let life = life.trim().trim_end_matches('.');
+    let action = describe_effect(action_root);
+    let action = action.trim().trim_end_matches('.');
     let create = describe_effect(create_root);
     let create = create.trim().trim_end_matches('.');
-    let life = life
+    let action = action
         .strip_prefix("You ")
-        .or_else(|| life.strip_prefix("you "))
-        .unwrap_or(life);
-    if !life.starts_with("gain ") && !life.starts_with("lose ") {
+        .or_else(|| action.strip_prefix("you "))
+        .unwrap_or(action);
+    if !action.starts_with("gain ") && !action.starts_with("lose ") && action != "take the initiative" {
         return None;
     }
     let create = create
@@ -53,7 +56,7 @@ pub(in crate::compiled_text) fn describe_you_life_change_and_create_token(
         return None;
     }
 
-    Some(format!("You {life} and {create}"))
+    Some(format!("You {action} and {create}"))
 }
 
 /// Preserve one explicit controller subject across a life change and a
@@ -179,7 +182,7 @@ pub(in crate::compiled_text) fn describe_explicit_you_three_action_sequence(
         if draw.player != PlayerFilter::You {
             return None;
         }
-        let gain_and_create = describe_you_life_change_and_create_token(&effects[1..])?;
+        let gain_and_create = describe_you_action_and_create_token(&effects[1..])?;
         let draw_text = describe_effect(draw_root);
         let draw = strip_you_action(&draw_text)?;
         let gain_and_create = strip_you_action(&gain_and_create)?;
@@ -245,13 +248,13 @@ mod tests {
         let create = Effect::new(create);
 
         assert_eq!(
-            describe_you_life_change_and_create_token(&[lose.clone(), create.clone()]),
+            describe_you_action_and_create_token(&[lose.clone(), create.clone()]),
             Some("You lose 1 life and create a Treasure token".to_string())
         );
 
         let gain = Effect::new(crate::effects::GainLifeEffect::you(2));
         assert_eq!(
-            describe_you_life_change_and_create_token(&[gain, create.clone()]),
+            describe_you_action_and_create_token(&[gain, create.clone()]),
             Some("You gain 2 life and create a Treasure token".to_string())
         );
 
@@ -260,7 +263,7 @@ mod tests {
             player: ChooseSpec::Player(PlayerFilter::Opponent),
         });
         assert_eq!(
-            describe_you_life_change_and_create_token(&[other_player, create]),
+            describe_you_action_and_create_token(&[other_player, create]),
             None
         );
     }

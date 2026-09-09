@@ -725,28 +725,40 @@ pub fn parse_sentence_you_and_target_player_each_draw(
 }
 
 /// "You and that player each sacrifice a creature." Each actor makes an
-/// independent choice from the permanents they control, so lower two typed
-/// sacrifice actions inside one coordinated sentence boundary.
+/// independent choice from the permanents they control. One simultaneous
+/// participant loop keeps those choices ahead of every sacrifice.
 pub fn parse_you_and_player_each_sacrifice_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = registry_shapes::parse_joint_sacrifice_shape(clause.tokens()) else {
         return Ok(None);
     };
-    let you = super::super::zone_handlers::parse_sacrifice(
+    let other_player = match shape.other_player {
+        PlayerAst::That => PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::It.key()),
+        PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
+        PlayerAst::Target => PlayerFilter::target_player(),
+        _ => return Ok(None),
+    };
+    // You union the other actor, expressed using the existing set difference
+    // filter. A single participant loop prepares all choices in APNAP order
+    // before committing the shared action.
+    let players = PlayerFilter::excluding(
+        PlayerFilter::Any,
+        PlayerFilter::excluding(PlayerFilter::NotYou, other_player),
+    );
+    let sacrifice = super::super::zone_handlers::parse_sacrifice(
         shape.object_tokens,
-        Some(SubjectAst::Player(PlayerAst::You)),
+        Some(SubjectAst::Player(PlayerAst::That)),
         None,
     )?;
-    let other = super::super::zone_handlers::parse_sacrifice(
-        shape.object_tokens,
-        Some(SubjectAst::Player(shape.other_player)),
-        None,
-    )?;
-    Ok(Some(vec![EffectAst::Coordinated {
-        effects: vec![you, other],
-        leading_duration: false,
-        result_conjunction: false,
+    let tag = crate::util::helper_tag_for_tokens(clause.tokens(), "sacrificed");
+    Ok(Some(vec![EffectAst::TagAffected {
+        tag,
+        effect: Box::new(EffectAst::ForEach(crate::cards::builders::ForEachEffectAst::ForEachPlayersFiltered {
+            filter: players,
+            effects: vec![sacrifice],
+            sequential: false,
+        })),
     }]))
 }
 

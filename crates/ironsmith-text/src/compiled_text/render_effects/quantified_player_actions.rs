@@ -152,8 +152,24 @@ pub(super) fn describe_for_players_coordinated_actions(
                     matches!(sequence.surface, ironsmith_core::SequenceSurface::CommaThen | ironsmith_core::SequenceSurface::RepeatedCommaThen)
                 })
     );
+    // A selected set must be locked before its complement is sacrificed.
+    // Keep that dependency explicit even when lowering emits flat siblings.
+    let preserves_choice_complement_boundary =
+        if let [choice_effect, sacrifice_effect] = for_players.effects.as_slice()
+            && let Some(choice) = choice_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(sacrifice) = sacrifice_view(sacrifice_effect)
+        {
+            choice.chooser == PlayerFilter::IteratedPlayer
+                && sacrifice.player == &PlayerFilter::IteratedPlayer
+                && sacrifice.filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.tag == choice.tag
+                        && constraint.relation == crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+                })
+        } else {
+            false
+        };
     let rendered = describe_for_players_iterated_action_sequence(for_players)?;
-    if preserves_every_ordered_boundary {
+    if preserves_every_ordered_boundary || preserves_choice_complement_boundary {
         return Some(rendered);
     }
     let Some((prefix, last)) = rendered.rsplit_once(", then ") else {

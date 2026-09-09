@@ -563,6 +563,10 @@ fn split_during_your_turn_static_prefix_lexed(
 fn parse_filtered_object_animation_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    // Ability-word labels are presentation, not part of the condition or
+    // affected-object subject.
+    let tokens = split_em_dash_label_prefix_tokens(tokens)
+        .map_or(tokens, |(_, body)| body);
     let mut timing_condition = None;
     let (condition_tokens, animation_tokens) =
         if let Some(prefix) = split_as_long_as_condition_prefix_lexed(tokens) {
@@ -3405,6 +3409,7 @@ pub fn parse_anthem_clause(
                                     | Value::ColorPairsAmong(_)
                                     | Value::CardTypesAmong(_)
                                     | Value::DistinctNames(_)
+                                    | Value::DistinctManaValues(_)
                                     | Value::DistinctPowers(_)
                             )
                         {

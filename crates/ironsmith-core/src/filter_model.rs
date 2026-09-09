@@ -7,6 +7,42 @@ use crate::{
     Zone, effect_model::EventValueSpec,
 };
 
+/// Describe a shared filter over either combat role without dropping the
+/// outer filter's power, ownership, or other common restrictions.
+pub fn describe_shared_combat_role_union(filter: &ObjectFilter) -> Option<String> {
+    let [first, second] = filter.any_of.as_slice() else { return None; };
+    if filter.union_connective() != ObjectFilterUnionConnective::Or
+        || filter.attacking || filter.blocking || filter.nonattacking || filter.nonblocking
+        || !filter.card_types.is_empty() || !filter.all_card_types.is_empty()
+        || !((first.attacking && !first.blocking && !second.attacking && second.blocking)
+            || (first.blocking && !first.attacking && !second.blocking && second.attacking))
+    { return None; }
+    let mut common = first.clone();
+    common.attacking = false;
+    common.blocking = false;
+    let mut other = second.clone();
+    other.attacking = false;
+    other.blocking = false;
+    if common != other { return None; }
+    let mut type_only = common.clone();
+    type_only.card_types.clear();
+    type_only.all_card_types.clear();
+    type_only.set_explicit_card_type_noun(None);
+    if type_only != ObjectFilter::default() { return None; }
+    let mut combined = filter.clone();
+    combined.any_of.clear();
+    combined.set_explicit_card_type_noun(common.explicit_card_type_noun());
+    combined.card_types = common.card_types;
+    combined.all_card_types = common.all_card_types;
+    combined.attacking = first.attacking;
+    combined.blocking = first.blocking;
+    let (role, alternatives) = if first.attacking {
+        ("attacking ", "attacking or blocking ")
+    } else { ("blocking ", "blocking or attacking ") };
+    let description = combined.description();
+    description.contains(role).then(|| description.replacen(role, alternatives, 1))
+}
+
 fn ensure_indefinite_article(text: String) -> String {
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -356,14 +392,14 @@ impl DemonstrativeAntecedentSurface {
 
 /// Oracle-facing action used when a filter refers back to the object paid as
 /// an additional cost. Object identity remains a tagged runtime relation;
-/// this value only preserves whether the authored noun was sacrificed or
-/// exiled.
+/// this value preserves the authored action on the cost object.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[derive(TagKeyWalk)]
 pub enum AdditionalCostObjectAction {
     Sacrificed,
     Exiled,
+    TappedForSpellCost,
 }
 
 impl AdditionalCostObjectAction {
@@ -371,6 +407,7 @@ impl AdditionalCostObjectAction {
         match self {
             Self::Sacrificed => "sacrificed",
             Self::Exiled => "exiled",
+            Self::TappedForSpellCost => "tapped",
         }
     }
 }
@@ -394,6 +431,9 @@ impl AdditionalCostObjectSurface {
     }
 
     pub fn description(self) -> String {
+        if self.action == AdditionalCostObjectAction::TappedForSpellCost {
+            return format!("the {} tapped to pay this spell's additional cost", self.kind.noun());
+        }
         format!("the {} {}", self.action.past_participle(), self.kind.noun())
     }
 }
@@ -1125,6 +1165,8 @@ pub enum PowerToughnessRelation {
 #[derive(TagKeyWalk)]
 pub enum TaggedOpbjectRelation {
     IsTaggedObject,
+    /// Matches the captured object incarnation, never a later zone-change object.
+    SameObjectId,
     /// Identity membership retained from an entry-time sacrifice choice. This
     /// is runtime-equivalent to `IsTaggedObject`, while preserving the authored
     /// characteristic surface "sacrificed as it entered."
@@ -1766,18 +1808,20 @@ impl CountersPutOnThisTurnConstraint {
     }
 }
 
-/// Oracle spelling retained for an excluded literal card name.
+/// Oracle spelling retained for a literal card name.
 ///
-/// The normalized value in [`ObjectFilter::excluded_name`] remains the
-/// semantic source of truth for matching and filter equality. This wrapper is
+/// The normalized value in [`ObjectFilter::name`] or
+/// [`ObjectFilter::excluded_name`] remains the semantic source of truth for matching and filter equality. This wrapper is
 /// deliberately equality-transparent so capitalization and punctuation never
 /// affect lowering, deduplication, or runtime behavior.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Default)]
 #[derive(TagKeyWalk)]
-pub struct ExcludedNameSurface(Option<String>);
+pub struct LiteralNameSurface(Option<String>);
 
-impl ExcludedNameSurface {
+pub type ExcludedNameSurface = LiteralNameSurface;
+
+impl LiteralNameSurface {
     pub fn new(surface: impl Into<String>) -> Self {
         Self(Some(surface.into()))
     }
@@ -1787,7 +1831,7 @@ impl ExcludedNameSurface {
     }
 }
 
-impl PartialEq for ExcludedNameSurface {
+impl PartialEq for LiteralNameSurface {
     fn eq(&self, _other: &Self) -> bool {
         true
     }
@@ -1799,6 +1843,10 @@ impl PartialEq for ExcludedNameSurface {
 #[derive(TagKeyWalk)]
 pub struct ObjectFilter {
     pub zone: Option<Zone>,
+    /// Match a saved reference only while that exact object still exists,
+    /// using its current characteristics rather than its saved snapshot.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub match_current_state: bool,
     pub controller: Option<PlayerFilter>,
     pub cast_by: Option<PlayerFilter>,
     /// A stack spell must not have been cast from this zone.
@@ -1881,6 +1929,9 @@ pub struct ObjectFilter {
     pub modified: bool,
     /// Requires a permanent currently designated as suspected.
     pub suspected: bool,
+    /// Requires a permanent currently designated as goaded.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub goaded: bool,
     pub sticker: Option<KeywordActionKind>,
     pub token: bool,
     pub nontoken: bool,
@@ -2027,6 +2078,8 @@ pub struct ObjectFilter {
     pub without_counter: Option<CounterConstraint>,
     pub total_counters_parity: Option<ParityRequirement>,
     pub name: Option<String>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub name_surface: LiteralNameSurface,
     pub excluded_name: Option<String>,
     pub excluded_name_surface: ExcludedNameSurface,
     /// The candidate's current name must belong to an oracle identity whose
@@ -3245,8 +3298,22 @@ impl ObjectFilter {
     }
 
     pub fn named(mut self, name: impl Into<String>) -> Self {
-        self.name = Some(name.into());
+        let name = name.into();
+        self.name_surface = LiteralNameSurface::new(name.clone());
+        self.name = Some(name);
         self
+    }
+
+    pub fn set_name_surface(&mut self, surface: impl Into<String>) {
+        self.name_surface = LiteralNameSurface::new(surface);
+    }
+
+    pub fn name_surface(&self) -> Option<&str> {
+        let surface = self.name_surface.as_deref()?;
+        let semantic = self.name.as_deref()?;
+        let normalized = |text: &str| text.chars().filter(char::is_ascii_alphanumeric)
+            .map(|ch| ch.to_ascii_lowercase()).collect::<String>();
+        (normalized(surface) == normalized(semantic)).then_some(surface)
     }
 
     pub fn not_named(mut self, name: impl Into<String>) -> Self {
@@ -3415,6 +3482,10 @@ impl ObjectFilter {
         Self::default().match_tagged(tag, TaggedOpbjectRelation::IsTaggedObject)
     }
 
+    pub fn exact_tagged(tag: impl Into<TagKey>) -> Self {
+        Self::default().match_tagged(tag, TaggedOpbjectRelation::SameObjectId)
+    }
+
     pub fn not_tagged(self, tag: impl Into<TagKey>) -> Self {
         self.match_tagged(tag, TaggedOpbjectRelation::IsNotTaggedObject)
     }
@@ -3445,6 +3516,9 @@ impl ObjectFilter {
     }
 
     pub fn description(&self) -> String {
+        if let Some(description) = describe_shared_combat_role_union(self) {
+            return description;
+        }
         let any_of_keyword_clause =
             describe_simple_any_of_keyword_clause(&self.any_of, self.union_connective());
         if let Some(description) = describe_relative_characteristic_list_filter(self) {
@@ -3576,6 +3650,9 @@ impl ObjectFilter {
         }
         if self.suspected {
             parts.push("suspected".to_string());
+        }
+        if self.goaded {
+            parts.push("goaded".to_string());
         }
 
         let has_leading_determiner =
@@ -4032,6 +4109,7 @@ impl ObjectFilter {
         for constraint in &self.tagged_constraints {
             match constraint.relation {
                 TaggedOpbjectRelation::IsTaggedObject
+                | TaggedOpbjectRelation::SameObjectId
                 | TaggedOpbjectRelation::IsTaggedObjectSacrificedAsSourceEntered => {
                     match constraint.tag.as_str() {
                         "it" => parts.push("that".to_string()),
@@ -4851,6 +4929,7 @@ impl ObjectFilter {
         }
 
         if let Some(ref name) = self.name {
+            let name = self.name_surface().unwrap_or(name);
             match (&controller_suffix, &owner_suffix) {
                 (Some(controller), Some(owner)) => {
                     if controller == "you control" && owner == "you own" {

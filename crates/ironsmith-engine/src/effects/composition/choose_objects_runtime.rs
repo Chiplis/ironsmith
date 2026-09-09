@@ -128,6 +128,7 @@ fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
         | crate::effect::Value::CardTypesAmong(filter)
         | crate::effect::Value::ColorsAmong(filter)
         | crate::effect::Value::DistinctNames(filter)
+        | crate::effect::Value::DistinctManaValues(filter)
         | crate::effect::Value::DistinctPowers(filter) => {
             object_filter_mentions_iterated_player(filter)
         }
@@ -1149,7 +1150,8 @@ pub(crate) fn run_choose_objects(
                 return Ok(EffectOutcome::count(0));
             }
         }
-        let search_event = (effect.is_search && search_zones.contains(&Zone::Library)).then(|| {
+        let search_event = (effect.is_search && search_zones.contains(&Zone::Library)
+            && game.can_search_library(chooser_id)).then(|| {
             TriggerEvent::new_with_provenance(
                 SearchLibraryEvent::new(chooser_id, library_owner),
                 ctx.provenance,

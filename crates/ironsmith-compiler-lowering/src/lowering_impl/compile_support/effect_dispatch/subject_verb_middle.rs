@@ -61,6 +61,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrarySlotsToHand { .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness { .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness { .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCardTypes { .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetColors { .. })
@@ -104,11 +105,7 @@ pub(super) fn compile_create_token_with_mods_action(
     };
     let mut token = lower_token_definition_shape(definition.clone())
         .ok_or_else(|| CardTextError::ParseError(format!("unsupported token '{name}'")))?;
-    for ability in lower_granted_abilities_ast_to_object_abilities(granted_abilities)? {
-        if !token.abilities.contains(&ability) {
-            token.abilities.push(ability);
-        }
-    }
+    apply_token_definition_granted_abilities(&mut token, granted_abilities)?;
     let subject = if *action_player == PlayerAst::Opponent {
         LoweredSubject::resolve_resolution_chooser(*action_player, ctx, true, true, true)?
     } else {
@@ -796,7 +793,7 @@ pub(super) fn compile_subject_verb_middle(
                 lowered_copy = lowered_copy.with_count_surface(*surface);
             }
             let copy_effect = Effect::with_id(id.0, Effect::new(lowered_copy))
-                .tag(crate::tag::CompilerReferenceTag::CopiedStackObject.bind());
+                .tag_all(crate::tag::CompilerReferenceTag::CopiedStackObject.bind());
             let choose_new_targets_effect = if *may_choose_new_targets {
                 let retarget = crate::effects::ChooseNewTargetsEffect::may_for_player(
                     id,
@@ -846,7 +843,7 @@ pub(super) fn compile_subject_verb_middle(
             let id = ctx.next_effect_id();
             ctx.last_effect_id = Some(id);
             let effect = Effect::with_id(id.0, Effect::new(copy_effect))
-                .tag(crate::tag::CompilerReferenceTag::CopiedStackObject.bind());
+                .tag_all(crate::tag::CompilerReferenceTag::CopiedStackObject.bind());
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderInZone {
@@ -978,12 +975,7 @@ pub(super) fn compile_subject_verb_middle(
                     )
                 })?
             } else if tag.as_str() == "__source_exiled__" {
-                ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
-                    (ironsmith_compiler_semantic::tag::declared_key(format!(
-                        "__sentence_helper_exiled_l0_s0_e{}",
-                        ctx.id_gen_context().next_tag_id.saturating_sub(1)
-                    ))).into()
-                })
+                ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| tag.clone().into())
             } else {
                 tag.clone().into()
             };
@@ -1039,12 +1031,7 @@ pub(super) fn compile_subject_verb_middle(
                     )
                 })?
             } else if tag.as_str() == "__source_exiled__" {
-                ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
-                    (ironsmith_compiler_semantic::tag::declared_key(format!(
-                        "__sentence_helper_exiled_l0_s0_e{}",
-                        ctx.id_gen_context().next_tag_id.saturating_sub(1)
-                    ))).into()
-                })
+                ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| tag.clone().into())
             } else {
                 tag.clone().into()
             };
@@ -1110,12 +1097,7 @@ pub(super) fn compile_subject_verb_middle(
                     )
                 })?
             } else if tag.as_str() == "__source_exiled__" {
-                ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
-                    (ironsmith_compiler_semantic::tag::declared_key(format!(
-                        "__sentence_helper_exiled_l0_s0_e{}",
-                        ctx.id_gen_context().next_tag_id.saturating_sub(1)
-                    ))).into()
-                })
+                ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| tag.clone().into())
             } else {
                 tag.clone().into()
             };
@@ -1146,12 +1128,7 @@ pub(super) fn compile_subject_verb_middle(
                     )
                 })?
             } else if tag.as_str() == "__source_exiled__" {
-                ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
-                    (ironsmith_compiler_semantic::tag::declared_key(format!(
-                        "__sentence_helper_exiled_l0_s0_e{}",
-                        ctx.id_gen_context().next_tag_id.saturating_sub(1)
-                    ))).into()
-                })
+                ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| tag.clone().into())
             } else {
                 tag.clone().into()
             };
@@ -1194,12 +1171,7 @@ pub(super) fn compile_subject_verb_middle(
                     )
                 })?
             } else if tag.as_str() == "__source_exiled__" {
-                ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
-                    (ironsmith_compiler_semantic::tag::declared_key(format!(
-                        "__sentence_helper_exiled_l0_s0_e{}",
-                        ctx.id_gen_context().next_tag_id.saturating_sub(1)
-                    ))).into()
-                })
+                ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| tag.clone().into())
             } else {
                 tag.clone().into()
             };
@@ -1253,12 +1225,7 @@ pub(super) fn compile_subject_verb_middle(
                     )
                 })?
             } else if tag.as_str() == "__source_exiled__" {
-                ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
-                    (ironsmith_compiler_semantic::tag::declared_key(format!(
-                        "__sentence_helper_exiled_l0_s0_e{}",
-                        ctx.id_gen_context().next_tag_id.saturating_sub(1)
-                    ))).into()
-                })
+                ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| tag.clone().into())
             } else {
                 tag.clone().into()
             };
@@ -1374,7 +1341,7 @@ pub(super) fn compile_subject_verb_middle(
                         ChooseSpec::tagged(tag)
                     }
                     ChooseSpec::WithCount(inner, count)
-                        if (count.is_single() || count_value.is_some())
+                        if (count.is_single() || count_value.is_some() || inner.target_set_aggregate_constraint().is_some())
                             && matches!(inner.base(), ChooseSpec::Object(filter) if filter.tagged_constraints.is_empty() && filter.zone == Some(Zone::Graveyard)) =>
                     {
                         let ChooseSpec::Object(filter) = inner.base() else {
@@ -1388,6 +1355,9 @@ pub(super) fn compile_subject_verb_middle(
                             implicit_chooser.clone(),
                             tag.clone(),
                         );
+                        if let Some(constraint) = choose.filter.target_set_aggregate_constraint.take() {
+                            choose = choose.with_aggregate_constraint(*constraint);
+                        }
                         if *top_only {
                             choose = choose.top_only();
                         }
@@ -1413,6 +1383,7 @@ pub(super) fn compile_subject_verb_middle(
             };
 
             let mut aura_grant_effects = Vec::new();
+            let mut aura_return_tag = None;
             let mut effect = if *from_graveyard_or_exile
                 && matches!(resolved_spec.base(), ChooseSpec::Source)
                 && as_aura.is_none()
@@ -1455,26 +1426,16 @@ pub(super) fn compile_subject_verb_middle(
                 let mut effect =
                     Effect::return_from_graveyard_to_battlefield(resolved_spec.clone(), *tapped);
                 if let Some(as_aura) = as_aura {
-                    let mut attachment_filter = as_aura.attachment_filter.clone();
+                    let attachment_filter = as_aura.attachment_filter.clone();
                     if !as_aura.granted_abilities.is_empty() {
-                        let attachment_tag = crate::tag::CompilerReferenceTag::Enchanted.bind();
-                        effects.push(Effect::choose_objects(
-                            as_aura.attachment_filter.clone(),
-                            1usize,
-                            PlayerFilter::You,
-                            attachment_tag.clone(),
-                        ));
-                        attachment_filter = ObjectFilter::tagged(attachment_tag.clone());
-                        let grant_target_filter = as_aura.attachment_filter.clone().match_tagged(
-                            attachment_tag.clone(),
-                            crate::filter::TaggedOpbjectRelation::IsTaggedObject,
-                        );
+                        let returned_tag = reserved_or_next_object_tag(ctx, "returned");
+                        aura_return_tag = Some(returned_tag.clone());
                         for modification in
                             lower_granted_ability_grant_modifications(&as_aura.granted_abilities)?
                         {
                             aura_grant_effects.push(Effect::new(
                                 crate::effects::ApplyContinuousEffect::with_spec(
-                                    ChooseSpec::Object(grant_target_filter.clone()),
+                                    ChooseSpec::Iterated,
                                     modification,
                                     Until::Forever,
                                 ),
@@ -1500,17 +1461,25 @@ pub(super) fn compile_subject_verb_middle(
                     resolved_spec.base(),
                     ChooseSpec::Tagged(_) | ChooseSpec::All(_)
                 );
-            if ctx.auto_tag_object_targets && produces_referencable_objects {
-                let tag = reserved_or_next_object_tag(ctx, "returned");
+            if aura_return_tag.is_some() || (ctx.auto_tag_object_targets && produces_referencable_objects) {
+                let tag = aura_return_tag.clone().unwrap_or_else(|| reserved_or_next_object_tag(ctx, "returned"));
                 ctx.last_object_tag = Some(tag.clone());
-                effect = if choose_spec_may_hold_multiple_objects(&resolved_spec) {
+                effect = if aura_return_tag.is_some() {
+                    Effect::new(crate::effects::TaggedEffect { effect: Box::new(effect), tag, outcome_only: true })
+                } else if choose_spec_may_hold_multiple_objects(&resolved_spec) {
                     effect.tag_all(tag)
                 } else {
                     effect.tag(tag)
                 };
             }
             effects.push(effect);
-            effects.extend(aura_grant_effects);
+            if let Some(tag) = aura_return_tag {
+                // A failed return (including no legal Aura attachment) grants
+                // nothing. Iterate only the newly returned objects.
+                effects.push(Effect::for_each_tagged(tag, aura_grant_effects));
+            } else {
+                effects.extend(aura_grant_effects);
+            }
             if *transformed && !use_move_to_zone {
                 let transform_spec = if let Some(tag) = ctx.last_object_tag.clone() {
                     ChooseSpec::tagged(tag)
@@ -1838,11 +1807,8 @@ pub(super) fn compile_subject_verb_middle(
                 ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
             ) && let Some(tag) = ctx.last_exiled_collection_tag.clone()
             {
-                spec = if ctx.last_exiled_collection_is_plural {
-                    ChooseSpec::All(ObjectFilter::tagged(tag).in_zone(Zone::Exile))
-                } else {
-                    ChooseSpec::Tagged(tag)
-                };
+                // A captured exile reference only denotes the object still in exile.
+                spec = ChooseSpec::All(ObjectFilter::exact_tagged(tag).in_zone(Zone::Exile));
             }
             if *zone != Zone::Battlefield
                 && !explicitly_counted_source_collection
@@ -1853,7 +1819,16 @@ pub(super) fn compile_subject_verb_middle(
                         == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
                 })
             {
-                spec = ChooseSpec::All(filter.clone());
+                let mut filter = filter.clone();
+                if let Some(tag) = &ctx.last_exiled_collection_tag {
+                    for constraint in &mut filter.tagged_constraints {
+                        if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str() {
+                            constraint.tag = tag.clone();
+                            constraint.relation = TaggedOpbjectRelation::SameObjectId;
+                        }
+                    }
+                }
+                spec = ChooseSpec::All(filter);
             }
             if *zone != Zone::Battlefield
                 && matches!(
@@ -1862,7 +1837,7 @@ pub(super) fn compile_subject_verb_middle(
                 )
             {
                 spec = if let Some(tag) = ctx.last_exiled_collection_tag.clone() {
-                    ChooseSpec::Tagged(tag)
+                    ChooseSpec::All(ObjectFilter::exact_tagged(tag).in_zone(Zone::Exile))
                 } else {
                     ChooseSpec::All(
                         ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind())
@@ -2054,6 +2029,24 @@ pub(super) fn compile_subject_verb_middle(
                     spec,
                     crate::continuous::Modification::SetPower {
                         power: power.clone(),
+                        sublayer: crate::continuous::PtSublayer::Setting,
+                    },
+                    duration.clone(),
+                )
+                .require_creature_target()
+                .resolve_set_pt_values_at_resolution(),
+            )
+        }),
+        SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness {
+            toughness,
+            target,
+            duration,
+        }) => compile_tagged_effect_for_target(target, ctx, "set_base_toughness", |spec| {
+            Effect::new(
+                crate::effects::ApplyContinuousEffect::with_spec(
+                    spec,
+                    crate::continuous::Modification::SetToughness {
+                        toughness: toughness.clone(),
                         sublayer: crate::continuous::PtSublayer::Setting,
                     },
                     duration.clone(),
@@ -2784,11 +2777,7 @@ pub(super) fn compile_subject_verb_middle(
             };
             let mut token = lower_token_definition_shape(definition.clone())
                 .ok_or_else(|| CardTextError::ParseError(format!("unsupported token '{name}'")))?;
-            for ability in lower_granted_abilities_ast_to_object_abilities(granted_abilities)? {
-                if !token.abilities.contains(&ability) {
-                    token.abilities.push(ability);
-                }
-            }
+            apply_token_definition_granted_abilities(&mut token, granted_abilities)?;
             let subject = if *action_player == PlayerAst::Opponent {
                 // A singular authored "an opponent creates ..." is a
                 // resolution-time player choice. Export that chosen player so
@@ -3344,4 +3333,25 @@ pub(super) fn compile_subject_verb_middle(
         _ => return Ok(None),
     };
     result.map(Some)
+}
+
+fn apply_token_definition_granted_abilities(
+    token: &mut crate::cards::CardDefinition,
+    abilities: &[GrantedAbilityAst],
+) -> Result<(), CardTextError> {
+    for granted in abilities {
+        if let GrantedAbilityAst::StaticAbility(ability) = granted
+            && let crate::cards::builders::StaticAbilityAst::AttachmentRestriction { filter, .. } = ability.as_ref()
+        {
+            if token.aura_attach_filter.as_ref().is_some_and(|existing| existing != filter) {
+                return Err(CardTextError::ParseError("conflicting token attachment restrictions".into()));
+            }
+            token.aura_attach_filter = Some(filter.clone());
+            continue;
+        }
+        for ability in lower_granted_abilities_ast_to_object_abilities(std::slice::from_ref(granted))? {
+            if !token.abilities.contains(&ability) { token.abilities.push(ability); }
+        }
+    }
+    Ok(())
 }

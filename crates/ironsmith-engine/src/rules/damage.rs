@@ -622,6 +622,7 @@ mod tests {
             optional_costs: vec![].into(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: crate::player::ManaPool::default(),
+            snow_mana_spent_to_cast: crate::player::ManaPool::default(),
             temporary_static_ability_grants: vec![],
             x_value: None,
             keyword_payment_contributions_to_cast: vec![],

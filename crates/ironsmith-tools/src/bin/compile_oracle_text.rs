@@ -401,7 +401,8 @@ fn write_compare_text_job<W: Write>(out: &mut W, job: &CompileJob) -> Result<(),
         };
 
     outln!("Name: {}", display_def.card.name);
-    outln!("Similarity: {:.4}", similarity);
+    // Preserve the score at threshold boundaries for cohort verification.
+    outln!("Similarity: {}", similarity);
     outln!("Semantic mismatch: {}", semantic_mismatch);
     outln!("Original oracle text:");
     outln!("{}", job.oracle_text.trim());

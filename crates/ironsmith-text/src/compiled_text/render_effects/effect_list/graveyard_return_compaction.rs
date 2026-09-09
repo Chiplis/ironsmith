@@ -18,9 +18,8 @@ pub(crate) fn describe_choose_then_return_from_graveyard(
         || choose.reveal
         || choose.bottom_only
         || choose.replace_tagged_objects
-        || choose.aggregate_constraint.is_some()
         || choose.count_value.is_some()
-        || choose_exact_count(choose) != Some(1)
+        || (choose_exact_count(choose) != Some(1) && choose.aggregate_constraint.is_none())
         || choose_primary_zone(choose) != Some(Zone::Graveyard)
         || !choose.additional_zones.is_empty()
         || returned.as_aura.is_some()
@@ -53,7 +52,13 @@ pub(crate) fn describe_choose_then_return_from_graveyard(
     } else {
         String::new()
     };
-    let origin = describe_choose_zone_origin(choose, "graveyard");
+    let origin = if matches!(&choose.chooser, PlayerFilter::TaggedPlayer(_))
+        && choose.filter.owner.as_ref() == Some(&choose.chooser)
+    {
+        "from their graveyard".to_string()
+    } else {
+        describe_choose_zone_origin(choose, "graveyard")
+    };
     let origin = if choose.top_only {
         origin
             .strip_prefix("from ")
@@ -62,9 +67,12 @@ pub(crate) fn describe_choose_then_return_from_graveyard(
         origin
     };
     let tapped = if returned.tapped { " tapped" } else { "" };
+    let actor = if choose.aggregate_constraint.is_some() && choose.chooser == PlayerFilter::You {
+        String::new()
+    } else { format!("{chooser} ") };
 
     Some(append_battlefield_entry_counter_surface(
-        format!("{chooser} {verb} {selection} {origin} to the battlefield{tapped}{where_x}"),
+        format!("{actor}{verb} {selection} {origin} to the battlefield{tapped}{where_x}"),
         &returned.enters_with_counters,
     ))
 }

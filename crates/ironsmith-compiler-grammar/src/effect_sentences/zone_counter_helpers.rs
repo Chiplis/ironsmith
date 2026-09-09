@@ -274,7 +274,18 @@ fn parse_counter_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, Ca
     if shapes::is_him_or_her_counter_target(tokens) {
         return Ok(TargetAst::Source(span_from_tokens(tokens)));
     }
-    parse_target_phrase(tokens)
+    let target = parse_target_phrase(tokens)?;
+    if matches!(target, TargetAst::Source(_)) {
+        let words = crate::lexer::token_word_refs(tokens);
+        if let Some(surface) = crate::util::this_source_surface_for_words(&words) {
+            return Ok(TargetAst::Object(
+                ObjectFilter::source_with_surface(surface),
+                None,
+                span_from_tokens(tokens),
+            ));
+        }
+    }
+    Ok(target)
 }
 
 pub(super) fn has_counter_placement_head(tokens: &[OwnedLexToken]) -> bool {
@@ -284,6 +295,9 @@ pub(super) fn has_counter_placement_head(tokens: &[OwnedLexToken]) -> bool {
 }
 
 pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    if let Some(effects) = super::subject_verb_primitives::parse_shared_counter_target(tokens)? {
+        return Ok(EffectAst::Sequence { effects });
+    }
     if !has_counter_placement_head(tokens) {
         return Err(CardTextError::ParseError("zone move with entry counters is not counter placement".into()));
     }

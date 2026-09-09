@@ -20,6 +20,41 @@ use crate::triggers::{TriggerEvent, TriggeredAbilityEntry};
 use crate::types::Subtype;
 use crate::zone::Zone;
 
+/// An attacker-filtered cost, preserving colored, Phyrexian and dynamic mana.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AttackCost {
+    pub attackers: ObjectFilter,
+    pub covers_planeswalkers: bool,
+    pub cost: crate::cost::TotalCost,
+    pub display_text: String,
+}
+
+impl StaticAbilityKind for AttackCost {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::AttackCost }
+    fn display(&self) -> String { self.display_text.clone() }
+    fn attack_cost_model(&self) -> Option<&AttackCost> { Some(self) }
+    fn materialize_resolution_values(
+        &self, game: &GameState, ctx: &mut crate::effects::ExecutionContext<'_>,
+    ) -> Result<Option<super::StaticAbility>, crate::effects::ExecutionError> {
+        let cost = self.cost.clone().try_map(|component| {
+            let Some(dynamic) = component.dynamic_mana_cost_ref() else { return Ok(component); };
+            crate::special_actions::resolve_dynamic_mana_cost(game, dynamic, ctx).map(crate::costs::Cost::mana)
+        }).map_err(|error| crate::effects::ExecutionError::UnresolvableValue(error.to_string()))?;
+        Ok(Some(super::StaticAbility::attack_cost(self.attackers.clone(), self.covers_planeswalkers,
+            cost, self.display_text.clone())))
+    }
+    fn attack_cost_for_declaration(&self, game: &GameState, source: ObjectId, controller: PlayerId,
+        attacker: ObjectId, target: &crate::combat_state::AttackTarget) -> Option<crate::cost::TotalCost> {
+        if crate::combat_state::defending_player_for_attack_target(game, target) != Some(controller) { return None; }
+        let kind = AttackTaxTargetKind::from(target);
+        if !matches!(kind, AttackTaxTargetKind::Player)
+            && !(self.covers_planeswalkers && matches!(kind, AttackTaxTargetKind::Planeswalker)) { return None; }
+        let object = game.object(attacker)?;
+        self.attackers.matches(object, &game.filter_context_for(controller, Some(source)), game)
+            .then(|| self.cost.clone())
+    }
+}
+
 /// A reusable CR 509.1d cost imposed on matching blocker-attacker pairs.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlockCost {
@@ -1185,9 +1220,13 @@ impl StaticAbilityKind for GoadedBySourceController {
     fn goaded_by_player(
         &self,
         game: &GameState,
-        _source: ObjectId,
+        source: ObjectId,
         _controller: PlayerId,
     ) -> Option<PlayerId> {
+        let timestamp = game.effect_store.continuous_effects.get_object_timestamp(self.source)?;
+        if game.effect_store.goad_cleared_at.get(&source).is_some_and(|cleared| *cleared >= timestamp) {
+            return None;
+        }
         game.object(self.source)
             .map(|object| game.controller_of(object))
     }
@@ -2432,6 +2471,50 @@ mod tests {
     use crate::object::CounterType;
     use crate::types::{CardType, Subtype};
     use crate::zone::Zone;
+
+    #[test]
+    fn typed_attack_cost_preserves_phyrexian_choices_and_target_scope() {
+        use crate::combat_state::AttackTarget;
+        use crate::mana::{ManaCost, ManaSymbol};
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Carol".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let carol = PlayerId::from_index(2);
+        let creature = CardBuilder::new(CardId::new(), "Attacker")
+            .card_types(vec![CardType::Creature]).build();
+        let attacker = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+        let permanent = CardBuilder::new(CardId::new(), "Tax")
+            .card_types(vec![CardType::Artifact]).build();
+        let source = game.create_object_from_card(&permanent, bob, Zone::Battlefield);
+        let walker = CardBuilder::new(CardId::new(), "Walker")
+            .card_types(vec![CardType::Planeswalker]).build();
+        let bob_walker = game.create_object_from_card(&walker, bob, Zone::Battlefield);
+        let carol_walker = game.create_object_from_card(&walker, carol, Zone::Battlefield);
+        let cost = crate::cost::TotalCost::from_costs(vec![crate::costs::Cost::mana(
+            ManaCost::from_pips(vec![vec![ManaSymbol::White, ManaSymbol::Life(2)]])
+        )]);
+        let mut ability = AttackCost {
+            attackers: ObjectFilter::creature(), covers_planeswalkers: false,
+            cost: cost.clone(), display_text: "Attack tax".into(),
+        };
+        assert_eq!(ability.attack_cost_for_declaration(&game, source, bob, attacker,
+            &AttackTarget::Player(bob)), Some(cost.clone()));
+        assert!(ability.attack_cost_for_declaration(&game, source, bob, attacker,
+            &AttackTarget::Player(carol)).is_none());
+        assert!(ability.attack_cost_for_declaration(&game, source, bob, attacker,
+            &AttackTarget::Planeswalker(bob_walker)).is_none());
+        ability.covers_planeswalkers = true;
+        assert_eq!(ability.attack_cost_for_declaration(&game, source, bob, attacker,
+            &AttackTarget::Planeswalker(bob_walker)), Some(cost));
+        assert!(ability.attack_cost_for_declaration(&game, source, bob, attacker,
+            &AttackTarget::Planeswalker(carol_walker)).is_none());
+        // The attacker predicate is evaluated relative to the tax controller.
+        ability.attackers = ObjectFilter::creature().you_control();
+        assert!(ability.attack_cost_for_declaration(&game, source, bob, attacker,
+            &AttackTarget::Player(bob)).is_none());
+        assert!(ability.attack_cost_for_declaration(&game, source, bob, source,
+            &AttackTarget::Player(bob)).is_none());
+    }
 
     #[test]
     fn test_unblockable() {

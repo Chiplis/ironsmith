@@ -15,7 +15,27 @@ fn operand_end(tokens: &[OwnedLexToken], start: usize) -> usize {
             TokenKind::Comma | TokenKind::Period | TokenKind::Semicolon
         ) || token.is_word("then")
         {
-            return start + offset;
+            let index = start + offset;
+            // A comma inside an authored title belongs to the same named
+            // operand. A following instruction (", then return ...") does not.
+            if token.kind == TokenKind::Comma
+                && crate::lexer::is_authored_proper_name_phrase(&tokens[start..index])
+            {
+                let title_start = index + 1;
+                let title_end = tokens[title_start..]
+                    .iter()
+                    .position(|token| {
+                        matches!(
+                            token.kind,
+                            TokenKind::Comma | TokenKind::Period | TokenKind::Semicolon
+                        ) || token.is_word("then")
+                    })
+                    .map_or(tokens.len(), |offset| title_start + offset);
+                if crate::lexer::is_authored_proper_name_phrase(&tokens[title_start..title_end]) {
+                    return title_end;
+                }
+            }
+            return index;
         }
     }
     tokens.len()
@@ -28,7 +48,14 @@ fn operand_after(tokens: &[OwnedLexToken], action_index: usize) -> Option<&[Owne
 }
 
 pub fn parse_named_surface(tokens: &[OwnedLexToken]) -> Option<SourceReferenceSurface> {
-    if !crate::lexer::is_authored_proper_name_phrase(tokens) {
+    let name_parts = tokens
+        .split(|token| token.kind == TokenKind::Comma)
+        .collect::<Vec<_>>();
+    if name_parts.is_empty()
+        || name_parts
+            .iter()
+            .any(|part| !crate::lexer::is_authored_proper_name_phrase(part))
+    {
         return None;
     }
     let text = render_token_slice(tokens).trim().to_string();
@@ -191,4 +218,39 @@ pub fn parse_chosen_complement_surface(tokens: &[OwnedLexToken]) -> bool {
             crate::grammar::primitives::phrase(&["and", "the", "chosen", "creature"]).void()
         })
         .is_some()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn named_operand_retains_a_comma_title_but_stops_at_the_next_instruction() {
+        for (text, expected) in [
+            (
+                "Exile Aria, Grove Keeper, then return her to the battlefield.",
+                SourceReferenceSurface::FullName("Aria, Grove Keeper".into()),
+            ),
+            (
+                "Exile Aria, then return her to the battlefield.",
+                SourceReferenceSurface::ShortName("Aria".into()),
+            ),
+            (
+                "Exile Aria, Grove Keeper.",
+                SourceReferenceSurface::FullName("Aria, Grove Keeper".into()),
+            ),
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            assert_eq!(
+                parse_unique_named_operand_after(None, &tokens, "exile")
+                    .unwrap()
+                    .surface,
+                expected,
+                "{text}"
+            );
+        }
+        let tokens =
+            crate::lexer::lex_line("Exile this creature, then return it to the battlefield.", 0)
+                .unwrap();
+        assert!(parse_unique_named_operand_after(None, &tokens, "exile").is_none());
+    }
 }

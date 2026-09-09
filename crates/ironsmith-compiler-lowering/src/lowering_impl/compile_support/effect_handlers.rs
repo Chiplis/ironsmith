@@ -420,10 +420,7 @@ fn set_effect_tag_relation(
     to: TaggedOpbjectRelation,
 ) -> Effect {
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
-        return Effect::new(crate::effects::TaggedEffect::new(
-            tagged.tag.clone(),
-            set_effect_tag_relation((*tagged.effect).clone(), tag, from, to),
-        ));
+        return Effect::new(tagged.with_effect(set_effect_tag_relation((*tagged.effect).clone(), tag, from, to)));
     }
 
     if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {

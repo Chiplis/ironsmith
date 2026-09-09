@@ -262,6 +262,7 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         }
         "GainLifeEffect" => decode_as::<T, ironsmith_core::GainLifeEffect>(effect),
         "GoadEffect" => decode_as::<T, ironsmith_core::GoadEffect>(effect),
+        "ClearGoadEffect" => decode_as::<T, ironsmith_core::ClearGoadEffect>(effect),
         "GrantAbilitiesTargetEffect" => decode_as::<
             T,
             ironsmith_core::GrantAbilitiesTargetEffect<wire::WireStaticAbility>,
@@ -412,6 +413,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         }
         "RegisterDrawReplacementEffect" => {
             decode_as::<T, ironsmith_core::RegisterDrawReplacementEffect<wire::WireEffect>>(effect)
+        }
+        "RegisterEnterWithCountersReplacementEffect" => {
+            decode_as::<T, ironsmith_core::RegisterEnterWithCountersReplacementEffect>(effect)
         }
         "RegisterEnterTappedReplacementEffect" => {
             decode_as::<T, ironsmith_core::RegisterEnterTappedReplacementEffect>(effect)
@@ -761,6 +765,7 @@ impl crate::effect_model_interpreter::EffectModelInterpreterHooks<WireEffectMode
             wire::WireGrantDuration::UntilEndOfTurn => {
                 Ok(crate::grant::GrantDuration::UntilEndOfTurn)
             }
+            wire::WireGrantDuration::UntilYourNextTurn => Ok(crate::grant::GrantDuration::UntilYourNextTurn),
             wire::WireGrantDuration::UntilYourNextTurnEnd => {
                 Ok(crate::grant::GrantDuration::UntilYourNextTurnEnd)
             }
@@ -861,7 +866,7 @@ fn detarget_overload_effect(effect: crate::effect::Effect) -> Option<crate::effe
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
         let inner = detarget_overload_effect((*tagged.effect).clone())?;
         return Some(crate::effect::Effect::new(
-            crate::effects::TaggedEffect::new(tagged.tag.clone(), inner),
+            tagged.with_effect(inner),
         ));
     }
 

@@ -11,7 +11,7 @@ pub(super) fn parse_each_player_hand_exile_play_constraints_bundle(
     hand_card.owner = Some(PlayerFilter::IteratedPlayer);
 
     Some(vec![
-        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
             filter: shape.players,
             effects: vec![
                 EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {

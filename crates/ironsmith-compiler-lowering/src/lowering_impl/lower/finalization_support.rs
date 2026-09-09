@@ -1651,6 +1651,7 @@ mod quantified_player_damage_value_tests {
                     ),
                 )],
                 starting_with_controller: false,
+                sequential: false,
                 stop_after_first_happened: false,
             },
         )])

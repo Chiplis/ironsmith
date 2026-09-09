@@ -26,6 +26,23 @@ pub(crate) fn describe_counter_constraint_phrase(
     }
 }
 
+/// A keyword-only predicate can use possession without dropping other qualities.
+pub(crate) fn describe_exact_keyword_condition(
+    subject: &str,
+    filter: &ObjectFilter,
+) -> Option<String> {
+    let [ability] = filter.static_abilities.as_slice() else {
+        return None;
+    };
+    let mut rest = filter.clone();
+    rest.static_abilities.clear();
+    if rest != ObjectFilter::default() {
+        return None;
+    }
+    let label = describe_source_condition_static_ability(*ability)?;
+    Some(format!("{subject} has {label}"))
+}
+
 pub(crate) fn describe_source_matches_keyword_condition(filter: &ObjectFilter) -> Option<String> {
     if filter.static_abilities.len() != 1
         || !filter.excluded_static_abilities.is_empty()
@@ -142,6 +159,13 @@ fn describe_phase_step_value_comparison(
             "there are no cards in {} graveyard",
             describe_possessive_graveyard_owner_filter(player)
         ));
+    }
+
+    if let (Value::LifeTotal(player), GreaterThanOrEqual, Value::StartingLifeTotal(starting_player)) = (left, operator, right)
+        && player == starting_player
+    {
+        let owner = describe_possessive_player_filter(player);
+        return Some(format!("{owner} life total is greater than or equal to {owner} starting life total"));
     }
 
     if let (Value::LifeTotal(player), GreaterThanOrEqual, Value::Add(starting_total, offset)) =
@@ -582,6 +606,7 @@ fn describe_turn_history_value_comparison(
             }
         }
         ironsmith_core::TurnHistoryCount::CountersPutOn {
+            source_controller,
             counter_type,
             filter,
         } => {
@@ -589,6 +614,12 @@ fn describe_turn_history_value_comparison(
             let counter = counter_type
                 .map(|counter_type| format!("{} counter", counter_type.description()))
                 .unwrap_or_else(|| "counter".to_string());
+            if let Some(player) = source_controller {
+                let actor = describe_history_player_subject(player);
+                let action = if player == &PlayerFilter::You { "you've put".to_string() } else { format!("{actor} has put") };
+                let quantity = if is_absent { "no".to_string() } else { format!("{count_text} or more") };
+                return Some(format!("{action} {quantity} {counter}s on {} this turn", with_indefinite_article(&subject)));
+            }
             if is_present {
                 Some(format!(
                     "a {counter} was put on {} this turn",
@@ -888,6 +919,9 @@ fn describe_turn_history_condition(condition: &ironsmith_core::TurnHistoryCondit
         }
         TurnHistoryCondition::SourceEnteredBattlefieldThisTurn { surface } => {
             format!("{} entered this turn", surface.display_text())
+        }
+        TurnHistoryCondition::ObjectAttackedDuringControllersLastTurn(filter) => {
+            format!("{} attacked during its controller's last turn", filter.description())
         }
         TurnHistoryCondition::SourceAttackedThisTurn { surface } => {
             format!("{} attacked this turn", surface.display_text())
@@ -1199,6 +1233,24 @@ pub(in crate::compiled_text) fn attachment_state_disjunction_reference_tag(
     let (left_tag, left_state) = exact_branch(left)?;
     let (right_tag, right_state) = exact_branch(right)?;
     (left_tag == right_tag && left_state != right_state).then_some(left_tag)
+}
+
+/// Render alternatives only when every leaf describes the same source object.
+pub(crate) fn source_status_alternatives(condition: &Condition) -> Option<String> {
+    match condition {
+        Condition::SourceIsEnchanted => Some("enchanted".into()),
+        Condition::SourceIsEquipped => Some("equipped".into()),
+        Condition::SourceIsTapped => Some("tapped".into()),
+        Condition::SourceIsUntapped => Some("untapped".into()),
+        Condition::SourceIsAttacking => Some("attacking".into()),
+        Condition::SourceIsMonstrous => Some("monstrous".into()),
+        Condition::Or(left, right) => Some(format!(
+            "{} or {}",
+            source_status_alternatives(left)?,
+            source_status_alternatives(right)?
+        )),
+        _ => None,
+    }
 }
 
 pub(crate) fn describe_condition(condition: &Condition) -> String {
@@ -2284,7 +2336,8 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 format!("at least {amount_text} mana was spent to cast this spell")
             }
         }
-        Condition::SnowManaOfAnySpellColorSpentToCastThisSpell => {
+        Condition::SnowManaOfAnySpellColorSpentToCastThisSpell
+        | Condition::TriggeringSpellSnowManaOfAnySpellColorSpentToCast => {
             "{S} of any of that spell's colors was spent to cast it".to_string()
         }
         Condition::SameColorManaSpentToCastThisSpellAtLeast(amount) => {
@@ -2330,6 +2383,18 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             "the target is paired with another creature".to_string()
         }
         Condition::TaggedObjectMatches(tag, filter) => {
+            if filter.attacking_player_only
+                && filter.attacking_player_or_planeswalker_controlled_by == Some(PlayerFilter::Opponent)
+            {
+                let mut plain = filter.clone();
+                plain.attacking_player_only = false;
+                plain.attacking_player_or_planeswalker_controlled_by = None;
+                plain.attacking = false;
+                if plain.zone == Some(Zone::Battlefield) { plain.zone = None; }
+                if plain == ObjectFilter::default() {
+                    return "it's attacking one of your opponents".into();
+                }
+            }
             if filter.zone == Some(Zone::Exile) && filter.has_plural_pronoun_reference_surface() {
                 let mut plain = filter.clone();
                 plain.zone = None;
@@ -2625,6 +2690,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     describe_implicit_tagged_object_any_of_condition(tag, filter)
                 {
                     return any_of_clause;
+                }
+                if let Some(keyword_clause) = describe_exact_keyword_condition(subject, filter) {
+                    return keyword_clause;
                 }
                 if let Some(quality_clause) =
                     describe_implicit_tagged_object_quality_condition(subject, filter)
@@ -2954,7 +3022,11 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             filter,
             mode,
         } => {
-            if *mode == crate::effect::TaggedObjectMatchMode::LastKnown {
+            let sacrifice_result = tag.as_str().starts_with("sacrificed_")
+                || crate::cards::is_sentence_helper_tag(tag.as_str(), "sacrificed");
+            if *mode == crate::effect::TaggedObjectMatchMode::LastKnown
+                && (!sacrifice_result || filter.demonstrative_antecedent_surface().is_some())
+            {
                 let object_text = filter
                     .demonstrative_antecedent_surface()
                     .map(ironsmith_core::DemonstrativeAntecedentSurface::phrase)
@@ -2982,7 +3054,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     describe_possessive_player_filter(player),
                 );
             }
-            if let Some(action) = tag_action_from_name(tag.as_str()) {
+            if let Some(action) = tag_action_from_name(tag.as_str())
+                .or_else(|| sacrifice_result.then_some("sacrificed"))
+            {
                 let object_text = describe_player_tagged_object_text(tag, filter);
                 let destination = if action == "put" && filter.zone == Some(Zone::Battlefield) {
                     " onto the battlefield"
@@ -3769,6 +3843,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::SourceIsSoulbondPaired => {
             "this creature is paired with another creature".to_string()
         }
+        Condition::SourceSoulbondPartnerMatches(filter) => format!("this creature is paired with {}", filter.description()),
         Condition::TurnHistory(condition) => describe_turn_history_condition(condition),
         Condition::PlayerGraveyardHasCardsAtLeast { player, count } => {
             format!("{player:?}'s graveyard has {count} or more cards")
@@ -4224,6 +4299,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             format!("{} and {}", describe_condition(left), describe_condition(right))
         }
         Condition::Or(left, right) => {
+            if let Some(states) = source_status_alternatives(condition) {
+                return format!("this permanent is {states}");
+            }
             if let (Condition::TaggedObjectMatchedLastKnown(left_tag, _), Condition::TaggedObjectMatchedLastKnown(right_tag, _)) = (left.as_ref(), right.as_ref())
                 && left_tag == right_tag
             {
@@ -4566,6 +4644,14 @@ fn describe_demonstrative_object_property(
     fn comparison_tail(comparison: &ironsmith_core::FilterComparison) -> String {
         let clause = describe_filter_comparison_clause(comparison);
         clause.strip_prefix("is ").unwrap_or(&clause).to_string()
+    }
+
+    if filter.attacking {
+        let mut remainder = filter.clone();
+        remainder.attacking = false;
+        if remainder == ObjectFilter::default() {
+            return Some(format!("{subject} {} attacking", if past { "was" } else { "is" }));
+        }
     }
 
     if filter.excluded_supertypes == [Supertype::Basic] {
@@ -5740,5 +5826,56 @@ mod greatest_power_control_tests {
             ))
             .contains("tagged object")
         );
+    }
+    #[test]
+    fn source_status_alternatives_preserve_mixed_subjects_and_conjunctions() {
+        let states = Condition::Or(
+            Box::new(Condition::SourceIsEnchanted),
+            Box::new(Condition::Or(
+                Box::new(Condition::SourceIsEquipped),
+                Box::new(Condition::SourceIsTapped),
+            )),
+        );
+        assert_eq!(describe_condition(&states), "this permanent is enchanted or equipped or tapped");
+        let mixed = Condition::Or(
+            Box::new(Condition::SourceIsEnchanted),
+            Box::new(Condition::TaggedObjectMatches(TagKey::from("other"), ObjectFilter::default())),
+        );
+        assert!(source_status_alternatives(&mixed).is_none());
+        let conjunction = Condition::Or(
+            Box::new(Condition::SourceIsEnchanted),
+            Box::new(Condition::And(
+                Box::new(Condition::SourceIsEquipped),
+                Box::new(Condition::SourceIsTapped),
+            )),
+        );
+        assert!(source_status_alternatives(&conjunction).is_none());
+    }
+
+}
+
+#[cfg(test)]
+mod exact_keyword_condition_tests {
+    use super::*;
+    #[test]
+    fn exact_keyword_condition_preserves_additional_qualifiers() {
+        let mut filter = ObjectFilter::default();
+        filter
+            .static_abilities
+            .push(crate::static_abilities::StaticAbilityId::Flying);
+        assert_eq!(
+            describe_exact_keyword_condition("that object", &filter).as_deref(),
+            Some("that object has flying")
+        );
+        filter.tapped = true;
+        assert!(describe_exact_keyword_condition("it", &filter).is_none());
+        filter.tapped = false;
+        filter.card_types.push(CardType::Creature);
+        assert!(describe_exact_keyword_condition("it", &filter).is_none());
+        filter.card_types.clear();
+        filter
+            .excluded_static_abilities
+            .push(crate::static_abilities::StaticAbilityId::Reach);
+        assert!(describe_exact_keyword_condition("it", &filter).is_none());
     }
 }

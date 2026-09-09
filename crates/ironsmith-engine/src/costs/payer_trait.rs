@@ -79,6 +79,8 @@ pub struct CostContext<'dm> {
     pub x_value: Option<u32>,
     /// Why this cost is being paid.
     pub reason: PaymentReason,
+    /// Original effect requesting this payment, independent of the payer.
+    pub requesting_effect_cause: Option<crate::events::cause::EventCause>,
     /// Decision maker for player choices during cost payment.
     pub decision_maker: &'dm mut dyn crate::decision::DecisionMaker,
     /// Pre-chosen cards for costs that require card selection (e.g., ExileFromHand).
@@ -129,12 +131,26 @@ impl<'dm> CostContext<'dm> {
             payer,
             x_value: None,
             reason: PaymentReason::Other,
+            requesting_effect_cause: None,
             decision_maker,
             pre_chosen_cards: Vec::new(),
             tagged_objects: HashMap::new(),
             effect_outcomes: HashMap::new(),
             provenance: ProvNodeId::default(),
         }
+    }
+
+    /// Keep the event classified as a cost while retaining the spell/ability
+    /// controller that requested an effect-time payment.
+    pub fn event_cause(&self) -> crate::events::cause::EventCause {
+        let mut cause = crate::events::cause::EventCause::from_cost(self.source, self.payer);
+        if self.reason == PaymentReason::Effect
+            && let Some(request) = &self.requesting_effect_cause
+        {
+            cause.source = request.source;
+            cause.source_controller = request.source_controller;
+        }
+        cause
     }
 
     /// Set the X value.
@@ -219,6 +235,7 @@ impl CostCheckContext {
             payer: self.payer,
             x_value: self.x_value,
             reason: self.reason,
+            requesting_effect_cause: None,
             decision_maker: dm,
             pre_chosen_cards: self.pre_chosen_cards.clone(),
             tagged_objects: HashMap::new(),

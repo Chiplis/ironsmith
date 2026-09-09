@@ -169,7 +169,7 @@ pub mod lexer {
         find_token_kind, find_token_word, find_token_word_sequence, find_token_word_sequence_span,
         find_token_word_sequence_value, is_authored_proper_name_phrase, is_bare_card_name_phrase,
         is_word_char, lex_line, parser_token_word_positions, parser_token_word_refs,
-        render_bare_card_name_surface, render_token_slice, rfind_token_word, split_lexed_sentences,
+        render_bare_card_name_surface, render_literal_token_slice, render_token_slice, rfind_token_word, split_lexed_sentences,
         synthetic_phrase_tokens, synthetic_word_tokens, token_slice_at_is, token_slice_at_is_any,
         token_slice_first_is, token_slice_first_is_any, token_word_pieces_for_token,
         token_word_refs, trim_lexed_commas, word_slice_at_is, word_slice_at_is_any,

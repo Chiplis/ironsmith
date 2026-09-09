@@ -2238,7 +2238,7 @@ pub(super) fn rewrite_lowered_nested_mana_effect_marks_activated_mana_ability()
             let debug = format!("{:#?}", activated.effects);
             assert!(debug.contains("ForPlayersEffect"), "{debug}");
             assert!(
-                debug.contains("ForEachObject") || debug.contains("RepeatEffectsEffect"),
+                debug.contains("ForEachTaggedEffect"),
                 "{debug}"
             );
             assert!(debug.contains("AddManaEffect"), "{debug}");

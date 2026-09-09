@@ -2422,3 +2422,27 @@ fn source_block_history_tracks_blocker_and_blocked_attacker_separately() {
     assert!(!game.source_blocked_or_became_blocked_since_last_upkeep(blocker, alice));
     assert!(!game.source_blocked_or_became_blocked_since_last_upkeep(attacker, alice));
 }
+
+#[test]
+fn clearing_goad_ends_prior_sources_but_allows_later_goad() {
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Carol".into()], 20);
+    let alice = game.players[0].id; let bob = game.players[1].id; let carol = game.players[2].id;
+    let card = crate::card::CardBuilder::new(CardId::new(), "Goad fixture").card_types(vec![CardType::Creature]).build();
+    let target = game.create_object_from_card(&card, alice, Zone::Battlefield);
+    let untouched = game.create_object_from_card(&card, alice, Zone::Battlefield);
+    let source = game.create_object_from_card(&card, bob, Zone::Battlefield);
+    std::sync::Arc::make_mut(&mut game.object_mut(target).unwrap().abilities).push(crate::ability::Ability::static_ability(
+        crate::static_abilities::StaticAbility::goaded_by_source_controller(source)));
+    game.add_goad_effect(target, carol, Until::YourNextTurn, source);
+    game.add_goad_effect(untouched, carol, Until::YourNextTurn, source);
+    game.refresh_continuous_state();
+    assert_eq!(game.active_goaders_for(target), [bob, carol].into_iter().collect());
+    game.clear_goad(target);
+    assert!(!game.is_goaded(target));
+    assert!(game.is_goaded(untouched));
+    game.add_goad_effect(target, carol, Until::YourNextTurn, source);
+    assert_eq!(game.active_goaders_for(target), [carol].into_iter().collect());
+    game.clear_goad(target);
+    game.effect_store.continuous_effects.record_attachment(source);
+    assert_eq!(game.active_goaders_for(target), [bob].into_iter().collect());
+}

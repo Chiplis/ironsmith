@@ -139,26 +139,19 @@ fn attack_unless_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilit
             }
             _ => StaticAbility::cant_attack_unless_condition(fact.condition, display),
         }),
-        AttackUnlessScope::AttackOrBlock => {
+        AttackUnlessScope::AttackOrBlock | AttackUnlessScope::Block => {
             let crate::static_abilities::CantAttackUnlessConditionSpec::SourceCondition(condition) =
                 fact.condition
             else {
                 return None;
             };
-            let condition = PredicateAst::Not(Box::new(condition));
-            Some(
-                StaticAbility::restriction(
-                    crate::effect::Restriction::attack_or_block(ObjectFilter::source()),
-                    display,
-                )
-                .with_condition(condition)
-                .unwrap_or_else(|| {
-                    StaticAbility::restriction(
-                        crate::effect::Restriction::attack_or_block(ObjectFilter::source()),
-                        format_negated_restriction_display(tokens),
-                    )
-                }),
-            )
+            let restriction = if fact.scope == AttackUnlessScope::Block {
+                crate::effect::Restriction::block(ObjectFilter::source())
+            } else {
+                crate::effect::Restriction::attack_or_block(ObjectFilter::source())
+            };
+            Some(StaticAbility::restriction(restriction, display)
+                .with_condition(PredicateAst::Not(Box::new(condition))))
         }
     }
 }
@@ -219,6 +212,53 @@ fn strip_per_blocking_creature_tail(tokens: &[OwnedLexToken]) -> &[OwnedLexToken
 
 /// Parse a CR 509.1d blocking cost before the generic negated-restriction
 /// family can incorrectly turn it into an unconditional prohibition.
+/// Preserve the affected attackers and the whole payment, including Phyrexian
+/// alternatives and a bound X value, for declaration-time attack taxes.
+fn typed_attack_tax_static_ability(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let Some(cant) = tokens.iter().position(|t| t.is_word("can't") || t.is_word("cant") || t.is_word("cannot")) else {
+        return Ok(None);
+    };
+    let Some(unless) = tokens.iter().position(|t| t.is_word("unless")) else { return Ok(None); };
+    if unless <= cant { return Ok(None); }
+    let action = crate::lexer::token_word_refs(&tokens[cant + 1..unless]);
+    let covers_planeswalkers = if action == ["attack", "you"] { false }
+        else if action == ["attack", "you", "or", "planeswalkers", "you", "control"] { true }
+        else { return Ok(None); };
+    let tail = &tokens[unless + 1..];
+    if tail.len() < 4 || crate::lexer::token_word_refs(&tail[..3]) != ["their", "controller", "pays"] {
+        return Ok(None);
+    }
+    let Some(per) = tail.iter().position(|t| t.is_word("for")) else { return Ok(None); };
+    if per <= 3 { return Ok(None); }
+    let where_index = tail.iter().position(|t| t.is_word("where")).unwrap_or(tail.len());
+    if where_index <= per { return Ok(None); }
+    let per_words = crate::lexer::token_word_refs(trim_edge_punctuation_tokens(&tail[per..where_index]));
+    if !crate::word_primitives::parse_any_sequence_complete(&per_words, &[
+        &["for", "each", "of", "those", "creatures"],
+        &["for", "each", "creature", "they", "control", "that's", "attacking", "you"],
+        &["for", "each", "creature", "they", "control", "thats", "attacking", "you"],
+    ]) { return Ok(None); }
+    let Some(attackers) = parse_subject_object_filter(&tokens[..cant])? else { return Ok(None); };
+    let Some(mut cost) = parse_payment_clause_as_total_cost(&tail[3..per])? else { return Ok(None); };
+    if where_index < tail.len() {
+        let binding = trim_edge_punctuation_tokens(&tail[where_index + 1..]);
+        if binding.len() < 3 || !binding[0].is_word("x") || !binding[1].is_word("is") {
+            return Ok(None);
+        }
+        let Some((value, used)) = crate::util::parse_value(&binding[2..]) else { return Ok(None); };
+        if !trim_edge_punctuation_tokens(&binding[2 + used..]).is_empty() { return Ok(None); }
+        let Some(mana) = cost.mana_cost().filter(|mana| mana.has_x()) else { return Ok(None); };
+        cost = ironsmith_core::TotalCost::from_cost(crate::model::CompilerCost::DynamicMana(
+            ironsmith_core::DynamicManaCost::from_x(mana.clone(), value),
+        ));
+    } else if cost.mana_cost().is_some_and(|mana| mana.has_x()) {
+        return Ok(None);
+    }
+    Ok(Some(StaticAbility::attack_cost(attackers, covers_planeswalkers, cost, "Attack tax")))
+}
+
 fn block_cost_static_ability(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -250,6 +290,11 @@ fn block_cost_static_ability(
             &[&["enchanted", "creature"], &["equipped", "creature"]],
         ) {
             (ObjectFilter::creature(), true)
+        } else if subject_words.contains(&"creatures") {
+            let Some(filter) = parse_subject_object_filter(&tokens[..cant_index])? else {
+                return Ok(None);
+            };
+            (filter, false)
         } else {
             return Ok(None);
         };
@@ -315,7 +360,7 @@ fn block_cost_static_ability(
         }
         trim_edge_punctuation_tokens(&payment_tokens[pay_index.saturating_add(1)..])
     };
-    if crate::word_primitives::parse_sequence_complete(&subject_words, &["creatures"]) {
+    if subject_words.contains(&"creatures") {
         cost_tokens = trim_edge_punctuation_tokens(strip_per_blocking_creature_tail(cost_tokens));
     }
     let parsed_cost = if direct_action_cost {
@@ -486,6 +531,7 @@ pub fn parse_cant_clauses(
         tokens,
     )
     .is_some()
+        || crate::grammar::attached_object_static_lines::parse_attached_action_restriction_list_tokens(tokens).is_some()
         || crate::grammar::abilities::is_this_creature_cant_attack_its_owner_line_lexed(tokens)
         || crate::grammar::abilities::parse_flying_block_restriction_line_lexed(tokens).is_some()
         || crate::grammar::anthem_grants::parse_keywords_and_cant_be_blocked_by_more_than_clause(
@@ -507,6 +553,12 @@ pub fn parse_cant_clauses(
         // The mirrored order ("<subject> has <keywords> and can't be blocked")
         // is one grant-plus-restriction production. Reading only its negated
         // half drops the granted keywords.
+        || crate::grammar::attached_object_static_lines::parse_attached_has_tokens(tokens)
+            .is_some_and(|clause| {
+                crate::grammar::anthem_grants::parse_keywords_and_cant_be_blocked_clause(
+                    clause.ability_tokens,
+                ).is_some()
+            })
         || matches!(
             crate::keyword_static::parse_subject_has_keywords_and_cant_be_blocked_line(tokens),
             Ok(Some(_))
@@ -652,6 +704,19 @@ fn parse_unspent_mana_retention_static(
 }
 
 pub fn parse_cant_clause(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, CardTextError> {
+    if let Some(split) = crate::grammar::structure::split_trailing_if_clause_lexed(tokens)
+        && !split.leading_tokens.is_empty()
+        && split.leading_tokens.len() < tokens.len()
+        && matches!(cant_shapes::parse_direct_cant_fact_tokens(split.leading_tokens), Some(
+            DirectCantFact::SourceCantAttack | DirectCantFact::SourceCantBlock |
+            DirectCantFact::SourceCantAttackOrBlock
+        ))
+        && let Some(ability) = parse_cant_clause(split.leading_tokens)?
+    {
+        let predicate = crate::grammar::filters::parse_intrinsic_source_counter_condition(split.predicate_tokens)
+            .unwrap_or(split.predicate);
+        return Ok(Some(ability.with_condition(predicate)));
+    }
     if let Some((condition, remainder)) = strip_static_restriction_condition(tokens)?
         && remainder.as_slice() != tokens
     {
@@ -697,6 +762,10 @@ pub fn parse_cant_clause(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
         } else {
             StaticAbility::cant_attack_you_unless_controller_pays_per_attacker(fact.amount)
         }));
+    }
+
+    if let Some(ability) = typed_attack_tax_static_ability(tokens)? {
+        return Ok(Some(ability));
     }
 
     if let Some(ability) = attack_unless_static_ability(tokens) {
@@ -1087,5 +1156,21 @@ mod tests {
                 .expect("generic restriction probe should not error")
                 .is_none()
         );
+    }
+}
+
+#[cfg(test)]
+mod filtered_block_cost_tests {
+    use super::*;
+
+    #[test]
+    fn filtered_blockers_keep_their_life_payment_and_attacker_scope() {
+        let tokens = crate::lexer::lex_line("Nonblue creatures can't block creatures you control unless their controller pays 1 life for each blocking creature they control.", 0).unwrap();
+        let abilities = parse_cant_clauses(&tokens).unwrap().expect("filtered blocking cost");
+        let [ability] = abilities.as_slice() else { panic!("one block cost: {abilities:#?}"); };
+        let ironsmith_core::StaticAbilityPayload::BlockCost { blockers, attackers, cost, .. } = &ability.payload else { panic!("typed blocking payment: {ability:#?}"); };
+        assert_eq!(blockers.excluded_colors, crate::color::ColorSet::BLUE);
+        assert_eq!(attackers.controller, Some(crate::target::PlayerFilter::You));
+        assert!(format!("{cost:?}").contains("Life"), "life payment: {cost:#?}");
     }
 }

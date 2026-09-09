@@ -248,8 +248,8 @@ pub(super) fn last_night_together_runtime_limits_attackers_to_chosen_creatures_f
         );
     }
     assert!(
-        !game.can_attack(unchosen),
-        "unchosen creatures should be prohibited from attacking during that combat"
+        game.can_attack(unchosen),
+        "the restriction should not apply before its added combat begins"
     );
 
     crate::turn::advance_phase(&mut game).expect("advance to the inserted combat phase");

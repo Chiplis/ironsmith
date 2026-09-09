@@ -391,6 +391,9 @@ fn correlated_choice_result_predicate(
     requested: IfResultPredicate,
     antecedent_effects: &[EffectAst],
 ) -> IfResultPredicate {
+    if requested == IfResultPredicate::SearchedLibrary {
+        return requested;
+    }
     if requested == IfResultPredicate::AcceptedChoice
         && antecedent_effects.last().is_some_and(|effect| {
             matches!(
@@ -595,12 +598,12 @@ pub fn compile_if_do_with_player_did(
                 ..
             })]
         );
-        if is_face_only_coin_flip && predicate.is_none() {
-            // Resolve every player's physical flip first and retain the
-            // ForPlayers outcome's per-player heads/tails counts. The outer
-            // IfEffect then applies the separately authored follow-up only to
-            // matching players instead of interleaving one player's
-            // consequence before the next player's flip.
+        if (is_face_only_coin_flip || *result_predicate == IfResultPredicate::SearchedLibrary)
+            && predicate.is_none() {
+            // Complete the first instruction for every player before applying
+            // the separately authored follow-up to matching participants.
+            // Coin flips retain per-player counts; searches retain events even
+            // when no matching card was found.
             let (mut first_effects, mut choices) = compile_effect(first, ctx)?;
             let Some(first_effect) = first_effects.pop() else {
                 return Err(CardTextError::ParseError(
@@ -694,14 +697,14 @@ pub fn compile_if_do_with_player_did(
         for choice in inner_choices {
             push_choice(&mut choices, choice);
         }
-        first_effects.push(Effect::if_then(
+        first_effects.push(Effect::new(crate::effects::IfEffect::if_then(
             id,
             effect_predicate_from_if_result(correlated_choice_result_predicate(
                 result_predicate.clone(),
                 std::slice::from_ref(first),
             )),
             inner_effects,
-        ));
+        ).with_per_player_result(true)));
         return Ok(Some((first_effects, choices)));
     }
 
@@ -1052,7 +1055,7 @@ pub fn effect_predicate_from_if_result(predicate: IfResultPredicate) -> EffectPr
             EffectPredicate::AffectedObjectMatchesCardType { card_type, negated }
         }
         IfResultPredicate::PriorEffectResult(surface)
-            if surface.action == ironsmith_core::PriorEffectAction::Searched
+            if !surface.negated && surface.action == ironsmith_core::PriorEffectAction::Searched
                 && surface.actor == ironsmith_core::PriorEffectResultActor::You
                 && surface.quantifier
                     == ironsmith_core::PriorEffectResultQuantifier::ActionOnly
@@ -1060,10 +1063,8 @@ pub fn effect_predicate_from_if_result(predicate: IfResultPredicate) -> EffectPr
                 && surface.required_count.is_none()
                 && surface.shared_characteristic.is_none() =>
         {
-            // The dedicated predicate evaluates the chosen object's origin
-            // zone, which is the runtime distinction needed by
-            // "If you searched your library this way" after a library and/or
-            // graveyard search.
+            // The dedicated predicate checks a library-search event, including
+            // searches that did not find a card.
             EffectPredicate::SearchedLibrary
         }
         IfResultPredicate::PriorEffectResult(surface) => {

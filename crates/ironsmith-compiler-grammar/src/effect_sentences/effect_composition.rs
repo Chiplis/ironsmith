@@ -1171,7 +1171,7 @@ fn parse_choose_mixed_targets_then_for_each_bundle(
     } else {
         declaration
     }];
-    combined.push(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+    combined.push(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
         // The mixed declaration above already made the target choice. This
         // is an anaphoric view over its player members, not a second target
         // declaration.

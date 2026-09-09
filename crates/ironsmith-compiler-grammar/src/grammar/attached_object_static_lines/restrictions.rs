@@ -48,6 +48,57 @@ impl AttachedTapAbilitySubject {
     }
 }
 
+/// A coordinated list of simple actions forbidden to the attached object.
+/// Keep each action separate so lowering uses the existing rule restrictions.
+pub fn parse_attached_action_restriction_list_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<(AttachedSubject, Vec<&'static str>)> {
+    let (subject, (), tail) = crate::grammar::primitives::probe_all(
+        tokens,
+        (parse_attached_subject_lexed, semantic_kw("cant"), rest),
+        "attached action restriction list",
+    )?;
+    if !matches!(
+        subject,
+        AttachedSubject::EnchantedCreature
+            | AttachedSubject::EnchantedPermanent
+            | AttachedSubject::EquippedCreature
+    ) {
+        return None;
+    }
+    let tail = if tail.last().is_some_and(OwnedLexToken::is_period) {
+        &tail[..tail.len() - 1]
+    } else {
+        tail
+    };
+    let mut actions = Vec::new();
+    let mut index = 0;
+    let mut final_action = false;
+    while index < tail.len() {
+        let action = ["attack", "block", "transform", "untap"]
+            .into_iter()
+            .find(|action| tail[index].is_word(action))?;
+        if actions.contains(&action) {
+            return None;
+        }
+        actions.push(action);
+        index += 1;
+        if final_action {
+            return (index == tail.len()).then_some((subject, actions));
+        }
+        if tail.get(index).is_some_and(OwnedLexToken::is_comma) {
+            index += 1;
+        } else if !tail.get(index).is_some_and(|token| token.is_word("or")) {
+            return None;
+        }
+        if tail.get(index).is_some_and(|token| token.is_word("or")) {
+            final_action = true;
+            index += 1;
+        }
+    }
+    None
+}
+
 pub fn parse_attached_combat_restriction_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedCombatRestrictionSpec> {

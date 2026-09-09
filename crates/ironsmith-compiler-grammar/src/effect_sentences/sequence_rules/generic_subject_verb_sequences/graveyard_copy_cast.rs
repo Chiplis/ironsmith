@@ -66,7 +66,7 @@ fn normalize_shared_graveyard_union_target(target: &mut TargetAst) {
 
 pub(crate) fn normalize_shared_graveyard_union_exile(effect: &mut EffectAst) {
     let effect = match effect {
-        EffectAst::TagAffected { effect, .. } => effect.as_mut(),
+        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => effect.as_mut(),
         effect => effect,
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {

@@ -229,9 +229,10 @@ fn conditional_draw_keeps_explicit_subject(prefix: &str, explicit: &str) -> bool
         .next()
         .unwrap_or(prefix)
         .trim_start();
-    sentence_prefix
-        .get(..3)
-        .is_some_and(|head| head.eq_ignore_ascii_case("if "))
+    sentence_prefix.eq_ignore_ascii_case("otherwise")
+        || sentence_prefix
+            .get(..3)
+            .is_some_and(|head| head.eq_ignore_ascii_case("if "))
 }
 
 fn replace_imperative_draw_subject(segment: &str, explicit: &str, imperative: &str) -> String {

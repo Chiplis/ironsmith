@@ -1,5 +1,5 @@
 use crate::cards::builders::ForEachEffectAst;
-use crate::cards::builders::LibraryActionAst;
+use crate::cards::builders::{LibraryActionAst, LibraryConsultModeAst};
 use super::*;
 
 pub fn parse_may_put_filtered_card_from_among_into_hand(
@@ -528,17 +528,19 @@ pub fn parse_consult_match_move_and_bottom_remainder(
     let Some((parts, optional)) = parse_optional_consult_traversal_sentence(first)? else {
         return Ok(None);
     };
-    if !matches!(
-        parts.effects.last(),
-        Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary { .. }),
-            ..
-        }))
-    ) {
+    let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary { mode, .. }),
+        ..
+    })) = parts.effects.last() else {
         return Ok(None);
-    }
+    };
+    let remainder_zone = match mode {
+        LibraryConsultModeAst::Reveal => Zone::Library,
+        LibraryConsultModeAst::Exile => Zone::Exile,
+    };
 
-    let second_tokens = trim_commas(second);
+    let (stripped, gate_on_result) = strip_leading_if_you_do_sentence(second);
+    let second_tokens = trim_commas(&stripped);
     if let Some(matched) = effect_grammar::parse_consult_matched_move_shape(&second_tokens)
         && matched.selection == effect_grammar::ConsultMoveSelectionShape::AllMatched
     {
@@ -558,18 +560,19 @@ pub fn parse_consult_match_move_and_bottom_remainder(
             .with_move_to_zone_plural_surface_if(matched.target_plural_surface),
         ];
         return Ok(Some(wrap_optional_consult_effects(
-            parts, optional, followups, false, false,
+            parts, optional, followups, gate_on_result, false,
         )));
     }
     let Some(shape) = effect_grammar::parse_consult_move_bottom_shape(&second_tokens) else {
         return Ok(None);
     };
-    if shape == effect_grammar::ConsultMoveBottomShape::MatchedToBattlefieldAndShuffle {
-        let remainder = TargetAst::Object(
-            ObjectFilter::tagged(parts.all_tag.clone()).not_tagged(parts.match_tag.clone()),
-            None,
-            None,
-        );
+    if let effect_grammar::ConsultMoveBottomShape::MatchedToBattlefieldAndShuffle { target_plural_surface, explicit_revealed_others, coordinated } = shape {
+        let mut filter = ObjectFilter::tagged(parts.all_tag.clone()).not_tagged(parts.match_tag.clone()).in_zone(remainder_zone);
+        if explicit_revealed_others {
+            filter.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::All));
+            filter.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Revealed));
+        }
+        let remainder = TargetAst::Object(filter, None, None);
         let followups = vec![
             EffectAst::subject_verb_move_to_zone(
                 TargetAst::Tagged(crate::tag::TagRef::of(parts.match_tag.clone()), None),
@@ -579,11 +582,17 @@ pub fn parse_consult_match_move_and_bottom_remainder(
                 false,
                 None,
             )
-            .with_move_to_zone_plural_surface(),
-            EffectAst::subject_verb_shuffle_objects_into_library(parts.player, remainder),
+            .with_move_to_zone_plural_surface_if(target_plural_surface),
+            EffectAst::subject_verb_shuffle_objects_into_library(match parts.player {
+                PlayerAst::ItsController | PlayerAst::ItsOwner => PlayerAst::That,
+                other => other,
+            }, remainder),
         ];
+        let followups = if coordinated { vec![EffectAst::Coordinated {
+            effects: followups, leading_duration: false, result_conjunction: gate_on_result,
+        }] } else { followups };
         return Ok(Some(wrap_optional_consult_effects(
-            parts, optional, followups, false, false,
+            parts, optional, followups, gate_on_result, false,
         )));
     }
 
@@ -614,6 +623,6 @@ pub fn parse_consult_match_move_and_bottom_remainder(
         ),
     ];
     Ok(Some(wrap_optional_consult_effects(
-        parts, optional, followups, false, false,
+        parts, optional, followups, gate_on_result, false,
     )))
 }

@@ -231,6 +231,16 @@ pub struct VehicleTokenShape {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[derive(TagKeyWalk)]
+pub struct EnchantmentTokenShape {
+    pub name: String,
+    pub subtypes: Vec<Subtype>,
+    pub legendary: bool,
+    pub colors: ColorSet,
+    pub token_rules: TokenRulesSurfaces,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(TagKeyWalk)]
 pub struct ArtifactTokenShape {
     pub name: String,
     pub subtypes: Vec<Subtype>,
@@ -331,6 +341,7 @@ pub enum TokenDefinitionSpec {
     Builtin(BuiltinTokenShape),
     Vehicle(VehicleTokenShape),
     Artifact(ArtifactTokenShape),
+    Enchantment(EnchantmentTokenShape),
     Angel,
     Wall,
     Squirrel,
@@ -347,6 +358,7 @@ impl TokenDefinitionSpec {
     /// abilities already authored in the token-definition sentence.
     pub fn has_intrinsic_abilities(&self) -> bool {
         match self {
+            Self::Enchantment(enchantment) => !enchantment.token_rules.embedded_rules.is_empty(),
             Self::Vehicle(vehicle) => vehicle.flying || vehicle.crew_amount.is_some(),
             Self::Artifact(artifact) => {
                 artifact.equipment_rules.is_some()

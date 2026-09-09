@@ -277,10 +277,10 @@ impl GameState {
     ///
     /// All phases in one effect share a creation sequence so their written
     /// order remains stable, while later-created groups run first.
-    pub(crate) fn add_additional_phase_group(&mut self, phases: impl IntoIterator<Item = Phase>) {
+    pub(crate) fn add_additional_phase_group(&mut self, phases: impl IntoIterator<Item = Phase>) -> Option<u64> {
         let phases = phases.into_iter().collect::<Vec<_>>();
         if phases.is_empty() {
-            return;
+            return None;
         }
         self.normalize_additional_phase_metadata();
         let creation_order = self.turn_store.next_turn_schedule_order;
@@ -293,6 +293,7 @@ impl GameState {
         self.turn_store
             .additional_phase_only_steps
             .splice(0..0, std::iter::repeat_n(None, count));
+        Some(creation_order)
     }
 
     /// Merge CR 500.10 single-step phases into the same schedule used by
@@ -338,7 +339,19 @@ impl GameState {
             return None;
         }
         let phase = self.turn_store.additional_phases.remove(0);
-        self.turn_store.additional_phase_orders.remove(0);
+        let order = self.turn_store.additional_phase_orders.remove(0);
+        if phase == Phase::Combat {
+            let mut activated = false;
+            for restriction in &mut self.effect_store.restriction_effects {
+                if restriction.starts_in_added_combat == Some(order) {
+                    restriction.starts_in_added_combat = None;
+                    activated = true;
+                }
+            }
+            if activated {
+                self.update_cant_effects();
+            }
+        }
         let only_step = self.turn_store.additional_phase_only_steps.remove(0);
         Some((phase, only_step))
     }
@@ -691,6 +704,8 @@ impl GameState {
         self.effect_store
             .grant_registry
             .prepare_for_departing_player(player, departing_turn_boundary.saturating_sub(1));
+        self.effect_store.replacement_effects
+            .prepare_for_departing_player(player, departing_turn_boundary);
         self.effect_store
             .delayed_triggers
             .retain(|trigger| trigger.controller != player);
@@ -1167,6 +1182,12 @@ impl GameState {
         for player in self.turn_players() {
             self.activate_pending_player_control(player);
         }
+
+        let active_players = self.turn_players();
+        self.effect_store.grant_registry.expire_at_turn_start(self.turn.turn_number, &active_players);
+        self.effect_store.replacement_effects.expire_at_turn_start(
+            self.turn.turn_number, &active_players,
+        );
 
         // Begin the shared turn independently for each active player.
         for player in self.turn_players() {
@@ -2491,6 +2512,7 @@ impl GameState {
             source,
             source_snapshot: None,
             caster: None,
+            prospective_cast: None,
             active_player: self.active_player_id(),
             opponents,
             teammates,
@@ -3129,4 +3151,69 @@ mod tests {
         assert!(identity.contains(Color::Black));
         assert_eq!(identity.count(), 2);
     }
+}
+
+#[cfg(test)]
+mod last_turn_attack_tests {
+    use super::*;
+    #[test]
+    fn last_turn_attack_condition_uses_objects_controller_history() {
+        use crate::card::CardBuilder;
+        use crate::effects::EffectContext as ExecutionContext;
+        use crate::object::AttachmentTarget;
+        use crate::ObjectFilter;
+        use crate::effect::Condition;
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let creature = CardBuilder::new(CardId::new(), "History Creature")
+            .card_types(vec![CardType::Creature]).build();
+        let host = game.create_object_from_card(&creature, bob, Zone::Battlefield);
+        let aura_card = CardBuilder::new(CardId::new(), "History Aura")
+            .card_types(vec![CardType::Enchantment]).build();
+        let aura = game.create_object_from_card(&aura_card, alice, Zone::Battlefield);
+        game.object_mut(aura).unwrap().attached_to = Some(AttachmentTarget::Object(host));
+        for (source, controller, filter) in [
+            (host, bob, ObjectFilter::source()),
+            (aura, alice, ObjectFilter::tagged("enchanted")),
+        ] {
+            let condition = Condition::TurnHistory(ironsmith_core::TurnHistoryCondition::ObjectAttackedDuringControllersLastTurn(filter));
+            let ctx = ExecutionContext::new_default(source, controller);
+            game.object_mut(host).unwrap().abilities = std::sync::Arc::new(vec![]);
+            game.object_mut(aura).unwrap().abilities = std::sync::Arc::new(vec![]);
+            game.turn_store.last_turn_history_by_player.clear();
+            assert!(!crate::condition_eval::evaluate_condition_resolution(&game, &condition, &ctx).unwrap());
+            let mut history = crate::turn_history::TurnHistory::default();
+            history.creatures_attacked_this_turn.insert(host);
+            game.turn_store.last_turn_history_by_player.insert(alice, history.clone());
+            assert!(!crate::condition_eval::evaluate_condition_resolution(&game, &condition, &ctx).unwrap(), "wrong player's turn");
+            game.turn_store.last_turn_history_by_player.insert(bob, history);
+            assert!(crate::condition_eval::evaluate_condition_resolution(&game, &condition, &ctx).unwrap());
+            let suppression = crate::static_abilities::StaticAbility::doesnt_untap();
+            let grant = if source == host {
+                crate::static_abilities::StaticAbility::new(
+                    crate::static_abilities::GrantAbility::source(suppression).with_condition(condition.clone()),
+                )
+            } else {
+                crate::static_abilities::StaticAbility::new(
+                    crate::static_abilities::AttachedAbilityGrant::new(
+                        crate::ability::Ability::static_ability(suppression), "conditional untap restriction".to_string(),
+                    ).with_condition(condition.clone()),
+                )
+            };
+            game.object_mut(source).unwrap().abilities = std::sync::Arc::new(vec![crate::ability::Ability::static_ability(grant)]);
+            game.turn.active_player = bob;
+            game.tap(host);
+            crate::turn::execute_untap_step(&mut game);
+            assert!(game.is_tapped(host), "active restriction must prevent untapping");
+            // Advance through a turn with no attack so history and caches
+            // change through the same path used by normal gameplay.
+            game.next_turn();
+            game.next_turn();
+            assert!(!crate::condition_eval::evaluate_condition_resolution(&game, &condition, &ctx).unwrap(), "older attack must expire");
+            crate::turn::execute_untap_step(&mut game);
+            assert!(!game.is_tapped(host), "expired restriction must allow untapping");
+        }
+    }
+
 }

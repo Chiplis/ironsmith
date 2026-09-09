@@ -3192,3 +3192,27 @@ fn named_creature_combat_damage_recipient_filter_uses_full_game_source_lki() {
     assert!(player_filter_matches_game(&filter, bob, &game, &ctx));
     assert!(!player_filter_matches_game(&filter, cara, &game, &ctx));
 }
+
+#[test]
+fn explicit_other_than_source_does_not_change_with_announced_targets() {
+    let mut game = GameState::new(vec!["Alice".into()], 20);
+    let alice = PlayerId::from_index(0);
+    let creature = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Creature")
+        .card_types(vec![CardType::Creature]).build();
+    let source = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+    let selected = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+    let other = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+    let mut filter = ObjectFilter::creature();
+    filter.other = true;
+    filter.source_surface = Some(crate::target::SourceReferenceSurface::ThisPermanentType("this creature".into()));
+    for has_target in [false, true] {
+        let mut ctx = FilterContext::new(alice).with_source(source);
+        if has_target { ctx.target_objects.push(ObjectSnapshot::from_object(game.object(selected).unwrap(), &game)); }
+        for id in [source, selected, other] {
+            let object = game.object(id).unwrap();
+            let snapshot = ObjectSnapshot::from_object(object, &game);
+            assert_eq!(filter.matches(object, &ctx, &game), id != source, "live target={has_target}, object={id:?}");
+            assert_eq!(filter.matches_snapshot(&snapshot, &ctx, &game), id != source, "snapshot target={has_target}, object={id:?}");
+        }
+    }
+}

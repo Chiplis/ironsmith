@@ -847,6 +847,9 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             .is_some_and(|word| matches!(*word, "cast" | "casts"))
         {
             trigger_atom_token(left_tokens, TriggerClauseAtom::Copy)
+                .or_else(|| trigger_atom_token(left_tokens, TriggerClauseAtom::Play))
+        } else if right_words.first().is_some_and(|word| matches!(*word, "play" | "plays")) {
+            trigger_atom_token(left_tokens, TriggerClauseAtom::Cast)
         } else {
             None
         };

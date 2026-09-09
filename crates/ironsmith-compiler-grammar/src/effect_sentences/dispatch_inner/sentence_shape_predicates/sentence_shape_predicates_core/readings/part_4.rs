@@ -166,6 +166,9 @@ pub(super) fn read_for_each_object_effect(
     input: &Sentence<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
+    if let Some(effects) = crate::effect_sentences::search_library::parse_for_each_revealed_this_way_sentence(tokens)? {
+        return Ok(Some(effects));
+    }
     if let Some(shape) = effect_grammar::for_each_shapes::parse_for_each_object_effect_shape(tokens)
     {
         let mut count_words = vec!["for", "each"];
@@ -173,6 +176,8 @@ pub(super) fn read_for_each_object_effect(
         if let Some((count, used)) = crate::util::parse_for_each_count_value_words(&count_words)
             && used == count_words.len()
             && !matches!(count.unhinted(), Value::Count(_))
+            && !(matches!(count.unhinted(), Value::PendingPriorEffectMetric(_))
+                && shape.effect_tokens.iter().any(|token| token.is_word("it") || token.is_word("its")))
         {
             let effects = parse_effect_sentence_lexed(shape.effect_tokens)?;
             if effects.is_empty() {

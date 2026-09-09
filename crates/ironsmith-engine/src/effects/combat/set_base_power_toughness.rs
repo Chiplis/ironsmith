@@ -8,7 +8,6 @@ use crate::effects::{ApplyContinuousEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
-use crate::types::CardType;
 pub use ironsmith_core::SetBasePowerToughnessEffect;
 
 /// Effect that sets a creature's base power and toughness.
@@ -25,10 +24,7 @@ impl EffectExecutor for SetBasePowerToughnessEffect {
 
         let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
 
-        let target = game
-            .object(target_id)
-            .ok_or(ExecutionError::ObjectNotFound(target_id))?;
-        if !target.has_card_type(CardType::Creature) {
+        if !game.current_is_creature(target_id) {
             return Ok(EffectOutcome::target_invalid());
         }
         if matches!(self.duration, Until::Forever) {

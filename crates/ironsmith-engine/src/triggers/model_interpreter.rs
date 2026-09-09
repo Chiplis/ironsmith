@@ -1013,7 +1013,7 @@ mod delayed_spec_tests {
 
     #[test]
     fn player_plays_land_delayed_spec_uses_land_play_matcher() {
-        let filter = ObjectFilter::land();
+        let mut filter = ObjectFilter::land();
         let trigger = crate::triggers::Trigger::from_delayed_trigger_spec(
             ironsmith_core::DelayedTriggerSpec::PlayerPlaysLand {
                 player: PlayerFilter::You,
@@ -1024,6 +1024,8 @@ mod delayed_spec_tests {
             .downcast_ref::<crate::triggers::PlayerPlaysLandTrigger>()
             .expect("land-play delayed spec should preserve the runtime matcher");
         assert_eq!(matcher.player, PlayerFilter::You);
+        // The generic land filter's battlefield default is not a play origin.
+        filter.zone = None;
         assert_eq!(matcher.filter, filter);
     }
 

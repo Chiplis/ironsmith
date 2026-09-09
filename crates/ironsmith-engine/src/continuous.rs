@@ -595,6 +595,12 @@ impl Modification {
                     sublayer: sublayer.into(),
                 }
             }
+            ironsmith_core::CompiledContinuousModification::SetToughness { toughness, sublayer } => {
+                Self::SetToughness {
+                    value: toughness,
+                    sublayer: sublayer.into(),
+                }
+            }
             ironsmith_core::CompiledContinuousModification::DoesntUntap => Self::DoesntUntap,
             ironsmith_core::CompiledContinuousModification::MakeColorless => Self::MakeColorless,
             ironsmith_core::CompiledContinuousModification::SwitchPowerToughness => {
@@ -3068,7 +3074,7 @@ pub(crate) fn continuous_effect_duration_and_condition_are_active(
         && continuous_effect_condition_is_active(effect, game)
 }
 
-fn continuous_effect_condition_is_active(
+pub(crate) fn continuous_effect_condition_is_active(
     effect: &ContinuousEffect,
     game: &crate::game_state::GameState,
 ) -> bool {

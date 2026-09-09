@@ -118,3 +118,14 @@ fn captures_attached_object_and_related_creature_type_pump_without_keyword() {
     assert_eq!(words(shape.pump_tokens), ["+1/+1"]);
     assert_eq!(shape.duration, Until::EndOfTurn);
 }
+
+#[test]
+fn rejects_completed_sentence_before_shared_modifier_subject() {
+    for text in [
+        "Reveal the top card of your library. If it's a land card, this creature gets +1/+0 and gains flying until end of turn.",
+        "Draw a card. Target creature gets +1/+1 and gains haste until end of turn.",
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        assert!(parse_get_then_ability_shape(&tokens).is_none(), "{text}");
+    }
+}

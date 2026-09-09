@@ -70,7 +70,7 @@ pub(crate) fn span_key(rule: Rule, tokens: &[OwnedLexToken]) -> SpanKey {
             key,
             "{:?}\u{1f}{}\u{1f}{}\u{1f}{}:{}:{}\u{1e}",
             token.kind,
-            token.slice,
+            format_args!("{}\u{1f}{}", token.slice, token.literal_surface()),
             token.parser_text,
             token.span.line,
             token.span.start,

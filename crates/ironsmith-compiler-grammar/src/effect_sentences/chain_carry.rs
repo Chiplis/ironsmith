@@ -539,17 +539,19 @@ fn parse_independent_explicit_may_coordination(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let segments = split_effect_chain_on_and_lexed(tokens);
     if segments.len() < 2
-        || !segments
-            .iter()
-            .all(|segment| parse_leading_player_may_lexed(segment).is_some())
+        || parse_leading_player_may_lexed(segments[0]).is_none()
+        || !segments.iter().skip(1).all(|segment| {
+            parse_leading_player_may_lexed(segment).is_some()
+                || chain_grammar::parse_leading_chain_scope_tokens(segment).is_some()
+        })
     {
         return Ok(None);
     }
 
-    // Repeating the complete "<player> may" subject after the conjunction
-    // starts a new choice. Parsing the whole line through the broad leading-
-    // may path would instead wrap every later choice inside the first May,
-    // so declining the first action would incorrectly suppress the rest.
+    // A repeated modal subject or explicit each-player subject starts an
+    // independent instruction. Keep its mandatory/optional scope separate:
+    // declining the first action must not suppress the later instruction.
+    // A bare shared-subject verb still belongs inside the original May.
     let mut effects = Vec::with_capacity(segments.len());
     for segment in segments {
         let parsed = parse_effect_chain_lexed(segment)?;
@@ -765,6 +767,9 @@ pub use surface_preservation::{
 fn parse_for_each_object_effect_chain_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(effects) = super::search_library::parse_for_each_revealed_this_way_sentence(tokens)? {
+        return Ok(Some(effects));
+    }
     let Some(shape) = for_each_shapes::parse_for_each_object_effect_shape(tokens) else {
         return Ok(None);
     };
@@ -777,6 +782,10 @@ fn parse_for_each_object_effect_chain_shape(
     if let Some((count, used)) = crate::util::parse_for_each_count_value_words(&count_words)
         && used == count_words.len()
         && !matches!(count.unhinted(), Value::Count(_))
+        // A body referring to the quantified object needs an object binding,
+        // not repeated execution against the entire prior result set.
+        && !(matches!(count.unhinted(), Value::PendingPriorEffectMetric(_))
+            && effect_words.iter().any(|word| matches!(*word, "it" | "its")))
         && !(has_that_player_payload
             && matches!(
                 count.unhinted(),
@@ -1027,10 +1036,11 @@ pub fn parse_or_action_clause_lexed(
             super::replace_it_target_in_effects(&mut second_effects, &primary_target);
         }
 
-        return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
-            effects: first_effects,
-            alternative: second_effects,
-            player: PlayerAst::Implicit,
+        return Ok(Some(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf {
+            modes: vec![
+                crate::cards::builders::ChooseOneModeAst { description: String::new(), effects: first_effects },
+                crate::cards::builders::ChooseOneModeAst { description: String::new(), effects: second_effects },
+            ],
         })));
     }
 
@@ -1732,6 +1742,9 @@ fn parse_effect_chain_inner_lexed_unstacked(
             &segment,
         )
         .is_some()
+            // A remaining `then` tail is a compound instruction, so the
+            // single-clause fast path cannot claim it as complete.
+            && !segment.iter().any(|token| token.is_word("then"))
             && let Ok(mut effect) = parse_effect_clause_lexed(&segment)
         {
             if let Some(context) = carried_context {
@@ -1756,7 +1769,16 @@ fn parse_effect_chain_inner_lexed_unstacked(
             previous_segment = Some(segment);
             continue;
         }
-        let primitive_segment_effects = if let Some(effects) = run_subject_verb_primitives_lexed(
+        // A transform/convert segment may retain its own `then` tail after
+        // the outer comma split. Preserve that tail before a single-verb
+        // clause parser consumes only the transform target.
+        let primitive_segment_effects = if let Some(effects) =
+            super::subject_verb_primitives::parse_sentence_transform_with_followup(
+                super::SubjectVerbPrimitiveClause::new(&segment),
+            )?
+        {
+            Some(effects)
+        } else if let Some(effects) = run_subject_verb_primitives_lexed(
             &segment,
             PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
             &PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX,
@@ -2749,4 +2771,16 @@ pub fn bind_population_counter_followup(effects: &mut Vec<EffectAst>, tokens: &[
     effects.insert(effects.len() - 1, EffectAst::subject_verb_tag_matching_objects(population, vec![Zone::Battlefield], crate::tag::TagRef::of(tag)));
     effects.push(followup);
     true
+}
+
+/// Bind a same-clause characteristic pronoun before global reference fallback.
+pub(super) fn bind_it_metric_to_declared_target(value: Value, target: &TargetAst) -> Value {
+    let spec = match target {
+        TargetAst::Spell(_) => Some(ChooseSpec::Target(Box::new(ChooseSpec::Object(ObjectFilter::spell())))),
+        _ => explicit_target_choose_spec(target),
+    };
+    match spec {
+        Some(spec) => bind_it_metric_to_explicit_target(value, &spec),
+        None => value,
+    }
 }

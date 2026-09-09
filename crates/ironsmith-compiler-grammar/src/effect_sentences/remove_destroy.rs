@@ -317,6 +317,19 @@ fn lower_destroy_all_shape(shape: shapes::DestroyAllShape<'_>) -> Result<EffectA
 }
 
 pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    // Repeated universal quantifiers introduce independent collections. Keep
+    // them in one union so attachments are selected before any host leaves.
+    if tokens.first().is_some_and(|token| token.is_word("all")) {
+        for index in 1..tokens.len().saturating_sub(1) {
+            if !tokens[index].is_word("and") || !tokens[index + 1].is_word("all") { continue; }
+            let left = parse_destroy_all_filter(&tokens[1..index])?;
+            let right = parse_destroy_all_filter(&tokens[index + 2..])?;
+            let mut filter = ObjectFilter::default();
+            filter.any_of = vec![left, right];
+            filter.set_conjunctive_set_surface(true);
+            return Ok(EffectAst::subject_verb_destroy_all(filter));
+        }
+    }
     // A shared destroy verb can govern independently quantified targets;
     // type alternatives inside either target remain inside that target.
     for (and_index, token) in tokens.iter().enumerate() {

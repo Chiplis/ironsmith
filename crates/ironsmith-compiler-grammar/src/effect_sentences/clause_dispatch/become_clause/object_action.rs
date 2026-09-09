@@ -582,6 +582,31 @@ pub fn parse_become_clause(
         .with_set_quantifier_surface(set_quantifier_surface));
     }
 
+    // A creature conversion can leave power/toughness unstated, for example
+    // when a separately granted ability supplies its dynamic characteristics.
+    // Preserve that absence rather than inventing a fixed base size.
+    let (descriptor_words, preserve_other_types) =
+        become_grammar::strip_become_addition_tail_words(become_words);
+    if descriptor_words.contains(&"creature")
+        && let Some(descriptor) = become_grammar::parse_become_creature_descriptor_words(descriptor_words)
+        && !descriptor.subtypes.is_empty()
+    {
+        let mut effects = vec![if preserve_other_types {
+            EffectAst::subject_verb_add_card_types(target.clone(), descriptor.card_types, duration.clone())
+        } else {
+            EffectAst::subject_verb_set_card_types(target.clone(), descriptor.card_types, duration.clone())
+        }];
+        effects.push(if preserve_other_types {
+            EffectAst::subject_verb_add_subtypes(target.clone(), descriptor.subtypes, duration.clone())
+        } else {
+            EffectAst::subject_verb_set_creature_subtypes(target.clone(), descriptor.subtypes, duration.clone())
+        });
+        if let Some(colors) = descriptor.colors {
+            effects.push(EffectAst::subject_verb_set_colors(target, colors, duration));
+        }
+        return Ok(EffectAst::Coordinated { effects, leading_duration: false, result_conjunction: false });
+    }
+
     match become_grammar::parse_become_simple_descriptor_words(become_words) {
         become_grammar::BecomeSimpleDescriptorShape::ColorsAndSubtypes { colors, subtypes } => {
             return Ok(EffectAst::Sequence {

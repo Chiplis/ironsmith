@@ -3958,7 +3958,7 @@ pub(crate) fn apply_spell_cost_modifiers(
         let matches =
             cast_filter.matches_non_recursive(
                 spell_for_match,
-                &ctx.clone().with_caster(Some(caster)),
+                &ctx.clone().with_caster(Some(caster)).with_prospective_cast(spell.id),
                 game,
             ) || disturb_linked_face_matches_cost_filter(game, caster, spell, &cast_filter, ctx);
         targets_match
@@ -4250,7 +4250,7 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
         let matches =
             cast_filter.matches_non_recursive(
                 spell_for_match,
-                &ctx.clone().with_caster(Some(caster)),
+                &ctx.clone().with_caster(Some(caster)).with_prospective_cast(spell.id),
                 game,
             ) || disturb_linked_face_matches_cost_filter(game, caster, spell, &cast_filter, ctx);
         targets_match

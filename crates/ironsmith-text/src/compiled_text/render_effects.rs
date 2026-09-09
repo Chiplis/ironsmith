@@ -4,6 +4,17 @@ use crate::effect::SearchSelectionMode;
 use crate::filter::StackObjectKind;
 use ironsmith_core::{LibraryBottomOrder, PtValue, ValueSurfaceHint, ordinal_word};
 
+/// Present the common move instruction without changing either executor's
+/// result-object or last-known-information contract.
+pub(in crate::compiled_text) fn move_to_zone_surface_view(effect: &Effect) -> Option<std::borrow::Cow<'_, crate::effects::MoveToZoneEffect>> {
+    if let Some(movement) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
+        return Some(std::borrow::Cow::Borrowed(movement));
+    }
+    let exile = effect.downcast_ref::<crate::effects::ExileEffect>()?;
+    if exile.face_down { return None; }
+    Some(std::borrow::Cow::Owned(crate::effects::MoveToZoneEffect::new(exile.spec.clone(), Zone::Exile, true)))
+}
+
 #[path = "render_effects/abilities_and_costs.rs"]
 mod abilities_and_costs;
 #[path = "render_effects/chain_copy.rs"]

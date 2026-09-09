@@ -860,6 +860,7 @@ fn add_static_ability_ast_condition(
         StaticAbilityAst::RemoveStaticAbility { .. }
         | StaticAbilityAst::RemoveKeywordAction { .. }
         | StaticAbilityAst::EquipmentKeywordActionsGrant { .. }
+        | StaticAbilityAst::EntryReplacementWithGrantedAbilities { .. }
         | StaticAbilityAst::SoulbondSharedObjectAbility { .. }
         | StaticAbilityAst::AttachmentRestriction { .. } => {
             return Err(CardTextError::ParseError(
@@ -3261,9 +3262,50 @@ pub fn parse_has_base_power_and_granted_ability_static_line(
     Ok(Some(compiled))
 }
 
+/// A conditional prevention instruction followed by a grant shares the source
+/// antecedent. Parse both actions before the general subject/has production.
+fn parse_conditional_source_prevention_and_grant(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let Some(shape) = anthem_grant_grammar::parse_prefix_condition_shape(tokens, tokens.len()) else {
+        return Ok(None);
+    };
+    let Some(start) = shape.comma_subject_start else { return Ok(None); };
+    let Some((_, granted_tokens)) = crate::grammar::primitives::parse_prefix(
+        &tokens[start..],
+        crate::grammar::primitives::phrase(&[
+            "prevent", "all", "combat", "damage", "it", "would", "deal", "and", "it", "has",
+        ]),
+    ) else { return Ok(None); };
+    let (Some(condition), _) = parse_anthem_prefix_condition(tokens, tokens.len())? else {
+        return Ok(None);
+    };
+    if !condition.establishes_source_object_antecedent()
+        && !matches!(&condition, PredicateAst::CountComparison {
+            count: crate::static_abilities::AnthemCountExpression::CountersOnSource(_), ..
+        })
+    { return Ok(None); }
+    let Some(tail) = parse_heterogeneous_granted_tail(
+        granted_tokens, &crate::lexer::token_word_refs(tokens), false,
+    )? else { return Ok(None); };
+    let mut abilities = vec![StaticAbilityAst::ConditionalStaticAbility {
+        ability: Box::new(StaticAbilityAst::Static(StaticAbility::new(
+            crate::static_abilities::PREVENT_ALL_COMBAT_DAMAGE_DEALT_BY_THIS_PERMANENT,
+        ))),
+        condition: condition.clone(),
+    }];
+    abilities.extend(lower_granted_tail_for_anthem_subject(
+        &AnthemSubjectAst::Source, &Some(condition), tail,
+    ));
+    Ok(Some(abilities))
+}
+
 pub fn parse_filter_has_granted_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if let Some(abilities) = parse_conditional_source_prevention_and_grant(tokens)? {
+        return Ok(Some(abilities));
+    }
     if crate::grammar::primitives::parse_prefix(tokens,
         crate::grammar::primitives::phrase(&["during", "your", "end", "step"])).is_some()
     {
@@ -4833,4 +4875,11 @@ fn landwalk_override_tail_uses_keyword_action_parser() {
     assert!(is_landwalk_ability_word("forestwalk"));
     assert!(!is_landwalk_ability_word("planeswalk"));
     assert!(!is_landwalk_ability_word("walk"));
+}
+
+#[test]
+fn source_attachment_disjunction_is_a_static_attack_condition() {
+    let tokens = crate::lexer::lex_line("As long as this creature is enchanted or equipped, it can attack as though it didn't have defender.", 0).unwrap();
+    let parsed = parse_as_long_as_condition_can_attack_as_though_no_defender_line(&tokens).unwrap();
+    assert!(matches!(parsed, Some(StaticAbilityAst::ConditionalStaticAbility { .. })), "{parsed:#?}");
 }

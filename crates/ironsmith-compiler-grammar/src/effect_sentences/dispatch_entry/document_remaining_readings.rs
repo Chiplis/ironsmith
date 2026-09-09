@@ -618,6 +618,9 @@ fn read_turn_scoped_enter_tapped_replacement(
     input: &RemainingDocument<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
+    if let Some(effect) = parse_turn_scoped_entry_counter_replacement(tokens)? {
+        return Ok(Some(vec![effect]));
+    }
     if let Some(effect) = parse_turn_scoped_enter_tapped_replacement(tokens)? {
         return Ok(Some(vec![effect]));
     }
@@ -657,7 +660,8 @@ fn read_emblem_payload(
     // Quoted emblem abilities may contain their own sentence boundaries and
     // activated-ability colons. Consume the typed whole-sentence shape before
     // generic sentence and subject/verb splitting sees those nested tokens.
-    if effect_grammar::emblem_shapes::parse_emblem_payload_tokens(tokens)
+    if effect_grammar::emblem_shapes::parse_damaged_player_emblem_payload_tokens(tokens)
+            .or_else(|| effect_grammar::emblem_shapes::parse_emblem_payload_tokens(tokens))
         .is_some_and(|shape| shape.requires_whole_sentence_dispatch)
         && let Some(effect) = super::super::zone_handlers::parse_emblem_action(tokens, None)
     {

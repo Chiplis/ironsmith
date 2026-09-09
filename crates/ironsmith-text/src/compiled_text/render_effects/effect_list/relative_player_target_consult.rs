@@ -187,6 +187,7 @@ pub(in crate::compiled_text) fn describe_relative_player_target_then_optional_se
     if !choose.is_search
         || choose.reveal
         || choose.chooser != PlayerFilter::Active
+        || choose.filter.zone.is_some_and(|zone| zone != Zone::Library)
         || choose.zone != Some(Zone::Library)
         || !choose.additional_zones.is_empty()
         || choose.count != crate::effect::ChoiceCount::exactly(1)

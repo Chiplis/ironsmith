@@ -441,7 +441,7 @@ fn literal_name_surface_after_marker(tokens: &[OwnedLexToken], marker: &[&str]) 
     {
         end_token -= 1;
     }
-    let surface = render_token_slice(&tokens[start_token..end_token])
+    let surface = crate::lexer::render_literal_token_slice(&tokens[start_token..end_token])
         .trim()
         .to_string();
     (!surface.is_empty()).then_some(surface)
@@ -486,6 +486,7 @@ pub(super) fn try_apply_named_clause<'a, F, G>(
     all_words_with_articles: &[&'a str],
     map_non_article_index: &F,
     map_non_article_end: &G,
+    source_tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError>
 where
     F: Fn(usize) -> Option<usize>,
@@ -504,6 +505,9 @@ where
         "named",
     )?;
     filter.name = Some(name);
+    if let Some(surface) = literal_name_surface_after_marker(source_tokens, &[NAMED_WORD]) {
+        filter.set_name_surface(surface);
+    }
     remove_word_range(all_words, named_idx, name_end);
     Ok(true)
 }
@@ -916,6 +920,14 @@ pub(super) fn parse_spell_filter_power_or_toughness_words(words: &[&str]) -> Opt
 }
 
 pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[&str]) {
+    if [
+        &["with", "x", "in", "its", "mana", "cost"][..],
+        &["with", "x", "in", "their", "mana", "cost"],
+        &["with", "x", "in", "their", "mana", "costs"],
+        &["mana", "cost", "that", "contains", "x"],
+    ].iter().any(|phrase| find_any_phrase_start(words, &[*phrase]).is_some()) {
+        filter.has_x_in_cost = true;
+    }
     if words.iter().any(|word| matches!(*word, "kicked" | "kick")) {
         filter.ability_markers.push("kicked".to_string());
     }

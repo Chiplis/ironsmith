@@ -1294,6 +1294,19 @@ fn parse_source_doesnt_have_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
 }
 
 fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    parse_source_has_counted_counter_predicate_with_binding(tokens, false)
+}
+
+/// In an intrinsic source restriction, the subject pronoun denotes the source
+/// rather than an object selected by an earlier resolving instruction.
+pub fn parse_intrinsic_source_counter_condition(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    parse_source_has_counted_counter_predicate_with_binding(tokens, true)
+}
+
+fn parse_source_has_counted_counter_predicate_with_binding(
+    tokens: &[OwnedLexToken],
+    intrinsic_source: bool,
+) -> Option<PredicateAst> {
     let atoms = [
         WinnowSequence::object("counter", WinnowCaptureKind::UntilPhrase(&["on"])),
         WinnowSequence::modifier("target", WinnowCaptureKind::Rest),
@@ -1327,7 +1340,7 @@ fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
     let (operator, count) = comparison_to_value_comparison_operator(comparison)?;
     let counter_tail = counter_clause.tokens().get(used..)?;
     let counter_type = parse_terminal_counter_phrase(counter_tail)??;
-    if surface::exact(relation.subject_clause, &["it"]) {
+    if !intrinsic_source && surface::exact(relation.subject_clause, &["it"]) {
         return Some(PredicateAst::ValueComparison {
             left: Value::CountersOn(
                 Box::new(crate::target::ChooseSpec::Tagged(
@@ -1341,7 +1354,7 @@ fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
     }
     let source_count = match operator {
         crate::effect::ValueComparisonOperator::GreaterThanOrEqual => Some(count),
-        crate::effect::ValueComparisonOperator::Equal if count > 0 => Some(count),
+        crate::effect::ValueComparisonOperator::Equal if count > 0 && !intrinsic_source => Some(count),
         _ => None,
     };
     if let Some(count) = source_count {

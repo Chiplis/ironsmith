@@ -203,6 +203,12 @@ fn parse_other_global_direct_cant_fact<'a>(input: &mut LexStream<'a>) -> WResult
 fn parse_source_direct_cant_fact<'a>(input: &mut LexStream<'a>) -> WResult<DirectCantFact> {
     alt((
         (
+            parse_counter_prohibition_subject,
+            parse_cant,
+            primitives::phrase(&["have", "counters", "put", "on", "it"]),
+        )
+            .value(DirectCantFact::CantHaveCountersPlaced),
+        (
             parse_source_subject,
             parse_cant,
             primitives::phrase(&["attack", "or", "block", "alone"]),
@@ -295,6 +301,24 @@ fn parse_cant<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     ))
     .void()
     .parse_next(input)
+}
+
+fn parse_counter_prohibition_subject<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    (
+        primitives::kw("this"),
+        opt(primitives::any_phrase(&[
+            &["artifact", "creature"],
+            &["enchantment", "creature"],
+            &["artifact"],
+            &["battle"],
+            &["creature"],
+            &["enchantment"],
+            &["land"],
+            &["permanent"],
+            &["planeswalker"],
+            &["token"],
+        ])),
+    ).void().parse_next(input)
 }
 
 fn parse_source_subject<'a>(input: &mut LexStream<'a>) -> WResult<()> {

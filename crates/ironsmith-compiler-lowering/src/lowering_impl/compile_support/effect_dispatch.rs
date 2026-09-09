@@ -458,10 +458,7 @@ fn coordinated_continuous_effect(
 
 fn with_coordinated_continuous_duration(effect: &Effect, duration: &Until) -> Option<Effect> {
     if let Some(tagged) = effect.as_tagged() {
-        return Some(Effect::new(crate::effects::TaggedEffect::new(
-            tagged.tag.clone(),
-            with_coordinated_continuous_duration(&tagged.effect, duration)?,
-        )));
+        return Some(Effect::new(tagged.with_effect(with_coordinated_continuous_duration(&tagged.effect, duration)?)));
     }
     if let Some(with_id) = effect.as_with_id() {
         return Some(Effect::new(crate::effects::WithIdEffect::new(
@@ -1097,7 +1094,8 @@ fn compile_effect_inner(
         let conditional = Effect::if_then(id, predicate.clone(), if_true_effects);
         return Ok((vec![wrapped, conditional], choices));
     }
-    if let EffectAst::TagAffected { effect, tag } = effect {
+    let outcome_only = matches!(effect, EffectAst::TagAffected { .. });
+    if let EffectAst::TagAffected { effect, tag } | EffectAst::TagReferenced { effect, tag } = effect {
         let wraps_plural_exile_collection = matches!(
             effect.as_ref(),
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -1159,7 +1157,7 @@ fn compile_effect_inner(
             ctx.last_exiled_collection_tag = Some(tag.clone().into());
             ctx.last_exiled_collection_is_plural = true;
         }
-        lowered.push(inner.tag_all(tag.clone()));
+        lowered.push(if outcome_only { inner.tag_all(tag.clone()) } else { inner.tag(tag.clone()) });
         return Ok((lowered, choices));
     }
     if let EffectAst::ManaRestricted {
@@ -1348,6 +1346,7 @@ fn compile_compiler_control_flow(
                         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness { duration, .. })
                         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature { duration, .. })
                         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { duration, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness { duration, .. })
                         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasicLandType { duration, .. })
                         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasicLandTypeChoice { duration, .. })
                         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCreatureTypeChoice { duration, .. })
@@ -1378,7 +1377,8 @@ fn compile_compiler_control_flow(
                         | SubjectVerbActionAst::Grants(GrantActionAst::GrantBySpec { duration, .. }) => {
                             *duration = match until {
                                 Until::EndOfTurn => crate::grant::GrantDuration::UntilEndOfTurn,
-                                Until::YourNextTurn | Until::YourNextTurnEnd => {
+                                Until::YourNextTurn => crate::grant::GrantDuration::UntilYourNextTurn,
+        Until::YourNextTurnEnd => {
                                     crate::grant::GrantDuration::UntilYourNextTurnEnd
                                 }
                                 _ => crate::grant::GrantDuration::Forever,
@@ -1474,7 +1474,16 @@ fn compile_compiler_control_flow(
                     return compile_effects(&alternative, ctx);
                 }
             };
-            compile_effect(&legacy, ctx)
+            let (mut effects, choices) = compile_effect(&legacy, ctx)?;
+            if alternative_program.is_some()
+                && condition.position == crate::model::control_flow::ConditionPositionAst::Postcondition
+                && !condition.negated_surface
+                && let Some(last) = effects.last_mut()
+                && let Some(conditional) = last.downcast_ref::<crate::effects::ConditionalEffect>()
+            {
+                *last = Effect::new(conditional.clone().with_surface(ironsmith_core::ConditionalSurface::TrailingIf));
+            }
+            Ok((effects, choices))
         }
         ControlFlowNodeAst::Replacement(replacement) => {
             let replacement_effects = program_effects(replacement.replacement_program)?.to_vec();
@@ -2240,6 +2249,7 @@ fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSp
         | Value::ColorPairsAmong(filter)
         | Value::DistinctCounterTypesAmong(filter)
         | Value::DistinctNames(filter)
+        | Value::DistinctManaValues(filter)
         | Value::DistinctPowers(filter) => {
             collect_object_filter_player_target_choices(filter, choices);
         }

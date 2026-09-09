@@ -64,6 +64,10 @@ fn retarget_it_restriction_for_counter_followup(
     use crate::effect::Restriction;
 
     match restriction {
+        Restriction::BeSacrificedByCause { filter, cause } => {
+            retarget_it_filter_for_counter_followup(filter, source_filter);
+            if let Some(filter) = &mut cause.source_filter { retarget_it_filter_for_counter_followup(filter, source_filter); }
+        }
         Restriction::Attack(filter)
         | Restriction::Block(filter)
         | Restriction::MustBeBlocked(filter)
@@ -333,7 +337,8 @@ pub fn is_pump_like_effect(effect: &EffectAst) -> bool {
             action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { .. })
                 | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpByLastEffect { .. })
                 | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness { .. })
-                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { .. }),
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness { .. }),
             ..
         })
     )
@@ -767,3 +772,27 @@ pub use resource_programs::{parse_draw_then_connive_sentence, parse_sentence_dra
 #[path = "counter_marker_family/zone.rs"]
 mod zone_programs;
 pub use zone_programs::clone_return_effect_with_subtype;
+
+pub fn parse_shared_counter_target(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(shape) = counter_shapes::parse_shared_counter_target_tokens(tokens) {
+        let target = parse_target_phrase(shape.target_tokens)?;
+        let effects = shape
+            .descriptors
+            .into_iter()
+            .enumerate()
+            .map(|(index, descriptor)| {
+                EffectAst::subject_verb_put_counters(
+                    descriptor.counter_type,
+                    Value::Fixed(descriptor.count as i32),
+                    if index == 0 { target.clone() } else {
+                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), crate::util::span_from_tokens(tokens))
+                    },
+                    None,
+                    false,
+                )
+            })
+            .collect();
+        return Ok(Some(effects));
+    }
+    Ok(None)
+}

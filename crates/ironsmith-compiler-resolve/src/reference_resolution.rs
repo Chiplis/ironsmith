@@ -600,7 +600,8 @@ fn resolve_definite_object_references_in_effect(
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach { target, .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness { target, .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { target, .. }) => {
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness { target, .. }) => {
                 resolve_definite_object_target_from_bindings(target, bindings);
             }
             _ => {}
@@ -1154,6 +1155,10 @@ fn advance_reference_frame_for_effect(
                     maybe_tag_target(target, frame, id_gen, "no_longer_suspected")?;
                 }
                 SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearSuspected { target: None }) => {}
+                SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearGoad { target: Some(target) }) => {
+                    maybe_tag_target(target, frame, id_gen, "no_longer_goaded")?;
+                }
+                SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearGoad { target: None }) => {}
                 SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat { target }) => {
                     maybe_tag_target(target, frame, id_gen, "removed_from_combat")?;
                 }
@@ -1201,7 +1206,9 @@ fn advance_reference_frame_for_effect(
                         None
                     } else {
                         let refs = lowering_reference_frame(frame);
-                        let resolved_filter = match resolve_it_tag(filter, &refs) {
+                        let resolved_filter = if crate::reference_helpers::sacrifice_filter_uses_source_antecedent(filter, *one_of_referenced_set, &refs) {
+                            ObjectFilter::source()
+                        } else { match resolve_it_tag(filter, &refs) {
                             Ok(resolved) => resolved,
                             Err(_)
                                 if filter.tagged_constraints.len() == 1
@@ -1210,8 +1217,15 @@ fn advance_reference_frame_for_effect(
                                 ObjectFilter::source()
                             }
                             Err(err) => return Err(err),
-                        };
-                        if !(!*one_of_referenced_set
+                        }};
+                        if resolved_filter.source {
+                            // An anaphoric source sacrifice follows the same lowering
+                            // path as an explicit source: it creates no result tag.
+                            // Reserving one here shifts every following object reference.
+                            frame.source_object_antecedent = true;
+                            frame.last_object_tag = None;
+                            None
+                        } else if !(!*one_of_referenced_set
                             && *count == 1
                             && object_filter_as_tagged_reference(&resolved_filter).is_some())
                         {
@@ -1522,7 +1536,8 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature { target, .. }) => {
                     maybe_tag_target(target, frame, id_gen, "animated_creature")?;
                 }
-                SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { target, .. }) => {
+                SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness { target, .. }) => {
                     maybe_tag_target(target, frame, id_gen, "set_base_power")?;
                 }
                 SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddCardTypes { target, .. })
@@ -1997,6 +2012,23 @@ fn advance_reference_frame_for_effect(
                 advance_reference_frames(&mode.effects, id_gen, &mut mode_frame)?;
             }
             *frame = saved;
+            // Counter alternatives on the source all name the same fixed
+            // object. Export that identity, not a mode-local result tag that
+            // is absent if the enclosing optional action is declined.
+            let refs = lowering_reference_frame(frame);
+            if !modes.is_empty() && modes.iter().all(|mode| {
+                let [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::Counters(
+                        CounterActionAst::PutCounters { target, .. }
+                        | CounterActionAst::RemoveUpToAnyCounters { target, .. }
+                    ), ..
+                })] = mode.effects.as_slice() else { return false; };
+                resolve_target_spec_with_choices(target, &refs)
+                    .is_ok_and(|(target, _)| matches!(target.base(), ChooseSpec::Source))
+            }) {
+                frame.source_object_antecedent = true;
+                frame.last_object_tag = None;
+            }
         }
         EffectAst::Conditionals(ConditionalEffectAst::IfEffectDidNotHappen { effect, otherwise }) => {
             advance_reference_frame_for_effect(effect, id_gen, frame)?;
@@ -2007,6 +2039,10 @@ fn advance_reference_frame_for_effect(
         }) => {
             advance_reference_frame_for_effect(effect, id_gen, frame)?;
             advance_reference_frames(if_true, id_gen, frame)?;
+        }
+        EffectAst::TagReferenced { effect, tag } => {
+            advance_reference_frame_for_effect(effect, id_gen, frame)?;
+            frame.last_object_tag = Some(tag.clone().into());
         }
         EffectAst::TagAffected { effect, tag } => {
             advance_reference_frame_for_effect(effect, id_gen, frame)?;
@@ -2420,6 +2456,20 @@ fn maybe_assign_effect_result_id(
         return None;
     }
 
+    // A nested branch can arrive here after reference resolution has already
+    // bound its immediate result gate. Reuse that binding when annotating the
+    // producer for lowering; allocating a fresh ID leaves the resolved gate
+    // reading an outcome that no runtime instruction writes.
+    if result_gate_surface(effect).is_none()
+        && next_is_result_gate
+        && let Some(EffectAst::Conditionals(
+            ConditionalEffectAst::ResolvedIfResult { condition, .. }
+            | ConditionalEffectAst::ResolvedWhenResult { condition, .. },
+        )) = remaining.first()
+    {
+        id_gen.next_effect_id = id_gen.next_effect_id.max(condition.0 + 1);
+        return Some(*condition);
+    }
     let id = EffectId(id_gen.next_effect_id);
     id_gen.next_effect_id += 1;
     Some(id)
@@ -2618,7 +2668,7 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
         | EffectAst::ResultBranchLabel { effects, .. } => {
             effects.iter().any(effect_can_supply_prior_effect_memory)
         }
-        EffectAst::TagAffected { effect, .. } => effect_can_supply_prior_effect_memory(effect),
+        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => effect_can_supply_prior_effect_memory(effect),
         EffectAst::MoveTaggedGroupToZone { .. }
         | EffectAst::RestartGame { .. }
         | EffectAst::PlaySubgame { .. } => true,
@@ -3235,7 +3285,8 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
             visit(power);
             visit(toughness);
         }
-        SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { power, .. }) => visit(power),
+        SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { power, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness { toughness: power, .. }) => visit(power),
         SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach { count, .. }) => visit(count),
         SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
             count_value: Some(count_value),
@@ -3484,6 +3535,17 @@ fn resolve_effect_references_in_effect(
 
     resolve_effect_result_values_in_fields(effect, state)?;
     let mut nested_state = state;
+    if let EffectAst::Sequence { effects } = effect
+        && let [_, EffectAst::SubjectVerb(counter)] = effects.as_slice()
+        && let SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { count, .. }) = &counter.action
+        && count.has_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
+        && count.has_surface_hint(ironsmith_core::ValueSurfaceHint::PriorEffectResult)
+        && nested_state.pinned_effect_metric_id.is_none()
+    {
+        // The return and its inline counter clause are one authored action.
+        // The amount refers to the result before this action, not to the move.
+        nested_state.pinned_effect_metric_id = state.last_effect_id;
+    }
     if effect_is_player_or_object_fanout(effect)
         && effect_references_typed_removed_counter_metric(effect)
         && nested_state.pinned_effect_metric_id.is_none()
@@ -3585,31 +3647,48 @@ fn advance_reference_env_for_effect(
             if let Some(player_filter) = predicate_bound_player_filter(predicate) {
                 branch_env.last_player_filter = RefState::Known(player_filter);
             }
+            let mut nested_config = config;
+            nested_config.force_auto_tag_object_targets |=
+                auto_tag_object_targets && !suppress_force_auto_tag_object_targets;
             let true_sequence = annotate_effect_sequence_with_env_internal(
                 if_true.to_vec(),
                 branch_env.clone(),
-                config,
+                nested_config,
                 id_gen,
             )?;
             if if_false.is_empty() {
+                // A followup can name the objects affected by the optional
+                // branch. Its fresh result tag denotes an empty set when the
+                // branch does not execute, never the ambient source object.
+                let exports_branch_result = auto_tag_object_targets
+                    && true_sequence.final_env.last_object_tag != env.last_object_tag
+                    && matches!(true_sequence.final_env.last_object_tag, RefState::Known(_));
                 return Ok(ReferenceEnv {
-                    last_object_tag: RefState::join(
-                        &true_sequence.final_env.last_object_tag,
-                        &env.last_object_tag,
-                    ),
+                    last_object_tag: if exports_branch_result {
+                        true_sequence.final_env.last_object_tag.clone()
+                    } else {
+                        RefState::join(&true_sequence.final_env.last_object_tag, &env.last_object_tag)
+                    },
                     recent_object_target_bindings: join_object_target_bindings(
                         &true_sequence.final_env.recent_object_target_bindings,
                         &env.recent_object_target_bindings,
                     ),
                     snapshot_tag_aliases: env.snapshot_tag_aliases.clone(),
                     last_it_choice_is_set: true_sequence.final_env.last_it_choice_is_set
-                        && env.last_it_choice_is_set,
+                        && (exports_branch_result || env.last_it_choice_is_set),
                     last_player_filter: RefState::join(
                         &true_sequence.final_env.last_player_filter,
                         &env.last_player_filter,
                     ),
+                    // A source-only sacrifice names a fixed object even when
+                    // its condition is false. Unlike a newly produced tag,
+                    // this antecedent does not depend on executing the branch.
                     source_object_antecedent: true_sequence.final_env.source_object_antecedent
-                        && env.source_object_antecedent,
+                        && (env.source_object_antecedent || matches!(if_true.as_slice(), [
+                            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { filter, .. }), ..
+                            })
+                        ] if filter.source)),
                     last_effect_id: env.last_effect_id.clone(),
                     last_library_search_effect_id: env.last_library_search_effect_id.clone(),
                     iterated_player: env.iterated_player,
@@ -3908,6 +3987,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearSuspected { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearGoad { .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat { .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Flip { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Regenerate { .. })
@@ -4105,10 +4185,12 @@ fn resolve_effect_result_values_in_fields(
                 resolve_effect_result_value(power, state)?;
                 resolve_effect_result_value(toughness, state)?;
             }
-            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { power, .. }) => {
+            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { power, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness { toughness: power, .. }) => {
                 resolve_effect_result_value(power, state)?;
             }
-            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterNextBatchEnterWithCounters { count, .. }) => {
+            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterEnterWithCountersReplacement { count, .. })
+            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterNextBatchEnterWithCounters { count, .. }) => {
                 resolve_effect_result_value(count, state)?;
             }
             SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach { count, .. }) => {
@@ -4736,6 +4818,10 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 target: Some(target),
             }) => bind_unresolved_it_in_target(target, seed_tag),
             SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearSuspected { target: None }) => 0,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearGoad {
+                target: Some(target),
+            }) => bind_unresolved_it_in_target(target, seed_tag),
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearGoad { target: None }) => 0,
             SubjectVerbActionAst::KeywordActions(KeywordActionAst::RegenerateAll { filter }) => {
                 bind_unresolved_it_in_filter(filter, seed_tag)
             }
@@ -5115,6 +5201,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness { target, .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature { target, .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness { target, .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpByLastEffect { target, .. }) => {
                 bind_unresolved_it_in_target(target, seed_tag)
             }
@@ -5239,7 +5326,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalPhases { .. }) => 0,
             SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterEnterUnderControlReplacement { .. }) => 0,
             SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterEnterTappedReplacement { .. }) => 0,
-            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterNextBatchEnterWithCounters { count, .. }) => {
+            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterEnterWithCountersReplacement { count, .. })
+            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterNextBatchEnterWithCounters { count, .. }) => {
                 bind_unresolved_it_in_value(count, seed_tag)
             }
             SubjectVerbActionAst::KeywordActions(KeywordActionAst::Learn) | SubjectVerbActionAst::KeywordActions(KeywordActionAst::UnlockRoomDoor) => 0,
@@ -5520,6 +5608,7 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
         | Value::ColorPairsAmong(filter)
         | Value::DistinctCounterTypesAmong(filter)
         | Value::DistinctNames(filter)
+        | Value::DistinctManaValues(filter)
         | Value::DistinctPowers(filter) => bind_unresolved_it_in_filter(filter, seed_tag),
         Value::StaticAbilitiesAmong { filter, .. } => {
             bind_unresolved_it_in_filter(filter, seed_tag)
@@ -5590,6 +5679,10 @@ fn bind_unresolved_it_in_restriction(
     use crate::effect::Restriction;
 
     match restriction {
+        Restriction::BeSacrificedByCause { filter, cause } => {
+            bind_unresolved_it_in_filter(filter, seed_tag)
+                + cause.source_filter.as_mut().map_or(0, |filter| bind_unresolved_it_in_filter(filter, seed_tag))
+        }
         Restriction::Attack(filter)
         | Restriction::Block(filter)
         | Restriction::MustBeBlocked(filter)
@@ -7764,4 +7857,146 @@ mod tests {
         remember_public_revealed_alias(&mut frame, None);
         assert!(frame.snapshot_tag_aliases.is_empty());
     }
+}
+
+#[cfg(test)]
+mod fixed_source_reference_tests {
+    use super::*;
+    #[test]
+    fn reannotating_a_resolved_gate_preserves_its_producer_id() {
+        for reflexive in [false, true] {
+            let producer = EffectAst::subject_verb_investigate(
+                crate::cards::builders::PlayerAst::Implicit, Value::Fixed(1));
+            let condition = EffectId(17);
+            let gate = if reflexive {
+                ConditionalEffectAst::ResolvedWhenResult {
+                    condition, predicate: IfResultPredicate::Did, effects: vec![],
+                }
+            } else {
+                ConditionalEffectAst::ResolvedIfResult {
+                    condition, predicate: IfResultPredicate::Did, effects: vec![],
+                }
+            };
+            let annotated = annotate_effect_sequence(
+                &[producer, EffectAst::Conditionals(gate)],
+                &ModelReferenceImports::default(),
+                EffectReferenceResolutionConfig::default(), IdGenContext::default(),
+            ).unwrap();
+            assert_eq!(annotated.effects[0].assigned_effect_id, Some(condition));
+        }
+    }
+
+    use crate::model::reference_state::RefState as ModelRefState;
+    use crate::diagnostics::TextSpan;
+    #[test]
+    fn annotate_effect_sequence_joins_conditional_last_object_tag_when_branches_agree() {
+        let effects = vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::YourTurn,
+            if_true: Vec::new(),
+            if_false: Vec::new(),
+        })];
+
+        let annotated = annotate_effect_sequence(
+            &effects,
+            &ModelReferenceImports {
+                last_object_tag: Some(TagKey::from("seeded")),
+                ..Default::default()
+            },
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("annotate sequence");
+
+        assert_eq!(
+            annotated.final_env.last_object_tag,
+            ModelRefState::Known(TagKey::from("seeded"))
+        );
+    }
+
+    #[test]
+    fn annotate_effect_sequence_marks_conditional_last_object_tag_ambiguous_when_branches_diverge()
+    {
+        let effects = vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::YourTurn,
+            if_true: vec![
+                EffectAst::subject_verb_destroy(TargetAst::Object(
+                    ObjectFilter::creature(),
+                    Some(TextSpan::synthetic()),
+                    None,
+                )),
+                EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
+                    crate::tag::CompilerReferenceTag::It.bind(),
+                    PlayerAst::You,
+                    false,
+                    false,
+                    false,
+                ),
+            ],
+            if_false: vec![
+                EffectAst::subject_verb_exile(
+                    TargetAst::Object(ObjectFilter::creature(), Some(TextSpan::synthetic()), None),
+                    false,
+                ),
+                EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
+                    crate::tag::CompilerReferenceTag::It.bind(),
+                    PlayerAst::You,
+                    false,
+                    false,
+                    false,
+                ),
+            ],
+        })];
+
+        let annotated = annotate_effect_sequence(
+            &effects,
+            &ModelReferenceImports::default(),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("annotate sequence");
+
+        assert!(matches!(
+            annotated.final_env.last_object_tag,
+            ModelRefState::Ambiguous
+        ));
+    }
+
+    use crate::model::reference_state::ReferenceImports as ModelReferenceImports;
+    #[test]
+    fn conditional_mass_action_exports_its_result_to_a_followup() {
+        let mut attacking = ObjectFilter::creature();
+        attacking.attacking = true;
+        let conditional = EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::YourTurn,
+            if_true: vec![EffectAst::subject_verb_tap(TargetAst::Object(attacking, None, None))],
+            if_false: vec![],
+        });
+        let followup = EffectAst::subject_verb_cant(
+            crate::effect::Restriction::Untap(ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind())),
+            crate::effect::Until::ControllersNextUntapStep, None,
+        );
+        let annotated = annotate_effect_sequence(&[conditional, followup],
+            &ModelReferenceImports::default(), EffectReferenceResolutionConfig::default(),
+            IdGenContext::default()).unwrap();
+        assert_eq!(annotated.effects[1].in_env.last_object_tag,
+            crate::model::reference_state::RefState::Known(TagKey::from("tapped_0")));
+    }
+
+    #[test]
+    fn conditional_source_sacrifice_preserves_the_fixed_antecedent() {
+        let sacrifice = EffectAst::subject_verb_sacrifice(PlayerAst::You, ObjectFilter::source(), 1, None);
+        let conditional = EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::YourTurn,
+            if_true: vec![sacrifice],
+            if_false: vec![],
+        });
+        let followup = EffectAst::subject_verb_damage_with_source(
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
+            Value::Fixed(6), TargetAst::Player(PlayerFilter::You, None));
+        let annotated = annotate_effect_sequence(&[conditional, followup],
+            &ModelReferenceImports { last_player_filter: Some(PlayerFilter::You), ..Default::default() },
+            EffectReferenceResolutionConfig::default(), IdGenContext::default()).unwrap();
+        assert!(annotated.effects[1].in_env.source_object_antecedent);
+    }
+
 }

@@ -22,6 +22,7 @@ pub(super) fn split_trailing_predicate_clause_lexed<'a>(
 
     Some(TrailingIfClauseSpec {
         leading_tokens,
+        predicate_tokens,
         predicate,
     })
 }

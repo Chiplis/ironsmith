@@ -436,7 +436,11 @@ pub fn parse_power_damage_shape(
         } else {
             target_tokens
         };
-        target_shape(target_tokens, false)
+        if exact_phrase(target_tokens, &["itself"]) {
+            PowerDamageTargetShape::Source
+        } else {
+            target_shape(target_tokens, false)
+        }
     } else if let Some(((), target_tokens)) =
         primitives::parse_prefix(pre_equal, primitives::phrase(&["damage", "to"]).void())
     {
@@ -465,6 +469,11 @@ pub fn parse_fight_shape(tokens: &[OwnedLexToken]) -> Option<FightShape<'_>> {
     })?;
     let left = trim_shape_edges(left);
     let right = trim_shape_edges(right);
+    // A temporal adjunct refers to an earlier fight; it is not another
+    // independent fight with the trailing condition as its opponent.
+    if left.windows(2).any(|pair| pair[0].is_word("before") && pair[1].is_word("it")) {
+        return None;
+    }
     Some(FightShape {
         left_tokens: (!left.is_empty()).then_some(left),
         right_tokens: right,

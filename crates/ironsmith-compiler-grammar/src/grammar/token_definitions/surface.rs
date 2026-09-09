@@ -1,7 +1,7 @@
 use crate::color::ColorSet;
 use crate::lexer::{LexStream, OwnedLexToken, lex_line, parser_token_word_refs};
 use crate::model::token_definition::{
-    ArtifactTokenShape, AstartesWarriorTokenShape, BuiltinTokenShape,
+    ArtifactTokenShape, EnchantmentTokenShape, AstartesWarriorTokenShape, BuiltinTokenShape,
     ConstructArtifactScalingShape, ConstructTokenShape, CreatureTokenInlineRuleKind,
     CreatureTokenInlineRulePresentation, CreatureTokenRulesShape, CreatureTokenShape,
     ShapeshifterTokenShape, TokenCombatRestrictionShape, TokenDefinitionSpec, TokenKeywordShape,

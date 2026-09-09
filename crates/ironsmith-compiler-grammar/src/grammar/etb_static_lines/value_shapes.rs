@@ -700,7 +700,6 @@ fn parse_direct_source_subject<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         &["thiss", "creature"],
         &["this"],
         &["thiss"],
-        &["its"],
     ];
     primitives::any_phrase(SUBJECTS).void().parse_next(input)
 }

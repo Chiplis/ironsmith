@@ -53,8 +53,9 @@ fn apply_outcome_tags(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     outcome: &EffectOutcome,
-    runtime: TaggedRuntimeState,
+    mut runtime: TaggedRuntimeState,
 ) {
+    runtime.outcome_only = effect.outcome_only;
     let drawn_snapshots = outcome
         .events_of_type::<crate::events::CardsDrawnEvent>()
         .flat_map(|event| event.cards.iter().copied())
@@ -298,6 +299,8 @@ impl EffectExecutor for TagAllEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let fallback_snapshots = capture_all_effect_target_snapshots(game, &self.effect, ctx);
+        let mut runtime = capture_tagged_runtime_state(game, &self.effect, ctx);
+        runtime.outcome_only = true;
 
         // Execute the inner effect, then tag the objects the effect actually
         // reports as affected. This keeps "destroyed this way" style tags from
@@ -317,8 +320,6 @@ impl EffectExecutor for TagAllEffect {
                 .chosen_object_memory()
                 .is_some_and(|memory| !memory.is_empty());
         if has_result_objects {
-            let runtime =
-                TaggedRuntimeState::from_pre_snapshot(fallback_snapshots.first().cloned());
             apply_tagged_runtime_state(game, ctx, self.tag.clone(), &outcome, runtime);
         } else if outcome.something_happened() && !fallback_snapshots.is_empty() {
             ctx.tag_objects(self.tag.clone(), fallback_snapshots);

@@ -2619,6 +2619,7 @@ pub(crate) fn can_pay_total_cost_with_reason_in_context(
                     crate::costs::CostContext::new(source, payer, execution_ctx.decision_maker)
                         .with_reason(reason)
                         .with_provenance(execution_ctx.provenance);
+                cost_ctx.requesting_effect_cause = Some(execution_ctx.cause.clone());
                 cost_ctx.x_value = execution_ctx.x_value;
                 cost_ctx.tagged_objects = speculative_tagged_objects.clone();
                 adjusted_component.0.can_pay(game, &cost_ctx)?;
@@ -2768,7 +2769,9 @@ fn preflight_tagged_sacrifice_choice_in_context(
             game.controller_of(object) == payer
                 && (!choice.filter.other || *id != source)
                 && choice.filter.matches(object, &filter_ctx, game)
-                && game.can_be_sacrificed(*id)
+                && game.can_be_sacrificed_with_cause(*id, &if reason == crate::costs::PaymentReason::Effect {
+                    execution_ctx.cause.clone()
+                } else { crate::events::cause::EventCause::from_cost(source, payer) })
                 && (!lands_only || object.has_card_type(crate::types::CardType::Land))
         })
         .take(required)
@@ -3001,6 +3004,7 @@ fn pay_activation_cost_step_without_execution_context(
                 cost_ctx.source,
                 filter,
                 cost_ctx.reason,
+                &cost_ctx.event_cause(),
             );
             let Some(target_id) = choose_single_cost_object(
                 game,
@@ -3257,6 +3261,7 @@ fn pay_selected_cost_without_execution_context(
             .with_reason(reason)
             .with_pre_chosen_cards(vec![chosen_id])
             .with_provenance(provenance);
+        selected_ctx.requesting_effect_cause = cost_ctx.requesting_effect_cause.clone();
         selected_ctx.x_value = x_value;
         selected_ctx.tagged_objects = tagged_objects;
 
@@ -3381,6 +3386,54 @@ fn choose_payable_branch(
     }
 }
 
+/// Choose Phyrexian alternatives against the complete remaining mana cost,
+/// then commit once. No early pip can consume resources needed by later pips.
+fn pay_mana_component_with_choices(
+    game: &mut GameState,
+    mana: &crate::mana::ManaCost,
+    cost_ctx: &mut CostContext<'_>,
+) -> Result<(), CostPaymentError> {
+    use crate::mana::{ManaCost, ManaSymbol};
+    let mut pips = mana.pips().to_vec();
+    let x = cost_ctx.x_value.unwrap_or(0);
+    for index in 0..pips.len() {
+        if pips[index].len() < 2 || !pips[index].iter().any(|s| matches!(s, ManaSymbol::Life(_))) {
+            continue;
+        }
+        let mana_options = pips[index].iter().copied().filter(|s| !matches!(s, ManaSymbol::Life(_))).collect::<Vec<_>>();
+        let mut alternatives = Vec::new();
+        if !mana_options.is_empty() { alternatives.push(("Pay mana".to_string(), mana_options)); }
+        for symbol in pips[index].iter().copied() {
+            if let ManaSymbol::Life(amount) = symbol {
+                alternatives.push((format!("Pay {amount} life"), vec![symbol]));
+            }
+        }
+        alternatives.retain(|(_, alternative)| {
+            let mut candidate = pips.clone(); candidate[index] = alternative.clone();
+            game.can_pay_mana_cost_with_reason(cost_ctx.payer, Some(cost_ctx.source),
+                &ManaCost::from_pips(candidate), x, cost_ctx.reason)
+        });
+        if alternatives.is_empty() { return Err(CostPaymentError::InsufficientMana); }
+        let chosen = if alternatives.len() == 1 { 0 } else {
+            let options = alternatives.iter().enumerate().map(|(i, (label, _))|
+                crate::decisions::context::SelectableOption::new(i, label.clone())).collect();
+            let context = crate::decisions::context::SelectOptionsContext::new(
+                cost_ctx.payer, Some(cost_ctx.source), "Choose how to pay Phyrexian mana", options, 1, 1,
+            );
+            let selection = cost_ctx.decision_maker.decide_options(game, &context);
+            if selection.len() != 1 || selection[0] >= alternatives.len() {
+                return Err(CostPaymentError::Other("Invalid Phyrexian payment choice".into()));
+            }
+            selection[0]
+        };
+        pips[index] = alternatives[chosen].1.clone();
+    }
+    if game.try_pay_mana_cost_with_reason(cost_ctx.payer, Some(cost_ctx.source),
+        &ManaCost::from_pips(pips), x, cost_ctx.reason) {
+        Ok(())
+    } else { Err(CostPaymentError::InsufficientMana) }
+}
+
 fn pay_component_without_execution_context(
     game: &mut GameState,
     component: &crate::costs::Cost,
@@ -3393,16 +3446,7 @@ fn pay_component_without_execution_context(
             mana_cost,
             cost_ctx.reason,
         );
-        if game.try_pay_mana_cost_with_reason(
-            cost_ctx.payer,
-            Some(cost_ctx.source),
-            &adjusted_cost,
-            0,
-            cost_ctx.reason,
-        ) {
-            return Ok(());
-        }
-        return Err(CostPaymentError::InsufficientMana);
+        return pay_mana_component_with_choices(game, &adjusted_cost, cost_ctx);
     }
     if let Some(dynamic_mana) = component.dynamic_mana_cost_ref() {
         if let Some(static_base) = dynamic_mana.resolved_static_base() {
@@ -3451,6 +3495,7 @@ fn pay_component_in_context(
     let mut cost_ctx = CostContext::new(source, payer, execution_ctx.decision_maker)
         .with_reason(reason)
         .with_provenance(provenance);
+    cost_ctx.requesting_effect_cause = Some(execution_ctx.cause.clone());
     cost_ctx.x_value = execution_ctx.x_value;
     cost_ctx.tagged_objects = execution_ctx.tagged_objects.clone();
     let result = pay_component_without_execution_context(game, component, &mut cost_ctx);
@@ -3578,7 +3623,7 @@ fn resolve_cost_choice(
     match cost.processing_mode() {
         CostProcessingMode::SacrificeTarget { filter } => {
             let candidates =
-                legal_sacrifice_targets(game, ctx.payer, ctx.source, &filter, ctx.reason);
+                legal_sacrifice_targets(game, ctx.payer, ctx.source, &filter, ctx.reason, &ctx.event_cause());
             if candidates.is_empty() {
                 return Err(CostPaymentError::NoValidSacrificeTarget);
             }
@@ -3610,7 +3655,7 @@ fn resolve_cost_choice(
                 target_id,
                 Zone::Battlefield,
                 Zone::Graveyard,
-                crate::events::cause::EventCause::from_cost(ctx.source, ctx.payer),
+                ctx.event_cause(),
                 ctx.decision_maker,
             ) {
                 EventOutcome::Prevented | EventOutcome::NotApplicable => {
@@ -3665,7 +3710,7 @@ fn resolve_cost_choice(
                 return Err(CostPaymentError::InsufficientCardsInHand);
             }
 
-            let cause = EventCause::from_cost(ctx.source, ctx.payer);
+            let cause = ctx.event_cause();
             for card_id in to_discard {
                 let result = execute_discard(
                     game,
@@ -3871,6 +3916,7 @@ fn legal_sacrifice_targets(
     source: ObjectId,
     filter: &ObjectFilter,
     reason: crate::costs::PaymentReason,
+    cause: &crate::events::cause::EventCause,
 ) -> Vec<ObjectId> {
     let ctx = FilterContext {
         you: Some(payer),
@@ -3883,7 +3929,7 @@ fn legal_sacrifice_targets(
         .filter(|&id| {
             game.object(id).is_some_and(|obj| {
                 filter.matches(obj, &ctx, game)
-                    && game.can_be_sacrificed(id)
+                    && game.can_be_sacrificed_with_cause(id, cause)
                     && (!reason.is_cast_or_ability_payment()
                         || !game.player_cant_sacrifice_nonland_to_cast_or_activate(payer)
                         || obj.has_card_type(crate::types::CardType::Land))
@@ -4877,5 +4923,38 @@ mod tests {
                 .can_play_land(),
             "playing a granted graveyard land should consume the turn's land play"
         );
+    }
+}
+
+#[cfg(test)]
+mod phyrexian_component_choice_tests {
+    use super::*;
+    struct ChooseLife { prompts: usize }
+    impl DecisionMaker for ChooseLife {
+        fn decide_options(&mut self, _game: &GameState, ctx: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> {
+            self.prompts += 1;
+            vec![ctx.options.iter().find(|o| o.description == "Pay 2 life").expect("life must be offered").index]
+        }
+    }
+    #[test]
+    fn phyrexian_component_choices_preserve_mana_and_remaining_pip_affordability() {
+        use crate::mana::{ManaCost, ManaSymbol};
+        for (life, pips, expected_life, expected_white) in [(20, 1, 18, 1), (3, 2, 1, 0)] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = game.players[0].id;
+            game.player_mut(alice).unwrap().life = life;
+            game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::White, 1);
+            let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Cost source")
+                .card_types(vec![crate::types::CardType::Artifact]).build();
+            let source = game.create_object_from_card(&card, alice, crate::zone::Zone::Battlefield);
+            let cost = crate::cost::TotalCost::mana(ManaCost::from_pips(
+                vec![vec![ManaSymbol::White, ManaSymbol::Life(2)]; pips]
+            ));
+            let mut dm = ChooseLife { prompts: 0 };
+            pay_total_cost_with_choice(&mut game, alice, source, &cost, crate::costs::PaymentReason::Other, &mut dm).unwrap();
+            assert_eq!(dm.prompts, 1, "a forced final pip needs no second choice");
+            assert_eq!(game.player(alice).unwrap().life, expected_life);
+            assert_eq!(game.player(alice).unwrap().mana_pool.white, expected_white);
+        }
     }
 }

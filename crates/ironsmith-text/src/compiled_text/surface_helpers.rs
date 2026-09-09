@@ -153,7 +153,7 @@ fn normalize_keyword_only_comma_line(line: &str) -> Option<String> {
     })
 }
 
-fn replace_standalone_phrase(input: &str, from: &str, to: &str) -> String {
+pub(super) fn replace_standalone_phrase(input: &str, from: &str, to: &str) -> String {
     let mut output = String::with_capacity(input.len());
     let mut rest = input;
 

@@ -581,6 +581,10 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
 
     /// Typed block-cost data for structural renderers and other read-only
     /// consumers that must not infer semantics from the display label.
+    fn attack_cost_model(&self) -> Option<&AttackCost> { None }
+    fn attack_cost_for_declaration(&self, _game: &GameState, _source: ObjectId, _controller: PlayerId,
+        _attacker: ObjectId, _target: &crate::combat_state::AttackTarget) -> Option<crate::cost::TotalCost> { None }
+
     fn block_cost_model(&self) -> Option<&BlockCost> {
         None
     }
@@ -1290,6 +1294,8 @@ pub struct EnterAsCopyAsEntersSpec {
     pub added_subtypes: Vec<crate::types::Subtype>,
     pub added_abilities: Vec<crate::ability::Ability>,
     pub set_base_power_toughness: Option<(i32, i32)>,
+    /// Add the extra abilities only when the chosen copy source matches this filter.
+    pub added_abilities_source_filter: Option<crate::target::ObjectFilter>,
     pub set_base_power_toughness_from_self: bool,
 }
 
@@ -1773,6 +1779,12 @@ impl StaticAbility {
             blocker,
             attacker,
         )
+    }
+
+    pub fn attack_cost_model(&self) -> Option<&AttackCost> { self.0.attack_cost_model() }
+    pub fn attack_cost_for_declaration(&self, game: &GameState, source: ObjectId, controller: PlayerId,
+        attacker: ObjectId, target: &crate::combat_state::AttackTarget) -> Option<crate::cost::TotalCost> {
+        self.0.attack_cost_for_declaration(game, source, controller, attacker, target)
     }
 
     pub fn block_cost_model(&self) -> Option<&BlockCost> {
@@ -2334,6 +2346,10 @@ impl StaticAbility {
 
     pub fn cant_block() -> Self {
         Self::new(CantBlock)
+    }
+
+    pub fn attack_cost(attackers: crate::target::ObjectFilter, covers_planeswalkers: bool, cost: crate::cost::TotalCost, display: impl Into<String>) -> Self {
+        Self::new(AttackCost { attackers, covers_planeswalkers, cost, display_text: display.into() })
     }
 
     pub fn block_cost(

@@ -3515,6 +3515,11 @@ pub fn apply_decision_context_with_dm<D: DecisionMaker>(
         DecisionContext::SelectOptions(options_ctx) => {
             let result = decision_maker.decide_options(game, options_ctx);
 
+            if state.pending_cast.as_ref().is_some_and(|pending| pending.stage == CastStage::ChoosingCreatureType) {
+                let choice = result.first().copied().ok_or_else(|| GameLoopError::InvalidState("Creature type selection requires one type".into()))?;
+                return apply_creature_type_announcement_response(game, trigger_queue, state, choice, decision_maker);
+            }
+
             if state
                 .pending_cast
                 .as_ref()

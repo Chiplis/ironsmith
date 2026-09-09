@@ -193,6 +193,7 @@ fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> Objec
             x_value: None,
             cast_order_this_turn: None,
             mana_spent_to_cast: crate::player::ManaPool::default(),
+            snow_mana_spent_to_cast: crate::player::ManaPool::default(),
             mana_sources_spent_to_cast: Vec::new(),
             counters: HashMap::new(),
             is_token: memory.is_token,
@@ -301,6 +302,10 @@ impl EffectExecutor for ReflexiveTriggerEffect {
             .with_optional_costs_paid(ctx.optional_costs_paid.clone())
             .with_tagged_objects(tagged_objects)
             .with_effect_outcomes(ctx.effect_outcomes.clone());
+        // References such as "that player" in the follow-up still refer to
+        // the event that supplied the enclosing ability's context.
+        entry.triggering_event = ctx.triggering_event.clone();
+        entry.event_value_amount = ctx.event_value_amount;
 
         if let Some(x) = ctx.x_value {
             entry = entry.with_x(x);

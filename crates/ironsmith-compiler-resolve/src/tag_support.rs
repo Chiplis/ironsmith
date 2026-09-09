@@ -119,7 +119,7 @@ fn collect_effect_produced_tags(effect: &EffectAst, tags: &mut Vec<TagKey>) {
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone { tag, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { tag, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { tag, .. })
-        | EffectAst::TagAffected { tag, .. } => push_unique_tag(tags, tag),
+        | EffectAst::TagAffected { tag, .. } | EffectAst::TagReferenced { tag, .. } => push_unique_tag(tags, tag),
         EffectAst::SnapshotLastObjectTag { into } => push_unique_tag(tags, into),
         EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) => match action {
             SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { tag, .. })
@@ -344,6 +344,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness { target, .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature { target, .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness { target, .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach { target, .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpByLastEffect { target, .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddCardTypes { target, .. })
@@ -755,6 +756,7 @@ pub fn value_references_tag(value: &Value, tag: &str) -> bool {
         | Value::ColorPairsAmong(filter)
         | Value::DistinctCounterTypesAmong(filter)
         | Value::DistinctNames(filter)
+        | Value::DistinctManaValues(filter)
         | Value::DistinctPowers(filter) => filter
             .tagged_constraints
             .iter()
@@ -1167,6 +1169,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearSuspected { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearGoad { .. })
         | SubjectVerbActionAst::Damage(DamageActionAst::HealDamage { amount: None, .. })
         | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat { .. })
         | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Flip { .. })
@@ -1246,6 +1249,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness { .. })
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature { .. })
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness { .. })
         | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach { .. })
         | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll { .. })
         | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpByLastEffect { .. })
@@ -1299,7 +1303,8 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamagedBySourceZoneReplacement { .. })
         | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterEnterUnderControlReplacement { .. })
         | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterEnterTappedReplacement { .. })
-        | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterNextBatchEnterWithCounters { .. })
+        | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterEnterWithCountersReplacement { .. })
+            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterNextBatchEnterWithCounters { .. })
         | SubjectVerbActionAst::Control(ControlActionAst::Enchant { .. })
         | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseSpellCastHistory { .. })
         | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalPhases { .. })
@@ -1375,7 +1380,8 @@ pub fn effect_references_event_derived_amount(effect: &EffectAst) -> bool {
                         value_references_event_derived_amount(power)
                             || value_references_event_derived_amount(toughness)
                     }
-                    SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { power, .. }) => {
+                    SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { power, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness { toughness: power, .. }) => {
                         value_references_event_derived_amount(power)
                     }
                     SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach { count, .. }) => {
@@ -1615,7 +1621,8 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
             }) => {
                 value_references_tag(power, crate::tag::CompilerReferenceTag::It.as_str()) || value_references_tag(toughness, crate::tag::CompilerReferenceTag::It.as_str())
             }
-            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { power, .. }) => {
+            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { power, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness { toughness: power, .. }) => {
                 value_references_tag(power, crate::tag::CompilerReferenceTag::It.as_str())
             }
             SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach { count, .. }) => {
@@ -1783,6 +1790,10 @@ fn predicate_uses_implicit_it_reference(predicate: &PredicateAst) -> bool {
 pub fn restriction_references_tag(restriction: &crate::effect::Restriction, tag: &str) -> bool {
     use crate::effect::Restriction;
 
+    if let Restriction::BeSacrificedByCause { filter, cause } = restriction {
+        return std::iter::once(filter).chain(cause.source_filter.as_ref()).any(|filter|
+            filter.tagged_constraints.iter().any(|constraint| constraint.tag.as_str() == tag));
+    }
     let maybe_filter = match restriction {
         Restriction::Attack(filter)
         | Restriction::Block(filter)

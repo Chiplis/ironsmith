@@ -174,6 +174,7 @@ pub struct ObjectSnapshot {
     pub cast_order_this_turn: Option<u32>,
     /// Mana spent to cast this object when it was a spell on the stack.
     pub mana_spent_to_cast: ManaPool,
+    pub snow_mana_spent_to_cast: ManaPool,
     /// Last-known snapshots of the sources that produced mana spent to cast
     /// this object. This remains available after the spell leaves the stack
     /// so first-matching-spell predicates can inspect earlier casts.
@@ -261,6 +262,7 @@ impl ObjectSnapshot {
             x_value: obj.x_value,
             cast_order_this_turn: game.turn_store.turn_history.spell_cast_order(obj.id),
             mana_spent_to_cast: obj.mana_spent_to_cast.clone(),
+            snow_mana_spent_to_cast: obj.snow_mana_spent_to_cast.clone(),
             mana_sources_spent_to_cast: obj
                 .cast_tagged_objects
                 .get(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG)
@@ -618,6 +620,7 @@ impl ObjectSnapshot {
             x_value: None,
             cast_order_this_turn: None,
             mana_spent_to_cast: ManaPool::default(),
+            snow_mana_spent_to_cast: ManaPool::default(),
             mana_sources_spent_to_cast: Vec::new(),
             counters: HashMap::new(),
             is_token: false,

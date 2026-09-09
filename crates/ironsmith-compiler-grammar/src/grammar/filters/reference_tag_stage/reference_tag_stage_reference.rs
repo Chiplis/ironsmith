@@ -785,6 +785,7 @@ pub(in super::super) fn parse_object_filter_inner(
         &all_words_with_articles,
         &map_non_article_index,
         &map_non_article_end,
+        &base_tokens,
     )?;
 
     // "with the chosen name" — a runtime back-reference to a previously
@@ -1679,6 +1680,7 @@ pub(in super::super) fn parse_object_filter_inner(
             "historic" if !set_has(&negated_historic_indices, &idx) => filter.historic = true,
             "modified" if !is_negated_word => filter.modified = true,
             "suspected" if !is_negated_word => filter.suspected = true,
+            "goaded" if !is_negated_word => filter.goaded = true,
             _ => {}
         }
 

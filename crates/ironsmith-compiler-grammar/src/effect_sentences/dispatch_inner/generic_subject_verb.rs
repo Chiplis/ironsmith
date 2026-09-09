@@ -1311,6 +1311,18 @@ fn parse_branch_scoped_collection_subject_verb(
     } else {
         clause
     };
+    if clause.first().is_some_and(|token| token.is_word("destroy"))
+        && let Some(effects) = crate::grammar::primitives::probe_shape(
+            super::parse_destroy_or_exile_all_split_sentence(&clause),
+        ).flatten()
+        && effects.len() == 1
+        && is_conjunctive_collection(&effects[0])
+    {
+        return Some((
+            "subject-verb verb=Destroy subject=implicit recognizer=branch-scoped-collection",
+            effects,
+        ));
+    }
     let (route, effect) = if clause.first().is_some_and(|token| token.is_word("return")) {
         (
             "subject-verb verb=Return subject=implicit recognizer=branch-scoped-collection",
@@ -1798,7 +1810,13 @@ fn parse_cant_blocked_then_base_pt_subject_verb(
         );
     }
 
-    Ok(Some(vec![
+    if shape.subject_tokens.first().is_some_and(|token| token.is_word("that")) {
+        blocked_filter.source_surface = Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+            crate::lexer::render_token_slice(shape.subject_tokens).to_ascii_lowercase(),
+        ));
+    }
+
+    Ok(Some(vec![EffectAst::Coordinated { effects: vec![
         EffectAst::subject_verb_cant(
             crate::effect::Restriction::be_blocked(blocked_filter),
             Until::EndOfTurn,
@@ -1810,7 +1828,7 @@ fn parse_cant_blocked_then_base_pt_subject_verb(
             target,
             Until::EndOfTurn,
         ),
-    ]))
+    ], leading_duration: false, result_conjunction: false }]))
 }
 
 fn parse_source_gets_filter_gains_subject_verb(
@@ -1956,83 +1974,14 @@ fn parse_target_gets_then_gains_subject_verb(
     if shape.ability_verb == effect_grammar::gain_ability_shapes::SharedAbilityVerb::Lose {
         return Ok(None);
     }
-    let Some(mut effects) = super::gain_ability::parse_gain_ability_sentence_with_typed_subject(
+    let Some(effects) = super::gain_ability::parse_gain_ability_sentence_with_typed_subject(
         tokens,
         shape.subject_tokens,
     )?
     else {
         return Ok(None);
     };
-    // "Creatures of the creature type of your choice get ... and gain ..."
-    // — the plain subject-filter parse drops the choice qualifier; restore
-    // it the way the standalone creature-type-choice pump primitive does.
-    if subject_has_creature_type_choice(shape.subject_tokens) {
-        patch_creature_type_choice_effects(&mut effects);
-    }
     Ok(Some(effects))
-}
-
-fn subject_has_creature_type_choice(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::lexer::token_word_refs(tokens);
-    crate::word_primitives::sequence_occurs(&words, &["creature", "type", "of", "your", "choice"])
-}
-
-fn patch_creature_type_choice_effect(effect: &mut EffectAst) -> bool {
-    // Compound gain sentences wrap their members in coordination nodes;
-    // patch through them.
-    match effect {
-        EffectAst::Coordination(coordination) => {
-            let mut patched = false;
-            for inner in coordination.effects_mut() {
-                patched |= patch_creature_type_choice_effect(inner);
-            }
-            return patched;
-        }
-        EffectAst::Coordinated { effects, .. } | EffectAst::Sequence { effects, .. } => {
-            let mut patched = false;
-            for inner in effects.iter_mut() {
-                patched |= patch_creature_type_choice_effect(inner);
-            }
-            return patched;
-        }
-        _ => {}
-    }
-    let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect else {
-        return false;
-    };
-    match action {
-        SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll { filter, .. })
-        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll { filter, .. })
-        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceAll { filter, .. }) => {
-            filter.chosen_creature_type = true;
-            true
-        }
-        SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
-            target: TargetAst::Object(filter, _, _),
-            ..
-        })
-        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
-            target: TargetAst::Object(filter, _, _),
-            ..
-        }) => {
-            filter.chosen_creature_type = true;
-            true
-        }
-        _ => false,
-    }
-}
-
-fn patch_creature_type_choice_effects(effects: &mut Vec<EffectAst>) {
-    let mut patched = false;
-    for effect in effects.iter_mut() {
-        patched |= patch_creature_type_choice_effect(effect);
-    }
-    if patched {
-        effects.insert(
-            0,
-            EffectAst::subject_verb_choose_creature_type(PlayerAst::You, vec![]),
-        );
-    }
 }
 
 fn parse_target_has_base_pt_then_loses_subject_verb(

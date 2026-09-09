@@ -15,15 +15,7 @@ use std::collections::HashSet;
 pub(crate) struct TaggedRuntimeState {
     pre_snapshots: Vec<ObjectSnapshot>,
     stable_id_fallback: Option<StableIdFallback>,
-}
-
-impl TaggedRuntimeState {
-    pub(crate) fn from_pre_snapshot(pre_snapshot: Option<ObjectSnapshot>) -> Self {
-        Self {
-            pre_snapshots: pre_snapshot.into_iter().collect(),
-            stable_id_fallback: None,
-        }
-    }
+    pub(crate) outcome_only: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -42,7 +34,7 @@ pub(crate) fn capture_target_object_snapshots(
         if let ResolvedTarget::Object(object_id) = target
             && let Some(obj) = game.object(*object_id)
         {
-            snapshots.push(ObjectSnapshot::from_object(obj, game));
+            snapshots.push(ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
         }
     }
     snapshots
@@ -54,7 +46,7 @@ pub(crate) fn capture_all_effect_target_snapshots(
     ctx: &ExecutionContext,
 ) -> Vec<ObjectSnapshot> {
     let explicit_target_spec = effect.0.get_target_spec();
-    if explicit_target_spec.is_some() {
+    if explicit_target_spec.is_some_and(|spec| spec.is_target()) {
         let snapshots = capture_target_object_snapshots(game, ctx);
         if !snapshots.is_empty() {
             return snapshots;
@@ -104,7 +96,7 @@ pub(crate) fn capture_tagged_runtime_state(
         && let Some(object_id) = ctx.iteration.iterated_object
         && let Some(obj) = game.object(object_id)
     {
-        pre_snapshots.push(ObjectSnapshot::from_object(obj, game));
+        pre_snapshots.push(ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
     }
     if pre_snapshots.is_empty()
         && let Some(snapshot) = capture_effect_target_snapshot(game, effect, ctx)
@@ -115,6 +107,7 @@ pub(crate) fn capture_tagged_runtime_state(
     TaggedRuntimeState {
         pre_snapshots,
         stable_id_fallback: capture_stable_id_fallback(game, effect, ctx),
+        outcome_only: false,
     }
 }
 
@@ -173,7 +166,7 @@ pub(crate) fn apply_tagged_runtime_state(
             .filter(|snapshot| moved_stable_ids.contains(&snapshot.stable_id))
             .cloned()
             .collect::<Vec<_>>();
-        if !snapshots.is_empty() {
+        if !snapshots.is_empty() || (state.outcome_only && !state.pre_snapshots.is_empty()) {
             ctx.set_tagged_objects(tag, snapshots);
             return;
         }
@@ -185,13 +178,16 @@ pub(crate) fn apply_tagged_runtime_state(
     // memories before looking up the old IDs in current state; a replacement
     // can leave an object with that ID present but with a different controller
     // or characteristics.
-    if state.pre_snapshots.is_empty()
-        && let Some(memory) = outcome.affected_object_memory()
-    {
-        let snapshots = memory
-            .iter()
-            .map(|memory| memory.to_snapshot(game))
-            .collect::<Vec<_>>();
+    if state.pre_snapshots.is_empty() {
+        // A coordinated group appends one fact per child. The singular
+        // accessor returns only the first fact, so collect all successful
+        // affected-object memories before exposing the group's result set.
+        let mut seen = HashSet::new();
+        let snapshots = outcome.execution_facts.iter().filter_map(|fact| match fact {
+            crate::effect::ExecutionFact::AffectedObjectMemory(memory) => Some(memory),
+            _ => None,
+        }).flatten().filter(|memory| seen.insert(memory.object_id))
+            .map(|memory| memory.to_snapshot(game)).collect::<Vec<_>>();
         if !snapshots.is_empty() {
             ctx.set_tagged_objects(tag, snapshots);
             return;
@@ -211,7 +207,7 @@ pub(crate) fn apply_tagged_runtime_state(
                 game.object(*id).and_then(|obj| {
                     expected_zone
                         .is_none_or(|zone| obj.zone == zone)
-                        .then(|| ObjectSnapshot::from_object(obj, game))
+                        .then(|| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game))
                 })
             })
             .collect::<Vec<_>>();
@@ -231,7 +227,7 @@ pub(crate) fn apply_tagged_runtime_state(
             .filter_map(|stable_id| game.find_object_by_stable_id(stable_id))
             .filter_map(|id| {
                 game.object(id).and_then(|obj| {
-                    (obj.zone == fallback.zone).then(|| ObjectSnapshot::from_object(obj, game))
+                    (obj.zone == fallback.zone).then(|| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game))
                 })
             })
             .collect::<Vec<_>>();
@@ -242,7 +238,9 @@ pub(crate) fn apply_tagged_runtime_state(
     }
 
     // Generic fallback: preserve the pre-effect target snapshots.
-    if !state.pre_snapshots.is_empty() {
+    if state.outcome_only {
+        ctx.set_tagged_objects(tag, Vec::new());
+    } else if !state.pre_snapshots.is_empty() {
         ctx.tag_objects(tag, state.pre_snapshots);
     }
 }
@@ -335,7 +333,7 @@ fn snapshot_for_object_reference(
     object_id: crate::ids::ObjectId,
 ) -> Option<ObjectSnapshot> {
     if let Some(obj) = game.object(object_id) {
-        return Some(ObjectSnapshot::from_object(obj, game));
+        return Some(ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
     }
     if let Some(snapshot) = ctx.target_snapshots.get(&object_id) {
         return Some(snapshot.clone());
@@ -473,6 +471,28 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![explicit_target]
         );
+    }
+
+    #[test]
+    fn aggregate_tag_keeps_each_childs_last_known_affected_objects() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let a = create_creature(&mut game, alice);
+        let b = create_creature(&mut game, bob);
+        let memories = [a,b].map(|id| crate::effect::OutcomeObjectMemory::from_snapshot(
+            &ObjectSnapshot::from_object_with_calculated_characteristics(game.object(id).unwrap(), &game)));
+        game.move_object_by_effect(a,Zone::Graveyard).unwrap();
+        game.move_object_by_effect(b,Zone::Graveyard).unwrap();
+        let outcome = EffectOutcome::count(2)
+            .with_affected_object_memory(vec![memories[0].clone()])
+            .with_affected_object_memory(vec![memories[1].clone()]);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        apply_tagged_runtime_state(&game,&mut ctx,TagKey::new("group"),&outcome,TaggedRuntimeState::default());
+        let snapshots = ctx.get_tagged_all("group").unwrap();
+        assert_eq!(snapshots.iter().map(|s|(s.object_id,s.controller,s.zone)).collect::<Vec<_>>(),
+            vec![(a,alice,Zone::Battlefield),(b,bob,Zone::Battlefield)]);
     }
 
     #[test]

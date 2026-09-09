@@ -329,6 +329,7 @@ fn target_choice_excluded_controller(
                 crate::filter::ObjectRef::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into()),
             ))
         }
+        clause_grammar::ChooseTargetChooserShape::Opponent => Some(PlayerFilter::IteratedPlayer),
         clause_grammar::ChooseTargetChooserShape::Unresolved => None,
     }
 }
@@ -345,6 +346,10 @@ fn explicit_target_choice(
         clause_grammar::ChooseTargetChooserShape::AbilityController => (
             EffectAst::subject_verb_explicit_target_only(target),
             Some(crate::tag::CompilerReferenceTag::AbilityControllerTargetChoice),
+        ),
+        clause_grammar::ChooseTargetChooserShape::Opponent => (
+            EffectAst::subject_verb_explicit_target_only_for_chooser(target, PlayerAst::Opponent),
+            None,
         ),
         clause_grammar::ChooseTargetChooserShape::ItsController => (
             EffectAst::subject_verb_explicit_target_only_for_chooser(
@@ -1407,18 +1412,20 @@ fn lower_direct_clause_shape(
             ),
             2,
         ),
-        clause_grammar::DirectClauseShape::OnlyChosenCanAttack => EffectAst::subject_verb_cant(
+        clause_grammar::DirectClauseShape::OnlyChosenCanAttack => EffectAst::subject_verb_cant_starting(
             crate::effect::Restriction::attack(
                 ObjectFilter::creature().not_tagged(crate::tag::CompilerReferenceTag::It.bind()),
             ),
             Until::EndOfCombat,
+            crate::effect::RestrictionStart::LastAddedCombatPhase,
             None,
         ),
-        clause_grammar::DirectClauseShape::OnlyChosenCanBlock => EffectAst::subject_verb_cant(
+        clause_grammar::DirectClauseShape::OnlyChosenCanBlock => EffectAst::subject_verb_cant_starting(
             crate::effect::Restriction::block(
                 ObjectFilter::creature().not_tagged(crate::tag::CompilerReferenceTag::It.bind()),
             ),
             Until::EndOfCombat,
+            crate::effect::RestrictionStart::LastAddedCombatPhase,
             None,
         ),
         clause_grammar::DirectClauseShape::CastNonlandTaggedThisWay => {

@@ -428,6 +428,17 @@ fn parse_tagged_permission_target_lexed<'a>(
     Option<u32>,
 )> {
     alt((
+        (
+            primitives::phrase(&["cards", "exiled", "with", "this"]),
+            opt(primitives::any_phrase(&[
+                &["creature"], &["artifact"], &["enchantment"], &["permanent"], &["card"], &["land"],
+            ])),
+        ).value((
+            TaggedPermissionReference::SourceExiled,
+            false,
+            TaggedPermissionTargetSurface::Other,
+            None,
+        )),
         alt((
             primitives::kw("it").value((
                 TaggedPermissionReference::LastTagged,

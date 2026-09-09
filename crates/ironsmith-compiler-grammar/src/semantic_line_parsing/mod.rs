@@ -48,6 +48,8 @@ pub use triggered_chunks::{
 
 pub use activated::parse_activated_line;
 pub use lines::{
+    exact_atomic_return_as_aura_bundle,
+    spell_or_activated_ability_x_cost_trigger_spec,
     dynamic_zone_change_group_token_creation_from_authored_trigger,
     end_of_combat_destroy_then_next_end_step_counter_program,
     exact_graveyard_card_copy_cast_sequence, exact_looked_hand_optional_cast_bundle,

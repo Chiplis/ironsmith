@@ -90,7 +90,7 @@ impl TriggerMatcher for CounterRemovedFromTrigger {
     }
 
     fn trigger_count(&self, event: &TriggerEvent) -> u32 {
-        if self.one_or_more {
+        if self.one_or_more || self.last {
             return 1;
         }
         event
