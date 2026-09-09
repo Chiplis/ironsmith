@@ -285,3 +285,5 @@ mod cast_trigger_hand_choice;
 mod additional_sacrifice_mana_value;
 
 mod initiative_action_list;
+
+mod historic_cast_block_condition;
