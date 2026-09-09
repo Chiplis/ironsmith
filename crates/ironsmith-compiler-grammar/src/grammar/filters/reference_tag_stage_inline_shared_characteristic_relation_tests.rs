@@ -445,3 +445,16 @@ fn not_enchanted_is_the_negative_aura_attachment_predicate() {
     assert_eq!(aura.subtypes, [Subtype::Aura]);
     assert_eq!(filter.description(), "creature that isn't enchanted");
 }
+
+#[test]
+fn included_literal_name_keeps_original_case_apostrophe_and_comma_surface() {
+    let filter = parse_filter("card named Nissa, Nature's Artisan");
+    assert_eq!(filter.name.as_deref(), Some("nissa natures artisan"));
+    assert_eq!(filter.name_surface(), Some("Nissa, Nature's Artisan"));
+    let mut without_surface = filter.clone();
+    without_surface.name_surface = Default::default();
+    assert_eq!(filter, without_surface, "spelling must not affect semantic filter equality");
+    let mut changed_name = filter.clone();
+    changed_name.name = Some("different name".into());
+    assert_eq!(changed_name.name_surface(), None, "a stale spelling must not override a changed semantic name");
+}

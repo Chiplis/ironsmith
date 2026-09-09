@@ -74,8 +74,35 @@ fn parse_existing_value_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
         .or_else(|| parse_exact_cards_in_hand_gate(tokens))
 }
 
+fn parse_player_counter_placement_gate(clause: LexedClause<'_>) -> Option<PredicateAst> {
+    let words = clause.word_refs();
+    if !crate::word_primitives::parse_sequence_suffix(&words, &["this", "turn"]) { return None; }
+    let start = match words.as_slice() {
+        ["youve" | "you've" | "you’ve" | "you", "put", ..] => 2,
+        ["you", "have", "put", ..] => 3,
+        _ => return None,
+    };
+    let (minimum, descriptor_start) = if words.get(start) == Some(&"a") {
+        (1, start + 1)
+    } else if words.get(start + 1) == Some(&"or") && words.get(start + 2) == Some(&"more") {
+        (crate::util::parse_number_word_u32(words[start])?, start + 3)
+    } else { return None; };
+    let noun = words[descriptor_start..].iter().position(|word| matches!(*word, "counter" | "counters"))? + descriptor_start;
+    if words.get(noun + 1) != Some(&"on") { return None; }
+    let counter_type = if noun == descriptor_start { None } else {
+        Some(crate::grammar::filters::parse_counter_type_words(&words[descriptor_start..=noun])?)
+    };
+    let objects = clause.between_word_range(noun + 2, words.len() - 2)?;
+    let mut filter = crate::grammar::primitives::probe_shape(parse_object_filter(objects.tokens(), false))?;
+    filter.zone = None;
+    Some(value_at_least(Value::TurnHistoryCount(TurnHistoryCount::CountersPutOn {
+        source_controller: Some(PlayerFilter::You), counter_type, filter,
+    }), i32::try_from(minimum).ok()?))
+}
+
 fn parse_turn_history_value_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
+    if let Some(predicate) = parse_player_counter_placement_gate(clause) { return Some(predicate); }
 
     if surface::exact(clause, &["you", "created", "a", "token", "this", "turn"]) {
         return Some(value_at_least(
@@ -142,6 +169,7 @@ fn parse_turn_history_value_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAs
     {
         return Some(value_at_least(
             Value::TurnHistoryCount(TurnHistoryCount::CountersPutOn {
+                source_controller: None,
                 counter_type: None,
                 filter: ObjectFilter::source(),
             }),
@@ -338,23 +366,9 @@ fn parse_turn_history_value_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAs
         filter.controller = Some(PlayerFilter::You);
         return Some(value_at_least(
             Value::TurnHistoryCount(TurnHistoryCount::CountersPutOn {
+                source_controller: None,
                 counter_type: Some(CounterType::PlusOnePlusOne),
                 filter,
-            }),
-            1,
-        ));
-    }
-
-    if surface::exact(
-        clause,
-        &[
-            "you", "put", "a", "counter", "on", "a", "creature", "this", "turn",
-        ],
-    ) {
-        return Some(value_at_least(
-            Value::TurnHistoryCount(TurnHistoryCount::CountersPutOn {
-                counter_type: None,
-                filter: ObjectFilter::creature(),
             }),
             1,
         ));

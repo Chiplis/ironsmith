@@ -45,7 +45,7 @@ impl EffectExecutor for ExileThenGrantPlayEffect {
         let player = resolve_player_filter(game, &self.player, ctx)?;
         let expires = match self.duration {
             GrantDuration::UntilEndOfTurn => game.turn.turn_number,
-            GrantDuration::Forever => u32::MAX,
+            GrantDuration::Forever | GrantDuration::UntilYourNextTurn => u32::MAX,
             GrantDuration::UntilYourNextTurnEnd => next_turn_number_for_player(game, player),
         };
         let additional_effects = ctx.additional_replacement_effects_snapshot();
@@ -74,6 +74,7 @@ impl EffectExecutor for ExileThenGrantPlayEffect {
 
         for &exiled_id in &result.new_object_ids {
             let grant_source = match self.duration {
+                GrantDuration::UntilYourNextTurn => GrantSource::until_player_next_turn_start(ctx.source, player, game.turn.turn_number),
                 GrantDuration::UntilYourNextTurnEnd => {
                     GrantSource::until_player_next_turn_end(ctx.source, player, expires)
                 }

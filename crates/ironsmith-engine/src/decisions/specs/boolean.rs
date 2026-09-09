@@ -212,12 +212,12 @@ pub struct MadnessSpec {
     /// The card with madness (in exile).
     pub card: ObjectId,
     /// The madness cost.
-    pub madness_cost: ManaCost,
+    pub madness_cost: crate::cost::TotalCost,
 }
 
 impl MadnessSpec {
     /// Create a new MadnessSpec.
-    pub fn new(card: ObjectId, madness_cost: ManaCost) -> Self {
+    pub fn new(card: ObjectId, madness_cost: crate::cost::TotalCost) -> Self {
         Self { card, madness_cost }
     }
 }

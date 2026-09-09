@@ -51,6 +51,7 @@ pub(super) fn did_this_way_shape(tokens: &[OwnedLexToken]) -> Option<WhoClauseSh
     let (_, _, rest) =
         primitives::find_prefix(tokens, || primitives::phrase(&["this", "way"]).void())?;
     Some(WhoClauseShape::DidThisWay {
+        result_tokens: &tokens[..tokens.len() - rest.len()],
         effect_tokens: trim(rest),
         tagged_filter_tokens: tagged_filter_after_action(tokens),
     })

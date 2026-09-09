@@ -1784,7 +1784,11 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
             clauses.push(format!("{verb} base toughness {}", describe_value(value)));
         }
         crate::continuous::Modification::AddAbility(ability) => {
-            if let Some(inline) = ability.granted_inline_ability() {
+            if matches!(ability.compiled_model().map(|model| &model.payload),
+                Some(ironsmith_core::StaticAbilityPayload::CharacteristicDefiningPt { .. })) {
+                let text = describe_static_ability_with_subject(ability, "this creature");
+                clauses.push(format!("{add_ability_verb} \"{}.\"", text.trim_end_matches('.')));
+            } else if let Some(inline) = ability.granted_inline_ability() {
                 clauses.push(format!(
                     "{add_ability_verb} {}",
                     describe_inline_ability_with_self_subject(inline, self_subject)
@@ -3381,8 +3385,9 @@ pub(crate) fn describe_apply_continuous_effect(
         && effect.runtime_modifications.iter().any(|runtime| {
             matches!(
                 runtime,
-                crate::effects::continuous::RuntimeModification::CopyOf { source, .. }
+                crate::effects::continuous::RuntimeModification::CopyOf { source, preserve_source_abilities, .. }
                     if source_linked_exiled_creature_copy_surface(effect, source).is_some()
+                        || (*preserve_source_abilities && matches!(source.base(), ChooseSpec::Tagged(_)))
             )
         })
     {
@@ -5402,6 +5407,47 @@ fn describe_prior_result_active_action(action: crate::effect::PriorEffectAction)
 fn describe_prior_effect_result_surface(
     surface: &crate::effect::PriorEffectResultSurface,
 ) -> String {
+    // A draw result counts cards, even without an object-type filter.
+    if surface.action == crate::effect::PriorEffectAction::Drawn
+        && surface.filter == ObjectFilter::default()
+        && surface.quantifier == crate::effect::PriorEffectResultQuantifier::One
+        && surface.required_count.is_none()
+        && surface.shared_characteristic.is_none()
+    {
+        let phrase = match (surface.actor, surface.negated) {
+            (crate::effect::PriorEffectResultActor::You, false) => "you draw a card",
+            (crate::effect::PriorEffectResultActor::You, true) => "you don't draw a card",
+            (crate::effect::PriorEffectResultActor::ThatPlayer, false) => "that player draws a card",
+            (crate::effect::PriorEffectResultActor::ThatPlayer, true) => "that player doesn't draw a card",
+            (crate::effect::PriorEffectResultActor::Passive, false) => "a card was drawn",
+            (crate::effect::PriorEffectResultActor::Passive, true) => "no card was drawn",
+            _ => "",
+        };
+        if !phrase.is_empty() {
+            return format!("{phrase} this way");
+        }
+    }
+    if surface.negated {
+        let mut positive = surface.clone();
+        positive.negated = false;
+        if surface.actor == crate::effect::PriorEffectResultActor::Passive
+            && surface.quantifier != crate::effect::PriorEffectResultQuantifier::ActionOnly
+            && surface.required_count.is_none()
+            && surface.shared_characteristic.is_none()
+        {
+            let mut filter = surface.filter.clone();
+            filter.zone = None;
+            filter.set_prior_effect_action_surface(None);
+            let object = pluralize_relative_object_phrase(strip_leading_article(&filter.description()));
+            let action = if surface.put_into_exile_surface {
+                "put into exile".to_string()
+            } else {
+                describe_prior_effect_action(surface.action).to_string()
+            };
+            return format!("no {object} were {action} this way");
+        }
+        return format!("not ({})", describe_prior_effect_result_surface(&positive));
+    }
     if surface.action == crate::effect::PriorEffectAction::Returned
         && surface.actor == crate::effect::PriorEffectResultActor::Passive
         && surface.quantifier == crate::effect::PriorEffectResultQuantifier::One
@@ -5601,6 +5647,11 @@ pub(crate) fn tag_action_from_name(tag: &str) -> Option<&'static str> {
 }
 
 pub(crate) fn this_way_action_from_tag(tag: &TagKey) -> Option<&'static str> {
+    if tag.as_str() == crate::effects::REVEALED_THIS_WAY_TAG
+        || tag.as_str() == crate::effects::PUBLIC_REVEALED_TAG
+    {
+        return Some("revealed");
+    }
     if let Some(action) = tag_action_from_name(tag.as_str()) {
         return Some(action);
     }

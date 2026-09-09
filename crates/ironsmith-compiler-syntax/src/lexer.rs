@@ -97,6 +97,7 @@ pub enum TokenKind {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OwnedLexToken {
+    literal_surface: String,
     pub kind: TokenKind,
     pub slice: String,
     pub parser_text: String,
@@ -284,6 +285,7 @@ impl OwnedLexToken {
         let parser_word_pieces =
             build_token_word_pieces(kind, slice.as_str(), parser_text.as_str(), span);
         Self {
+            literal_surface: slice.clone(),
             kind,
             slice,
             parser_text,
@@ -334,6 +336,22 @@ impl OwnedLexToken {
         }
     }
 
+    /// Authored spelling for a literal grammar slot. A semantic rewrite must
+    /// not reuse the previous token's spelling.
+    pub fn literal_surface(&self) -> &str {
+        if parser_text_for_token(self.kind, &self.literal_surface) == self.parser_text {
+            &self.literal_surface
+        } else {
+            &self.slice
+        }
+    }
+
+    pub fn set_literal_surface(&mut self, surface: &str) {
+        if parser_text_for_token(self.kind, surface) == self.parser_text {
+            self.literal_surface = surface.to_string();
+        }
+    }
+
     pub fn parser_text(&self) -> &str {
         self.parser_text.as_str()
     }
@@ -364,7 +382,11 @@ impl OwnedLexToken {
         match self.kind {
             TokenKind::Word | TokenKind::Number => {
                 let slice = slice.into();
-                self.parser_text = parser_text_for_token(self.kind, slice.as_str());
+                let replacement = parser_text_for_token(self.kind, slice.as_str());
+                if replacement != self.parser_text {
+                    self.literal_surface = slice.clone();
+                }
+                self.parser_text = replacement;
                 self.slice = slice;
                 self.refresh_parser_word_pieces();
                 true
@@ -1200,6 +1222,15 @@ fn render_needs_space(prev: &OwnedLexToken, current: &OwnedLexToken) -> bool {
     )
 }
 
+/// Render a grammar-proven literal token span with its preserved spelling.
+pub fn render_literal_token_slice(tokens: &[OwnedLexToken]) -> String {
+    let mut literal_tokens = tokens.to_vec();
+    for token in &mut literal_tokens {
+        token.slice = token.literal_surface().to_string();
+    }
+    render_token_slice(&literal_tokens)
+}
+
 pub fn render_token_slice(tokens: &[OwnedLexToken]) -> String {
     fn needs_space(prev: &OwnedLexToken, current: &OwnedLexToken) -> bool {
         render_needs_space(prev, current)
@@ -1390,5 +1421,22 @@ mod tests {
             view.parse_phrase_start(&["target", "non", "human"]),
             Some(2)
         );
+    }
+}
+
+#[cfg(test)]
+mod literal_surface_tests {
+    use super::*;
+
+    #[test]
+    fn literal_surface_survives_case_normalization_but_not_semantic_replacement() {
+        let mut token = OwnedLexToken::word("Nature's", TextSpan::synthetic());
+        token.lowercase_word();
+        assert_eq!(token.as_word(), Some("nature's"));
+        assert_eq!(token.literal_surface(), "Nature's");
+        token.replace_word("creature");
+        assert_eq!(token.literal_surface(), "creature");
+        token.set_literal_surface("Nissa");
+        assert_eq!(token.literal_surface(), "creature");
     }
 }

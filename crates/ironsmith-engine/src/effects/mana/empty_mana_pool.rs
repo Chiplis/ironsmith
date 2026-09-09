@@ -2,7 +2,9 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::resolve_player_filter;
-use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
+use crate::effects::{
+    EffectExecutor, ExecutionContext, ExecutionError, SimultaneousEffectProposal,
+};
 use crate::game_state::GameState;
 use crate::target::PlayerFilter;
 
@@ -18,20 +20,51 @@ impl EmptyManaPoolEffect {
     }
 }
 
-impl EffectExecutor for EmptyManaPoolEffect {
-    fn execute(
-        &self,
+#[derive(Debug)]
+struct EmptyManaPoolProposal {
+    player: crate::ids::PlayerId,
+}
+
+impl SimultaneousEffectProposal for EmptyManaPoolProposal {
+    fn commit(
+        self: Box<Self>,
         game: &mut GameState,
-        ctx: &mut ExecutionContext,
+        _ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        let Some(player) = game.player_mut(player_id) else {
+        let Some(player) = game.player_mut(self.player) else {
             return Err(ExecutionError::InvalidTarget);
         };
         player.mana_pool.empty();
         player.restricted_mana.clear();
         player.clear_mana_source_provenance();
         Ok(EffectOutcome::default())
+    }
+}
+
+impl EffectExecutor for EmptyManaPoolEffect {
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn SimultaneousEffectProposal>, ExecutionError> {
+        let player = resolve_player_filter(game, &self.player, ctx)?;
+        if game.player(player).is_none() {
+            return Err(ExecutionError::InvalidTarget);
+        }
+        Ok(Box::new(EmptyManaPoolProposal { player }))
+    }
+
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        self.prepare_simultaneous_player_action(game, ctx)?
+            .commit(game, ctx)
     }
 }
 
@@ -73,5 +106,30 @@ mod tests {
         let player = game.player(alice).expect("alice exists");
         assert_eq!(player.mana_pool.total(), 0);
         assert!(player.restricted_mana.is_empty());
+    }
+    #[test]
+    fn simultaneous_empty_mana_pool_binds_player_without_mutating_during_prepare() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.player_mut(alice)
+            .unwrap()
+            .mana_pool
+            .add(ManaSymbol::Red, 2);
+        game.player_mut(bob)
+            .unwrap()
+            .mana_pool
+            .add(ManaSymbol::Blue, 3);
+        let mut ctx = ExecutionContext::new_default(game.new_object_id(), alice);
+        ctx.iteration.iterated_player = Some(alice);
+        let proposal = EmptyManaPoolEffect::new(PlayerFilter::IteratedPlayer)
+            .prepare_simultaneous_player_action(&game, &mut ctx)
+            .unwrap();
+        assert_eq!(game.player(alice).unwrap().mana_pool.total(), 2);
+        assert_eq!(game.player(bob).unwrap().mana_pool.total(), 3);
+        ctx.iteration.iterated_player = Some(bob);
+        proposal.commit(&mut game, &mut ctx).unwrap();
+        assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0);
+        assert_eq!(game.player(bob).unwrap().mana_pool.total(), 3);
     }
 }

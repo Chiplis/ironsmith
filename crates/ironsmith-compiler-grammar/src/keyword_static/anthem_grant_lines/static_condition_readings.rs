@@ -316,6 +316,7 @@ fn read_subject_status_condition(
     let tokens = input.tokens;
     if let Some(condition) = crate::grammar::conditions::parse_subject_status_condition(&tokens)
         .and_then(|condition| condition.condition_expr())
+        .or_else(|| crate::grammar::conditions::parse_subject_status_disjunction_condition(tokens))
     {
         return Ok(Some(condition));
     }

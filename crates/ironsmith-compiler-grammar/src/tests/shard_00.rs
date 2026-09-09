@@ -3080,7 +3080,7 @@ pub(super) fn rewrite_statement_lowering_parses_shape_anew_via_parser_path()
             let debug = format!("{effects:#?}");
             assert!(debug.contains("Sacrifice"), "{debug}");
             assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
-            assert!(debug.contains("ShuffleLibrary"), "{debug}");
+            assert!(debug.contains("ShuffleObjectsIntoLibrary"), "{debug}");
         }
         other => panic!("expected single Shape Anew statement chunk, got {other:?}"),
     }

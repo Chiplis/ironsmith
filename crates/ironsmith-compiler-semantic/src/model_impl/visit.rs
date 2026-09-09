@@ -290,7 +290,7 @@ pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { .. }) => {}
         EffectAst::Conditionals(ConditionalEffectAst::IfEffectDidNotHappen { .. }) => {}
         EffectAst::Conditionals(ConditionalEffectAst::IfEffectResult { .. }) => {}
-        EffectAst::TagAffected { .. } => {}
+        EffectAst::TagAffected { .. } | EffectAst::TagReferenced { .. } => {}
         EffectAst::DirectionalAdjacentPlayerControl { .. } => {}
         EffectAst::Permissions(PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. }) => {}
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess) => {}
@@ -361,7 +361,7 @@ pub fn for_each_nested_effects(
             visit(std::slice::from_ref(effect.as_ref()));
             visit(if_true);
         }
-        EffectAst::TagAffected { effect, .. } => {
+        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => {
             visit(std::slice::from_ref(effect.as_ref()));
         }
         EffectAst::Coordination(coordination) => {
@@ -428,7 +428,7 @@ pub fn for_each_nested_effects_mut(
             visit(std::slice::from_mut(effect.as_mut()));
             visit(if_true);
         }
-        EffectAst::TagAffected { effect, .. } => {
+        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => {
             visit(std::slice::from_mut(effect.as_mut()));
         }
         EffectAst::Coordination(coordination) => {
@@ -506,7 +506,7 @@ pub fn for_each_nested_effect_vec_mut(
                 walk(effect.as_mut(), include_unless_action_alternative, visit);
                 visit(if_true);
             }
-            EffectAst::TagAffected { effect, .. } => {
+            EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => {
                 walk(effect.as_mut(), include_unless_action_alternative, visit);
             }
             EffectAst::Coordination(coordination) => {
@@ -576,7 +576,7 @@ pub fn try_for_each_nested_effects_mut<E>(
             visit(std::slice::from_mut(effect.as_mut()))?;
             visit(if_true)?;
         }
-        EffectAst::TagAffected { effect, .. } => {
+        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => {
             visit(std::slice::from_mut(effect.as_mut()))?;
         }
         EffectAst::Coordination(coordination) => {

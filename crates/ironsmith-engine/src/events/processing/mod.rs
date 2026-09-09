@@ -319,6 +319,14 @@ fn push_enter_as_copy_effects_for_spec(
             .flatten()
     });
 
+    let added_abilities_for_source = |candidate| {
+        let matches = spec.added_abilities_source_filter.as_ref().is_none_or(|filter| {
+            let ctx = game.filter_context_for(controller, Some(entering_object));
+            game.object(candidate).is_some_and(|object| filter.matches(object, &ctx, game))
+        });
+        if matches { spec.added_abilities.clone() } else { Vec::new() }
+    };
+
     if let Some(linked_pair) = spec.linked_exile_pair {
         if candidates.len() < 2 {
             return;
@@ -360,7 +368,7 @@ fn push_enter_as_copy_effects_for_spec(
                             added_card_types: spec.added_card_types.clone(),
                             removed_supertypes: spec.removed_supertypes.clone(),
                             added_subtypes: spec.added_subtypes.clone(),
-                            added_abilities: spec.added_abilities.clone(),
+                            added_abilities: added_abilities_for_source(copy_candidate),
                             set_base_power_toughness,
                         },
                     )
@@ -400,7 +408,7 @@ fn push_enter_as_copy_effects_for_spec(
                     added_card_types: spec.added_card_types.clone(),
                     removed_supertypes: spec.removed_supertypes.clone(),
                     added_subtypes: spec.added_subtypes.clone(),
-                    added_abilities: spec.added_abilities.clone(),
+                    added_abilities: added_abilities_for_source(candidate),
                     set_base_power_toughness,
                 },
             )
@@ -1257,8 +1265,8 @@ fn resolve_madness_discard(
         obj.alternative_casts
             .iter()
             .find_map(|method| match method {
-                crate::alternative_cast::AlternativeCastingMethod::Madness { cost } => {
-                    Some(cost.clone())
+                crate::alternative_cast::AlternativeCastingMethod::Madness { total_cost } => {
+                    Some(total_cost.clone())
                 }
                 _ => None,
             })
@@ -1287,7 +1295,7 @@ fn resolve_madness_discard(
         });
     }
 
-    if !pay_madness_mana_cost(game, player, exiled_id, &madness_cost, decision_maker) {
+    if !pay_madness_cost(game, player, exiled_id, &madness_cost, decision_maker) {
         game.clear_madness_exiled(exiled_id);
         let new_id = game.move_object(
             exiled_id,
@@ -1502,6 +1510,23 @@ fn trait_effect_matches_event(
 ) -> Option<ReplacementPriority> {
     use crate::events::ReplacementPriority as TraitPriority;
 
+    if let ReplacementAction::EnterWithCounters { count, otherwise_count, .. } = &effect.replacement
+        && (application::etb_value_uses_revealed_choice(count)
+            || otherwise_count.as_ref().is_some_and(application::etb_value_uses_revealed_choice))
+        && let Some(etb) = crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner())
+        && effect.source == etb.object
+        && etb.prepared_choices.is_none()
+    {
+        return None;
+    }
+    // Entry programs may add counters while preparing the object. Apply
+    // counter-placement modifiers once, after all entry counter proposals exist.
+    if matches!(effect.replacement, ReplacementAction::DoubleCounters { .. } | ReplacementAction::AddCountersToPlacement { .. })
+        && let Some(etb) = crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner())
+        && etb.prepared_choices.is_none()
+    {
+        return None;
+    }
     // All effects should have trait-based matchers
     let matcher = effect.matcher.as_ref()?;
 
@@ -4211,7 +4236,18 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
                             };
                         };
                         let mut prepared_event = etb.clone();
-                        prepared_event.prepared_choices = Some(prepared.choices);
+                        let mut choices = prepared.choices;
+                        prepared_event.enters_with_counters.append(&mut choices.as_enters_counters);
+                        let mut combined: Vec<(CounterType, u32)> = Vec::new();
+                        for (counter, count) in prepared_event.enters_with_counters.drain(..) {
+                            if let Some((_, total)) = combined.iter_mut().find(|(kind, _)| *kind == counter) {
+                                *total = total.saturating_add(count);
+                            } else {
+                                combined.push((counter, count));
+                            }
+                        }
+                        prepared_event.enters_with_counters = combined;
+                        prepared_event.prepared_choices = Some(choices);
                         current_event = Event::new_with_provenance(prepared_event, e.provenance());
                         continue;
                     }
@@ -4559,23 +4595,23 @@ fn object_has_compleated_marker(obj: &crate::object::Object) -> bool {
     })
 }
 
-fn pay_madness_mana_cost(
+fn pay_madness_cost(
     game: &mut GameState,
     player: crate::ids::PlayerId,
     source: crate::ids::ObjectId,
-    cost: &crate::mana::ManaCost,
+    cost: &crate::cost::TotalCost,
     decision_maker: &mut dyn DecisionMaker,
 ) -> bool {
     const MAX_MANA_ACTIVATIONS: usize = 32;
 
+    let non_mana = crate::cost::TotalCost::from_costs(cost.non_mana_costs().cloned().collect());
+    if crate::cost::can_pay_cost_with_reason(game, source, player, &non_mana, crate::costs::PaymentReason::CastSpell).is_err() {
+        return false;
+    }
     for _ in 0..MAX_MANA_ACTIVATIONS {
-        if game.try_pay_mana_cost_with_reason(
-            player,
-            Some(source),
-            cost,
-            0,
-            crate::costs::PaymentReason::CastSpell,
-        ) {
+        if crate::special_actions::pay_total_cost_with_choice(
+            game, player, source, cost, crate::costs::PaymentReason::CastSpell, decision_maker,
+        ).is_ok() {
             return true;
         }
 
@@ -4636,13 +4672,9 @@ fn pay_madness_mana_cost(
         }
     }
 
-    game.try_pay_mana_cost_with_reason(
-        player,
-        Some(source),
-        cost,
-        0,
-        crate::costs::PaymentReason::CastSpell,
-    )
+    crate::special_actions::pay_total_cost_with_choice(
+        game, player, source, cost, crate::costs::PaymentReason::CastSpell, decision_maker,
+    ).is_ok()
 }
 
 /// Result of processing a zone change event with full replacement effect handling.
@@ -4954,6 +4986,7 @@ mod tests {
                 added_subtypes: Vec::new(),
                 added_abilities: Vec::new(),
                 set_base_power_toughness: None,
+                added_abilities_source_filter: None,
                 set_base_power_toughness_from_self: false,
             },
             "Creatures enter as a copy of this creature.".to_string(),
@@ -5094,6 +5127,7 @@ mod tests {
                         added_subtypes: Vec::new(),
                         added_abilities: Vec::new(),
                         set_base_power_toughness: None,
+                        added_abilities_source_filter: None,
                         set_base_power_toughness_from_self: false,
                     },
                     "This permanent enters as a copy of a creature.".to_string(),

@@ -972,9 +972,11 @@ fn rewrite_vote_count_followups_line(text: &str) -> String {
                 first_vote,
                 second_action,
                 second_vote,
-            }) => format!(
-                "For each {first_vote} vote, {subject} {first_action}. For each {second_vote} vote, {subject} {second_action}"
-            ),
+            }) => {
+                let first = format!("{subject} {first_action}");
+                let second = format!("{subject} {second_action}");
+                format!("For each {first_vote} vote, {}. For each {second_vote} vote, {}", first.trim(), second.trim())
+            },
             Some(preprocess_grammar::VoteCountRewriteSurface::TrailingForEach { head, vote }) => {
                 format!("For each {vote} vote, {head}")
             }
@@ -1144,7 +1146,20 @@ pub fn preprocess_document_with_provenance(
             &normalized.char_map,
         );
 
-        let tokens = lex_line(normalized.normalized.as_str(), line_index)?;
+        let mut tokens = lex_line(normalized.normalized.as_str(), line_index)?;
+        // Normalization may rewrite rules, but casing of an unchanged token
+        // remains useful lexical data (in particular for literal card names).
+        // Restore only exact case-insensitive matches at the mapped source span.
+        for token in &mut tokens {
+            let source_span = crate::util::map_span_to_original(
+                token.span, &normalized.normalized, &normalized.original, &normalized.char_map,
+            );
+            if let Some(authored) = normalized.original.get(source_span.start..source_span.end)
+                && authored.eq_ignore_ascii_case(&token.slice)
+            {
+                token.set_literal_surface(authored);
+            }
+        }
         let source_tokens =
             lex_line(raw_line.trim(), line_index).unwrap_or_else(|_| tokens.clone());
         let mut semantic_facts = line_semantic_facts::parse_line_semantic_facts_tokens(&tokens);

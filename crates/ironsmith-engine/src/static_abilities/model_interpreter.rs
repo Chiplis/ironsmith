@@ -461,6 +461,7 @@ impl StaticAbilityModelInterpreter {
                         .map(Self::ability_from_model)
                         .collect(),
                     set_base_power_toughness: spec.set_base_power_toughness,
+                    added_abilities_source_filter: spec.added_abilities_source_filter.clone(),
                     set_base_power_toughness_from_self: spec.set_base_power_toughness_from_self,
                 })
             }
@@ -1523,6 +1524,7 @@ impl StaticAbilityModelInterpreter {
                             .map(Self::ability_from_model)
                             .collect(),
                         set_base_power_toughness: spec.set_base_power_toughness,
+                        added_abilities_source_filter: spec.added_abilities_source_filter.clone(),
                         set_base_power_toughness_from_self: spec
                             .set_base_power_toughness_from_self,
                     },

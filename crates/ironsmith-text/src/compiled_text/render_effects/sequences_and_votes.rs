@@ -2702,10 +2702,8 @@ pub(super) fn describe_council_dilemma_named_vote_sequence(effects: &[Effect]) -
 }
 
 /// Reassemble the typed vote program used by a council's-dilemma option that
-/// repeats a reveal-until-one procedure, then moves the accumulated matches
-/// and disposes of the revealed remainder once. Lowering intentionally keeps
-/// the move and remainder effects outside the repeat, so the ordinary
-/// contiguous-per-option renderer cannot recover this authored surface.
+/// counts reveal-until matches from one vote option, then moves that collection
+/// and shuffles its exact remainder. The other option repeats its payload.
 pub(super) fn describe_named_vote_repeated_consult_collection_sequence(
     effects: &[Effect],
 ) -> Option<String> {
@@ -2747,27 +2745,16 @@ pub(super) fn describe_named_vote_repeated_consult_collection_sequence(
         return None;
     }
 
-    let consult_repeat =
-        consult_repeat_effect.downcast_ref::<crate::effects::RepeatEffectsEffect>()?;
-    let Value::VoteCount(consult_option_name) = &consult_repeat.count else {
-        return None;
-    };
-    if !consult_option_name.eq_ignore_ascii_case(&consult_option.name) {
-        return None;
-    }
-    let [consult_effect] = consult_repeat.effects.as_slice() else {
-        return None;
-    };
+    let consult_effect = consult_repeat_effect;
     let consult = unwrap_basic_tag_wrappers(consult_effect)
         .downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
-    if consult.player != PlayerFilter::You
+    let crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::VoteCount(consult_option_name)) = &consult.stop_rule else {
+        return None;
+    };
+    if !consult_option_name.eq_ignore_ascii_case(&consult_option.name)
+        || consult.player != PlayerFilter::You
         || consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Reveal
         || consult.max_exposed.is_some()
-        || !matches!(
-            consult.stop_rule,
-            crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
-                | crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1))
-        )
     {
         return None;
     }
@@ -2785,17 +2772,7 @@ pub(super) fn describe_named_vote_repeated_consult_collection_sequence(
         return None;
     }
 
-    let shuffle = unwrap_basic_tag_wrappers(shuffle_effect)
-        .downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()?;
-    let remainder_is_linked = matches!(
-        shuffle.target.base(),
-        ChooseSpec::Tagged(tag)
-            if tag == &consult.all_tag || tag.as_str().eq_ignore_ascii_case("rest")
-    );
-    if !remainder_is_linked
-        || shuffle.player != PlayerFilter::You
-        || shuffle.owner_library_destination
-    {
+    if !is_exact_consult_remainder_shuffle(shuffle_effect, consult) {
         return None;
     }
 
@@ -2809,18 +2786,6 @@ pub(super) fn describe_named_vote_repeated_consult_collection_sequence(
         return None;
     }
 
-    let consult_text = describe_effect(consult_effect);
-    let consult_text = consult_text
-        .trim()
-        .trim_end_matches('.')
-        .strip_prefix("You ")
-        .or_else(|| {
-            consult_text
-                .trim()
-                .trim_end_matches('.')
-                .strip_prefix("you ")
-        })
-        .unwrap_or_else(|| consult_text.trim().trim_end_matches('.'));
     let selected = describe_library_consult_selection_with_cards(&consult.filter);
     let selected_plural = pluralize_noun_phrase(strip_leading_article(&selected));
     let other_body = describe_effect_list(&other_repeat.effects);
@@ -2849,7 +2814,7 @@ pub(super) fn describe_named_vote_repeated_consult_collection_sequence(
                 .map(|option| option.name.to_ascii_lowercase())
                 .collect::<Vec<_>>()
         ),
-        capitalize_first(consult_text),
+        format!("Reveal cards from the top of your library until you reveal {}", with_indefinite_article(&selected)),
         consult_option.name.to_ascii_lowercase(),
     ))
 }
@@ -5974,6 +5939,22 @@ pub(super) fn describe_reveal_hand_choose_two_filters_then_discard(
     ))
 }
 
+/// Preserve a coordinated reveal/selection sentence followed by its linked exile.
+pub(in crate::compiled_text) fn describe_coordinated_hand_reveal_choice_exile(effects: &[Effect]) -> Option<String> {
+    let [sequence, action] = effects else { return None; };
+    let sequence = sequence.downcast_ref::<crate::effects::SequenceEffect>()?;
+    if sequence.surface != ironsmith_core::SequenceSurface::Coordinated { return None; }
+    let [look, choose] = sequence.effects.as_slice() else { return None; };
+    let look = look.downcast_ref::<crate::effects::LookAtHandEffect>()?;
+    let choose = choose.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let action = unwrap_basic_tag_wrappers(action);
+    let exile = action.downcast_ref::<crate::effects::ExileEffect>()?;
+    if !look.reveal || exile.face_down || exile.turn_face_up
+        || !exile_uses_chosen_tag(&exile.spec, choose.tag.as_str()) { return None; }
+    let (reveal, choice, _) = describe_reveal_hand_choose_from_it(look, choose)?;
+    Some(format!("{reveal} and you choose {}. Exile that card", card_choice_from_it_text(&choice)))
+}
+
 pub(in crate::compiled_text) fn describe_look_hand_choose_then_discard_or_exile(
     effects: &[&Effect],
 ) -> Option<String> {
@@ -6258,9 +6239,26 @@ pub(super) fn describe_look_hand_choose_then_discard(effects: &[&Effect]) -> Opt
 pub(in crate::compiled_text) fn describe_player_damage_then_same_player_discards(
     effects: &[&Effect],
 ) -> Option<String> {
-    let [damage_effect, discard_effect] = effects else {
+    fn collect_sequence<'a>(effect: &'a Effect, flat: &mut Vec<&'a Effect>) {
+        let effect = structural_unwrap_render_wrappers(effect);
+        if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+            for effect in &sequence.effects {
+                collect_sequence(effect, flat);
+            }
+        } else {
+            flat.push(effect);
+        }
+    }
+    let mut flat = Vec::new();
+    for effect in effects {
+        collect_sequence(effect, &mut flat);
+    }
+    let [damage_effect, discard_effect, followups @ ..] = flat.as_slice() else {
         return None;
     };
+    if followups.len() > 2 {
+        return None;
+    }
     let damage = damage_effect.downcast_ref::<crate::effects::DealDamageEffect>()?;
     let discard = discard_effect.downcast_ref::<crate::effects::DiscardEffect>()?;
     if matches!(
@@ -6270,13 +6268,49 @@ pub(in crate::compiled_text) fn describe_player_damage_then_same_player_discards
         && !discard.random
         && !discard.any_number
     {
-        return Some(format!(
+        let mut text = format!(
             "{}. That player or that planeswalker's controller discards {}",
             describe_effect(damage_effect).trim_end_matches('.'),
             describe_discard_count(&discard.count, discard.card_filter.as_ref())
-        ));
+        );
+        let sacrifice_text = match followups {
+            [] => None,
+            [effect] => {
+                let sacrifice = sacrifice_view(effect)?;
+                if sacrifice.player != &discard.player
+                    || !matches!(sacrifice.count.unhinted(), Value::Fixed(count) if *count > 0)
+                    || !sacrifice.filter.tagged_constraints.is_empty()
+                    || sacrifice.filter.source
+                    || sacrifice.filter.specific.is_some()
+                {
+                    return None;
+                }
+                Some(describe_effect(effect))
+            }
+            [choose, sacrifice] => {
+                let choose = choose.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+                let sacrifice = sacrifice_view(sacrifice)?;
+                if choose.chooser != discard.player
+                    || sacrifice.player != &discard.player
+                    || choose.filter.controller.as_ref() != Some(&discard.player)
+                {
+                    return None;
+                }
+                Some(describe_choose_then_sacrifice(choose, sacrifice)?)
+            }
+            _ => return None,
+        };
+        if let Some(rendered) = sacrifice_text {
+            let (_, objects) = rendered.split_once(" sacrifices ")?;
+            let objects = objects.trim_end_matches(" of their choice");
+            text.push_str(&format!(", then sacrifices {objects} of their choice"));
+        }
+        return Some(text);
     }
 
+    if !followups.is_empty() {
+        return None;
+    }
     let damaged_player = choose_spec_player_filter(&damage.target)?;
     if !matches!(damaged_player, PlayerFilter::Target(_)) {
         return None;
@@ -6557,6 +6591,42 @@ pub(super) fn describe_target_player_consult_exile_shuffle_may_cast(
     Some(format!(
         "{}. Exile that card, then that player shuffles. You may cast that exiled card{free_cast}",
         describe_effect(consult_effect).trim_end_matches('.')
+    ))
+}
+
+/// A chosen color is shared by the revealed hand's complete discard filter.
+pub(super) fn describe_choose_color_reveal_hand_and_discard(effects: &[Effect]) -> Option<String> {
+    let [choose, reveal, discard] = effects else {
+        return None;
+    };
+    let choose = structural_unwrap_render_wrappers(choose)
+        .downcast_ref::<crate::effects::ChooseColorEffect>()?;
+    let reveal = structural_unwrap_render_wrappers(reveal)
+        .downcast_ref::<crate::effects::LookAtHandEffect>()?;
+    let discard = structural_unwrap_render_wrappers(discard)
+        .downcast_ref::<crate::effects::DiscardEffect>()?;
+    if choose.chooser != PlayerFilter::You || !reveal.reveal || discard.random || discard.any_number
+    {
+        return None;
+    }
+    let player = choose_spec_player_filter(&reveal.target)?;
+    if player != discard.player {
+        return None;
+    }
+    let mut expected = ObjectFilter::default();
+    expected.zone = Some(Zone::Hand);
+    expected.owner = Some(player.clone());
+    expected.chosen_color = true;
+    if discard.card_filter.as_ref() != Some(&expected)
+        || !matches!(discard.count.unhinted(), Value::Count(filter) if filter == &expected)
+    {
+        return None;
+    }
+    let player = describe_player_filter(&player);
+    Some(format!(
+        "Choose a color, then {player} {} their hand and {} all cards of that color",
+        player_verb(&player, "reveal", "reveals"),
+        player_verb(&player, "discard", "discards")
     ))
 }
 
@@ -7463,4 +7533,24 @@ pub(in crate::compiled_text) fn describe_reveal_hand_choose_graveyard_or_hand_ex
         }
     }
     Some(text)
+}
+
+/// Preserve the shared color choice and revealed-card count in a damage followup.
+pub(super) fn describe_choose_color_reveal_hand_and_damage(effects: &[Effect]) -> Option<String> {
+    let [choose, reveal, damage] = effects else { return None; };
+    let choose = structural_unwrap_render_wrappers(choose).downcast_ref::<crate::effects::ChooseColorEffect>()?;
+    let reveal = structural_unwrap_render_wrappers(reveal).downcast_ref::<crate::effects::LookAtHandEffect>()?;
+    let (source, damage) = damage_with_source_view(damage)?;
+    if choose.chooser != PlayerFilter::You || !reveal.reveal || damage.source_is_combat || damage.unpreventable { return None; }
+    let player = choose_spec_player_filter(&reveal.target)?;
+    if choose_spec_player_filter(&damage.target)? != player { return None; }
+    let Value::Count(filter) = damage.amount.unhinted() else { return None; };
+    let mut expected = ObjectFilter::tagged(TagKey::from(crate::effects::REVEALED_THIS_WAY_TAG));
+    expected.chosen_color = true;
+    expected.set_explicit_card_noun(true);
+    expected.set_prior_effect_action_surface(Some(crate::effect::PriorEffectAction::Revealed));
+    if filter != &expected { return None; }
+    let source = describe_damage_source_subject(source.unwrap_or(&ChooseSpec::Source));
+    let player = describe_player_filter(&player);
+    Some(format!("Choose a color, then {player} {} their hand and {source} deals damage to {player} equal to the number of cards of that color revealed this way", player_verb(&player, "reveal", "reveals")))
 }

@@ -348,6 +348,12 @@ impl EffectExecutor for ExileEffect {
         }
     }
 
+    fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
+        // Non-targeted selections still need pre-action snapshots for linked
+        // results, including their source zones and calculated characteristics.
+        vec![self.spec.clone()]
+    }
+
     fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
         if self.spec.is_target() {
             Some(self.spec.count())

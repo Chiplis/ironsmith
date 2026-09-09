@@ -871,6 +871,7 @@ pub(super) fn parse_triggered_ability_line_impl(
     if let Some(effects) = exact_dynamic_exile_permission_bundle(effect_parse_tokens)
         .or(authored_correlated_effects)
         .or_else(|| exact_atomic_return_as_aura_bundle(effect_parse_tokens))
+        .or_else(|| authored_tail.as_ref().and_then(|tokens| exact_atomic_return_as_aura_bundle(tokens)))
         .or_else(|| exact_looked_hand_optional_cast_bundle(effect_parse_tokens))
         .or(authored_looked_hand_cast)
     {
@@ -2221,6 +2222,7 @@ pub(super) fn lower_special_rewrite_triggered_oath(
             parse_trigger_clause_lexed(trigger_parse_tokens)?
         };
         let mut basic_land = ObjectFilter::land().with_supertype(crate::types::Supertype::Basic);
+        basic_land.zone = None;
         basic_land.set_explicit_card_noun(true);
         let effects = vec![
             EffectAst::subject_verb_explicit_target_only_for_chooser(

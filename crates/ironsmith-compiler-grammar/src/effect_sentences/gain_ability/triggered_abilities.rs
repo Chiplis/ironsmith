@@ -410,10 +410,9 @@ fn recognize_granted_trigger_ability(
         "granted-trigger-nested-token-rule",
         parse_granted_trigger_with_nested_token_rule(tokens),
     );
-    add(
-        "granted-trigger-otherwise",
-        parse_granted_triggered_otherwise_ability(tokens),
-    );
+    let otherwise = parse_granted_triggered_otherwise_ability(tokens);
+    let joined_otherwise = matches!(&otherwise, Ok(Some(_)));
+    add("granted-trigger-otherwise", otherwise);
     add(
         "granted-trigger-composable-event",
         parse_granted_composable_event_trigger(tokens),
@@ -421,6 +420,10 @@ fn recognize_granted_trigger_ability(
     add(
         "granted-trigger-complete-line",
         (|| {
+            // The specialized reader proves the otherwise clause belongs to
+            // the preceding condition. The generic sentence reader can leave
+            // it as a separate effect, so it must not compete on that input.
+            if joined_otherwise { return Ok(None); }
             let LineAst::Triggered {
                 trigger,
                 effects,
@@ -655,7 +658,23 @@ pub(super) fn parse_granted_triggered_otherwise_ability(
         return Ok(None);
     }
 
-    let true_effect = parse_single_effect_sentence_for_granted_otherwise(&true_tokens)?;
+    // The complete-line parser owns a canonical condition with both branches.
+    // This older repair is needed only when sentence parsing has not joined
+    // the trailing otherwise clause; emitting a second legacy Conditional
+    // would conflict with the canonical postcondition solely by AST shape.
+    if let Ok(effects) = crate::effect_sentences::parse_effect_sentences_lexed(&ability_tokens[comma_idx + 1..])
+        && let [EffectAst::ControlFlow(control)] = effects.as_slice()
+        && matches!(control.node, crate::model::control_flow::ControlFlowNodeAst::Condition {
+            alternative_program: Some(_), ..
+        })
+    {
+        return Ok(None);
+    }
+
+    let true_effect = match crate::effect_sentences::parse_effect_sentences_lexed(&true_tokens) {
+        Ok(mut effects) if effects.len() == 1 && matches!(&effects[0], EffectAst::ControlFlow(_)) => effects.remove(0),
+        _ => parse_single_effect_sentence_for_granted_otherwise(&true_tokens)?,
+    };
     let mut false_effect = Some(parse_single_effect_sentence_for_granted_otherwise(
         &false_tokens,
     )?);
@@ -669,11 +688,30 @@ pub(super) fn parse_granted_triggered_otherwise_ability(
             if_true,
             if_false,
         }),
-        EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects }) => EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-            predicate,
-            if_true: effects,
-            if_false: Vec::new(),
-        }),
+        EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects }) => {
+            use crate::model::control_flow::{ConditionPositionAst, ControlConditionAst, ControlFlowNodeAst, ControlFlowSemanticAst, ControlPredicateAst};
+            let control = crate::model::CompilerControlFlowAst::new(
+                ControlFlowSemanticAst::ControlFlow,
+                ControlFlowNodeAst::Condition {
+                    condition: ControlConditionAst {
+                        position: ConditionPositionAst::Postcondition,
+                        predicate: ControlPredicateAst::State(predicate),
+                        negated_surface: false,
+                        provenance: None,
+                    },
+                    consequence_program: 0,
+                    alternative_program: Some(1),
+                    reflexive: false,
+                },
+                vec![
+                    crate::model::NestedProgramAst::new(crate::model::NestedProgramKindAst::Consequence, effects),
+                    crate::model::NestedProgramAst::new(crate::model::NestedProgramKindAst::Alternative,
+                        vec![false_effect.take().expect("otherwise branch effect")]),
+                ],
+                None,
+            ).map_err(|error| CardTextError::InvariantViolation(format!("invalid trailing otherwise control flow: {error:?}")))?;
+            EffectAst::ControlFlow(Box::new(control))
+        },
         EffectAst::ControlFlow(control) => {
             let crate::model::CompilerControlFlowAst {
                 semantic,

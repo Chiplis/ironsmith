@@ -573,6 +573,48 @@ fn read_complete_simple_subject_verb(
     input: &Statement<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let sentence = input.sentence;
+    if let Some(effects) = super::subject_verb_primitives::parse_sentence_you_and_player_each_sacrifice(
+        SubjectVerbPrimitiveClause::new(sentence),
+    )? {
+        return Ok(Some(effects));
+    }
+
+    if let Some(effects) = super::search_library::parse_for_each_revealed_this_way_sentence(sentence)? {
+        return Ok(Some(effects));
+    }
+    if let Some(effects) = super::subject_verb_primitives::parse_sentence_reveal_selected_cards_in_your_hand(
+        super::SubjectVerbPrimitiveClause::new(sentence),
+    )? {
+        return Ok(Some(effects));
+    }
+    if let Some(effects) = super::subject_verb_primitives::parse_sentence_transform_with_followup(
+        super::SubjectVerbPrimitiveClause::new(sentence),
+    )? {
+        return Ok(Some(effects));
+    }
+    if let Some(effects) = super::subject_verb_primitives::parse_sentence_return_then_create(
+        super::SubjectVerbPrimitiveClause::new(sentence),
+    )? {
+        return Ok(Some(effects));
+    }
+    if let Some(effects) = super::subject_verb_primitives::parse_sentence_return_then_do_same_for_subtypes(
+        super::SubjectVerbPrimitiveClause::new(sentence),
+    )? {
+        return Ok(Some(effects));
+    }
+    if crate::grammar::effects::counter_marker_shapes::parse_shared_counter_target_tokens(sentence).is_some()
+        && let Some(effects) = super::subject_verb_primitives::parse_sentence_put_counter_sequence(
+            super::SubjectVerbPrimitiveClause::new(sentence),
+        )?
+    {
+        return Ok(Some(effects));
+    }
+    if let Some(effects) = super::chain_carry::parse_repeated_counter_placement_coordination(sentence)? {
+        return Ok(Some(effects));
+    }
+    if let Some(effects) = super::conditionals::parse_sentence_counter_target_spell_thats_second_cast_this_turn(sentence)? {
+        return Ok(Some(effects));
+    }
     if let Some(effect) = parse_complete_simple_subject_verb_sentence(sentence)? {
         return Ok(Some(vec![effect]));
     }

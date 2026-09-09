@@ -68,6 +68,12 @@ pub(super) const REGISTRY: RuleId = RuleId::new("inner-chain-registry");
 /// The readings, in the order they were ranked.
 const READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("hand-choice-then-shuffle-remainder"),
+        head: HeadDiscriminator::Any,
+        admits: |input| input.tokens.iter().any(|token| token.is_word("rest")),
+        read: |input| input.outcome(crate::activation_and_restrictions::choice_object_clauses::parse_hand_choice_then_shuffle_remainder(input.tokens)),
+    },
+    Reading {
         id: RuleId::new("return-coordinated-objects"),
         head: HeadDiscriminator::Any,
         admits: |input| input.tokens.first().is_some_and(|token| token.is_word("return"))

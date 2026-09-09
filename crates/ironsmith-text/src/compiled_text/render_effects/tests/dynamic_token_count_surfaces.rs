@@ -117,6 +117,7 @@ fn heidegger_and_hornbeetle_keep_dynamic_token_count_surfaces() {
     );
 
     let hornbeetle_count = Value::TurnHistoryCount(TurnHistoryCount::CountersPutOn {
+                source_controller: Some(PlayerFilter::You),
         counter_type: Some(crate::object::CounterType::PlusOnePlusOne),
         filter: ObjectFilter::creature().you_control(),
     })

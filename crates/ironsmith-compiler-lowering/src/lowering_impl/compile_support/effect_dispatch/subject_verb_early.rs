@@ -122,6 +122,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterEnterUnderControlReplacement { .. })
             | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterFutureZoneReplacement { .. })
             | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaReplacement { .. })
+            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterEnterWithCountersReplacement { .. })
             | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterNextBatchEnterWithCounters { .. })
             | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterZoneReplacement { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyard)
@@ -440,7 +441,8 @@ pub(super) fn compile_subject_verb_early(
             }
             if ctx.auto_tag_object_targets {
                 let tag = ctx.next_tag("milled");
-                effects.push(effect.tag(tag.clone()));
+                // Each mill replaces its result set, including an empty mill.
+                effects.push(effect.tag_all(tag.clone()));
                 ctx.last_object_tag = Some(tag);
             } else {
                 effects.push(effect);
@@ -1639,6 +1641,11 @@ pub(super) fn compile_subject_verb_early(
             ));
             Ok((vec![effect], Vec::new()))
         }
+        SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterEnterWithCountersReplacement {
+            filter, counter_type, count, mode,
+        }) => Ok((vec![Effect::new(crate::effects::RegisterEnterWithCountersReplacementEffect::new(
+            filter.clone(), *counter_type, count.clone(), *mode,
+        ))], Vec::new())),
         SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterNextBatchEnterWithCounters {
             filter,
             counter_type,
@@ -1859,9 +1866,13 @@ pub(super) fn compile_subject_verb_early(
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let player_filter = subject.clone_player_filter();
             let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-            resolved_filter
-                .controller
-                .get_or_insert(player_filter.clone());
+            // A captured collection identifies the cards independently of the viewer.
+            if !resolved_filter.tagged_constraints.iter().any(|constraint| matches!(
+                constraint.relation,
+                TaggedOpbjectRelation::IsTaggedObject | TaggedOpbjectRelation::SameObjectId
+            )) {
+                resolved_filter.controller.get_or_insert(player_filter.clone());
+            }
             Ok((
                 vec![Effect::new(crate::effects::LookAtObjectsEffect::new(
                     resolved_filter,
@@ -1874,6 +1885,11 @@ pub(super) fn compile_subject_verb_early(
         SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTarget { target }) => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            if let ChooseSpec::Tagged(tag) = &spec {
+                return Ok(Some((vec![Effect::new(crate::effects::LookAtObjectsEffect::new(
+                    ObjectFilter::tagged(tag.clone()), PlayerFilter::You, PlayerFilter::You,
+                ))], choices)));
+            }
             if !choose_spec_targets_object(&spec) {
                 return Err(CardTextError::ParseError(
                     "look-at-target object clause requires an object target".to_string(),
@@ -2001,6 +2017,7 @@ pub(super) fn compile_subject_verb_early(
             all,
             owner_library_destination,
             possessive_owner_subject,
+            shuffle_subject_library,
         }) => {
             let (mut spec, mut choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -2015,6 +2032,7 @@ pub(super) fn compile_subject_verb_early(
                 spec.clone(),
                 subject.into_player_filter(),
             );
+            shuffle.shuffle_subject_library = *shuffle_subject_library;
             if *owner_library_destination {
                 shuffle = shuffle.with_owner_library_destination();
             }

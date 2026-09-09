@@ -205,7 +205,7 @@ fn read_source_attacked_player(
     {
         let normalized = prepend_that_player_subject(source_attacked.effect_tokens);
         let effects = parse_maybe_effects(&normalized, false, true)?;
-        return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+        return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
             filter: PlayerFilter::AttackedBySourceThisTurn,
             effects,
         })));
@@ -270,6 +270,7 @@ fn read_who_clause(input: &ParticipantClause<'_>) -> Result<Option<EffectAst>, C
                 })));
             }
             WhoClauseShape::DidThisWay {
+                result_tokens,
                 effect_tokens,
                 tagged_filter_tokens,
             } => {
@@ -279,10 +280,18 @@ fn read_who_clause(input: &ParticipantClause<'_>) -> Result<Option<EffectAst>, C
                         clause_text
                     )));
                 }
+                let mut result_clause = result_tokens.to_vec();
+                if let Some(subject) = result_clause.first_mut() {
+                    subject.replace_word("player");
+                }
+                let result_predicate = match crate::grammar::modal_results::parse_if_result_predicate_lexed_tokens(&result_clause) {
+                    Some(IfResultPredicate::SearchedLibrary) => IfResultPredicate::SearchedLibrary,
+                    _ => IfResultPredicate::Did,
+                };
                 return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDid {
                     effects: parse_effect_chain_inner(effect_tokens)?,
-                    predicate: tagged_predicate(tagged_filter_tokens),
-                    result_predicate: IfResultPredicate::Did,
+                    predicate: tagged_past_action_predicate(tagged_filter_tokens, result_tokens),
+                    result_predicate,
                 })));
             }
             WhoClauseShape::DidAction {

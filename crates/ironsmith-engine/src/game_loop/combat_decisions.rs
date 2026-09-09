@@ -2016,6 +2016,79 @@ pub fn get_blocker_order_decision(
 
 #[cfg(test)]
 mod declaration_batch_tests {
+    #[test]
+    fn typed_attack_cost_payment_is_per_attacker_and_atomic() {
+        use crate::mana::{ManaCost, ManaSymbol};
+        for (life, count, succeeds) in [(20, 2, true), (3, 2, false), (3, 1, true)] {
+            let mut game = setup_game();
+            let alice = PlayerId::from_index(0);
+            let bob = PlayerId::from_index(1);
+            game.player_mut(alice).unwrap().life = life;
+            let attackers = (0..count).map(|i| create_attacker(
+                &mut game, alice, &format!("Attacker {i}"), false,
+            )).collect::<Vec<_>>();
+            let tax = CardBuilder::new(CardId::new(), "Phyrexian attack tax")
+                .card_types(vec![CardType::Artifact]).build();
+            let source = game.create_object_from_card(&tax, bob, Zone::Battlefield);
+            game.object_mut(source).unwrap().abilities_mut().push(Ability::static_ability(
+                StaticAbility::attack_cost(crate::target::ObjectFilter::creature(), false,
+                    crate::cost::TotalCost::from_costs(vec![crate::costs::Cost::mana(
+                        ManaCost::from_pips(vec![vec![ManaSymbol::White, ManaSymbol::Life(2)]])
+                    )]), "Phyrexian attack tax")
+            ));
+            game.refresh_continuous_state();
+            let declarations = attackers.iter().map(|&creature| AttackerDeclaration {
+                creature, target: AttackTarget::Player(bob),
+            }).collect::<Vec<_>>();
+            let mut combat = CombatState::default();
+            let mut triggers = TriggerQueue::new();
+            let result = apply_attacker_declarations(&mut game, &mut combat, &mut triggers, &declarations);
+            assert_eq!(result.is_ok(), succeeds, "life={life}, count={count}: {result:?}");
+            assert_eq!(game.player(alice).unwrap().life, if succeeds { life - 2 * count } else { life });
+            assert_eq!(combat.attackers.len(), if succeeds { count as usize } else { 0 });
+            for attacker in attackers { assert_eq!(game.is_tapped(attacker), succeeds); }
+        }
+    }
+
+    #[test]
+    fn typed_attack_cost_dynamic_amount_uses_defenders_board() {
+        use crate::mana::ManaSymbol;
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let attacker = create_attacker(&mut game, alice, "Attacker", false);
+        let enchantment = CardBuilder::new(CardId::new(), "Enchantment")
+            .card_types(vec![CardType::Enchantment]).build();
+        let source = game.create_object_from_card(&enchantment, bob, Zone::Battlefield);
+        let extra = game.create_object_from_card(&enchantment, bob, Zone::Battlefield);
+        for _ in 0..4 { game.create_object_from_card(&enchantment, alice, Zone::Battlefield); }
+        let dynamic = ironsmith_core::DynamicManaCost::generic_equal_to(crate::effect::Value::Count(
+            crate::target::ObjectFilter::enchantment().you_control(),
+        ));
+        game.object_mut(source).unwrap().abilities_mut().push(Ability::static_ability(
+            StaticAbility::attack_cost(crate::target::ObjectFilter::creature(), true,
+                crate::cost::TotalCost::from_costs(vec![crate::costs::Cost::dynamic_mana(dynamic)]),
+                "Dynamic attack tax")
+        ));
+        game.refresh_continuous_state();
+        assert!(crate::decision::compute_legal_attackers(&game, &CombatState::default()).is_empty());
+        game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Colorless, 2);
+        assert_eq!(crate::decision::compute_legal_attackers(&game, &CombatState::default()).len(), 1);
+        let mut combat = CombatState::default();
+        let mut triggers = TriggerQueue::new();
+        let transaction = begin_attack_declaration_transaction(&mut game, &combat, &mut triggers,
+            &[AttackerDeclaration { creature: attacker, target: AttackTarget::Player(bob) }]
+        ).unwrap();
+        // A mana ability can change the counted battlefield during the window.
+        game.move_object_by_effect(extra, Zone::Graveyard).unwrap();
+        let mut dm = crate::decision::AutoPassDecisionMaker;
+        finish_attack_declaration_transaction(transaction, &mut game, &mut combat, &mut triggers, &mut dm)
+            .expect("the tax was locked at two before the mana window changed the count");
+        assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0);
+        assert_eq!(combat.attackers.len(), 1);
+    }
+
+
     use super::*;
     use crate::ability::Ability;
     use crate::card::{CardBuilder, PowerToughness};

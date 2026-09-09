@@ -68,6 +68,13 @@ pub fn parse_effect_sentence_lexed(
 fn parse_effect_sentence_lexed_uncached(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    // Preserve both actors before the ordinary subject/verb fallback can
+    // reduce a coordinated subject to its first player.
+    if let Some(effects) = crate::effect_sentences::subject_verb_primitives::parse_sentence_you_and_player_each_sacrifice(
+        crate::effect_sentences::SubjectVerbPrimitiveClause::new(tokens),
+    )? {
+        return Ok(effects);
+    }
     if let Some(effects) = super::super::parse_complete_create_statement(tokens)? {
         return Ok(effects);
     }
@@ -384,6 +391,7 @@ pub(super) fn parse_effect_sentence_with_where_x_lexed(
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness { target, .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature { target, .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { target, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness { target, .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach { target, .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpByLastEffect { target, .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddCardTypes { target, .. })

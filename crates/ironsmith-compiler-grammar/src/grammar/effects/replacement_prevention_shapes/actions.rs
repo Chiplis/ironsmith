@@ -33,6 +33,7 @@ pub struct ExtraTurnShape {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AdditionalPhasesShape {
     pub phases: Vec<AdditionalPhase>,
+    pub after_main_phase: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -289,7 +290,7 @@ fn additional_phases<'a>(input: &mut LexStream<'a>) -> WResult<AdditionalPhasesS
     } else {
         vec![AdditionalPhase::Combat]
     };
-    Ok(AdditionalPhasesShape { phases })
+    Ok(AdditionalPhasesShape { phases, after_main_phase: matches!(intro, PhaseIntroShape::AfterThisMain) })
 }
 
 pub fn parse_additional_phases_shape(tokens: &[OwnedLexToken]) -> Option<AdditionalPhasesShape> {

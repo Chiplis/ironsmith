@@ -2243,3 +2243,22 @@ fn grist_style_singular_origin_clause_scopes_zone_owner_and_caster_on_the_trigge
         other => panic!("expected an enters-battlefield branch, got {other:?}"),
     }
 }
+
+#[test]
+fn play_or_cast_trigger_inherits_the_player_subject() {
+    for text in [
+        "you play a land from exile or cast a spell from exile",
+        "you cast a spell from exile or play a land from exile",
+    ] {
+        let tokens = tokenize_line(text, 0);
+        let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).unwrap();
+        let crate::model::ast::TriggerSpec::Either(left, right) = parsed else { panic!("expected two arms"); };
+        for arm in [left, right] {
+            match *arm {
+                crate::model::ast::TriggerSpec::PlayerPlaysLand { player, .. } => assert_eq!(player, PlayerFilter::You),
+                crate::model::ast::TriggerSpec::SpellCast { caster, .. } => assert_eq!(caster, PlayerFilter::You),
+                other => panic!("unexpected arm {other:?}"),
+            }
+        }
+    }
+}

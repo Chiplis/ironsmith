@@ -187,6 +187,7 @@ pub enum GoadTargetShape<'a> {
 pub struct PassiveGoadShape<'a> {
     pub target: GoadTargetShape<'a>,
     pub for_rest_of_game: bool,
+    pub no_longer: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

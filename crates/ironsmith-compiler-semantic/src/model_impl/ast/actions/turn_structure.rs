@@ -17,5 +17,6 @@ pub enum TurnStructureActionAst {
     SkipDrawStep,
     AdditionalPhases {
         phases: Vec<crate::effects::AdditionalPhase>,
+        after_main_phase: bool,
     },
 }

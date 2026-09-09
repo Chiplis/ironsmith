@@ -174,7 +174,7 @@ fn replace_trigger_spec(line: &mut LineAst, replacement: &TriggerSpec) {
     }
 }
 
-pub(super) fn spell_or_activated_ability_x_cost_trigger_spec() -> TriggerSpec {
+pub fn spell_or_activated_ability_x_cost_trigger_spec() -> TriggerSpec {
     let mut spell_filter = ObjectFilter::instant_or_sorcery();
     spell_filter.has_x_in_cost = true;
     let mut ability_filter = ObjectFilter::default();
@@ -362,26 +362,9 @@ pub(super) fn recognize_authored_correlated_trigger_programs(
         }
     }
 
-    let full_words = crate::lexer::parser_token_word_refs(source_tokens);
-    let spell_or_ability_x_cost =
-        semantic_grammar::parse_spell_or_activated_ability_x_cost_trigger_tokens(
-            source_tokens,
-            split.before,
-            split.after,
-        )
-        .is_some()
-            || (crate::word_primitives::sequence_occurs(
-                &full_words,
-                &[
-                    "you", "cast", "an", "instant", "or", "sorcery", "spell", "or", "activate",
-                    "an", "ability",
-                ],
-            ) && crate::word_primitives::sequence_occurs(
-                &full_words,
-                &[
-                    "copy", "that", "spell", "or", "ability", "you", "may", "choose", "new",
-                ],
-            ));
+    let spell_or_ability_x_cost = semantic_grammar::parse_spell_or_activated_ability_x_cost_trigger_tokens(
+        source_tokens, split.before, split.after,
+    ).is_some();
     if spell_or_ability_x_cost {
         replace_trigger_spec(line, &spell_or_activated_ability_x_cost_trigger_spec());
     }

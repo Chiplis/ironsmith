@@ -177,6 +177,7 @@ fn value_references_identity(value: &Value, identity: &SyntheticTargetIdentity<'
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
         | Value::DistinctNames(filter)
+        | Value::DistinctManaValues(filter)
         | Value::DistinctPowers(filter) => object_filter_references_identity(filter, identity),
         Value::StaticAbilitiesAmong { filter, .. } => {
             object_filter_references_identity(filter, identity)

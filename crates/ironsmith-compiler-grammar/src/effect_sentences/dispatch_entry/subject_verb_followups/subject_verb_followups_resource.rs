@@ -81,7 +81,10 @@ pub(super) fn post_rule_correlated_plural_sacrifice_result(
             &["those", "players", "sacrifice", "those", "creatures"],
             &["those", "players", "sacrifice", "those", "tokens"],
         ],
-    ) || !matches!(state.effects.last(), Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { .. })))
+    ) || !matches!(state.effects.last(), Some(EffectAst::ForEach(
+        ForEachEffectAst::ForEachPlayer { .. }
+        | ForEachEffectAst::ForEachPlayersFiltered { filter: PlayerFilter::Any, .. }
+    )))
     {
         return Ok(None);
     }

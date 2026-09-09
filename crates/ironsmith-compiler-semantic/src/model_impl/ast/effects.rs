@@ -122,9 +122,12 @@ pub enum EffectAst {
         if_false: Vec<EffectAst>,
         attach_to_previous_ability: bool,
     },
-    /// Lower `effect` (which must lower to a single runtime effect) and apply
-    /// `tag_all(tag)` to it, tagging every object the effect affects. Lowers to
-    /// `Effect::tag_all`.
+    /// Preserve an object reference even when the nested action does not affect it.
+    TagReferenced {
+        effect: Box<EffectAst>,
+        tag: TagRef,
+    },
+    /// Tag only the objects affected by the nested action, including an empty set.
     TagAffected {
         effect: Box<EffectAst>,
         tag: TagRef,
@@ -2003,6 +2006,18 @@ impl EffectAst {
         )
     }
 
+    pub fn subject_verb_set_base_toughness(toughness: Value, target: TargetAst, duration: Until) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness {
+                toughness,
+                target,
+                duration,
+            }),
+        )
+    }
+
     pub fn subject_verb_pump_for_each(
         power_per: i32,
         toughness_per: i32,
@@ -3256,6 +3271,16 @@ impl EffectAst {
         )
     }
 
+    pub fn subject_verb_register_enter_with_counters_replacement(
+        filter: ObjectFilter, counter_type: CounterType, count: Value,
+        mode: crate::effects::ReplacementApplyMode,
+    ) -> Self {
+        Self::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterEnterWithCountersReplacement {
+                filter, counter_type, count, mode,
+            }))
+    }
+
     pub fn subject_verb_register_next_batch_enter_with_counters(
         filter: ObjectFilter,
         counter_type: CounterType,
@@ -4182,6 +4207,7 @@ impl EffectAst {
                 all: false,
                 owner_library_destination: false,
                 possessive_owner_subject: false,
+                shuffle_subject_library: false,
             }),
         )
     }
@@ -4195,6 +4221,7 @@ impl EffectAst {
                 all: false,
                 owner_library_destination: false,
                 possessive_owner_subject: true,
+                shuffle_subject_library: false,
             }),
         )
     }
@@ -4208,6 +4235,7 @@ impl EffectAst {
                 all: false,
                 owner_library_destination: true,
                 possessive_owner_subject: false,
+                shuffle_subject_library: false,
             }),
         )
     }
@@ -4224,6 +4252,7 @@ impl EffectAst {
                 all: true,
                 owner_library_destination: false,
                 possessive_owner_subject: false,
+                shuffle_subject_library: false,
             }),
         )
     }
@@ -4237,6 +4266,7 @@ impl EffectAst {
                 all: true,
                 owner_library_destination: true,
                 possessive_owner_subject: false,
+                shuffle_subject_library: false,
             }),
         )
     }
@@ -5286,11 +5316,18 @@ impl EffectAst {
         )
     }
 
+    pub fn subject_verb_additional_phases_with_main_surface(phases: Vec<crate::effects::AdditionalPhase>, after_main_phase: bool) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer, PlayerAst::Implicit,
+            SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalPhases { phases, after_main_phase }),
+        )
+    }
+
     pub fn subject_verb_additional_phases(phases: Vec<crate::effects::AdditionalPhase>) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalPhases { phases }),
+            SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalPhases { phases, after_main_phase: false }),
         )
     }
 
@@ -5396,6 +5433,14 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearSuspected { target }),
+        )
+    }
+
+    pub fn subject_verb_clear_goad(target: Option<TargetAst>) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearGoad { target }),
         )
     }
 

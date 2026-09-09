@@ -296,12 +296,12 @@ pub fn parse_choice_player_clause_tokens(
         .parse_next(&mut input)
         .is_ok_and(|value| value.is_some());
     let filter = match base {
-        ChoicePlayerBase::Opponent => {
-            if !input.is_empty() {
-                return Err(ChoicePlayerClauseSyntaxError::UnsupportedFilter);
-            }
-            PlayerFilter::Opponent
-        }
+        ChoicePlayerBase::Opponent => alt((
+            parse_opponent_controlled_count_tail_lexed,
+            eof.value(PlayerFilter::Opponent),
+        ))
+        .parse_next(&mut input)
+        .map_err(|_| ChoicePlayerClauseSyntaxError::UnsupportedFilter)?,
         ChoicePlayerBase::Player => parse_choice_player_filter_tail_lexed
             .parse_next(&mut input)
             .map_err(|_| ChoicePlayerClauseSyntaxError::UnsupportedFilter)?,
@@ -652,6 +652,24 @@ fn parse_choice_player_base_lexed<'a>(input: &mut LexStream<'a>) -> WResult<Choi
             .value(ChoicePlayerBase::Opponent),
     ))
     .parse_next(input)
+}
+
+fn parse_opponent_controlled_count_tail_lexed(input: &mut LexStream<'_>) -> WResult<PlayerFilter> {
+    primitives::phrase(&["who", "controls", "more"]).parse_next(input)?;
+    let card_type = alt((
+        primitives::kw("lands").value(CardType::Land),
+        primitives::kw("creatures").value(CardType::Creature),
+        primitives::kw("artifacts").value(CardType::Artifact),
+        primitives::kw("enchantments").value(CardType::Enchantment),
+        primitives::kw("planeswalkers").value(CardType::Planeswalker),
+        primitives::kw("battles").value(CardType::Battle),
+    )).parse_next(input)?;
+    primitives::phrase(&["than", "you"]).parse_next(input)?;
+    eof.parse_next(input)?;
+    Ok(PlayerFilter::OpponentWithMoreControlledObjectsThan {
+        player: Box::new(PlayerFilter::You),
+        filter: Box::new(crate::ObjectFilter::default().with_type(card_type)),
+    })
 }
 
 fn parse_choice_player_filter_tail_lexed<'a>(input: &mut LexStream<'a>) -> WResult<PlayerFilter> {

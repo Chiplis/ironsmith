@@ -886,7 +886,7 @@ pub(super) fn describe_simple_hand_card_filter(filter: &ObjectFilter) -> Option<
     if let Some(name) = filter.name.as_deref() {
         return Some(format!(
             "a card named {}",
-            normalize_card_name_for_surface(name)
+            filter.name_surface().map(str::to_owned).unwrap_or_else(|| normalize_card_name_for_surface(name))
         ));
     }
     if filter.card_types.len() == 1 && filter.subtypes.is_empty() && filter.colors.is_none() {
@@ -2678,7 +2678,14 @@ pub(super) fn put_counters_each_filter_view(
 /// provenance tag over generic battlefield scaffolding — a back-reference to
 /// the set the previous sentence acted on.
 pub(super) fn this_way_back_reference_filter(filter: &ObjectFilter) -> bool {
-    if describe_tagged_this_way_action(filter).is_none() {
+    // Untap result tags also identify the earlier affected set. Keep this
+    // pronoun recognition local: a tagged object need not have changed from
+    // tapped to untapped, so it cannot imply an "untapped this way" condition.
+    let untap_reference = filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag.as_str().starts_with("untapped_")
+    });
+    if describe_tagged_this_way_action(filter).is_none() && !untap_reference {
         return false;
     }
     if !filter.card_types.is_empty() {
@@ -3877,6 +3884,7 @@ mod random_participant_choice_destroy_tests {
                 filter: PlayerFilter::Opponent,
                 effects: vec![Effect::new(choose)],
                 starting_with_controller: false,
+                sequential: false,
                 stop_after_first_happened: false,
             },
             destroy,
@@ -6218,9 +6226,17 @@ pub(crate) fn describe_additional_combat_then_chosen_attack_or_block_restriction
     additional_phases: &crate::effects::AdditionalPhasesEffect,
     cant: &crate::effects::CantEffect,
 ) -> Option<String> {
-    if additional_phases.phases != [crate::effects::AdditionalPhase::Combat]
-        || cant.duration != crate::effect::Until::EndOfCombat
-    {
+    if additional_phases.phases != [crate::effects::AdditionalPhase::Combat] {
+        return None;
+    }
+    let restriction = describe_chosen_added_combat_restriction(cant)?;
+    Some(format!("After this {}phase, there is an additional combat phase. {restriction}",
+        if additional_phases.after_main_phase { "main " } else { "" }))
+}
+
+pub(crate) fn describe_chosen_added_combat_restriction(cant: &crate::effects::CantEffect) -> Option<String> {
+    if cant.start != crate::effect::RestrictionStart::LastAddedCombatPhase
+        || cant.duration != crate::effect::Until::EndOfCombat {
         return None;
     }
 
@@ -6248,7 +6264,7 @@ pub(crate) fn describe_additional_combat_then_chosen_attack_or_block_restriction
     }
 
     Some(format!(
-        "After this main phase, there is an additional combat phase. Only the chosen creatures can {verb} during that combat phase"
+        "Only the chosen creatures can {verb} during that combat phase"
     ))
 }
 
@@ -6742,6 +6758,9 @@ pub(crate) fn describe_milled_graveyard_count_filter(filter: &ObjectFilter) -> O
 }
 
 pub(crate) fn describe_for_each_filter(filter: &ObjectFilter) -> String {
+    if filter.prior_effect_action_surface().is_some() && !filter.tagged_constraints.is_empty() {
+        return describe_for_each_count_filter(filter);
+    }
     if filter.tagged_constraints.len() == 1
         && filter.tagged_constraints[0].relation
             == crate::filter::TaggedOpbjectRelation::IsTaggedObject

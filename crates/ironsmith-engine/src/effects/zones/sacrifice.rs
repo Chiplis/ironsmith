@@ -505,6 +505,7 @@ fn sacrifice_selected_objects(
     let mut sacrifice_events = Vec::new();
 
     for id in to_sacrifice {
+        if !game.can_be_sacrificed_with_cause(id, &ctx.cause) { continue; }
         let pre_snapshot = game
             .object(id)
             .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));

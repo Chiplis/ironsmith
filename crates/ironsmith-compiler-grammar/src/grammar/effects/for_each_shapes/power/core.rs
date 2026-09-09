@@ -1,5 +1,30 @@
 use super::*;
 
+pub fn parse_base_power_or_toughness_clause_shape(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<BasePowerToughnessClauseShape<'_>>, CardTextError> {
+    let Some((subject, rest)) = split_subject_and_rest(tokens) else { return Ok(None); };
+    let Some((_, power_tokens)) = primitives::parse_prefix(rest, primitives::phrase(&["base", "power"])) else { return Ok(None); };
+    let Some(parsed) = leaf::parse_leaf_number_or_x_prefix_tokens(power_tokens) else { return Ok(None); };
+    let Some((power, used)) = parsed.into_value() else { return Ok(None); };
+    let Some((_, toughness_tokens)) = primitives::parse_prefix(&power_tokens[used..], primitives::phrase(&["or", "base", "toughness"])) else { return Ok(None); };
+    let Some(parsed) = leaf::parse_leaf_number_or_x_prefix_tokens(toughness_tokens) else { return Ok(None); };
+    let Some((toughness, used)) = parsed.into_value() else { return Ok(None); };
+    let tail = trim_edge_punctuation_tokens(&toughness_tokens[used..]);
+    let (target_tokens, leading_duration) = target_and_leading_duration(subject);
+    let duration = if tail.is_empty() {
+        if !permits_unqualified_duration(subject, tokens) { return Ok(None); }
+        leading_duration.unwrap_or(Until::Forever)
+    } else if let Some(trailing) = complete_duration(tail) {
+        if leading_duration.as_ref().is_some_and(|leading| leading != &trailing) {
+            return Err(CardTextError::ParseError("conflicting base characteristic choice durations".into()));
+        }
+        trailing
+    } else { return Ok(None); };
+    Ok(Some(BasePowerToughnessClauseShape { power, toughness, target_tokens, duration, where_x_tokens: None }))
+}
+
+
 pub fn parse_base_power_clause_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<BasePowerClauseShape<'_>>, CardTextError> {

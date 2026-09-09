@@ -3098,6 +3098,68 @@ fn describe_bound_target_condition(
     Some(describe_condition(condition))
 }
 
+/// Render a declared fighter's conditional bonus followed by its single
+/// fight. The target identity and complete conditional body must agree.
+pub(crate) fn describe_conditional_bonus_before_fight(effects: &[&Effect]) -> Option<String> {
+    let (opposing_declaration, declaration, conditional, fight) = match effects {
+        [declaration, conditional, fight] => (None, declaration, conditional, fight),
+        [opposing, declaration, conditional, fight] => {
+            (Some(opposing), declaration, conditional, fight)
+        }
+        _ => return None,
+    };
+    let tag = wrapped_effect_tag(declaration)?;
+    let target =
+        unwrap_wrapped_effect(declaration).downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    if !explicit_controlled_creature_target(target, PlayerFilter::You)
+        || target.chooser.is_some()
+        || target.explicit_declaration
+    {
+        return None;
+    }
+    let conditional =
+        unwrap_wrapped_effect(conditional).downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let [bonus] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    if !conditional.if_false.is_empty() {
+        return None;
+    }
+    let apply =
+        unwrap_wrapped_effect(bonus).downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if !matches!(
+        apply.runtime_modifications.as_slice(),
+        [crate::effects::continuous::RuntimeModification::ModifyPowerToughness { .. }]
+    ) {
+        return None;
+    }
+    let fight = unwrap_wrapped_effect(fight).downcast_ref::<crate::effects::FightEffect>()?;
+    if !matches!(&fight.creature1, ChooseSpec::Tagged(first) if first == tag)
+        || !matches!(&fight.creature2, ChooseSpec::Target(_))
+        || fight.mutual_surface
+    {
+        return None;
+    }
+    if let Some(opposing) = opposing_declaration {
+        let opposing = opposing.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+        if opposing.target != fight.creature2
+            || opposing.chooser.is_some()
+            || opposing.explicit_declaration
+        {
+            return None;
+        }
+    }
+    let action = conditional_continuous_action_for_target(&conditional.if_true, tag)?;
+    let friendly = describe_choose_spec(&target.target);
+    let subject = friendly.strip_prefix("target ")?;
+    Some(format!(
+        "{} fights {}. The {subject} {action} before it fights if {}",
+        capitalize_first(&friendly),
+        describe_choose_spec(&fight.creature2),
+        describe_condition(&conditional.condition)
+    ))
+}
+
 pub(crate) fn describe_targeted_conditional_action_then_fight(
     effects: &[&Effect],
 ) -> Option<String> {
@@ -4828,6 +4890,20 @@ pub(crate) fn for_each_exiles_search_tag(
     })
 }
 
+/// Identify the outcome collection of an exile consuming the exact search set.
+/// Older compiled programs express the action as a per-tag move loop.
+pub(crate) fn search_exile_result_tag<'a>(effect: &'a Effect, searched: &'a TagKey) -> Option<&'a TagKey> {
+    let inner = structural_unwrap_render_wrappers(effect);
+    if let Some(exile) = inner.downcast_ref::<crate::effects::ExileEffect>() {
+        if exile.face_down || !matches!(exile.spec.base(), ChooseSpec::Tagged(tag) if tag == searched) {
+            return None;
+        }
+        return wrapped_effect_tag(effect);
+    }
+    let for_each = inner.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    for_each_exiles_search_tag(for_each, searched).then_some(searched)
+}
+
 pub(crate) fn count_filter_counts_tagged_hand_cards(filter: &ObjectFilter, tag: &TagKey) -> bool {
     filter.zone == Some(Zone::Hand)
         && filter.controller.is_none()
@@ -4912,10 +4988,7 @@ pub(crate) fn render_necromentia_shape(effects: &[&Effect]) -> Option<String> {
         return None;
     }
 
-    let for_each = for_each_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
-    if !for_each_exiles_search_tag(for_each, &choose.tag) {
-        return None;
-    }
+    let exiled_tag = search_exile_result_tag(for_each_effect, &choose.tag)?;
 
     let shuffle = shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
     if !is_target_opponent_player_filter(&shuffle.player) {
@@ -4934,7 +5007,7 @@ pub(crate) fn render_necromentia_shape(effects: &[&Effect]) -> Option<String> {
     let Value::Count(count_filter) = create.count.unhinted() else {
         return None;
     };
-    if !count_filter_counts_tagged_hand_cards(count_filter, &choose.tag) {
+    if !count_filter_counts_tagged_hand_cards(count_filter, exiled_tag) {
         return None;
     }
 
@@ -5051,11 +5124,7 @@ pub(crate) fn render_choose_name_search_same_name_exile_shuffle(
         return None;
     }
 
-    let for_each = structural_unwrap_render_wrappers(for_each_effect)
-        .downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
-    if !for_each_exiles_search_tag(for_each, &choose.tag) {
-        return None;
-    }
+    let exiled_tag = search_exile_result_tag(for_each_effect, &choose.tag)?;
 
     let shuffle = structural_unwrap_render_wrappers(shuffle_effect)
         .downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
@@ -5070,7 +5139,7 @@ pub(crate) fn render_choose_name_search_same_name_exile_shuffle(
     let search_origin = describe_search_origin_zones(choose)?;
     let count_text = same_name_extraction_selection(choose)?;
     if let Some(draw_effect) = draw_effect {
-        if !same_name_extraction_hand_draw_matches(draw_effect, &choose.tag, search_owner) {
+        if !same_name_extraction_hand_draw_matches(draw_effect, exiled_tag, search_owner) {
             return None;
         }
         Some(format!(
@@ -5141,11 +5210,7 @@ pub(crate) fn render_reveal_hand_choose_same_name_exile_shuffle(
     {
         return None;
     }
-    let for_each = structural_unwrap_render_wrappers(for_each_effect)
-        .downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
-    if !for_each_exiles_search_tag(for_each, &search.tag) {
-        return None;
-    }
+    search_exile_result_tag(for_each_effect, &search.tag)?;
     let shuffle = structural_unwrap_render_wrappers(shuffle_effect)
         .downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
     if !same_name_extraction_player(&shuffle.player, search_owner) {
@@ -5267,11 +5332,7 @@ pub(crate) fn render_reveal_hand_choose_exile_each_same_name_shuffle(
     {
         return None;
     }
-    let exile_matches = structural_unwrap_render_wrappers(exile_matches_effect)
-        .downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
-    if !for_each_exiles_search_tag(exile_matches, &search.tag) {
-        return None;
-    }
+    search_exile_result_tag(exile_matches_effect, &search.tag)?;
 
     let shuffle = structural_unwrap_render_wrappers(shuffle_effect)
         .downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;

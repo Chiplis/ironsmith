@@ -550,7 +550,8 @@ fn replace_modal_header_x_in_effect_ast(
                 replace_modal_header_x_in_value(power, replacement, clause)?;
                 replace_modal_header_x_in_value(toughness, replacement, clause)?;
             }
-            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { power, .. }) => {
+            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { power, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness { toughness: power, .. }) => {
                 replace_modal_header_x_in_value(power, replacement, clause)?;
             }
             SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach { count, .. }) => {
@@ -650,6 +651,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearSuspected { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearGoad { .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat { .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Flip { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Regenerate { .. })
@@ -727,6 +729,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamagedBySourceZoneReplacement { .. })
             | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterEnterUnderControlReplacement { .. })
             | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterEnterTappedReplacement { .. })
+            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterEnterWithCountersReplacement { .. })
             | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterNextBatchEnterWithCounters { .. })
             | SubjectVerbActionAst::Control(ControlActionAst::Enchant { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseSpellCastHistory { .. })

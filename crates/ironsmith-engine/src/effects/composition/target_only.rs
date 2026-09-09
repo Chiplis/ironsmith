@@ -24,7 +24,8 @@ impl EffectExecutor for TargetOnlyEffect {
         if let Ok(objects) = resolve_objects_for_effect(game, ctx, &self.target)
             && !objects.is_empty()
         {
-            return Ok(EffectOutcome::count(objects.len() as i32));
+            return Ok(EffectOutcome::count(objects.len() as i32)
+                .with_chosen_objects_from_game(game, objects));
         }
 
         if let Ok(players) = resolve_players_from_spec(game, &self.target, ctx)
@@ -33,6 +34,9 @@ impl EffectExecutor for TargetOnlyEffect {
             return Ok(EffectOutcome::count(players.len() as i32));
         }
 
+        if self.target.count().min == 0 {
+            return Ok(EffectOutcome::count(0));
+        }
         Err(ExecutionError::InvalidTarget)
     }
 
@@ -58,5 +62,22 @@ impl EffectExecutor for TargetOnlyEffect {
 
     fn target_description(&self) -> &'static str {
         "target"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn optional_target_declaration_allows_no_target_but_required_does_not() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id;
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let target = ChooseSpec::target(ChooseSpec::creature());
+        let required = TargetOnlyEffect::new(target.clone());
+        assert!(matches!(required.execute(&mut game, &mut ctx), Err(ExecutionError::InvalidTarget)));
+        let optional = TargetOnlyEffect::new(target.with_count(crate::effect::ChoiceCount::up_to(1)));
+        assert_eq!(optional.execute(&mut game, &mut ctx).unwrap().as_count(), Some(0));
     }
 }

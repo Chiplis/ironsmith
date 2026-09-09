@@ -13,7 +13,7 @@ fn each_opponent_hand_exile_keeps_permission_tax_and_land_entry_linked() {
     let effects =
         parse_typed_effect_bundle_lexed(&tokens).expect("linked each-opponent hand exile bundle");
     let [
-        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
             filter: PlayerFilter::Opponent,
             effects: per_player,
         }),
@@ -152,7 +152,7 @@ fn mixed_target_collection_reuses_one_complete_consult_procedure_per_target() {
             effect: declaration,
             tag: object_targets,
         },
-        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
             filter: PlayerFilter::AliasedTarget(player_filter),
             effects: player_body,
         }),

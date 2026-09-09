@@ -646,3 +646,111 @@ pub fn parse_sentence_target_player_chooses_then_you_put_it_onto_battlefield(
 #[cfg(test)]
 #[path = "choice_object_clauses_inline_result_choice_tests_2.rs"]
 mod result_choice_tests;
+
+/// A hand selection retains its complement for the following shuffle.
+/// Resolve the same participant for both actions; the selected cards stay put.
+pub fn parse_hand_choice_then_shuffle_remainder(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(then) = tokens.iter().position(|token| token.is_word("then")) else {
+        return Ok(None);
+    };
+    let first = trim_edge_punctuation(&tokens[..then]);
+    let second = trim_edge_punctuation(&tokens[then + 1..]);
+    let tail = crate::lexer::parser_token_word_refs(&second);
+    let possessive = match tail.as_slice() {
+        [
+            "shuffle" | "shuffles",
+            "the",
+            "rest",
+            "into",
+            possessive @ ("their" | "your"),
+            "library",
+        ] => *possessive,
+        _ => return Ok(None),
+    };
+    let parsed = match parse_target_player_choose_objects_clause_with_count_value(&first)? {
+        Some(parsed) => Some(parsed),
+        None => parse_you_choose_objects_clause_with_count_value(&first)?,
+    };
+    let Some((player, filter, count, count_value)) = parsed else {
+        return Ok(None);
+    };
+    let owner = match (player, possessive) {
+        (PlayerAst::That, "their") => PlayerFilter::IteratedPlayer,
+        (PlayerAst::You | PlayerAst::Implicit, "your") => PlayerFilter::You,
+        _ => return Ok(None),
+    };
+    let words = crate::lexer::parser_token_word_refs(&first);
+    if filter.zone != Some(Zone::Hand)
+        || !filter.card_types.is_empty()
+        || !words.windows(4).any(|words| matches!(words, ["card" | "cards", "in" | "from", word, "hand"] if *word == possessive))
+    { return Ok(None); }
+    let tag = crate::util::helper_tag_for_tokens(tokens, "kept_hand_cards");
+    let mut remainder = filter.clone().not_tagged(tag.clone());
+    remainder.owner = Some(owner);
+    Ok(Some(vec![
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+            filter,
+            count,
+            count_value,
+            player,
+            tag,
+        }),
+        EffectAst::subject_verb_shuffle_all_objects_into_library(
+            player,
+            TargetAst::Object(remainder, None, span_from_tokens(&second)),
+        ),
+    ]))
+}
+
+#[cfg(test)]
+mod hand_remainder_tests {
+    use super::*;
+    #[test]
+    fn hand_remainder_choice_preserves_participant_and_excluded_set() {
+        for text in [
+            "That player chooses up to seven cards in their hand, then shuffles the rest into their library.",
+            "You choose two cards from your hand, then shuffle the rest into your library.",
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let effects = parse_hand_choice_then_shuffle_remainder(&tokens)
+                .unwrap()
+                .unwrap();
+            let [
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                    tag, player, ..
+                }),
+                EffectAst::SubjectVerb(shuffle),
+            ] = effects.as_slice()
+            else {
+                panic!("choice and shuffle");
+            };
+            assert_eq!(shuffle.subject.player, *player);
+            let SubjectVerbActionAst::Library(
+                crate::cards::builders::LibraryActionAst::ShuffleObjectsIntoLibrary {
+                    target: TargetAst::Object(filter, ..),
+                    all: true,
+                    ..
+                },
+            ) = &shuffle.action
+            else {
+                panic!("shuffle remainder");
+            };
+            assert_eq!(filter.zone, Some(Zone::Hand));
+            assert!(
+                filter
+                    .tagged_constraints
+                    .iter()
+                    .any(|constraint| constraint.tag.as_str() == tag.as_str()
+                        && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject)
+            );
+        }
+        let tokens = crate::lexer::lex_line("That player chooses two cards in their hand, then shuffles the rest into your library.", 0).unwrap();
+        assert!(
+            parse_hand_choice_then_shuffle_remainder(&tokens)
+                .unwrap()
+                .is_none()
+        );
+    }
+}

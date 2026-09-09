@@ -1,4 +1,9 @@
 {
+        if let Some((compact, consumed)) = describe_single_consult_move_shuffle(&filtered[idx..]) {
+            parts.push(compact);
+            idx += consumed;
+            continue;
+        }
         if idx + 6 < filtered.len()
             && let Some(look_at_top) =
                 filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
@@ -560,7 +565,7 @@
                     .iter()
                     .map(|filter| {
                         let mut display = (*filter).clone();
-                        display.zone = None;
+                        if display.zone == Some(Zone::Battlefield) { display.zone = None; }
                         format!(
                             "up to one target {}",
                             strip_leading_article(&display.description())

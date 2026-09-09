@@ -232,3 +232,13 @@ fn unclosed_sentence_quote_keeps_animation_descriptor_and_granted_trigger() {
     assert!(colors.contains(crate::color::Color::White), "{colors:?}");
     assert_eq!(granted_abilities.len(), 1, "{granted_abilities:#?}");
 }
+
+#[test]
+fn creature_animation_without_fixed_size_keeps_type_and_subtype() {
+    let subject=crate::lexer::lex_line("this enchantment",0).unwrap();
+    let body=crate::lexer::lex_line("a Bear creature in addition to its other types",0).unwrap();
+    let effect=parse_become_clause(&subject,&body).expect("type-only creature animation");
+    let debug=format!("{effect:?}");
+    assert!(debug.contains("AddCardTypes"),"{debug}");
+    assert!(debug.contains("Bear"),"{debug}");
+}

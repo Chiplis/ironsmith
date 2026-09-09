@@ -59,6 +59,7 @@ pub enum CopyExceptionShape<'a> {
     },
     Abilities {
         ability_tokens: &'a [OwnedLexToken],
+        source_filter_tokens: Option<&'a [OwnedLexToken]>,
     },
     Characteristics {
         remove_legendary: bool,
@@ -300,8 +301,15 @@ fn parse_copy_ability_exception_lexed<'a>(
 ) -> WResult<CopyExceptionShape<'a>> {
     primitives::phrase(&["it", "has"]).parse_next(input)?;
     let ability_tokens = take_sentence_body(input)?;
+    let (ability_tokens, source_filter_tokens) = match primitives::split_lexed_once_on_separator(
+        ability_tokens, || primitives::phrase(&["if", "that"]).void(),
+    ) {
+        Some((abilities, filter)) => (abilities, Some(filter)),
+        None => (ability_tokens, None),
+    };
     Ok(CopyExceptionShape::Abilities {
         ability_tokens: trim_lexed_commas(ability_tokens),
+        source_filter_tokens,
     })
 }
 
@@ -523,4 +531,10 @@ mod tests {
             ["myriad"]
         );
     }
+}
+
+pub fn split_copy_source_missing_ability_tokens(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+    primitives::split_lexed_once_on_separator(tokens, || primitives::any_phrase(&[
+        &["doesnt", "have"], &["doesn't", "have"], &["does", "not", "have"],
+    ]).void())
 }

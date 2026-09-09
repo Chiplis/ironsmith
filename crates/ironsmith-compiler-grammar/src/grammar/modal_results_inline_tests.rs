@@ -206,3 +206,20 @@ fn typed_prior_result_preserves_counted_shared_color_set_condition() {
             .contains(&crate::types::CardType::Land)
     );
 }
+
+#[test]
+fn passive_no_matching_results_preserves_filter_and_negation() {
+    for (line, negated) in [
+        ("no creature cards were revealed this way", true),
+        ("a creature card was revealed this way", false),
+        ("no blue creature cards were destroyed this way", true),
+    ] {
+        let tokens = lex_line(line, 0).unwrap();
+        let Some(IfResultPredicate::PriorEffectResult(surface)) = parse_if_result_predicate_lexed_tokens(&tokens) else {
+            panic!("missing prior-result predicate: {line}");
+        };
+        assert_eq!(surface.negated, negated, "{line}: {surface:?}");
+        assert_eq!(surface.filter.card_types, [crate::types::CardType::Creature]);
+        if line.contains("blue") { assert!(surface.filter.colors.is_some(), "{surface:?}"); }
+    }
+}

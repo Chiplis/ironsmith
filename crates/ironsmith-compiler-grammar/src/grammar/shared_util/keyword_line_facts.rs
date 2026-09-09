@@ -90,8 +90,9 @@ pub fn parse_level_up_line_tokens(tokens: &[OwnedLexToken]) -> Option<LevelUpLin
 
 pub fn parse_madness_line_tokens(tokens: &[OwnedLexToken]) -> Option<MadnessLineFact<'_>> {
     let rest = parse_expected_head(tokens, SharedKeywordHead::Madness)?;
-    let comma = primitives::find_prefix(rest, primitives::comma).map(|(idx, _, _)| idx);
-    let cost_tokens = strip_leading_cost_separators(&rest[..comma.unwrap_or(rest.len())]);
+    // Commas separate components of one alternative cost (mana, life,
+    // sacrifice, ...); retain the complete cost for the activation parser.
+    let cost_tokens = strip_leading_cost_separators(rest);
     let cost = crate::grammar::primitives::probe_all(
         cost_tokens,
         parse_repeated_mana_payment_lexed,

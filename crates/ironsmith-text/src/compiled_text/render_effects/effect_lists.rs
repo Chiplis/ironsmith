@@ -100,7 +100,7 @@ pub(super) use graveyard_return_compaction::*;
 pub(super) use helpers_00::describe_each_player_choose_creature_destroy_others;
 pub(in crate::compiled_text) use helpers_00::describe_target_only_then_exchange_control;
 pub(super) use helpers_00::player_is_controller_of_produced_target;
-pub(super) use helpers_00::same_name_extraction_hand_draw_matches;
+pub(super) use helpers_00::{same_name_extraction_hand_draw_matches, search_exile_result_tag};
 use helpers_00::wrapped_effect_tag;
 use helpers_00::*;
 pub(in crate::compiled_text) use helpers_00::{apply_continuous_for_compaction, downcast_destroy};
@@ -115,6 +115,7 @@ pub(in crate::compiled_text) use helpers_00::{
     describe_tagged_continuous_then_counter_conditional_draw,
     describe_tagged_pump_then_conditional_keyword, describe_target_only_then_damage_that_player,
     describe_target_player_cast_and_creatures_attack_restrictions,
+    describe_conditional_bonus_before_fight,
     describe_targeted_conditional_action_then_fight,
     describe_two_distinct_targets_conditional_then_fight,
     describe_two_distinct_targets_counter_then_fight,
@@ -152,7 +153,7 @@ use sacrifice_unless_mana_spent::describe_sacrifice_triggering_unless_mana_spent
 pub(super) use sacrificed_source_damage::describe_sacrificed_source_damage_backreference;
 pub(in crate::compiled_text) use same_actor_life_and_token::{
     describe_explicit_you_three_action_sequence, describe_shared_actor_token_creation_list,
-    describe_you_life_change_and_create_token, describe_you_life_change_and_exile_top,
+    describe_you_action_and_create_token, describe_you_life_change_and_exile_top,
 };
 use single_counter_target_followup::describe_single_counter_target_then_double;
 use single_counter_target_followup::describe_single_counter_target_then_fight;
@@ -1231,10 +1232,9 @@ fn delegated_collection_complement_tags(
 }
 
 fn describe_delegated_collection_complement_move(effect: &Effect) -> Option<String> {
-    let movement = structural_unwrap_render_wrappers(effect)
-        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let movement = move_to_zone_surface_view(structural_unwrap_render_wrappers(effect))?;
     delegated_collection_complement_tags(&movement.target)?;
-    let mut surface = movement.clone();
+    let mut surface = movement.into_owned();
     surface.target = ChooseSpec::Tagged(crate::TagKey::from("__delegated_collection_other"))
         .with_surface_hint(crate::target::ChooseSpecSurfaceHint::SourceReference(
             crate::target::SourceReferenceSurface::ThisPermanentType("the other".to_string()),
@@ -1307,11 +1307,9 @@ fn describe_delegated_collection_partition_moves_from(
         } else {
             return None;
         };
-    let (_, subset) = delegated_collection_complement_tags(
-        &structural_unwrap_render_wrappers(complement_effect)
-            .downcast_ref::<crate::effects::MoveToZoneEffect>()?
-            .target,
-    )?;
+    let complement =
+        move_to_zone_surface_view(structural_unwrap_render_wrappers(complement_effect))?;
+    let (_, subset) = delegated_collection_complement_tags(&complement.target)?;
     if !matches!(selected_target.base(), ChooseSpec::Tagged(tag) if tag == subset) {
         return None;
     }
@@ -4991,6 +4989,10 @@ pub(super) fn describe_create_token_attached_to_target(
     }
 
     let token = with_indefinite_article(&describe_create_token_blueprint(create_token));
+    if let Some((blueprint, rules)) = token.split_once(". It has ") {
+        return Some(format!("Create {blueprint} attached to {}. The token has {rules}",
+            describe_choose_spec(&attach.target)));
+    }
     Some(format!(
         "Create {token} attached to {}",
         describe_choose_spec(&attach.target)
@@ -5470,7 +5472,7 @@ fn describe_result_gated_choose_name_mill_draw(
     let EffectPredicate::PriorEffectResult(result) = &matched.predicate else {
         return None;
     };
-    if result.action != crate::effect::PriorEffectAction::Milled
+    if result.negated || result.action != crate::effect::PriorEffectAction::Milled
         || result.actor != crate::effect::PriorEffectResultActor::Passive
         || result.quantifier != crate::effect::PriorEffectResultQuantifier::One
         || result.required_count.is_some()
@@ -6467,6 +6469,59 @@ pub(super) fn describe_each_opponent_exile_top_then_cast_until_eot_any_color(
     ))
 }
 
+pub(in crate::compiled_text) fn describe_group_pump_then_conditional_extra_bonus(effects: &[Effect]) -> Option<String> {
+    let [first, second] = effects else { return None; };
+    let tag = wrapped_effect_tag(first)?;
+    let pump = unwrap_basic_tag_wrappers(first)
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    let group = match &pump.target_spec {
+        Some(spec) if !spec.is_target() => match spec.base() {
+            ChooseSpec::All(filter) | ChooseSpec::Object(filter) => filter,
+            _ => return None,
+        },
+        None => match &pump.target {
+            crate::continuous::EffectTarget::Filter(filter) => filter,
+            _ => return None,
+        },
+        _ => return None,
+    };
+    if group.card_types != [CardType::Creature] { return None; }
+    let conditional = second.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if !conditional.if_false.is_empty() { return None; }
+    let [branch] = conditional.if_true.as_slice() else { return None; };
+    let sequence = branch.downcast_ref::<crate::effects::SequenceEffect>()?;
+    if sequence.surface != ironsmith_core::SequenceSurface::Coordinated
+        || sequence.result_label.is_some() { return None; }
+    let [capture, untap, bonus] = sequence.effects.as_slice() else { return None; };
+    let capture = capture.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    let untap = untap.downcast_ref::<crate::effects::UntapEffect>()?;
+    let bonus = bonus.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    // Prove both operations refer to the entire captured creature group, with
+    // no extra restrictions such as being tapped or controlled by a player.
+    let mut expected = ObjectFilter::creature().in_zone(Zone::Battlefield);
+    expected.tagged_constraints = capture.filter.tagged_constraints.clone();
+    if capture.filter != expected || expected.tagged_constraints.len() != 1
+        || !choose_spec_references_tagged_object(&ChooseSpec::All(expected.clone()), tag)
+        || capture.zone.is_some() || !capture.additional_zones.is_empty()
+        || !capture.source_tags.is_empty()
+        || !matches!(&untap.target, ChooseSpec::All(filter) if filter == &expected)
+        || !matches!(&bonus.target_spec, Some(ChooseSpec::Tagged(found)) if found == &capture.tag)
+    { return None; }
+    for modifier in [pump, bonus] {
+        if modifier.modification.is_some() || !modifier.additional_modifications.is_empty()
+            || modifier.condition.is_some() || modifier.until != Until::EndOfTurn
+            || !matches!(modifier.runtime_modifications.as_slice(),
+                [crate::effects::continuous::RuntimeModification::ModifyPowerToughness { .. }])
+        { return None; }
+    }
+    let [crate::effects::continuous::RuntimeModification::ModifyPowerToughness { power, toughness }]
+        = bonus.runtime_modifications.as_slice() else { return None; };
+    Some(format!("{}. If {}, untap those creatures and they get an additional {}/{} until end of turn",
+        describe_effect(first).trim_end_matches('.'),
+        describe_condition(&conditional.condition),
+        describe_signed_value(power), describe_signed_value(toughness)))
+}
+
 pub(super) fn describe_group_pump_then_conditional_untap(effects: &[Effect]) -> Option<String> {
     let [pump_effect, conditional_effect] = effects else {
         return None;
@@ -7077,11 +7132,7 @@ pub(super) fn describe_countered_spell_same_name_search_sequence(
     if same_name_constraints[0].tag != *counter_tag {
         return None;
     }
-    let for_each = structural_unwrap_render_wrappers(for_each_effect)
-        .downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
-    if !for_each_exiles_search_tag(for_each, &choose.tag) {
-        return None;
-    }
+    let exiled_tag = search_exile_result_tag(for_each_effect, &choose.tag)?;
     let shuffle = structural_unwrap_render_wrappers(shuffle_effect)
         .downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
     let search_owner = choose.filter.owner.as_ref()?;
@@ -7109,7 +7160,7 @@ pub(super) fn describe_countered_spell_same_name_search_sequence(
         "{counter_text}. Search {search_origin} for {selection} with the same name as that spell and exile them"
     );
     if let Some(draw_effect) = draw_effect {
-        if !same_name_extraction_hand_draw_matches(draw_effect, &choose.tag, search_owner) {
+        if !same_name_extraction_hand_draw_matches(draw_effect, exiled_tag, search_owner) {
             return None;
         }
         Some(format!(
@@ -7934,9 +7985,44 @@ mod structural_return_as_aura_tests {
     }
 }
 
+fn describe_atomic_returned_aura_grant(effects: &[Effect]) -> Option<String> {
+    let triggering = effects.first()?.downcast_ref::<crate::effects::TagTriggeringObjectEffect>()?;
+    let effects = &effects[1..];
+    let [returned_effect, grants] = effects else { return None; };
+    let tagged = returned_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let returned = tagged.effect.downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()?;
+    let aura = returned.as_aura.as_ref()?;
+    if !tagged.outcome_only || !matches!(returned.target.base(), ChooseSpec::Tagged(tag) if tag == &triggering.tag) {
+        return None;
+    }
+    if returned.tapped || !returned.enters_with_counters.is_empty() || !aura.remove_all_abilities {
+        return None;
+    }
+    let grants = grants.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    if grants.tag != tagged.tag { return None; }
+    let mut abilities = Vec::new();
+    for effect in &grants.effects {
+        let apply = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+        if apply.until != Until::Forever || apply.condition.is_some()
+            || !apply.additional_modifications.is_empty() || !apply.runtime_modifications.is_empty()
+            || apply.target_spec.as_ref() != Some(&ChooseSpec::Iterated) {
+            return None;
+        }
+        let Some(crate::continuous::Modification::AddAbilityGeneric(ability)) = &apply.modification else { return None; };
+        let text = describe_inline_ability_with_self_subject(ability, "this enchantment");
+        abilities.push(format!("\"{},\"", text.trim_end_matches('.')));
+    }
+    if abilities.is_empty() { return None; }
+    let enchant = strip_leading_article(&aura.attachment_filter.description()).to_string();
+    Some(format!("Return it to the battlefield. It's an Aura enchantment with enchant {enchant} and {} and it loses all other abilities", join_with_and(&abilities)))
+}
+
 pub(in crate::compiled_text) fn describe_return_as_aura_with_granted_abilities(
     effects: &[Effect],
 ) -> Option<String> {
+    if let Some(rendered) = describe_atomic_returned_aura_grant(effects) {
+        return Some(rendered);
+    }
     if let Some(rendered) = describe_structural_return_as_aura_with_granted_abilities(effects) {
         return Some(rendered);
     }
@@ -8526,6 +8612,9 @@ pub(crate) fn describe_pre_clause_structural_effect_list(effects: &[Effect]) -> 
     {
         return Some(compact);
     }
+    if let Some(compact) = describe_target_base_stat_choice_inline(effects) {
+        return Some(compact);
+    }
     if let Some(compact) = describe_target_ability_removal_choice_inline(effects) {
         return Some(compact);
     }
@@ -8685,6 +8774,9 @@ pub(crate) fn describe_pre_clause_structural_effect_list(effects: &[Effect]) -> 
     // relationship-aware effect-list renderer can see them, so recognize the
     // exact four-effect shape at this pre-clause dispatch point.
     if let Some(compact) = describe_two_distinct_targets_conditional_then_fight(&raw_effects) {
+        return Some(compact);
+    }
+    if let Some(compact) = describe_conditional_bonus_before_fight(&raw_effects) {
         return Some(compact);
     }
     if let Some(compact) = describe_targeted_conditional_action_then_fight(&raw_effects) {
@@ -9529,6 +9621,7 @@ mod reveal_set_optional_move_tests {
             filter: PlayerFilter::Any,
             effects: vec![effect],
             starting_with_controller: false,
+            sequential: false,
             stop_after_first_happened: false,
         })
     }
@@ -9656,6 +9749,28 @@ fn effect_consumes_cross_segment_consult_tag(
 /// merging independent library actions or crossing optional/control-flow
 /// containers.
 pub(crate) fn describe_cross_segment_consult_bundle(effects: &[Effect]) -> Option<String> {
+    // A result-gated reveal can feed an unconditional matched-card disposition
+    // in the next source sentence. Keep the gate on the reveal alone.
+    for (index, effect) in effects.iter().enumerate() {
+        let Some(gate) = effect.downcast_ref::<crate::effects::IfEffect>() else { continue; };
+        if gate.predicate != EffectPredicate::Happened || !gate.else_.is_empty()
+            || gate.per_player_result || gate.prior_result_replacement_surface
+            || gate.then.len() != 1 || index == 0 {
+            continue;
+        }
+        let Some(result) = effects[index - 1].downcast_ref::<crate::effects::WithIdEffect>() else { continue; };
+        if result.id != gate.condition { continue; }
+        let mut refs = vec![&gate.then[0]];
+        refs.extend(effects[index + 1..].iter());
+        let Some((compact, consumed)) = describe_single_consult_move_shuffle(&refs) else { continue; };
+        let prefix = describe_effect_list(&effects[..index]);
+        let tail = describe_effect_list(&effects[index + consumed..]);
+        let body = format!("{}. If you do, {}", prefix.trim_end_matches('.'), lowercase_first(&compact));
+        return Some(if tail.is_empty() { body } else {
+            format!("{}. {tail}", body.trim_end_matches('.'))
+        });
+    }
+
     let mut visible = Vec::new();
     if !effects
         .iter()
@@ -9706,6 +9821,20 @@ pub(crate) fn describe_cross_segment_consult_bundle(effects: &[Effect]) -> Optio
     }
     if let Some(rendered) = describe_consult_battlefield_attachment_remainder(effects) {
         return Some(rendered);
+    }
+
+    if let Some(rendered) = describe_choose_type_then_single_consult_shuffle(&effect_refs) {
+        return Some(rendered);
+    }
+
+    for start in 0..effect_refs.len() {
+        if let Some((suffix, consumed)) = describe_single_consult_move_shuffle(&effect_refs[start..])
+            && start + consumed == effect_refs.len()
+        {
+            if start == 0 { return Some(suffix); }
+            let prefix = describe_effect_list(&effects[..start]);
+            return Some(format!("{}. {suffix}", prefix.trim().trim_end_matches('.')));
+        }
     }
 
     // Source-sentence segmentation can leave an authored setup action in the
@@ -11441,11 +11570,108 @@ pub(in crate::compiled_text) fn describe_fixed_counter_and_counter_choice_same_t
     ))
 }
 
-/// Rejoin an instruction-level choice between two ability removals on one
-/// declared target: `Target creature loses first strike or swampwalk until
-/// end of turn.` The compiler uses a resolving `ChooseModeEffect` for the
-/// choice semantics; the strict structural guards keep printed modal spells
-/// on their ordinary bullet surface.
+/// Render a resolution-time choice of base power or base toughness on one
+/// declared creature. Both branches must set one stat in the same layer and
+/// have the same duration; printed modal abilities keep their bullet surface.
+pub(super) fn describe_target_base_stat_choice_inline(effects: &[Effect]) -> Option<String> {
+    let [target_effect, choice_effect] = effects else {
+        return None;
+    };
+    let target = structural_unwrap_render_wrappers(target_effect)
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    if target.explicit_declaration || target.chooser.is_some() || !target.target.is_target() {
+        return None;
+    }
+
+    let choice = structural_unwrap_render_wrappers(choice_effect)
+        .downcast_ref::<crate::effects::ChooseModeEffect>()?;
+    if choice.chooser != Some(PlayerFilter::You)
+        || choice.min != Value::Fixed(1)
+        || choice.max != Value::Fixed(1)
+        || choice.choose_count != Value::Fixed(1)
+        || choice.min_choose_count != Value::Fixed(1)
+        || choice.allow_repeat
+        || choice.random
+        || choice.allow_repeated_modes
+        || choice.spree
+        || choice.tiered
+        || !choice.common_prefix_effects.is_empty()
+        || choice.common_suffix_effect_count != 0
+        || !choice.mode_additional_mana_costs.is_empty()
+        || choice.mode_point_costs != [1, 1]
+        || choice.disallow_previously_chosen_modes
+        || choice.disallow_previously_chosen_modes_this_turn
+        || choice.distinct_player_targets_per_mode
+        || choice.conditional_mode_range.is_some()
+        || choice.presentation_label.is_some()
+        || choice.modes.len() != 2
+    {
+        return None;
+    }
+
+    let mut stat_values = Vec::with_capacity(2);
+    let mut shared_duration = None;
+    for (index, mode) in choice.modes.iter().enumerate() {
+        if !mode.source_text.trim().is_empty() {
+            return None;
+        }
+        let [effect] = mode.effects.as_slice() else {
+            return None;
+        };
+        let apply = structural_unwrap_render_wrappers(effect)
+            .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+        if apply.condition.is_some()
+            || !apply.additional_modifications.is_empty()
+            || !apply.runtime_modifications.is_empty()
+            || apply.source_type.is_some()
+            || apply.set_quantifier_surface.is_some()
+            || apply.type_retention_surface.is_some()
+            || apply.animation_pt_surface.is_some()
+            || apply.animation_duration_surface.is_some()
+            || apply.lock_filter_at_resolution
+            || !apply.resolve_set_pt_values_at_resolution
+            || !apply.require_creature_target
+            || matches!(apply.until, Until::Forever)
+        {
+            return None;
+        }
+
+        let spec = apply.target_spec.as_ref()?;
+        let matches_target = spec.unhinted() == target.target.unhinted();
+        let is_anaphoric_target = index > 0
+            && matches!(spec.unhinted(), ChooseSpec::Source)
+            && apply
+                .source_reference_surface
+                .as_ref()
+                .is_some_and(|surface| surface.display_text() == "it");
+        if !matches_target && !is_anaphoric_target {
+            return None;
+        }
+        if index == 0 && apply.source_reference_surface.is_some() {
+            return None;
+        }
+
+        let value = match (index, apply.modification.as_ref()?) {
+            (0, crate::continuous::Modification::SetPower { value, sublayer })
+            | (1, crate::continuous::Modification::SetToughness { value, sublayer })
+                if *sublayer == crate::continuous::PtSublayer::Setting => describe_value(value),
+            _ => return None,
+        };
+        match &shared_duration {
+            Some(duration) if duration != &apply.until => return None,
+            None => shared_duration = Some(apply.until.clone()),
+            Some(_) => {}
+        }
+        stat_values.push(value);
+    }
+
+    Some(format!(
+        "{}, {} has base power {} or base toughness {}",
+        capitalize_first(&describe_until(shared_duration.as_ref()?)),
+        describe_choose_spec(&target.target), stat_values[0], stat_values[1],
+    ))
+}
+
 fn describe_target_ability_removal_choice_inline(effects: &[Effect]) -> Option<String> {
     let [target_effect, choice_effect] = effects else {
         return None;
@@ -11793,6 +12019,49 @@ pub(crate) fn describe_owner_subject_shuffle_with_shared_target(
 /// each `on each ...` arm as its own typed iterator; the generic list fallback
 /// otherwise invents a temporal `then` relationship between independent
 /// counter placements.
+/// Two counter kinds applied to the same recipient through a result tag.
+pub(super) fn describe_shared_recipient_counter_pair(effects: &[Effect]) -> Option<String> {
+    let (prefix, first, second) = match effects {
+        [first, second] => (None, first, second),
+        [prefix, first, second] => (Some(prefix), first, second),
+        _ => return None,
+    };
+    let tag = wrapped_effect_tag(first)?;
+    let first = structural_unwrap_render_wrappers(first)
+        .downcast_ref::<crate::effects::PutCountersEffect>()?;
+    let second = structural_unwrap_render_wrappers(second)
+        .downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if first.distributed
+        || second.distributed
+        || first.target_count.is_some()
+        || second.target_count.is_some()
+        || !matches!(first.amount.unhinted(), Value::Fixed(amount) if *amount > 0)
+        || !matches!(second.amount.unhinted(), Value::Fixed(amount) if *amount > 0)
+        || !matches!(second.target.base(), ChooseSpec::Tagged(recipient) if recipient == tag)
+    {
+        return None;
+    }
+    let body = format!(
+        "Put {} and {} on {}",
+        describe_put_counter_phrase(&first.amount, first.counter_type),
+        describe_put_counter_phrase(&second.amount, second.counter_type),
+        describe_choose_spec(&first.target)
+    );
+    match prefix {
+        None => Some(body),
+        Some(prefix) => {
+            let prefix = describe_effect(prefix);
+            (!prefix.is_empty()).then(|| {
+                format!(
+                    "{}, then {}",
+                    prefix.trim_end_matches('.'),
+                    lowercase_first(&body)
+                )
+            })
+        }
+    }
+}
+
 fn describe_coordinated_counter_fanout(effects: &[Effect]) -> Option<String> {
     let [first_effect, second_effect] = effects else {
         return None;
@@ -12054,6 +12323,65 @@ mod serial_pump_keyword_grant_public_tests {
     use super::*;
 
     #[test]
+    fn coordinated_pump_and_grant_keep_following_instruction() {
+        for line in [
+            "{T}: Target creature you control gets +1/+0 and gains flying until end of turn. Destroy that creature at the beginning of the next end step.",
+            "{T}: Target creature gets +2/+1 and gains haste until end of turn. Scry 1.",
+        ] {
+            let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Chromatic Probe")
+                .card_types(vec![CardType::Artifact])
+                .parse_text(line).unwrap();
+            let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+            assert_eq!(rendered.trim_end_matches('.'), line.trim_end_matches('.'), "{definition:#?}");
+        }
+    }
+
+    #[test]
+    fn source_pump_compaction_requires_same_object_and_duration() {
+        let mut pump = crate::effects::ApplyContinuousEffect::new_runtime(
+            crate::continuous::EffectTarget::Source,
+            crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
+                power: Value::Fixed(2), toughness: Value::Fixed(0),
+            },
+            Until::EndOfTurn,
+        );
+        pump.target_spec = Some(ChooseSpec::Source);
+        pump.require_creature_target = true;
+        let mut grant = crate::effects::ApplyContinuousEffect::new(
+            crate::continuous::EffectTarget::Source,
+            crate::continuous::Modification::AddAbility(crate::static_abilities::StaticAbility::flying()),
+            Until::EndOfTurn,
+        );
+        grant.target_spec = Some(ChooseSpec::Source);
+        assert!(describe_targeted_pump_then_grant_same_objects(&[
+            Effect::new(pump.clone()), Effect::new(grant.clone()),
+        ]).is_some());
+        grant.target_spec = Some(ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature())));
+        assert!(describe_targeted_pump_then_grant_same_objects(&[
+            Effect::new(pump.clone()), Effect::new(grant.clone()),
+        ]).is_none());
+        grant.target_spec = Some(ChooseSpec::Source);
+        grant.until = Until::Forever;
+        assert!(describe_targeted_pump_then_grant_same_objects(&[
+            Effect::new(pump), Effect::new(grant),
+        ]).is_none());
+    }
+
+    #[test]
+    fn source_pump_and_grant_keep_following_instruction() {
+        for line in [
+            "{S}{S}: This creature gets +2/+0 and gains indestructible until end of turn. Tap it.",
+            "{2}: This creature gets +1/+1 and gains flying and haste until end of turn. Scry 1.",
+        ] {
+            let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Chromatic Probe")
+                .card_types(vec![CardType::Creature])
+                .parse_text(line).unwrap();
+            let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+            assert_eq!(rendered.trim_end_matches('.'), line.trim_end_matches('.'), "{definition:#?}");
+        }
+    }
+
+    #[test]
     fn spell_and_activated_routes_keep_every_serial_keyword() {
         for (name, card_type, line) in [
             (
@@ -12300,6 +12628,9 @@ mod destroyed_same_object_no_regeneration_tests {
 }
 
 pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
+    if let Some(compact) = describe_group_pump_then_conditional_extra_bonus(effects) {
+        return compact;
+    }
     if let [effect] = effects
         && let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
         && sequence.surface == ironsmith_core::SequenceSurface::Coordinated
@@ -12396,13 +12727,16 @@ pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
     if let Some(compact) = describe_shared_actor_token_creation_list(effects) {
         return compact;
     }
-    if let Some(compact) = describe_you_life_change_and_create_token(effects) {
+    if let Some(compact) = describe_you_action_and_create_token(effects) {
         return compact;
     }
     if let Some(compact) = describe_put_counters_then_coordinated_keyword_grants(effects) {
         return compact;
     }
     if let Some(compact) = describe_coordinated_keyword_grants(effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_shared_recipient_counter_pair(effects) {
         return compact;
     }
     if let Some(compact) = describe_coordinated_counter_fanout(effects) {
@@ -12466,6 +12800,9 @@ pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
     if let Some(compact) = describe_fixed_counter_and_counter_choice_same_target(effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_target_base_stat_choice_inline(effects) {
         return compact;
     }
     if let Some(compact) = describe_target_ability_removal_choice_inline(effects) {
@@ -14540,7 +14877,7 @@ fn describe_looked_battlefield_rest_then_reflexive(
             negated: false,
         } => *card_type,
         EffectPredicate::PriorEffectResult(surface)
-            if surface.action == crate::effect::PriorEffectAction::PutOntoBattlefield
+            if !surface.negated && surface.action == crate::effect::PriorEffectAction::PutOntoBattlefield
                 && surface.actor == crate::effect::PriorEffectResultActor::Passive
                 && surface.quantifier == crate::effect::PriorEffectResultQuantifier::One =>
         {
@@ -15267,7 +15604,30 @@ fn describe_sequence_wrapped_hand_pipeline(effects: &[Effect]) -> Option<String>
 /// chosen-card consumer are all proven by the existing complete-pipeline
 /// matcher; anything after those three effects remains an independent source
 /// sentence instead of being folded into the hand procedure.
+pub(super) fn describe_hand_choice_reveal_prefix(effects: &[Effect]) -> Option<(String, usize)> {
+    let [choice, reveal, ..] = effects else { return None; };
+    let choice = structural_unwrap_render_wrappers(choice)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let reveal = structural_unwrap_render_wrappers(reveal)
+        .downcast_ref::<crate::effects::RevealTaggedEffect>()?;
+    if choice.is_search || choice.chooser != PlayerFilter::You
+        || choose_primary_zone(choice) != Some(Zone::Hand)
+        || !choice.additional_zones.is_empty() || choice.top_only || choice.bottom_only
+        || choose_exact_count(choice) != Some(1) || choice.count.random
+        || choice.count_value.is_some() || choice.aggregate_constraint.is_some()
+        || choice.filter.owner != Some(PlayerFilter::You) || reveal.tag != choice.tag
+    { return None; }
+    let mut filter = choice.filter.clone();
+    filter.zone = None;
+    filter.owner = None;
+    filter.set_explicit_card_noun(false);
+    if filter != ObjectFilter::default() { return None; }
+    Some(("Reveal a card from your hand".to_string(), 2))
+}
+
 fn describe_hand_pipeline_prefix(effects: &[Effect]) -> Option<(String, usize)> {
+    if let Some(prefix) = describe_hand_choice_reveal_prefix(effects) { return Some(prefix); }
+
     let prefix = effects.get(..3)?;
     let compact = describe_sequence_wrapped_hand_pipeline(prefix)?;
     Some((compact, prefix.len()))
@@ -15297,7 +15657,37 @@ fn describe_hand_pipeline_then_leading_conditional(effects: &[Effect]) -> Option
     ))
 }
 
+fn describe_shared_duration_permission_and_entry_rule(effects: &[Effect]) -> Option<String> {
+    let [permission, entry] = effects else { return None; };
+    let permission = structural_unwrap_render_wrappers(permission)
+        .downcast_ref::<crate::effects::GrantBySpecEffect>()?;
+    let entry = structural_unwrap_render_wrappers(entry)
+        .downcast_ref::<crate::effects::RegisterEnterWithCountersReplacementEffect>()?;
+    if permission.player != PlayerFilter::You { return None; }
+    let prefix = match (permission.duration, entry.mode) {
+        (crate::grant::GrantDuration::UntilYourNextTurn, crate::effects::ReplacementApplyMode::UntilYourNextTurn) => "Until your next turn",
+        (crate::grant::GrantDuration::UntilEndOfTurn, crate::effects::ReplacementApplyMode::UntilEndOfTurn) => "Until end of turn",
+        _ => return None,
+    };
+    let mut permission = permission.clone();
+    permission.duration = crate::grant::GrantDuration::Forever;
+    let mut entry = entry.clone();
+    entry.mode = crate::effects::ReplacementApplyMode::Resolution;
+    let permission = describe_effect(&Effect::new(permission));
+    let entry = describe_effect(&Effect::new(entry));
+    Some(format!("{prefix}, {}, and {}", lowercase_first(permission.trim_end_matches('.')), lowercase_first(entry.trim_end_matches('.'))))
+}
+
 pub(crate) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> {
+    if let Some(text) = describe_shared_duration_permission_and_entry_rule(effects) {
+        return Some(lowercase_first(&text));
+    }
+    if let Some(text) = describe_choose_color_reveal_hand_and_damage(effects) {
+        return Some(lowercase_first(&text));
+    }
+    if let Some(text) = describe_choose_color_reveal_hand_and_discard(effects) {
+        return Some(lowercase_first(&text));
+    }
     if let [effect] = effects
         && let Some(players) = structural_unwrap_render_wrappers(effect)
             .downcast_ref::<crate::effects::ForPlayersEffect>()
@@ -16819,6 +17209,7 @@ pub(crate) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
             || trimmed.contains(". ")
             || trimmed.contains(": ")
             || trimmed.starts_with("If ")
+            || trimmed.starts_with("Then ")
             || trimmed.starts_with("When ")
             || trimmed.starts_with("Whenever ")
             || trimmed.starts_with("At ")
@@ -17053,6 +17444,11 @@ fn describe_search_reveal_nested_may_move_else_hand(effects: &[Effect]) -> Optio
 /// Render linked operations across sentence boundaries while retaining their
 /// selected-object references and resolution order.
 pub(in crate::compiled_text) fn describe_linked_resolution_program(effects: &[Effect]) -> Option<String> {
+    if let [effect] = effects
+        && let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
+        && sequence.surface == ironsmith_core::SequenceSurface::Coordinated
+        && let Some(text) = describe_opponent_and_you_draw(&sequence.effects)
+    { return Some(text); }
     if let Some(text) = describe_quantified_tap_goad_then_watch_set(effects) { return Some(text); }
     if let Some(text) = describe_top_zone_choice_exile_complement(effects) { return Some(text); }
     if let [moved, consult, matched, rest] = effects
@@ -17149,4 +17545,701 @@ fn describe_top_zone_choice_exile_complement(effects: &[Effect]) -> Option<Strin
     let zone = if zone == Zone::Library { "library" } else { "graveyard" };
     let remainder = if count == 2 { "the other one" } else { "the rest" };
     Some(format!("{} {} one of the top {number} cards of your {zone}. Exile that card and put {remainder} into your hand", capitalize_first(&chooser), player_verb(&chooser, "choose", "chooses")))
+}
+
+#[cfg(test)]
+mod empty_hand_attack_restriction_tests {
+    use super::*;
+
+    #[test]
+    fn empty_hand_restriction_checks_each_player_not_total_hand_size() {
+        let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Chromatic Probe")
+            .card_types(vec![CardType::Creature])
+            .parse_text("This creature can't attack or block unless a player has no cards in hand.").unwrap();
+        let mut game = engine::game_state::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = crate::ids::PlayerId::from_index(0);
+        let bob = crate::ids::PlayerId::from_index(1);
+        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        game.remove_summoning_sickness(source);
+        let card = engine::card::CardBuilder::new(crate::ids::CardId::new(), "Hand Probe").build();
+        game.create_object_from_card(&card, alice, Zone::Hand);
+        game.update_cant_effects();
+        assert!(game.can_attack(source));
+        assert!(game.can_block(source));
+        game.create_object_from_card(&card, bob, Zone::Hand);
+        game.update_cant_effects();
+        assert!(!game.can_attack(source));
+        assert!(!game.can_block(source));
+    }
+}
+
+#[cfg(test)]
+mod shared_combat_role_filter_tests {
+    use super::*;
+    #[test]
+    fn combat_role_alternatives_keep_the_shared_power_limit() {
+        for (roles, ownership, limit) in [
+            ("attacking or blocking", "", 2),
+            ("attacking or blocking", "", 3),
+            ("blocking or attacking", " you control", 3),
+        ] {
+            let text = format!("Destroy target {roles} creature{ownership} with power {limit} or less.");
+            let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Chromatic Probe")
+                .card_types(vec![CardType::Instant]).parse_text(&text).unwrap();
+            assert_eq!(crate::compiled_text::compiled_text_lines(&definition).join("\n").trim_end_matches('.'), text.trim_end_matches('.'));
+        }
+    }
+}
+
+#[cfg(test)]
+mod counter_prohibition_source_surface_tests {
+    use super::*;
+
+    #[test]
+    fn all_counter_prohibition_preserves_the_source_noun() {
+        for (card_type, line) in [
+            (CardType::Creature, "This creature can't have counters put on it."),
+            (CardType::Artifact, "This artifact can't have counters put on it."),
+        ] {
+            let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Chromatic Probe")
+                .card_types(vec![card_type])
+                .parse_text(line).unwrap();
+            assert_eq!(crate::compiled_text::compiled_text_lines(&definition), [line]);
+        }
+    }
+}
+
+#[cfg(test)]
+mod negated_prior_result_text_tests {
+    use super::*;
+
+    #[test]
+    fn revealed_result_negation_uses_all_players_and_survives_copy_followup() {
+        let text = "Each player reveals the top card of their library. For each creature card revealed this way, create a token that's a copy of that card, except it's 1/1, it's a Spirit in addition to its other types, and it has flying. If no creature cards were revealed this way, return Haunting Imitation to its owner's hand.";
+        let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Haunting Imitation")
+            .card_types(vec![CardType::Sorcery]).parse_text(text).unwrap();
+        for (types, should_return) in [
+            ([None, None], true),
+            ([Some(CardType::Land), Some(CardType::Land)], true),
+            ([Some(CardType::Creature), Some(CardType::Land)], false),
+            ([Some(CardType::Land), Some(CardType::Creature)], false),
+            ([Some(CardType::Creature), Some(CardType::Creature)], false),
+        ] {
+            let mut game = crate::game_state::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = game.players[0].id;
+            for (i, ty) in types.into_iter().enumerate() {
+                if let Some(ty) = ty {
+                    let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), format!("Revealed Probe {i}"))
+                        .card_types(vec![ty]).build();
+                    let owner = game.players[i].id;
+                    game.create_object_from_card(&card, owner, Zone::Library);
+                }
+            }
+            let source = game.create_object_from_definition(&definition, alice, Zone::Stack);
+            let mut ctx = crate::effects::EffectContext::new_default(source, alice);
+            for segment in &definition.spell_effect.as_ref().unwrap().segments {
+                for effect in &segment.default_effects {
+                    crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
+                }
+            }
+            assert_eq!(!game.players[0].hand.is_empty(), should_return, "{types:?}");
+            let mut actual = game.battlefield.iter().map(|id| game.object(*id).unwrap().name.clone()).collect::<Vec<_>>();
+            actual.sort();
+            let expected = types.iter().enumerate().filter(|(_, ty)| **ty == Some(CardType::Creature))
+                .map(|(i, _)| format!("Revealed Probe {i}")).collect::<Vec<_>>();
+            assert_eq!(actual, expected, "{types:?}: {definition:#?}");
+            for id in &game.battlefield {
+                let token = game.object(*id).unwrap();
+                assert_eq!(token.kind, crate::object::ObjectKind::Token);
+                assert_eq!(game.current_controller(*id), Some(alice));
+                assert_eq!(token.power(), Some(1));
+                assert_eq!(token.toughness(), Some(1));
+                assert!(token.subtypes.contains(&crate::types::Subtype::Spirit));
+                assert!(token.has_static_ability_id(crate::static_abilities::StaticAbilityId::Flying));
+            }
+        }
+    }
+
+    #[test]
+    fn no_revealed_cards_keeps_negative_filtered_result() {
+        for descriptor in ["creature", "blue creature", "nonland"] {
+            let line = format!("Reveal the top card of your library. If no {descriptor} cards were revealed this way, draw a card.");
+            let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Chromatic Probe")
+                .card_types(vec![CardType::Sorcery]).parse_text(&line).unwrap();
+            let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+            assert!(rendered.contains(&format!("If no {descriptor} cards were revealed this way")), "{rendered}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod shared_counter_list_execution_tests {
+    use super::*;
+
+    #[test]
+    fn shared_counter_list_on_source_keeps_source_identity() {
+        let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Counter Source Probe")
+            .card_types(vec![CardType::Creature])
+            .parse_text("{1}: Put a +1/+1 counter and a double strike counter on this creature.").unwrap();
+        let mut game = crate::game_state::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id;
+        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let mut ctx = crate::effects::EffectContext::new_default(source, alice);
+        let ability = definition.abilities.iter().find_map(|ability| match &ability.kind {
+            crate::ability::AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        }).unwrap();
+        for segment in &ability.effects.segments {
+            for effect in &segment.default_effects {
+                crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
+            }
+        }
+        let object = game.object(source).unwrap();
+        assert_eq!(object.counters.get(&CounterType::PlusOnePlusOne), Some(&1));
+        assert_eq!(object.counters.get(&CounterType::DoubleStrike), Some(&1));
+    }
+
+    #[test]
+    fn shared_counter_list_applies_every_counter_to_one_target_and_untaps_it() {
+        let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Counter List Probe")
+            .card_types(vec![CardType::Instant])
+            .parse_text("Put a +1/+1 counter, a reach counter, and a deathtouch counter on target creature. Untap it.").unwrap();
+        let mut game = crate::game_state::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id;
+        let creature = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Counter Recipient")
+            .card_types(vec![CardType::Creature]).build();
+        let chosen = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+        let other = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+        game.tap(chosen);
+        game.tap(other);
+        let source = game.create_object_from_definition(&definition, alice, Zone::Stack);
+        let requirements = crate::game_loop::extract_target_requirements_from_program_with_modes(
+            &game, definition.spell_effect.as_ref().unwrap(), alice, Some(source), None,
+        );
+        assert_eq!(requirements.len(), 1, "{requirements:#?}");
+        let mut ctx = crate::effects::EffectContext::new_default(source, alice)
+            .with_targets(vec![crate::effects::ResolvedTarget::Object(chosen)]);
+        for segment in &definition.spell_effect.as_ref().unwrap().segments {
+            for effect in &segment.default_effects {
+                crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
+            }
+        }
+        let recipient = game.object(chosen).unwrap();
+        for counter in [CounterType::PlusOnePlusOne, CounterType::Reach, CounterType::Deathtouch] {
+            assert_eq!(recipient.counters.get(&counter), Some(&1), "{counter:?}");
+        }
+        assert!(!game.is_tapped(chosen));
+        assert!(game.is_tapped(other));
+        assert!(game.object(other).unwrap().counters.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod counter_payment_reference_tests {
+    use super::*;
+
+    fn payment_values(effect: &Effect, values: &mut Vec<Value>) {
+        if let Some(unless) = effect.downcast_ref::<crate::effects::UnlessPaysEffect>() {
+            if let Some(dynamic) = unless.cost.dynamic_mana_cost() {
+                if let Some(value) = &dynamic.x_value { values.push(value.clone()); }
+            }
+        }
+        effect.0.visit_child_effects(&mut |child| payment_values(child, values));
+    }
+
+    #[test]
+    fn counter_payment_uses_target_mana_value_not_source() {
+        let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Payment Reference Probe")
+            .card_types(vec![CardType::Instant])
+            .mana_cost(crate::mana::ManaCost::from_symbols(vec![crate::mana::ManaSymbol::Generic(3)]))
+            .parse_text("Counter target spell unless its controller pays {X}, where X is its mana value.").unwrap();
+        let mut values = Vec::new();
+        for segment in &definition.spell_effect.as_ref().unwrap().segments {
+            for effect in &segment.default_effects { payment_values(effect, &mut values); }
+        }
+        assert_eq!(values.len(), 1);
+        for mana_value in [0, 2, 7] {
+            let mut game = crate::game_state::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = game.players[0].id;
+            let bob = game.players[1].id;
+            let source = game.create_object_from_definition(&definition, alice, Zone::Stack);
+            let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Countered Spell")
+                .card_types(vec![CardType::Instant])
+                .mana_cost(crate::mana::ManaCost::from_symbols(vec![crate::mana::ManaSymbol::Generic(mana_value)]))
+                .build();
+            let target = game.create_object_from_card(&card, bob, Zone::Stack);
+            game.stack.push(crate::game_state::StackEntry::new(target, bob));
+            let ctx = crate::effects::EffectContext::new_default(source, alice)
+                .with_targets(vec![crate::effects::ResolvedTarget::Object(target)]);
+            assert_eq!(crate::effects::resolve_value(&game, &values[0], &ctx).unwrap(), mana_value as i32);
+        }
+        let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+        assert!(rendered.contains("where X is target spell's mana value"), "{rendered}");
+    }
+}
+
+#[cfg(test)]
+mod counted_library_followup_execution_tests {
+    use super::*;
+
+    #[test]
+    fn surveil_followup_counters_the_previously_chosen_spell() {
+        let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Library Counter Probe")
+            .card_types(vec![CardType::Instant])
+            .parse_text("Choose target spell. Surveil 2, then counter the chosen spell unless its controller pays {1} for each card in your graveyard.").unwrap();
+        let mut game = crate::game_state::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Stack Probe")
+            .card_types(vec![CardType::Instant]).build();
+        game.create_object_from_card(&card, alice, Zone::Graveyard);
+        let chosen = game.create_object_from_card(&card, bob, Zone::Stack);
+        let other = game.create_object_from_card(&card, bob, Zone::Stack);
+        game.stack.push(crate::game_state::StackEntry::new(chosen, bob));
+        game.stack.push(crate::game_state::StackEntry::new(other, bob));
+        let source = game.create_object_from_definition(&definition, alice, Zone::Stack);
+        let mut ctx = crate::effects::EffectContext::new_default(source, alice)
+            .with_targets(vec![crate::effects::ResolvedTarget::Object(chosen)]);
+        let requirements = crate::game_loop::extract_target_requirements_from_program_with_modes(
+            &game, definition.spell_effect.as_ref().unwrap(), alice, Some(source), None,
+        );
+        assert_eq!(requirements.len(), 1, "{requirements:#?}");
+        for segment in &definition.spell_effect.as_ref().unwrap().segments {
+            for effect in &segment.default_effects {
+                crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
+            }
+        }
+        assert!(!game.stack.iter().any(|entry| entry.object_id == chosen));
+        assert!(game.stack.iter().any(|entry| entry.object_id == other));
+        assert_eq!(game.players[1].graveyard.len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod search_mana_value_execution_tests {
+    use super::*;
+
+    fn search_filters(effect: &Effect, filters: &mut Vec<ObjectFilter>) {
+        if let Some(search) = effect.downcast_ref::<crate::effects::SearchLibraryEffect>() {
+            filters.push(search.filter.clone());
+        }
+        effect.0.visit_child_effects(&mut |child| search_filters(child, filters));
+    }
+
+    #[test]
+    fn search_mana_value_and_exact_cost_match_different_cards() {
+        use crate::mana::{ManaCost, ManaSymbol};
+        for (descriptor, expected) in [
+            ("mana value 1", [true, true, true, false, false, false]),
+            ("mana cost {1}", [true, false, false, false, false, false]),
+            ("mana value 0", [false, false, false, false, true, false]),
+            ("mana value 1 or 2", [true, true, true, true, false, false]),
+            ("mana value 1 or less", [true, true, true, false, true, false]),
+            ("mana value 2 or greater", [false, false, false, true, false, false]),
+        ] {
+            let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Mana Search Probe")
+                .card_types(vec![CardType::Sorcery])
+                .parse_text(&format!("Search your library for an instant or sorcery card with {descriptor}, reveal it, put it into your hand, then shuffle.")).unwrap();
+            let mut filters = Vec::new();
+            for segment in &definition.spell_effect.as_ref().unwrap().segments {
+                for effect in &segment.default_effects { search_filters(effect, &mut filters); }
+            }
+            assert_eq!(filters.len(), 1);
+            for ((symbols, ty), expected) in [
+                (Some(vec![ManaSymbol::Generic(1)]), CardType::Instant),
+                (Some(vec![ManaSymbol::Blue]), CardType::Sorcery),
+                (Some(vec![ManaSymbol::X, ManaSymbol::Blue]), CardType::Instant),
+                (Some(vec![ManaSymbol::Generic(2)]), CardType::Instant),
+                (None, CardType::Sorcery),
+                (Some(vec![ManaSymbol::Blue]), CardType::Creature),
+            ].into_iter().zip(expected) {
+                let mut game = crate::game_state::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+                let alice = game.players[0].id;
+                let source = game.create_object_from_definition(&definition, alice, Zone::Stack);
+                let mut builder = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Search Candidate").card_types(vec![ty]);
+                if let Some(symbols) = symbols { builder = builder.mana_cost(ManaCost::from_symbols(symbols)); }
+                game.create_object_from_card(&builder.build(), alice, Zone::Library);
+                let ctx = crate::effects::EffectContext::new_default(source, alice);
+                let actual = crate::effects::resolve_value(&game, &Value::Count(filters[0].clone()), &ctx).unwrap();
+                assert_eq!(actual, i32::from(expected), "{descriptor}: {ty:?}: {:#?}", filters[0]);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod last_turn_untap_text_tests {
+    use super::*;
+
+    #[test]
+    fn last_turn_untap_text_preserves_the_condition() {
+        for (ty, text) in [
+            (CardType::Creature, "This creature doesn't untap during your untap step if it attacked during your last turn."),
+            (CardType::Enchantment, "Enchant creature\nEnchanted creature doesn't untap during its controller's untap step if it attacked during its controller's last turn."),
+        ] {
+            let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Conditional Untap Probe")
+                .card_types(vec![ty]).parse_text(text).unwrap();
+            let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+            assert!(rendered.contains("last turn"), "{rendered}");
+            assert!(rendered.contains("doesn't untap"), "{rendered}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod attached_untap_counter_tests {
+    use super::*;
+
+    #[test]
+    fn attached_untap_counter_condition_checks_host_not_aura() {
+        let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Counter Aura Probe")
+            .card_types(vec![CardType::Enchantment])
+            .parse_text("Enchant creature\nEnchanted creature doesn't untap during its controller's untap step if it has a sleep counter on it.").unwrap();
+        let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+        assert!(rendered.contains("if it has a sleep counter on it"), "{rendered} {definition:#?}");
+        let mut game = crate::game_state::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let creature = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Enchanted Host")
+            .card_types(vec![CardType::Creature]).build();
+        let host = game.create_object_from_card(&creature, bob, Zone::Battlefield);
+        let aura = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        game.object_mut(aura).unwrap().attached_to = Some(crate::object::AttachmentTarget::Object(host));
+        game.object_mut(host).unwrap().attachments.push(aura);
+        let counter = CounterType::Named("sleep".into());
+        game.object_mut(host).unwrap().add_counters(counter, 1);
+        game.turn.active_player = bob;
+        game.tap(host);
+        crate::turn::execute_untap_step(&mut game);
+        assert!(game.is_tapped(host));
+        game.object_mut(host).unwrap().remove_counters(counter, 1);
+        game.object_mut(aura).unwrap().add_counters(counter, 1);
+        crate::turn::execute_untap_step(&mut game);
+        assert!(!game.is_tapped(host), "counter on Aura must not suppress host untap");
+    }
+}
+
+#[cfg(test)]
+mod graveyard_attack_restriction_tests {
+    use super::*;
+
+    #[test]
+    fn graveyard_restriction_checks_each_opponent_separately() {
+        let text = "This creature can't attack or block unless an opponent has eight or more cards in their graveyard.";
+        let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Graveyard Restriction Probe")
+            .card_types(vec![CardType::Creature]).parse_text(text).unwrap();
+        assert!(definition.spell_effect.is_none(), "restriction must be static");
+        for (counts, permitted) in [([8, 4, 4], false), ([0, 0, 8], true), ([0, 8, 0], true), ([0, 7, 0], false)] {
+            let mut game = crate::game_state::GameState::new(vec!["Alice".into(), "Bob".into(), "Carol".into()], 20);
+            let alice = game.players[0].id;
+            let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+            game.remove_summoning_sickness(source);
+            let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Graveyard Card").build();
+            for (index, count) in counts.into_iter().enumerate() {
+                let owner = game.players[index].id;
+                for _ in 0..count { game.create_object_from_card(&card, owner, Zone::Graveyard); }
+            }
+            let condition = crate::effect::Condition::PlayerHasAtLeast {
+                player: PlayerFilter::Opponent,
+                filter: ObjectFilter::default().in_zone(Zone::Graveyard),
+                count: 8,
+            };
+            assert_eq!(engine::condition_eval::evaluate_condition_cast_time(&game, &condition, alice, source), permitted);
+            let ctx = crate::effects::EffectContext::new_default(source, alice);
+            assert_eq!(engine::condition_eval::evaluate_condition_resolution(&game, &condition, &ctx).unwrap(), permitted);
+            let external = engine::condition_eval::ExternalEvaluationContext {
+                controller: alice, source, defending_player: None, attacking_player: None,
+                filter_source: Some(source), iterated_player: None, triggering_event: None,
+                trigger_identity: None, ability_index: None, options: Default::default(),
+            };
+            assert_eq!(engine::condition_eval::evaluate_condition_external(&game, &condition, &external), permitted);
+            game.update_cant_effects();
+            assert_eq!(game.can_attack(source), permitted, "attack: {counts:?}");
+            assert_eq!(game.can_block(source), permitted, "block: {counts:?}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod paired_partner_restriction_tests {
+    use super::*;
+
+    #[test]
+    fn paired_restriction_requires_partner_to_retain_soulbond() {
+        let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Partner Restriction Probe")
+            .card_types(vec![CardType::Creature])
+            .parse_text("This creature can't attack or block unless it's paired with a creature with soulbond.").unwrap();
+        assert!(definition.spell_effect.is_none(), "restriction must be static");
+        let debug = format!("{:#?}", definition.abilities);
+        assert!(debug.contains("SourceSoulbondPartnerMatches"), "{debug}");
+        let partner_definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Soulbond Partner Probe")
+            .card_types(vec![CardType::Creature]).parse_text("Soulbond").unwrap();
+        let mut game = crate::game_state::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id;
+        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let partner = game.create_object_from_definition(&partner_definition, alice, Zone::Battlefield);
+        game.remove_summoning_sickness(source);
+        game.update_cant_effects();
+        assert!(!game.can_attack(source));
+        assert!(!game.can_block(source));
+        game.set_soulbond_pair(source, partner);
+        game.update_cant_effects();
+        assert!(game.can_attack(source));
+        assert!(game.can_block(source));
+        game.object_mut(partner).unwrap().abilities = std::sync::Arc::new(vec![]);
+        assert!(game.is_soulbond_paired(source), "losing soulbond does not break the pair");
+        game.update_cant_effects();
+        assert!(!game.can_attack(source), "partner without soulbond must not satisfy restriction");
+        assert!(!game.can_block(source));
+    }
+}
+
+#[cfg(test)]
+mod distinct_mana_draw_tests {
+    use super::*;
+    use crate::mana::ManaCost;
+
+    #[test]
+    fn distinct_mana_draw_counts_values_not_objects_in_both_zones() {
+        for (zone, text) in [
+            (Zone::Battlefield, "Draw a card for each different mana value among nonland permanents you control."),
+            (Zone::Graveyard, "Draw a card for each different mana value among nonland cards in your graveyard."),
+        ] {
+            let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Distinct Mana Draw Probe")
+                .card_types(vec![CardType::Sorcery]).parse_text(text).unwrap();
+            let effects = definition.spell_effect.as_ref().unwrap().flattened_default_effects();
+            let draw = effects.iter().find_map(|e| e.downcast_ref::<crate::effects::DrawCardsEffect>()).unwrap();
+            assert!(matches!(draw.count.unhinted(), Value::DistinctManaValues(_)), "{:#?}", draw.count);
+            let mut game = crate::game_state::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = game.players[0].id;
+            let bob = game.players[1].id;
+            let source = game.create_object_from_definition(&definition, alice, Zone::Stack);
+            for (owner, ty, cost) in [
+                (alice, CardType::Creature, None),
+                (alice, CardType::Artifact, Some(vec![ManaSymbol::Blue])),
+                (alice, CardType::Artifact, Some(vec![ManaSymbol::X, ManaSymbol::Blue])),
+                (alice, CardType::Enchantment, Some(vec![ManaSymbol::Generic(2)])),
+                (alice, CardType::Land, Some(vec![ManaSymbol::Generic(5)])),
+                (bob, CardType::Artifact, Some(vec![ManaSymbol::Generic(7)])),
+            ] {
+                let mut builder = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Count Candidate").card_types(vec![ty]);
+                if let Some(cost) = cost { builder = builder.mana_cost(ManaCost::from_symbols(cost)); }
+                game.create_object_from_card(&builder.build(), owner, zone);
+            }
+            let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Library Card").build();
+            for _ in 0..8 { game.create_object_from_card(&card, alice, Zone::Library); }
+            let mut ctx = crate::effects::EffectContext::new_default(source, alice);
+            assert_eq!(crate::effects::resolve_value(&game, &draw.count, &ctx).unwrap(), 3, "{zone:?}");
+            for effect in effects { crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap(); }
+            assert_eq!(game.player(alice).unwrap().hand.len(), 3, "{zone:?}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod destroy_collection_union_tests {
+    use super::*;
+
+    #[test]
+    fn destroy_union_selects_creatures_and_attached_permanents_together() {
+        let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Destroy Union Probe")
+            .card_types(vec![CardType::Sorcery])
+            .parse_text("Destroy all creatures and all permanents attached to creatures.").unwrap();
+        let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+        assert_eq!(rendered.trim_end_matches('.'), "Destroy all creatures and all permanents attached to creatures");
+        let effects = definition.spell_effect.as_ref().unwrap().flattened_default_effects();
+        assert_eq!(effects.len(), 1, "one simultaneous destruction operation");
+        let mut game = crate::game_state::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id;
+        let source = game.create_object_from_definition(&definition, alice, Zone::Stack);
+        let creature = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Host Creature").card_types(vec![CardType::Creature]).build();
+        let artifact = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Attachment").card_types(vec![CardType::Artifact]).build();
+        let land = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Land Host").card_types(vec![CardType::Land]).build();
+        let host = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+        let other_creature = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+        let equipment = game.create_object_from_card(&artifact, alice, Zone::Battlefield);
+        let loose_artifact = game.create_object_from_card(&artifact, alice, Zone::Battlefield);
+        let land_host = game.create_object_from_card(&land, alice, Zone::Battlefield);
+        let land_attachment = game.create_object_from_card(&artifact, alice, Zone::Battlefield);
+        for (attachment, host) in [(equipment, host), (land_attachment, land_host)] {
+            game.object_mut(attachment).unwrap().attached_to = Some(crate::object::AttachmentTarget::Object(host));
+            game.object_mut(host).unwrap().attachments.push(attachment);
+        }
+        let mut ctx = crate::effects::EffectContext::new_default(source, alice);
+        for effect in effects { crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap(); }
+        for id in [host, other_creature, equipment] {
+            assert!(!game.battlefield.contains(&id), "selected object {id:?} must be destroyed");
+        }
+        for id in [loose_artifact, land_host, land_attachment] {
+            assert!(game.battlefield.contains(&id), "unrelated object {id:?} must remain");
+        }
+        assert_eq!(game.player(alice).unwrap().graveyard.len(), 3);
+    }
+}
+
+#[cfg(test)]
+mod opponent_sacrifice_protection_tests {
+    use super::*;
+    #[test]
+    fn opponent_sacrifice_protection_parses_as_a_static_restriction() {
+        let text = "Spells and abilities your opponents control can't cause you to sacrifice permanents.";
+        let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Sacrifice Protection Probe")
+            .card_types(vec![CardType::Creature]).parse_text(text).unwrap();
+        assert!(definition.spell_effect.is_none(), "protection must not become a sacrifice effect");
+        let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+        assert_eq!(rendered.trim_end_matches('.'), text.trim_end_matches('.'));
+        assert!(format!("{:#?}", definition.abilities).contains("BeSacrificedByCause"));
+        for opponent in [true, false] {
+            let mut game = crate::game_state::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = game.players[0].id;
+            let bob = game.players[1].id;
+            let protected = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+            let spell = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Sacrifice Request").card_types(vec![CardType::Sorcery]).build();
+            let source = game.create_object_from_card(&spell, bob, Zone::Stack);
+            game.update_cant_effects();
+            let mut ctx = crate::effects::EffectContext::new_default(source, if opponent { bob } else { alice });
+            let effect = crate::effect::Effect::new(crate::effects::SacrificeEffect::player(ObjectFilter::creature(), 1, PlayerFilter::Specific(alice)));
+            crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap();
+            assert_eq!(game.battlefield.contains(&protected), opponent);
+        }
+    }
+}
+
+#[cfg(test)]
+mod typed_attack_tax_compile_tests {
+    use super::*;
+    #[test]
+    fn parsed_attack_taxes_apply_phyrexian_color_and_dynamic_rules() {
+        use crate::mana::ManaSymbol;
+        use crate::combat_state::{AttackTarget, CombatState};
+        let annex = "Creatures can't attack you or planeswalkers you control unless their controller pays {W/P} for each of those creatures.";
+        let grass = "Black creatures can't attack you. Nonblack creatures can't attack you unless their controller pays {2} for each creature they control that's attacking you.";
+        let sphere = "Creatures can't attack you or planeswalkers you control unless their controller pays {X} for each of those creatures, where X is the number of enchantments you control.";
+        for (text, black, mana, extra_enchantment, success, remaining_life, walker) in [
+            (annex, false, 0, false, true, 18, false),
+            (annex, false, 0, false, true, 18, true),
+            (grass, false, 2, false, true, 20, false),
+            (grass, false, 1, false, false, 20, false),
+            (grass, true, 2, false, false, 20, false),
+            (grass, true, 0, false, true, 20, true),
+            (sphere, false, 2, true, true, 20, false),
+            (sphere, false, 1, true, false, 20, false),
+        ] {
+            let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Parsed Tax")
+                .card_types(vec![CardType::Enchantment]).parse_text(text).unwrap();
+            let mut game = crate::game_state::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = game.players[0].id; let bob = game.players[1].id;
+            game.turn.active_player = alice;
+            game.create_object_from_definition(&definition, bob, Zone::Battlefield);
+            if extra_enchantment {
+                let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Other Enchantment")
+                    .card_types(vec![CardType::Enchantment]).build();
+                game.create_object_from_card(&card, bob, Zone::Battlefield);
+            }
+            let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Attacker")
+                .card_types(vec![CardType::Creature])
+                .color_indicator(if black { crate::color::ColorSet::BLACK } else { crate::color::ColorSet::WHITE })
+                .power_toughness(crate::card::PowerToughness::fixed(2, 2)).build();
+            let attacker = game.create_object_from_card(&card, alice, Zone::Battlefield);
+            game.remove_summoning_sickness(attacker);
+            game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Colorless, mana);
+            let target = if walker {
+                let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Defending Walker")
+                    .card_types(vec![CardType::Planeswalker]).build();
+                AttackTarget::Planeswalker(game.create_object_from_card(&card, bob, Zone::Battlefield))
+            } else { AttackTarget::Player(bob) };
+            game.refresh_continuous_state();
+            let mut combat = CombatState::default();
+            let result = crate::game_loop::apply_attacker_declarations(&mut game, &mut combat,
+                &mut crate::triggers::TriggerQueue::new(), &[crate::decision::AttackerDeclaration {
+                    creature: attacker, target,
+                }]);
+            assert_eq!(result.is_ok(), success, "{text}; black={black}, mana={mana}: {result:?}");
+            assert_eq!(game.player(alice).unwrap().life, remaining_life);
+            assert_eq!(game.is_tapped(attacker), success);
+            assert_eq!(game.player(alice).unwrap().mana_pool.total(), if success { 0 } else { mana });
+        }
+    }
+
+    #[test]
+    fn typed_attack_taxes_compile_and_render_from_cost_and_filter() {
+        for text in [
+            "Creatures can't attack you or planeswalkers you control unless their controller pays {W/P} for each of those creatures.",
+            "Nonblack creatures can't attack you unless their controller pays {2} for each creature they control that's attacking you.",
+            "Creatures can't attack you or planeswalkers you control unless their controller pays {X} for each of those creatures, where X is the number of enchantments you control.",
+        ] {
+            let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Attack Tax Probe")
+                .card_types(vec![CardType::Enchantment]).parse_text(text).unwrap();
+            assert!(definition.spell_effect.is_none(), "tax must be static: {definition:#?}");
+            assert_eq!(definition.abilities.len(), 1, "{definition:#?}");
+            let crate::ability::AbilityKind::Static(ability) = &definition.abilities[0].kind else {
+                panic!("tax must be static: {definition:#?}");
+            };
+            assert!(ability.attack_cost_model().is_some(), "tax must retain typed payment: {ability:#?}");
+            let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+            assert_eq!(rendered.trim_end_matches('.'), text.trim_end_matches('.'));
+        }
+    }
+}
+
+#[cfg(test)]
+mod base_characteristic_choice_tests {
+    use super::*;
+    struct ChooseStat { index: usize, prompts: usize }
+    impl crate::decision::DecisionMaker for ChooseStat {
+        fn decide_options(&mut self, _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> {
+            assert_eq!(ctx.options.len(), 2);
+            self.prompts += 1; vec![self.index]
+        }
+    }
+    #[test]
+    fn base_characteristic_choice_sets_only_chosen_stat_and_expires() {
+        let def = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Characteristic Choice")
+            .card_types(vec![CardType::Creature])
+            .parse_text("{T}: Until end of turn, target creature has base power 1 or base toughness 1.").unwrap();
+        let crate::ability::AbilityKind::Activated(ability) = &def.abilities[0].kind else { unreachable!(); };
+        for index in [0, 1] {
+            let mut game = crate::game_state::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = game.players[0].id; let bob = game.players[1].id;
+            let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+            let creature = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Recipient")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(crate::card::PowerToughness::fixed(5, 7)).build();
+            let target = game.create_object_from_card(&creature, bob, Zone::Battlefield);
+            let other = game.create_object_from_card(&creature, bob, Zone::Battlefield);
+            game.object_mut(target).unwrap().add_counters(CounterType::PlusOnePlusOne, 1);
+            game.refresh_continuous_state();
+            assert_eq!((game.current_power(target), game.current_toughness(target)), (Some(6), Some(8)));
+            let mut dm = ChooseStat { index, prompts: 0 };
+            let mut ctx = crate::effects::EffectContext::new(source, alice, &mut dm)
+                .with_targets(vec![crate::effects::ResolvedTarget::Object(target)]);
+            for segment in &ability.effects.segments {
+                for effect in &segment.default_effects { crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap(); }
+            }
+            drop(ctx);
+            assert_eq!(dm.prompts, 1, "the controller chooses the stat as the ability resolves");
+            let expected = if index == 0 { (Some(2), Some(8)) } else { (Some(6), Some(2)) };
+            assert_eq!((game.current_power(target), game.current_toughness(target)), expected,
+                "base setting must retain the other stat and the later counter layer");
+            assert_eq!((game.current_power(other), game.current_toughness(other)), (Some(5), Some(7)));
+            crate::turn::execute_cleanup_step(&mut game);
+            assert_eq!((game.current_power(target), game.current_toughness(target)), (Some(6), Some(8)));
+        }
+    }
+
+    #[test]
+    fn base_characteristic_choice_has_one_target_and_resolves_a_choice() {
+        let text = "{T}: Until end of turn, target creature has base power 1 or base toughness 1.";
+        let def = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Characteristic Choice")
+            .card_types(vec![CardType::Creature]).parse_text(text).unwrap();
+        let crate::ability::AbilityKind::Activated(ability) = &def.abilities[0].kind else { panic!("expected activation"); };
+        assert_eq!(ability.choices.len(), 1, "one creature is chosen before the stat choice: {ability:#?}");
+        let debug = format!("{:#?}", ability.effects);
+        assert!(debug.contains("ChooseModeEffect"), "choice must resolve instead of constraining a target: {debug}");
+        assert!(debug.contains("SetPower"), "{debug}");
+        assert!(debug.contains("SetToughness"), "{debug}");
+        let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
+        assert_eq!(rendered.trim_end_matches('.'), text.trim_end_matches('.'), "{debug}");
+    }
 }

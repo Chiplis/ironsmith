@@ -1,7 +1,5 @@
 use crate::cards::builders::ObjectChoiceEffectAst;
 use crate::cards::builders::ForEachEffectAst;
-use crate::cards::builders::StatChangeActionAst;
-use crate::cards::builders::GrantActionAst;
 use super::super::zone_handlers::parse_return;
 use super::*;
 use crate::grammar::effects::combat_damage_family_shapes as combat_shapes;
@@ -56,27 +54,8 @@ pub fn parse_sentence_pump_creature_type_of_choice(
         SubjectVerbPrimitiveOwnedClause::from_clause(trimmed_subject_clause);
     gain_candidate_clause.append_clause(get_tail_clause);
     if let Some(mut gain_effects) = parse_gain_ability_sentence(gain_candidate_clause.tokens())? {
-        let mut patched = false;
-        for effect in &mut gain_effects {
-            if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action:
-                    SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll { filter, .. })
-                    | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll { filter, .. })
-                    | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceAll { filter, .. }),
-                ..
-            }) = effect
-            {
-                filter.chosen_creature_type = true;
-                patched = true;
-            }
-        }
-        if patched {
-            let mut effects = vec![EffectAst::subject_verb_choose_creature_type(
-                PlayerAst::You,
-                vec![],
-            )];
-            effects.extend(gain_effects);
-            return Ok(Some(effects));
+        if super::super::gain_ability::patch_creature_type_choice_effects(&mut gain_effects) {
+            return Ok(Some(gain_effects));
         }
     }
 

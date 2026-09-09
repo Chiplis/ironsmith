@@ -49,7 +49,7 @@ pub(super) fn read_leading_if_conditional(
                     parse_effect_chain_preserving_source_exiled_owner_library_bottom,
                 )
             } else {
-                parse_conditional_sentence_family_lexed(tokens, parse_effect_chain_lexed)
+                parse_conditional_sentence_family_lexed(tokens, parse_complete_become_before_effect_chain)
             };
         let Some(mut effects) = conditional? else {
             return Err(CardTextError::InvariantViolation(

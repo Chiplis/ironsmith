@@ -32,6 +32,7 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         }
         "FightEffect" => decode_as::<ironsmith_core::FightEffect>(payload).map(Some),
         "GoadEffect" => decode_as::<ironsmith_core::GoadEffect>(payload).map(Some),
+        "ClearGoadEffect" => decode_as::<ironsmith_core::ClearGoadEffect>(payload).map(Some),
         "GrantAbilitiesTargetEffect" => decode_as::<
             ironsmith_core::GrantAbilitiesTargetEffect<wire::WireStaticAbility>,
         >(payload)

@@ -281,7 +281,7 @@ pub fn parse_deal_damage_with_amount(
             } else {
                 PlayerFilter::without_max_speed(PlayerFilter::Any)
             };
-            Ok(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+            Ok(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
                 filter,
                 effects: vec![EffectAst::subject_verb_damage(
                     amount,
@@ -370,7 +370,7 @@ pub fn parse_deal_damage_with_amount(
             object_filter.was_dealt_damage_by_source_this_game = true;
             Ok(EffectAst::Sequence {
                 effects: vec![
-                    EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+                    EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
                         filter: player_filter,
                         effects: vec![EffectAst::subject_verb_damage(
                             amount.clone(),

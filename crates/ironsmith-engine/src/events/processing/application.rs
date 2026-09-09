@@ -309,7 +309,11 @@ pub(super) fn apply_trait_replacement(
             } else {
                 effect.source
             };
-            let resolved_count = resolve_value_for_etb(selected_count, game, value_source);
+            let prospective = if etb_value_uses_revealed_choice(selected_count) {
+                crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner())
+                    .and_then(|etb| etb.prospective_game_state(game))
+            } else { None };
+            let resolved_count = resolve_value_for_etb(selected_count, prospective.as_ref().unwrap_or(game), value_source);
             let modified = apply_trait_enter_with_counters(
                 &event,
                 *counter_type,
@@ -1434,4 +1438,16 @@ fn resolve_value_for_replacement(
     crate::effects::helpers::resolve_value(game, count, &ctx)
         .unwrap_or(0)
         .max(0) as u32
+}
+
+/// A count of the as-enters revealed collection needs the prepared choice.
+pub(super) fn etb_value_uses_revealed_choice(value: &crate::effect::Value) -> bool {
+    use crate::effect::Value;
+    match value.unhinted() {
+        Value::Count(filter) => filter.tagged_constraints.iter().any(|constraint|
+            constraint.tag.as_str() == crate::effects::PUBLIC_REVEALED_TAG),
+        Value::Add(a, b) | Value::Min(a, b) => etb_value_uses_revealed_choice(a) || etb_value_uses_revealed_choice(b),
+        Value::Scaled(inner, _) | Value::DividedRoundedDown(inner, _) | Value::HalfRoundedDown(inner) => etb_value_uses_revealed_choice(inner),
+        _ => false,
+    }
 }

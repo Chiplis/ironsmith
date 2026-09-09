@@ -4901,3 +4901,36 @@ fn can_turn_face_up_with_method(
         player,
     )
 }
+
+#[cfg(test)]
+mod phyrexian_component_choice_tests {
+    use super::*;
+    struct ChooseLife { prompts: usize }
+    impl DecisionMaker for ChooseLife {
+        fn decide_options(&mut self, _game: &GameState, ctx: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> {
+            self.prompts += 1;
+            vec![ctx.options.iter().find(|o| o.description == "Pay 2 life").expect("life must be offered").index]
+        }
+    }
+    #[test]
+    fn phyrexian_component_choices_preserve_mana_and_remaining_pip_affordability() {
+        use crate::mana::{ManaCost, ManaSymbol};
+        for (life, pips, expected_life, expected_white) in [(20, 1, 18, 1), (3, 2, 1, 0)] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = game.players[0].id;
+            game.player_mut(alice).unwrap().life = life;
+            game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::White, 1);
+            let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Cost source")
+                .card_types(vec![crate::types::CardType::Artifact]).build();
+            let source = game.create_object_from_card(&card, alice, crate::zone::Zone::Battlefield);
+            let cost = crate::cost::TotalCost::mana(ManaCost::from_pips(
+                vec![vec![ManaSymbol::White, ManaSymbol::Life(2)]; pips]
+            ));
+            let mut dm = ChooseLife { prompts: 0 };
+            pay_total_cost_with_choice(&mut game, alice, source, &cost, crate::costs::PaymentReason::Other, &mut dm).unwrap();
+            assert_eq!(dm.prompts, 1, "a forced final pip needs no second choice");
+            assert_eq!(game.player(alice).unwrap().life, expected_life);
+            assert_eq!(game.player(alice).unwrap().mana_pool.white, expected_white);
+        }
+    }
+}

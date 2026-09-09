@@ -802,6 +802,8 @@ pub struct EffectStore {
     /// Active goad effects (a creature attacks each combat and attacks a player
     /// other than the goader if able).
     pub goad_effects: Vec<GoadEffectInstance>,
+    /// Latest resolved removal of the goaded designation for each permanent.
+    pub goad_cleared_at: HashMap<ObjectId, u64>,
 }
 
 impl Default for EffectStore {
@@ -825,6 +827,7 @@ impl Default for EffectStore {
             repeatable_mana_payment_actions: Vec::new(),
             restriction_effects: Vec::new(),
             goad_effects: Vec::new(),
+            goad_cleared_at: HashMap::new(),
         }
     }
 }
@@ -1579,6 +1582,7 @@ pub struct RestrictionEffectInstance {
     pub source: ObjectId,
     pub iterated_player: Option<PlayerId>,
     pub starts_next_turn_of: Option<PlayerId>,
+    pub starts_in_added_combat: Option<u64>,
     pub tagged_objects: HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
     pub duration: crate::effect::Until,
     pub expires_end_of_turn: u32,
@@ -1587,7 +1591,7 @@ pub struct RestrictionEffectInstance {
 
 impl RestrictionEffectInstance {
     pub fn is_pending(&self) -> bool {
-        self.starts_next_turn_of.is_some()
+        self.starts_next_turn_of.is_some() || self.starts_in_added_combat.is_some()
     }
 
     pub fn is_expired(&self, current_turn: u32) -> bool {
@@ -4096,6 +4100,7 @@ impl GameState {
             | crate::effect::Value::CardTypesAmong(filter)
             | crate::effect::Value::ColorsAmong(filter)
             | crate::effect::Value::DistinctNames(filter)
+            | crate::effect::Value::DistinctManaValues(filter)
             | crate::effect::Value::DistinctPowers(filter)
             | crate::effect::Value::StaticAbilitiesAmong { filter, .. } => {
                 Self::object_filter_is_turn_context_sensitive(filter)
@@ -4794,6 +4799,7 @@ impl GameState {
                 source,
                 iterated_player,
                 starts_next_turn_of,
+                starts_in_added_combat: None,
                 tagged_objects,
                 duration,
                 expires_end_of_turn,
@@ -4819,6 +4825,17 @@ impl GameState {
         if had_restrictions {
             self.update_cant_effects();
         }
+    }
+
+    /// End existing goad effects without preventing a later effect from goading again.
+    pub fn clear_goad(&mut self, creature: ObjectId) {
+        if !self.object(creature).is_some_and(|object| object.zone == Zone::Battlefield) {
+            return;
+        }
+        self.effect_store.goad_effects.retain(|effect| effect.creature != creature);
+        self.effect_store.continuous_effects.advance_timestamp();
+        let timestamp = self.effect_store.continuous_effects.current_timestamp();
+        self.effect_store.goad_cleared_at.insert(creature, timestamp);
     }
 
     pub fn add_goad_effect(
@@ -5222,8 +5239,9 @@ impl GameState {
     pub fn cleanup_restrictions_end_of_turn(&mut self) {
         let current_turn = self.turn.turn_number;
         self.effect_store.restriction_effects.retain(|effect| {
-            !matches!(effect.duration, crate::effect::Until::EndOfTurn)
-                || effect.expires_end_of_turn > current_turn
+            effect.starts_in_added_combat.is_none()
+                && (!matches!(effect.duration, crate::effect::Until::EndOfTurn)
+                    || effect.expires_end_of_turn > current_turn)
         });
     }
 
@@ -5231,7 +5249,8 @@ impl GameState {
         let before = self.effect_store.restriction_effects.len();
         self.effect_store
             .restriction_effects
-            .retain(|effect| !matches!(effect.duration, crate::effect::Until::EndOfCombat));
+            .retain(|effect| effect.starts_in_added_combat.is_some()
+                || !matches!(effect.duration, crate::effect::Until::EndOfCombat));
         if self.effect_store.restriction_effects.len() != before {
             self.update_cant_effects();
         }

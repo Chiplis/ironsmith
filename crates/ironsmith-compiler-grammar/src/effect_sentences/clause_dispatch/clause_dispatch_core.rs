@@ -409,7 +409,7 @@ pub(super) fn parse_effect_clause_unstacked(
         });
     }
     if each_other_player {
-        effect = EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+        effect = EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
             filter: PlayerFilter::NotYou,
             effects: vec![effect],
         });
@@ -442,6 +442,9 @@ pub(super) fn parse_passive_goad_clause(
         )));
     }
 
+    if shape.no_longer {
+        return Ok(Some(EffectAst::subject_verb_clear_goad(Some(target))));
+    }
     let duration = if shape.for_rest_of_game {
         Until::Forever
     } else {

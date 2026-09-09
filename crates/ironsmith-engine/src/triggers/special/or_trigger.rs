@@ -819,8 +819,18 @@ impl OrTrigger {
         } else {
             return None;
         };
+        let has_extra_cast_filter = cast.filter.as_ref().is_some_and(|filter| {
+            let mut base = filter.clone();
+            // SpellCastTrigger already establishes these facts and supplies
+            // IteratedPlayer from the event's caster.
+            if base.zone == Some(Zone::Stack) { base.zone = None; }
+            if base.stack_kind == Some(crate::filter::StackObjectKind::Spell) { base.stack_kind = None; }
+            base.has_mana_cost = false;
+            if base.cast_by == Some(PlayerFilter::IteratedPlayer) { base.cast_by = None; }
+            base != ObjectFilter::default()
+        });
         if cast.caster != copied.copier
-            || cast.filter.is_some()
+            || has_extra_cast_filter
             || copied.filter.is_some()
             || cast.mana_source_filter.is_some()
             || cast.timing.is_some()
@@ -1443,23 +1453,21 @@ mod tests {
     #[test]
     fn display_compacts_shared_enchanted_player_cast_or_copy_branches() {
         let enchanted = PlayerFilter::TaggedPlayer(crate::tag::TagKey::from("enchanted"));
-        let trigger = Trigger::either(
-            Trigger::spell_cast_qualified(
-                None,
-                enchanted.clone(),
-                None,
-                None,
-                Some(2),
-                None,
-                false,
-            ),
+        let mut event_spell = ObjectFilter::spell();
+        event_spell.cast_by = Some(PlayerFilter::IteratedPlayer);
+        for filter in [None, Some(event_spell.clone())] {
+            let trigger = Trigger::either(
+                Trigger::spell_cast_qualified(filter, enchanted.clone(), None, None, Some(2), None, false),
+                Trigger::spell_copied(None, enchanted.clone()),
+            );
+            assert_eq!(trigger.display(), "Whenever enchanted player casts a spell other than the first spell they cast each turn or copies a spell");
+        }
+        event_spell.card_types = vec![CardType::Creature];
+        let restricted = Trigger::either(
+            Trigger::spell_cast_qualified(Some(event_spell), enchanted.clone(), None, None, Some(2), None, false),
             Trigger::spell_copied(None, enchanted),
         );
-
-        assert_eq!(
-            trigger.display(),
-            "Whenever enchanted player casts a spell other than the first spell they cast each turn or copies a spell"
-        );
+        assert!(restricted.display().contains("creature"), "{}", restricted.display());
     }
 
     #[test]

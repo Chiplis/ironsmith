@@ -218,6 +218,7 @@ pub fn parse_aggregate_scope_value_lexed(tokens: &[OwnedLexToken]) -> Option<Val
         AggregateValueMetric::Colors => Some(Value::ColorsAmong(filter)),
         AggregateValueMetric::ColorPairs => Some(Value::ColorPairsAmong(filter)),
         AggregateValueMetric::DistinctNames => Some(Value::DistinctNames(filter)),
+        AggregateValueMetric::DistinctManaValues => Some(Value::DistinctManaValues(filter)),
         AggregateValueMetric::DistinctPowers => Some(Value::DistinctPowers(filter)),
         AggregateValueMetric::Counters => Some(
             Value::CountersOn(Box::new(crate::target::ChooseSpec::All(filter)), None)

@@ -2093,6 +2093,7 @@ where
                         added_subtypes: spec.added_subtypes,
                         added_abilities,
                         set_base_power_toughness: spec.set_base_power_toughness,
+                        added_abilities_source_filter: spec.added_abilities_source_filter.clone(),
                         set_base_power_toughness_from_self: spec
                             .set_base_power_toughness_from_self,
                     },

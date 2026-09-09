@@ -257,3 +257,14 @@ fn sacrifice_all_except_kept_count_chooses_count_minus_keep_set() {
     assert_eq!(subject.player, PlayerAst::That);
     assert_eq!(sacrificed, &ObjectFilter::tagged(tag.clone()));
 }
+
+#[test]
+fn fixed_sacrifice_count_retains_the_actor_and_followup() {
+    let tokens = lex_line("Sacrifices three permanents, then draws a card.", 0).unwrap();
+    let effect = parse_sacrifice(&tokens, Some(SubjectAst::Player(PlayerAst::ThatPlayerOrTargetController)), None).unwrap();
+    let debug = format!("{effect:?}");
+    assert!(!debug.contains("ChooseObjects"));
+    assert!(debug.contains("ThatPlayerOrTargetController"));
+    assert!(debug.contains("count: 3"));
+    assert!(debug.contains("Draw"));
+}

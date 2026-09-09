@@ -3409,6 +3409,7 @@ pub fn parse_anthem_clause(
                                     | Value::ColorPairsAmong(_)
                                     | Value::CardTypesAmong(_)
                                     | Value::DistinctNames(_)
+                                    | Value::DistinctManaValues(_)
                                     | Value::DistinctPowers(_)
                             )
                         {

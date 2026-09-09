@@ -128,10 +128,7 @@ fn normalize_compiled_effects(mut compiled: Vec<Effect>) -> Vec<Effect> {
 
 fn with_wrapped_damage_target(effect: &Effect, target: ChooseSpec) -> Option<Effect> {
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
-        return Some(Effect::new(crate::effects::TaggedEffect::new(
-            tagged.tag.clone(),
-            with_wrapped_damage_target(&tagged.effect, target)?,
-        )));
+        return Some(Effect::new(tagged.with_effect(with_wrapped_damage_target(&tagged.effect, target)?)));
     }
     let mut damage = effect
         .downcast_ref::<crate::effects::DealDamageEffect>()?
@@ -363,10 +360,7 @@ fn with_plural_result_reference(
     type_noun: Option<crate::types::CardType>,
 ) -> Effect {
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
-        return Effect::new(crate::effects::TaggedEffect::new(
-            tagged.tag.clone(),
-            with_plural_result_reference(&tagged.effect, tags, type_noun),
-        ));
+        return Effect::new(tagged.with_effect(with_plural_result_reference(&tagged.effect, tags, type_noun)));
     }
     let Some(apply) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>() else {
         return effect.clone();
@@ -2021,10 +2015,7 @@ fn link_source_move_to_damaged_death_card(lowered: &mut LoweredEffects, conditio
     let mut replacement = move_to_zone.clone();
     replacement.target =
         ChooseSpec::Object(filter).with_count(crate::effect::ChoiceCount::exactly(1));
-    *effect = Effect::new(crate::effects::TaggedEffect::new(
-        tagged.tag.clone(),
-        Effect::new(replacement),
-    ));
+    *effect = Effect::new(tagged.with_effect(Effect::new(replacement)));
 }
 
 fn dedupe_adjacent_target_only_effects(lowered: &mut LoweredEffects) {
@@ -2683,7 +2674,7 @@ fn normalize_conditional_action_target(
 ) -> Option<Effect> {
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
         return normalize_conditional_action_target(&tagged.effect, first_tag, first_filter)
-            .map(|effect| effect.tag(tagged.tag.clone()));
+            .map(|effect| Effect::new(tagged.with_effect(effect)));
     }
 
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {

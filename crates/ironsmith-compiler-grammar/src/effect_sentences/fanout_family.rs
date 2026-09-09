@@ -765,7 +765,7 @@ fn damage_player_iteration_effect(filter: PlayerFilter, effects: Vec<EffectAst>)
     match filter {
         PlayerFilter::Opponent => EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }),
         PlayerFilter::Any => EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }),
-        other => EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+        other => EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
             filter: other,
             effects,
         }),

@@ -310,10 +310,7 @@ fn link_source_move_to_damaged_death_card(lowered: &mut LoweredEffects, conditio
     let mut replacement = move_to_zone.clone();
     replacement.target =
         ChooseSpec::Object(filter).with_count(crate::effect::ChoiceCount::exactly(1));
-    *effect = Effect::new(crate::effects::TaggedEffect::new(
-        tagged.tag.clone(),
-        Effect::new(replacement),
-    ));
+    *effect = Effect::new(tagged.with_effect(Effect::new(replacement)));
 }
 
 fn object_filter_is_it_reference(filter: &ObjectFilter) -> bool {
@@ -1276,6 +1273,9 @@ fn link_spell_cast_mana_spent_condition(trigger: &TriggerSpec, condition: Condit
         }
         Condition::ColoredManaSpentToCastThisSpellAtLeast(amount) => {
             Condition::TriggeringSpellColoredManaSpentToCastAtLeast(amount)
+        }
+        Condition::SnowManaOfAnySpellColorSpentToCastThisSpell => {
+            Condition::TriggeringSpellSnowManaOfAnySpellColorSpentToCast
         }
         Condition::Not(inner) => Condition::Not(Box::new(link_spell_cast_mana_spent_condition(
             trigger, *inner,
@@ -2401,7 +2401,7 @@ fn statement_terminal_needs_participant_result_export(effect: &EffectAst) -> boo
                     | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { .. })
                     | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { .. })
             ),
-            EffectAst::TagAffected { effect, .. } => is_damage_aggregate_member(effect),
+            EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => is_damage_aggregate_member(effect),
             EffectAst::ForEach(ForEachEffectAst::ForEachObject { effects, .. }) | EffectAst::ForEach(ForEachEffectAst::ForEachTagged { effects, .. }) => {
                 !effects.is_empty() && effects.iter().all(is_damage_aggregate_member)
             }
@@ -2432,7 +2432,7 @@ fn statement_terminal_needs_participant_result_export(effect: &EffectAst) -> boo
         | EffectAst::Conditionals(ConditionalEffectAst::TrailingUnless { effects, .. }) => effects
             .last()
             .is_some_and(statement_terminal_needs_participant_result_export),
-        EffectAst::TagAffected { effect, .. } => {
+        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => {
             statement_terminal_needs_participant_result_export(effect)
         }
         _ => false,
@@ -3190,6 +3190,7 @@ fn lower_parsed_ability_internal(
             if let Some(condition) = intervening_if.as_ref() {
                 link_source_move_to_damaged_death_card(&mut lowered, condition);
             }
+            bind_cast_spell_future_entry_counters(&trigger, &mut lowered);
             fuse_source_control_loss_sacrifice_followup(&mut lowered);
             triggered.trigger = compile_trigger_spec(trigger);
             triggered.effects = lowered.effects;
@@ -3546,12 +3547,24 @@ pub fn lower_keyword_action_to_object_abilities(
     )?)])
 }
 
+fn bind_source_grant_condition(condition: crate::ConditionExpr) -> crate::ConditionExpr {
+    use crate::ConditionExpr as C;
+    match condition {
+        C::TargetMatches(filter) => C::SourceMatches(filter),
+        C::Not(inner) => C::Not(Box::new(bind_source_grant_condition(*inner))),
+        C::And(left, right) => C::And(Box::new(bind_source_grant_condition(*left)), Box::new(bind_source_grant_condition(*right))),
+        C::Or(left, right) => C::Or(Box::new(bind_source_grant_condition(*left)), Box::new(bind_source_grant_condition(*right))),
+        other => other,
+    }
+}
+
 fn object_abilities_grant(
     filter: ObjectFilter,
     abilities: Vec<Ability>,
     display: String,
     condition: Option<crate::ConditionExpr>,
 ) -> Result<StaticAbility, CardTextError> {
+    let condition = if filter.source { condition.map(bind_source_grant_condition) } else { condition };
     let mut abilities = abilities.into_iter();
     let first = abilities.next().ok_or_else(|| {
         CardTextError::InvariantViolation("keyword grant produced no abilities".to_string())
@@ -3593,6 +3606,33 @@ fn preserve_named_granting_source_in_effect(effect: Effect) -> Effect {
             .map(preserve_named_granting_source_in_effect)
             .collect();
         return Effect::new(sequence);
+    }
+
+    // The condition and action both carry the same explicit granting-source
+    // identity. Consume it into one source scope, retaining the ordinary
+    // no-counter predicate inside that scope.
+    if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>()
+        && let crate::ConditionExpr::SourceMatches(filter) = &conditional.condition
+        && let Some(crate::filter::CounterConstraint::Typed(counter)) = filter.without_counter
+        && conditional.if_false.is_empty()
+        && let [destroy] = conditional.if_true.as_slice()
+        && destroy
+            .downcast_ref::<crate::effects::DestroyEffect>()
+            .is_some()
+        && let Some(source) = direct_named_granting_source_spec(destroy)
+        && filter.source_surface.as_ref() == source.source_reference_surface()
+    {
+        let mut plain = filter.clone();
+        plain.without_counter = None;
+        plain.source_surface = None;
+        if plain == ObjectFilter::source() {
+            let mut conditional = conditional.clone();
+            conditional.condition = crate::ConditionExpr::SourceHasNoCounter(counter);
+            return Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+                source,
+                Effect::new(conditional),
+            ));
+        }
     }
 
     let Some(source) = direct_named_granting_source_spec(&effect) else {
@@ -3984,13 +4024,18 @@ pub fn lower_static_ability_ast(ability: StaticAbilityAst) -> Result<StaticAbili
         StaticAbilityAst::EquipmentKeywordActionsGrant { actions } => {
             let mut lowered = Vec::new();
             let mut names = Vec::with_capacity(actions.len());
+            let mut unblockable = false;
             for action in actions {
                 let display = action.display_text();
                 let mut name = display.clone();
                 if let Some(first) = name.get(..1) {
                     name = format!("{}{}", first.to_ascii_lowercase(), &display[1..]);
                 }
-                names.push(name);
+                if matches!(action, KeywordAction::Unblockable) {
+                    unblockable = true;
+                } else {
+                    names.push(name);
+                }
                 lowered.extend(lower_keyword_action_to_object_abilities(action)?);
             }
             // The printed line for a multi-keyword equipment grant is a full
@@ -4002,9 +4047,14 @@ pub fn lower_static_ability_ast(ability: StaticAbilityAst) -> Result<StaticAbili
                 [first, second] => format!("{first} and {second}"),
                 [rest @ .., last] => format!("{}, and {last}", rest.join(", ")),
             };
+            let display = match (names.is_empty(), unblockable) {
+                (true, true) => "Equipped creature can't be blocked.".to_string(),
+                (false, true) => format!("Equipped creature has {joined} and can't be blocked."),
+                _ => format!("Equipped creature has {joined}."),
+            };
             attached_object_abilities_grant(
                 lowered,
-                format!("Equipped creature has {joined}."),
+                display,
                 None,
                 false,
             )
@@ -4016,12 +4066,12 @@ pub fn lower_static_ability_ast(ability: StaticAbilityAst) -> Result<StaticAbili
             condition,
         } => {
             let lowered = lower_parsed_ability(ability)?;
+            let source_only = filter.source;
             let mut grant =
                 crate::static_abilities::GrantObjectAbilityForFilter::new(filter, lowered, display);
             if let Some(condition) = condition {
-                grant = grant.with_condition(
-                    crate::lowering_support::resolve_intervening_if_without_trigger(&condition)?,
-                );
+                let condition = crate::lowering_support::resolve_intervening_if_without_trigger(&condition)?;
+                grant = grant.with_condition(if source_only { bind_source_grant_condition(condition) } else { condition });
             }
             Ok(StaticAbility::new(grant))
         }
@@ -4040,6 +4090,14 @@ pub fn lower_static_ability_ast(ability: StaticAbilityAst) -> Result<StaticAbili
                     .transpose()?,
                 false,
             )
+        }
+        StaticAbilityAst::EntryReplacementWithGrantedAbilities { entry, abilities } => {
+            let mut entry = lower_compiler_static_ability_core(entry)?;
+            let crate::static_abilities::StaticAbilityPayload::EntersWithCountersIfCondition { added_abilities, .. } = &mut entry.payload else {
+                return Err(CardTextError::InvariantViolation("entry ability grants require an entry-counter replacement".into()));
+            };
+            for ability in abilities { added_abilities.push(lower_parsed_ability(ability)?); }
+            Ok(entry)
         }
         StaticAbilityAst::SoulbondSharedObjectAbility { ability } => {
             let lowered = lower_parsed_ability(ability)?;
@@ -4096,6 +4154,7 @@ pub(crate) fn lower_compiler_static_ability_core(
                         added_subtypes: spec.added_subtypes,
                         added_abilities,
                         set_base_power_toughness: spec.set_base_power_toughness,
+                        added_abilities_source_filter: spec.added_abilities_source_filter.clone(),
                         set_base_power_toughness_from_self: spec.set_base_power_toughness_from_self,
                     },
                     display,
@@ -4839,6 +4898,19 @@ pub fn validate_iterated_player_bindings_in_lowered_effects(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn source_keyword_grant_binds_predicate_without_rebinding_other_grants() {
+        for source_only in [false, true] {
+            let filter = if source_only { ObjectFilter::source() } else { ObjectFilter::creature() };
+            let condition = crate::ConditionExpr::TargetMatches(ObjectFilter::default().with_subtype(crate::types::Subtype::Wall));
+            let grant = object_abilities_grant(filter, vec![Ability::static_ability(StaticAbility::defender())], "Defender".into(), Some(condition)).unwrap();
+            let crate::static_abilities::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) = grant.payload else { panic!("expected object grant"); };
+            assert_eq!(matches!(grant.condition, Some(crate::ConditionExpr::SourceMatches(_))), source_only);
+            assert_eq!(matches!(grant.condition, Some(crate::ConditionExpr::TargetMatches(_))), !source_only);
+        }
+    }
+
     use crate::Until;
     use ironsmith_compiler::lexer::lex_line;
 
@@ -5584,6 +5656,33 @@ mod tests {
                 matches!(&conditional.condition, Condition::Not(_)),
                 "runtime true branch must retain the negated executable gate: {text}"
             );
+        }
+    }
+}
+
+fn bind_cast_spell_future_entry_counters(trigger: &TriggerSpec, lowered: &mut LoweredEffects) {
+    if !trigger_is_spell_cast(trigger) { return; }
+    fn reference_type(trigger: &TriggerSpec) -> Option<crate::types::CardType> {
+        match trigger {
+            TriggerSpec::WithIntro { trigger, .. } => reference_type(trigger),
+            TriggerSpec::SpellCast { filter: Some(filter), .. } if filter.card_types.len() == 1 => filter.card_types.first().copied(),
+            _ => None,
+        }
+    }
+    for segment in &mut lowered.effects.segments {
+        for effect in &mut segment.default_effects {
+            let Some(counters) = effect.downcast_ref::<crate::effects::PutCountersEffect>() else { continue; };
+            if !counters.amount.has_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
+                || counters.distributed || counters.target_count.is_some() { continue; }
+            let ChooseSpec::Tagged(tag) = counters.target.base() else { continue; };
+            if tag.as_str() != "triggering" { continue; }
+            let objects = ObjectFilter::exact_tagged(tag.clone()).in_zone(Zone::Stack);
+            let mut replacement = crate::effects::RegisterEnterWithCountersReplacementEffect::new(
+                ObjectFilter::permanent(), counters.counter_type, counters.amount.clone(),
+                crate::effects::ReplacementApplyMode::OneShot,
+            ).with_objects(ChooseSpec::Object(objects));
+            replacement.object_reference_type = reference_type(trigger);
+            *effect = Effect::new(replacement);
         }
     }
 }

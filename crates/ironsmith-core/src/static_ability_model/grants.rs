@@ -973,6 +973,9 @@ pub struct EnterAsCopyAsEntersSpec<T, E, C, Cond, ICond = Condition> {
     pub added_subtypes: Vec<Subtype>,
     pub added_abilities: Vec<AbilityModel<T, E, C, Cond, ICond>>,
     pub set_base_power_toughness: Option<(i32, i32)>,
+    /// Add the extra abilities only when the chosen copy source matches this filter.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub added_abilities_source_filter: Option<ObjectFilter>,
     pub set_base_power_toughness_from_self: bool,
 }
 

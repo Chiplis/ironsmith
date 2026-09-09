@@ -1,8 +1,15 @@
 use super::*;
 
-pub(super) fn exact_atomic_return_as_aura_bundle(
+pub fn exact_atomic_return_as_aura_bundle(
     effect_parse_tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
+    // Authored CST tokens retain capitalization; use their normalized word
+    // spelling while retaining spans and literal surfaces for the typed leaves.
+    let mut normalized = effect_parse_tokens.to_vec();
+    for token in &mut normalized {
+        token.lowercase_word();
+    }
+    let effect_parse_tokens = normalized.as_slice();
     let sentences = split_lexed_sentences(effect_parse_tokens);
     let [return_sentence, aura_sentence] = sentences.as_slice() else {
         return None;
@@ -84,7 +91,8 @@ pub(super) fn exact_atomic_return_as_aura_bundle(
     let [EffectAst::SubjectVerb(return_subject_verb)] = effects.as_mut_slice() else {
         return None;
     };
-    let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { as_aura, .. }) = &mut return_subject_verb.action
+    let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { as_aura, .. }) =
+        &mut return_subject_verb.action
     else {
         return None;
     };

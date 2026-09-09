@@ -137,6 +137,28 @@ pub(super) fn is_you_subject(tokens: &[OwnedLexToken]) -> bool {
     parse_complete(trim_clause(tokens), primitives::kw("you").void())
 }
 
+pub(super) fn parse_subject_status_disjunction(
+    tokens: &[OwnedLexToken],
+) -> Option<crate::cards::builders::PredicateAst> {
+    let mut input = LexStream::new(trim_clause(tokens));
+    let subject_tokens = primitives::take_leaf(&mut input,
+        repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(parse_copula))
+            .map(|((), ())| ()).take())?;
+    primitives::take_leaf(&mut input, parse_copula)?;
+    let subject = parse_status_subject(None, subject_tokens)?;
+    let states: Vec<_> = primitives::take_leaf(&mut input,
+        winnow::combinator::separated(2.., parse_status_state, primitives::kw("or")))?;
+    primitives::take_leaf(&mut input, parse_end)?;
+    let mut predicates = states.into_iter().map(|state| {
+        SubjectStatusConditionAst { subject, state }.condition_expr()
+    });
+    let mut predicate = predicates.next()??;
+    for next in predicates {
+        predicate = crate::cards::builders::PredicateAst::Or(Box::new(predicate), Box::new(next?));
+    }
+    Some(predicate)
+}
+
 fn parse_subject_status_with_copula(
     context: Option<crate::parse_context::ParseContextView<'_>>,
     tokens: &[OwnedLexToken],

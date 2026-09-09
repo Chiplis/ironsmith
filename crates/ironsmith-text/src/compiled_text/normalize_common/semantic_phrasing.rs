@@ -1,5 +1,38 @@
 use super::*;
 
+// A coordinated type list already shares its trailing spell noun. Only
+// supply a missing noun for an unqualified, single-type counter target.
+fn normalize_bare_counter_spell_nouns(line: &str) -> String {
+    let mut normalized = line.to_string();
+    for card_type in ["instant", "sorcery"] {
+        let prefix = format!("Counter target {card_type}");
+        let mut output = String::new();
+        let mut remainder = normalized.as_str();
+        while let Some(index) = remainder.find(&prefix) {
+            let end = index + prefix.len();
+            output.push_str(&remainder[..end]);
+            remainder = &remainder[end..];
+            if remainder.is_empty() || remainder.starts_with('.')
+                || remainder.starts_with(" unless ")
+            {
+                output.push_str(" spell");
+            }
+        }
+        output.push_str(remainder);
+        normalized = output;
+    }
+    normalized
+}
+
+#[test]
+fn bare_counter_spell_nouns_preserve_coordinated_types() {
+    for surface in ["Counter target instant or sorcery spell.", "Counter target instant spell.", "Counter target sorcery spell."] {
+        assert_eq!(normalize_bare_counter_spell_nouns(surface), surface);
+    }
+    assert_eq!(normalize_bare_counter_spell_nouns("Counter target instant unless its controller pays {2}."), "Counter target instant spell unless its controller pays {2}.");
+    assert_eq!(normalize_bare_counter_spell_nouns("Counter target sorcery."), "Counter target sorcery spell.");
+}
+
 fn compact_repeated_counter_recipient_damage_source(line: &str) -> Option<String> {
     let lower = line.to_ascii_lowercase();
     for marker in [" counter on ", " counters on "] {
@@ -729,6 +762,10 @@ fn reorder_equal_damage_recipient(line: &str) -> Option<String> {
     if prefix.is_empty()
         || amount.is_empty()
         || recipient.is_empty()
+        // Keep a source-relative characteristic next to its subject. Moving
+        // it after another permanent makes the possessive appear to name
+        // the recipient instead of the damage source.
+        || amount.eq_ignore_ascii_case("its mana value")
         || amount.eq_ignore_ascii_case("its power")
         || amount.eq_ignore_ascii_case("that creature's power")
         || amount.contains('.')
@@ -6182,6 +6219,8 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         normalized = normalized.replace("{{", "{").replace("}}", "}");
     }
 
+    normalized = normalize_bare_counter_spell_nouns(&normalized);
+
     // Keep explicitly rendered `that player` antecedents. Generic player-loop
     // and delayed-player surfaces already choose `they` at their typed
     // rendering source; rewriting the explicit form here erases distinct
@@ -6328,12 +6367,10 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "Whenever a player casts a spell, counter it unless its controller pays ",
             "Whenever a player casts a spell, counter that spell unless that player pays ",
         )
-        .replace("Counter target instant", "Counter target instant spell")
         .replace(
             "Counter target instant spell spell and sorcery spell",
             "Counter target instant or sorcery spell",
         )
-        .replace("Counter target sorcery", "Counter target sorcery spell")
         .replace("Counter target instant spell spell", "Counter target instant spell")
         .replace("Counter target sorcery spell spell", "Counter target sorcery spell")
         .replace(

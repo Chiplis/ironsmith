@@ -37,6 +37,11 @@ pub enum CharacteristicActionAst {
         target: TargetAst,
         duration: Until,
     },
+    SetBaseToughness {
+        toughness: Value,
+        target: TargetAst,
+        duration: Until,
+    },
     AddCardTypes {
         target: TargetAst,
         card_types: Vec<CardType>,

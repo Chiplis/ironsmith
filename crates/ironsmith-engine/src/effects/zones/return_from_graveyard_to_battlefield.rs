@@ -4,7 +4,7 @@ use super::battlefield_entry::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_batch_with_options,
     resolve_battlefield_entry_counters,
 };
-use crate::continuous::{ContinuousEffect, EffectTarget, Modification};
+use crate::continuous::Modification;
 use crate::decisions::make_decision;
 use crate::decisions::specs::objects::ChooseObjectsSpec;
 use crate::effect::{EffectOutcome, OutcomeObjectMemory};
@@ -90,14 +90,7 @@ fn choose_aura_attachment_target(
     Ok(chosen.into_iter().find(|id| candidates.contains(id)))
 }
 
-fn apply_returned_aura_effect(
-    game: &mut GameState,
-    ctx: &ExecutionContext,
-    object_id: ObjectId,
-    options: &ReturnAsAuraOptions,
-) {
-    let group = game.effect_store.continuous_effects.next_effect_group_id();
-    let target = EffectTarget::Specific(object_id);
+fn returned_aura_modifications(options: &ReturnAsAuraOptions) -> Vec<Modification> {
     let mut modifications = vec![
         Modification::AddCardTypes(vec![CardType::Enchantment]),
         Modification::RemoveCardTypes(vec![
@@ -115,13 +108,7 @@ fn apply_returned_aura_effect(
         modifications.push(Modification::RemoveAllAbilities);
     }
 
-    for modification in modifications {
-        game.effect_store.continuous_effects.add_effect(
-            ContinuousEffect::new(ctx.source, ctx.controller, target.clone(), modification)
-                .with_group(group),
-        );
-    }
-    game.refresh_continuous_state();
+    modifications
 }
 
 /// Effect that returns a target card from a graveyard to the battlefield.
@@ -189,7 +176,13 @@ impl EffectExecutor for ReturnFromGraveyardToBattlefieldEffect {
                     (
                         *target_id,
                         BattlefieldEntryOptions::preserve(self.tapped)
-                            .with_initial_counters(initial_counters),
+                            .with_initial_counters(initial_counters)
+                            .with_entry_modifications(
+                                self.as_aura
+                                    .as_ref()
+                                    .map(returned_aura_modifications)
+                                    .unwrap_or_default(),
+                            ),
                     )
                 })
             })
@@ -200,8 +193,7 @@ impl EffectExecutor for ReturnFromGraveyardToBattlefieldEffect {
         for outcome in outcomes {
             match outcome {
                 BattlefieldEntryOutcome::Moved(new_id) => {
-                    if let Some(as_aura) = &self.as_aura {
-                        apply_returned_aura_effect(game, ctx, new_id, as_aura);
+                    if self.as_aura.is_some() {
                         if let Some(attachment_target) = attachment_target
                             && !attach_battlefield_object_to_target(
                                 game,

@@ -1,0 +1,34 @@
+use super::*;
+
+const TEXT: &str = "When you cast a Bolas planeswalker spell, exile this card from your graveyard. That planeswalker enters with an additional loyalty counter on it.";
+
+#[test]
+fn graveyard_cast_entry_counter_follows_the_cast_spell() {
+    let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Dark Intimations")
+        .card_types(vec![CardType::Sorcery]).parse_text(TEXT).unwrap();
+    for remove_source in [false, true] {
+        let mut game = crate::game_state::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id; let bob = game.players[1].id;
+        let source = game.create_object_from_definition(&definition, alice, Zone::Graveyard);
+        let walker = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Bolas Fixture")
+            .card_types(vec![CardType::Planeswalker]).subtypes(vec![Subtype::Bolas]).loyalty(4).build();
+        let spell = game.create_object_from_definition(&walker, alice, Zone::Stack);
+        let snapshot = crate::snapshot::ObjectSnapshot::from_object(game.object(spell).unwrap(), &game);
+        let event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::SpellCastEvent::new_with_snapshot(spell, alice, Zone::Hand, snapshot),
+            crate::provenance::ProvNodeId::default());
+        let triggers = crate::triggers::check_triggers(&game, &event);
+        assert_eq!(triggers.len(), 1, "graveyard ability must trigger for its owner's Bolas cast");
+        let mut queue = crate::triggers::TriggerQueue::new();
+        for trigger in triggers { queue.add(trigger); }
+        crate::game_loop::put_triggers_on_stack(&mut game, &mut queue).unwrap();
+        if remove_source { game.move_object_by_effect(source, Zone::Hand).unwrap(); }
+        crate::game_loop::resolve_stack_entry(&mut game).unwrap();
+        if !remove_source { assert!(game.player(alice).unwrap().exile.iter().any(|id| game.object(*id).is_some_and(|o| o.name == "Dark Intimations"))); }
+        let unrelated = game.create_object_from_definition(&walker, bob, Zone::Hand);
+        let unrelated = game.move_object_with_etb_processing(unrelated, Zone::Battlefield).unwrap().new_id;
+        assert_eq!(game.object(unrelated).unwrap().counters.get(&crate::CounterType::Loyalty).copied(), Some(4));
+        let entered = game.move_object_with_etb_processing(spell, Zone::Battlefield).unwrap().new_id;
+        assert_eq!(game.object(entered).unwrap().counters.get(&crate::CounterType::Loyalty).copied(), Some(5));
+    }
+}

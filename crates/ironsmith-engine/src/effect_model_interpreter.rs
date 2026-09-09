@@ -195,10 +195,9 @@ where
     H: EffectModelInterpreterHooks<M>,
 {
     if let Some(payload) = M::downcast_ref::<ironsmith_core::TaggedEffect<M::Effect>>(&effect) {
-        return Ok(Effect::new(crate::effects::TaggedEffect::new(
-            payload.tag.clone(),
-            interpret_effect_model((*payload.effect).clone(), hooks)?,
-        )));
+        let mut tagged = payload.with_effect(interpret_effect_model((*payload.effect).clone(), hooks)?);
+        tagged.outcome_only = payload.outcome_only;
+        return Ok(Effect::new(tagged));
     }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::TargetOnlyEffect>(&effect) {
         return Ok(converted);
@@ -957,6 +956,7 @@ where
         } else {
             crate::effects::ForPlayersEffect::new(payload.filter.clone(), effects)
         };
+        converted.sequential = payload.sequential;
         if payload.stop_after_first_happened {
             converted = converted.stop_after_first_happened();
         }
@@ -965,10 +965,7 @@ where
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::ForEachTaggedEffect<M::Effect>>(&effect)
     {
-        let mut converted = crate::effects::ForEachTaggedEffect::new(
-            payload.tag.clone(),
-            convert_effects(payload.effects.iter().cloned(), hooks)?,
-        );
+        let mut converted = crate::effects::ForEachTaggedEffect::new(payload.tag.clone(), convert_effects(payload.effects.iter().cloned(), hooks)?);
         if let Some(blocker_tag) = &payload.controller_at_last_blocked_by {
             converted = converted.with_controller_at_last_blocked_by(blocker_tag.clone());
         }
@@ -978,10 +975,7 @@ where
         M::downcast_ref::<ironsmith_core::ForEachControllerOfTaggedEffect<M::Effect>>(&effect)
     {
         return Ok(Effect::new(
-            crate::effects::ForEachControllerOfTaggedEffect::new(
-                payload.tag.clone(),
-                convert_effects(payload.effects.iter().cloned(), hooks)?,
-            ),
+            crate::effects::ForEachControllerOfTaggedEffect::new(payload.tag.clone(), convert_effects(payload.effects.iter().cloned(), hooks)?),
         ));
     }
     if let Some(payload) =
@@ -1423,13 +1417,10 @@ where
         ));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::GrantPlayTaggedEffect>(&effect) {
-        let mut grant = crate::effects::GrantPlayTaggedEffect::new(
-            payload.tag.clone(),
-            payload.player.clone(),
+        let mut grant = crate::effects::GrantPlayTaggedEffect::new(payload.tag.clone(), payload.player.clone(),
             payload.duration,
             payload.allow_land,
-            payload.mana_spend_mode,
-        )
+            payload.mana_spend_mode)
         .while_on_top_of_library_if(payload.while_on_top_of_library)
         .cast_pool_is_plural(payload.cast_pool_is_plural)
         .with_max_plays(payload.max_plays);
@@ -1622,6 +1613,11 @@ where
         return Ok(converted);
     }
     if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::RegisterEnterWithCountersReplacementEffect>(&effect)
+    {
+        return Ok(converted);
+    }
+    if let Some(converted) =
         clone_direct_effect::<M, crate::effects::RegisterNextBatchEnterWithCountersEffect>(&effect)
     {
         return Ok(converted);
@@ -1736,6 +1732,11 @@ where
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ClearSuspectedEffect>(&effect) {
         return Ok(Effect::new(crate::effects::ClearSuspectedEffect {
+            target: payload.target.clone(),
+        }));
+    }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::ClearGoadEffect>(&effect) {
+        return Ok(Effect::new(crate::effects::ClearGoadEffect {
             target: payload.target.clone(),
         }));
     }

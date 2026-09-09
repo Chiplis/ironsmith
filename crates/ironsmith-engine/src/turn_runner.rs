@@ -3554,6 +3554,7 @@ mod tests {
 
     #[test]
     fn attack_cost_mana_window_taps_attackers_then_allows_mana_abilities_before_payment() {
+        for typed in [false, true] {
         let mut game = setup_game();
         let mut tq = TriggerQueue::new();
         let mut runner = TurnRunner::new();
@@ -3563,7 +3564,19 @@ mod tests {
         game.remove_summoning_sickness(attacker);
         let mountain = create_mountain(&mut game, alice);
         let second_mountain = create_mountain(&mut game, alice);
-        add_attack_tax(&mut game, bob, 1);
+        let tax = add_attack_tax(&mut game, bob, 1);
+        if typed {
+            let abilities = game.object_mut(tax).unwrap().abilities_mut();
+            abilities.clear();
+            abilities.push(Ability::static_ability(StaticAbility::attack_cost(
+                crate::target::ObjectFilter::creature(), true,
+                crate::cost::TotalCost::from_costs(vec![crate::costs::Cost::dynamic_mana(
+                    ironsmith_core::DynamicManaCost::generic_equal_to(crate::effect::Value::Count(
+                        crate::target::ObjectFilter::enchantment().you_control(),
+                    )),
+                )]), "Dynamic attack tax",
+            )));
+        }
         game.refresh_continuous_state();
 
         game.turn.phase = Phase::Combat;
@@ -3627,6 +3640,7 @@ mod tests {
         assert_eq!(runner.combat.attackers.len(), 1);
         assert_eq!(runner.combat.attackers[0].creature, attacker);
         assert!(!game.is_tapped(second_mountain));
+        }
     }
 
     #[test]

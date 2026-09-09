@@ -344,6 +344,16 @@ fn negate_attached_keyword_condition(condition: PredicateAst) -> PredicateAst {
     }
 }
 
+fn parse_attached_keyword_actions(ability_tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
+    let mixed = crate::grammar::anthem_grants::parse_keywords_and_cant_be_blocked_clause(ability_tokens);
+    let keyword_tokens = mixed.as_ref().map_or(ability_tokens, |clause| clause.keyword_tokens);
+    let mut actions = parse_ability_line(keyword_tokens)?;
+    if mixed.is_some() {
+        actions.push(KeywordAction::Unblockable);
+    }
+    Some(actions)
+}
+
 fn parse_attached_keyword_action_grants(
     subject: &str,
     ability_tokens: &[OwnedLexToken],
@@ -351,7 +361,7 @@ fn parse_attached_keyword_action_grants(
     clause_text: &str,
     prefer_equipment_grant_for_unconditional_equipped: bool,
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    let Some(actions) = parse_ability_line(ability_tokens) else {
+    let Some(actions) = parse_attached_keyword_actions(ability_tokens) else {
         return Ok(None);
     };
 
@@ -1076,7 +1086,7 @@ pub fn parse_enchanted_creature_has_line(
         }]));
     }
 
-    let Some(actions) = parse_ability_line(&ability_tokens) else {
+    let Some(actions) = parse_attached_keyword_actions(&ability_tokens) else {
         return Ok(None);
     };
     let mut out = Vec::new();
@@ -1137,6 +1147,18 @@ pub fn parse_enchanted_creature_has_line(
 /// into the object filter of a one-shot goad effect. That changes
 /// "has indestructible and is goaded" into "goad each creature that already
 /// has indestructible."
+pub fn parse_attached_is_goaded_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let tokens = super::grammar::line_families::parse_visible_line_tokens(tokens);
+    let Some(subject) = attached_grammar::parse_attached_is_goaded_tokens(tokens) else {
+        return Ok(None);
+    };
+    Ok(Some(vec![crate::model::CompilerStaticAbilityCore::attached_goaded_by_source_controller(
+        format!("{} is goaded", capitalize_display_subject(subject.display()))
+    ).into()]))
+}
+
 pub fn parse_attached_has_keywords_and_is_goaded_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
@@ -1371,6 +1393,37 @@ pub fn parse_attached_has_and_loses_keywords_line(
 pub fn parse_attached_cant_attack_or_block_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    if let Some((subject, actions)) =
+        attached_grammar::parse_attached_action_restriction_list_tokens(tokens).filter(|_| {
+            attached_grammar::parse_attached_combat_restriction_tokens(tokens).is_none()
+        })
+    {
+        let restrictions = actions
+            .iter()
+            .map(|action| match *action {
+                "attack" => crate::effect::Restriction::attack(ObjectFilter::source()),
+                "block" => crate::effect::Restriction::block(ObjectFilter::source()),
+                "transform" => crate::effect::Restriction::transform(ObjectFilter::source()),
+                "untap" => crate::effect::Restriction::untap(ObjectFilter::source()),
+                _ => unreachable!("grammar returned an unsupported restriction action"),
+            })
+            .collect();
+        let (last, preceding) = actions.split_last().expect("nonempty action list");
+        let conjunction = if actions.len() > 2 { ", or " } else { " or " };
+        let display = format!(
+            "{} can't {}{conjunction}{last}",
+            subject.display(),
+            preceding.join(", ")
+        );
+        return Ok(Some(StaticAbilityAst::AttachedStaticAbilityGrant {
+            ability: Box::new(StaticAbilityAst::Static(StaticAbility::restrictions(
+                restrictions,
+                display.clone(),
+            ))),
+            display,
+            condition: None,
+        }));
+    }
     let Some(parsed) = attached_grammar::parse_attached_combat_restriction_tokens(tokens) else {
         return Ok(None);
     };

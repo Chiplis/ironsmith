@@ -299,7 +299,13 @@ pub fn parse_turn_target_face_up_shape(
             .void()
     })?;
     let target_tokens = trim_lexed_commas(target_tokens);
-    super::super::super::activation_restrictions::parse_target_indicator_tokens(target_tokens)?;
+    if super::super::super::activation_restrictions::parse_target_indicator_tokens(target_tokens).is_none()
+        && primitives::probe_all(target_tokens, primitives::any_phrase(&[
+            &["that", "creature"], &["that", "permanent"],
+         ]), "face-up object reference").is_none()
+    {
+        return None;
+    }
     (!target_tokens.is_empty()).then_some(TurnTargetFaceUpShape { target_tokens })
 }
 
@@ -360,6 +366,7 @@ pub enum AssignsNoCombatDamageShape<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChooseTargetChooserShape {
     AbilityController,
+    Opponent,
     ItsController,
     /// "That opponent" is the controller of the immediately preceding
     /// target, while also preserving the authored opponent attribution for a

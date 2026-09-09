@@ -484,6 +484,7 @@ fn replace_it_tag_in_value(value: &mut Value, tag: &TagKey) {
         | Value::ColorPairsAmong(filter)
         | Value::DistinctCounterTypesAmong(filter)
         | Value::DistinctNames(filter)
+        | Value::DistinctManaValues(filter)
         | Value::DistinctPowers(filter) => replace_it_tag_in_filter(filter, tag),
         Value::StaticAbilitiesAmong { filter, .. } => replace_it_tag_in_filter(filter, tag),
         Value::TurnHistoryCount(
@@ -1128,9 +1129,17 @@ pub fn resolve_choose_spec_it_tag(
     spec: &ChooseSpec,
     refs: &ReferenceEnv,
 ) -> Result<ChooseSpec, CardTextError> {
+    resolve_choose_spec_it_tag_preserving_selection(spec, refs, false)
+}
+
+fn resolve_choose_spec_it_tag_preserving_selection(
+    spec: &ChooseSpec,
+    refs: &ReferenceEnv,
+    preserve_selection: bool,
+) -> Result<ChooseSpec, CardTextError> {
     match spec {
         ChooseSpec::SurfaceHinted { spec, hints } => Ok(ChooseSpec::SurfaceHinted {
-            spec: Box::new(resolve_choose_spec_it_tag(spec, refs)?),
+            spec: Box::new(resolve_choose_spec_it_tag_preserving_selection(spec, refs, preserve_selection)?),
             hints: hints.clone(),
         }),
         ChooseSpec::Tagged(tag)
@@ -1173,6 +1182,11 @@ pub fn resolve_choose_spec_it_tag(
                     ChooseSpec::Source,
                     resolved.source_surface.clone(),
                 ))
+            } else if preserve_selection {
+                // A targeted linked set is a candidate filter, not an
+                // already-selected object. Preserve its zone and membership
+                // constraints for announcement and resolution legality.
+                Ok(ChooseSpec::Object(resolved))
             } else if let Some(tag) = object_filter_as_tagged_reference(&resolved) {
                 let identity = resolve_choose_spec_it_tag(&ChooseSpec::Tagged(tag), refs)?;
                 Ok(source_reference_hinted_spec(identity, resolved.source_surface.clone()))
@@ -1185,7 +1199,7 @@ pub fn resolve_choose_spec_it_tag(
             resolve_contextual_player_filter(player_filter, refs)?,
         )),
         ChooseSpec::Target(inner) => {
-            let resolved = resolve_choose_spec_it_tag(inner, refs)?;
+            let resolved = resolve_choose_spec_it_tag_preserving_selection(inner, refs, true)?;
             if matches!(resolved.base(), ChooseSpec::Source) {
                 Ok(resolved)
             } else {
@@ -1193,11 +1207,11 @@ pub fn resolve_choose_spec_it_tag(
             }
         }
         ChooseSpec::WithCount(inner, count) => Ok(ChooseSpec::WithCount(
-            Box::new(resolve_choose_spec_it_tag(inner, refs)?),
+            Box::new(resolve_choose_spec_it_tag_preserving_selection(inner, refs, preserve_selection)?),
             *count,
         )),
         ChooseSpec::WithCountValue(inner, count, value) => Ok(ChooseSpec::WithCountValue(
-            Box::new(resolve_choose_spec_it_tag(inner, refs)?),
+            Box::new(resolve_choose_spec_it_tag_preserving_selection(inner, refs, preserve_selection)?),
             *count,
             resolve_value_it_tag(value, refs)?,
         )),
@@ -1283,6 +1297,7 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
             resolve_it_tag(filter, refs)?,
         )),
         Value::DistinctNames(filter) => Ok(Value::DistinctNames(resolve_it_tag(filter, refs)?)),
+        Value::DistinctManaValues(filter) => Ok(Value::DistinctManaValues(resolve_it_tag(filter, refs)?)),
         Value::DistinctPowers(filter) => Ok(Value::DistinctPowers(resolve_it_tag(filter, refs)?)),
         Value::TurnHistoryCount(query) => {
             use ironsmith_core::TurnHistoryCount;
@@ -1317,9 +1332,11 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
                     filter: resolve_it_tag(filter, refs)?,
                 },
                 TurnHistoryCount::CountersPutOn {
+                    source_controller,
                     counter_type,
                     filter,
                 } => TurnHistoryCount::CountersPutOn {
+                    source_controller: source_controller.as_ref().map(|player| resolve_contextual_player_filter(player, refs)).transpose()?,
                     counter_type: *counter_type,
                     filter: resolve_it_tag(filter, refs)?,
                 },
@@ -1407,6 +1424,10 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
         Value::ManaValueOf(spec) => Ok(Value::ManaValueOf(Box::new(resolve_choose_spec_it_tag(
             spec, refs,
         )?))),
+        Value::CountersOn(spec, counter_type) => Ok(Value::CountersOn(
+            Box::new(resolve_choose_spec_it_tag(spec, refs)?),
+            *counter_type,
+        )),
         Value::ManaSymbolsInManaCostOf { spec, color } => Ok(Value::ManaSymbolsInManaCostOf {
             spec: Box::new(resolve_choose_spec_it_tag(spec, refs)?),
             color: *color,
@@ -1809,6 +1830,18 @@ mod tests {
     }
 
     #[test]
+    fn counter_count_resolves_its_object_reference() {
+        let value = Value::CountersOn(Box::new(ChooseSpec::tagged(crate::tag::CompilerReferenceTag::It.as_str())),
+            Some(crate::object::CounterType::PlusOnePlusOne));
+        let source = ReferenceEnv { source_object_antecedent: true, ..Default::default() };
+        assert_eq!(resolve_value_it_tag(&value, &source).unwrap(),
+            Value::CountersOn(Box::new(ChooseSpec::Source), Some(crate::object::CounterType::PlusOnePlusOne)));
+        let tagged = ReferenceEnv { last_object_tag: RefState::Known(TagKey::from("chosen")), ..Default::default() };
+        assert_eq!(resolve_value_it_tag(&value, &tagged).unwrap(),
+            Value::CountersOn(Box::new(ChooseSpec::tagged("chosen")), Some(crate::object::CounterType::PlusOnePlusOne)));
+    }
+
+    #[test]
     fn target_wrapped_implicit_it_value_resolves_to_source() {
         let refs = ReferenceEnv {
             source_object_antecedent: true,
@@ -2022,6 +2055,20 @@ mod tests {
     }
 
     #[test]
+    fn source_exiled_target_preserves_zone_and_count() {
+        let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind());
+        filter.zone = Some(crate::zone::Zone::Exile);
+        let spec = ChooseSpec::WithCount(
+            Box::new(ChooseSpec::target(ChooseSpec::Object(filter))),
+            crate::effect::ChoiceCount::up_to(1),
+        );
+        assert_eq!(
+            resolve_choose_spec_it_tag(&spec, &ReferenceEnv::default()).unwrap(),
+            spec,
+        );
+    }
+
+    #[test]
     fn source_exiled_reference_does_not_bind_to_unrelated_sacrifice() {
         let filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind());
         let refs = ReferenceEnv {
@@ -2142,4 +2189,20 @@ mod tests {
                 && constraint.tag.as_str() == "sacrifice_cost_0"
         }));
     }
+}
+
+/// Keep source-anaphor handling identical in reference planning and lowering.
+pub fn sacrifice_filter_uses_source_antecedent(
+    filter: &ObjectFilter, one_of_referenced_set: bool, refs: &ReferenceEnv,
+) -> bool {
+    !one_of_referenced_set
+        && !refs.iterated_object
+        && refs.has_source_object_antecedent()
+        && refs.known_last_object_tag().is_none_or(|tag| {
+            tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                && !refs.last_it_choice_is_set
+        })
+        && object_filter_as_tagged_reference(filter).is_some_and(|tag| {
+            tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+        })
 }

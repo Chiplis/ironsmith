@@ -94,6 +94,19 @@ pub fn parse_draw(
     };
     let tail = head.tail_tokens;
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
+    // Preserve the source-zone restriction before the generic this-way
+    // metric parser reduces the clause to an unqualified effect count.
+    if let Some(hand_owner) = crate::grammar::effects::subject_verb_registry_shapes::parse_draw_for_exiled_hand_count_shape(tokens)
+    {
+        let mut filter = ObjectFilter::default().in_zone(Zone::Hand);
+        filter.owner = Some(match hand_owner {
+            crate::grammar::effects::subject_verb_registry_shapes::ExiledHandOwner::Your => PlayerFilter::You,
+            crate::grammar::effects::subject_verb_registry_shapes::ExiledHandOwner::Their => PlayerFilter::IteratedPlayer,
+        });
+        return Ok(EffectAst::subject_verb_draw_for_each_tagged_matching(
+            player, crate::tag::CompilerReferenceTag::It.bind(), filter,
+        ));
+    }
     let mut effect = subject_verb_player_resource_effect(
         SubjectVerbRoleAst::AffectedPlayer,
         player,
@@ -633,6 +646,16 @@ pub fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
                 && cost.as_one_of().is_none()
                 && cost.dynamic_mana_cost().is_none();
             if !should_keep_subject_verb_dynamic_path {
+                let cost = cost.try_map(|mut component| {
+                    if let crate::model::CompilerCost::DynamicMana(dynamic) = &mut component {
+                        for slot in [&mut dynamic.x_value, &mut dynamic.additional_generic, &mut dynamic.multiplier] {
+                            if let Some(value) = slot.take() {
+                                *slot = Some(crate::effect_sentences::chain_carry::bind_it_metric_to_declared_target(value, &target));
+                            }
+                        }
+                    }
+                    Ok::<_, CardTextError>(component)
+                })?;
                 return Ok(EffectAst::subject_verb_counter_unless_pays(target, cost));
             }
         }
@@ -703,7 +726,7 @@ pub fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
                 x_value = Some(zone_move_grammar::same_name_graveyard_count_value());
             } else if let Some(value) = parse_value_binding_clause(trailing_tokens) {
                 if mana_cost_is_x_only(&mana) {
-                    x_value = Some(value);
+                    x_value = Some(crate::effect_sentences::chain_carry::bind_it_metric_to_declared_target(value, &target));
                 } else {
                     return Err(CardTextError::ParseError(format!(
                         "unsupported trailing counter-unless payment clause (clause: '{}', trailing: '{}')",

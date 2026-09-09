@@ -611,6 +611,12 @@ pub fn parse_reveal(
 ) -> Result<EffectAst, CardTextError> {
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
+    if let Some(effects) = crate::effect_sentences::subject_verb_primitives::parse_reveal_selected_hand_tail(
+        crate::effect_sentences::SubjectVerbPrimitiveClause::new(tokens), player,
+    )? {
+        return Ok(EffectAst::Sequence { effects });
+    }
+
     let words = crate::lexer::token_word_refs(tokens);
     // Revealing every card in a library is a collection operation, not the
     // ordinary singular `RevealTop` fallback. Tag the exact zone contents so
@@ -1360,6 +1366,25 @@ mod reveal_hand_count_tests {
     use crate::lexer::lex_line;
 
     #[test]
+    fn hand_reveal_leaf_preserves_optional_cardinality() {
+        for (text, maximum) in [
+            ("any number of creature cards with power 5 or greater from your hand", None),
+            ("up to five nonland cards from your hand", Some(5)),
+        ] {
+            let tokens = lex_line(text, 0).unwrap();
+            let parsed = parse_reveal(&tokens, None).unwrap();
+            let EffectAst::Sequence { effects } = parsed else { panic!("expected selection and reveal"); };
+            let EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseObjects { filter, count, .. }) = &effects[0] else { panic!("expected choice"); };
+            assert_eq!(count.min, 0);
+            assert_eq!(count.max, maximum);
+            assert_eq!(filter.zone, Some(Zone::Hand));
+            assert_eq!(filter.owner, Some(PlayerFilter::You));
+        }
+        let tokens = lex_line("it", 0).unwrap();
+        assert!(!matches!(parse_reveal(&tokens, None).unwrap(), EffectAst::Sequence { .. }));
+    }
+
+    #[test]
     fn that_many_cards_from_hand_keeps_the_prior_effect_amount() {
         let tokens = lex_line("that many cards from their hand", 0)
             .expect("dependent hand-reveal count should lex");
@@ -1410,7 +1435,7 @@ mod reveal_hand_count_tests {
             "{debug}"
         );
         assert!(
-            debug.contains("MoveToZoneEffect") && debug.contains("zone: Exile"),
+            debug.contains("ExileEffect"),
             "{debug}"
         );
         assert!(!debug.contains("RevealTaggedEffect"), "{debug}");

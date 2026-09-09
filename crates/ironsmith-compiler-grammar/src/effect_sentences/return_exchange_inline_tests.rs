@@ -363,3 +363,14 @@ fn return_for_each_discarded_card_repeats_from_exact_prior_effect() {
             if query.action == Some(ironsmith_core::PriorEffectAction::Discarded)
     ));
 }
+
+#[test]
+fn targeted_return_keeps_announced_creature_type_and_x_count() {
+    let tokens = lex_line("Return X target creatures of the creature type of your choice to their owner's hand.", 0).unwrap();
+    let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens).unwrap();
+    let rendered = format!("{effects:#?}");
+    assert!(rendered.contains("chosen_creature_type: true"), "{rendered}");
+    assert!(rendered.contains("dynamic_x: true"), "{rendered}");
+    assert!(rendered.contains("ReturnToHand"), "{rendered}");
+    assert!(!rendered.contains("ChooseCreatureType"), "type choice must occur during casting");
+}

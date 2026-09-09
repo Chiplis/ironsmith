@@ -653,3 +653,26 @@ fn attached_subtype_setting_without_stat_or_ability_tail_is_static() {
     let abilities = parse_attached_type_transform_line(&tokens).unwrap().expect("static subtype rule");
     assert!(format!("{abilities:?}").contains("SetCreatureSubtypes"));
 }
+
+#[test]
+fn attached_mixed_keywords_and_blocking_restriction_keep_both_grants() {
+    let tokens = crate::lexer::lex_line("Equipped creature has hexproof and can't be blocked.", 0).unwrap();
+    let parsed = parse_equipped_creature_has_line(&tokens).unwrap().unwrap();
+    let [StaticAbilityAst::EquipmentKeywordActionsGrant { actions }] = parsed.as_slice() else { panic!("{parsed:#?}") };
+    assert_eq!(actions, &[KeywordAction::Hexproof, KeywordAction::Unblockable]);
+    let whole = crate::keyword_static::parse_static_ability_ast_line_lexed(&tokens).unwrap();
+    assert!(whole.is_some(), "whole static dispatcher must retain attached grants");
+}
+
+#[test]
+fn standalone_attached_goad_requires_a_complete_static_clause() {
+    for line in ["Enchanted creature is goaded.", "Equipped creature is goaded."] {
+        let tokens = crate::lexer::lex_line(line, 0).unwrap();
+        let parsed = crate::keyword_static::parse_static_ability_ast_line_lexed(&tokens).unwrap().unwrap();
+        assert!(format!("{parsed:?}").contains("AttachedGoadedBySourceController"));
+    }
+    for line in ["Enchanted creature is no longer goaded.", "Enchanted creature is goaded until end of turn.", "Enchanted creature is goaded and has flying.", "Target creature is goaded."] {
+        let tokens = crate::lexer::lex_line(line, 0).unwrap();
+        assert!(parse_attached_is_goaded_line(&tokens).unwrap().is_none(), "{line}");
+    }
+}

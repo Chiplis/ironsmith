@@ -29,7 +29,7 @@ fn descriptor_separator<'a>(input: &mut LexStream<'a>) -> WResult<()> {
 fn parse_shared_counter_target_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<SharedCounterTargetShape<'a>> {
-    primitives::kw("put").parse_next(input)?;
+    opt(primitives::kw("put")).parse_next(input)?;
     let descriptors =
         separated(2.., parse_counter_descriptor_lexed, descriptor_separator).parse_next(input)?;
     primitives::kw("on").parse_next(input)?;

@@ -1342,6 +1342,23 @@ fn compute_object_targets_with_view(
         filter_ctx = filter_ctx.with_tagged_objects(tagged);
     }
 
+    fn uses_source_exiled_collection(filter: &ObjectFilter) -> bool {
+        filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+        }) || filter.any_of.iter().any(uses_source_exiled_collection)
+    }
+    if uses_source_exiled_collection(filter) && let Some(source) = source_id {
+        // Linked-card targets are chosen before an execution context exists.
+        // Rebuild the live collection here for both announcement and target
+        // revalidation; an old stack snapshot must not restore a broken link.
+        let linked = game.get_exiled_with_source_links(source).iter().filter_map(|id| {
+            game.object(*id).map(|object| {
+                ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
+            })
+        }).collect();
+        filter_ctx.tagged_objects.insert(crate::tag::SOURCE_EXILED_TAG.into(), linked);
+    }
+
     // Target selection commonly follows a zone change (for example, moving a
     // spell from hand to the stack), while continuous state is deliberately
     // still dirty. Candidate narrowing itself can inspect derived card types

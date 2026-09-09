@@ -484,6 +484,14 @@ fn subject_start_at(words: &[&str], offset: usize) -> Option<usize> {
 }
 
 pub fn find_gain_real_subject_start(words: &[&str], before_get: usize) -> usize {
+    // A leading target phrase owns references inside its qualifiers, such as
+    // "with a sticker on it" or "other than this creature". Those embedded
+    // references cannot replace the subject of the coordinated stat change.
+    if words.iter().take(before_get).enumerate().any(|(offset, word)| {
+        *word == "target" && subject_start_at(words, offset) == Some(0)
+    }) {
+        return 0;
+    }
     let mut offset = before_get;
     while offset > 0 {
         offset -= 1;

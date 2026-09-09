@@ -128,6 +128,9 @@ pub enum KeywordActionAst {
     ClearSuspected {
         target: Option<TargetAst>,
     },
+    ClearGoad {
+        target: Option<TargetAst>,
+    },
     Regenerate {
         target: TargetAst,
         follow_up_effects: Vec<EffectAst>,

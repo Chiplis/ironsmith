@@ -14,6 +14,7 @@ pub(super) fn effect_duration_for_gain_followup_carry(effect: &EffectAst) -> Opt
                 | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpByLastEffect { duration, .. })
                 | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness { duration, .. })
                 | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { duration, .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness { duration, .. })
                 | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature { duration, .. })
                 | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddCardTypes { duration, .. })
                 | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCardTypes { duration, .. })

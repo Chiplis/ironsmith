@@ -59,6 +59,14 @@ fn parses_complete_direct_cant_alternatives() {
             DirectCantFact::CantHaveCountersPlaced,
         ),
         (
+            "This artifact can't have counters put on it.",
+            DirectCantFact::CantHaveCountersPlaced,
+        ),
+        (
+            "This permanent can't have counters put on it.",
+            DirectCantFact::CantHaveCountersPlaced,
+        ),
+        (
             "This spell can't be countered.",
             DirectCantFact::ThisSpellCantBeCountered,
         ),

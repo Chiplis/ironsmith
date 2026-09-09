@@ -226,7 +226,7 @@ fn bind_typed_where_x_references(effects: &mut [EffectAst], inherited: Option<Va
                 );
                 bind_typed_where_x_references(if_true, binding.clone());
             }
-            EffectAst::TagAffected { effect, .. } => bind_typed_where_x_references(
+            EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => bind_typed_where_x_references(
                 std::slice::from_mut(effect.as_mut()),
                 binding.clone(),
             ),
@@ -735,7 +735,7 @@ fn choice_collection_producer_is_quantified(effect: &EffectAst) -> Option<bool> 
         | EffectAst::ResultBranchLabel { effects, .. }
         | EffectAst::Permissions(PermissionEffectAst::May { effects })
         | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. }) => sequence_kind(effects),
-        EffectAst::TagAffected { effect, .. } => choice_collection_producer_is_quantified(effect),
+        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => choice_collection_producer_is_quantified(effect),
         EffectAst::Coordination(coordination) => {
             let mut quantified = false;
             let mut any = false;
@@ -782,7 +782,7 @@ fn choice_collection_producer_has_accumulating_tags(effect: &EffectAst) -> bool 
                     .iter()
                     .all(choice_collection_producer_has_accumulating_tags)
         }
-        EffectAst::TagAffected { effect, .. } => {
+        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => {
             choice_collection_producer_has_accumulating_tags(effect)
         }
         EffectAst::Coordination(coordination) => {
@@ -824,7 +824,7 @@ fn retag_choice_collection_producer(effect: &mut EffectAst, durable_tag: &crate:
                 retag_choice_collection_producer(effect, durable_tag);
             }
         }
-        EffectAst::TagAffected { effect, .. } => {
+        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => {
             retag_choice_collection_producer(effect, durable_tag)
         }
         EffectAst::Coordination(coordination) => {
@@ -1006,7 +1006,7 @@ fn choice_collection_producer_matches_object_kind(
                     .iter()
                     .all(|effect| choice_collection_producer_matches_object_kind(effect, expected))
         }
-        EffectAst::TagAffected { effect, .. } => {
+        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => {
             choice_collection_producer_matches_object_kind(effect, expected)
         }
         EffectAst::Coordination(coordination) => {
@@ -1028,7 +1028,7 @@ fn direct_destroy_filter_mut(effect: &mut EffectAst) -> Option<&mut crate::filte
             };
             direct_destroy_filter_mut(effect)
         }
-        EffectAst::TagAffected { effect, .. } => direct_destroy_filter_mut(effect),
+        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => direct_destroy_filter_mut(effect),
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { filter, .. }) => Some(filter),
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy {
@@ -1049,7 +1049,7 @@ fn direct_destroy_filter(effect: &EffectAst) -> Option<&crate::filter::ObjectFil
             };
             direct_destroy_filter(effect)
         }
-        EffectAst::TagAffected { effect, .. } => direct_destroy_filter(effect),
+        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => direct_destroy_filter(effect),
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { filter, .. }) => Some(filter),
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy {
@@ -1158,7 +1158,7 @@ fn direct_destroy_references_chosen_collection(effect: &EffectAst) -> bool {
             };
             direct_destroy_references_chosen_collection(effect)
         }
-        EffectAst::TagAffected { effect, .. } => {
+        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => {
             direct_destroy_references_chosen_collection(effect)
         }
         EffectAst::SubjectVerb(subject_verb)
@@ -1522,7 +1522,7 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
             normalize_singular_source_exiled_move(effect);
             normalize_effects_vec(if_true);
         }
-        EffectAst::TagAffected { effect, .. } => {
+        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => {
             normalize_nested_effects(effect);
             normalize_singular_source_exiled_move(effect);
         }
@@ -2006,7 +2006,7 @@ mod tests {
         complement.other = true;
         let normalized = normalize_effects_ast(&[
             choice(),
-            EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+            EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
                 filter: PlayerFilter::NotYou,
                 effects: vec![choice()],
             }),

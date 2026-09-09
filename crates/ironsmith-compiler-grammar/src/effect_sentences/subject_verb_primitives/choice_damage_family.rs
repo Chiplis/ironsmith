@@ -359,11 +359,39 @@ fn parse_sentence_reveal_selected_cards_in_hand_for_player(
     let Some(shape) = choice_shapes::parse_reveal_selected_hand_shape(clause.tokens()) else {
         return Ok(None);
     };
-    let clause_text = clause.text();
-    let clause_words = clause.word_refs();
-    if clause_words.first() != Some(&"reveal") {
+    lower_selected_hand_reveal(clause, shape, player, owner)
+}
+
+pub fn parse_reveal_selected_hand_tail(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    player: PlayerAst,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if !matches!(player, PlayerAst::Implicit | PlayerAst::You) {
         return Ok(None);
     }
+    let Some(shape) = choice_shapes::parse_reveal_selected_hand_tail_shape(clause.tokens()) else {
+        return Ok(None);
+    };
+    match crate::util::parse_choice_count_token_prefix_consumed(shape.descriptor_tokens) {
+        Some((count, _)) if count.dynamic_x => return Ok(None),
+        None if !SubjectVerbPrimitiveClause::new(shape.descriptor_tokens)
+            .first_word().is_some_and(choice_shapes::is_reveal_article_word) => return Ok(None),
+        _ => {}
+    }
+    lower_selected_hand_reveal(clause, shape, PlayerAst::You, PlayerFilter::You)
+}
+
+fn lower_selected_hand_reveal(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    shape: choice_shapes::RevealSelectedHandShape<'_>,
+    player: PlayerAst,
+    owner: PlayerFilter,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if shape.your_hand != matches!(owner, PlayerFilter::You) {
+        return Ok(None);
+    }
+    let clause_text = clause.text();
+    let clause_words = clause.word_refs();
     if clause_words.iter().any(|word| {
         matches!(
             *word,

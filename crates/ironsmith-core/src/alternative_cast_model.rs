@@ -89,7 +89,7 @@ pub enum AlternativeCastingMethod<E, C, Cond> {
         additional_cost: TotalCost<C>,
     },
     Madness {
-        cost: ManaCost,
+        total_cost: TotalCost<C>,
     },
     Miracle {
         cost: ManaCost,
@@ -196,7 +196,7 @@ where
             Self::Retrace { total_cost } => total_cost.mana_cost(),
             Self::JumpStart { .. } => None,
             Self::Escape { cost, .. } => cost.as_ref(),
-            Self::Madness { cost } => Some(cost),
+            Self::Madness { total_cost } => total_cost.mana_cost(),
             Self::Miracle { cost } => Some(cost),
             Self::FlashWithAdditionalCost { total_cost, .. } => total_cost.mana_cost(),
             Self::Foretell { cost } => Some(cost),
@@ -215,7 +215,7 @@ where
 
         match self {
             Self::Flashback { total_cost } => non_mana_components(total_cost),
-            Self::Blitz { total_cost } => non_mana_components(total_cost),
+            Self::Blitz { total_cost } | Self::Madness { total_cost } => non_mana_components(total_cost),
             Self::Harmonize { total_cost } => non_mana_components(total_cost),
             Self::Retrace { total_cost } => non_mana_components(total_cost),
             Self::JumpStart { additional_cost }
@@ -233,7 +233,7 @@ where
     pub fn total_cost(&self) -> Option<&TotalCost<C>> {
         match self {
             Self::Flashback { total_cost } => Some(total_cost),
-            Self::Blitz { total_cost } => Some(total_cost),
+            Self::Blitz { total_cost } | Self::Madness { total_cost } => Some(total_cost),
             Self::Harmonize { total_cost } => Some(total_cost),
             Self::Retrace { total_cost } => Some(total_cost),
             Self::FlashWithAdditionalCost { total_cost, .. } => Some(total_cost),
@@ -481,9 +481,9 @@ where
         matches!(self, Self::Madness { .. })
     }
 
-    pub fn madness_cost(&self) -> Option<&ManaCost> {
+    pub fn madness_cost(&self) -> Option<&TotalCost<C>> {
         match self {
-            Self::Madness { cost } => Some(cost),
+            Self::Madness { total_cost } => Some(total_cost),
             _ => None,
         }
     }
@@ -597,7 +597,7 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
                 exile_count,
                 additional_cost: map_total_cost(additional_cost)?,
             },
-            Self::Madness { cost } => AlternativeCastingMethod::Madness { cost },
+            Self::Madness { total_cost } => AlternativeCastingMethod::Madness { total_cost: map_total_cost(total_cost)? },
             Self::Miracle { cost } => AlternativeCastingMethod::Miracle { cost },
             Self::FlashWithAdditionalCost {
                 additional_cost,

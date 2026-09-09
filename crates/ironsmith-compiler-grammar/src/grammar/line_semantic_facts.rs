@@ -55,17 +55,25 @@ fn parse_as_enters_effect_program_facts(
             primitives::phrase(&["enters", "with"])
         })
         .is_some();
-    let source_pronoun_enters_with_counter_surface =
+    let body_words = super::super::lexer::token_word_refs(&tokens[comma_idx + 1..])
+        .into_iter().map(str::to_ascii_lowercase).collect::<Vec<_>>();
+    let body_word_refs = body_words.iter().map(String::as_str).collect::<Vec<_>>();
+    let source_words = super::super::lexer::token_word_refs(&tokens[1..subject_end_idx])
+        .into_iter().map(str::to_ascii_lowercase).collect::<Vec<_>>();
+    let mut explicit_source_entry = source_words.iter().map(String::as_str).collect::<Vec<_>>();
+    explicit_source_entry.extend(["enters", "with"]);
+    let source_reference_enters_with_counter_surface =
         primitives::find_prefix(&tokens[comma_idx + 1..], || {
             primitives::phrase(&["it", "enters", "with"])
         })
-        .is_some();
+        .is_some()
+        || crate::word_primitives::parse_sequence_start(&body_word_refs, &explicit_source_entry).is_some();
     Some(AsEntersEffectProgramFacts {
         subject: super::super::lexer::render_token_slice(&tokens[1..subject_end_idx]),
         also_turns_face_up,
         turns_face_up_only,
         uses_enters_with_counter_surface,
-        source_pronoun_enters_with_counter_surface,
+        source_reference_enters_with_counter_surface,
     })
 }
 
@@ -377,7 +385,7 @@ mod tests {
         assert!(as_enters.also_turns_face_up);
         assert!(!as_enters.turns_face_up_only);
         assert!(!as_enters.uses_enters_with_counter_surface);
-        assert!(!as_enters.source_pronoun_enters_with_counter_surface);
+        assert!(!as_enters.source_reference_enters_with_counter_surface);
 
         let face_up_only =
             facts("As this creature is turned face up, put four +1/+1 counters on it.")
@@ -388,7 +396,7 @@ mod tests {
         assert!(face_up_only.also_turns_face_up);
         assert!(face_up_only.turns_face_up_only);
         assert!(!face_up_only.uses_enters_with_counter_surface);
-        assert!(!face_up_only.source_pronoun_enters_with_counter_surface);
+        assert!(!face_up_only.source_reference_enters_with_counter_surface);
 
         let counter_surface = facts(
             "As this creature enters, remove all counters from all permanents. This creature enters with a +1/+1 counter on it for each counter removed this way.",
@@ -397,7 +405,7 @@ mod tests {
         .as_enters_effect_program
         .expect("entry-counter wording should retain the enclosing as-enters timing");
         assert!(counter_surface.uses_enters_with_counter_surface);
-        assert!(!counter_surface.source_pronoun_enters_with_counter_surface);
+        assert!(counter_surface.source_reference_enters_with_counter_surface);
 
         let source_pronoun = facts(
             "As this creature enters, you may sacrifice any number of creatures. If you do, it enters with twice that many +1/+1 counters on it.",
@@ -406,7 +414,12 @@ mod tests {
         .as_enters_effect_program
         .expect("source-relative entry-counter wording should remain typed");
         assert!(source_pronoun.uses_enters_with_counter_surface);
-        assert!(source_pronoun.source_pronoun_enters_with_counter_surface);
+        assert!(source_pronoun.source_reference_enters_with_counter_surface);
+
+        let other_creature = facts(
+            "As this creature enters, return a creature card from your graveyard to the battlefield. That creature enters with two +1/+1 counters on it.",
+        ).statement.as_enters_effect_program.unwrap();
+        assert!(!other_creature.source_reference_enters_with_counter_surface);
     }
 
     #[test]

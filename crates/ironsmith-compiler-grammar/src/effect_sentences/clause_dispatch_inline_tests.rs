@@ -62,7 +62,7 @@ fn only_authored_choose_target_clauses_are_explicit_declarations() {
     let authored = parse_effect_clause(&lex_tail("Choose target opponent."))
         .expect("parse authored target declaration");
     let authored = match authored {
-        EffectAst::TagAffected { effect, .. } => *effect,
+        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => *effect,
         effect => effect,
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -271,33 +271,18 @@ fn any_player_sacrifice_offer_keeps_sequential_player_semantics() {
         panic!("expected typed any-player offer, got {effect:#?}");
     };
     assert_eq!(players, PlayerFilter::Any);
-    let [
-        EffectAst::Sequence {
-            effects: sacrifice_steps,
-        },
-    ] = effects.as_slice()
-    else {
-        panic!("expected a choose-and-sacrifice sequence, got {effects:#?}");
+    let effects = match effects.as_slice() {
+        [EffectAst::Sequence { effects }] => effects.as_slice(),
+        effects => effects,
     };
-    assert!(
-        matches!(
-            sacrifice_steps.as_slice(),
-            [
-                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-                    player: PlayerAst::That,
-                    ..
-                }),
-                EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    subject: crate::model::ast::SubjectVerbSubjectAst {
-                        player: PlayerAst::That,
-                        ..
-                    },
-                    action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { .. }),
-                })
-            ]
-        ),
-        "expected both choice and sacrifice to stay bound to the offered player, got {sacrifice_steps:#?}"
-    );
+    let [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        subject,
+        action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { filter, count: 2, .. }),
+    })] = effects else {
+        panic!("expected a fixed-count sacrifice inside the sequential offer");
+    };
+    assert_eq!(subject.player, PlayerAst::That);
+    assert_eq!(filter.card_types, [crate::types::CardType::Creature]);
 }
 
 #[test]
@@ -586,7 +571,7 @@ fn each_other_player_subject_lowers_to_filtered_player_iteration() {
     let tokens = lex_line("Each other player loses X life.", 0).expect("lex clause");
     let effect = parse_effect_clause(&tokens).expect("each-other-player clause should parse");
 
-    let EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { filter, effects }) = effect else {
+    let EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { filter, effects, .. }) = effect else {
         panic!("expected filtered player iteration");
     };
     assert_eq!(filter, PlayerFilter::NotYou);

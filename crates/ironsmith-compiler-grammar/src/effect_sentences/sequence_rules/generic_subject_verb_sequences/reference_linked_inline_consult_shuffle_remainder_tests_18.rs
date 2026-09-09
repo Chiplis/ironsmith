@@ -72,6 +72,7 @@ fn counted_chosen_type_consult_shuffles_only_the_revealed_complement() {
     let TargetAst::Object(remainder, None, None) = target else {
         panic!("expected a filtered revealed complement: {target:#?}");
     };
+    assert_eq!(remainder.zone, Some(Zone::Library));
     assert!(remainder.tagged_constraints.iter().any(|constraint| {
         constraint.tag == **all_tag && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
     }));
@@ -103,4 +104,21 @@ fn ordinary_fixed_count_consult_does_not_gain_a_dynamic_count() {
             ..
         }))
     ));
+}
+
+#[test]
+fn explicit_revealed_other_cards_keep_quantifier_and_action_on_exact_remainder() {
+    let effects = parse_pair(
+        "Its controller reveals cards from the top of their library until they reveal a creature card",
+        "The player puts that card onto the battlefield, then shuffles all other cards revealed this way into their library",
+    );
+    let [_, _, EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::Library(LibraryActionAst::ShuffleObjectsIntoLibrary {
+            target: TargetAst::Object(filter, _, _), ..
+        }), ..
+    })] = effects.as_slice() else { panic!("expected collection shuffle: {effects:#?}"); };
+    assert_eq!(filter.zone, Some(Zone::Library));
+    assert_eq!(filter.set_quantifier_surface(), Some(ironsmith_core::SetQuantifierSurface::All));
+    assert_eq!(filter.union_surface.prior_effect_action(), Some(ironsmith_core::PriorEffectAction::Revealed));
+    assert_eq!(filter.tagged_constraints.len(), 2);
 }

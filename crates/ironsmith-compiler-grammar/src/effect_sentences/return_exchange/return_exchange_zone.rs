@@ -3,6 +3,11 @@ use crate::cards::builders::ZoneMoveActionAst;
 use super::*;
 
 pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    if let Some(shape) = crate::grammar::effects::parse_return_create_tail_shape(tokens) {
+        let mut effects = vec![parse_return(shape.return_tokens)?];
+        effects.extend(crate::effect_sentences::parse_effect_chain(shape.create_tokens)?);
+        return Ok(EffectAst::Sequence { effects });
+    }
     if let Some(for_each_idx) = crate::slice_primitives::find_last_window_by(tokens, 2, |window| {
         window[0].is_word("for") && window[1].is_word("each")
     }) {
@@ -63,9 +68,20 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
         let split = base_tokens.len() - entry_counter_tokens.len() - 1;
         base_tokens.truncate(split);
         let base = parse_return(&trim_commas(&base_tokens))?;
-        let counters = crate::effect_sentences::zone_counter_helpers::parse_put_counters(
+        let mut counters = crate::effect_sentences::zone_counter_helpers::parse_put_counters(
             &entry_counter_tokens,
         )?;
+        fn mark_entry(effect: &mut EffectAst) {
+            if let EffectAst::SubjectVerb(subject) = effect
+                && let SubjectVerbActionAst::Counters(crate::cards::builders::CounterActionAst::PutCounters { count, .. }) = &mut subject.action
+            {
+                *count = count.clone().with_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter);
+            }
+            crate::effect_ast_traversal::for_each_nested_effects_mut(effect, true, |effects| {
+                for effect in effects { mark_entry(effect); }
+            });
+        }
+        mark_entry(&mut counters);
         return Ok(EffectAst::Sequence {
             effects: vec![base, counters],
         });
@@ -188,6 +204,9 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                 // `ObjectFilter::other` predicate.
                 filter.other = false;
             }
+            // Both an explicit source link and "the exiled cards" refer to
+            // objects currently in exile, including across separate abilities.
+            filter.zone = Some(Zone::Exile);
             // "The exiled cards" can appear in a later ability of the same
             // source. Do not let its generic `it` placeholder bind to an
             // unrelated local action (for example, a sacrifice immediately

@@ -31,3 +31,20 @@ fn gain_subject_start_prefers_complete_optional_count_prefix() {
 fn optional_count_before_other_is_part_of_the_target_subject() {
     assert_eq!(find_gain_real_subject_start(&["up", "to", "one", "other", "target", "creature"], 6), 0);
 }
+
+#[test]
+fn embedded_sticker_pronoun_is_not_the_gain_subject() {
+    let words = ["another", "target", "creature", "with", "an", "art", "sticker", "on", "it"];
+    assert_eq!(find_gain_real_subject_start(&words, words.len()), 0);
+}
+
+#[test]
+fn leading_target_owns_embedded_source_and_pronoun_qualifiers() {
+    for words in [
+        vec!["target", "creature", "other", "than", "this", "creature"],
+        vec!["up", "to", "one", "other", "target", "creature", "with", "a", "counter", "on", "it"],
+    ] {
+        assert_eq!(find_gain_real_subject_start(&words, words.len()), 0);
+    }
+    assert_eq!(find_gain_real_subject_start(&["you", "draw", "a", "card", "and", "it"], 6), 5);
+}

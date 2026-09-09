@@ -1039,6 +1039,17 @@ pub(crate) fn describe_ability(
         return vec![format!("Keyword ability {index}: {keyword}")];
     }
     if let AbilityKind::Static(static_ability) = &ability.kind
+        && let Some(ironsmith_core::StaticAbilityPayload::AttachedAbilityGrant(grant)) =
+            static_ability.compiled_model().map(|model| &model.payload)
+        && grant.condition.is_some()
+        && grant.additional_abilities.is_empty()
+        && matches!(&grant.ability.kind, ironsmith_core::AbilityKind::Static(granted)
+            if granted.id == Some(crate::static_abilities::StaticAbilityId::DoesntUntap))
+    {
+        return vec![format!("Static ability {index}: {}",
+            describe_static_ability_with_subject(static_ability, subject))];
+    }
+    if let AbilityKind::Static(static_ability) = &ability.kind
         && let Some(surface) = static_ability.authored_line_surface()
     {
         let surface = restore_modeled_value_surface(static_ability, surface);

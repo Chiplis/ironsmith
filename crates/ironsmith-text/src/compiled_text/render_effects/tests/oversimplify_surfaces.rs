@@ -24,7 +24,7 @@ fn per_player_created_token_counter_followup_keeps_the_player_partition() {
         panic!("expected two source-sentence segments: {program:#?}");
     };
     assert!(!exile_segment.starts_new_source_line);
-    assert!(player_segment.starts_new_source_line);
+    assert!(!player_segment.starts_new_source_line);
     let [exile_root] = exile_segment.default_effects.as_slice() else {
         panic!("expected one exile root: {exile_segment:#?}");
     };

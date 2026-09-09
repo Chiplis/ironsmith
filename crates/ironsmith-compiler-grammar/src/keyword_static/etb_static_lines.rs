@@ -108,6 +108,22 @@ pub fn parse_enters_tapped_with_counters_line(
     Ok(Some(abilities))
 }
 
+pub fn parse_enters_with_counters_ast_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if let Some(delimiter) = crate::grammar::static_line_support::parse_and_with_delimiter(tokens)
+        && let Some(EntersWithAddedAbilitiesTail::AbilityTokens(ability_tokens)) =
+            etb_grammar::parse_enters_with_added_abilities_tail_tokens(&tokens[delimiter.delimiter.start..])
+        && let Some(ability) = parse_activated_line(ability_tokens)?
+        && let Some(entries) = parse_enters_with_counters_line(&tokens[..delimiter.delimiter.start])?
+    {
+        return Ok(Some(entries.into_iter().map(|entry|
+            StaticAbilityAst::EntryReplacementWithGrantedAbilities { entry, abilities: vec![ability.clone()] }
+        ).collect()));
+    }
+    Ok(parse_enters_with_counters_line(tokens)?.map(|entries| entries.into_iter().map(StaticAbilityAst::from).collect()))
+}
+
 pub fn parse_enters_with_counters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {

@@ -47,3 +47,25 @@ fn next_turn_pump_and_activation_restriction_keeps_typed_duration_scope() {
             if matches!(&subject_verb.action, SubjectVerbActionAst::Cant { .. })
     )));
 }
+
+#[test]
+fn activated_reveal_conditional_pump_preserves_preceding_action() {
+    let tokens = crate::lexer::lex_line(
+        "Reveal the top card of your library. If it's a land card, this creature gets +1/+0 and gains flying until end of turn.",
+        0,
+    ).expect("activated body should lex");
+    let effects = parse_activated_effects_lexed("", &tokens, 0)
+        .expect("reveal and conditional modifier should parse");
+    let debug = format!("{effects:#?}");
+    assert!(
+        debug.contains("Reveal"),
+        "preceding reveal was lost: {debug}"
+    );
+    assert!(debug.contains("Land"), "land predicate was lost: {debug}");
+    assert!(debug.contains("Pump"), "{debug}");
+    assert!(debug.contains("Flying"), "{debug}");
+    assert!(
+        debug.contains("Conditional") || debug.contains("If"),
+        "conditional was lost: {debug}"
+    );
+}

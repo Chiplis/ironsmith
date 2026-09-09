@@ -541,6 +541,7 @@ pub fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value>
         filter.zone = None;
         filter.controller = Some(PlayerFilter::You);
         return Some(Value::TurnHistoryCount(TurnHistoryCount::CountersPutOn {
+                source_controller: Some(PlayerFilter::You),
             counter_type: Some(crate::object::CounterType::PlusOnePlusOne),
             filter,
         }));

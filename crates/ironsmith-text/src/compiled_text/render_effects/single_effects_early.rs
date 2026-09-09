@@ -1171,6 +1171,11 @@ pub(crate) fn describe_with_id_if_clause(
     with_id: &crate::effects::WithIdEffect,
     if_effect: &crate::effects::IfEffect,
 ) -> Option<String> {
+    // A per-player search result is correlated with search events, not with
+    // the generic action/count outcome used by the "if a player does" surface.
+    if if_effect.per_player_result && if_effect.predicate == EffectPredicate::SearchedLibrary {
+        return None;
+    }
     if if_effect.condition != with_id.id {
         return None;
     }
@@ -1799,7 +1804,7 @@ fn damage_count_filter(value: &Value) -> Option<&ObjectFilter> {
     }
 }
 
-fn describe_damage_source_subject(source: &ChooseSpec) -> String {
+pub(super) fn describe_damage_source_subject(source: &ChooseSpec) -> String {
     let has_explicit_surface = source.source_reference_surface().is_some();
     let mut subject = describe_choose_spec(source);
     if subject == "this source" {
@@ -2397,6 +2402,19 @@ fn describe_tagged_counter_spell_branch(effects: &[Effect]) -> Option<String> {
 pub(super) fn describe_lose_life_then_create_shared_dynamic_branch(
     effects: &[Effect],
 ) -> Option<String> {
+    let effects = if let [only] = effects {
+        let sequence = unwrap_basic_tag_wrappers(only)
+            .downcast_ref::<crate::effects::SequenceEffect>()?;
+        if !matches!(sequence.surface,
+            ironsmith_core::SequenceSurface::Coordinated
+                | ironsmith_core::SequenceSurface::ResultConjunction { leading_duration: false })
+        {
+            return None;
+        }
+        sequence.effects.as_slice()
+    } else {
+        effects
+    };
     let [lose_effect, create_effect] = effects else {
         return None;
     };
@@ -2414,6 +2432,11 @@ pub(super) fn describe_lose_life_then_create_shared_dynamic_branch(
     let create_text = describe_effect(create_effect);
     let lose_clause = lose_text.strip_suffix(&suffix)?;
     let create_clause = create_text.strip_suffix(&suffix)?;
+    let create_clause = if lose.player == ChooseSpec::Player(PlayerFilter::You)
+        && create.controller == PlayerFilter::You && create.controller_target.is_none()
+    {
+        create_clause.strip_prefix("You ").or_else(|| create_clause.strip_prefix("you ")).unwrap_or(create_clause)
+    } else { create_clause };
 
     Some(format!(
         "{lose_clause} and {}{suffix}",
@@ -2474,6 +2497,55 @@ pub(super) fn describe_inline_token_creation_choice(
             Some(format!("{prefix}your choice of {}, or {last}", preceding.join(", ")))
         }
     })
+}
+
+/// Resolution-time alternatives have an explicit chooser and no printed mode
+/// labels. Render their typed actions as an inline choice.
+pub(super) fn describe_inline_action_choice(
+    choose: &crate::effects::ChooseModeEffect,
+) -> Option<String> {
+    if choose.modes.len() != 2
+        || choose.chooser != Some(PlayerFilter::You)
+        || choose.min != Value::Fixed(1)
+        || choose.max != Value::Fixed(1)
+        || choose.choose_count != Value::Fixed(1)
+        || choose.min_choose_count != Value::Fixed(1)
+        || choose.allow_repeat
+        || choose.random
+        || choose.allow_repeated_modes
+        || choose.spree
+        || choose.tiered
+        || choose.disallow_previously_chosen_modes
+        || choose.disallow_previously_chosen_modes_this_turn
+        || choose.distinct_player_targets_per_mode
+        || choose.conditional_mode_range.is_some()
+        || !choose.mode_additional_mana_costs.is_empty()
+        || choose.mode_point_costs.iter().any(|cost| *cost != 1)
+        || !choose.common_prefix_effects.is_empty()
+        || choose.common_suffix_effect_count != 0
+        || choose
+            .modes
+            .iter()
+            .any(|mode| !mode.source_text.trim().is_empty())
+    {
+        return None;
+    }
+    let clauses = choose
+        .modes
+        .iter()
+        .map(|mode| {
+            let [effect] = mode.effects.as_slice() else {
+                return None;
+            };
+            let text = describe_effect(effect);
+            (!text.contains(['\n', '.'])).then_some(text)
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some(format!(
+        "{} or {}",
+        clauses[0],
+        lowercase_first(&clauses[1])
+    ))
 }
 
 /// Compact an instruction-level choice between two non-targeted destruction
@@ -4903,8 +4975,7 @@ pub(crate) fn describe_search_choose_then_exile_and_cast(
         return None;
     }
 
-    let move_to_zone =
-        unwrap_effect(move_effect).downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let move_to_zone = move_to_zone_surface_view(unwrap_effect(move_effect))?;
     if move_to_zone.zone != Zone::Exile
         || !matches!(
             move_to_zone.target.base(),
@@ -5417,6 +5488,42 @@ pub(in crate::compiled_text) fn describe_damaged_player_gain_control_then_reward
     )
 }
 
+pub(super) fn describe_owned_exile_card_target(spec: &ChooseSpec) -> Option<String> {
+    fn separate_origin(spec: &ChooseSpec) -> Option<(ChooseSpec, PlayerFilter)> {
+        match spec {
+            ChooseSpec::Object(filter) if filter.zone == Some(Zone::Exile) => {
+                let owner = filter.owner.clone()?;
+                if !matches!(owner, PlayerFilter::You | PlayerFilter::Opponent) { return None; }
+                let mut noun = filter.clone();
+                noun.zone = None;
+                noun.owner = None;
+                noun.set_explicit_card_noun(true);
+                Some((ChooseSpec::Object(noun), owner))
+            }
+            ChooseSpec::Target(inner) => {
+                let (noun, owner) = separate_origin(inner)?;
+                Some((ChooseSpec::Target(Box::new(noun)), owner))
+            }
+            ChooseSpec::WithCount(inner, count) => {
+                let (noun, owner) = separate_origin(inner)?;
+                Some((ChooseSpec::WithCount(Box::new(noun), *count), owner))
+            }
+            ChooseSpec::WithCountValue(inner, count, value) => {
+                let (noun, owner) = separate_origin(inner)?;
+                Some((ChooseSpec::WithCountValue(Box::new(noun), *count, value.clone()), owner))
+            }
+            ChooseSpec::SurfaceHinted { spec, hints } => {
+                let (noun, owner) = separate_origin(spec)?;
+                Some((noun.with_surface_hints(hints.clone()), owner))
+            }
+            _ => None,
+        }
+    }
+    let (noun, owner) = separate_origin(spec)?;
+    let ownership = if owner == PlayerFilter::You { "you own" } else { "your opponents own" };
+    Some(format!("{} {ownership} from exile", describe_choose_spec(&noun)))
+}
+
 pub(super) fn describe_simple_exiled_card_target(spec: &ChooseSpec) -> Option<String> {
     let ChooseSpec::Target(inner) = spec else {
         return None;
@@ -5557,6 +5664,30 @@ pub(super) fn describe_correlated_created_token_fight(
 }
 
 pub(crate) fn describe_effect(effect: &Effect) -> String {
+    if let Some(scope) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
+        && let Some(condition) = scope
+            .effect
+            .downcast_ref::<crate::effects::ConditionalEffect>()
+        && let crate::effect::Condition::SourceHasNoCounter(counter) = condition.condition
+        && condition.surface == ironsmith_core::ConditionalSurface::LeadingIf
+        && condition.if_false.is_empty()
+        && let [action] = condition.if_true.as_slice()
+        && let Some(destroy) = action.downcast_ref::<crate::effects::DestroyEffect>()
+        && scope.source == destroy.spec
+        && matches!(
+            scope.source.source_reference_surface(),
+            Some(
+                crate::target::SourceReferenceSurface::FullName(_)
+                    | crate::target::SourceReferenceSurface::ShortName(_)
+            )
+        )
+    {
+        return format!(
+            "If it has no {} counters on it, {}",
+            counter.description(),
+            lowercase_first(&describe_effect(action))
+        );
+    }
     with_effect_render_depth(|| describe_effect_impl(effect))
 }
 
@@ -6061,7 +6192,7 @@ pub(crate) fn describe_put_or_remove_counter_mode(
 
     let (put_effect, put_description) = put_mode?;
     let (remove_effect, remove_description) = remove_mode?;
-    if put_effect.target != remove_effect.target {
+    if !choose_specs_equivalent_ignoring_source_surface(&put_effect.target, &remove_effect.target) {
         return None;
     }
 

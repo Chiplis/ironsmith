@@ -411,7 +411,7 @@ fn parse_next_cast_single_opponent_or_permanent_copy_loop(
             exact_spells_this_turn: None,
             from_not_hand: false,
         },
-        effects: vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+        effects: vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
             filter: PlayerFilter::excluding(
                 PlayerFilter::Opponent,
                 PlayerFilter::TargetPlayerOrControllerOfTarget,

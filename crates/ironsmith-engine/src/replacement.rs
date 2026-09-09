@@ -488,6 +488,9 @@ pub struct ReplacementEffectManager {
     /// Temporary replacement effects that expire during cleanup.
     until_end_of_turn_effects: std::collections::HashSet<ReplacementEffectId>,
 
+    /// Resolved replacements ending at a player's actual next turn start.
+    until_next_turn_effects: std::collections::HashMap<ReplacementEffectId, (PlayerId, u32, Option<u32>)>,
+
     /// Next effect ID to assign
     next_id: u64,
 }
@@ -559,6 +562,7 @@ impl ReplacementEffectManager {
         self.batch_one_shot_effects.remove(&id);
         self.pending_batch_one_shot_effects.remove(&id);
         self.until_end_of_turn_effects.remove(&id);
+        self.until_next_turn_effects.remove(&id);
     }
 
     /// Remove all effects from a specific source.
@@ -701,6 +705,41 @@ impl ReplacementEffectManager {
         let id = self.add_effect(effect);
         self.until_end_of_turn_effects.insert(id);
         id
+    }
+
+    /// Keep a resolved replacement live across any intervening or skipped turns.
+    pub fn add_until_next_turn_effect(
+        &mut self,
+        effect: ReplacementEffect,
+        player: PlayerId,
+        created_turn: u32,
+    ) -> ReplacementEffectId {
+        let id = self.add_resolution_effect(effect);
+        self.until_next_turn_effects.insert(id, (player, created_turn, None));
+        id
+    }
+
+    pub fn prepare_for_departing_player(&mut self, player: PlayerId, boundary: u32) {
+        for (duration_player, _, departure_boundary) in self.until_next_turn_effects.values_mut() {
+            if *duration_player == player {
+                *departure_boundary = Some(boundary);
+            }
+        }
+    }
+
+    /// Called after the next active players are chosen and before their turn begins.
+    pub fn expire_at_turn_start(&mut self, turn: u32, active_players: &[PlayerId]) {
+        let expired: Vec<_> = self.until_next_turn_effects.iter()
+            .filter_map(|(id, (player, created_turn, departure_boundary))| {
+                let expired = departure_boundary.map_or(
+                    turn > *created_turn && active_players.contains(player),
+                    |boundary| turn >= boundary,
+                );
+                expired.then_some(*id)
+            }).collect();
+        for id in expired {
+            self.remove_effect(id);
+        }
     }
 
     /// Mark a one-shot effect as used and remove it.

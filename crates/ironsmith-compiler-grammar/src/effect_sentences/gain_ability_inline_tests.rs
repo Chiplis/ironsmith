@@ -1465,3 +1465,12 @@ fn conditional_instead_grant_preserves_the_target_count() {
         assert!(!debug.contains("GrantAbilitiesAll"), "{text}: {debug}");
     }
 }
+
+#[test]
+fn size_free_animation_and_characteristic_grant_keep_both_actions() {
+    let tokens=tokenize_line("This enchantment becomes a Bear creature in addition to its other types and gains \"This creature's power and toughness are each equal to the number of lands you control.\"",0);
+    let direct=parse_gain_ability_sentence(&tokens).unwrap().expect("compound gain");
+    assert!(format!("{direct:?}").contains("AddCardTypes"),"direct {direct:?}");
+    let effects=super::super::parse_effect_sentences_lexed(&tokens).unwrap();
+    assert!(format!("{effects:?}").contains("AddCardTypes"),"pipeline {effects:?}");
+}

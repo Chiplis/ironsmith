@@ -1614,10 +1614,17 @@ pub fn parse_search_library_object_filter_lexed(
                 ))
             })?
         };
+        let name_start = parser_words[named_idx + 1].0;
+        let name_end = parser_words.get(named_idx + 1 + name_words.len())
+            .map_or(filter_tokens.len(), |(index, _)| *index);
+        let surface = crate::lexer::render_literal_token_slice(&filter_tokens[name_start..name_end])
+            .trim().trim_end_matches([',', '.']).trim().to_string();
         if negated_named {
             base_filter.excluded_name = Some(name);
+            base_filter.set_excluded_name_surface(surface);
         } else {
             base_filter.name = Some(name);
+            base_filter.set_name_surface(surface);
         }
         if let Some(color_count) = color_count {
             base_filter.color_count = Some(color_count);

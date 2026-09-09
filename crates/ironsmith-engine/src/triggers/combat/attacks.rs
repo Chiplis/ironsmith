@@ -913,7 +913,10 @@ fn pluralize_one_or_more_attack_subject(subject: &str) -> String {
             || tail.starts_with("an opponent ")
             || tail.starts_with("your "))
     {
-        return crate::runtime_display::pluralize_noun_phrase_for_trigger(subject);
+        return format!(
+            "{} {tail}",
+            crate::runtime_display::pluralize_noun_phrase_for_trigger(head)
+        );
     }
     if let Some((head, tail)) = subject.split_once(" creature ") {
         if !head.contains(' ')

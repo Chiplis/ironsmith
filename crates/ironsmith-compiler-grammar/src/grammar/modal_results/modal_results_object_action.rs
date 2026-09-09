@@ -36,8 +36,8 @@ pub fn parse_if_result_predicate_lexed_tokens(
     // A passive, unfiltered negated result such as "no counters were removed
     // this way" asks whether the antecedent action changed anything at all.
     // Preserve that negation as the ordinary executable DidNot predicate.
-    // Qualified object-result negatives need a filter-aware negated model and
-    // deliberately do not enter this action-only equivalence.
+    // Qualified negatives instead negate the complete filtered result below.
+    // A nonmatching object must not satisfy "no matching objects".
     let passive_no_result = normalized.first().is_some_and(|token| token.is_word("no"))
         && ends_with_phrase(&normalized, &["this", "way"]);
     let explicit_negated_result = matches!(
@@ -58,9 +58,12 @@ pub fn parse_if_result_predicate_lexed_tokens(
     {
         return Some(IfResultPredicate::DidNot);
     }
-    if let Some(surface) =
+    if let Some(mut surface) =
         direct_surface.or_else(|| parse_typed_prior_effect_result_surface(tokens))
     {
+        if passive_no_result && surface.actor == PriorEffectResultActor::Passive {
+            surface.negated = true;
+        }
         return Some(IfResultPredicate::PriorEffectResult(surface));
     }
     let words = normalized

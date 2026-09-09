@@ -63,7 +63,14 @@
     }
 
     if let Some(target_only) = effect.downcast_ref::<crate::effects::TargetOnlyEffect>() {
-        let target = describe_choose_spec(&target_only.target);
+        let mut target = describe_choose_spec(&target_only.target);
+        if target_only.chooser.is_some()
+            && let ChooseSpec::Object(filter) = target_only.target.base()
+            && filter.controller == Some(PlayerFilter::IteratedPlayer)
+            && let Some(noun) = target.strip_suffix(" that player controls")
+        {
+            target = format!("{noun} they control");
+        }
         return target_only.chooser.as_ref().map_or_else(
             || format!("Choose {target}"),
             |chooser| {
@@ -112,6 +119,9 @@
             return compact;
         }
         if let Some(compact) = describe_put_or_remove_counter_mode(choose_mode) {
+            return compact;
+        }
+        if let Some(compact) = describe_inline_action_choice(choose_mode) {
             return compact;
         }
         let mut header = describe_mode_choice_header(
@@ -899,18 +909,36 @@
         if !create_copy.granted_static_abilities.is_empty() {
             let mut granted = Vec::new();
             for ability in &create_copy.granted_static_abilities {
-                let normalized = normalize_token_granted_static_ability_text(&ability.display());
-                let ability_text = if is_keyword_style_line(&normalized) {
-                    normalized.to_ascii_lowercase()
-                } else {
-                    quote_token_granted_ability_text(&normalized)
-                };
-                if !granted.contains(&ability_text) {
-                    granted.push(ability_text);
+                let transparent_carrier = ability.compiled_model().is_some_and(|model| {
+                    matches!(&model.payload, ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant)
+                        if grant.filter == ObjectFilter::source() && grant.condition.is_none()
+                            && grant.set_quantifier_surface.is_none())
+                });
+                let surfaces = if transparent_carrier {
+                    ability.source_granted_inline_abilities().into_iter()
+                        .map(|nested| describe_inline_ability_with_self_subject(nested, "this token"))
+                        .collect::<Vec<_>>()
+                } else { vec![ability.display()] };
+                for surface in surfaces {
+                    let normalized = normalize_token_granted_static_ability_text(&surface);
+                    let ability_text = if is_keyword_style_line(&normalized) {
+                        normalized.to_ascii_lowercase()
+                    } else {
+                        quote_token_granted_ability_text(&normalized)
+                    };
+                    if !granted.contains(&ability_text) {
+                        granted.push(ability_text);
+                    }
                 }
             }
             let subject = if singular_copy { "it has" } else { "they have" };
-            exception_clauses.push(format!("{subject} {}", join_with_and(&granted)));
+            if let Some(last) = exception_clauses.last_mut()
+                && *last == format!("{subject} haste")
+            {
+                last.push_str(&format!(" and {}", join_with_and(&granted)));
+            } else {
+                exception_clauses.push(format!("{subject} {}", join_with_and(&granted)));
+            }
         }
         if !exception_clauses.is_empty() {
             text.push_str(", except ");
@@ -1113,6 +1141,11 @@
         return base;
     }
     if let Some(cant) = effect.downcast_ref::<crate::effects::CantEffect>() {
+        if cant.start == crate::effect::RestrictionStart::LastAddedCombatPhase {
+            return describe_chosen_added_combat_restriction(cant).unwrap_or_else(|| {
+                format!("{} during that combat phase", describe_restriction(&cant.restriction))
+            });
+        }
         if cant.duration == Until::EndOfTurn && cant.start == crate::effect::RestrictionStart::Immediate
             && let crate::effect::Restriction::BeTargetedPlayerFrom(player, sources) = &cant.restriction
             && sources == &ObjectFilter::default().controlled_by(PlayerFilter::Opponent)
@@ -1531,6 +1564,9 @@
                 return format!("{target} are {subtype_text}");
             }
             let verb = if plural_subject { "become" } else { "becomes" };
+            if become_basic.duration == Until::Forever {
+                return format!("{target} {verb} {subtype_text}");
+            }
             if become_basic.duration == Until::EndOfTurn {
                 return format!("{target} {verb} {subtype_text} until end of turn");
             }
@@ -1561,6 +1597,18 @@
     }
     if let Some(investigate) = effect.downcast_ref::<crate::effects::InvestigateEffect>() {
         let player = describe_player_filter(&investigate.player);
+        if investigate.count.has_surface_hint(ValueSurfaceHint::ForEach)
+            && !investigate.count.has_surface_hint(ValueSurfaceHint::WhereXIs)
+            && !investigate.count.has_surface_hint(ValueSurfaceHint::EqualTo)
+            && let Value::Count(filter) = investigate.count.unhinted()
+        {
+            let basis = describe_for_each_count_filter(filter);
+            return if player == "you" {
+                format!("Investigate for each {basis}")
+            } else {
+                format!("{player} investigates for each {basis}")
+            };
+        }
         if let Some(count) = describe_effect_count_backref(&investigate.count) {
             return if player == "you" {
                 format!("Investigate {count} times")
@@ -1786,6 +1834,13 @@
     if let Some(suspect) = effect.downcast_ref::<crate::effects::SuspectEffect>() {
         return format!("Suspect {}", describe_choose_spec(&suspect.target));
     }
+    if let Some(clear) = effect.downcast_ref::<crate::effects::ClearGoadEffect>() {
+        return match &clear.target {
+            Some(ChooseSpec::All(filter)) => format!("Each {} is no longer goaded", strip_leading_article(&filter.description())),
+            Some(target) => format!("{} is no longer goaded", describe_choose_spec(target)),
+            None => "All creatures are no longer goaded".to_string(),
+        };
+    }
     if let Some(clear_suspected) = effect.downcast_ref::<crate::effects::ClearSuspectedEffect>() {
         return match &clear_suspected.target {
             Some(target) => format!("{} is no longer suspected", describe_choose_spec(target)),
@@ -1907,7 +1962,7 @@
     if let Some(additional_phases) = effect.downcast_ref::<crate::effects::AdditionalPhasesEffect>()
     {
         if additional_phases.phases == [crate::effects::AdditionalPhase::Combat] {
-            return "After this phase, there is an additional combat phase".to_string();
+            return format!("After this {}phase, there is an additional combat phase", if additional_phases.after_main_phase { "main " } else { "" });
         }
         if additional_phases.phases
             == [
@@ -3254,6 +3309,24 @@
         );
     }
     if let Some(schedule) = effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>() {
+        if schedule.one_shot && !schedule.start_next_turn
+            && schedule.duration == ironsmith_core::DelayedTriggerDuration::Forever
+            && !schedule.until_end_of_turn && !schedule.until_end_of_combat
+            && !schedule.watch_ability_source && !schedule.watch_all_object_targets
+            && schedule.while_any_tagged_object_in_zone.is_none()
+            && schedule.target_objects.is_empty() && schedule.target_tag.is_none()
+            && schedule.target_filter.is_none() && schedule.prepayment.is_none()
+            && schedule.controller == PlayerFilter::You
+            && schedule.trigger.downcast_ref::<crate::triggers::BeginningOfEndStepTrigger>().is_some_and(|trigger| trigger.player == PlayerFilter::Any)
+            && let [segment] = schedule.effects.segments.as_slice()
+            && segment.self_replacements.is_empty()
+            && let [effect] = segment.default_effects.as_slice()
+            && let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>()
+            && exile.spec.source_reference_surface().is_some()
+        {
+            return format!("{} at the beginning of the next end step", describe_effect(effect));
+        }
+
         if !schedule.one_shot && schedule.until_end_of_turn && !schedule.start_next_turn
             && schedule.target_tag.is_some()
             && let Some(qualified) = schedule.trigger.downcast_ref::<crate::triggers::ConditionQualifiedTrigger>()
@@ -4020,6 +4093,7 @@
         let duration = match register.mode {
             crate::effects::ReplacementApplyMode::OneShot
             | crate::effects::ReplacementApplyMode::UntilEndOfTurn => " this turn",
+            crate::effects::ReplacementApplyMode::UntilYourNextTurn => " until your next turn",
             crate::effects::ReplacementApplyMode::Resolution => "",
         };
         let replacement = format!("{:?}", register.replacement_zone).to_ascii_lowercase();
@@ -4041,6 +4115,7 @@
         let duration = match register.mode {
             crate::effects::ReplacementApplyMode::OneShot
             | crate::effects::ReplacementApplyMode::UntilEndOfTurn => " this turn",
+            crate::effects::ReplacementApplyMode::UntilYourNextTurn => " until your next turn",
             crate::effects::ReplacementApplyMode::Resolution => "",
         };
         if let Some(replacement) = describe_draw_replacement_exile_top_play(
@@ -4068,6 +4143,7 @@
         let prefix = match register.mode {
             crate::effects::ReplacementApplyMode::UntilEndOfTurn => "Until end of turn, if ",
             crate::effects::ReplacementApplyMode::OneShot => "The next time ",
+            crate::effects::ReplacementApplyMode::UntilYourNextTurn => "Until your next turn, if ",
             crate::effects::ReplacementApplyMode::Resolution => "If ",
         };
         if matches!(register.source_filter.controller, Some(PlayerFilter::You)) {
@@ -4101,10 +4177,41 @@
                     "The next time {singular} would enter the battlefield, it enters tapped instead"
                 )
             }
+            crate::effects::ReplacementApplyMode::UntilYourNextTurn => {
+                format!("Until your next turn, {subject} enter tapped")
+            }
             crate::effects::ReplacementApplyMode::Resolution => {
                 format!("{subject} enter tapped")
             }
         };
+    }
+    if let Some(register) =
+        effect.downcast_ref::<crate::effects::RegisterEnterWithCountersReplacementEffect>()
+    {
+        let mut filter = register.filter.clone();
+        filter.zone = None;
+        let description = filter.description();
+        let subject = strip_leading_article(&description);
+        let counter = describe_counter_type(register.counter_type);
+        let amount = if register.count.unhinted() == &Value::Fixed(1) {
+            format!("an additional {counter} counter")
+        } else {
+            format!("{} additional {counter} counters", describe_value(&register.count))
+        };
+        if let Some(objects) = &register.objects {
+            let subject = register.object_reference_type.map(|kind| format!("that {}", kind.to_string().to_ascii_lowercase()))
+                .unwrap_or_else(|| describe_choose_spec(objects));
+            return format!("{} enters with {amount} on it", capitalize_first(&subject));
+        }
+        let prefix = match register.mode {
+            crate::effects::ReplacementApplyMode::UntilYourNextTurn => "Until your next turn, ",
+            crate::effects::ReplacementApplyMode::UntilEndOfTurn => "Until end of turn, ",
+            crate::effects::ReplacementApplyMode::Resolution => "",
+            crate::effects::ReplacementApplyMode::OneShot => {
+                return format!("The next time a {subject} would enter, it enters with {amount} on it");
+            }
+        };
+        return format!("{prefix}each {subject} enters with {amount} on it");
     }
     if let Some(register) =
         effect.downcast_ref::<crate::effects::RegisterNextBatchEnterWithCountersEffect>()
@@ -4178,6 +4285,7 @@
         let duration = match register.mode {
             crate::effects::ReplacementApplyMode::OneShot
             | crate::effects::ReplacementApplyMode::UntilEndOfTurn => " this turn",
+            crate::effects::ReplacementApplyMode::UntilYourNextTurn => " until your next turn",
             crate::effects::ReplacementApplyMode::Resolution => "",
         };
         let replacement = format!("{:?}", register.replacement_zone).to_ascii_lowercase();
@@ -4204,7 +4312,8 @@
             let duration = match register.mode {
                 crate::effects::ReplacementApplyMode::OneShot
                 | crate::effects::ReplacementApplyMode::UntilEndOfTurn => " this turn",
-                crate::effects::ReplacementApplyMode::Resolution => "",
+                crate::effects::ReplacementApplyMode::UntilYourNextTurn => " until your next turn",
+            crate::effects::ReplacementApplyMode::Resolution => "",
             };
             return format!(
                 "If {subject} dealt damage this way would die{duration}, exile it instead"
@@ -4289,6 +4398,14 @@
     if let Some(for_each_tagged_player) =
         effect.downcast_ref::<crate::effects::ForEachTaggedPlayerEffect>()
     {
+        if crate::cards::is_sentence_helper_tag(for_each_tagged_player.tag.as_str(), "damaged")
+            && let [emblem_effect] = for_each_tagged_player.effects.as_slice()
+            && let Some(emblem) = emblem_effect.downcast_ref::<crate::effects::CreateEmblemEffect>()
+            && let [ability] = emblem.emblem.abilities.as_slice()
+        {
+            let text = ensure_trailing_period(&capitalize_first(&describe_inline_ability_with_self_subject(ability, "this emblem")));
+            return format!("Each player dealt damage this way gets an emblem with \"{text}\"");
+        }
         if for_each_tagged_player.tag.as_str() == "voted_against_you" {
             let body = describe_effect_list(&for_each_tagged_player.effects);
             let body = body.trim().trim_end_matches('.');
@@ -4619,6 +4736,7 @@
         }
         let duration = match grant.duration {
             crate::grant::GrantDuration::UntilEndOfTurn => " until end of turn",
+            crate::grant::GrantDuration::UntilYourNextTurn => " until your next turn",
             crate::grant::GrantDuration::UntilYourNextTurnEnd => " until the end of your next turn",
             crate::grant::GrantDuration::Forever => "",
         };
@@ -4712,6 +4830,7 @@
         }
         let duration = match grant.duration {
             crate::grant::GrantDuration::UntilEndOfTurn => " until end of turn",
+            crate::grant::GrantDuration::UntilYourNextTurn => " until your next turn",
             crate::grant::GrantDuration::UntilYourNextTurnEnd => " until the end of your next turn",
             crate::grant::GrantDuration::Forever => "",
         };
@@ -5068,6 +5187,7 @@
         {
             spell_text = with_indefinite_article(&spell_text);
         }
+        let where_x_suffix = apply_mana_value_where_x_surface(&mut spell_text, &may_cast_matching.filter);
         let zone_text = match may_cast_matching.zone {
             Zone::Hand => {
                 let owner = if may_cast_matching.zone_owner == may_cast_matching.player {
@@ -5095,7 +5215,7 @@
         match may_cast_matching.payment {
             ironsmith_core::MayCastMatchingSpellPayment::WithoutPayingManaCost => {
                 return format!(
-                    "{player} may cast {spell_text} {zone_text} without paying its mana cost"
+                    "{player} may cast {spell_text} {zone_text} without paying its mana cost{where_x_suffix}"
                 );
             }
             ironsmith_core::MayCastMatchingSpellPayment::AlternativeCost(kind) => {

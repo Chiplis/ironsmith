@@ -266,10 +266,19 @@ fn scope_may_decider_search_effect(
     }
 
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
-        return Effect::new(crate::effects::TaggedEffect::new(
-            tagged.tag.clone(),
-            scope_may_decider_search_effect(&tagged.effect, decider, force_search_scope),
-        ));
+        return Effect::new(tagged.with_effect(scope_may_decider_search_effect(&tagged.effect, decider, force_search_scope)));
+    }
+
+    // Unlabeled inline alternatives are actions offered to the may-decider.
+    // Keep this resolution-time choice with that same player; printed modal
+    // choices and explicitly labeled alternatives retain their own chooser.
+    if let Some(choice) = effect.downcast_ref::<crate::effects::ChooseModeEffect>()
+        && choice.chooser == Some(PlayerFilter::You)
+        && choice.modes.iter().all(|mode| mode.source_text.is_empty())
+    {
+        let mut choice = choice.clone();
+        choice.chooser = Some(decider.clone());
+        return Effect::new(choice);
     }
 
     if !matches!(decider, PlayerFilter::You)
@@ -674,6 +683,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 filter: players.clone(),
                 effects: inner_effects,
                 starting_with_controller: true,
+                sequential: false,
                 stop_after_first_happened: true,
             });
             (vec![effect], inner_choices)
@@ -718,10 +728,10 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                             before_delayed_step: *before_delayed_step,
                         })],
                     })),
-                    EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+                    EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
                         filter,
                         effects: per_player_effects,
-                    }) => Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+                    }) => Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
                         filter: filter.clone(),
                         effects: vec![EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
                             effects: per_player_effects.clone(),
@@ -918,11 +928,19 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             let effect = Effect::for_each_opponent(inner_effects);
             (vec![effect], inner_choices)
         }
-        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { filter, effects }) => {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { filter, effects, sequential }) => {
             let (inner_effects, inner_choices) =
                 compile_effects_in_iterated_player_context(effects, ctx, None)?;
-            let effect = try_compile_simultaneous_each_player_scry(filter.clone(), &inner_effects)
-                .unwrap_or_else(|| Effect::for_players(filter.clone(), inner_effects));
+            let effect = if *sequential {
+                Effect::new(crate::effects::ForPlayersEffect {
+                    filter: filter.clone(), effects: inner_effects,
+                    sequential: true, starting_with_controller: false,
+                    stop_after_first_happened: false,
+                })
+            } else {
+                try_compile_simultaneous_each_player_scry(filter.clone(), &inner_effects)
+                    .unwrap_or_else(|| Effect::for_players(filter.clone(), inner_effects))
+            };
             let mut target_choices = Vec::new();
             collect_targeted_player_specs_from_player_filter(filter, &mut target_choices);
             let mut compiled = target_choices

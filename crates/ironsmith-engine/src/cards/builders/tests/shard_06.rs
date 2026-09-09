@@ -110,8 +110,8 @@ pub(super) fn test_parse_madness_keyword_line() {
 
     assert_eq!(def.alternative_casts.len(), 1);
     match &def.alternative_casts[0] {
-        AlternativeCastingMethod::Madness { cost } => {
-            assert_eq!(cost.to_oracle(), "{1}{R}");
+        AlternativeCastingMethod::Madness { total_cost } => {
+            assert_eq!(total_cost.mana_cost().unwrap().to_oracle(), "{1}{R}");
         }
         other => panic!("expected madness alternative cast, got {other:?}"),
     }

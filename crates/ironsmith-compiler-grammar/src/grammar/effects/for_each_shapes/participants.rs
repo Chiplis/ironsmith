@@ -68,6 +68,7 @@ pub enum WhoClauseShape<'a> {
         implicit_player_is_iterated: bool,
     },
     DidThisWay {
+        result_tokens: &'a [OwnedLexToken],
         effect_tokens: &'a [OwnedLexToken],
         tagged_filter_tokens: Option<&'a [OwnedLexToken]>,
     },

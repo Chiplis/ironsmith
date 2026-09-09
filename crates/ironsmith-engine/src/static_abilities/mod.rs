@@ -1295,6 +1295,8 @@ pub struct EnterAsCopyAsEntersSpec {
     pub added_subtypes: Vec<crate::types::Subtype>,
     pub added_abilities: Vec<crate::ability::Ability>,
     pub set_base_power_toughness: Option<(i32, i32)>,
+    /// Add the extra abilities only when the chosen copy source matches this filter.
+    pub added_abilities_source_filter: Option<crate::target::ObjectFilter>,
     pub set_base_power_toughness_from_self: bool,
 }
 

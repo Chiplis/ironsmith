@@ -363,7 +363,8 @@ fn read_conditional_put_counters(document: &Document<'_>) -> Result<Option<Vec<E
 }
 fn read_emblem_payload(document: &Document<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = document.tokens;
-    if effect_grammar::emblem_shapes::parse_emblem_payload_tokens(tokens)
+    if effect_grammar::emblem_shapes::parse_damaged_player_emblem_payload_tokens(tokens)
+            .or_else(|| effect_grammar::emblem_shapes::parse_emblem_payload_tokens(tokens))
             .is_some_and(|shape| shape.requires_whole_sentence_dispatch)
             && let Some(effect) = super::zone_handlers::parse_emblem_action(tokens, None)
         {

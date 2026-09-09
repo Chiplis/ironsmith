@@ -444,3 +444,22 @@ fn coordinated_countered_stack_objects_keep_spells_and_abilities() {
     );
     assert!(filter.has_conjunctive_set_surface());
 }
+
+#[test]
+fn graveyard_this_way_count_preserves_past_controller() {
+    for (subject, controller) in [
+        ("artifacts they controlled", PlayerFilter::IteratedPlayer),
+        ("creatures you controlled", PlayerFilter::You),
+        ("permanents that player controlled", PlayerFilter::IteratedPlayer),
+    ] {
+        let text = format!("for each {subject} that were put into a graveyard this way");
+        let words = text.split_whitespace().collect::<Vec<_>>();
+        let (value, used) = parse_for_each_count_value_words(&words).unwrap();
+        assert_eq!(used, words.len());
+        let Value::PendingPriorEffectMetric(query) = value.unhinted() else { panic!("{value:?}"); };
+        assert_eq!(query.source, ironsmith_core::EffectMetricSource::AffectedObjects);
+        assert_eq!(query.action, Some(ironsmith_core::PriorEffectAction::PutIntoGraveyard));
+        assert_eq!(query.filter.as_ref().unwrap().controller, Some(controller));
+        assert!(query.player.is_none(), "controller qualification must inspect LKI, not owner/player partitions");
+    }
+}

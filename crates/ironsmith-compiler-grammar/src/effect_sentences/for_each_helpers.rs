@@ -25,7 +25,24 @@ use super::chain_carry::{parse_effect_chain, parse_effect_chain_inner, remove_fi
 use super::conditionals::parse_for_each_doesnt_control_lose_game;
 use super::dispatch_entry::replace_unbound_x_in_effects_anywhere;
 
+// Imperative “for each” scopes the whole body to one participant at a time.
+fn sequential_participant_body(effect: EffectAst) -> EffectAst {
+    use crate::cards::builders::ForEachEffectAst;
+    let (filter, effects) = match effect {
+        EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }) => (PlayerFilter::Opponent, effects),
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }) => (PlayerFilter::Any, effects),
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { filter, effects, .. }) => (filter, effects),
+        other => return other,
+    };
+    EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { filter, effects, sequential: true })
+}
+
 fn has_independent_participant_continuation(tokens: &[OwnedLexToken]) -> bool {
+    // In "for each player, you do A, then B", the player is the iteration
+    // key; naming the acting controller inside that body does not end scope.
+    if for_each_shapes::parse_participant_clause_shape(tokens)
+        .is_some_and(|shape| !shape.participant_is_actor)
+    { return false; }
     // The consequence after "who can't, ..." belongs to the quantified
     // failure clause even when it names a different actor explicitly.
     if for_each_shapes::parse_participant_clause_shape(tokens)
@@ -76,6 +93,13 @@ pub fn parse_for_each_object_filter(
 ) -> Result<ObjectFilter, CardTextError> {
     let mut filter = parse_object_filter(filter_tokens, false)?;
     let words = crate::lexer::token_word_refs(filter_tokens);
+    if crate::word_primitives::sequence_occurs(&words, &["chosen", "this", "way"]) {
+        filter.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Chosen));
+        filter = filter.match_tagged(
+            crate::tag::CompilerReferenceTag::It.key(),
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+        );
+    }
     // Quantified subjects use the older family-level object-filter parser,
     // so they do not pass through the grammar filter finalizer that normally
     // restores this exact coordinated Stack domain. Reassert only the
@@ -161,6 +185,19 @@ pub fn is_mana_trigger_additional_clause_words(words: &[&str]) -> bool {
 pub fn parse_has_base_power_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    if let Some(shape) = for_each_shapes::parse_base_power_or_toughness_clause_shape(tokens)? {
+        let target = parse_target_phrase(shape.target_tokens)?;
+        return Ok(Some(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf {
+            modes: vec![
+                crate::cards::builders::ChooseOneModeAst { description: String::new(), effects: vec![
+                    EffectAst::subject_verb_set_base_power(shape.power, target.clone(), shape.duration.clone()),
+                ] },
+                crate::cards::builders::ChooseOneModeAst { description: String::new(), effects: vec![
+                    EffectAst::subject_verb_set_base_toughness(shape.toughness, target, shape.duration),
+                ] },
+            ],
+        })));
+    }
     let Some(shape) = for_each_shapes::parse_base_power_clause_shape(tokens)? else {
         return Ok(None);
     };
@@ -460,6 +497,21 @@ fn tagged_predicate(filter_tokens: Option<&[OwnedLexToken]>) -> Option<Predicate
     }))
 }
 
+fn tagged_past_action_predicate(
+    filter_tokens: Option<&[OwnedLexToken]>,
+    action_tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let mut predicate = tagged_predicate(filter_tokens)?;
+    if action_tokens.iter().any(|token| token.is_word("sacrificed"))
+        && let PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches { mode, .. }) = &mut predicate
+    {
+        // Eligibility is determined when the permanent was sacrificed, not
+        // by the characteristics of its new graveyard object.
+        *mode = ironsmith_core::TaggedObjectMatchMode::LastKnown;
+    }
+    Some(predicate)
+}
+
 fn parse_maybe_effects(
     tokens: &[OwnedLexToken],
     parse_inner: bool,
@@ -508,6 +560,12 @@ fn parse_maybe_effects(
 fn parse_quantified_participant_actor_program(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if tokens.iter().any(|token| token.is_word("rest")) {
+        let normalized = prepend_that_player_subject(tokens);
+        if let Some(effects) = crate::activation_and_restrictions::choice_object_clauses::parse_hand_choice_then_shuffle_remainder(&normalized)? {
+            return Ok(Some(effects));
+        }
+    }
     // An `or` inside a trailing unless payment belongs to the payer, not to
     // the quantified participant's outer action program. Leave the complete
     // body to the unless parser so it can materialize `TotalCost::OneOf`

@@ -1305,13 +1305,22 @@ pub(crate) fn resolve_turn_history_count(
             })
             .count() as i32,
         TurnHistoryCount::CountersPutOn {
+            source_controller,
             counter_type,
             filter,
         } => history
             .projected_records()
             .filter_map(|record| {
-                let event = record.event.downcast::<CounterPlacedEvent>()?;
                 let snapshot = record.object_snapshot.as_ref()?;
+                if let Some(player) = source_controller {
+                    let event = record.event.downcast::<crate::events::MarkersChangedEvent>()?;
+                    return (event.is_added() && event.object().is_some()
+                        && event.marker.as_counter().is_some()
+                        && counter_type.is_none_or(|kind| event.marker.as_counter() == Some(kind))
+                        && event.source_controller.is_some_and(|actor| player.matches_player(actor, filter_ctx))
+                        && filter.matches_snapshot(snapshot, filter_ctx, game)).then_some(event.amount);
+                }
+                let event = record.event.downcast::<CounterPlacedEvent>()?;
                 (counter_type.is_none_or(|counter_type| event.counter_type == counter_type)
                     && filter.matches_snapshot(snapshot, filter_ctx, game))
                 .then_some(event.amount)

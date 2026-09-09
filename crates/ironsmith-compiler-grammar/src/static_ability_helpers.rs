@@ -229,8 +229,15 @@ pub fn compiler_granted_ability_ast_to_object_ability(
 pub fn compiler_granted_abilities_ast_to_object_abilities(
     abilities: &[GrantedAbilityAst],
 ) -> Result<Vec<crate::model::compiler_semantic::CompilerAbilityCore>, CardTextError> {
-    abilities
-        .iter()
-        .map(compiler_granted_ability_ast_to_object_ability)
-        .collect()
+    let mut expanded = Vec::new();
+    for ability in abilities {
+        if let GrantedAbilityAst::KeywordAction(action) = ability
+            && let KeywordAction::Vanishing(amount) = action.as_ref()
+        {
+            expanded.extend(ironsmith_compiler_semantic::keyword_abilities::vanishing_granted_abilities(*amount));
+        } else {
+            expanded.push(compiler_granted_ability_ast_to_object_ability(ability)?);
+        }
+    }
+    Ok(expanded)
 }

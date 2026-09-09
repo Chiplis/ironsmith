@@ -4,7 +4,13 @@ pub fn parse_get_then_ability_shape(tokens: &[OwnedLexToken]) -> Option<GetThenA
     let tokens = trim_lexed_commas(tokens);
     let (get_token, (), after_get) = primitives::find_prefix(tokens, || get_verb)?;
     let raw_subject_tokens = tokens.get(..get_token)?;
-    if independent_player_action_precedes_shared_subject(raw_subject_tokens) {
+    // A completed sentence before `gets` belongs to the enclosing program,
+    // not to the shared subject of this coordinated modifier.
+    if raw_subject_tokens
+        .iter()
+        .any(|token| token.kind == crate::lexer::TokenKind::Period)
+        || independent_player_action_precedes_shared_subject(raw_subject_tokens)
+    {
         return None;
     }
     let subject_tokens = semantic_subject_tokens(raw_subject_tokens)?;

@@ -31,7 +31,16 @@ impl EffectExecutor for LookAtObjectsEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        let candidate_ids = candidate_ids_for_filter(game, &self.filter);
+        // An existing object reference can name a card outside the battlefield.
+        let referenced = self.filter.tagged_constraints.iter().find(|constraint| {
+            constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+        });
+        let candidate_ids = if let Some(reference) = referenced.filter(|_| self.filter.zone.is_none()) {
+            ctx.get_tagged_all(&reference.tag)
+                .into_iter().flatten().map(|snapshot| snapshot.object_id).collect()
+        } else {
+            candidate_ids_for_filter(game, &self.filter)
+        };
         let mut viewed = Vec::new();
         for id in candidate_ids {
             let Some(object) = game.object(id) else {
@@ -46,19 +55,24 @@ impl EffectExecutor for LookAtObjectsEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        let zone = self.filter.zone.unwrap_or(Zone::Battlefield);
+        let mut groups: Vec<(Zone, Vec<ObjectId>)> = Vec::new();
+        for id in &viewed {
+            let zone = game.object(*id).expect("viewed object exists").zone;
+            if let Some((_, cards)) = groups.iter_mut().find(|(existing, _)| *existing == zone) {
+                cards.push(*id);
+            } else {
+                groups.push((zone, vec![*id]));
+            }
+        }
         let description = format!("Look at {}", self.filter.description());
         for subject in subjects {
             for viewer in &viewers {
-                let view_ctx = ViewCardsContext::new(
-                    *viewer,
-                    subject,
-                    Some(ctx.source),
-                    zone,
-                    description.clone(),
-                );
-                ctx.decision_maker
-                    .view_cards(game, *viewer, &viewed, &view_ctx);
+                for (zone, cards) in &groups {
+                    let view_ctx = ViewCardsContext::new(
+                        *viewer, subject, Some(ctx.source), *zone, description.clone(),
+                    );
+                    ctx.decision_maker.view_cards(game, *viewer, cards, &view_ctx);
+                }
             }
         }
 

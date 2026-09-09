@@ -316,6 +316,9 @@ impl EnterBattlefieldEvent {
             prospective.set_current_controller(self.object, controller);
         }
         if let Some(choices) = &self.prepared_choices {
+            if let Some(object) = prospective.object_mut(self.object) {
+                object.cast_tagged_objects.extend(choices.as_enters_tagged_objects.clone());
+            }
             if let Some(color) = choices.chosen_color {
                 prospective.set_chosen_color(self.object, color);
             }

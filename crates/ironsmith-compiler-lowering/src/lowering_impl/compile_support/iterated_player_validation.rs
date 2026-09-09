@@ -189,6 +189,7 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
         | Value::ColorPairsAmong(filter)
         | Value::DistinctCounterTypesAmong(filter)
         | Value::DistinctNames(filter)
+        | Value::DistinctManaValues(filter)
         | Value::DistinctPowers(filter) => object_filter_mentions_iterated_player(filter),
         Value::PlayersWhoControlMoreThanYou { players, filter }
         | Value::PlayersWhoControlAtLeastMoreThanYou {
@@ -258,9 +259,12 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
             match query {
                 TurnHistoryCount::Died { filter, .. }
                 | TurnHistoryCount::EnteredBattlefield(filter)
-                | TurnHistoryCount::MovedZones { filter, .. }
-                | TurnHistoryCount::CountersPutOn { filter, .. } => {
+                | TurnHistoryCount::MovedZones { filter, .. } => {
                     object_filter_mentions_iterated_player(filter)
+                }
+                TurnHistoryCount::CountersPutOn { source_controller, filter, .. } => {
+                    source_controller.as_ref().is_some_and(|player| player.mentions_iterated_player())
+                        || object_filter_mentions_iterated_player(filter)
                 }
                 TurnHistoryCount::TokensCreated(player)
                 | TurnHistoryCount::PlayersAttackedThisCombat(player)
@@ -331,6 +335,7 @@ pub fn value_contains_pending_effect_metric(value: &Value) -> bool {
         | Value::ColorPairsAmong(filter)
         | Value::DistinctCounterTypesAmong(filter)
         | Value::DistinctNames(filter)
+        | Value::DistinctManaValues(filter)
         | Value::DistinctPowers(filter) => object_filter_contains_pending_effect_metric(filter),
         Value::PlayersWhoControlMoreThanYou { filter, .. }
         | Value::PlayersWhoControlAtLeastMoreThanYou { filter, .. } => {

@@ -1220,6 +1220,7 @@ pub fn spell_filter_has_identity(filter: &ObjectFilter) -> bool {
         || !filter.excluded_static_abilities.is_empty()
         || !filter.ability_markers.is_empty()
         || !filter.excluded_ability_markers.is_empty()
+        || filter.has_x_in_cost
         || filter.chosen_color
         || filter.colors_chosen_while_drafting_named.is_some()
         || filter.chosen_creature_type
@@ -1304,6 +1305,7 @@ pub fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) {
     base.historic |= extra.historic;
     base.nonhistoric |= extra.nonhistoric;
     base.has_mana_cost |= extra.has_mana_cost;
+    base.has_x_in_cost |= extra.has_x_in_cost;
     base.has_phyrexian_mana_symbol |= extra.has_phyrexian_mana_symbol;
     base.chosen_color |= extra.chosen_color;
     if base.colors_chosen_while_drafting_named.is_none() {

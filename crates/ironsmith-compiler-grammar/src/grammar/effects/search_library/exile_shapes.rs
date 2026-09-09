@@ -28,6 +28,7 @@ pub enum SearchForEachWayKind {
     DestroyedOrDied,
     PutIntoGraveyard,
     Sacrificed,
+    Revealed,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -271,6 +272,15 @@ pub fn parse_search_for_each_way_shape_lexed(
 ) -> Option<SearchForEachWayShape<'_>> {
     let (head, effect_tokens) = comma_parts(tokens);
     let (_, after_for_each) = primitives::parse_prefix(head, primitives::phrase(&["for", "each"]))?;
+    let revealed_marker = primitives::find_prefix(after_for_each, || {
+        primitives::phrase(&["revealed", "this", "way"])
+    }).filter(|(_, _, rest)| {
+        // An anaphoric subject can contain a comparison against a revealed
+        // card. Its trailing reveal phrase does not describe the iterated set.
+        trim_lexed_commas(rest).is_empty()
+            && primitives::parse_prefix(after_for_each, primitives::phrase(&["of"]))
+                .is_none()
+    });
     let sacrificed_marker = primitives::find_prefix(after_for_each, || {
         primitives::phrase(&["sacrificed", "this", "way"])
     });
@@ -305,6 +315,8 @@ pub fn parse_search_for_each_way_shape_lexed(
         SearchForEachWayKind::PutIntoGraveyard
     } else if sacrificed_marker.is_some() {
         SearchForEachWayKind::Sacrificed
+    } else if revealed_marker.is_some() {
+        SearchForEachWayKind::Revealed
     } else {
         return None;
     };
@@ -313,6 +325,7 @@ pub fn parse_search_for_each_way_shape_lexed(
         SearchForEachWayKind::Sacrificed => sacrificed_marker,
         SearchForEachWayKind::Exiled => exiled_marker,
         SearchForEachWayKind::PutIntoGraveyard => put_into_graveyard_marker,
+        SearchForEachWayKind::Revealed => revealed_marker,
     }
     .map(|(marker_idx, _, _)| trim_lexed_commas(&after_for_each[..marker_idx]));
     let permanent_card_type_consult = kind == SearchForEachWayKind::Exiled

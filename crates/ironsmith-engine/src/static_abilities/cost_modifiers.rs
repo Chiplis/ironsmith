@@ -854,7 +854,7 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
             "{X}".to_string(),
             Some(format!(
                 "where X is the total toughness of {}",
-                crate::runtime_display::describe_aggregate_filter_value_subject(filter)
+                describe_types_among_scope(filter)
             )),
         ),
         Value::TotalManaValue(filter) => (
@@ -864,9 +864,12 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
                 filter.description()
             )),
         ),
-        Value::GreatestPower(_) => (
+        Value::GreatestPower(filter) => (
             "{X}".to_string(),
-            Some(format!("where X is {}", describe_value(amount))),
+            Some(format!(
+                "where X is the greatest power among {}",
+                describe_types_among_scope(filter)
+            )),
         ),
         Value::GreatestToughness(filter) => (
             "{X}".to_string(),
@@ -912,6 +915,13 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
             "{X}".to_string(),
             Some(format!(
                 "where X is the number of differently named {}",
+                filter.description()
+            )),
+        ),
+        Value::DistinctManaValues(filter) => (
+            "{X}".to_string(),
+            Some(format!(
+                "where X is the number of different mana values among {}",
                 filter.description()
             )),
         ),
@@ -3378,6 +3388,10 @@ mod tests {
 
         assert_eq!(reduction.reduction, amount);
         assert_eq!(reduction.condition, Always);
+        assert_eq!(
+            reduction.display(),
+            "This spell costs {X} less to cast, where X is the greatest power among creatures you control"
+        );
     }
 
     #[test]

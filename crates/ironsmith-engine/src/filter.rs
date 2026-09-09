@@ -136,7 +136,7 @@ pub(crate) fn names_match(lhs: &str, rhs: &str) -> bool {
     lhs.eq_ignore_ascii_case(rhs) || normalize_name_for_match(lhs) == normalize_name_for_match(rhs)
 }
 
-fn object_mana_value_for_filter(object: &Object) -> i32 {
+pub(crate) fn object_mana_value_for_filter(object: &Object) -> i32 {
     object.mana_cost.as_ref().map_or(0, |mana_cost| {
         if object.zone == Zone::Stack {
             mana_cost.mana_value_with_x(object.x_value.unwrap_or(0)) as i32
@@ -306,6 +306,12 @@ fn matching_spell_cast_ordinal_each_turn_matches(
 
     if let Some(current_live_match) = current_live_match {
         return current_live_match && matching_ordinal.saturating_add(1) == ordinal;
+    }
+
+    // Cost previews ask about the next matching cast before a stack entry
+    // or cast event exists. Ordinary object queries must not assume a cast.
+    if ctx.prospective_cast == Some(object_id) && ctx.caster.is_some() {
+        return matching_ordinal.saturating_add(1) == ordinal;
     }
 
     let cast_order = fallback_cast_player
@@ -998,6 +1004,9 @@ fn tagged_constraint_matches_subject(
     game: &GameState,
 ) -> bool {
     match relation {
+        TaggedOpbjectRelation::SameObjectId => tagged_snapshots.iter().any(|snapshot| {
+            snapshot.object_id == subject.subject_object_id()
+        }),
         TaggedOpbjectRelation::IsTaggedObject
         | TaggedOpbjectRelation::IsTaggedObjectSacrificedAsSourceEntered => {
             tagged_snapshots.iter().any(|snapshot| {
@@ -1147,6 +1156,9 @@ pub struct FilterContext {
     /// The player casting the spell currently being evaluated, if any.
     pub caster: Option<PlayerId>,
 
+    /// The candidate spell whose cost is being evaluated before casting.
+    pub prospective_cast: Option<ObjectId>,
+
     /// The active player (whose turn it is)
     pub active_player: Option<PlayerId>,
 
@@ -1231,6 +1243,11 @@ impl FilterContext {
     /// Set the caster for cast-context filter evaluation.
     pub fn with_caster(mut self, caster: Option<PlayerId>) -> Self {
         self.caster = caster;
+        self
+    }
+
+    pub fn with_prospective_cast(mut self, spell: ObjectId) -> Self {
+        self.prospective_cast = Some(spell);
         self
     }
 
@@ -1461,7 +1478,8 @@ fn resolve_filter_comparison_rhs_value(
         power: bool,
     ) -> Option<i32> {
         match spec.base() {
-            ChooseSpec::Source => current_object_pt(game, ctx.source?, power),
+            ChooseSpec::Source => current_object_pt(game, ctx.source?, power)
+                .or_else(|| ctx.source_snapshot.as_ref().and_then(|snapshot| snapshot_pt(snapshot, power))),
             ChooseSpec::SpecificObject(object_id) => current_object_pt(game, *object_id, power),
             ChooseSpec::Tagged(tag) => ctx
                 .tagged_objects
@@ -1707,6 +1725,13 @@ fn resolve_filter_comparison_rhs_value(
             }
             Some(seen.len() as i32)
         }
+        Value::DistinctManaValues(filter) => {
+            let mut seen = std::collections::HashSet::new();
+            for object in game.objects_in_deterministic_order() {
+                if filter.matches(object, ctx, game) { seen.insert(object_mana_value_for_filter(object)); }
+            }
+            Some(seen.len() as i32)
+        }
         Value::DistinctPowers(filter) => {
             let mut seen = std::collections::HashSet::new();
             for object in game.objects_in_deterministic_order() {
@@ -1749,8 +1774,10 @@ fn resolve_filter_comparison_rhs_value(
             let source = game.object(ctx.source?)?;
             Some(source.counters.get(counter_type).copied().unwrap_or(0) as i32)
         }
-        Value::SourcePower => current_object_pt(game, ctx.source?, true),
-        Value::SourceToughness => current_object_pt(game, ctx.source?, false),
+        Value::SourcePower => current_object_pt(game, ctx.source?, true)
+            .or_else(|| ctx.source_snapshot.as_ref().and_then(|snapshot| snapshot_pt(snapshot, true))),
+        Value::SourceToughness => current_object_pt(game, ctx.source?, false)
+            .or_else(|| ctx.source_snapshot.as_ref().and_then(|snapshot| snapshot_pt(snapshot, false))),
         Value::PowerOf(spec) => resolve_pt_choose_spec(spec, game, ctx, true),
         Value::ToughnessOf(spec) => resolve_pt_choose_spec(spec, game, ctx, false),
         Value::CountersOn(spec, counter_type) => match spec.base() {
@@ -3349,6 +3376,9 @@ impl ObjectFilterExt for ObjectFilter {
         if self.suspected && (object.zone != Zone::Battlefield || !game.is_suspected(object.id)) {
             return false;
         }
+        if self.goaded && (object.zone != Zone::Battlefield || !game.is_goaded(object.id)) {
+            return false;
+        }
 
         // Controller check
         if let Some(controller_filter) = &self.controller
@@ -3719,15 +3749,19 @@ impl ObjectFilterExt for ObjectFilter {
             && self.set_quantifier_surface() == Some(ironsmith_core::SetQuantifierSurface::Those)
             && self.tagged_constraints.len() == 1
             && self.tagged_constraints[0].relation == TaggedOpbjectRelation::IsTaggedObject;
+        // An explicit "other than this [object]" reference stays relative
+        // to the source even when other targets have already been announced.
+        let other_relative_to_source = other_member_of_tagged_set || self.source_surface.is_some();
         if self.other
-            && (ctx.target_objects.is_empty() || other_member_of_tagged_set)
+            && (ctx.target_objects.is_empty() || other_relative_to_source)
             && let Some(source_id) = ctx.source
-            && object.id == source_id
+            && (object.id == source_id || (game.object(source_id).is_none()
+                && ctx.source_snapshot.as_ref().is_some_and(|source| source.object_id == source_id && source.stable_id == object.stable_id)))
         {
             return false;
         }
         if self.other
-            && !other_member_of_tagged_set
+            && !other_relative_to_source
             && ctx
                 .target_objects
                 .iter()
@@ -4179,6 +4213,12 @@ impl ObjectFilterExt for ObjectFilter {
         ctx: &FilterContext,
         game: &crate::game_state::GameState,
     ) -> bool {
+        if self.match_current_state {
+            let Some(current) = game.object(snapshot.object_id) else { return false; };
+            let mut live_filter = self.clone();
+            live_filter.match_current_state = false;
+            return live_filter.matches(current, ctx, game);
+        }
         if ctx
             .you
             .is_some_and(|observer| !game.snapshot_is_within_range(observer, snapshot, ctx.source))
@@ -4712,11 +4752,15 @@ impl ObjectFilterExt for ObjectFilter {
             && self.set_quantifier_surface() == Some(ironsmith_core::SetQuantifierSurface::Those)
             && self.tagged_constraints.len() == 1
             && self.tagged_constraints[0].relation == TaggedOpbjectRelation::IsTaggedObject;
+        // An explicit "other than this [object]" reference stays relative
+        // to the source even when other targets have already been announced.
+        let other_relative_to_source = other_member_of_tagged_set || self.source_surface.is_some();
         if self.other
-            && (ctx.target_objects.is_empty() || other_member_of_tagged_set)
+            && (ctx.target_objects.is_empty() || other_relative_to_source)
             && let Some(source_id) = ctx.source
         {
-            if snapshot.object_id == source_id {
+            if snapshot.object_id == source_id || (game.object(source_id).is_none()
+                && ctx.source_snapshot.as_ref().is_some_and(|source| source.object_id == source_id && source.stable_id == snapshot.stable_id)) {
                 return false;
             }
             if let Some(source) = game.object(source_id)
@@ -4726,7 +4770,7 @@ impl ObjectFilterExt for ObjectFilter {
             }
         }
         if self.other
-            && !other_member_of_tagged_set
+            && !other_relative_to_source
             && ctx.target_objects.iter().any(|target| {
                 target.object_id == snapshot.object_id || target.stable_id == snapshot.stable_id
             })
@@ -4743,6 +4787,11 @@ impl ObjectFilterExt for ObjectFilter {
 
         if self.suspected
             && (snapshot.zone != Zone::Battlefield || !game.is_suspected(snapshot.object_id))
+        {
+            return false;
+        }
+        if self.goaded
+            && (snapshot.zone != Zone::Battlefield || !game.is_goaded(snapshot.object_id))
         {
             return false;
         }
@@ -5065,6 +5114,10 @@ impl ObjectFilterExt for ObjectFilter {
     ///
     /// Used primarily for trigger display text.
     fn description(&self) -> String {
+        if let Some(description) = ironsmith_core::filter_model::describe_shared_combat_role_union(self) {
+            return description;
+        }
+
         if !self.could_produce_mana.is_empty()
             || self
                 .any_of
@@ -5182,6 +5235,9 @@ impl ObjectFilterExt for ObjectFilter {
         }
         if self.suspected {
             parts.push("suspected".to_string());
+        }
+        if self.goaded {
+            parts.push("goaded".to_string());
         }
 
         let has_leading_determiner =
@@ -5614,6 +5670,7 @@ impl ObjectFilterExt for ObjectFilter {
         for constraint in &self.tagged_constraints {
             match constraint.relation {
                 TaggedOpbjectRelation::IsTaggedObject
+                | TaggedOpbjectRelation::SameObjectId
                 | TaggedOpbjectRelation::IsTaggedObjectSacrificedAsSourceEntered => {
                     match constraint.tag.as_str() {
                         "it" | "__it__" | "blocking" => parts.push("that".to_string()),
@@ -6358,6 +6415,7 @@ impl ObjectFilterExt for ObjectFilter {
 
         // Handle name
         if let Some(ref name) = self.name {
+            let name = self.name_surface().unwrap_or(name);
             match (&controller_suffix, &owner_suffix) {
                 (Some(controller), Some(owner)) => {
                     if controller == "you control" && owner == "you own" {
