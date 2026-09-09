@@ -1054,6 +1054,11 @@ fn advance_reference_frame_for_effect(
                 }
                 SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtHand { target }) => {
                     track_target_player(target, frame);
+                    // The hand is now the antecedent of "choose ... from it".
+                    // Keep its player reference, but do not carry an older
+                    // spell/permanent tag into a hand-card selection.
+                    frame.last_object_tag = None;
+                    frame.source_object_antecedent = false;
                 }
                 SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTarget { target }) => {
                     maybe_tag_target(target, frame, id_gen, "targeted")?;

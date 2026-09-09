@@ -2543,6 +2543,7 @@ fn describe_leading_result_conjunction_then_followups(effects: &[Effect]) -> Opt
 
 pub(super) fn describe_result_branch_effect_list(effects: &[Effect]) -> String {
     describe_coordinated_hand_reveal_choice_exile(effects)
+        .or_else(|| effect_lists::describe_sequence_wrapped_hand_pipeline(effects))
         .or_else(|| describe_typed_coordinated_result_branch(effects))
         .or_else(|| describe_leading_result_conjunction_then_followups(effects))
         .or_else(|| {

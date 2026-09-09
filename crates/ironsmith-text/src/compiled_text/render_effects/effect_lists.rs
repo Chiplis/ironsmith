@@ -15535,7 +15535,7 @@ pub(in crate::compiled_text) fn describe_complete_looked_cards_clause(
     (consumed == effects.len()).then_some(rendered)
 }
 
-fn describe_sequence_wrapped_hand_pipeline(effects: &[Effect]) -> Option<String> {
+pub(super) fn describe_sequence_wrapped_hand_pipeline(effects: &[Effect]) -> Option<String> {
     fn collect_visible_hand_pipeline_effects<'a>(
         effects: &'a [Effect],
         visible: &mut Vec<&'a Effect>,
