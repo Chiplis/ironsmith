@@ -12482,11 +12482,81 @@ fn describe_intervening_legal_target_copy_assignment(
     )
 }
 
+/// A comparison followed by counters equal to that same positive difference
+/// can name the relationship instead of spelling out the subtraction again.
+fn describe_triggered_power_difference_counters(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<(String, String)> {
+    if triggered.effects.segments.len() != 1
+        || !triggered.effects.segments[0].self_replacements.is_empty()
+    {
+        return None;
+    }
+    let Condition::TaggedObjectMatchedLastKnown(tag, filter) = triggered.intervening_if.as_ref()?
+    else {
+        return None;
+    };
+    if tag.as_str() != "triggering" || !triggered.choices.is_empty() {
+        return None;
+    }
+    let Some(crate::filter::Comparison::GreaterThanExpr(threshold)) = &filter.power else {
+        return None;
+    };
+    let mut remainder = filter.clone();
+    remainder.power = None;
+    if remainder != ObjectFilter::default() {
+        return None;
+    }
+    let Value::PowerOf(reference) = threshold.as_ref() else {
+        return None;
+    };
+    let [tag_effect, counter_effect] = triggered.effects.flattened_default_effects() else {
+        return None;
+    };
+    let tagger = tag_effect.downcast_ref::<crate::effects::TagTriggeringObjectEffect>()?;
+    let counters = counter_effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if tagger.tag != *tag || counters.distributed || counters.target_count.is_some() {
+        return None;
+    }
+    let Value::Add(left, right) = &counters.amount else {
+        return None;
+    };
+    let Value::PowerOf(dead) = left.as_ref() else {
+        return None;
+    };
+    let Value::Scaled(subtracted, -1) = right.as_ref() else {
+        return None;
+    };
+    if !matches!(dead.base(), ChooseSpec::Tagged(dead_tag) if dead_tag == tag)
+        || subtracted.as_ref() != threshold.as_ref()
+    {
+        return None;
+    }
+    // The counter recipient may carry a more precise authored source name.
+    // Use it only when it denotes the same object as the compared reference.
+    let power = if counters.target.base() == reference.base() {
+        Value::PowerOf(Box::new(counters.target.clone()))
+    } else {
+        threshold.as_ref().clone()
+    };
+    Some((
+        format!("it had power greater than {}", describe_value(&power)),
+        format!(
+            "Put a number of {} counters on {} equal to the difference",
+            describe_counter_type(counters.counter_type),
+            describe_choose_spec(&counters.target)
+        ),
+    ))
+}
+
 pub(super) fn describe_triggered_resolution_text(
     triggered: &crate::ability::TriggeredAbility,
     subject: &str,
     rewrite_it_deals: bool,
 ) -> Option<String> {
+    if let Some((_, text)) = describe_triggered_power_difference_counters(triggered) {
+        return Some(text);
+    }
     if let Some(text) = describe_intervening_legal_target_copy_assignment(triggered) {
         return Some(text);
     }
@@ -15686,6 +15756,11 @@ pub(super) fn describe_trigger_intervening_condition(
     triggered: &crate::ability::TriggeredAbility,
     self_subject: Option<&str>,
 ) -> String {
+    if triggered.intervening_if.as_ref() == Some(condition)
+        && let Some((text, _)) = describe_triggered_power_difference_counters(triggered)
+    {
+        return text;
+    }
     if trigger_is_this_attacks(&triggered.trigger) {
         let (negated, inner) = match condition {
             Condition::Not(inner) => (true, inner.as_ref()),

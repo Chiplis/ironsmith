@@ -1888,7 +1888,10 @@ fn triggering_event_object_matched_last_known(
     let Some(snapshot) = ctx.triggering_event.and_then(TriggerEvent::snapshot) else {
         return false;
     };
-    let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
+    // Last-known characteristics belong to the event object, but relative
+    // expressions (such as its power versus this source's power) still need
+    // the ability source as their evaluation anchor.
+    let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
     triggering_event_object_matched_last_known_with_filter_context(
         game,
         snapshot,

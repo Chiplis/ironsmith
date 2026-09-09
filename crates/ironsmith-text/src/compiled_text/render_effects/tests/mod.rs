@@ -295,3 +295,5 @@ mod linked_permission_discount;
 mod graveyard_threshold_discount;
 
 mod creature_leader_control;
+
+mod power_difference_counters;
