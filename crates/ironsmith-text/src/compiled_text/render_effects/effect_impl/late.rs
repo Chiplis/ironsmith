@@ -3410,6 +3410,18 @@
         let trigger_display = schedule.trigger.display();
         let mut trigger_text = trigger_display.trim().trim_end_matches('.').to_string();
         if schedule.one_shot
+            && let Some(tag) = &schedule.target_tag
+            && let Some(zone_change) = schedule.trigger.downcast_ref::<crate::triggers::ZoneChangeTrigger>()
+            && *zone_change == crate::triggers::ZoneChangeTrigger::new()
+                .to(Zone::Graveyard)
+                .filter(ObjectFilter::tagged(tag.clone()))
+                .this()
+        {
+            // The earlier target declaration already identifies this object;
+            // the delayed watcher does not choose a new target when it fires.
+            trigger_text = "When it's put into a graveyard".to_string();
+        }
+        if schedule.one_shot
             && schedule.until_end_of_turn
             && schedule
                 .trigger

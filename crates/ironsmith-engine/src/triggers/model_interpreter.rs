@@ -935,8 +935,19 @@ impl super::Trigger {
             ironsmith_core::DelayedTriggerSpec::IsDealtDamage(target) => {
                 Self::is_dealt_damage(target)
             }
-            ironsmith_core::DelayedTriggerSpec::PutIntoGraveyard(filter) => {
-                Self::put_into_graveyard(filter)
+            ironsmith_core::DelayedTriggerSpec::PutIntoGraveyard(mut filter) => {
+                if filter.source {
+                    // Zone changes replace object IDs. Match the watched
+                    // source against the event's departing object, rather
+                    // than testing the destination object against its old ID.
+                    filter.source = false;
+                    Self::new(super::zone_changes::ZoneChangeTrigger::new()
+                        .to(crate::zone::Zone::Graveyard)
+                        .filter(filter)
+                        .this())
+                } else {
+                    Self::put_into_graveyard(filter)
+                }
             }
             ironsmith_core::DelayedTriggerSpec::PutIntoGraveyardFromZone {
                 filter,

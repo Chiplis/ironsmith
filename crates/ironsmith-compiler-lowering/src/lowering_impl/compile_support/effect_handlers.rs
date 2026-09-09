@@ -992,9 +992,16 @@ pub(super) fn try_compile_timing_and_control_effect(
                             },
                         )?;
                         let delayed_effects = lowered.effects.to_vec();
+                        // The delayed matcher's source is the watched object ID.
+                        // A tag alone can match later zone incarnations of the
+                        // same card, which are no longer the watched object.
+                        let mut event_filter = resolved_filter.clone();
+                        event_filter.source = true;
                         let delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
                             watched_tag.clone(),
-                            ironsmith_core::DelayedTriggerSpec::ThisDies,
+                            ironsmith_core::DelayedTriggerSpec::PutIntoGraveyard(
+                                event_filter,
+                            ),
                             delayed_effects,
                             *one_shot,
                             Vec::new(),
