@@ -1072,6 +1072,22 @@ pub fn parse_permission_clause_spec_lexed(
     if let Some((target_ref, tagged_tail_tokens, filter)) = filtered_tagged_target
         .or_else(|| parse_spell_from_among_source_exiled_tokens(rest_tokens))
         .or_else(|| {
+            let (reference, tail) =
+                permission_source_exiled_facts::parse_cards_from_source_exiled_tokens(rest_tokens)?;
+            Some((
+                TaggedPermissionTarget {
+                    tag: crate::tag::CompilerReferenceTag::SourceExiled.bind().into(),
+                    as_copy: false,
+                    max_plays: None,
+                    surface: Some(ironsmith_core::GrantPlayTaggedObjectSurface::CardsExiledWithSource {
+                        source: reference.surface,
+                    }),
+                },
+                tail,
+                None,
+            ))
+        })
+        .or_else(|| {
             parse_tagged_cast_or_play_target_tokens(rest_tokens)
                 .map(|(target_ref, tail)| (target_ref, tail, None))
         })
@@ -1150,6 +1166,7 @@ pub fn parse_permission_clause_spec_lexed(
                         | ironsmith_core::GrantPlayTaggedObjectSurface::ThoseCards
                         | ironsmith_core::GrantPlayTaggedObjectSurface::SpellsFromAmongThoseCards
                         | ironsmith_core::GrantPlayTaggedObjectSurface::SpellsFromAmongThoseExiledCards
+                        | ironsmith_core::GrantPlayTaggedObjectSurface::CardsExiledWithSource { .. }
                         | ironsmith_core::GrantPlayTaggedObjectSurface::SpellFromAmongCardsExiledWithSource {
                             ..
                         }

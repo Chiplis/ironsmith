@@ -49,5 +49,5 @@ mod tests;
 mod reference_programs;
 use reference_programs::{parse_source_exiled_tail_lexed, parse_spell_from_source_exiled_lexed};
 pub use reference_programs::{
-    parse_spell_from_source_exiled_tokens, parse_spells_from_source_exiled_tokens,
+    parse_spell_from_source_exiled_tokens, parse_spells_from_source_exiled_tokens, parse_cards_from_source_exiled_tokens,
 };

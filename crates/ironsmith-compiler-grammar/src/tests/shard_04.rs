@@ -2201,6 +2201,7 @@ pub(super) fn rewrite_lowered_activated_ability_trigger_keeps_comma_type_list()
         "{filter:#?}"
     );
     assert!(filter.card_types.contains(&CardType::Land), "{filter:#?}");
+    assert!(filter.has_activation_source_battlefield_surface());
     assert!(*non_mana_only, "{:#?}", triggered.trigger);
     assert!(
         format!("{:#?}", triggered.effects).contains("DealDamageEffect"),
@@ -2245,6 +2246,7 @@ pub(super) fn rewrite_lowered_activated_ability_trigger_keeps_that_non_mana_type
         "{filter:#?}"
     );
     assert!(filter.card_types.contains(&CardType::Land), "{filter:#?}");
+    assert!(!filter.has_activation_source_battlefield_surface());
     assert!(*non_mana_only, "{:#?}", triggered.trigger);
     assert!(
         format!("{:#?}", triggered.effects).contains("DealDamageEffect"),

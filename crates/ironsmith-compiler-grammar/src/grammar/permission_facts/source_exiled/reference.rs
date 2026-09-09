@@ -70,3 +70,29 @@ pub(super) fn parse_source_exiled_tail_lexed<'a>(
         },
     ))
 }
+
+pub fn parse_cards_from_source_exiled_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<(SourceExiledReference, &[OwnedLexToken])> {
+    let (_, rest) = primitives::parse_prefix(tokens, primitives::kw("cards"))?;
+    let ((owned_by_you, reference), tail) =
+        primitives::parse_prefix(rest, parse_source_exiled_tail_lexed).or_else(|| {
+            let (_, tail) =
+                primitives::parse_prefix(rest, primitives::phrase(&["exiled", "with", "this"]))?;
+            Some((
+                (
+                    false,
+                    SourceExiledReference {
+                        surface: ironsmith_core::SourceReferenceSurface::ThisPermanentType(
+                            "this source".to_string(),
+                        ),
+                    },
+                ),
+                tail,
+            ))
+        })?;
+    if owned_by_you {
+        return None;
+    }
+    Some((reference, tail))
+}

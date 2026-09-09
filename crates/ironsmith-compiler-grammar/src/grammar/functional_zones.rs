@@ -103,6 +103,8 @@ const STATIC_ZONE_HINT_PHRASES: &[(&[&str], Zone)] = &[
     ),
 ];
 const TRIGGER_ZONE_HINT_PHRASES: &[(&[&str], Zone)] = &[
+    (&["exile", "this", "card", "from", "your", "graveyard"], Zone::Graveyard),
+    (&["exile", "this", "from", "your", "graveyard"], Zone::Graveyard),
     (&["if", "this", "is", "in", "your", "hand"], Zone::Hand),
     (
         &["if", "this", "card", "is", "in", "your", "hand"],

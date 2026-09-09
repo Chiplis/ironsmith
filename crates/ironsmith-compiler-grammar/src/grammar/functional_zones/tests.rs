@@ -99,3 +99,13 @@ fn recognizes_activated_functional_zone_facts() {
         vec![Zone::Command]
     );
 }
+
+#[test]
+fn source_exile_from_graveyard_sets_trigger_zone_without_affecting_other_cards() {
+    for source in ["this card", "this"] {
+        let tokens = lex_line(&format!("When you cast a creature spell, exile {source} from your graveyard."), 0).unwrap();
+        assert_eq!(parse_trigger_functional_zone_facts_tokens(&tokens).explicit_zone, Some(Zone::Graveyard));
+    }
+    let tokens = lex_line("When you cast a creature spell, exile a card from your graveyard.", 0).unwrap();
+    assert_eq!(parse_trigger_functional_zone_facts_tokens(&tokens).explicit_zone, None);
+}

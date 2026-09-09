@@ -34,6 +34,8 @@ pub struct GrantPlayTaggedEffect {
     /// Additional mana cost imposed on nonland cards cast through this exact
     /// tagged play permission.
     pub spell_cost_increase: Option<crate::mana::ManaCost>,
+    /// Mana reduction for spells cast through this exact permission.
+    pub spell_cost_reduction: Option<crate::mana::ManaCost>,
     /// Whether a land played through this exact tagged permission enters
     /// tapped.
     pub lands_enter_tapped: bool,
@@ -67,6 +69,7 @@ impl GrantPlayTaggedEffect {
             filter: None,
             during_turns_counter_put_on_source: None,
             spell_cost_increase: None,
+            spell_cost_reduction: None,
             lands_enter_tapped: false,
             cast_pool_is_plural: false,
             max_plays: None,
@@ -130,6 +133,11 @@ impl GrantPlayTaggedEffect {
         counter_type: crate::object::CounterType,
     ) -> Self {
         self.during_turns_counter_put_on_source = Some(counter_type);
+        self
+    }
+
+    pub fn with_spell_cost_reduction(mut self, cost: crate::mana::ManaCost) -> Self {
+        self.spell_cost_reduction = Some(cost);
         self
     }
 
@@ -297,6 +305,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             };
             let constraints = PlayFromConstraints {
                 spell_cost_increase: self.spell_cost_increase.clone(),
+                spell_cost_reduction: self.spell_cost_reduction.clone(),
                 lands_enter_tapped: self.lands_enter_tapped,
             };
             let shared_usage_id = self.max_plays.map(|max_plays| {

@@ -3360,7 +3360,7 @@
             let body = describe_resolution_program(&schedule.effects);
             return format!("{} when that {} dies", body.trim_end_matches('.'), strip_indefinite_article(&noun));
         }
-        if let Some(text) = describe_delayed_target_land_damages_tagged_creature(schedule) {
+        if let Some(text) = describe_delayed_targeted_source_damage(schedule) {
             return text;
         }
         if let Some(text) = describe_delayed_exile_referenced_controller_graveyard(schedule) {
@@ -3409,6 +3409,18 @@
         }
         let trigger_display = schedule.trigger.display();
         let mut trigger_text = trigger_display.trim().trim_end_matches('.').to_string();
+        if schedule.one_shot
+            && let Some(tag) = &schedule.target_tag
+            && let Some(zone_change) = schedule.trigger.downcast_ref::<crate::triggers::ZoneChangeTrigger>()
+            && *zone_change == crate::triggers::ZoneChangeTrigger::new()
+                .to(Zone::Graveyard)
+                .filter(ObjectFilter::tagged(tag.clone()))
+                .this()
+        {
+            // The earlier target declaration already identifies this object;
+            // the delayed watcher does not choose a new target when it fires.
+            trigger_text = "When it's put into a graveyard".to_string();
+        }
         if schedule.one_shot
             && schedule.until_end_of_turn
             && schedule
@@ -4846,6 +4858,21 @@
     }
     if let Some(grant_play_tagged) = effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
     {
+        if let Some(reduction) = &grant_play_tagged.spell_cost_reduction {
+            let mut permission = grant_play_tagged.clone();
+            permission.spell_cost_reduction = None;
+            let actor = if permission.player == PlayerFilter::You {
+                "you cast".to_string()
+            } else {
+                format!("{} casts", describe_player_filter(&permission.player))
+            };
+            return format!(
+                "{}. Spells {actor} this way cost {} less to cast",
+                describe_effect(&Effect::new(permission)),
+                reduction.to_oracle(),
+            );
+        }
+
         if let Some(rendered) =
             describe_temporary_tagged_permission_surface(grant_play_tagged, false)
         {

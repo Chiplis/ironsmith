@@ -796,6 +796,7 @@ mod tests {
             aura_attach_filter: None,
             alternative_casts: vec![].into(),
             cast_alternative_method: None,
+            cast_play_from_constraints: None,
             has_fuse: false,
             optional_costs: vec![].into(),
             optional_costs_paid: OptionalCostsPaid::default(),

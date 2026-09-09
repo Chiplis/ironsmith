@@ -829,6 +829,55 @@ mod tests {
     }
 
     #[test]
+    fn unique_control_leader_quantifies_candidates_in_all_contexts() {
+        for counts in [[1, 3, 2], [3, 1, 2], [2, 2, 1], [0, 0, 0]] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Carol".into()], 20);
+            let alice = game.players[0].id;
+            let source = game.new_object_id();
+            for (player, count) in counts.into_iter().enumerate() {
+                for n in 0..count {
+                    add_battlefield_land(&mut game, 100 + player as u32 * 10 + n, "Land", player);
+                }
+            }
+            let max = *counts.iter().max().unwrap();
+            let unique = counts.iter().filter(|n| **n == max).count() == 1;
+            for player in [PlayerFilter::Any, PlayerFilter::You, PlayerFilter::Opponent] {
+                let expected = unique
+                    && match player {
+                        PlayerFilter::You => counts[0] == max,
+                        PlayerFilter::Opponent => counts[0] != max,
+                        _ => true,
+                    };
+                let condition = Condition::PlayerControlsMoreThanEachOtherPlayer {
+                    player,
+                    filter: crate::target::ObjectFilter::land(),
+                };
+                let external = ExternalEvaluationContext {
+                    controller: alice,
+                    source,
+                    ..Default::default()
+                };
+                let execution = ExecutionContext::new_default(source, alice);
+                assert_eq!(
+                    evaluate_condition_external(&game, &condition, &external),
+                    expected,
+                    "external {counts:?} {condition:?}"
+                );
+                assert_eq!(
+                    evaluate_condition_cast_time(&game, &condition, alice, source),
+                    expected,
+                    "cast {counts:?} {condition:?}"
+                );
+                assert_eq!(
+                    evaluate_condition(&game, &condition, &execution).unwrap(),
+                    expected,
+                    "execution {counts:?} {condition:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn evaluate_player_controls_more_than_each_other_player_requires_unique_leader() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = game.players[0].id;
@@ -1839,7 +1888,10 @@ fn triggering_event_object_matched_last_known(
     let Some(snapshot) = ctx.triggering_event.and_then(TriggerEvent::snapshot) else {
         return false;
     };
-    let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
+    // Last-known characteristics belong to the event object, but relative
+    // expressions (such as its power versus this source's power) still need
+    // the ability source as their evaluation anchor.
+    let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
     triggering_event_object_matched_last_known_with_filter_context(
         game,
         snapshot,
@@ -3821,10 +3873,9 @@ pub fn evaluate_condition_external(
             })
         }
         Condition::PlayerControlsMoreThanEachOtherPlayer { player, filter } => {
-            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
-                return false;
-            };
-            player_controls_more_than_each_other_player(game, ctx.source, player, player_id, filter)
+            matching_condition_players_external(game, ctx, player).into_iter().any(|player_id| {
+                player_controls_more_than_each_other_player(game, ctx.source, player, player_id, filter)
+            })
         }
         Condition::PlayerControlsMoreThanYou { player, filter } => {
             let count_for = |candidate: PlayerId| {
@@ -4636,10 +4687,9 @@ fn evaluate_condition_simple(
             current == max_count
         }
         Condition::PlayerControlsMoreThanEachOtherPlayer { player, filter } => {
-            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
-                return false;
-            };
-            player_controls_more_than_each_other_player(game, source, player, player_id, filter)
+            matching_condition_players_simple(game, controller, player).into_iter().any(|player_id| {
+                player_controls_more_than_each_other_player(game, source, player, player_id, filter)
+            })
         }
         Condition::PlayerControlsMoreThanYou { player, filter } => {
             let count_for = |candidate: PlayerId| {
@@ -5443,10 +5493,9 @@ fn evaluate_condition(
             Ok(current == max_count)
         }
         Condition::PlayerControlsMoreThanEachOtherPlayer { player, filter } => {
-            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
-            Ok(player_controls_more_than_each_other_player(
-                game, ctx.source, player, player_id, filter,
-            ))
+            Ok(matching_condition_players_exec(game, ctx, player)?.into_iter().any(|player_id| {
+                player_controls_more_than_each_other_player(game, ctx.source, player, player_id, filter)
+            }))
         }
         Condition::PlayerControlsMoreThanYou { player, filter } => {
             let count_for = |candidate: PlayerId| {

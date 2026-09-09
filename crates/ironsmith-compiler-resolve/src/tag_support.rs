@@ -1791,8 +1791,11 @@ pub fn restriction_references_tag(restriction: &crate::effect::Restriction, tag:
     use crate::effect::Restriction;
 
     if let Restriction::BeSacrificedByCause { filter, cause } = restriction {
-        return std::iter::once(filter).chain(cause.source_filter.as_ref()).any(|filter|
-            filter.tagged_constraints.iter().any(|constraint| constraint.tag.as_str() == tag));
+        return std::iter::once(filter)
+            .chain(cause.source_filter.iter())
+            .any(|filter| {
+                restriction_references_tag(&Restriction::BeSacrificed(filter.clone()), tag)
+            });
     }
     let maybe_filter = match restriction {
         Restriction::Attack(filter)

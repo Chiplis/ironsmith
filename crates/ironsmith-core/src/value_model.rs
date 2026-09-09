@@ -924,7 +924,11 @@ pub enum Restriction {
     BeDestroyed(ObjectFilter),
     BeRegenerated(ObjectFilter),
     BeSacrificed(ObjectFilter),
-    BeSacrificedByCause { filter: ObjectFilter, cause: crate::CauseFilter },
+    /// Sacrifice protection restricted to the initiating cause.
+    BeSacrificedByCause {
+        filter: ObjectFilter,
+        cause: crate::CauseFilter,
+    },
     HaveCountersPlaced(ObjectFilter),
     BeTargeted(ObjectFilter),
     BeTargetedFrom(ObjectFilter, ObjectFilter),

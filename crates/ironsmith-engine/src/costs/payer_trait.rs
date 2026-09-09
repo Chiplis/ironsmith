@@ -79,7 +79,7 @@ pub struct CostContext<'dm> {
     pub x_value: Option<u32>,
     /// Why this cost is being paid.
     pub reason: PaymentReason,
-    /// Original effect requesting this payment, independent of the payer.
+    /// Original requesting effect, when payment happens during its resolution.
     pub requesting_effect_cause: Option<crate::events::cause::EventCause>,
     /// Decision maker for player choices during cost payment.
     pub decision_maker: &'dm mut dyn crate::decision::DecisionMaker,
@@ -144,19 +144,6 @@ impl<'dm> CostContext<'dm> {
         }
     }
 
-    /// Keep the event classified as a cost while retaining the spell/ability
-    /// controller that requested an effect-time payment.
-    pub fn event_cause(&self) -> crate::events::cause::EventCause {
-        let mut cause = crate::events::cause::EventCause::from_cost(self.source, self.payer);
-        if self.reason == PaymentReason::Effect
-            && let Some(request) = &self.requesting_effect_cause
-        {
-            cause.source = request.source;
-            cause.source_controller = request.source_controller;
-        }
-        cause
-    }
-
     /// Set the X value.
     pub fn with_x(mut self, x: u32) -> Self {
         self.x_value = Some(x);
@@ -167,6 +154,19 @@ impl<'dm> CostContext<'dm> {
     pub fn with_reason(mut self, reason: PaymentReason) -> Self {
         self.reason = reason;
         self
+    }
+
+    /// Keep the requesting effect's captured source and controller while
+    /// preserving the fact that the resulting action pays a cost.
+    pub fn event_cause(&self) -> crate::events::cause::EventCause {
+        if self.reason == PaymentReason::Effect
+            && let Some(cause) = &self.requesting_effect_cause
+        {
+            let mut cause = cause.clone();
+            cause.cause_type = crate::events::cause::CauseType::Cost;
+            return cause;
+        }
+        crate::events::cause::EventCause::from_cost(self.source, self.payer)
     }
 
     /// Set pre-chosen cards for costs that require card selection.

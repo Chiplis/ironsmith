@@ -36,4 +36,3 @@ fn counter_threshold_transform_untaps_only_after_threshold() {
         assert_eq!(game.object(source).unwrap().name,if initial >= 2 {"Threshold Creature"} else {"Threshold Shelter"});
     }
 }
-

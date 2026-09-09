@@ -441,6 +441,11 @@ fn read_target_gets_clause(
     input: &RemainingSentence<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
+    if crate::effect_sentences::lex_chain_helpers::split_effect_chain_on_and_lexed(tokens).len() > 1
+        || crate::effect_sentences::lex_chain_helpers::has_explicit_comma_then_boundary_lexed(tokens)
+    {
+        return Ok(None);
+    }
     let head_words = crate::lexer::parser_token_word_refs(tokens);
     // Commas between parallel target-state adjectives belong to the object
     // filter (`target nonattacking, nonblocking creature`), not to effect
@@ -450,9 +455,9 @@ fn read_target_gets_clause(
         && head_words
             .iter()
             .any(|word| matches!(*word, "get" | "gets"))
-        && tokens.iter().any(OwnedLexToken::is_comma)
         && let Some(shape) =
             effect_grammar::clause_dispatch_shapes::parse_clause_subject_verb_shape(tokens)
+        && shape.subject_tokens.iter().any(OwnedLexToken::is_comma)
         && let Some(effect) = super::super::super::clause_dispatch::parse_get_pump_clause(
             shape.subject_tokens,
             shape.action_tokens,

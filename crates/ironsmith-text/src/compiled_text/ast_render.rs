@@ -17266,181 +17266,6 @@ fn describe_shared_target_player_two_sacrifices_then_damage_program(
     )
 }
 
-/// Recombine the two player-choice token bundles used by offerings whose
-/// chosen opponent receives the same tokens as the caster. The chosen-player
-/// effects remain explicit runtime state; this only restores the authored
-/// shared `you and that player each create` surface for the exact correlated
-/// token programs.
-fn describe_two_opponent_shared_token_offerings_program(
-    program: &crate::resolution::ResolutionProgram,
-) -> Option<String> {
-    fn exact_opponent_choice(effect: &Effect) -> Option<TagKey> {
-        let choice = effect.downcast_ref::<crate::effects::ChoosePlayerEffect>()?;
-        if choice.chooser != PlayerFilter::You
-            || choice.filter != PlayerFilter::Opponent
-            || choice.random
-            || !choice.excluded_tags.is_empty()
-        {
-            return None;
-        }
-        Some(choice.tag.clone())
-    }
-
-    fn chosen_player_controller(choice_tag: &TagKey, controller: &PlayerFilter) -> bool {
-        matches!(controller, PlayerFilter::TaggedPlayer(tag)
-            if tag == choice_tag || tag.as_str() == "__it__")
-    }
-
-    fn exact_token(
-        effect: &Effect,
-        count: &Value,
-        controller_matches: impl FnOnce(&PlayerFilter) -> bool,
-        subtypes: &[Subtype],
-        base_power: i32,
-        base_toughness: i32,
-    ) -> Option<TagKey> {
-        let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
-        let create = tagged
-            .effect
-            .downcast_ref::<crate::effects::CreateTokenEffect>()?;
-        let card = &create.token.card;
-        if create.count.unhinted() != count.unhinted()
-            || !controller_matches(&create.controller)
-            || create.controller_target.is_some()
-            || create.use_source_chosen_color
-            || create.use_source_chosen_creature_type
-            || create.suppress_aura_attachment_choice
-            || create.ability_presentation.is_some()
-            || create.enters_tapped
-            || create.enters_attacking
-            || create.attack_target_mode.is_some()
-            || create.exile_at_end_of_combat
-            || create.sacrifice_at_end_of_combat
-            || create.sacrifice_at_next_end_step
-            || create.exile_at_next_end_step
-            || create.next_end_step_player != PlayerFilter::Any
-            || card.card_types.as_slice() != [CardType::Creature]
-            || card.subtypes.as_slice() != subtypes
-            || card.color_indicator != Some(crate::color::ColorSet::GREEN)
-            || card.power_toughness
-                != Some(crate::PowerToughness::fixed(base_power, base_toughness))
-            || !card.is_token
-            || !create.token.abilities.is_empty()
-            || create.token.spell_effect.is_some()
-        {
-            return None;
-        }
-        Some(tagged.tag.clone())
-    }
-
-    fn exact_x_pt(effect: &Effect, token_tag: &TagKey) -> Option<()> {
-        let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
-        let set = tagged
-            .effect
-            .downcast_ref::<crate::effects::SetBasePowerToughnessEffect>()?;
-        if set.target.unhinted() != &ChooseSpec::Tagged(token_tag.clone())
-            || set.power.unhinted() != &Value::X
-            || set.toughness.unhinted() != &Value::X
-            || set.duration != Until::Forever
-        {
-            return None;
-        }
-        Some(())
-    }
-
-    let [first_choice, treefolk_bundle, elf_bundle] = program.segments.as_slice() else {
-        return None;
-    };
-    if program
-        .segments
-        .iter()
-        .any(|segment| !segment.self_replacements.is_empty())
-        || first_choice.starts_new_source_line
-        || treefolk_bundle.starts_new_source_line
-        || !elf_bundle.starts_new_source_line
-    {
-        return None;
-    }
-    let [first_choice_effect] = first_choice.default_effects.as_slice() else {
-        return None;
-    };
-    let first_choice_tag = exact_opponent_choice(first_choice_effect)?;
-
-    let [treefolk_sequence] = treefolk_bundle.default_effects.as_slice() else {
-        return None;
-    };
-    let treefolk_sequence = treefolk_sequence.downcast_ref::<crate::effects::SequenceEffect>()?;
-    if treefolk_sequence.surface != ironsmith_core::SequenceSurface::Coordinated
-        || treefolk_sequence.result_label.is_some()
-    {
-        return None;
-    }
-    let [
-        your_treefolk,
-        your_treefolk_pt,
-        their_treefolk,
-        their_treefolk_pt,
-    ] = treefolk_sequence.effects.as_slice()
-    else {
-        return None;
-    };
-    let treefolk_subtypes = [Subtype::Treefolk];
-    let your_treefolk_tag = exact_token(
-        your_treefolk,
-        &Value::Fixed(1),
-        |controller| controller == &PlayerFilter::You,
-        &treefolk_subtypes,
-        0,
-        0,
-    )?;
-    exact_x_pt(your_treefolk_pt, &your_treefolk_tag)?;
-    let their_treefolk_tag = exact_token(
-        their_treefolk,
-        &Value::Fixed(1),
-        |controller| chosen_player_controller(&first_choice_tag, controller),
-        &treefolk_subtypes,
-        0,
-        0,
-    )?;
-    exact_x_pt(their_treefolk_pt, &their_treefolk_tag)?;
-
-    let [second_choice_effect, elf_sequence] = elf_bundle.default_effects.as_slice() else {
-        return None;
-    };
-    let second_choice_tag = exact_opponent_choice(second_choice_effect)?;
-    let elf_sequence = elf_sequence.downcast_ref::<crate::effects::SequenceEffect>()?;
-    if elf_sequence.surface != ironsmith_core::SequenceSurface::Coordinated
-        || elf_sequence.result_label.is_some()
-    {
-        return None;
-    }
-    let [your_elves, their_elves] = elf_sequence.effects.as_slice() else {
-        return None;
-    };
-    let elf_subtypes = [Subtype::Elf, Subtype::Warrior];
-    exact_token(
-        your_elves,
-        &Value::X,
-        |controller| controller == &PlayerFilter::You,
-        &elf_subtypes,
-        1,
-        1,
-    )?;
-    exact_token(
-        their_elves,
-        &Value::X,
-        |controller| chosen_player_controller(&second_choice_tag, controller),
-        &elf_subtypes,
-        1,
-        1,
-    )?;
-
-    Some(
-        "Choose an opponent. You and that player each create an X/X green Treefolk creature token.\nChoose an opponent. You and that player each create X 1/1 green Elf Warrior creature tokens"
-            .to_string(),
-    )
-}
-
 /// Preserve two damage recipients that are declared before a coordinated
 /// same-source damage pair. The second `EffectValue` is the typed "that much"
 /// correlation; the two declarations prove which recipient belongs to each
@@ -19598,9 +19423,6 @@ pub(super) fn describe_resolution_program(
             describe_choose_spec(&target.target)
         );
     }
-    if let Some(rendered) = describe_two_opponent_shared_token_offerings_program(program) {
-        return rendered;
-    }
     if let Some(rendered) = describe_declared_linked_same_source_damage_program(program) {
         return rendered;
     }
@@ -21506,49 +21328,42 @@ fn describe_each_opponent_sacrifice_discard_then_return_draw(
     )
 }
 
-fn describe_graveyard_bolas_cast_entry_counter_trigger(ability: &Ability) -> Option<String> {
-    if ability.functional_zones.as_slice() != [Zone::Graveyard] {
+fn describe_graveyard_cast_entry_counter_trigger(ability: &Ability) -> Option<String> {
+    if ability.functional_zones.as_slice() != [Zone::Graveyard] { return None; }
+    let AbilityKind::Triggered(triggered) = &ability.kind else { return None; };
+    if triggered.intervening_if.is_some() || !triggered.choices.is_empty()
+        || triggered.effects.segments.iter().any(|segment| !segment.self_replacements.is_empty()) {
         return None;
     }
-    let AbilityKind::Triggered(triggered) = &ability.kind else {
-        return None;
-    };
-    let spell_cast = triggered
-        .trigger
-        .downcast_ref::<crate::triggers::SpellCastTrigger>()?;
-    let filter = spell_cast.filter.as_ref()?;
-    if spell_cast.caster != PlayerFilter::You
-        || filter.card_types.as_slice() != [CardType::Planeswalker]
-        || filter.subtypes.as_slice() != [Subtype::Bolas]
-    {
-        return None;
-    }
-    let [segment] = triggered.effects.segments.as_slice() else {
-        return None;
-    };
-    if !segment.self_replacements.is_empty() {
-        return None;
-    }
-    let [tag_effect, move_effect, register_effect] = segment.default_effects.as_slice() else {
-        return None;
-    };
+    let cast = triggered.trigger.downcast_ref::<crate::triggers::SpellCastTrigger>()?;
+    let filter = cast.filter.as_ref()?;
+    let [tag_effect, move_effect, register_effect] = triggered.effects.flattened_default_effects() else { return None; };
     let tag = tag_effect.downcast_ref::<crate::effects::TagTriggeringObjectEffect>()?;
-    let movement = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
-    let register = register_effect
-        .downcast_ref::<crate::effects::RegisterNextBatchEnterWithCountersEffect>()?;
-    if movement.target != ChooseSpec::Source
-        || movement.zone != Zone::Exile
+    let movement = move_to_zone_surface_view(move_effect)?;
+    let register = register_effect.downcast_ref::<crate::effects::RegisterNextBatchEnterWithCountersEffect>()?;
+    let mut expected_filter = filter.clone();
+    expected_filter.zone = Some(Zone::Battlefield);
+    expected_filter.stack_kind = None;
+    expected_filter.has_mana_cost = false;
+    if movement.target != ChooseSpec::Source || movement.zone != Zone::Exile
         || register.same_stable_id_tag.as_ref() != Some(&tag.tag)
-        || register.filter != ObjectFilter::planeswalker()
-        || register.counter_type != CounterType::Loyalty
-        || register.count != Value::Fixed(1)
-    {
+        || register.filter != expected_filter
+        || !register.count.has_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
+        || !register.count.has_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter) {
         return None;
     }
-    Some(
-        "When you cast a Bolas planeswalker spell, exile this card from your graveyard. That planeswalker enters with an additional loyalty counter on it"
-            .to_string(),
-    )
+    let noun = if let [kind] = filter.card_types.as_slice() {
+        kind.to_string().to_ascii_lowercase()
+    } else { "permanent".into() };
+    let counter = register.counter_type.description();
+    let amount = if register.count.unhinted() == &Value::Fixed(1) {
+        format!("an additional {counter} counter")
+    } else {
+        describe_put_counter_phrase(&register.count, register.counter_type)
+            .replacen(&format!("{counter} counter"), &format!("additional {counter} counter"), 1)
+    };
+    Some(format!("{}, exile this card from your graveyard. That {noun} enters with {amount} on it",
+        triggered.trigger.display()))
 }
 
 /// Render two complementary counter-placement predicates against one declared
@@ -26063,13 +25878,6 @@ fn describe_resolution_program_preserving_source_lines(
         return rendered;
     }
     if let Some(rendered) = describe_each_opponent_sacrifice_discard_then_return_draw(program) {
-        return rendered;
-    }
-    // This exact offering procedure spans two authored source lines, but its
-    // chosen-player tags and paired token controllers must be proven across
-    // the complete program before the generic source-line splitter hides the
-    // relationship from the strict structural matcher.
-    if let Some(rendered) = describe_two_opponent_shared_token_offerings_program(program) {
         return rendered;
     }
     // Conditional fight cards announce both targets across an authored
@@ -32610,7 +32418,7 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 ability_idx += 1;
                 continue;
             }
-            if let Some(text) = describe_graveyard_bolas_cast_entry_counter_trigger(ability) {
+            if let Some(text) = describe_graveyard_cast_entry_counter_trigger(ability) {
                 output.push(format!("Triggered ability {}: {text}", ability_idx + 1));
                 ability_idx += 1;
                 continue;

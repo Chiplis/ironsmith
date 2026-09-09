@@ -154,9 +154,7 @@ fn can_declare_attack_target_preview(
     abilities: &[crate::static_abilities::StaticAbility],
     view: &DerivedGameView<'_>,
 ) -> bool {
-    if let AttackTarget::Player(player) = target
-        && !game.can_attack_player_directly(attacker.id, *player)
-    {
+    if matches!(target, AttackTarget::Player(_)) && !game.can_attack_player_directly(attacker.id, defending_player) {
         return false;
     }
     if !crate::rules::combat::can_attack_defending_player_with_view(
@@ -188,42 +186,33 @@ fn can_declare_attack_target_preview(
         )
     });
 
-    let mut pips = generic_mana_cost(total_generic_cost).pips().to_vec();
-    let mut has_typed_tax = false;
-    for &source in &game.battlefield {
-        let Some(object) = game.object(source) else { continue; };
-        let controller = game.controller_of(object);
-        for ability in static_abilities_for_attack_preview(view, object) {
-            let Some(cost) = ability.attack_cost_for_declaration(
-                game, source, controller, attacker.id, target,
-            ) else { continue; };
-            has_typed_tax = true;
-            let ironsmith_core::TotalCostKind::All(components) = cost.kind() else {
-                // Alternative and nonmana costs are validated during the declaration.
-                continue;
-            };
-            let mut dm = crate::decision::AutoPassDecisionMaker;
-            let mut ctx = crate::effects::ExecutionContext::new(source, controller, &mut dm);
-            for component in components {
-                if let Some(mana) = component.mana_cost_ref() {
-                    pips.extend_from_slice(mana.pips());
-                } else if let Some(dynamic) = component.dynamic_mana_cost_ref() {
-                    let Ok(mana) = crate::special_actions::resolve_dynamic_mana_cost(game, dynamic, &mut ctx) else {
-                        return false;
-                    };
-                    pips.extend_from_slice(mana.pips());
+    let mut mana_options = vec![generic_mana_cost(total_generic_cost)];
+    for imposed in crate::static_abilities::imposed_attack_costs_for_target(game, attacker.id, target, view) {
+        let Ok(cost) = imposed.resolved_cost(game) else { return false; };
+        fn options(cost: &crate::cost::TotalCost) -> Option<Vec<crate::mana::ManaCost>> {
+            match cost.kind() {
+                ironsmith_core::TotalCostKind::All(components) => {
+                    let mut pips = Vec::new();
+                    for component in components { pips.extend_from_slice(component.mana_cost_ref()?.pips()); }
+                    Some(vec![crate::mana::ManaCost::from_pips(pips)])
+                }
+                ironsmith_core::TotalCostKind::OneOf(branches) => {
+                    let mut result = Vec::new();
+                    for branch in branches { result.extend(options(branch)?); }
+                    Some(result)
                 }
             }
         }
+        // Non-mana components are validated by the atomic declaration payer.
+        let Some(cost_options) = options(&cost) else { continue; };
+        mana_options = mana_options.iter().flat_map(|prefix| cost_options.iter().map(|suffix| {
+            let mut pips = prefix.pips().to_vec(); pips.extend_from_slice(suffix.pips());
+            crate::mana::ManaCost::from_pips(pips)
+        })).collect();
     }
-    if !has_typed_tax {
-        return total_generic_cost == 0 || view.potential_mana(game.controller_of(attacker))
-            .can_pay(&generic_mana_cost(total_generic_cost), 0);
-    }
-    super::mana::can_pay_mana_cost_with_available_sources(
-        game, game.controller_of(attacker), None, &crate::mana::ManaCost::from_pips(pips), 0,
-        crate::costs::PaymentReason::Other, &crate::player::ManaSpendPolicy::default(), false, view,
-    )
+    mana_options.iter().any(|cost| cost.is_empty() || view.can_potentially_pay_with_reason(
+        game.controller_of(attacker), None, cost, 0, crate::costs::PaymentReason::Other,
+    ))
 }
 
 /// Compute legal attackers for the active player.

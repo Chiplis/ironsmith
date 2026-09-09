@@ -700,70 +700,48 @@ fn bind_selected_exile_card_play_permission(program: &mut crate::resolution::Res
         crate::effect::Effect::new(grant);
 }
 
-/// Convert the exact typed Bolas cast-trigger program into a stable
-/// next-entry counter registration. This is a runtime materialization
-/// correlation and deliberately has no lexical guard.
+/// An entry-time rider after exiling a graveyard source refers to the
+/// permanent spell that triggered the ability, not to the exiled source.
+/// Require the parser's entry-counter markers so ordinary counter placement
+/// retains its original target and timing.
 fn bind_graveyard_cast_trigger_to_triggering_permanent_entry(ability: &mut Ability) {
-    let AbilityKind::Triggered(triggered) = &mut ability.kind else {
-        return;
-    };
-    let (filter, caster) = match &triggered.trigger.kind {
-        ironsmith_core::TriggerKind::SpellCast { filter, caster }
-        | ironsmith_core::TriggerKind::SpellCastQualified { filter, caster, .. } => {
-            (filter.as_ref(), caster)
-        }
+    if ability.functional_zones.as_slice() != [Zone::Graveyard] { return; }
+    let AbilityKind::Triggered(triggered) = &mut ability.kind else { return; };
+    let filter = match &triggered.trigger.kind {
+        ironsmith_core::TriggerKind::SpellCast { filter, .. }
+        | ironsmith_core::TriggerKind::SpellCastQualified { filter, .. } => filter.as_ref(),
         _ => return,
     };
-    let Some(filter) = filter else {
-        return;
-    };
-    if caster != &PlayerFilter::You
-        || !matches!(
-            filter.card_types.as_slice(),
-            [crate::types::CardType::Planeswalker]
-        )
-        || !matches!(filter.subtypes.as_slice(), [crate::types::Subtype::Bolas])
-    {
-        return;
-    }
-    let [segment] = triggered.effects.segments.as_slice() else {
-        return;
-    };
-    if !segment.self_replacements.is_empty() {
-        return;
-    }
-    let [move_effect, counter_effect] = segment.default_effects.as_slice() else {
-        return;
-    };
-    let Some(movement) = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>() else {
-        return;
-    };
-    let Some(counter) = counter_effect.downcast_ref::<crate::effects::PutCountersEffect>() else {
-        return;
-    };
-    if movement.target != ChooseSpec::Source
-        || movement.zone != Zone::Exile
-        || counter.counter_type != crate::object::CounterType::Loyalty
-        || counter.amount.unhinted() != &Value::Fixed(1)
-        || counter.target
-            != ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::SourceExiled.key())
-    {
-        return;
-    }
-
-    let triggering_tag = crate::tag::CompilerReferenceTag::TriggeringPermanentSpell.bind();
+    let Some(filter) = filter else { return; };
+    if filter.card_types.is_empty() || filter.card_types.iter().any(|kind| matches!(kind,
+        crate::types::CardType::Instant | crate::types::CardType::Sorcery)) { return; }
+    if triggered.effects.segments.iter().any(|segment| !segment.self_replacements.is_empty()) { return; }
+    let effects = triggered.effects.flattened_default_effects();
+    let [move_effect, counter_effect] = effects else { return; };
+    let exiles_source = move_effect.downcast_ref::<crate::effects::ExileEffect>()
+        .is_some_and(|effect| effect.spec == ChooseSpec::Source && !effect.face_down && !effect.turn_face_up)
+        || move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
+            .is_some_and(|effect| effect.target == ChooseSpec::Source && effect.zone == Zone::Exile);
+    let Some(counter) = counter_effect.downcast_ref::<crate::effects::PutCountersEffect>() else { return; };
+    if !exiles_source || counter.distributed || counter.target_count.is_some()
+        || !counter.amount.has_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
+        || !counter.amount.has_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter)
+        || counter.target.base() != &ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::SourceExiled.key())
+    { return; }
+    let tag = crate::tag::CompilerReferenceTag::TriggeringPermanentSpell.bind();
+    let mut entry_filter = filter.clone();
+    entry_filter.zone = Some(Zone::Battlefield);
+    entry_filter.stack_kind = None;
+    entry_filter.has_mana_cost = false;
     let register = crate::effects::RegisterNextBatchEnterWithCountersEffect::new(
-        ObjectFilter::planeswalker(),
-        crate::object::CounterType::Loyalty,
-        Value::Fixed(1),
-    )
-    .same_stable_id_as_tag(triggering_tag.clone());
-    triggered.effects = crate::resolution::ResolutionProgram::from_effects(vec![
-        crate::effect::Effect::tag_triggering_object(triggering_tag),
-        move_effect.clone(),
-        crate::effect::Effect::new(register),
-    ]);
-    ability.functional_zones = vec![Zone::Graveyard];
+        entry_filter, counter.counter_type, counter.amount.clone(),
+    ).same_stable_id_as_tag(tag.clone());
+    // Keep sentence boundaries and the unconditional rider even if the source
+    // has already left its graveyard when this ability resolves.
+    let last = triggered.effects.segments.last_mut().expect("two effects have a segment");
+    *last.default_effects.last_mut().expect("counter rider exists") = crate::effect::Effect::new(register);
+    triggered.effects.segments[0].default_effects.insert(0, crate::effect::Effect::tag_triggering_object(tag));
+    triggered.effects = crate::resolution::ResolutionProgram::new(std::mem::take(&mut triggered.effects.segments));
 }
 
 pub(super) fn finalize_lowered_card(

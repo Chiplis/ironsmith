@@ -34,6 +34,16 @@ impl EffectExecutor for TagTriggeringObjectEffect {
                     set_triggering_object_tags(ctx, self.tag.as_str(), tagged);
                     return Ok(EffectOutcome::count(count));
                 }
+                if zone_change.from == crate::zone::Zone::Battlefield
+                    && let Some(snapshot) = zone_change.snapshot.as_ref()
+                {
+                    // Preserve the departed permanent's characteristics even
+                    // after every explicit destination object has left. The
+                    // old id cannot redirect object-moving effects to a later
+                    // incarnation of the same card.
+                    set_triggering_object_tags(ctx, self.tag.as_str(), vec![snapshot.clone()]);
+                    return Ok(EffectOutcome::count(1));
+                }
                 set_triggering_object_tags(ctx, self.tag.as_str(), Vec::new());
                 return Ok(EffectOutcome::count(0));
             }
@@ -394,8 +404,12 @@ mod tests {
         let result = effect
             .execute(&mut game, &mut ctx)
             .expect("effect should resolve");
-        assert_eq!(result.value, crate::effect::OutcomeValue::Count(0));
-        assert!(ctx.get_tagged("triggering").is_none());
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
+        let tagged = ctx.get_tagged("triggering").expect("departure LKI remains available");
+        assert_eq!(tagged.object_id, creature_id);
+        assert_eq!(tagged.power, Some(1));
+        assert_ne!(tagged.object_id, battlefield_id);
+        assert!(game.object(tagged.object_id).is_none());
     }
 
     #[test]

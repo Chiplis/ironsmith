@@ -602,8 +602,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     /// A cost that must be paid for a matching creature to block a matching
     /// attacker. The total cost is locked from this payload when blockers are
     /// declared (CR 509.1d), rather than recomputed during payment.
-    /// A cost per matching attacker attacking this ability's controller or
-    /// optionally a planeswalker they control.
+    /// A cost imposed per matching attacker against this ability's controller.
     AttackCost {
         attackers: ObjectFilter,
         covers_planeswalkers: bool,
@@ -1691,8 +1690,11 @@ where
                     display,
                 }
             }
-            StaticAbilityPayload::AttackCost { attackers, covers_planeswalkers, cost, display } =>
-                StaticAbilityPayload::AttackCost { attackers, covers_planeswalkers, cost: map_total_cost(cost, map_cost)?, display },
+            StaticAbilityPayload::AttackCost { attackers, covers_planeswalkers, cost, display } => {
+                StaticAbilityPayload::AttackCost {
+                    attackers, covers_planeswalkers, cost: map_total_cost(cost, map_cost)?, display,
+                }
+            }
             StaticAbilityPayload::BlockCost {
                 blockers,
                 blocker_is_attached_to_source,

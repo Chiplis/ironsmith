@@ -48,6 +48,7 @@ pub use processing_mode::CostProcessingMode;
 pub use cost_effect::CostEffect;
 pub use dynamic_mana::DynamicManaPaymentCost;
 pub use mana::ManaPaymentCost;
+pub(crate) use mana::pay_mana_cost_with_choices;
 
 use crate::color::ColorSet;
 use crate::filter::ObjectFilter;

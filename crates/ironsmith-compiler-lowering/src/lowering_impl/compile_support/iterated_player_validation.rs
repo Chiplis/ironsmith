@@ -482,6 +482,13 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         CastSpellsMatching(player, filter) | CastMoreThanOneSpellEachTurn(player, filter) => {
             player.mentions_iterated_player() || object_filter_mentions_iterated_player(filter)
         }
+        BeSacrificedByCause { filter, cause } => {
+            object_filter_mentions_iterated_player(filter)
+                || cause
+                    .source_filter
+                    .as_ref()
+                    .is_some_and(object_filter_mentions_iterated_player)
+        }
         ActivateAbilitiesOf(filter)
         | ActivateTapAbilitiesOf(filter)
         | ActivateNonManaAbilitiesOf(filter)
@@ -516,8 +523,6 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         BeTargetedPlayerFrom(player, source) => {
             player.mentions_iterated_player() || object_filter_mentions_iterated_player(source)
         }
-        BeSacrificedByCause { filter, cause } => object_filter_mentions_iterated_player(filter)
-            || cause.source_filter.as_ref().is_some_and(object_filter_mentions_iterated_player),
         PreventDamage | AttackYouUnlessControllerPaysPerAttacker(..) => false,
     }
 }

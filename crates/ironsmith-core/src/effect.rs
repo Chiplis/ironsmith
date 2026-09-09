@@ -398,6 +398,7 @@ pub enum GrantPlayTaggedObjectSurface {
     ThoseCards,
     SpellsFromAmongThoseCards,
     SpellsFromAmongThoseExiledCards,
+    CardsExiledWithSource { source: SourceReferenceSurface },
     SpellFromAmongCardsExiledWithSource {
         creature_spell: bool,
         source: SourceReferenceSurface,

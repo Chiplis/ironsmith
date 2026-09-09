@@ -2544,6 +2544,16 @@ pub(crate) fn propose_spell_cast(
     let cast_origin_snapshot = game.object(spell_id).map(|obj| {
         crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
     });
+    let play_from_constraints = match casting_method {
+        CastingMethod::PlayFrom { source, zone, .. }
+        | CastingMethod::SplitOtherHalfPlayFrom { source, zone, .. } => {
+            let constraints = game.effect_store.grant_registry.play_from_constraints_for_card(
+                game, spell_id, *zone, caster, *source,
+            );
+            Some(Box::new((*source, *zone, constraints)))
+        }
+        _ => None,
+    };
     let shared_usage_to_consume = match casting_method {
         CastingMethod::PlayFrom { source, zone, .. }
         | CastingMethod::SplitOtherHalfPlayFrom { source, zone, .. } => game
@@ -2558,6 +2568,9 @@ pub(crate) fn propose_spell_cast(
         .ok_or_else(|| {
             GameLoopError::InvalidState("Failed to move spell to stack during proposal".to_string())
         })?;
+    if let Some(spell) = game.object_mut(new_id) {
+        spell.cast_play_from_constraints = play_from_constraints;
+    }
     if let Some(shared_usage_id) = shared_usage_to_consume {
         let consumed = game
             .effect_store

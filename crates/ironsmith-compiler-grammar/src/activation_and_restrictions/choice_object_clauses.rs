@@ -754,4 +754,3 @@ mod hand_remainder_tests {
         );
     }
 }
-

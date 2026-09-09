@@ -72,17 +72,19 @@ fn transparent_cost_effect(mut effect: &Effect) -> &Effect {
     effect
 }
 
-fn tagged_sacrifice_cost_precheck(
+fn sacrifice_cost_precheck(
     effect: &Effect,
     game: &GameState,
     ctx: &CostContext,
 ) -> Option<Result<(), CostPaymentError>> {
     let effect = transparent_cost_effect(effect);
-    if let Some(target) = effect.downcast_ref::<crate::effects::SacrificeTargetEffect>()
-        && matches!(target.target.base(), crate::target::ChooseSpec::Source)
-        && !game.can_be_sacrificed_with_cause(ctx.source, &ctx.event_cause())
-    {
-        return Some(Err(CostPaymentError::NoValidSacrificeTarget));
+    if let Some(effect) = effect.downcast_ref::<crate::effects::SacrificeTargetEffect>() {
+        if matches!(effect.target.base(), crate::target::ChooseSpec::Source)
+            && !game.can_be_sacrificed_with_cause(ctx.source, &ctx.event_cause())
+        {
+            return Some(Err(CostPaymentError::NoValidSacrificeTarget));
+        }
+        return None;
     }
     let (filter, count, player) = if let Some(effect) =
         effect.downcast_ref::<crate::effects::SacrificeEffect>()
@@ -93,10 +95,6 @@ fn tagged_sacrifice_cost_precheck(
     } else {
         return None;
     };
-
-    if filter.tagged_constraints.is_empty() && game.effect_store.cant_effects.sacrifice_cause_restrictions.is_empty() {
-        return None;
-    }
 
     if filter
         .tagged_constraints
@@ -128,6 +126,8 @@ fn tagged_sacrifice_cost_precheck(
                 .and_then(|constraint| ctx.tagged_objects.get(constraint.tag.as_str()))
                 .map_or(0, Vec::len)
         }
+        crate::effect::Value::X => ctx.x_value.unwrap_or(0) as usize,
+        _ if filter.tagged_constraints.is_empty() => return None,
         _ => {
             let mut exec = ExecutionContext::new_default(ctx.source, ctx.payer)
                 .with_tagged_objects(ctx.tagged_objects.clone());
@@ -329,7 +329,7 @@ fn simple_exile_from_graveyard_filter(
 
 impl CostPayer for CostEffect {
     fn can_pay(&self, game: &GameState, ctx: &CostContext) -> Result<(), CostPaymentError> {
-        if let Some(result) = tagged_sacrifice_cost_precheck(&self.effect, game, ctx) {
+        if let Some(result) = sacrifice_cost_precheck(&self.effect, game, ctx) {
             return result;
         }
         if let Some(result) = tagged_move_to_zone_cost_precheck(&self.effect, ctx) {
@@ -380,7 +380,7 @@ impl CostPayer for CostEffect {
         game: &mut GameState,
         ctx: &mut CostContext,
     ) -> Result<CostPaymentResult, CostPaymentError> {
-        if let Some(result) = tagged_sacrifice_cost_precheck(&self.effect, game, ctx) {
+        if let Some(result) = sacrifice_cost_precheck(&self.effect, game, ctx) {
             result?;
         } else if let Some(result) = tagged_move_to_zone_cost_precheck(&self.effect, ctx) {
             result?;

@@ -5085,7 +5085,15 @@ pub(super) fn describe_for_players_simple_iterated_action(
     {
         return None;
     }
-    let subject = describe_for_players_subject(&for_players.filter)?;
+    // ControlsMost selects a unique leader; its singular relative subject
+    // is also the actor of the nested iterated-player action.
+    let leader_subject;
+    let subject = if matches!(for_players.filter, PlayerFilter::ControlsMost { .. }) {
+        leader_subject = capitalize_first(&for_players.filter.description());
+        leader_subject.as_str()
+    } else {
+        describe_for_players_subject(&for_players.filter)?
+    };
     let subject_lower = lowercase_first(subject);
     let verb = |you: &'static str, other: &'static str| {
         if subject == "You" { you } else { other }

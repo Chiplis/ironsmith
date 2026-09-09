@@ -1222,7 +1222,53 @@ mod correlated_plural_sacrifice_result_tests;
 #[path = "subject_verb_followups_inline_delayed_copy_retarget_followup_tests_9.rs"]
 mod delayed_copy_retarget_followup_tests;
 
+fn pre_rule_permission_spell_discount(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    use crate::grammar::{leaf, primitives};
+    let Some((_, rest)) = primitives::parse_prefix(
+        tokens,
+        primitives::phrase(&["spells", "you", "cast", "this", "way", "cost"]),
+    ) else {
+        return Ok(None);
+    };
+    let Some(cost) = leaf::parse_leaf_fixed_mana_cost_prefix_tokens(rest) else {
+        return Ok(None);
+    };
+    let tail = crate::util::trim_edge_punctuation_tokens(&rest[cost.consumed..]);
+    if !crate::word_primitives::parse_sequence_complete(
+        &crate::lexer::parser_token_word_refs(tail),
+        &["less", "to", "cast"],
+    ) {
+        return Ok(None);
+    }
+    let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+                player: PlayerAst::You | PlayerAst::Implicit,
+                spell_cost_reduction,
+                ..
+            }),
+        ..
+    })) = state.effects.last_mut()
+    else {
+        return Ok(None);
+    };
+    if spell_cost_reduction.is_some() {
+        return Ok(None);
+    }
+    *spell_cost_reduction = Some(cost.cost);
+    Ok(Some(PreParseFollowupResult::Handled {
+        consumed_sentences: 1,
+        route: Some("permission-spell-discount"),
+    }))
+}
+
 const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
+    pre_followup_rule!("permission-spell-discount", &["spells"], pre_rule_permission_spell_discount),
     pre_followup_rule!(
         "prepare-each-player-coin-face-followup",
         &["each"],

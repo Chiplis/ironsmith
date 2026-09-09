@@ -1013,6 +1013,7 @@ pub(super) fn compile_subject_verb_middle(
             while_on_top_of_library,
             free_cast_from_current_zone,
             until_source_exiles_another,
+            spell_cost_reduction,
             max_plays,
             surface,
         }) => {
@@ -1047,6 +1048,9 @@ pub(super) fn compile_subject_verb_middle(
                 *allow_any_color_for_cast,
             )
             .with_max_plays(*max_plays);
+            if let Some(cost) = spell_cost_reduction.clone() {
+                grant_play = grant_play.with_spell_cost_reduction(cost);
+            }
             let surface_refers_to_plural_exiled_pool = surface.as_ref().is_some_and(|surface| {
                 matches!(
                     surface.object,

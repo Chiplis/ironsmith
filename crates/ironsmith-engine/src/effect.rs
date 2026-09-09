@@ -1490,9 +1490,15 @@ impl RestrictionExt for Restriction {
                 }
             }
             Restriction::BeSacrificedByCause { filter, cause } => {
-                for &id in &game.battlefield {
-                    if let Some(object) = game.object(id) && filter.matches(object, &ctx, game) {
-                        tracker.sacrifice_cause_restrictions.push((id, cause.clone(), controller));
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_be_sacrificed_by_cause.push((
+                            obj_id,
+                            cause.clone(),
+                            controller,
+                        ));
                     }
                 }
             }

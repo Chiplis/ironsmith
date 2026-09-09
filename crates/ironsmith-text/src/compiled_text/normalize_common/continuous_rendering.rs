@@ -5019,14 +5019,24 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             format!("{subject} can't be regenerated")
         }
         crate::effect::Restriction::BeSacrificedByCause { filter, cause } => {
-            if *filter == ObjectFilter::permanent().you_control()
-                && cause.source_filter.is_none()
+            let opponent_effects_and_payments = cause.source_filter.is_none()
                 && cause.controller_filter == Some(ironsmith_core::ControllerFilter::Opponent)
-                && cause.cause_type == Some(ironsmith_core::CauseTypeFilter::OneOf(vec![ironsmith_core::CauseType::Effect, ironsmith_core::CauseType::Cost]))
+                && matches!(&cause.cause_type, Some(ironsmith_core::CauseTypeFilter::OneOf(types))
+                    if types.len() == 2
+                        && types.contains(&ironsmith_core::CauseType::Effect)
+                        && types.contains(&ironsmith_core::CauseType::Cost));
+            if opponent_effects_and_payments
+                && filter
+                    == &crate::target::ObjectFilter::permanent()
+                        .controlled_by(crate::target::PlayerFilter::You)
             {
-                return "Spells and abilities your opponents control can't cause you to sacrifice permanents".into();
+                "Spells and abilities your opponents control can't cause you to sacrifice permanents".to_string()
+            } else {
+                format!(
+                    "{} can't be sacrificed by causes matching {cause:?}",
+                    filter.description()
+                )
             }
-            format!("{} can't be sacrificed due to {:?}", filter.description(), cause)
         }
         crate::effect::Restriction::BeSacrificed(filter) => {
             format!("{} can't be sacrificed", filter.description())

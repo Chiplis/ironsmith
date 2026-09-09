@@ -2543,6 +2543,7 @@ fn describe_leading_result_conjunction_then_followups(effects: &[Effect]) -> Opt
 
 pub(super) fn describe_result_branch_effect_list(effects: &[Effect]) -> String {
     describe_coordinated_hand_reveal_choice_exile(effects)
+        .or_else(|| effect_lists::describe_sequence_wrapped_hand_pipeline(effects))
         .or_else(|| describe_typed_coordinated_result_branch(effects))
         .or_else(|| describe_leading_result_conjunction_then_followups(effects))
         .or_else(|| {
@@ -4145,7 +4146,7 @@ pub(super) fn describe_coordinated_sequence(
         return Some(rendered);
     }
     if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
-        && let Some(rendered) = describe_explicit_you_three_action_sequence(&sequence.effects)
+        && let Some(rendered) = describe_explicit_you_action_sequence(&sequence.effects)
     {
         return Some(rendered);
     }
@@ -4156,6 +4157,12 @@ pub(super) fn describe_coordinated_sequence(
     }
     if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
         && let Some(rendered) = describe_you_life_change_and_exile_top(&sequence.effects)
+    {
+        return Some(rendered);
+    }
+    if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
+        && sequence.result_label.is_none()
+        && let Some(rendered) = describe_shared_dynamic_token_pair(&sequence.effects)
     {
         return Some(rendered);
     }
@@ -9031,6 +9038,20 @@ pub(crate) fn describe_static_ability_with_subject(
     static_ability: &crate::static_abilities::StaticAbility,
     subject: &str,
 ) -> String {
+    if let Some(tax) = static_ability.attack_cost_model() {
+        let mut attackers = tax.attackers().clone();
+        if attackers.zone == Some(crate::zone::Zone::Battlefield) { attackers.zone = None; }
+        let attackers = capitalize_first(&describe_count_filter_value_subject(&attackers));
+        let (cost, definition) = describe_total_cost_with_trailing_x_definition(tax.cost());
+        let (target, per) = if tax.covers_planeswalkers() {
+            ("you or planeswalkers you control", "for each of those creatures")
+        } else {
+            ("you", "for each creature they control that's attacking you")
+        };
+        let mut text = format!("{attackers} can't attack {target} unless their controller pays {cost} {per}");
+        if let Some(definition) = definition { text.push_str(&format!(", where {definition}")); }
+        return text;
+    }
     if let Some(ironsmith_core::StaticAbilityPayload::Conditional { ability, condition }) =
         static_ability.compiled_model().map(|model| &model.payload)
         && let ironsmith_core::StaticAbilityPayload::DoubleDamageAmountReplacement {
@@ -9062,22 +9083,6 @@ pub(crate) fn describe_static_ability_with_subject(
         }).collect::<Vec<_>>().join(" and ");
         return format!("If {} was kicked with its {cost} kicker, it enters with {} on it and with {grants}",
             lowercase_first(subject), describe_put_counter_phrase(count, *counter));
-    }
-    if let Some(tax) = static_ability.attack_cost_model() {
-        let mut attacker_filter = tax.attackers.clone();
-        if attacker_filter.zone == Some(Zone::Battlefield) { attacker_filter.zone = None; }
-        let attackers = capitalize_first(&describe_count_filter_value_subject(&attacker_filter));
-        let target = if tax.covers_planeswalkers { "you or planeswalkers you control" } else { "you" };
-        let per = if tax.covers_planeswalkers { "for each of those creatures" }
-            else { "for each creature they control that's attacking you" };
-        let (cost, binding) = if let Some(dynamic) = tax.cost.dynamic_mana_cost()
-            && dynamic.base.has_x() && dynamic.additional_generic.is_none() && dynamic.multiplier.is_none()
-            && let Some(value) = &dynamic.x_value
-        {
-            (dynamic.base.to_oracle(), format!(", where X is {}",
-                describe_where_x_basis(value).unwrap_or_else(|| describe_value(value))))
-        } else { (describe_total_cost(&tax.cost), String::new()) };
-        return format!("{attackers} can't attack {target} unless their controller pays {cost} {per}{binding}");
     }
     if let Some(ironsmith_core::StaticAbilityPayload::AttachedAbilityGrant(grant)) =
         static_ability.compiled_model().map(|model| &model.payload)
@@ -12477,11 +12482,81 @@ fn describe_intervening_legal_target_copy_assignment(
     )
 }
 
+/// A comparison followed by counters equal to that same positive difference
+/// can name the relationship instead of spelling out the subtraction again.
+fn describe_triggered_power_difference_counters(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<(String, String)> {
+    if triggered.effects.segments.len() != 1
+        || !triggered.effects.segments[0].self_replacements.is_empty()
+    {
+        return None;
+    }
+    let Condition::TaggedObjectMatchedLastKnown(tag, filter) = triggered.intervening_if.as_ref()?
+    else {
+        return None;
+    };
+    if tag.as_str() != "triggering" || !triggered.choices.is_empty() {
+        return None;
+    }
+    let Some(crate::filter::Comparison::GreaterThanExpr(threshold)) = &filter.power else {
+        return None;
+    };
+    let mut remainder = filter.clone();
+    remainder.power = None;
+    if remainder != ObjectFilter::default() {
+        return None;
+    }
+    let Value::PowerOf(reference) = threshold.as_ref() else {
+        return None;
+    };
+    let [tag_effect, counter_effect] = triggered.effects.flattened_default_effects() else {
+        return None;
+    };
+    let tagger = tag_effect.downcast_ref::<crate::effects::TagTriggeringObjectEffect>()?;
+    let counters = counter_effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if tagger.tag != *tag || counters.distributed || counters.target_count.is_some() {
+        return None;
+    }
+    let Value::Add(left, right) = &counters.amount else {
+        return None;
+    };
+    let Value::PowerOf(dead) = left.as_ref() else {
+        return None;
+    };
+    let Value::Scaled(subtracted, -1) = right.as_ref() else {
+        return None;
+    };
+    if !matches!(dead.base(), ChooseSpec::Tagged(dead_tag) if dead_tag == tag)
+        || subtracted.as_ref() != threshold.as_ref()
+    {
+        return None;
+    }
+    // The counter recipient may carry a more precise authored source name.
+    // Use it only when it denotes the same object as the compared reference.
+    let power = if counters.target.base() == reference.base() {
+        Value::PowerOf(Box::new(counters.target.clone()))
+    } else {
+        threshold.as_ref().clone()
+    };
+    Some((
+        format!("it had power greater than {}", describe_value(&power)),
+        format!(
+            "Put a number of {} counters on {} equal to the difference",
+            describe_counter_type(counters.counter_type),
+            describe_choose_spec(&counters.target)
+        ),
+    ))
+}
+
 pub(super) fn describe_triggered_resolution_text(
     triggered: &crate::ability::TriggeredAbility,
     subject: &str,
     rewrite_it_deals: bool,
 ) -> Option<String> {
+    if let Some((_, text)) = describe_triggered_power_difference_counters(triggered) {
+        return Some(text);
+    }
     if let Some(text) = describe_intervening_legal_target_copy_assignment(triggered) {
         return Some(text);
     }
@@ -15681,6 +15756,11 @@ pub(super) fn describe_trigger_intervening_condition(
     triggered: &crate::ability::TriggeredAbility,
     self_subject: Option<&str>,
 ) -> String {
+    if triggered.intervening_if.as_ref() == Some(condition)
+        && let Some((text, _)) = describe_triggered_power_difference_counters(triggered)
+    {
+        return text;
+    }
     if trigger_is_this_attacks(&triggered.trigger) {
         let (negated, inner) = match condition {
             Condition::Not(inner) => (true, inner.as_ref()),
@@ -16753,4 +16833,27 @@ fn describe_entry_counters_suffix(
         })
         .collect::<Vec<_>>();
     format!(" with {} on it", join_with_and(&parts))
+}
+
+#[cfg(test)]
+mod typed_attack_tax_render_tests {
+    use super::*;
+
+    #[test]
+    fn typed_attack_tax_renders_from_cost_filter_and_scope_without_label() {
+        let cases = [
+            (ObjectFilter::creature(), true, crate::cost::TotalCost::mana(crate::mana::ManaCost::from_pips(vec![vec![crate::mana::ManaSymbol::White, crate::mana::ManaSymbol::Life(2)]])),
+                "Creatures can't attack you or planeswalkers you control unless their controller pays {W/P} for each of those creatures"),
+            (ObjectFilter::creature().without_colors(crate::color::ColorSet::BLACK), false, crate::cost::TotalCost::mana(crate::mana::ManaCost::from_pips(vec![vec![crate::mana::ManaSymbol::Generic(2)]])),
+                "Nonblack creatures can't attack you unless their controller pays {2} for each creature they control that's attacking you"),
+            (ObjectFilter::creature(), true, crate::cost::TotalCost::from_cost(crate::costs::Cost::dynamic_mana(ironsmith_core::DynamicManaCost::from_x(
+                crate::mana::ManaCost::from_pips(vec![vec![crate::mana::ManaSymbol::X]]),
+                Value::Count(ObjectFilter::default().with_type(crate::types::CardType::Enchantment).controlled_by(PlayerFilter::You)),
+            ))), "Creatures can't attack you or planeswalkers you control unless their controller pays {X} for each of those creatures, where X is the number of enchantments you control"),
+        ];
+        for (filter, scope, cost, expected) in cases {
+            let ability = crate::static_abilities::StaticAbility::attack_cost(filter, scope, cost, "ignored arbitrary display label");
+            assert_eq!(describe_static_ability_with_subject(&ability, "this permanent"), expected);
+        }
+    }
 }

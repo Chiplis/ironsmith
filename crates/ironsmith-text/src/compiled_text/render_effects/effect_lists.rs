@@ -84,7 +84,7 @@ use chosen_type_untap::*;
 use coin_flip_target_backrefs::*;
 use combat_requirement_and_prohibition::*;
 use consult_attachment::*;
-use coordinated_keyword_grants::describe_coordinated_keyword_grants;
+pub(super) use coordinated_keyword_grants::describe_coordinated_keyword_grants;
 pub(in crate::compiled_text) use coordinated_keyword_grants::describe_put_counters_then_coordinated_keyword_grants;
 use copy_spell_modifiers::*;
 use correlated_delayed_combat::describe_end_combat_destroy_then_next_end_counter;
@@ -152,7 +152,7 @@ pub(in crate::compiled_text) use relative_player_target_consult::*;
 use sacrifice_unless_mana_spent::describe_sacrifice_triggering_unless_mana_spent;
 pub(super) use sacrificed_source_damage::describe_sacrificed_source_damage_backreference;
 pub(in crate::compiled_text) use same_actor_life_and_token::{
-    describe_explicit_you_three_action_sequence, describe_shared_actor_token_creation_list,
+    describe_explicit_you_action_sequence, describe_shared_actor_token_creation_list, describe_shared_dynamic_token_pair,
     describe_you_action_and_create_token, describe_you_life_change_and_exile_top,
 };
 use single_counter_target_followup::describe_single_counter_target_then_double;
@@ -985,6 +985,7 @@ pub(super) fn describe_temporary_tagged_permission_surface(
     permission: &crate::effects::GrantPlayTaggedEffect,
     without_paying_mana_cost: bool,
 ) -> Option<String> {
+    if permission.spell_cost_reduction.is_some() { return None; }
     let surface = permission.surface.as_ref()?;
     if !matches!(
         permission.duration,
@@ -1018,6 +1019,7 @@ pub(super) fn describe_temporary_tagged_permission_surface(
         ironsmith_core::GrantPlayTaggedObjectSurface::SpellsFromAmongThoseExiledCards => {
             ("spells from among those exiled cards".to_string(), true)
         }
+        ironsmith_core::GrantPlayTaggedObjectSurface::CardsExiledWithSource { source } => (format!("cards exiled with {}", source.display_text()), true),
         ironsmith_core::GrantPlayTaggedObjectSurface::SpellFromAmongCardsExiledWithSource {
             creature_spell,
             source,
@@ -15535,7 +15537,7 @@ pub(in crate::compiled_text) fn describe_complete_looked_cards_clause(
     (consumed == effects.len()).then_some(rendered)
 }
 
-fn describe_sequence_wrapped_hand_pipeline(effects: &[Effect]) -> Option<String> {
+pub(super) fn describe_sequence_wrapped_hand_pipeline(effects: &[Effect]) -> Option<String> {
     fn collect_visible_hand_pipeline_effects<'a>(
         effects: &'a [Effect],
         visible: &mut Vec<&'a Effect>,

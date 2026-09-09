@@ -509,7 +509,10 @@ pub fn parse_draw_equal_to_value(tokens: &[OwnedLexToken]) -> Result<Option<Valu
             zone_move_grammar::DrawEqualStat::Toughness => Value::ToughnessOf(Box::new(spec)),
             zone_move_grammar::DrawEqualStat::ManaValue => Value::ManaValueOf(Box::new(spec)),
         };
-        return Ok(Some(value));
+        return Ok(Some(crate::grammar::shared_util::value_expr::with_sacrificed_object_surface(
+            value,
+            &words,
+        )));
     }
 
     // Preserve an authored prior-action metric before the generic

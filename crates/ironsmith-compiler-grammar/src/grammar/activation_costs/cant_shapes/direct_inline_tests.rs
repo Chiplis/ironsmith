@@ -10,6 +10,10 @@ fn parse(raw: &str) -> Option<DirectCantFact> {
 fn parses_complete_direct_cant_alternatives() {
     let cases = [
         (
+            "Spells and abilities your opponents control can't cause you to sacrifice permanents.",
+            DirectCantFact::OpponentCausesCantMakeYouSacrifice,
+        ),
+        (
             "If a player would gain life, that player gains no life instead.",
             DirectCantFact::PlayerWouldGainNoLifeInstead,
         ),

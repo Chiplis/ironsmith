@@ -25,6 +25,8 @@ pub enum GrantActionAst {
         until_source_exiles_another: bool,
         /// Total plays shared by the tagged collection across the duration.
         max_plays: Option<u32>,
+        /// Mana reduction attached to using this permission.
+        spell_cost_reduction: Option<ManaCost>,
         surface: Option<ironsmith_core::GrantPlayTaggedSurface>,
     },
     GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {

@@ -350,7 +350,11 @@ const CANT_BE_BLOCKED_PHRASES: &[&[&str]] = &[
     &["cannot", "be", "blocked"],
     &["can", "t", "be", "blocked"],
 ];
-const CANT_BE_BLOCKED_AS_LONG_AS_PHRASES: &[&[&str]] = &[
+const CANT_BE_BLOCKED_CONDITION_PHRASES: &[&[&str]] = &[
+    &["cant", "be", "blocked", "if"],
+    &["can't", "be", "blocked", "if"],
+    &["cannot", "be", "blocked", "if"],
+    &["can", "t", "be", "blocked", "if"],
     &["cant", "be", "blocked", "as", "long", "as"],
     &["can't", "be", "blocked", "as", "long", "as"],
     &["cannot", "be", "blocked", "as", "long", "as"],
@@ -1690,8 +1694,8 @@ fn parse_first_spell_each_turn_clause_lexed<'a>(
 fn parse_cant_be_blocked_as_long_as_clause_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<CantBeBlockedAsLongAsClause<'a>> {
-    let subject_tokens = take_until_phrase(input, CANT_BE_BLOCKED_AS_LONG_AS_PHRASES)?;
-    primitives::any_phrase(CANT_BE_BLOCKED_AS_LONG_AS_PHRASES).parse_next(input)?;
+    let subject_tokens = take_until_phrase(input, CANT_BE_BLOCKED_CONDITION_PHRASES)?;
+    primitives::any_phrase(CANT_BE_BLOCKED_CONDITION_PHRASES).parse_next(input)?;
     let condition_tokens: &'a [OwnedLexToken] = rest.parse_next(input)?;
     let subject_tokens = trim_lexed_commas(subject_tokens);
     let condition_tokens = trim_lexed_commas(condition_tokens);

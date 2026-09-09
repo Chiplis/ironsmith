@@ -726,6 +726,17 @@ pub fn parse_spells_cost_modifier_line(
     } else {
         prefix_condition.clone()
     };
+    if !is_this_spell && let Some(boundary) = as_long_as_boundary {
+        let condition_start =
+            static_keyword_shapes::parse_word_token_offset(remaining_tokens, boundary + 3)
+                .ok_or_else(|| CardTextError::ParseError("missing trailing cost condition".to_string()))?;
+        let condition_tokens = trim_commas(&remaining_tokens[condition_start..]);
+        let condition = parse_static_condition_clause(&condition_tokens)?;
+        non_this_condition = Some(match non_this_condition.take() {
+            Some(prefix) => PredicateAst::And(Box::new(prefix), Box::new(condition)),
+            None => condition,
+        });
+    }
     if first_spell_fact.is_some_and(|fact| fact.during_each_of_your_turns) && !is_this_spell {
         non_this_condition = Some(match non_this_condition.take() {
             Some(existing) => {

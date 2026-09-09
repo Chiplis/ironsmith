@@ -62,6 +62,19 @@ fn direct_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilityS
         DirectCantFact::SourceCantAttack => StaticAbility::cant_attack(),
         DirectCantFact::SourceCantBlock => StaticAbility::cant_block(),
         DirectCantFact::SourceCantAttackItsOwner => StaticAbility::cant_attack_its_owner(),
+        DirectCantFact::OpponentCausesCantMakeYouSacrifice => StaticAbility::restriction(
+            crate::effect::Restriction::BeSacrificedByCause {
+                filter: ObjectFilter::permanent().controlled_by(PlayerFilter::You),
+                cause: ironsmith_core::CauseFilter {
+                    cause_type: Some(ironsmith_core::CauseTypeFilter::OneOf(vec![
+                        ironsmith_core::CauseType::Effect, ironsmith_core::CauseType::Cost,
+                    ])),
+                    source_filter: None,
+                    controller_filter: Some(ironsmith_core::ControllerFilter::Opponent),
+                },
+            },
+            format_negated_restriction_display(tokens),
+        ),
         DirectCantFact::PermanentsYouControlCantBeSacrificed => {
             StaticAbility::permanents_you_control_cant_be_sacrificed()
         }
@@ -124,6 +137,53 @@ fn blocking_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilit
             minimum_blockers, ..
         } => StaticAbility::cant_be_blocked_except_by_n_or_more(minimum_blockers),
     })
+}
+
+/// Preserve full payment alternatives, attacker filters, and bound amounts.
+fn typed_attack_tax_static_ability(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, CardTextError> {
+    let Some(cant) = tokens.iter().position(|token| token.is_word("can't") || token.is_word("cant") || token.is_word("cannot")) else { return Ok(None); };
+    let Some(unless) = tokens.iter().position(|token| token.is_word("unless")) else { return Ok(None); };
+    if unless <= cant { return Ok(None); }
+    let scope = crate::lexer::token_word_refs(&tokens[cant + 1..unless]);
+    let covers_planeswalkers = match scope.as_slice() {
+        ["attack", "you"] => false,
+        ["attack", "you", "or", "planeswalkers", "you", "control"] => true,
+        _ => return Ok(None),
+    };
+    let Some(pays) = tokens.iter().enumerate().skip(unless + 1).find_map(|(index, token)| token.is_word("pays").then_some(index)) else { return Ok(None); };
+    if crate::lexer::token_word_refs(&tokens[unless + 1..pays]) != ["their", "controller"] { return Ok(None); }
+    let Some(per) = tokens.iter().enumerate().skip(pays + 1).find_map(|(index, token)| token.is_word("for").then_some(index)) else { return Ok(None); };
+    let where_index = tokens.iter().enumerate().skip(per).find_map(|(index, token)| token.is_word("where").then_some(index));
+    let per_words = crate::lexer::token_word_refs(&tokens[per..where_index.unwrap_or(tokens.len())]);
+    if !matches!(per_words.as_slice(), ["for", "each", "of", "those", "creatures"]
+        | ["for", "each", "creature", "they", "control", "that's" | "thats", "attacking", "you"]) { return Ok(None); }
+    let Some(attackers) = parse_subject_object_filter(&tokens[..cant])? else { return Ok(None); };
+    let Some(mut cost) = parse_payment_clause_as_total_cost(&tokens[pays + 1..per])? else {
+        return Err(CardTextError::ParseError("unsupported attack payment cost".into()));
+    };
+    if let Some(where_index) = where_index {
+        let value = parse_value_binding_clause_lexed(&tokens[where_index..]).ok_or_else(|| CardTextError::ParseError("unsupported attack-cost X definition".into()))?;
+        let mut bound = false;
+        cost = cost.try_map(|component| -> Result<_, CardTextError> {
+            Ok(match component {
+                crate::model::CompilerCost::Mana(mana) if mana.has_x() => {
+                    bound = true;
+                    crate::model::CompilerCost::DynamicMana(ironsmith_core::DynamicManaCost::from_x(mana, value.clone()))
+                }
+                crate::model::CompilerCost::VariableMana { generic } => {
+                    bound = true;
+                    crate::model::CompilerCost::DynamicMana(ironsmith_core::DynamicManaCost::from_x(
+                        ManaCost::from_pips(vec![vec![ManaSymbol::X]]).add_generic(generic), value.clone()))
+                }
+                crate::model::CompilerCost::DynamicMana(mut dynamic) if dynamic.base.has_x() => {
+                    bound = true; dynamic.x_value = Some(value.clone()); crate::model::CompilerCost::DynamicMana(dynamic)
+                }
+                other => other,
+            })
+        })?;
+        if !bound { return Err(CardTextError::ParseError("attack-cost X definition has no X payment".into())); }
+    }
+    Ok(Some(StaticAbility::attack_cost(attackers, covers_planeswalkers, cost, format_negated_restriction_display(tokens))))
 }
 
 fn attack_unless_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbility> {
@@ -212,53 +272,6 @@ fn strip_per_blocking_creature_tail(tokens: &[OwnedLexToken]) -> &[OwnedLexToken
 
 /// Parse a CR 509.1d blocking cost before the generic negated-restriction
 /// family can incorrectly turn it into an unconditional prohibition.
-/// Preserve the affected attackers and the whole payment, including Phyrexian
-/// alternatives and a bound X value, for declaration-time attack taxes.
-fn typed_attack_tax_static_ability(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<StaticAbility>, CardTextError> {
-    let Some(cant) = tokens.iter().position(|t| t.is_word("can't") || t.is_word("cant") || t.is_word("cannot")) else {
-        return Ok(None);
-    };
-    let Some(unless) = tokens.iter().position(|t| t.is_word("unless")) else { return Ok(None); };
-    if unless <= cant { return Ok(None); }
-    let action = crate::lexer::token_word_refs(&tokens[cant + 1..unless]);
-    let covers_planeswalkers = if action == ["attack", "you"] { false }
-        else if action == ["attack", "you", "or", "planeswalkers", "you", "control"] { true }
-        else { return Ok(None); };
-    let tail = &tokens[unless + 1..];
-    if tail.len() < 4 || crate::lexer::token_word_refs(&tail[..3]) != ["their", "controller", "pays"] {
-        return Ok(None);
-    }
-    let Some(per) = tail.iter().position(|t| t.is_word("for")) else { return Ok(None); };
-    if per <= 3 { return Ok(None); }
-    let where_index = tail.iter().position(|t| t.is_word("where")).unwrap_or(tail.len());
-    if where_index <= per { return Ok(None); }
-    let per_words = crate::lexer::token_word_refs(trim_edge_punctuation_tokens(&tail[per..where_index]));
-    if !crate::word_primitives::parse_any_sequence_complete(&per_words, &[
-        &["for", "each", "of", "those", "creatures"],
-        &["for", "each", "creature", "they", "control", "that's", "attacking", "you"],
-        &["for", "each", "creature", "they", "control", "thats", "attacking", "you"],
-    ]) { return Ok(None); }
-    let Some(attackers) = parse_subject_object_filter(&tokens[..cant])? else { return Ok(None); };
-    let Some(mut cost) = parse_payment_clause_as_total_cost(&tail[3..per])? else { return Ok(None); };
-    if where_index < tail.len() {
-        let binding = trim_edge_punctuation_tokens(&tail[where_index + 1..]);
-        if binding.len() < 3 || !binding[0].is_word("x") || !binding[1].is_word("is") {
-            return Ok(None);
-        }
-        let Some((value, used)) = crate::util::parse_value(&binding[2..]) else { return Ok(None); };
-        if !trim_edge_punctuation_tokens(&binding[2 + used..]).is_empty() { return Ok(None); }
-        let Some(mana) = cost.mana_cost().filter(|mana| mana.has_x()) else { return Ok(None); };
-        cost = ironsmith_core::TotalCost::from_cost(crate::model::CompilerCost::DynamicMana(
-            ironsmith_core::DynamicManaCost::from_x(mana.clone(), value),
-        ));
-    } else if cost.mana_cost().is_some_and(|mana| mana.has_x()) {
-        return Ok(None);
-    }
-    Ok(Some(StaticAbility::attack_cost(attackers, covers_planeswalkers, cost, "Attack tax")))
-}
-
 fn block_cost_static_ability(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -764,9 +777,7 @@ pub fn parse_cant_clause(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
         }));
     }
 
-    if let Some(ability) = typed_attack_tax_static_ability(tokens)? {
-        return Ok(Some(ability));
-    }
+    if let Some(ability) = typed_attack_tax_static_ability(tokens)? { return Ok(Some(ability)); }
 
     if let Some(ability) = attack_unless_static_ability(tokens) {
         return Ok(Some(ability));
@@ -833,6 +844,13 @@ pub fn parse_cant_clause(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
         return Ok(Some(ability));
     }
 
+    if let Some(resolution) = direct_cant_static_ability(tokens) {
+        match resolution {
+            StaticAbilityShapeResolution::Ability(ability) => return Ok(Some(ability)),
+            StaticAbilityShapeResolution::Decline => return Ok(None),
+        }
+    }
+
     if let Some(parsed) = parse_cant_restriction_clause(tokens)?
         && parsed.target.is_none()
         && matches!(
@@ -861,13 +879,6 @@ pub fn parse_cant_clause(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
         return Ok(Some(ability));
     }
 
-    if let Some(resolution) = direct_cant_static_ability(tokens) {
-        match resolution {
-            StaticAbilityShapeResolution::Ability(ability) => return Ok(Some(ability)),
-            StaticAbilityShapeResolution::Decline => return Ok(None),
-        }
-    }
-
     if let Some(parsed) = parse_negated_object_restriction_clause(tokens)?
         && parsed.target.is_none()
     {
@@ -883,6 +894,24 @@ pub fn parse_cant_clause(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
 mod tests {
     use super::super::super::util::tokenize_line;
     use super::*;
+
+    #[test]
+    fn opponent_caused_sacrifice_protection_is_a_typed_static_restriction() {
+        let tokens = tokenize_line(
+            "Spells and abilities your opponents control can't cause you to sacrifice permanents.",
+            0,
+        );
+        let ability = parse_cant_clause(&tokens)
+            .unwrap()
+            .expect("sacrifice protection must be static");
+        let debug = format!("{ability:#?}");
+        assert!(debug.contains("BeSacrificedByCause"), "{debug}");
+        assert!(debug.contains("Opponent"), "{debug}");
+        assert!(
+            debug.contains("Cost"),
+            "opponent-requested payments must be included: {debug}"
+        );
+    }
 
     #[test]
     fn extra_turn_attack_restriction_is_a_typed_condition() {

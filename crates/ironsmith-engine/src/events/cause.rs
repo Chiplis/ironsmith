@@ -76,18 +76,27 @@ mod tests {
     use crate::ids::ObjectId;
 
     #[test]
-    fn opponent_cause_filter_excludes_teammates() {
-        let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Carol".into()], 20);
-        let alice = PlayerId::from_index(0);
-        let bob = PlayerId::from_index(1);
-        let carol = PlayerId::from_index(2);
-        game.set_teams(vec![vec![alice, bob], vec![carol]]).unwrap();
-        let filter = CauseFilter { cause_type: None, source_filter: None, controller_filter: Some(ControllerFilter::Opponent) };
-        for (controller, expected) in [(alice, false), (bob, false), (carol, true)] {
-            let mut cause = EventCause::effect();
-            cause.source_controller = Some(controller);
-            assert_eq!(filter.matches(&cause, &game, alice), expected);
+    fn opponent_cause_filter_respects_teams_and_captured_controller() {
+        let mut game = GameState::new(
+            vec!["Alice".into(), "Bob".into(), "Carol".into(), "Dan".into()],
+            20,
+        );
+        let [alice, bob, carol, dan] = [0, 1, 2, 3].map(PlayerId::from_index);
+        game.set_teams(vec![vec![alice, bob], vec![carol, dan]])
+            .unwrap();
+        let filter = CauseFilter::any().with_controller(ControllerFilter::Opponent);
+        // The source need not still exist for its captured controller to matter.
+        for (controller, expected) in [(alice, false), (bob, false), (carol, true), (dan, true)] {
+            assert_eq!(
+                filter.matches(
+                    &EventCause::from_effect(ObjectId::from_raw(999), controller),
+                    &game,
+                    alice
+                ),
+                expected
+            );
         }
+        assert!(!filter.matches(&EventCause::from_game_rule(), &game, alice));
     }
 
     #[test]

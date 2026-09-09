@@ -1036,6 +1036,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 while_on_top_of_library,
                 free_cast_from_current_zone,
                 until_source_exiles_another,
+                spell_cost_reduction,
                 max_plays,
                 surface,
             }) => f
@@ -1048,6 +1049,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("while_on_top_of_library", while_on_top_of_library)
                 .field("free_cast_from_current_zone", free_cast_from_current_zone)
                 .field("until_source_exiles_another", until_source_exiles_another)
+                .field("spell_cost_reduction", spell_cost_reduction)
                 .field("max_plays", max_plays)
                 .field("surface", surface)
                 .finish(),

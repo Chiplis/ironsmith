@@ -665,6 +665,7 @@ impl GameState {
             new_object.restore_printed_spell_effect(handles);
         }
         new_object.cast_alternative_method = None;
+        new_object.cast_play_from_constraints = None;
 
         if old_zone == Zone::Stack
             && new_zone != Zone::Stack

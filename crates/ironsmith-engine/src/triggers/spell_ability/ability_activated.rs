@@ -234,6 +234,14 @@ impl TriggerMatcher for AbilityActivatedTrigger {
             "an ability".to_string()
         };
         let mut source_description = source_filter_phrase(&source_filter);
+        // Battlefield is often implicit in permanent-filter prose, but an
+        // activation can originate in other zones. Preserve this restriction.
+        if source_filter.zone == Some(Zone::Battlefield)
+            && source_filter.has_activation_source_battlefield_surface()
+            && !source_description.contains("on the battlefield")
+        {
+            source_description.push_str(" on the battlefield");
+        }
         if source_filter.chosen_creature_type {
             source_description = source_description.replace("of the chosen type", "of that type");
         }
@@ -249,7 +257,12 @@ impl TriggerMatcher for AbilityActivatedTrigger {
             text.push_str(" with an activation cost that contains {X}");
         }
         if self.non_mana_only && !self.loyalty_only {
-            text.push_str(" that isn't a mana ability");
+            text.push_str(if source_filter.zone == Some(Zone::Battlefield)
+            && source_filter.has_activation_source_battlefield_surface() {
+                ", if it isn't a mana ability"
+            } else {
+                " that isn't a mana ability"
+            });
         }
         match self.activation_cost_has_tap {
             Some(true) => text.push_str(" with {T} in its activation cost"),
@@ -266,6 +279,24 @@ mod tests {
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::provenance::ProvNodeId;
     use crate::types::{CardType, Subtype};
+
+    #[test]
+    fn activation_source_zone_display_preserves_explicit_scope() {
+        for kind in [CardType::Artifact, CardType::Creature, CardType::Land] {
+            for zone in [None, Some(Zone::Battlefield), Some(Zone::Graveyard)] {
+                let mut filter = ObjectFilter::default();
+                filter.card_types = vec![kind];
+                filter.zone = zone;
+                filter.set_activation_source_battlefield_surface(zone == Some(Zone::Battlefield));
+                let text = AbilityActivatedTrigger::new(PlayerFilter::Opponent, filter, true).display();
+                assert_eq!(text.contains("on the battlefield"), zone == Some(Zone::Battlefield), "{text}");
+                assert!(text.contains("isn't a mana ability"), "{text}");
+                if zone == Some(Zone::Graveyard) {
+                    assert!(text.contains("graveyard"), "{text}");
+                }
+            }
+        }
+    }
 
     #[test]
     fn test_display() {

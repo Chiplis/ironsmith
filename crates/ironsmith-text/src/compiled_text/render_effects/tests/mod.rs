@@ -272,3 +272,32 @@ mod damage_target_type_condition;
 
 mod attached_source_counter_release;
 
+mod graveyard_cast_entry_counters;
+
+mod void_self_cost;
+
+mod delayed_targeted_damage_source;
+
+mod melira_watched_permanent;
+
+mod cast_trigger_hand_choice;
+
+mod additional_sacrifice_mana_value;
+
+mod initiative_action_list;
+
+mod historic_cast_block_condition;
+
+mod shared_dynamic_tokens;
+
+mod linked_permission_discount;
+
+mod graveyard_threshold_discount;
+
+mod creature_leader_control;
+
+mod power_difference_counters;
+
+mod activation_source_zone;
+
+mod shared_pump_targets;

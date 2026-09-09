@@ -45,7 +45,7 @@ fn vote_counted_reveal_moves_distinct_matches_from_one_traversal() {
     let second = game.create_object_from_card(&creature, alice, Zone::Library);
     let between = game.create_object_from_card(&land, alice, Zone::Library);
     let first = game.create_object_from_card(&creature, alice, Zone::Library);
-    game.player_mut(alice).unwrap().library = vec![third, second, between, first];
+    game.player_mut(alice).unwrap().library = vec![third, second, between, first].into();
     let before_shuffle = game.irreversible_random_count();
     let mut dm = WildVotes { wild, cast: 0 };
     let mut ctx = crate::effects::EffectContext::new(source, alice, &mut dm);
@@ -92,7 +92,7 @@ fn exile_counted_reveal_keeps_new_creatures_and_shuffles_only_library_remainder(
     let second = game.create_object_from_card(&creature, alice, Zone::Library);
     let between = game.create_object_from_card(&land, alice, Zone::Library);
     let first = game.create_object_from_card(&creature, alice, Zone::Library);
-    game.player_mut(alice).unwrap().library = vec![third, second, between, first];
+    game.player_mut(alice).unwrap().library = vec![third, second, between, first].into();
     let before = game.irreversible_random_count();
     let mut ctx = crate::effects::EffectContext::new_default(source, alice);
     for segment in &definition.spell_effect.as_ref().unwrap().segments {
@@ -135,7 +135,7 @@ fn removed_creatures_controller_reveals_moves_and_shuffles_their_own_cards() {
         let second = game.create_object_from_card(if has_match { &creature } else { &land }, bob, Zone::Library);
         let first = game.create_object_from_card(if has_match { &creature } else { &land }, bob, Zone::Library);
         let above = game.create_object_from_card(&land, bob, Zone::Library);
-        game.player_mut(bob).unwrap().library = vec![second, first, above];
+        game.player_mut(bob).unwrap().library = vec![second, first, above].into();
         let before = game.irreversible_random_count();
         let mut ctx = crate::effects::EffectContext::new_default(source, alice)
             .with_targets(vec![crate::effects::ResolvedTarget::Object(target)]);
@@ -181,7 +181,7 @@ fn chosen_type_consult_uses_resolution_choice_after_source_is_sacrificed() {
     let later_demon = game.create_object_from_card(&demon, alice, Zone::Library);
     let first_demon = game.create_object_from_card(&demon, alice, Zone::Library);
     let first_elf = game.create_object_from_card(&elf, alice, Zone::Library);
-    game.player_mut(alice).unwrap().library = vec![later_demon, first_demon, first_elf];
+    game.player_mut(alice).unwrap().library = vec![later_demon, first_demon, first_elf].into();
     game.move_object_by_effect(source, Zone::Graveyard);
     let mut dm = ChooseDemon;
     let mut ctx = crate::effects::EffectContext::new(source, alice, &mut dm);
