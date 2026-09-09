@@ -7594,6 +7594,16 @@ mod tests {
     }
 
     #[test]
+    fn shared_pump_targets_survive_the_document_reader() {
+        let tokens = crate::lexer::lex_line("Target creature you control gets +X/+0 until end of turn and up to one target creature an opponent controls gets -0/-X until end of turn, where X is the number of Elves you control plus the number of Elf cards in your graveyard.", 0).unwrap();
+        let shortcut = super::parse_complete_get_pump_statement(&tokens).unwrap();
+        assert!(shortcut.is_none(), "single pump shortcut consumed the compound: {shortcut:#?}");
+        let effects = super::parse_effect_sentences_lexed(&tokens).unwrap();
+        let debug = format!("{effects:#?}");
+        assert_eq!(debug.matches("action: Pump {").count(), 2, "{debug}");
+    }
+
+    #[test]
     fn complete_pump_defers_to_a_following_action() {
         let tokens = crate::lexer::lex_line(
             "This creature gets +2/+1 until end of turn, then scry 2.", 0,
