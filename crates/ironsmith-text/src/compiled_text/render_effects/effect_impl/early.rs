@@ -29,6 +29,9 @@
         return String::new();
     }
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        if let Some(text) = effect_lists::describe_coordinated_keyword_grants(&sequence.effects) {
+            return text;
+        }
         if matches!(sequence.surface,
             ironsmith_core::SequenceSurface::Coordinated
                 | ironsmith_core::SequenceSurface::ResultConjunction { leading_duration: false })

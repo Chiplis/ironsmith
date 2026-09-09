@@ -3360,7 +3360,7 @@
             let body = describe_resolution_program(&schedule.effects);
             return format!("{} when that {} dies", body.trim_end_matches('.'), strip_indefinite_article(&noun));
         }
-        if let Some(text) = describe_delayed_target_land_damages_tagged_creature(schedule) {
+        if let Some(text) = describe_delayed_targeted_source_damage(schedule) {
             return text;
         }
         if let Some(text) = describe_delayed_exile_referenced_controller_graveyard(schedule) {

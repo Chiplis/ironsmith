@@ -1,10 +1,8 @@
 use super::*;
 
-/// Preserve the subject of an exact delayed land-damage instruction. The
-/// runtime program chooses and tags the land, then executes damage with that
-/// tag as its source; generic rendering otherwise calls both the land and the
-/// earlier creature "that creature."
-pub(super) fn describe_delayed_target_land_damages_tagged_creature(
+/// Render a delayed target declaration together with damage executed by that
+/// target, keeping its source distinct from the previously bound recipient.
+pub(super) fn describe_delayed_targeted_source_damage(
     schedule: &crate::effects::ScheduleDelayedTriggerEffect,
 ) -> Option<String> {
     if !schedule.one_shot
@@ -31,55 +29,50 @@ pub(super) fn describe_delayed_target_land_damages_tagged_creature(
         return None;
     }
 
-    let [land_effect, damage_effect] = schedule.effects.flattened_default_effects() else {
+    let [source_effect, damage_effect] = schedule.effects.flattened_default_effects() else {
         return None;
     };
-    let tagged_land = land_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
-    let target_land = tagged_land
+    let tagged_source = source_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let source_target = tagged_source
         .effect
         .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
-    let ChooseSpec::Object(land_filter) = target_land.target.base() else {
+    let ChooseSpec::Object(_source_filter) = source_target.target.base() else {
         return None;
     };
-    let mut semantic_land = land_filter.clone();
-    semantic_land.union_surface = Default::default();
-    if target_land.chooser.is_some()
-        || target_land.explicit_declaration
-        || semantic_land != ObjectFilter::land()
+    if source_target.chooser.is_some()
+        || source_target.explicit_declaration
+        || !matches!(source_target.target.unhinted(), ChooseSpec::Target(_))
     {
         return None;
     }
 
     let with_source = damage_effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()?;
-    if !matches!(&with_source.source, ChooseSpec::Tagged(tag) if tag == &tagged_land.tag) {
+    if !matches!(&with_source.source, ChooseSpec::Tagged(tag) if tag == &tagged_source.tag) {
         return None;
     }
     let damage = with_source
         .effect
         .downcast_ref::<crate::effects::DealDamageEffect>()?;
-    let ChooseSpec::Object(creature_filter) = damage.target.base() else {
+    let ChooseSpec::Object(recipient_filter) = damage.target.base() else {
         return None;
     };
-    let [creature_tag] = creature_filter.tagged_constraints.as_slice() else {
+    let [recipient_tag] = recipient_filter.tagged_constraints.as_slice() else {
         return None;
     };
-    let mut semantic_creature = creature_filter.clone();
-    semantic_creature.tagged_constraints.clear();
-    semantic_creature.union_surface = Default::default();
-    if damage.amount != Value::Fixed(3)
-        || damage.source_is_combat
+    if damage.source_is_combat
         || damage.unpreventable
-        || creature_tag.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
-        || creature_tag.tag == tagged_land.tag
-        || semantic_creature != ObjectFilter::creature()
+        || recipient_tag.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        || recipient_tag.tag == tagged_source.tag
     {
         return None;
     }
 
-    Some(
-        "At the beginning of the next end step, target land deals 3 damage to that creature"
-            .to_string(),
-    )
+    Some(format!(
+        "At the beginning of the next end step, {} deals {} damage to {}",
+        describe_choose_spec(&source_target.target),
+        describe_value(&damage.amount),
+        describe_choose_spec(&damage.target),
+    ))
 }
 
 pub(super) fn describe_delayed_exile_referenced_controller_graveyard(

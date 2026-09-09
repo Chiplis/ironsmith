@@ -275,3 +275,5 @@ mod attached_source_counter_release;
 mod graveyard_cast_entry_counters;
 
 mod void_self_cost;
+
+mod delayed_targeted_damage_source;

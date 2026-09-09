@@ -330,12 +330,14 @@ fn compile_delayed_effects_preserving_outer_context_with_event_value(
     delayed_frame.last_effect_id = None;
     delayed_frame.allow_life_event_value = allow_event_value;
     let mut id_gen = ctx.id_gen_context();
-    let (compiled, choices, mut frame_out) =
+    let (compiled, _delayed_choices, _delayed_frame) =
         compile_effects_with_explicit_frame(effects, &mut id_gen, delayed_frame)?;
-    frame_out.last_effect_id = saved_frame.last_effect_id;
+    // A delayed ability chooses its own targets when it is put on the stack.
+    // Its body can read the registering ability's references, but new targets
+    // and references inside that body must not escape into the outer ability.
     ctx.apply_id_gen_context(id_gen);
-    ctx.apply_lowering_frame(frame_out);
-    Ok((compiled, choices))
+    ctx.apply_lowering_frame(saved_frame);
+    Ok((compiled, Vec::new()))
 }
 
 /// A next-end-step payload can consume the amount actually prevented by the

@@ -84,7 +84,7 @@ use chosen_type_untap::*;
 use coin_flip_target_backrefs::*;
 use combat_requirement_and_prohibition::*;
 use consult_attachment::*;
-use coordinated_keyword_grants::describe_coordinated_keyword_grants;
+pub(super) use coordinated_keyword_grants::describe_coordinated_keyword_grants;
 pub(in crate::compiled_text) use coordinated_keyword_grants::describe_put_counters_then_coordinated_keyword_grants;
 use copy_spell_modifiers::*;
 use correlated_delayed_combat::describe_end_combat_destroy_then_next_end_counter;

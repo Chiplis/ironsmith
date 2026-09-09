@@ -57,7 +57,7 @@ fn same_grant_shell(
         && first.require_creature_target == candidate.require_creature_target
 }
 
-pub(super) fn describe_coordinated_keyword_grants(effects: &[Effect]) -> Option<String> {
+pub(crate) fn describe_coordinated_keyword_grants(effects: &[Effect]) -> Option<String> {
     if effects.len() < 2 {
         return None;
     }
