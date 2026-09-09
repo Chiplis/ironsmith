@@ -152,7 +152,7 @@ pub(in crate::compiled_text) use relative_player_target_consult::*;
 use sacrifice_unless_mana_spent::describe_sacrifice_triggering_unless_mana_spent;
 pub(super) use sacrificed_source_damage::describe_sacrificed_source_damage_backreference;
 pub(in crate::compiled_text) use same_actor_life_and_token::{
-    describe_explicit_you_three_action_sequence, describe_shared_actor_token_creation_list,
+    describe_explicit_you_action_sequence, describe_shared_actor_token_creation_list,
     describe_you_action_and_create_token, describe_you_life_change_and_exile_top,
 };
 use single_counter_target_followup::describe_single_counter_target_then_double;

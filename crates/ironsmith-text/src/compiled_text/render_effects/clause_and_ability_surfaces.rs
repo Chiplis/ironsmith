@@ -4146,7 +4146,7 @@ pub(super) fn describe_coordinated_sequence(
         return Some(rendered);
     }
     if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
-        && let Some(rendered) = describe_explicit_you_three_action_sequence(&sequence.effects)
+        && let Some(rendered) = describe_explicit_you_action_sequence(&sequence.effects)
     {
         return Some(rendered);
     }

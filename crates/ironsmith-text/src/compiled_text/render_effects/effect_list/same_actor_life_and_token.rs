@@ -165,32 +165,45 @@ fn strip_you_action(text: &str) -> Option<&str> {
         .or_else(|| text.strip_prefix("you "))
 }
 
-/// Preserve an explicitly authored shared `you` subject across three
-/// coordinated actions.
+/// Preserve an explicitly authored shared `you` subject across a coordinated
+/// list of actions.
 ///
 /// Lowering keeps the actors on the individual effects. The broad sequence
 /// renderer normally turns a leading `You ...` instruction into an
 /// imperative, which produces mixed clauses such as `draw ..., gain ..., and
-/// you create ...`. These two shapes prove that every action has the same
-/// actor before rendering that subject once.
-pub(in crate::compiled_text) fn describe_explicit_you_three_action_sequence(
+/// you create ...`. The typed player fields prove that every action has the
+/// same actor before rendering that subject once.
+pub(in crate::compiled_text) fn describe_explicit_you_action_sequence(
     effects: &[Effect],
 ) -> Option<String> {
-    if let [draw_root, _, _] = effects {
-        let draw = structural_unwrap_render_wrappers(draw_root)
-            .downcast_ref::<crate::effects::DrawCardsEffect>()?;
-        if draw.player != PlayerFilter::You {
-            return None;
+    let simple_actions = || -> Option<Vec<String>> {
+        if effects.len() < 3 { return None; }
+        let mut actions = Vec::new();
+        let mut explicit_actor = false;
+        for root in effects {
+            let effect = structural_unwrap_render_wrappers(root);
+            let is_yours = if let Some(draw) = effect.downcast_ref::<crate::effects::DrawCardsEffect>() {
+                draw.player == PlayerFilter::You
+            } else if let Some(gain) = effect.downcast_ref::<crate::effects::GainLifeEffect>() {
+                gain.player == ChooseSpec::Player(PlayerFilter::You)
+            } else if let Some(lose) = effect.downcast_ref::<crate::effects::LoseLifeEffect>() {
+                lose.player == ChooseSpec::Player(PlayerFilter::You)
+            } else if let Some(initiative) = effect.downcast_ref::<crate::effects::TakeInitiativeEffect>() {
+                initiative.player == PlayerFilter::You
+            } else if let Some(create) = effect.downcast_ref::<crate::effects::CreateTokenEffect>() {
+                explicit_actor |= create.actor_surface_explicit;
+                create.controller == PlayerFilter::You && create.controller_target.is_none()
+            } else {
+                return None;
+            };
+            if !is_yours { return None; }
+            let text = describe_effect(root);
+            actions.push(strip_you_action(&text)?.to_string());
         }
-        let gain_and_create = describe_you_action_and_create_token(&effects[1..])?;
-        let draw_text = describe_effect(draw_root);
-        let draw = strip_you_action(&draw_text)?;
-        let gain_and_create = strip_you_action(&gain_and_create)?;
-        let (gain, create) = gain_and_create.split_once(" and create ")?;
-        if !draw.starts_with("draw ") || !gain.starts_with("gain ") || create.is_empty() {
-            return None;
-        }
-        return Some(format!("You {draw}, {gain}, and create {create}"));
+        explicit_actor.then_some(actions)
+    };
+    if let Some(actions) = simple_actions() {
+        return Some(format!("You {}", join_with_and(&actions)));
     }
 
     let [discard_root, lose_root, choose_root, sacrifice_root] = effects else {
@@ -334,6 +347,25 @@ mod tests {
     }
 
     #[test]
+    fn longer_explicit_action_lists_require_every_action_to_share_the_actor() {
+        for changed in 0..6 {
+            let player = |slot| if changed == slot { PlayerFilter::Opponent } else { PlayerFilter::You };
+            let mut create = crate::effects::CreateTokenEffect::new(
+                crate::cards::tokens::treasure_token_definition(), 1, player(4));
+            create.actor_surface_explicit = changed != 5;
+            let effects = vec![
+                Effect::new(crate::effects::TakeInitiativeEffect::new(player(1))),
+                Effect::new(crate::effects::GainLifeEffect { amount: Value::Fixed(3), player: ChooseSpec::Player(player(2)) }),
+                Effect::new(crate::effects::DrawCardsEffect::new(1, player(3))),
+                Effect::new(create),
+            ];
+            assert_eq!(describe_explicit_you_action_sequence(&effects), if changed == 0 {
+                Some("You take the initiative, gain 3 life, draw a card, and create a Treasure token".to_string())
+            } else { None });
+        }
+    }
+
+    #[test]
     fn explicit_three_action_subject_requires_the_same_player() {
         let draw = Effect::new(crate::effects::DrawCardsEffect::you(1));
         let gain = Effect::new(crate::effects::GainLifeEffect::you(2));
@@ -346,7 +378,7 @@ mod tests {
         let create = Effect::new(create);
 
         assert_eq!(
-            describe_explicit_you_three_action_sequence(&[draw.clone(), gain, create.clone(),]),
+            describe_explicit_you_action_sequence(&[draw.clone(), gain, create.clone(),]),
             Some("You draw a card, gain 2 life, and create a Treasure token".to_string())
         );
 
@@ -355,7 +387,7 @@ mod tests {
             PlayerFilter::Opponent,
         ));
         assert_eq!(
-            describe_explicit_you_three_action_sequence(&[other_draw, draw, create]),
+            describe_explicit_you_action_sequence(&[other_draw, draw, create]),
             None
         );
     }
