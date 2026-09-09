@@ -581,6 +581,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
 
     /// Typed block-cost data for structural renderers and other read-only
     /// consumers that must not infer semantics from the display label.
+    fn attack_cost_for_declaration(&self, _game: &GameState, _source: ObjectId, _controller: PlayerId,
+        _attacker: ObjectId, _target: AttackTaxTargetKind) -> Option<crate::cost::TotalCost> { None }
+
+    fn attack_cost_model(&self) -> Option<&AttackCost> { None }
+
     fn block_cost_model(&self) -> Option<&BlockCost> {
         None
     }
@@ -1775,6 +1780,12 @@ impl StaticAbility {
         )
     }
 
+    pub fn attack_cost_for_declaration(&self, game: &GameState, source: ObjectId, controller: PlayerId,
+        attacker: ObjectId, target: AttackTaxTargetKind) -> Option<crate::cost::TotalCost> {
+        self.0.attack_cost_for_declaration(game, source, controller, attacker, target)
+    }
+    pub fn attack_cost_model(&self) -> Option<&AttackCost> { self.0.attack_cost_model() }
+
     pub fn block_cost_model(&self) -> Option<&BlockCost> {
         self.0.block_cost_model()
     }
@@ -2334,6 +2345,10 @@ impl StaticAbility {
 
     pub fn cant_block() -> Self {
         Self::new(CantBlock)
+    }
+
+    pub fn attack_cost(attackers: crate::target::ObjectFilter, covers_planeswalkers: bool, cost: crate::cost::TotalCost, display: impl Into<String>) -> Self {
+        Self::new(AttackCost::new(attackers, covers_planeswalkers, cost, display))
     }
 
     pub fn block_cost(

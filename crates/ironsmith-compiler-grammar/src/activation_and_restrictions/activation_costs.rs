@@ -139,6 +139,53 @@ fn blocking_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilit
     })
 }
 
+/// Preserve full payment alternatives, attacker filters, and bound amounts.
+fn typed_attack_tax_static_ability(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, CardTextError> {
+    let Some(cant) = tokens.iter().position(|token| token.is_word("can't") || token.is_word("cant") || token.is_word("cannot")) else { return Ok(None); };
+    let Some(unless) = tokens.iter().position(|token| token.is_word("unless")) else { return Ok(None); };
+    if unless <= cant { return Ok(None); }
+    let scope = crate::lexer::token_word_refs(&tokens[cant + 1..unless]);
+    let covers_planeswalkers = match scope.as_slice() {
+        ["attack", "you"] => false,
+        ["attack", "you", "or", "planeswalkers", "you", "control"] => true,
+        _ => return Ok(None),
+    };
+    let Some(pays) = tokens.iter().enumerate().skip(unless + 1).find_map(|(index, token)| token.is_word("pays").then_some(index)) else { return Ok(None); };
+    if crate::lexer::token_word_refs(&tokens[unless + 1..pays]) != ["their", "controller"] { return Ok(None); }
+    let Some(per) = tokens.iter().enumerate().skip(pays + 1).find_map(|(index, token)| token.is_word("for").then_some(index)) else { return Ok(None); };
+    let where_index = tokens.iter().enumerate().skip(per).find_map(|(index, token)| token.is_word("where").then_some(index));
+    let per_words = crate::lexer::token_word_refs(&tokens[per..where_index.unwrap_or(tokens.len())]);
+    if !matches!(per_words.as_slice(), ["for", "each", "of", "those", "creatures"]
+        | ["for", "each", "creature", "they", "control", "that's" | "thats", "attacking", "you"]) { return Ok(None); }
+    let Some(attackers) = parse_subject_object_filter(&tokens[..cant])? else { return Ok(None); };
+    let Some(mut cost) = parse_payment_clause_as_total_cost(&tokens[pays + 1..per])? else {
+        return Err(CardTextError::ParseError("unsupported attack payment cost".into()));
+    };
+    if let Some(where_index) = where_index {
+        let value = parse_value_binding_clause_lexed(&tokens[where_index..]).ok_or_else(|| CardTextError::ParseError("unsupported attack-cost X definition".into()))?;
+        let mut bound = false;
+        cost = cost.try_map(|component| -> Result<_, CardTextError> {
+            Ok(match component {
+                crate::model::CompilerCost::Mana(mana) if mana.has_x() => {
+                    bound = true;
+                    crate::model::CompilerCost::DynamicMana(ironsmith_core::DynamicManaCost::from_x(mana, value.clone()))
+                }
+                crate::model::CompilerCost::VariableMana { generic } => {
+                    bound = true;
+                    crate::model::CompilerCost::DynamicMana(ironsmith_core::DynamicManaCost::from_x(
+                        ManaCost::from_pips(vec![vec![ManaSymbol::X]]).add_generic(generic), value.clone()))
+                }
+                crate::model::CompilerCost::DynamicMana(mut dynamic) if dynamic.base.has_x() => {
+                    bound = true; dynamic.x_value = Some(value.clone()); crate::model::CompilerCost::DynamicMana(dynamic)
+                }
+                other => other,
+            })
+        })?;
+        if !bound { return Err(CardTextError::ParseError("attack-cost X definition has no X payment".into())); }
+    }
+    Ok(Some(StaticAbility::attack_cost(attackers, covers_planeswalkers, cost, format_negated_restriction_display(tokens))))
+}
+
 fn attack_unless_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbility> {
     let fact = cant_shapes::parse_attack_unless_condition_tokens(tokens)?;
     let display = format_negated_restriction_display(fact.display_tokens);
@@ -711,6 +758,8 @@ pub fn parse_cant_clause(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
             StaticAbility::cant_attack_you_unless_controller_pays_per_attacker(fact.amount)
         }));
     }
+
+    if let Some(ability) = typed_attack_tax_static_ability(tokens)? { return Ok(Some(ability)); }
 
     if let Some(ability) = attack_unless_static_ability(tokens) {
         return Ok(Some(ability));

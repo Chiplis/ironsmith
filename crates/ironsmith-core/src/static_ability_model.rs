@@ -602,6 +602,13 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     /// A cost that must be paid for a matching creature to block a matching
     /// attacker. The total cost is locked from this payload when blockers are
     /// declared (CR 509.1d), rather than recomputed during payment.
+    /// A cost imposed per matching attacker against this ability's controller.
+    AttackCost {
+        attackers: ObjectFilter,
+        covers_planeswalkers: bool,
+        cost: TotalCost<C>,
+        display: String,
+    },
     BlockCost {
         blockers: ObjectFilter,
         blocker_is_attached_to_source: bool,
@@ -1681,6 +1688,11 @@ where
                 StaticAbilityPayload::CantAttackUnlessCondition {
                     condition: condition.try_map_condition(&mut *map_intervening)?,
                     display,
+                }
+            }
+            StaticAbilityPayload::AttackCost { attackers, covers_planeswalkers, cost, display } => {
+                StaticAbilityPayload::AttackCost {
+                    attackers, covers_planeswalkers, cost: map_total_cost(cost, map_cost)?, display,
                 }
             }
             StaticAbilityPayload::BlockCost {
@@ -3726,6 +3738,12 @@ impl<
             payload: StaticAbilityPayload::CantAttackUnlessCondition { condition, display },
         }
     }
+    pub fn attack_cost(attackers: ObjectFilter, covers_planeswalkers: bool, cost: TotalCost<C>, display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self { id: Some(StaticAbilityId::AttackCost), label: display.clone(),
+            payload: StaticAbilityPayload::AttackCost { attackers, covers_planeswalkers, cost, display } }
+    }
+
     pub fn block_cost(
         blockers: ObjectFilter,
         attackers: ObjectFilter,

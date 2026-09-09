@@ -20,6 +20,100 @@ use crate::triggers::{TriggerEvent, TriggeredAbilityEntry};
 use crate::types::Subtype;
 use crate::zone::Zone;
 
+/// A reusable cost imposed on each matching attacker against this controller.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AttackCost {
+    attackers: ObjectFilter,
+    covers_planeswalkers: bool,
+    cost: crate::cost::TotalCost,
+    display_text: String,
+}
+
+impl AttackCost {
+    pub fn new(attackers: ObjectFilter, covers_planeswalkers: bool, cost: crate::cost::TotalCost, display: impl Into<String>) -> Self {
+        Self { attackers, covers_planeswalkers, cost, display_text: display.into() }
+    }
+    pub fn attackers(&self) -> &ObjectFilter { &self.attackers }
+    pub fn covers_planeswalkers(&self) -> bool { self.covers_planeswalkers }
+    pub fn cost(&self) -> &crate::cost::TotalCost { &self.cost }
+}
+
+impl StaticAbilityKind for AttackCost {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::AttackCost }
+    fn display(&self) -> String { self.display_text.clone() }
+    fn attack_cost_model(&self) -> Option<&AttackCost> { Some(self) }
+    fn attack_cost_for_declaration(&self, game: &GameState, source: ObjectId, controller: PlayerId,
+        attacker: ObjectId, target: AttackTaxTargetKind) -> Option<crate::cost::TotalCost> {
+        if !matches!(target, AttackTaxTargetKind::Player)
+            && !(self.covers_planeswalkers && matches!(target, AttackTaxTargetKind::Planeswalker)) {
+            return None;
+        }
+        let object = game.object(attacker)?;
+        let ctx = game.filter_context_for(controller, Some(source));
+        self.attackers.matches(object, &ctx, game).then(|| self.cost.clone())
+    }
+    fn materialize_resolution_values(&self, game: &GameState, ctx: &mut crate::effects::ExecutionContext<'_>)
+        -> Result<Option<super::StaticAbility>, crate::effects::ExecutionError> {
+        let cost = self.cost.clone().try_map(|component| {
+            let Some(dynamic) = component.dynamic_mana_cost_ref() else { return Ok(component); };
+            crate::special_actions::resolve_dynamic_mana_cost(game, dynamic, ctx).map(crate::costs::Cost::mana)
+        }).map_err(|error| crate::effects::ExecutionError::UnresolvableValue(error.to_string()))?;
+        Ok(Some(super::StaticAbility::new(Self::new(self.attackers.clone(), self.covers_planeswalkers, cost, self.display_text.clone()))))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ImposedAttackCost {
+    pub payer: PlayerId,
+    pub source: ObjectId,
+    pub controller: PlayerId,
+    pub cost: crate::cost::TotalCost,
+    pub display: String,
+}
+
+impl ImposedAttackCost {
+    pub fn resolved_cost(&self, game: &GameState) -> Result<crate::cost::TotalCost, crate::cost::CostPaymentError> {
+        let mut ctx = crate::effects::ExecutionContext::new_default(self.source, self.controller);
+        self.cost.clone().try_map(|component| {
+            let Some(dynamic) = component.dynamic_mana_cost_ref() else { return Ok(component); };
+            crate::special_actions::resolve_dynamic_mana_cost(game, dynamic, &mut ctx).map(crate::costs::Cost::mana)
+        })
+    }
+}
+
+/// The same imposed costs feed legality previews and declaration payment.
+pub(crate) fn imposed_attack_costs_for_target(
+    game: &GameState, attacker: ObjectId, target: &crate::combat_state::AttackTarget,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> Vec<ImposedAttackCost> {
+    let Some(defender) = crate::combat_state::defending_player_for_attack_target(game, target) else { return Vec::new(); };
+    let Some(attacker) = game.object(attacker) else { return Vec::new(); };
+    let payer = game.controller_of(attacker);
+    let mut costs = Vec::new();
+    for &source in &game.battlefield {
+        let Some(object) = game.object(source) else { continue; };
+        let controller = game.controller_of(object);
+        if controller != defender { continue; }
+        let abilities = view.calculated_characteristics_arc(source)
+            .map(|chars| chars.static_abilities.to_vec())
+            .unwrap_or_else(|| object.abilities.iter().filter_map(|ability| match &ability.kind {
+                crate::ability::AbilityKind::Static(ability) => Some(ability.clone()), _ => None,
+            }).collect());
+        for ability in abilities {
+            if let Some(cost) = ability.attack_cost_for_declaration(game, source, controller, attacker.id, AttackTaxTargetKind::from(target)) {
+                costs.push(ImposedAttackCost { payer, source, controller, cost, display: ability.display() });
+            }
+        }
+    }
+    costs
+}
+
+pub(crate) fn combat_cost_requires_payment(cost: &crate::cost::TotalCost) -> bool {
+    // CR 118.5: even a represented {0} payment requires acknowledgment.
+    // CR 508.1d does not force that payment to satisfy an attack requirement.
+    !cost.is_free()
+}
+
 /// A reusable CR 509.1d cost imposed on matching blocker-attacker pairs.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlockCost {

@@ -150,9 +150,13 @@ fn can_declare_attack_target_preview(
     attacker: &crate::object::Object,
     defending_player: PlayerId,
     generic_attack_tax: u32,
+    target: &AttackTarget,
     abilities: &[crate::static_abilities::StaticAbility],
     view: &DerivedGameView<'_>,
 ) -> bool {
+    if matches!(target, AttackTarget::Player(_)) && !game.can_attack_player_directly(attacker.id, defending_player) {
+        return false;
+    }
     if !crate::rules::combat::can_attack_defending_player_with_view(
         attacker,
         defending_player,
@@ -182,10 +186,33 @@ fn can_declare_attack_target_preview(
         )
     });
 
-    total_generic_cost == 0
-        || view
-            .potential_mana(game.controller_of(attacker))
-            .can_pay(&generic_mana_cost(total_generic_cost), 0)
+    let mut mana_options = vec![generic_mana_cost(total_generic_cost)];
+    for imposed in crate::static_abilities::imposed_attack_costs_for_target(game, attacker.id, target, view) {
+        let Ok(cost) = imposed.resolved_cost(game) else { return false; };
+        fn options(cost: &crate::cost::TotalCost) -> Option<Vec<crate::mana::ManaCost>> {
+            match cost.kind() {
+                ironsmith_core::TotalCostKind::All(components) => {
+                    let mut pips = Vec::new();
+                    for component in components { pips.extend_from_slice(component.mana_cost_ref()?.pips()); }
+                    Some(vec![crate::mana::ManaCost::from_pips(pips)])
+                }
+                ironsmith_core::TotalCostKind::OneOf(branches) => {
+                    let mut result = Vec::new();
+                    for branch in branches { result.extend(options(branch)?); }
+                    Some(result)
+                }
+            }
+        }
+        // Non-mana components are validated by the atomic declaration payer.
+        let Some(cost_options) = options(&cost) else { continue; };
+        mana_options = mana_options.iter().flat_map(|prefix| cost_options.iter().map(|suffix| {
+            let mut pips = prefix.pips().to_vec(); pips.extend_from_slice(suffix.pips());
+            crate::mana::ManaCost::from_pips(pips)
+        })).collect();
+    }
+    mana_options.iter().any(|cost| cost.is_empty() || view.can_potentially_pay_with_reason(
+        game.controller_of(attacker), None, cost, 0, crate::costs::PaymentReason::Other,
+    ))
 }
 
 /// Compute legal attackers for the active player.
@@ -288,6 +315,7 @@ pub(crate) fn compute_legal_attackers_with_view(
                 perm,
                 *defending_player,
                 generic_attack_tax,
+                target,
                 &abilities,
                 view,
             ) {

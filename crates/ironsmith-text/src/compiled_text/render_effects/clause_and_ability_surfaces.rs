@@ -8865,6 +8865,20 @@ pub(crate) fn describe_static_ability_with_subject(
     static_ability: &crate::static_abilities::StaticAbility,
     subject: &str,
 ) -> String {
+    if let Some(tax) = static_ability.attack_cost_model() {
+        let mut attackers = tax.attackers().clone();
+        if attackers.zone == Some(crate::zone::Zone::Battlefield) { attackers.zone = None; }
+        let attackers = capitalize_first(&describe_count_filter_value_subject(&attackers));
+        let (cost, definition) = describe_total_cost_with_trailing_x_definition(tax.cost());
+        let (target, per) = if tax.covers_planeswalkers() {
+            ("you or planeswalkers you control", "for each of those creatures")
+        } else {
+            ("you", "for each creature they control that's attacking you")
+        };
+        let mut text = format!("{attackers} can't attack {target} unless their controller pays {cost} {per}");
+        if let Some(definition) = definition { text.push_str(&format!(", where {definition}")); }
+        return text;
+    }
     if let Some(ironsmith_core::StaticAbilityPayload::CharacteristicDefiningPt {
         power,
         toughness,
@@ -16456,4 +16470,27 @@ fn describe_entry_counters_suffix(
         })
         .collect::<Vec<_>>();
     format!(" with {} on it", join_with_and(&parts))
+}
+
+#[cfg(test)]
+mod typed_attack_tax_render_tests {
+    use super::*;
+
+    #[test]
+    fn typed_attack_tax_renders_from_cost_filter_and_scope_without_label() {
+        let cases = [
+            (ObjectFilter::creature(), true, crate::cost::TotalCost::mana(crate::mana::ManaCost::from_pips(vec![vec![crate::mana::ManaSymbol::White, crate::mana::ManaSymbol::Life(2)]])),
+                "Creatures can't attack you or planeswalkers you control unless their controller pays {W/P} for each of those creatures"),
+            (ObjectFilter::creature().without_colors(crate::color::ColorSet::BLACK), false, crate::cost::TotalCost::mana(crate::mana::ManaCost::from_pips(vec![vec![crate::mana::ManaSymbol::Generic(2)]])),
+                "Nonblack creatures can't attack you unless their controller pays {2} for each creature they control that's attacking you"),
+            (ObjectFilter::creature(), true, crate::cost::TotalCost::from_cost(crate::costs::Cost::dynamic_mana(ironsmith_core::DynamicManaCost::from_x(
+                crate::mana::ManaCost::from_pips(vec![vec![crate::mana::ManaSymbol::X]]),
+                Value::Count(ObjectFilter::default().with_type(crate::types::CardType::Enchantment).controlled_by(PlayerFilter::You)),
+            ))), "Creatures can't attack you or planeswalkers you control unless their controller pays {X} for each of those creatures, where X is the number of enchantments you control"),
+        ];
+        for (filter, scope, cost, expected) in cases {
+            let ability = crate::static_abilities::StaticAbility::attack_cost(filter, scope, cost, "ignored arbitrary display label");
+            assert_eq!(describe_static_ability_with_subject(&ability, "this permanent"), expected);
+        }
+    }
 }
