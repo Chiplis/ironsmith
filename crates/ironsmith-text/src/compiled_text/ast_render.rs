@@ -21506,49 +21506,42 @@ fn describe_each_opponent_sacrifice_discard_then_return_draw(
     )
 }
 
-fn describe_graveyard_bolas_cast_entry_counter_trigger(ability: &Ability) -> Option<String> {
-    if ability.functional_zones.as_slice() != [Zone::Graveyard] {
+fn describe_graveyard_cast_entry_counter_trigger(ability: &Ability) -> Option<String> {
+    if ability.functional_zones.as_slice() != [Zone::Graveyard] { return None; }
+    let AbilityKind::Triggered(triggered) = &ability.kind else { return None; };
+    if triggered.intervening_if.is_some() || !triggered.choices.is_empty()
+        || triggered.effects.segments.iter().any(|segment| !segment.self_replacements.is_empty()) {
         return None;
     }
-    let AbilityKind::Triggered(triggered) = &ability.kind else {
-        return None;
-    };
-    let spell_cast = triggered
-        .trigger
-        .downcast_ref::<crate::triggers::SpellCastTrigger>()?;
-    let filter = spell_cast.filter.as_ref()?;
-    if spell_cast.caster != PlayerFilter::You
-        || filter.card_types.as_slice() != [CardType::Planeswalker]
-        || filter.subtypes.as_slice() != [Subtype::Bolas]
-    {
-        return None;
-    }
-    let [segment] = triggered.effects.segments.as_slice() else {
-        return None;
-    };
-    if !segment.self_replacements.is_empty() {
-        return None;
-    }
-    let [tag_effect, move_effect, register_effect] = segment.default_effects.as_slice() else {
-        return None;
-    };
+    let cast = triggered.trigger.downcast_ref::<crate::triggers::SpellCastTrigger>()?;
+    let filter = cast.filter.as_ref()?;
+    let [tag_effect, move_effect, register_effect] = triggered.effects.flattened_default_effects() else { return None; };
     let tag = tag_effect.downcast_ref::<crate::effects::TagTriggeringObjectEffect>()?;
-    let movement = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
-    let register = register_effect
-        .downcast_ref::<crate::effects::RegisterNextBatchEnterWithCountersEffect>()?;
-    if movement.target != ChooseSpec::Source
-        || movement.zone != Zone::Exile
+    let movement = move_to_zone_surface_view(move_effect)?;
+    let register = register_effect.downcast_ref::<crate::effects::RegisterNextBatchEnterWithCountersEffect>()?;
+    let mut expected_filter = filter.clone();
+    expected_filter.zone = Some(Zone::Battlefield);
+    expected_filter.stack_kind = None;
+    expected_filter.has_mana_cost = false;
+    if movement.target != ChooseSpec::Source || movement.zone != Zone::Exile
         || register.same_stable_id_tag.as_ref() != Some(&tag.tag)
-        || register.filter != ObjectFilter::planeswalker()
-        || register.counter_type != CounterType::Loyalty
-        || register.count != Value::Fixed(1)
-    {
+        || register.filter != expected_filter
+        || !register.count.has_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
+        || !register.count.has_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter) {
         return None;
     }
-    Some(
-        "When you cast a Bolas planeswalker spell, exile this card from your graveyard. That planeswalker enters with an additional loyalty counter on it"
-            .to_string(),
-    )
+    let noun = if let [kind] = filter.card_types.as_slice() {
+        kind.to_string().to_ascii_lowercase()
+    } else { "permanent".into() };
+    let counter = register.counter_type.description();
+    let amount = if register.count.unhinted() == &Value::Fixed(1) {
+        format!("an additional {counter} counter")
+    } else {
+        describe_put_counter_phrase(&register.count, register.counter_type)
+            .replacen(&format!("{counter} counter"), &format!("additional {counter} counter"), 1)
+    };
+    Some(format!("{}, exile this card from your graveyard. That {noun} enters with {amount} on it",
+        triggered.trigger.display()))
 }
 
 /// Render two complementary counter-placement predicates against one declared
@@ -32610,7 +32603,7 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 ability_idx += 1;
                 continue;
             }
-            if let Some(text) = describe_graveyard_bolas_cast_entry_counter_trigger(ability) {
+            if let Some(text) = describe_graveyard_cast_entry_counter_trigger(ability) {
                 output.push(format!("Triggered ability {}: {text}", ability_idx + 1));
                 ability_idx += 1;
                 continue;

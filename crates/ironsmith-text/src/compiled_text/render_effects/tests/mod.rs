@@ -271,3 +271,5 @@ mod enchanted_repeat_cast_copy;
 mod damage_target_type_condition;
 
 mod attached_source_counter_release;
+
+mod graveyard_cast_entry_counters;
