@@ -281,3 +281,5 @@ mod delayed_targeted_damage_source;
 mod melira_watched_permanent;
 
 mod cast_trigger_hand_choice;
+
+mod additional_sacrifice_mana_value;

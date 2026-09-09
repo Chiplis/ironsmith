@@ -865,7 +865,9 @@ pub(crate) fn describe_equal_to_card_action_count(value: &Value) -> Option<Strin
     let amount = value
         .clone()
         .without_surface_hint(ValueSurfaceHint::EqualTo);
-    let basis = match amount.unhinted() {
+    // Preserve explicit object/characteristic surfaces before applying the
+    // fallback wording for an otherwise unqualified power reference.
+    let basis = match &amount {
         Value::PowerOf(spec) => describe_power_card_count_basis(spec),
         _ => describe_value(&amount),
     };
