@@ -985,6 +985,7 @@ pub(super) fn describe_temporary_tagged_permission_surface(
     permission: &crate::effects::GrantPlayTaggedEffect,
     without_paying_mana_cost: bool,
 ) -> Option<String> {
+    if permission.spell_cost_reduction.is_some() { return None; }
     let surface = permission.surface.as_ref()?;
     if !matches!(
         permission.duration,
@@ -1018,6 +1019,7 @@ pub(super) fn describe_temporary_tagged_permission_surface(
         ironsmith_core::GrantPlayTaggedObjectSurface::SpellsFromAmongThoseExiledCards => {
             ("spells from among those exiled cards".to_string(), true)
         }
+        ironsmith_core::GrantPlayTaggedObjectSurface::CardsExiledWithSource { source } => (format!("cards exiled with {}", source.display_text()), true),
         ironsmith_core::GrantPlayTaggedObjectSurface::SpellFromAmongCardsExiledWithSource {
             creature_spell,
             source,

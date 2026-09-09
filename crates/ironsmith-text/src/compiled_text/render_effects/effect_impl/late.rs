@@ -4858,6 +4858,21 @@
     }
     if let Some(grant_play_tagged) = effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
     {
+        if let Some(reduction) = &grant_play_tagged.spell_cost_reduction {
+            let mut permission = grant_play_tagged.clone();
+            permission.spell_cost_reduction = None;
+            let actor = if permission.player == PlayerFilter::You {
+                "you cast".to_string()
+            } else {
+                format!("{} casts", describe_player_filter(&permission.player))
+            };
+            return format!(
+                "{}. Spells {actor} this way cost {} less to cast",
+                describe_effect(&Effect::new(permission)),
+                reduction.to_oracle(),
+            );
+        }
+
         if let Some(rendered) =
             describe_temporary_tagged_permission_surface(grant_play_tagged, false)
         {

@@ -385,6 +385,7 @@ pub struct GrantedPlayFrom {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PlayFromConstraints {
     pub spell_cost_increase: Option<crate::mana::ManaCost>,
+    pub spell_cost_reduction: Option<crate::mana::ManaCost>,
     pub lands_enter_tapped: bool,
 }
 

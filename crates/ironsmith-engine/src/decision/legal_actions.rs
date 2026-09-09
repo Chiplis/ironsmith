@@ -87,7 +87,7 @@ fn append_granted_play_from_actions_for_card(
         if !has_same_source_granted_alternative
             && !card.is_land()
             && let Some(mana_cost) = &card.mana_cost
-            && can_cast_with_cost_with_view(
+            && can_cast_with_cost_with_view_for_casting_method(
                 game,
                 player,
                 card,
@@ -95,6 +95,11 @@ fn append_granted_play_from_actions_for_card(
                 Some(mana_cost),
                 None,
                 &AdditionalCastRequirements::default(),
+                &CastingMethod::PlayFrom {
+                    source: grant.source_id,
+                    zone: from_zone,
+                    use_alternative: None,
+                },
                 view,
             )
         {
@@ -111,8 +116,16 @@ fn append_granted_play_from_actions_for_card(
 
         for (idx, alt_cast) in card.alternative_casts.iter().enumerate() {
             if alt_cast.cast_from_zone() == Zone::Hand
-                && can_cast_with_alternative_from_hand_with_view(
-                    game, player, card, card_id, alt_cast, view,
+                && can_cast_spell_with_view(
+                    game,
+                    player,
+                    card,
+                    &CastingMethod::PlayFrom {
+                        source: grant.source_id,
+                        zone: from_zone,
+                        use_alternative: Some(idx),
+                    },
+                    view,
                 )
             {
                 actions.push(LegalAction::CastSpell {
@@ -130,11 +143,15 @@ fn append_granted_play_from_actions_for_card(
         if source_zone != Zone::Graveyard {
             let base_alt_idx = card.alternative_casts.len();
             for (offset, granted_alt) in granted_alternatives.iter().enumerate() {
-                if can_cast_with_alternative_with_view(
+                if can_cast_spell_with_view(
                     game,
                     player,
                     card,
-                    &granted_alt.method,
+                    &CastingMethod::PlayFrom {
+                        source: granted_alt.source_id,
+                        zone: from_zone,
+                        use_alternative: Some(base_alt_idx + offset),
+                    },
                     view,
                 ) {
                     actions.push(LegalAction::CastSpell {

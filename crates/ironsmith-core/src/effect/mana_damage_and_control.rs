@@ -864,6 +864,9 @@ pub struct GrantPlayTaggedEffect {
     /// Additional mana cost imposed on nonland cards cast through this exact
     /// tagged play permission.
     pub spell_cost_increase: Option<ManaCost>,
+    /// Mana reduction for spells cast through this exact permission.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub spell_cost_reduction: Option<ManaCost>,
     /// Whether a land played through this exact tagged permission enters
     /// tapped.
     pub lands_enter_tapped: bool,
@@ -898,6 +901,7 @@ impl GrantPlayTaggedEffect {
             filter: None,
             during_turns_counter_put_on_source: None,
             spell_cost_increase: None,
+            spell_cost_reduction: None,
             lands_enter_tapped: false,
             cast_pool_is_plural: false,
             max_plays: None,
@@ -937,6 +941,11 @@ impl GrantPlayTaggedEffect {
 
     pub fn during_turns_counter_put_on_source(mut self, counter_type: CounterType) -> Self {
         self.during_turns_counter_put_on_source = Some(counter_type);
+        self
+    }
+
+    pub fn with_spell_cost_reduction(mut self, cost: ManaCost) -> Self {
+        self.spell_cost_reduction = Some(cost);
         self
     }
 

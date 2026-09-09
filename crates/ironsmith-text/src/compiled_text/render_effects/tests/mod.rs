@@ -289,3 +289,5 @@ mod initiative_action_list;
 mod historic_cast_block_condition;
 
 mod shared_dynamic_tokens;
+
+mod linked_permission_discount;

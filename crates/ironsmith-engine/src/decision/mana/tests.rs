@@ -417,6 +417,7 @@ fn play_from_permission_spell_tax_applies_only_for_its_casting_method() {
         alice,
         crate::grant_registry::PlayFromConstraints {
             spell_cost_increase: Some(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)])),
+            spell_cost_reduction: None,
             lands_enter_tapped: false,
         },
         crate::grant_registry::GrantSource::Effect {

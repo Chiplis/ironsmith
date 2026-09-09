@@ -494,6 +494,10 @@ pub struct Object {
     pub alternative_casts: SharedVec<AlternativeCastingMethod>,
     /// Alternative method chosen for the current spell cast.
     pub cast_alternative_method: Option<Box<AlternativeCastingMethod>>,
+    /// Permission constraints captured before the card leaves its casting zone.
+    /// The grant itself expires on that zone change, but its cost rules apply
+    /// to the proposed spell through total-cost calculation and payment.
+    pub cast_play_from_constraints: Option<Box<(ObjectId, Zone, crate::grant_registry::PlayFromConstraints)>>,
     /// True if this split card can be cast fused from hand.
     pub has_fuse: bool,
     /// Optional costs (kicker, buyback, etc.)
@@ -678,6 +682,7 @@ impl Object {
             prototype_cast_state: None,
             alternative_casts: Vec::new().into(),
             cast_alternative_method: None,
+            cast_play_from_constraints: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -758,6 +763,7 @@ impl Object {
             prototype_cast_state: None,
             alternative_casts: Vec::new().into(),
             cast_alternative_method: None,
+            cast_play_from_constraints: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -1011,6 +1017,7 @@ impl Object {
             prototype_cast_state: None,
             alternative_casts: Vec::new().into(),
             cast_alternative_method: None,
+            cast_play_from_constraints: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -1083,6 +1090,7 @@ impl Object {
             // Alternative casts are copiable (though tokens rarely use them)
             alternative_casts: source.alternative_casts.clone(),
             cast_alternative_method: None,
+            cast_play_from_constraints: None,
             has_fuse: source.has_fuse,
             // Optional costs are copiable
             optional_costs: source.optional_costs.clone(),
@@ -1150,6 +1158,7 @@ impl Object {
             prototype_cast_state: source.prototype_cast_state.clone(),
             alternative_casts: source.alternative_casts.clone(),
             cast_alternative_method: source.cast_alternative_method.clone(),
+            cast_play_from_constraints: None,
             has_fuse: source.has_fuse,
             optional_costs: source.optional_costs.clone(),
             optional_costs_paid: source.optional_costs_paid.clone(),
@@ -1217,6 +1226,7 @@ impl Object {
             prototype_cast_state: None,
             alternative_casts: Vec::new().into(),
             cast_alternative_method: None,
+            cast_play_from_constraints: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -1283,6 +1293,7 @@ impl Object {
             prototype_cast_state: None,
             alternative_casts: Vec::new().into(),
             cast_alternative_method: None,
+            cast_play_from_constraints: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -1950,6 +1961,7 @@ impl Object {
             prototype_cast_state: None,
             alternative_casts: handles.alternative_casts.clone(),
             cast_alternative_method: None,
+            cast_play_from_constraints: None,
             has_fuse: def.has_fuse,
             optional_costs: handles.optional_costs.clone(),
             optional_costs_paid: OptionalCostsPaid::default(),
