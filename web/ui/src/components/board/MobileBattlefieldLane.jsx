@@ -11,6 +11,7 @@ export default function MobileBattlefieldLane({
   clippedHeight = null,
   battlefieldSide,
   selectedObjectId,
+  onInspect,
   onCardClick,
   onCardPointerDown,
   onMobileCardActionMenu,
@@ -41,6 +42,7 @@ export default function MobileBattlefieldLane({
             overlapPx: 0,
           }}
           selectedObjectId={selectedObjectId}
+          onInspect={onInspect}
           onCardClick={onCardClick}
           onCardPointerDown={onCardPointerDown}
           onMobileCardActionMenu={onMobileCardActionMenu}

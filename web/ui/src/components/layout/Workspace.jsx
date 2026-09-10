@@ -772,6 +772,18 @@ export default function Workspace({
   const showTopDock = !nonDesktopViewport && !tabletCompactViewport;
   const showRematchSideboarding = multiplayer?.rematch?.phase === "sideboarding";
 
+  useEffect(() => {
+    const dismissFieldInspectorForHand = () => {
+      setSelectedObjectId(null);
+      setPinnedInspectorObjectId(null);
+      setSuppressFallbackInspector(true);
+      clearAnchoredCardPreview();
+      clearHover();
+    };
+    window.addEventListener("ironsmith:hand-inspection", dismissFieldInspectorForHand);
+    return () => window.removeEventListener("ironsmith:hand-inspection", dismissFieldInspectorForHand);
+  }, [clearAnchoredCardPreview, clearHover]);
+
   const players = useMemo(() => state?.players || [], [state?.players]);
   const perspective = state?.perspective;
   const me = players.find((p) => p.id === perspective) || players[0];

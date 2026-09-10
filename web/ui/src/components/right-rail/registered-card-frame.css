@@ -1,6 +1,26 @@
 .registered-card-frame { position:absolute; inset:0; display:grid; place-items:center; }
-.registered-card-frame__surface { position:relative; width:100%; aspect-ratio:488/680; max-height:100%; container-type:size; }
-.registered-card-frame__scan { display:block; width:100%; height:100%; object-fit:fill; }
+.registered-card-frame__surface {
+  position:relative;
+  width:100%;
+  aspect-ratio:488/680;
+  max-height:100%;
+  container-type:size;
+  overflow:hidden;
+  border-radius:0;
+  /* The clipped tip shows a copy sampled inward from the same printing, so
+     texture and shade continue from the healthy side pixels, never from the
+     defective corner pixels. */
+  background-color:var(--card-frame-edge,#08090a);
+  background-image:var(--source-frame-image,none);
+  background-size:calc(100% + 24px) calc(100% + 24px);
+  background-position:center;
+}
+.registered-card-frame__scan { display:block; width:100%; height:100%; object-fit:fill; border-radius:8px; clip-path:inset(0 round 8px); }
+.registered-card-frame__corner-fill { position:absolute; inset:0; z-index:1; pointer-events:none; background:#050505; }
+.registered-card-frame__corner-fill--tl { clip-path:polygon(0 0, 14px 0, 0 14px); }
+.registered-card-frame__corner-fill--tr { clip-path:polygon(100% 0, calc(100% - 14px) 0, 100% 14px); }
+.registered-card-frame__corner-fill--bl { clip-path:polygon(0 100%, 10px 100%, 0 calc(100% - 10px)); }
+.registered-card-frame__corner-fill--br { clip-path:polygon(100% 100%, calc(100% - 10px) 100%, 100% calc(100% - 10px)); }
 .registered-card-frame__patch { position:absolute; pointer-events:none; z-index:1; }
 .registered-card-frame__field { position:absolute; z-index:2; min-width:0; }
 .registered-card-frame__field[data-replaced="true"] { display:flex; }

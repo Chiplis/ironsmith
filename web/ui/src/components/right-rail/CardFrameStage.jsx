@@ -49,8 +49,7 @@ export default function CardFrameStage({ preparation, assets = preparation, prev
   }, [preparation]);
 
   useLayoutEffect(() => { onReadyChange?.(ready || previewReady); }, [onReadyChange, ready, previewReady]);
-
-  return <>
+  return <div className="card-frame-preview-shell">
     {previewReady && <img className="card-frame-art-preview" src={previewUrl}
       alt={previewName || 'Card artwork'} referrerPolicy="no-referrer"
       data-frame-ready={ready ? 'true' : 'false'} aria-hidden={ready} />}
@@ -58,5 +57,5 @@ export default function CardFrameStage({ preparation, assets = preparation, prev
     aria-hidden={!ready} inert={!ready}
     style={{...style, opacity: ready ? 1 : 0, ...(presentation.reuse ? {transition: 'none'} : {}), ...(!ready ? {pointerEvents: 'none'} : {})}}>
     {children}
-  </div></>;
+  </div></div>;
 }

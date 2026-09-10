@@ -12,6 +12,7 @@ export default function MobileBattlefieldBand({
   cardHeight,
   selfBackVisibleHeight,
   selectedObjectId,
+  onInspect,
   onCardClick,
   onCardPointerDown,
   onMobileCardActionMenu,
@@ -91,6 +92,7 @@ export default function MobileBattlefieldBand({
           clippedHeight={clippedHeight}
           battlefieldSide={battlefieldSide}
           selectedObjectId={selectedObjectId}
+          onInspect={onInspect}
           onCardClick={onCardClick}
           onCardPointerDown={onCardPointerDown}
           onMobileCardActionMenu={onMobileCardActionMenu}

@@ -10,6 +10,7 @@ import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
 import { useTranslatedCardName } from "@/i18n/useTranslatedCardName";
 
 const semanticScoreCache = new Map();
+const HAND_CORNER_REPAIR_VERSION = 2;
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -18,6 +19,65 @@ function clamp(value, min, max) {
 function parseCssPixelValue(value) {
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function repairTransparentHandCorners(image) {
+  const width = image.naturalWidth;
+  const height = image.naturalHeight;
+  if (!width || !height) return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return null;
+  context.drawImage(image, 0, 0);
+  const pixels = context.getImageData(0, 0, width, height);
+  const { data } = pixels;
+  const corners = {
+    tl: [0, 0, 1, 1], tr: [width - 1, 0, -1, 1],
+    bl: [0, height - 1, 1, -1], br: [width - 1, height - 1, -1, -1],
+  };
+  const scanSize = Math.max(10, Math.round(Math.min(width, height) * 0.026));
+  let repairedPixels = 0;
+
+  for (const [originX, originY, xDirection, yDirection] of Object.values(corners)) {
+    for (let y = 0; y < scanSize; y += 1) {
+      for (let x = 0; x < scanSize; x += 1) {
+        const targetX = originX + x * xDirection;
+        const targetY = originY + y * yDirection;
+        const targetOffset = (targetY * width + targetX) * 4;
+        const distanceFromCurveCenter = Math.hypot(x - scanSize, y - scanSize);
+        const outsideRoundedFrame = distanceFromCurveCenter > scanSize - 0.5;
+        const needsAlphaRepair = data[targetOffset + 3] < 250;
+        if (!outsideRoundedFrame && !needsAlphaRepair) continue;
+
+        // Project the broken pixel onto the curved frame. This preserves the
+        // exact local tone (including a dark, textured or white frame) rather
+        // than assigning one colour to every card corner.
+        const scale = Math.min(1, (scanSize - 1) / Math.max(distanceFromCurveCenter, 1));
+        const sourceX = Math.round(scanSize + (x - scanSize) * scale);
+        const sourceY = Math.round(scanSize + (y - scanSize) * scale);
+        const absoluteX = originX + sourceX * xDirection;
+        const absoluteY = originY + sourceY * yDirection;
+        const sourceOffset = (absoluteY * width + absoluteX) * 4;
+        if (data[sourceOffset + 3] < 250) continue;
+
+        const colourDistance = Math.abs(data[targetOffset] - data[sourceOffset])
+          + Math.abs(data[targetOffset + 1] - data[sourceOffset + 1])
+          + Math.abs(data[targetOffset + 2] - data[sourceOffset + 2]);
+        if (!needsAlphaRepair && colourDistance < 42) continue;
+
+        data[targetOffset] = data[sourceOffset];
+        data[targetOffset + 1] = data[sourceOffset + 1];
+        data[targetOffset + 2] = data[sourceOffset + 2];
+        data[targetOffset + 3] = 255;
+        repairedPixels += 1;
+      }
+    }
+  }
+  if (repairedPixels === 0) return { url: null, hasIrregularCorners: false };
+  context.putImageData(pixels, 0, 0);
+  return { url: canvas.toDataURL("image/webp", 0.98), hasIrregularCorners: true };
 }
 
 function normalizeSemanticScore(rawScore) {
@@ -771,6 +831,7 @@ export default function GameCard({
   variant = "battlefield",
   onClick,
   onKeyboardActivate,
+  onKeyboardNavigation,
   onContextMenu,
   onPointerDown,
   onPointerMove,
@@ -813,6 +874,10 @@ export default function GameCard({
   const artUrl = sourceImageUrl || resolvedArtUrl;
   const imageLoading = variant === "hand" ? "eager" : "lazy";
   const imageFetchPriority = variant === "hand" ? "high" : "auto";
+  const [repairedHandArt, setRepairedHandArt] = useState(null);
+  const displayedArtUrl = variant === "hand" && repairedHandArt?.source === artUrl
+    ? repairedHandArt.url || artUrl
+    : artUrl;
   const useTokenBattlefield = variant === "battlefield" && battlefieldVisualMode === "mobile-token";
   const count = Number(card.count);
   const groupSize = Number.isFinite(count) && count > 1 ? count : 1;
@@ -820,6 +885,17 @@ export default function GameCard({
     ? Math.max(0, Math.min(groupSize, 4) - 1)
     : 0;
   const [fetchedBattlefieldMeta, setFetchedBattlefieldMeta] = useState(null);
+
+  const handleHandArtLoad = (event) => {
+    if (variant !== "hand" || displayedArtUrl !== artUrl) return;
+    try {
+      const repair = repairTransparentHandCorners(event.currentTarget);
+      setRepairedHandArt({ source: artUrl, ...repair });
+    } catch {
+      setRepairedHandArt({ source: artUrl, url: null, hasIrregularCorners: false });
+    }
+  };
+
   const glowPhase = glowPhaseFromSeed(`${card.id}:${name}`);
   const auraDelay1 = `-${((glowPhase % 4200) / 1000).toFixed(3)}s`;
   const auraDelay2 = `-${(((glowPhase * 17) % 5600) / 1000).toFixed(3)}s`;
@@ -1403,6 +1479,7 @@ export default function GameCard({
       data-member-object-ids={(Array.isArray(card.member_ids) ? card.member_ids : []).join(",")}
       data-member-stable-ids={memberStableIds.join(",")}
       data-card-name={name}
+      data-hand-irregular-corners={variant === "hand" && repairedHandArt?.source === artUrl && repairedHandArt.hasIrregularCorners ? "true" : undefined}
       title={suppressTooltip || variant === "battlefield" ? undefined : (groupSize > 1 ? `${displayName} (${groupSize} grouped permanents)` : displayName)}
       role={keyboardInteractive ? "button" : undefined}
       tabIndex={keyboardInteractive ? 0 : undefined}
@@ -1412,8 +1489,18 @@ export default function GameCard({
       onKeyDown={(event) => {
         if (!keyboardInteractive) return;
         if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
-          const cards = Array.from(document.querySelectorAll('.game-card[role="button"]'))
-            .filter((candidate) => candidate.offsetParent !== null && !candidate.hasAttribute("aria-hidden"));
+          // Hand navigation must not jump into battlefield/decision cards that
+          // happen to be mounted elsewhere in the workspace. Keep the focus
+          // loop inside the nearest hand surface when one exists.
+          const navigationScope = event.currentTarget.closest("[data-card-navigation-scope]");
+          const cards = Array.from((navigationScope || document).querySelectorAll('.game-card[role="button"]'))
+            .filter((candidate) => {
+              if (candidate.offsetParent === null || candidate.hasAttribute("aria-hidden")) return false;
+              // Battlefield layout transitions keep temporary cards mounted but
+              // visually hidden. They must never consume an arrow-key stop.
+              const candidateStyle = window.getComputedStyle(candidate);
+              return candidateStyle.display !== "none" && candidateStyle.visibility !== "hidden";
+            });
           const targetMode = Boolean(targetDecision);
           const navigable = targetMode
             ? cards.filter((candidate) => candidate.classList.contains("target-legal"))
@@ -1422,10 +1509,45 @@ export default function GameCard({
           const currentIndex = pool.indexOf(event.currentTarget);
           if (pool.length === 0 || (pool.length < 2 && currentIndex >= 0)) return;
           const forward = event.key === "ArrowRight" || event.key === "ArrowDown";
+          const isFieldNavigation = navigationScope?.dataset.cardNavigationScope === "field";
+          if (isFieldNavigation && currentIndex >= 0) {
+            const currentRect = event.currentTarget.getBoundingClientRect();
+            const currentCenter = {
+              x: currentRect.left + currentRect.width / 2,
+              y: currentRect.top + currentRect.height / 2,
+            };
+            const isHorizontal = event.key === "ArrowLeft" || event.key === "ArrowRight";
+            const direction = forward ? 1 : -1;
+            const candidates = pool
+              .filter((candidate) => candidate !== event.currentTarget)
+              .map((candidate) => {
+                const rect = candidate.getBoundingClientRect();
+                const center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+                const primaryDelta = isHorizontal ? center.x - currentCenter.x : center.y - currentCenter.y;
+                const secondaryDelta = isHorizontal ? center.y - currentCenter.y : center.x - currentCenter.x;
+                if (primaryDelta * direction <= 2) return null;
+                // Prefer the same row/column; only then consider a diagonal.
+                return { candidate, score: Math.abs(primaryDelta) + Math.abs(secondaryDelta) * 2.4 };
+              })
+              .filter(Boolean)
+              .sort((a, b) => a.score - b.score);
+            if (candidates.length === 0) return;
+            event.preventDefault();
+            onKeyboardNavigation?.(event, candidates[0].candidate);
+            candidates[0].candidate.focus();
+            return;
+          }
+          const proposedIndex = currentIndex + (forward ? 1 : -1);
+          // A battlefield is a spatial row/grid, not a carousel: stop at the
+          // visible edge instead of silently wrapping back to another card.
+          if (isFieldNavigation && currentIndex >= 0 && (proposedIndex < 0 || proposedIndex >= pool.length)) return;
           const nextIndex = currentIndex < 0
             ? (forward ? 0 : pool.length - 1)
-            : (currentIndex + (forward ? 1 : -1) + pool.length) % pool.length;
+            : isFieldNavigation
+              ? proposedIndex
+              : (proposedIndex + pool.length) % pool.length;
           event.preventDefault();
+          onKeyboardNavigation?.(event, pool[nextIndex]);
           pool[nextIndex]?.focus();
           return;
         }
@@ -1495,17 +1617,20 @@ export default function GameCard({
         )}
         {artUrl && (variant !== "battlefield" || !useTokenBattlefield) && (
           <img
+            key={variant === "hand" ? `${artUrl}-${HAND_CORNER_REPAIR_VERSION}` : artUrl}
             className={cn(
               "absolute inset-0 w-full h-full z-0 pointer-events-none",
               variant === "hand" || usePortraitBattlefield ? "object-cover object-top" : "object-fill",
               artTreatmentClass,
             )}
-            src={artUrl}
+            src={displayedArtUrl}
             alt=""
             loading={imageLoading}
             fetchPriority={imageFetchPriority}
             decoding="async"
             referrerPolicy="no-referrer"
+            crossOrigin={variant === "hand" ? "anonymous" : undefined}
+            onLoad={variant === "hand" ? handleHandArtLoad : undefined}
           />
         )}
         {variant === "battlefield" && !useTokenBattlefield && (

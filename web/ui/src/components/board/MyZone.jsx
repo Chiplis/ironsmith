@@ -599,6 +599,7 @@ export default function MyZone({
               paperLayoutMode="mobile-battle-bottom"
               paperMinSlotsPerRow={7}
               selectedObjectId={selectedObjectId}
+              onInspect={onInspect}
               onCardClick={handleCardClick}
               onCardPointerDown={handleCardPointerDown}
               onMobileCardActionMenu={onMobileCardActionMenu}
@@ -831,6 +832,7 @@ export default function MyZone({
                       compact
                       battlefieldSide="bottom"
                       selectedObjectId={selectedObjectId}
+                      onInspect={onInspect}
                       onCardClick={handleCardClick}
                       onCardPointerDown={handleCardPointerDown}
                       onMobileCardActionMenu={onMobileCardActionMenu}
@@ -960,6 +962,7 @@ export default function MyZone({
                   alignStart={mergedMobileHeader && entry.zone === "battlefield"}
                   bottomSafeInset={mergedMobileHeader && entry.zone === "battlefield" ? 0 : undefined}
                   selectedObjectId={selectedObjectId}
+                  onInspect={onInspect}
                   onCardClick={handleCardClick}
                   onCardPointerDown={handleCardPointerDown}
                   onMobileCardActionMenu={mobileBattleScene && entry.zone === "battlefield" ? onMobileCardActionMenu : null}
