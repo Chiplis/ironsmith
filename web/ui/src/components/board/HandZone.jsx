@@ -807,6 +807,26 @@ export default function HandZone({
     window.dispatchEvent(new CustomEvent("ironsmith:hand-inspection"));
   }, [clearAnchoredCardPreview, clearHover, pinnedHandObjectId]);
 
+  useEffect(() => {
+    if (pinnedHandObjectId == null) return undefined;
+
+    const dismissPinnedHandCard = (event) => {
+      const target = event.target;
+      // Another hand card owns its own click path and replaces the selection;
+      // only clicks outside the hand-card surface dismiss the current one.
+      if (target instanceof Element && target.closest(".game-card.hand-card")) return;
+      setPinnedHandObjectId(null);
+      setKeyboardSelectedObjectId(null);
+      keyboardNavigationRef.current = false;
+      setKeyboardNavigationActive(false);
+      clearHover();
+      clearAnchoredCardPreview();
+    };
+
+    window.addEventListener("pointerdown", dismissPinnedHandCard, true);
+    return () => window.removeEventListener("pointerdown", dismissPinnedHandCard, true);
+  }, [clearAnchoredCardPreview, clearHover, pinnedHandObjectId]);
+
   const handleKeyboardCardActivate = useCallback((event, card, plays, glowKind) => {
     if (plays?.length) {
       const element = event.currentTarget?.closest?.(".game-card") || event.currentTarget;
