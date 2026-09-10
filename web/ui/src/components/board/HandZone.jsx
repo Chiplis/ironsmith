@@ -208,25 +208,37 @@ function computeHandRowWidth(total, dims) {
   return Math.round(dims.cardW + Math.max(0, total - 1) * stride);
 }
 
-function buildHandCardRowStyle(index, total, { dims, activeIndex = null } = {}) {
+function buildHandCardRowStyle(index, total, { dims, activeIndex = null, activeIsPlayable = false, centerActive = false, spreadAroundActive = false } = {}) {
   const spread = computeManabrewSpread(total, dims);
   const baseLayout = computeManabrewBaseLayout(total, dims);
   const base = baseLayout[index] || { drop: 0, rot: 0 };
   const isActive = activeIndex === index;
 
   let pushX = 0;
-  if (activeIndex !== null && activeIndex >= 0 && index !== activeIndex) {
+  if (isActive && centerActive && !activeIsPlayable) {
+    // Keep the active hand card in the visual center, including at either
+    // edge, so arrow-key reading never forces the player to chase the fan.
+    const totalWidth = Math.max(0, (total - 1) * spread);
+    const selectedCenter = -totalWidth / 2 + index * spread;
+    pushX = -selectedCenter;
+  } else if (activeIndex !== null && activeIndex >= 0 && spreadAroundActive) {
     const distance = Math.abs(index - activeIndex);
     const sign = index < activeIndex ? -1 : 1;
-    pushX = sign * Math.max(0, dims.neighborPush - distance * 6);
+    // Open a small reading corridor around the centered card. The nearby
+    // cards move apart the most, while farther cards preserve the hand shape.
+    pushX = sign * Math.max(0, dims.neighborPush * 0.45 - distance * 8);
   }
 
-  const fanRotate = isActive ? "0deg" : `${base.rot.toFixed(2)}deg`;
+  const fanRotate = isActive && centerActive && !activeIsPlayable ? "0deg" : `${base.rot.toFixed(2)}deg`;
   const fanTranslateX = `${pushX.toFixed(1)}px`;
   const fanTranslateY = isActive
     ? `${(-dims.hoverLift).toFixed(1)}px`
     : `${base.drop.toFixed(1)}px`;
-  const cardScale = isActive ? MANABREW_HAND_FAN_PARAMS.hoverScale : 1;
+  // De-emphasize the rest of the fan just enough to expose their art and
+  // hover targets next to the active reading card.
+  const cardScale = isActive
+    ? MANABREW_HAND_FAN_PARAMS.hoverScale
+    : (activeIndex !== null && activeIndex >= 0 ? 0.94 : 1);
 
   return {
     flex: `0 0 ${dims.cardW}px`,
@@ -380,6 +392,7 @@ export default function HandZone({
   const [menuHoveredHandObjectId, setMenuHoveredHandObjectId] = useState(null);
   const [hoveredHandObjectId, setHoveredHandObjectId] = useState(null);
   const [keyboardSelectedObjectId, setKeyboardSelectedObjectId] = useState(null);
+  const [pinnedHandObjectId, setPinnedHandObjectId] = useState(null);
   const [keyboardNavigationActive, setKeyboardNavigationActive] = useState(false);
   const rawHandCards = useMemo(
     () => (player?.can_view_hand && player?.hand_cards) || [],
@@ -709,6 +722,7 @@ export default function HandZone({
     ? null
     : activeMenuHoveredHandObjectId
       || interactionObjectId
+      || pinnedHandObjectId
       || selectedObjectIdKey;
   const activeFanIndex = useMemo(() => {
     if (!activeFanObjectId) return null;
@@ -717,6 +731,17 @@ export default function HandZone({
     const extraIndex = extraCards.findIndex((card) => String(card.id) === activeFanObjectId);
     return extraIndex >= 0 ? handCards.length + extraIndex : null;
   }, [activeFanObjectId, extraCards, handCards]);
+  const activeFanIsPlayable = useMemo(() => {
+    if (!activeFanObjectId) return false;
+    const handCard = handCards.find((card) => String(card.id) === activeFanObjectId);
+    if (handCard) return (handPlayable.get(Number(handCard.id)) || []).length > 0;
+    const extra = extraCards.find((card) => String(card.id) === activeFanObjectId);
+    return Boolean(extra?.actions?.length);
+  }, [activeFanObjectId, extraCards, handCards, handPlayable]);
+  // Both pointer hover and keyboard focus keep the card in its slot. Explicit
+  // click selection also uses the same in-place reading treatment.
+  const activeFanShouldCenter = false;
+  const activeFanShouldSpread = Boolean(activeFanObjectId);
   const rouletteWidth = useMemo(
     () => computeRouletteWidth(renderedHandCardCount, handDimensions),
     [handDimensions, renderedHandCardCount]
@@ -776,14 +801,49 @@ export default function HandZone({
   }, [dragState, handLayoutSignature, isExpanded, isRoulette]);
 
   const handleCardClick = useCallback((event, card) => {
-    setKeyboardSelectedObjectId(String(card.id));
+    const cardId = String(card.id);
+    // Clicking the same pinned hand card is the direct, reversible way to
+    // leave inspection without affecting any field-card selection.
+    if (pinnedHandObjectId === cardId) {
+      setPinnedHandObjectId(null);
+      setKeyboardSelectedObjectId(null);
+      keyboardNavigationRef.current = false;
+      setKeyboardNavigationActive(false);
+      clearHover();
+      clearAnchoredCardPreview();
+      return;
+    }
+
+    setKeyboardSelectedObjectId(cardId);
+    setPinnedHandObjectId(cardId);
     keyboardNavigationRef.current = true;
     setKeyboardNavigationActive(true);
     event.currentTarget?.focus?.({ preventScroll: true });
     clearHover();
     clearAnchoredCardPreview();
-    window.dispatchEvent(new CustomEvent("ironsmith:hand-inspection"));
-  }, [clearAnchoredCardPreview, clearHover]);
+    window.dispatchEvent(new CustomEvent("ironsmith:hand-inspection", { detail: { locked: true } }));
+  }, [clearAnchoredCardPreview, clearHover, pinnedHandObjectId]);
+
+  useEffect(() => {
+    if (pinnedHandObjectId == null) return undefined;
+
+    const dismissPinnedHandCard = (event) => {
+      const target = event.target;
+      // Another hand card owns its own click path and replaces the selection;
+      // only clicks outside the hand-card surface dismiss the current one.
+      if (target instanceof Element && target.closest(".game-card.hand-card")) return;
+      setPinnedHandObjectId(null);
+      setKeyboardSelectedObjectId(null);
+      keyboardNavigationRef.current = false;
+      setKeyboardNavigationActive(false);
+      clearHover();
+      clearAnchoredCardPreview();
+      window.dispatchEvent(new CustomEvent("ironsmith:hand-inspection", { detail: { locked: false } }));
+    };
+
+    window.addEventListener("pointerdown", dismissPinnedHandCard, true);
+    return () => window.removeEventListener("pointerdown", dismissPinnedHandCard, true);
+  }, [clearAnchoredCardPreview, clearHover, pinnedHandObjectId]);
 
   const handleKeyboardCardActivate = useCallback((event, card, plays, glowKind) => {
     const plan = handKeyboardCastPlan({ actions: plays, card });
@@ -943,7 +1003,7 @@ export default function HandZone({
     // never overlap during that transition.
     clearHover();
     clearAnchoredCardPreview();
-    window.dispatchEvent(new CustomEvent("ironsmith:hand-inspection"));
+    window.dispatchEvent(new CustomEvent("ironsmith:hand-inspection", { detail: { locked: false } }));
     if (hoverClearTimerRef.current) {
       clearTimeout(hoverClearTimerRef.current);
       hoverClearTimerRef.current = null;
@@ -982,6 +1042,7 @@ export default function HandZone({
     // Focus selects the same rendered card in the hand. It deliberately does
     // not open the separate inspector rail.
     setKeyboardSelectedObjectId(String(card.id));
+    if (keyboardNavigationRef.current) setPinnedHandObjectId(String(card.id));
   }, [handleHoverEnter]);
   const handleHoverLeave = useCallback(() => {
     if (hoverActivateTimerRef.current) {
@@ -1362,6 +1423,7 @@ export default function HandZone({
         const isInspected = !isMobileFan && (
           ((selectedObjectIdKey != null && cardObjectId === selectedObjectIdKey)
             || cardObjectId === keyboardSelectedObjectId)
+          || cardObjectId === pinnedHandObjectId
           || isMenuActionPreview
         );
         const isNew = newIds.has(card.id);
@@ -1425,9 +1487,10 @@ export default function HandZone({
       const isHovered = !keyboardNavigationActive && hoveredHandObjectId === extraObjectId;
       const isKeyboardSelected = keyboardNavigationActive && keyboardSelectedObjectId === extraObjectId;
       const isInspected = !isMobileFan && (
-        ((selectedObjectIdKey != null && extraObjectId === selectedObjectIdKey)
-          || extraObjectId === keyboardSelectedObjectId)
-        || isMenuActionPreview
+          ((selectedObjectIdKey != null && extraObjectId === selectedObjectIdKey)
+            || extraObjectId === keyboardSelectedObjectId)
+          || extraObjectId === pinnedHandObjectId
+          || isMenuActionPreview
       );
       return (
         <GameCard
@@ -1446,7 +1509,7 @@ export default function HandZone({
           onPointerDown={plays.length > 0 ? (event) => handlePointerDown(event, card, plays, baseGlowKind || "extra") : undefined}
         onMouseEnter={(event) => { handleHoverEnter(extra.id); if (!keyboardNavigationRef.current) event.currentTarget.focus({ preventScroll: true }); }}
         onMouseLeave={isMobileFan ? undefined : handleHoverLeave}
-        onFocus={(event) => handleCardFocus(event, card)}
+        onFocus={(event) => handleCardFocus(event, extra)}
           className={`mobile-hand-rail-card mobile-hand-rail-card--extra${plays.length > 0 ? " mobile-hand-rail-card--draggable" : ""}${isKeyboardSelected ? " keyboard-selected" : ""}${String(dragState?.objectId) === extraObjectId ? " hand-card--drag-source" : ""} !w-full !max-w-none !min-w-0 !basis-auto !flex-none self-stretch p-1`}
           style={{
             width: "100%",
@@ -1494,6 +1557,7 @@ export default function HandZone({
         const isInspected = !isMobileFan && (
           ((selectedObjectIdKey != null && cardObjectId === selectedObjectIdKey)
             || cardObjectId === keyboardSelectedObjectId)
+          || cardObjectId === pinnedHandObjectId
           || isMenuActionPreview
         );
         const isDrawInFlight = reserveDrawSlots && hiddenDrawCardIds.has(cardObjectId);
@@ -1502,6 +1566,9 @@ export default function HandZone({
           buildHandCardRowStyle(visualIndex, renderedHandCardCount, {
             dims: handDimensions,
             activeIndex: isPrimaryCycle ? activeFanIndex : null,
+            activeIsPlayable: isPrimaryCycle ? activeFanIsPlayable : false,
+            centerActive: isPrimaryCycle ? activeFanShouldCenter : false,
+            spreadAroundActive: isPrimaryCycle ? activeFanShouldSpread : false,
           }),
           { scrollSnapAlign: isRoulette ? "start" : undefined }
         );
@@ -1532,7 +1599,7 @@ export default function HandZone({
               onPointerDown={isPlayable ? (e) => handlePointerDown(e, card, plays, glowKind) : undefined}
               onMouseEnter={(event) => { handleHoverEnter(card.id); if (!keyboardNavigationRef.current) event.currentTarget.focus({ preventScroll: true }); }}
               onMouseLeave={isMobileFan ? undefined : handleHoverLeave}
-              onFocus={() => handleHoverEnter(card.id)}
+              onFocus={(event) => handleCardFocus(event, card)}
               className={[
                 isMobileFan && isPlayable ? "hand-card--mobile-draggable" : null,
                 isKeyboardSelected ? "keyboard-selected" : null,
@@ -1565,14 +1632,18 @@ export default function HandZone({
       const isHovered = !keyboardNavigationActive && hoveredHandObjectId === extraObjectId;
       const isKeyboardSelected = keyboardNavigationActive && keyboardSelectedObjectId === extraObjectId;
       const isInspected = !isMobileFan && (
-        ((selectedObjectIdKey != null && extraObjectId === selectedObjectIdKey)
-          || extraObjectId === keyboardSelectedObjectId)
-        || isMenuActionPreview
+          ((selectedObjectIdKey != null && extraObjectId === selectedObjectIdKey)
+            || extraObjectId === keyboardSelectedObjectId)
+          || extraObjectId === pinnedHandObjectId
+          || isMenuActionPreview
       );
       const { wrapperStyle: baseWrapperStyle, cardStyle } = splitHandCardRowStyle(
         buildHandCardRowStyle(visualIndex, renderedHandCardCount, {
-          dims: handDimensions,
-          activeIndex: isPrimaryCycle ? activeFanIndex : null,
+            dims: handDimensions,
+            activeIndex: isPrimaryCycle ? activeFanIndex : null,
+            activeIsPlayable: isPrimaryCycle ? activeFanIsPlayable : false,
+            centerActive: isPrimaryCycle ? activeFanShouldCenter : false,
+            spreadAroundActive: isPrimaryCycle ? activeFanShouldSpread : false,
         }),
         { scrollSnapAlign: isRoulette ? "start" : undefined }
       );
@@ -1600,7 +1671,7 @@ export default function HandZone({
             onPointerDown={plays.length > 0 ? (e) => handlePointerDown(e, card, plays, baseGlowKind || "extra") : undefined}
             onMouseEnter={(event) => { handleHoverEnter(extra.id); if (!keyboardNavigationRef.current) event.currentTarget.focus({ preventScroll: true }); }}
             onMouseLeave={isMobileFan ? undefined : handleHoverLeave}
-            onFocus={() => handleHoverEnter(extra.id)}
+            onFocus={(event) => handleCardFocus(event, extra)}
             className={[
               isMobileFan && isPlayable ? "hand-card--mobile-draggable" : null,
               isKeyboardSelected ? "keyboard-selected" : null,

@@ -1931,8 +1931,7 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
 [data-card-navigation-scope="hand"] .game-card.hand-card:active,
 [data-card-navigation-scope="hand"] .game-card.hand-card:focus-within,
 [data-card-navigation-scope="hand"] .game-card.hand-card[aria-pressed="true"],
-[data-card-navigation-scope="hand"] .game-card.hand-card.selected,
-[data-card-navigation-scope="hand"] .game-card.hand-card.card-action-available {
+[data-card-navigation-scope="hand"] .game-card.hand-card.selected {
   box-shadow: none !important;
   outline: none !important;
   border-color: transparent !important;
@@ -1945,8 +1944,7 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
 [data-card-navigation-scope="hand"] .game-card.hand-card .card-circuit-overlay,
 [data-card-navigation-scope="hand"] .game-card.hand-card .card-circuit-edge,
 [data-card-navigation-scope="hand"] .game-card.hand-card .card-circuit-strip-set,
-[data-card-navigation-scope="hand"] .game-card.hand-card > .card-inspector-source-glow,
-[data-card-navigation-scope="hand"] .game-card.hand-card .card-action-border {
+[data-card-navigation-scope="hand"] .game-card.hand-card > .card-inspector-source-glow {
   opacity: 0 !important;
   animation: none !important;
   display: none !important;
