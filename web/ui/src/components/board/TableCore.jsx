@@ -1,6 +1,7 @@
 import DiagnosticsSheet from "@/components/layout/DiagnosticsSheet";
 import PriorityHoldControl from "@/components/decisions/PriorityHoldControl";
 import { useCastPlayerHovered } from "@/context/DragContext";
+import { createPortal } from "react-dom";
 import { useCallback, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import useViewportLayout from "@/hooks/useViewportLayout";
@@ -87,6 +88,22 @@ export default function TableCore({
   const playerAccent = me ? getPlayerAccent(players, me?.id, perspective, playerAccentOverrides) : null;
   const decision = state?.decision || null;
   const activeZoneActionControls = tableToolsExpanded ? zoneActionControls : null;
+  const tableToolsPopover = tableToolsExpanded && zoneActionControls && typeof document !== "undefined"
+    ? createPortal(
+      <div
+        id="table-header-tool-popover"
+        className="table-header-tools-popover"
+        role="dialog"
+        aria-label={t("settings.quick.eyebrow")}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <DiagnosticsSheet />
+        {zoneActionControls}
+      </div>,
+      document.body
+    )
+    : null;
   const expandedActionBar = Boolean(
     decision
     && decision.kind !== "priority"
@@ -334,19 +351,6 @@ export default function TableCore({
             >
               {tableToolsExpanded ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
             </button>
-            {tableToolsExpanded ? (
-              <div
-                id="table-header-tool-popover"
-                className="table-header-tools-popover"
-                role="dialog"
-                aria-label={t("settings.quick.eyebrow")}
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => event.stopPropagation()}
-              >
-                <DiagnosticsSheet />
-                {zoneActionControls}
-              </div>
-            ) : null}
           </div>
         </div>
       ) : null}
@@ -375,6 +379,7 @@ export default function TableCore({
           ) : null}
         </div>
       ) : null}
+      {tableToolsPopover}
     </div>
   ) : null;
   const planarZoneElement = (

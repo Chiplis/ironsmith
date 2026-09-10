@@ -4036,9 +4036,9 @@ button:disabled,
 .table-header-tools-toggle { display: inline-flex; align-items: center; justify-content: center; width: 26px; min-height: 26px; padding: 0; }
 .table-header-tools-toggle svg { width: 14px; height: 14px; }
 .table-header-tools-popover {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
+  position: fixed;
+  top: 92px;
+  right: 12px;
   z-index: 180;
   display: flex;
   align-items: stretch;
@@ -4052,6 +4052,15 @@ button:disabled,
   box-shadow: 0 14px 32px rgba(0, 0, 0, 0.48);
   pointer-events: auto;
   isolation: isolate;
+}
+@media (max-width: 720px) {
+  .table-header-tools-popover {
+    top: 76px;
+    right: 8px;
+    width: calc(100vw - 16px);
+    max-height: calc(100vh - 92px);
+    overflow-y: auto;
+  }
 }
 .table-header-tools-popover > .table-zone-action-controls {
   display: flex;
