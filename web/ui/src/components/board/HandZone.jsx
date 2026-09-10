@@ -202,20 +202,20 @@ function computeHandRowWidth(total, dims) {
   return Math.round(dims.cardW + Math.max(0, total - 1) * stride);
 }
 
-function buildHandCardRowStyle(index, total, { dims, activeIndex = null } = {}) {
+function buildHandCardRowStyle(index, total, { dims, activeIndex = null, activeIsPlayable = false, centerActive = true } = {}) {
   const spread = computeManabrewSpread(total, dims);
   const baseLayout = computeManabrewBaseLayout(total, dims);
   const base = baseLayout[index] || { drop: 0, rot: 0 };
   const isActive = activeIndex === index;
 
   let pushX = 0;
-  if (isActive) {
+  if (isActive && centerActive && !activeIsPlayable) {
     // Keep the active hand card in the visual center, including at either
     // edge, so arrow-key reading never forces the player to chase the fan.
     const totalWidth = Math.max(0, (total - 1) * spread);
     const selectedCenter = -totalWidth / 2 + index * spread;
     pushX = -selectedCenter;
-  } else if (activeIndex !== null && activeIndex >= 0) {
+  } else if (activeIndex !== null && activeIndex >= 0 && centerActive && !activeIsPlayable) {
     const distance = Math.abs(index - activeIndex);
     const sign = index < activeIndex ? -1 : 1;
     // Open a small reading corridor around the centered card. The nearby
@@ -223,9 +223,9 @@ function buildHandCardRowStyle(index, total, { dims, activeIndex = null } = {}) 
     pushX = sign * Math.max(0, dims.neighborPush * 1.22 - distance * 7);
   }
 
-  const fanRotate = isActive ? "0deg" : `${base.rot.toFixed(2)}deg`;
+  const fanRotate = isActive && centerActive && !activeIsPlayable ? "0deg" : `${base.rot.toFixed(2)}deg`;
   const fanTranslateX = `${pushX.toFixed(1)}px`;
-  const fanTranslateY = isActive
+  const fanTranslateY = isActive && centerActive && !activeIsPlayable
     ? `${(-dims.hoverLift).toFixed(1)}px`
     : `${base.drop.toFixed(1)}px`;
   // De-emphasize the rest of the fan just enough to expose their art and
@@ -725,6 +725,16 @@ export default function HandZone({
     const extraIndex = extraCards.findIndex((card) => String(card.id) === activeFanObjectId);
     return extraIndex >= 0 ? handCards.length + extraIndex : null;
   }, [activeFanObjectId, extraCards, handCards]);
+  const activeFanIsPlayable = useMemo(() => {
+    if (!activeFanObjectId) return false;
+    const handCard = handCards.find((card) => String(card.id) === activeFanObjectId);
+    if (handCard) return (handPlayable.get(Number(handCard.id)) || []).length > 0;
+    const extra = extraCards.find((card) => String(card.id) === activeFanObjectId);
+    return Boolean(extra?.actions?.length);
+  }, [activeFanObjectId, extraCards, handCards, handPlayable]);
+  const activeFanShouldCenter = Boolean(
+    keyboardNavigationActive || pinnedHandObjectId || selectedObjectIdKey
+  );
   const rouletteWidth = useMemo(
     () => computeRouletteWidth(renderedHandCardCount, handDimensions),
     [handDimensions, renderedHandCardCount]
@@ -1543,6 +1553,8 @@ export default function HandZone({
           buildHandCardRowStyle(visualIndex, renderedHandCardCount, {
             dims: handDimensions,
             activeIndex: isPrimaryCycle ? activeFanIndex : null,
+            activeIsPlayable: isPrimaryCycle ? activeFanIsPlayable : false,
+            centerActive: isPrimaryCycle ? activeFanShouldCenter : false,
           }),
           { scrollSnapAlign: isRoulette ? "start" : undefined }
         );
@@ -1613,8 +1625,10 @@ export default function HandZone({
       );
       const { wrapperStyle: baseWrapperStyle, cardStyle } = splitHandCardRowStyle(
         buildHandCardRowStyle(visualIndex, renderedHandCardCount, {
-          dims: handDimensions,
-          activeIndex: isPrimaryCycle ? activeFanIndex : null,
+            dims: handDimensions,
+            activeIndex: isPrimaryCycle ? activeFanIndex : null,
+            activeIsPlayable: isPrimaryCycle ? activeFanIsPlayable : false,
+            centerActive: isPrimaryCycle ? activeFanShouldCenter : false,
         }),
         { scrollSnapAlign: isRoulette ? "start" : undefined }
       );
