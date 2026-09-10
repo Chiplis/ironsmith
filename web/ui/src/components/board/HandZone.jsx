@@ -386,6 +386,7 @@ export default function HandZone({
   const [menuHoveredHandObjectId, setMenuHoveredHandObjectId] = useState(null);
   const [hoveredHandObjectId, setHoveredHandObjectId] = useState(null);
   const [keyboardSelectedObjectId, setKeyboardSelectedObjectId] = useState(null);
+  const [pinnedHandObjectId, setPinnedHandObjectId] = useState(null);
   const [keyboardNavigationActive, setKeyboardNavigationActive] = useState(false);
   const rawHandCards = useMemo(
     () => (player?.can_view_hand && player?.hand_cards) || [],
@@ -715,6 +716,7 @@ export default function HandZone({
     ? null
     : activeMenuHoveredHandObjectId
       || interactionObjectId
+      || pinnedHandObjectId
       || selectedObjectIdKey;
   const activeFanIndex = useMemo(() => {
     if (!activeFanObjectId) return null;
@@ -783,6 +785,7 @@ export default function HandZone({
 
   const handleCardClick = useCallback((event, card) => {
     setKeyboardSelectedObjectId(String(card.id));
+    setPinnedHandObjectId(String(card.id));
     keyboardNavigationRef.current = true;
     setKeyboardNavigationActive(true);
     event.currentTarget?.focus?.({ preventScroll: true });
@@ -983,6 +986,7 @@ export default function HandZone({
     // Focus selects the same rendered card in the hand. It deliberately does
     // not open the separate inspector rail.
     setKeyboardSelectedObjectId(String(card.id));
+    if (keyboardNavigationRef.current) setPinnedHandObjectId(String(card.id));
   }, [handleHoverEnter]);
   const handleHoverLeave = useCallback(() => {
     if (hoverActivateTimerRef.current) {
@@ -1363,6 +1367,7 @@ export default function HandZone({
         const isInspected = !isMobileFan && (
           ((selectedObjectIdKey != null && cardObjectId === selectedObjectIdKey)
             || cardObjectId === keyboardSelectedObjectId)
+          || cardObjectId === pinnedHandObjectId
           || isMenuActionPreview
         );
         const isNew = newIds.has(card.id);
@@ -1426,9 +1431,10 @@ export default function HandZone({
       const isHovered = !keyboardNavigationActive && hoveredHandObjectId === extraObjectId;
       const isKeyboardSelected = keyboardNavigationActive && keyboardSelectedObjectId === extraObjectId;
       const isInspected = !isMobileFan && (
-        ((selectedObjectIdKey != null && extraObjectId === selectedObjectIdKey)
-          || extraObjectId === keyboardSelectedObjectId)
-        || isMenuActionPreview
+          ((selectedObjectIdKey != null && extraObjectId === selectedObjectIdKey)
+            || extraObjectId === keyboardSelectedObjectId)
+          || extraObjectId === pinnedHandObjectId
+          || isMenuActionPreview
       );
       return (
         <GameCard
@@ -1495,6 +1501,7 @@ export default function HandZone({
         const isInspected = !isMobileFan && (
           ((selectedObjectIdKey != null && cardObjectId === selectedObjectIdKey)
             || cardObjectId === keyboardSelectedObjectId)
+          || cardObjectId === pinnedHandObjectId
           || isMenuActionPreview
         );
         const isDrawInFlight = reserveDrawSlots && hiddenDrawCardIds.has(cardObjectId);
@@ -1566,9 +1573,10 @@ export default function HandZone({
       const isHovered = !keyboardNavigationActive && hoveredHandObjectId === extraObjectId;
       const isKeyboardSelected = keyboardNavigationActive && keyboardSelectedObjectId === extraObjectId;
       const isInspected = !isMobileFan && (
-        ((selectedObjectIdKey != null && extraObjectId === selectedObjectIdKey)
-          || extraObjectId === keyboardSelectedObjectId)
-        || isMenuActionPreview
+          ((selectedObjectIdKey != null && extraObjectId === selectedObjectIdKey)
+            || extraObjectId === keyboardSelectedObjectId)
+          || extraObjectId === pinnedHandObjectId
+          || isMenuActionPreview
       );
       const { wrapperStyle: baseWrapperStyle, cardStyle } = splitHandCardRowStyle(
         buildHandCardRowStyle(visualIndex, renderedHandCardCount, {
