@@ -1435,7 +1435,7 @@ export default function HandZone({
           onPointerDown={plays.length > 0 ? (event) => handlePointerDown(event, card, plays, baseGlowKind || "extra") : undefined}
         onMouseEnter={(event) => { handleHoverEnter(extra.id); if (!keyboardNavigationRef.current) event.currentTarget.focus({ preventScroll: true }); }}
         onMouseLeave={isMobileFan ? undefined : handleHoverLeave}
-        onFocus={(event) => handleCardFocus(event, card)}
+        onFocus={(event) => handleCardFocus(event, extra)}
           className={`mobile-hand-rail-card mobile-hand-rail-card--extra${plays.length > 0 ? " mobile-hand-rail-card--draggable" : ""}${isKeyboardSelected ? " keyboard-selected" : ""}${String(dragState?.objectId) === extraObjectId ? " hand-card--drag-source" : ""} !w-full !max-w-none !min-w-0 !basis-auto !flex-none self-stretch p-1`}
           style={{
             width: "100%",
@@ -1521,7 +1521,7 @@ export default function HandZone({
               onPointerDown={isPlayable ? (e) => handlePointerDown(e, card, plays, glowKind) : undefined}
               onMouseEnter={(event) => { handleHoverEnter(card.id); if (!keyboardNavigationRef.current) event.currentTarget.focus({ preventScroll: true }); }}
               onMouseLeave={isMobileFan ? undefined : handleHoverLeave}
-              onFocus={() => handleHoverEnter(card.id)}
+              onFocus={(event) => handleCardFocus(event, card)}
               className={[
                 isMobileFan && isPlayable ? "hand-card--mobile-draggable" : null,
                 isKeyboardSelected ? "keyboard-selected" : null,
@@ -1589,7 +1589,7 @@ export default function HandZone({
             onPointerDown={plays.length > 0 ? (e) => handlePointerDown(e, card, plays, baseGlowKind || "extra") : undefined}
             onMouseEnter={(event) => { handleHoverEnter(extra.id); if (!keyboardNavigationRef.current) event.currentTarget.focus({ preventScroll: true }); }}
             onMouseLeave={isMobileFan ? undefined : handleHoverLeave}
-            onFocus={() => handleHoverEnter(extra.id)}
+            onFocus={(event) => handleCardFocus(event, extra)}
             className={[
               isMobileFan && isPlayable ? "hand-card--mobile-draggable" : null,
               isKeyboardSelected ? "keyboard-selected" : null,
