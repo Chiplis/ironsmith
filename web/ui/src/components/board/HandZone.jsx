@@ -202,7 +202,7 @@ function computeHandRowWidth(total, dims) {
   return Math.round(dims.cardW + Math.max(0, total - 1) * stride);
 }
 
-function buildHandCardRowStyle(index, total, { dims, activeIndex = null, activeIsPlayable = false, centerActive = true } = {}) {
+function buildHandCardRowStyle(index, total, { dims, activeIndex = null, activeIsPlayable = false, centerActive = false, spreadAroundActive = false } = {}) {
   const spread = computeManabrewSpread(total, dims);
   const baseLayout = computeManabrewBaseLayout(total, dims);
   const base = baseLayout[index] || { drop: 0, rot: 0 };
@@ -215,7 +215,7 @@ function buildHandCardRowStyle(index, total, { dims, activeIndex = null, activeI
     const totalWidth = Math.max(0, (total - 1) * spread);
     const selectedCenter = -totalWidth / 2 + index * spread;
     pushX = -selectedCenter;
-  } else if (activeIndex !== null && activeIndex >= 0 && centerActive && !activeIsPlayable) {
+  } else if (activeIndex !== null && activeIndex >= 0 && spreadAroundActive) {
     const distance = Math.abs(index - activeIndex);
     const sign = index < activeIndex ? -1 : 1;
     // Open a small reading corridor around the centered card. The nearby
@@ -225,7 +225,7 @@ function buildHandCardRowStyle(index, total, { dims, activeIndex = null, activeI
 
   const fanRotate = isActive && centerActive && !activeIsPlayable ? "0deg" : `${base.rot.toFixed(2)}deg`;
   const fanTranslateX = `${pushX.toFixed(1)}px`;
-  const fanTranslateY = isActive && centerActive && !activeIsPlayable
+  const fanTranslateY = isActive
     ? `${(-dims.hoverLift).toFixed(1)}px`
     : `${base.drop.toFixed(1)}px`;
   // De-emphasize the rest of the fan just enough to expose their art and
@@ -732,9 +732,10 @@ export default function HandZone({
     const extra = extraCards.find((card) => String(card.id) === activeFanObjectId);
     return Boolean(extra?.actions?.length);
   }, [activeFanObjectId, extraCards, handCards, handPlayable]);
-  const activeFanShouldCenter = Boolean(
-    keyboardNavigationActive || pinnedHandObjectId || selectedObjectIdKey
-  );
+  // Both pointer hover and keyboard focus keep the card in its slot. Explicit
+  // click selection also uses the same in-place reading treatment.
+  const activeFanShouldCenter = false;
+  const activeFanShouldSpread = Boolean(activeFanObjectId);
   const rouletteWidth = useMemo(
     () => computeRouletteWidth(renderedHandCardCount, handDimensions),
     [handDimensions, renderedHandCardCount]
@@ -1555,6 +1556,7 @@ export default function HandZone({
             activeIndex: isPrimaryCycle ? activeFanIndex : null,
             activeIsPlayable: isPrimaryCycle ? activeFanIsPlayable : false,
             centerActive: isPrimaryCycle ? activeFanShouldCenter : false,
+            spreadAroundActive: isPrimaryCycle ? activeFanShouldSpread : false,
           }),
           { scrollSnapAlign: isRoulette ? "start" : undefined }
         );
@@ -1629,6 +1631,7 @@ export default function HandZone({
             activeIndex: isPrimaryCycle ? activeFanIndex : null,
             activeIsPlayable: isPrimaryCycle ? activeFanIsPlayable : false,
             centerActive: isPrimaryCycle ? activeFanShouldCenter : false,
+            spreadAroundActive: isPrimaryCycle ? activeFanShouldSpread : false,
         }),
         { scrollSnapAlign: isRoulette ? "start" : undefined }
       );
