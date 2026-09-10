@@ -61,6 +61,7 @@ const MOBILE_BATTLEFIELD_TOKEN_HIT_SLOP_X = 16;
 const MOBILE_BATTLEFIELD_TOKEN_HIT_SLOP_Y = 16;
 const BATTLEFIELD_MOVE_DRAG_DISTANCE_SQ = 6 * 6;
 const BATTLEFIELD_MOVE_CLICK_SUPPRESS_MS = 700;
+const BATTLEFIELD_KEYBOARD_EXIT_DELAY_MS = 80;
 
 function buildPaperRowGroups(battlefieldSide, buckets, options = {}) {
   const singleRow = options.singleRow === true;
@@ -885,6 +886,8 @@ export default function BattlefieldRow({
   enableReposition = enablePlacementPreview,
 }) {
   const rowRef = useRef(null);
+  const keyboardNavigationRef = useRef(false);
+  const keyboardExitTimerRef = useRef(null);
   const previousCardsRef = useRef(cards);
   const previousPaperLayoutRef = useRef(null);
   const stablePaperLayoutRef = useRef(null);
@@ -915,6 +918,7 @@ export default function BattlefieldRow({
     clearTimeout(manaCloseTimer.current);
     setManaPopover(null);
   }, []);
+  useEffect(() => () => clearTimeout(keyboardExitTimerRef.current), []);
   const leaveManaPopover = useCallback(() => {
     clearTimeout(manaCloseTimer.current);
     manaCloseTimer.current = setTimeout(() => setManaPopover(null), 180);
@@ -2172,6 +2176,11 @@ export default function BattlefieldRow({
   }, [loading, closeManaPopover, clearHover, clearAnchoredCardPreview, dispatch]);
 
   const handleCardSelectionClick = useCallback((event, card) => {
+    // A direct field click is also a navigation starting point. Preserve the
+    // focus so the next arrow key continues from this exact permanent.
+    keyboardNavigationRef.current = true;
+    clearTimeout(keyboardExitTimerRef.current);
+    event.currentTarget?.focus?.({ preventScroll: true });
     const manaActions = (paymentActionMap.get(Number(card?.id)) || []);
     if (manaActions.length) {
       event.preventDefault();
@@ -2397,10 +2406,37 @@ export default function BattlefieldRow({
     }
   }, [clearMobileCardPress]);
 
+  const handleFieldKeyboardNavigation = useCallback((_event, nextCardElement) => {
+    keyboardNavigationRef.current = true;
+    clearTimeout(keyboardExitTimerRef.current);
+    // If keyboard navigation begins from a hovered card, its stale hover state
+    // would otherwise keep owning the inspector while focus moves elsewhere.
+    // Release it once, then let the keyboard target become the sole detail.
+    clearHover();
+    clearAnchoredCardPreview();
+    const nextObjectId = nextCardElement?.dataset?.objectId;
+    if (nextObjectId != null) onInspect?.(nextObjectId);
+  }, [clearAnchoredCardPreview, clearHover, onInspect]);
+
+  const handleFieldPointerMove = useCallback((event, card) => {
+    if (!keyboardNavigationRef.current || event.pointerType === "touch") return;
+    if (event.movementX === 0 && event.movementY === 0) return;
+    clearTimeout(keyboardExitTimerRef.current);
+    const target = event.currentTarget;
+    keyboardExitTimerRef.current = window.setTimeout(() => {
+      keyboardNavigationRef.current = false;
+      keyboardExitTimerRef.current = null;
+      closeManaPopover();
+      hoverCard(card.id);
+      target?.focus?.({ preventScroll: true });
+    }, BATTLEFIELD_KEYBOARD_EXIT_DELAY_MS);
+  }, [closeManaPopover, hoverCard]);
+
   return (
     <div
       ref={rowRef}
       className={`battlefield-row ${displayCards.length === 0 ? "battlefield-row-empty" : ""} ${alignStart ? "battlefield-row--align-start" : ""} ${isMobileBattleBottomLayout ? "battlefield-row--mobile-bottom-inline-fit" : ""} ${shouldFreezePaperLayout ? "battlefield-row--layout-freeze" : ""} ${usesDensePaperLayout ? "battlefield-row--dense" : ""} relative grid gap-1.5 content-start justify-center min-h-0 h-full`}
+      data-card-navigation-scope="field"
       data-bf-side={battlefieldSide}
       data-placement-active={pointerInsideBattlefield ? "true" : "false"}
       data-battlefield-drop-grid={canPreviewHeldPlacement ? "true" : undefined}
@@ -2576,16 +2612,24 @@ export default function BattlefieldRow({
             suppressTooltip={suppressTooltip}
             onClick={isLayoutHold ? undefined : ((event) => handleCardSelectionClick(event, card))}
             onKeyboardActivate={isLayoutHold ? undefined : ((event) => handleCardKeyboardActivate(event, card))}
+            onKeyboardNavigation={isLayoutHold ? undefined : handleFieldKeyboardNavigation}
             onPointerDown={isLayoutHold ? undefined : ((event) => handleCardPointerPressStart(event, card, isCombatCandidate))}
-            onPointerMove={isLayoutHold ? undefined : handleCardPointerPressMove}
+            onPointerMove={isLayoutHold ? undefined : ((event) => { handleCardPointerPressMove(event); handleFieldPointerMove(event, card); })}
             onPointerUp={isLayoutHold ? undefined : handleCardPointerPressEnd}
             onPointerCancel={isLayoutHold ? undefined : handleCardPointerPressEnd}
             onPointerLeave={isLayoutHold ? undefined : handleCardPointerPressEnd}
             onMouseEnter={isLayoutHold ? undefined : ((event) => {
+              if (keyboardNavigationRef.current) return;
               if (!showManaPopover(event, card)) { closeManaPopover(); hoverCard(card.id); event.currentTarget.focus({ preventScroll: true }); }
             })}
             onMouseLeave={isLayoutHold ? undefined : (() => { clearHover(); leaveManaPopover(); })}
-            onFocus={isLayoutHold ? undefined : (() => { closeManaPopover(); hoverCard(card.id); })}
+            onFocus={isLayoutHold ? undefined : (() => {
+              closeManaPopover();
+              hoverCard(card.id);
+              // Mouse focus is only hover. Keyboard focus is the user's
+              // explicit navigation request, so it also advances the detail.
+              if (keyboardNavigationRef.current) onInspect?.(card.id);
+            })}
             centerOverlay={showsUndoOverlay ? (
               <Button
                 type="button"

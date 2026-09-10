@@ -1550,7 +1550,7 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
 }
 
 .hand-reveal-shell {
-  --hand-reveal-y: 0px;
+  --hand-reveal-y: -8px;
   --hand-reveal-scale: 1;
   isolation: isolate;
   display: inline-flex;
@@ -1571,7 +1571,7 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
 
 .hand-reveal-shell[data-open="true"] {
   background: transparent;
-  --hand-reveal-y: -12px;
+  --hand-reveal-y: -8px;
 }
 
 .hand-reveal-shell:has(.game-card.hand-card.hovered),
@@ -1828,8 +1828,14 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   --card-scale: 1;
 }
 
-.hand-reveal-shell[data-open="true"] .hand-zone-surface-mobile-fan .game-card.hand-card.hovered,
-.hand-reveal-shell[data-open="true"] .hand-zone-surface-mobile-fan .game-card.hand-card.inspected {
+.hand-reveal-shell .hand-zone-surface-mobile-fan .game-card.hand-card.hovered,
+.hand-reveal-shell .hand-zone-surface-mobile-fan .game-card.hand-card.inspected,
+.hand-reveal-shell .hand-zone-surface-mobile-fan .game-card.hand-card.keyboard-selected {
+  --card-scale: 1.78 !important;
+  --card-translate-y: -118px !important;
+  --card-rotate: 0deg !important;
+  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease;
+  will-change: transform;
   transform:
     translate3d(
       calc(var(--card-translate-x) + var(--card-return-x) + var(--card-jolt-x)),
@@ -1843,18 +1849,135 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   z-index: 50 !important;
 }
 
-.hand-reveal-shell[data-open="true"] .game-card.hand-card.hovered .game-card-surface,
-.hand-reveal-shell[data-open="true"] .game-card.hand-card.inspected .game-card-surface {
+.hand-reveal-shell .game-card.hand-card.hovered .game-card-surface,
+.hand-reveal-shell .game-card.hand-card.inspected .game-card-surface {
   inset: 0 !important;
   height: 100% !important;
   min-height: 100% !important;
 }
 
-.hand-reveal-shell[data-open="true"] .game-card.hand-card.hovered .game-card-surface > img,
-.hand-reveal-shell[data-open="true"] .game-card.hand-card.inspected .game-card-surface > img {
+.hand-reveal-shell .game-card.hand-card.hovered .game-card-surface > img,
+.hand-reveal-shell .game-card.hand-card.inspected .game-card-surface > img {
   inset: 0 !important;
   width: 100% !important;
   height: 100% !important;
+}
+
+/* The hand uses lift/zoom as its focus treatment; suppress the browser's
+   default blue focus ring so it does not draw an extra border around cards. */
+.hand-zone-surface[data-card-navigation-scope="hand"] .game-card.hand-card:focus,
+.hand-zone-surface[data-card-navigation-scope="hand"] .game-card.hand-card:focus-visible {
+  outline: none !important;
+  -webkit-focus-ring-color: transparent;
+}
+
+/* Selection in the hand is communicated by the lift/zoom motion. Do not add
+   the generic playable/inspected blue frame on top of that treatment. */
+[data-card-navigation-scope="hand"] .game-card.hand-card.hovered,
+[data-card-navigation-scope="hand"] .game-card.hand-card.inspected,
+[data-card-navigation-scope="hand"] .game-card.hand-card.keyboard-selected,
+[data-card-navigation-scope="hand"] .game-card.hand-card:hover,
+[data-card-navigation-scope="hand"] .game-card.hand-card:focus {
+  outline: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+[data-card-navigation-scope="hand"] .game-card.hand-card.hovered::before,
+[data-card-navigation-scope="hand"] .game-card.hand-card.hovered::after,
+[data-card-navigation-scope="hand"] .game-card.hand-card.inspected::before,
+[data-card-navigation-scope="hand"] .game-card.hand-card.inspected::after,
+[data-card-navigation-scope="hand"] .game-card.hand-card.keyboard-selected::before,
+[data-card-navigation-scope="hand"] .game-card.hand-card.keyboard-selected::after,
+[data-card-navigation-scope="hand"] .game-card.hand-card:hover::before,
+[data-card-navigation-scope="hand"] .game-card.hand-card:hover::after,
+[data-card-navigation-scope="hand"] .game-card.hand-card:focus::before,
+[data-card-navigation-scope="hand"] .game-card.hand-card:focus::after {
+  opacity: 0 !important;
+  animation: none !important;
+}
+
+[data-card-navigation-scope="hand"] .game-card.hand-card:hover .game-card-surface {
+  box-shadow: none !important;
+}
+
+/* While arrows own the interaction, a stationary pointer may still satisfy
+   the browser's :hover selector as cards move beneath it. Keep those cards
+   in their resting layout until the pointer leaves the hand area. */
+[data-card-navigation-scope="hand"][data-keyboard-navigation="true"] .game-card.hand-card:hover:not(.keyboard-selected) {
+  --card-translate-y: 0px !important;
+  z-index: auto !important;
+}
+
+[data-card-navigation-scope="hand"][data-keyboard-navigation="true"] .game-card.hand-card:hover .game-card-surface {
+  box-shadow: none !important;
+}
+
+[data-card-navigation-scope="hand"][data-keyboard-navigation="true"] .hand-layout-item:has(> .game-card.hand-card:hover:not(.keyboard-selected)) {
+  z-index: auto !important;
+}
+
+/* Hand cards use scale/lift as their only highlight. Disable the generic
+   type/playable aura and circuit frame so colored glows cannot return when
+   card state changes. */
+[data-card-navigation-scope="hand"] .game-card.hand-card,
+[data-card-navigation-scope="hand"] .game-card.hand-card .game-card-surface,
+[data-card-navigation-scope="hand"] .hand-layout-item--selected {
+  box-shadow: none !important;
+  filter: none !important;
+  outline: none !important;
+}
+
+[data-card-navigation-scope="hand"] .game-card.hand-card:active,
+[data-card-navigation-scope="hand"] .game-card.hand-card:focus-within,
+[data-card-navigation-scope="hand"] .game-card.hand-card[aria-pressed="true"],
+[data-card-navigation-scope="hand"] .game-card.hand-card.selected,
+[data-card-navigation-scope="hand"] .game-card.hand-card.card-action-available {
+  box-shadow: none !important;
+  outline: none !important;
+  border-color: transparent !important;
+}
+
+[data-card-navigation-scope="hand"] .game-card.hand-card::before,
+[data-card-navigation-scope="hand"] .game-card.hand-card::after,
+[data-card-navigation-scope="hand"] .game-card.hand-card .game-card-surface::before,
+[data-card-navigation-scope="hand"] .game-card.hand-card .game-card-surface::after,
+[data-card-navigation-scope="hand"] .game-card.hand-card .card-circuit-overlay,
+[data-card-navigation-scope="hand"] .game-card.hand-card .card-circuit-edge,
+[data-card-navigation-scope="hand"] .game-card.hand-card .card-circuit-strip-set,
+[data-card-navigation-scope="hand"] .game-card.hand-card > .card-inspector-source-glow,
+[data-card-navigation-scope="hand"] .game-card.hand-card .card-action-border {
+  opacity: 0 !important;
+  animation: none !important;
+  display: none !important;
+}
+
+[data-card-navigation-scope="hand"] .hand-layout-item--selected::before,
+[data-card-navigation-scope="hand"] .hand-layout-item--selected::after {
+  box-shadow: none !important;
+  opacity: 0 !important;
+}
+
+/* Some card PNGs have transparent rounded pixels around their corners. The
+   hand always supplies a black underlay so those pixels never show as white
+   wedges when a card is enlarged. */
+[data-card-navigation-scope="hand"] .game-card.hand-card,
+[data-card-navigation-scope="hand"] .game-card.hand-card .game-card-surface,
+[data-card-navigation-scope="hand"] .game-card.hand-card[data-hand-irregular-corners="true"] .game-card-surface > img {
+  background: #000 !important;
+  background-image: none !important;
+}
+
+[data-card-navigation-scope="hand"] .game-card.hand-card .game-card-surface {
+  overflow: hidden !important;
+}
+
+/* Some legacy scans bake a square, bright pixel wedge outside the printed
+   rounded frame. Clip only that exterior radius: the card art and every
+   genuine frame pixel remain untouched. */
+[data-card-navigation-scope="hand"] .game-card.hand-card .game-card-surface > img {
+  border-radius: 13px !important;
+  clip-path: inset(0 round 13px);
 }
 
 .inspector-oracle-line {

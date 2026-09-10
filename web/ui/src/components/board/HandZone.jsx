@@ -30,6 +30,8 @@ const DRAW_TO_HAND_REVEAL_DELAY_MS = 1080;
 // Keep in sync with the card-flight stagger in GameEffectAnimations.
 const DRAW_TO_HAND_REVEAL_STAGGER_MS = 150;
 const HAND_ACTION_HOVER_EVENT = "ironsmith:hand-action-hover";
+const HAND_KEYBOARD_EXIT_DELAY_MS = 260;
+const HAND_HOVER_ACTIVATION_DELAY_MS = 35;
 
 /** Map card_types array to a glow kind for hand display. */
 function handGlowFromTypes(cardTypes) {
@@ -345,12 +347,11 @@ function stableHandSlotObjectIdAtPoint(handList, hoverableHandObjectIds, selecte
 export default function HandZone({
   player,
   selectedObjectId,
-  onInspect,
   isExpanded = false,
   layout = "fan",
 }) {
   const { state, multiplayer } = useGame();
-  const { hoveredObjectId, hoveredLinkedObjectIds, hoverCard, clearHover } = useHover();
+  const { hoveredObjectId, hoveredLinkedObjectIds, clearHover, clearAnchoredCardPreview } = useHover();
   const { startDrag, updateDrag, endDrag } = useDragActions();
   const dragState = useDragState();
   const handScale = useManabrewHandScale(layout === "mobile-fullscreen");
@@ -359,6 +360,10 @@ export default function HandZone({
   const dragHandlersRef = useRef(null);
   const dragScrollLockRef = useRef(null);
   const hoverClearTimerRef = useRef(null);
+  const hoverActivateTimerRef = useRef(null);
+  const pointerHoverTargetRef = useRef(null);
+  const keyboardNavigationRef = useRef(false);
+  const keyboardExitTimerRef = useRef(null);
   const handListRef = useRef(null);
   const handScrollRef = useRef(null);
   const centerCycleRef = useRef(null);
@@ -374,6 +379,8 @@ export default function HandZone({
   const [handTransitionsHydrated, setHandTransitionsHydrated] = useState(false);
   const [menuHoveredHandObjectId, setMenuHoveredHandObjectId] = useState(null);
   const [hoveredHandObjectId, setHoveredHandObjectId] = useState(null);
+  const [keyboardSelectedObjectId, setKeyboardSelectedObjectId] = useState(null);
+  const [keyboardNavigationActive, setKeyboardNavigationActive] = useState(false);
   const rawHandCards = useMemo(
     () => (player?.can_view_hand && player?.hand_cards) || [],
     [player?.can_view_hand, player?.hand_cards]
@@ -692,11 +699,17 @@ export default function HandZone({
     () => computeManabrewHandDimensions(handScale),
     [handScale]
   );
-  const activeFanObjectId = dragState || isMobileFan
+  // Only one interaction source may drive the fan at a time. In particular,
+  // do not combine a stale keyboard selection with a newly hovered card while
+  // the pointer is taking control back from the arrow-key mode.
+  const interactionObjectId = keyboardNavigationActive
+    ? keyboardSelectedObjectId
+    : hoveredHandObjectId;
+  const activeFanObjectId = dragState
     ? null
     : activeMenuHoveredHandObjectId
-      || selectedObjectIdKey
-      || hoveredHandObjectId;
+      || interactionObjectId
+      || selectedObjectIdKey;
   const activeFanIndex = useMemo(() => {
     if (!activeFanObjectId) return null;
     const handIndex = handCards.findIndex((card) => String(card.id) === activeFanObjectId);
@@ -762,10 +775,15 @@ export default function HandZone({
     if (nextRects.size > 0) collapsedCardRectsRef.current = nextRects;
   }, [dragState, handLayoutSignature, isExpanded, isRoulette]);
 
-  const handleCardClick = useCallback((_e, card) => {
-    const candidateObjectIds = [Number(card?.id)].filter((id) => Number.isFinite(id));
-    onInspect?.(card.id, { candidateObjectIds, source: "hand" });
-  }, [onInspect]);
+  const handleCardClick = useCallback((event, card) => {
+    setKeyboardSelectedObjectId(String(card.id));
+    keyboardNavigationRef.current = true;
+    setKeyboardNavigationActive(true);
+    event.currentTarget?.focus?.({ preventScroll: true });
+    clearHover();
+    clearAnchoredCardPreview();
+    window.dispatchEvent(new CustomEvent("ironsmith:hand-inspection"));
+  }, [clearAnchoredCardPreview, clearHover]);
 
   const handleKeyboardCardActivate = useCallback((event, card, plays, glowKind) => {
     const plan = handKeyboardCastPlan({ actions: plays, card });
@@ -838,6 +856,14 @@ export default function HandZone({
         clearTimeout(hoverClearTimerRef.current);
         hoverClearTimerRef.current = null;
       }
+      if (hoverActivateTimerRef.current) {
+        clearTimeout(hoverActivateTimerRef.current);
+        hoverActivateTimerRef.current = null;
+      }
+      if (keyboardExitTimerRef.current) {
+        clearTimeout(keyboardExitTimerRef.current);
+        keyboardExitTimerRef.current = null;
+      }
       const handlers = dragHandlersRef.current;
       if (!handlers) return;
       document.removeEventListener("pointermove", handlers.onMove);
@@ -895,27 +921,90 @@ export default function HandZone({
   }, [isMobileFan, selectedObjectId]);
 
 
+  const scheduleHoverTarget = useCallback((objectId) => {
+    const normalizedObjectId = String(objectId);
+    pointerHoverTargetRef.current = normalizedObjectId;
+    if (hoverActivateTimerRef.current) clearTimeout(hoverActivateTimerRef.current);
+    hoverActivateTimerRef.current = window.setTimeout(() => {
+      hoverActivateTimerRef.current = null;
+      setHoveredHandObjectId(normalizedObjectId);
+      clearHover();
+      clearAnchoredCardPreview();
+    }, HAND_HOVER_ACTIVATION_DELAY_MS);
+  }, [clearAnchoredCardPreview, clearHover]);
+
   const handleHoverEnter = useCallback((objectId) => {
+    // Once arrow-key navigation starts, keep the keyboard selection stable
+    // until the pointer actually moves. Transformed cards can pass beneath a
+    // stationary cursor and fire synthetic mouse-enter events otherwise.
+    if (keyboardNavigationRef.current) return;
+    // Hand hover owns the only active inspection surface. Clear a field
+    // preview before the small hand-hover debounce starts, so two details
+    // never overlap during that transition.
+    clearHover();
+    clearAnchoredCardPreview();
+    window.dispatchEvent(new CustomEvent("ironsmith:hand-inspection"));
     if (hoverClearTimerRef.current) {
       clearTimeout(hoverClearTimerRef.current);
       hoverClearTimerRef.current = null;
     }
+    if (hoverActivateTimerRef.current) {
+      clearTimeout(hoverActivateTimerRef.current);
+      hoverActivateTimerRef.current = null;
+    }
     const normalizedObjectId = String(objectId);
-    setHoveredHandObjectId(normalizedObjectId);
-    hoverCard(normalizedObjectId);
-  }, [hoverCard]);
+    // Ignore synthetic enter events caused by the active card moving under a
+    // stationary cursor. Real pointer movement updates this ref first.
+    if (
+      hoveredHandObjectId != null
+      && pointerHoverTargetRef.current === String(hoveredHandObjectId)
+      && pointerHoverTargetRef.current !== normalizedObjectId
+    ) return;
+    scheduleHoverTarget(normalizedObjectId);
+  }, [clearAnchoredCardPreview, clearHover, hoveredHandObjectId, scheduleHoverTarget]);
 
+  const handleKeyboardNavigation = useCallback(() => {
+    keyboardNavigationRef.current = true;
+    setKeyboardNavigationActive(true);
+    if (keyboardExitTimerRef.current) {
+      clearTimeout(keyboardExitTimerRef.current);
+      keyboardExitTimerRef.current = null;
+    }
+    if (hoverClearTimerRef.current) {
+      clearTimeout(hoverClearTimerRef.current);
+      hoverClearTimerRef.current = null;
+    }
+    setHoveredHandObjectId(null);
+  }, []);
+
+  const handleCardFocus = useCallback((_event, card) => {
+    handleHoverEnter(card.id);
+    // Focus selects the same rendered card in the hand. It deliberately does
+    // not open the separate inspector rail.
+    setKeyboardSelectedObjectId(String(card.id));
+  }, [handleHoverEnter]);
   const handleHoverLeave = useCallback(() => {
+    if (hoverActivateTimerRef.current) {
+      clearTimeout(hoverActivateTimerRef.current);
+      hoverActivateTimerRef.current = null;
+    }
     if (hoverClearTimerRef.current) {
       clearTimeout(hoverClearTimerRef.current);
     }
     // Small delay smooths hover-out when moving across dense hand cards.
     hoverClearTimerRef.current = setTimeout(() => {
+      if (
+        hoveredHandObjectId != null
+        && pointerHoverTargetRef.current === String(hoveredHandObjectId)
+      ) {
+        hoverClearTimerRef.current = null;
+        return;
+      }
       setHoveredHandObjectId(null);
       clearHover();
       hoverClearTimerRef.current = null;
     }, 110);
-  }, [clearHover]);
+  }, [clearHover, hoveredHandObjectId]);
 
   useEffect(() => {
     const wasExpanded = previousExpandedRef.current;
@@ -960,8 +1049,37 @@ export default function HandZone({
 
   const handleHandPointerMove = useCallback((event) => {
     if (event.pointerType === "touch" || activePointerIdRef.current != null) return;
+    if (keyboardNavigationRef.current) {
+      const pointerOverHandCard = resolveHandHoverObjectId(event.clientX, event.clientY) != null;
+      // A stationary pointer, or one moving within the hand, must not steal
+      // selection from the keyboard. Leaving the hand is the explicit exit.
+      if (event.movementX === 0 && event.movementY === 0) return;
+      if (pointerOverHandCard) {
+        if (keyboardExitTimerRef.current) {
+          clearTimeout(keyboardExitTimerRef.current);
+          keyboardExitTimerRef.current = null;
+        }
+        // A real pointer movement over a card is an explicit request to
+        // return to mouse mode. Clear the keyboard selection first so the
+        // old centered card cannot remain raised alongside the hovered one.
+        keyboardNavigationRef.current = false;
+        setKeyboardNavigationActive(false);
+        setKeyboardSelectedObjectId(null);
+      } else {
+        if (!keyboardExitTimerRef.current) {
+          keyboardExitTimerRef.current = window.setTimeout(() => {
+            keyboardExitTimerRef.current = null;
+            keyboardNavigationRef.current = false;
+            setKeyboardNavigationActive(false);
+            setKeyboardSelectedObjectId(null);
+          }, HAND_KEYBOARD_EXIT_DELAY_MS);
+        }
+        return;
+      }
+    }
 
     const objectId = resolveHandHoverObjectId(event.clientX, event.clientY);
+    pointerHoverTargetRef.current = objectId;
     if (objectId == null) {
       if (hoveredHandObjectId != null) {
         handleHoverLeave();
@@ -974,12 +1092,21 @@ export default function HandZone({
       hoverClearTimerRef.current = null;
     }
     if (hoveredHandObjectId !== objectId) {
-      setHoveredHandObjectId(objectId);
+      scheduleHoverTarget(objectId);
     }
-  }, [handleHoverLeave, hoveredHandObjectId, resolveHandHoverObjectId]);
+  }, [handleHoverLeave, hoveredHandObjectId, resolveHandHoverObjectId, scheduleHoverTarget]);
 
   const handleHandPointerLeave = useCallback((event) => {
     if (event.pointerType === "touch") return;
+    pointerHoverTargetRef.current = null;
+    if (keyboardNavigationRef.current && !keyboardExitTimerRef.current) {
+      keyboardExitTimerRef.current = window.setTimeout(() => {
+        keyboardExitTimerRef.current = null;
+        keyboardNavigationRef.current = false;
+        setKeyboardNavigationActive(false);
+        setKeyboardSelectedObjectId(null);
+      }, HAND_KEYBOARD_EXIT_DELAY_MS);
+    }
     handleHoverLeave();
   }, [handleHoverLeave]);
 
@@ -1230,9 +1357,11 @@ export default function HandZone({
           ? baseGlowKind
           : isActionLinkedHover ? "action-link" : baseGlowKind;
         const cardObjectId = String(card.id);
-        const isHovered = hoveredHandObjectId === cardObjectId;
+        const isHovered = !keyboardNavigationActive && hoveredHandObjectId === cardObjectId;
+        const isKeyboardSelected = keyboardNavigationActive && keyboardSelectedObjectId === cardObjectId;
         const isInspected = !isMobileFan && (
-          (selectedObjectIdKey != null && cardObjectId === selectedObjectIdKey)
+          ((selectedObjectIdKey != null && cardObjectId === selectedObjectIdKey)
+            || cardObjectId === keyboardSelectedObjectId)
           || isMenuActionPreview
         );
         const isNew = newIds.has(card.id);
@@ -1258,11 +1387,12 @@ export default function HandZone({
             isInspected={isInspected}
             onClick={isPlayable ? undefined : (event) => handleCardClick(event, card)}
             onKeyboardActivate={(event) => handleKeyboardCardActivate(event, card, plays, glowKind)}
+            onKeyboardNavigation={handleKeyboardNavigation}
             onPointerDown={isPlayable ? (event) => handlePointerDown(event, card, plays, glowKind) : undefined}
-            onMouseEnter={(event) => { handleHoverEnter(card.id); event.currentTarget.focus({ preventScroll: true }); }}
+            onMouseEnter={(event) => { handleHoverEnter(card.id); if (!keyboardNavigationRef.current) event.currentTarget.focus({ preventScroll: true }); }}
             onMouseLeave={isMobileFan ? undefined : handleHoverLeave}
-            onFocus={() => handleHoverEnter(card.id)}
-            className={`mobile-hand-rail-card${isPlayable ? " mobile-hand-rail-card--draggable" : ""}${String(dragState?.objectId) === cardObjectId ? " hand-card--drag-source" : ""} !w-full !max-w-none !min-w-0 !basis-auto !flex-none self-stretch p-1`}
+            onFocus={(event) => handleCardFocus(event, card)}
+            className={`mobile-hand-rail-card${isPlayable ? " mobile-hand-rail-card--draggable" : ""}${isKeyboardSelected ? " keyboard-selected" : ""}${String(dragState?.objectId) === cardObjectId ? " hand-card--drag-source" : ""} !w-full !max-w-none !min-w-0 !basis-auto !flex-none self-stretch p-1`}
             style={{
               width: "100%",
               minWidth: "0px",
@@ -1292,9 +1422,11 @@ export default function HandZone({
         ? baseGlowKind
         : isActionLinkedHover ? "action-link" : baseGlowKind;
       const extraObjectId = String(extra.id);
-      const isHovered = hoveredHandObjectId === extraObjectId;
+      const isHovered = !keyboardNavigationActive && hoveredHandObjectId === extraObjectId;
+      const isKeyboardSelected = keyboardNavigationActive && keyboardSelectedObjectId === extraObjectId;
       const isInspected = !isMobileFan && (
-        (selectedObjectIdKey != null && extraObjectId === selectedObjectIdKey)
+        ((selectedObjectIdKey != null && extraObjectId === selectedObjectIdKey)
+          || extraObjectId === keyboardSelectedObjectId)
         || isMenuActionPreview
       );
       return (
@@ -1310,11 +1442,12 @@ export default function HandZone({
           isInspected={isInspected}
           onClick={isPlayable ? undefined : (event) => handleCardClick(event, card)}
           onKeyboardActivate={(event) => handleKeyboardCardActivate(event, card, plays, glowKind)}
+          onKeyboardNavigation={handleKeyboardNavigation}
           onPointerDown={plays.length > 0 ? (event) => handlePointerDown(event, card, plays, baseGlowKind || "extra") : undefined}
-        onMouseEnter={(event) => { handleHoverEnter(extra.id); event.currentTarget.focus({ preventScroll: true }); }}
+        onMouseEnter={(event) => { handleHoverEnter(extra.id); if (!keyboardNavigationRef.current) event.currentTarget.focus({ preventScroll: true }); }}
         onMouseLeave={isMobileFan ? undefined : handleHoverLeave}
-        onFocus={() => handleHoverEnter(extra.id)}
-          className={`mobile-hand-rail-card mobile-hand-rail-card--extra${plays.length > 0 ? " mobile-hand-rail-card--draggable" : ""}${String(dragState?.objectId) === extraObjectId ? " hand-card--drag-source" : ""} !w-full !max-w-none !min-w-0 !basis-auto !flex-none self-stretch p-1`}
+        onFocus={(event) => handleCardFocus(event, card)}
+          className={`mobile-hand-rail-card mobile-hand-rail-card--extra${plays.length > 0 ? " mobile-hand-rail-card--draggable" : ""}${isKeyboardSelected ? " keyboard-selected" : ""}${String(dragState?.objectId) === extraObjectId ? " hand-card--drag-source" : ""} !w-full !max-w-none !min-w-0 !basis-auto !flex-none self-stretch p-1`}
           style={{
             width: "100%",
             minWidth: "0px",
@@ -1356,9 +1489,11 @@ export default function HandZone({
           ? baseGlowKind
           : isActionLinkedHover ? "action-link" : baseGlowKind;
         const cardObjectId = String(card.id);
-        const isHovered = hoveredHandObjectId === cardObjectId;
+        const isHovered = !keyboardNavigationActive && hoveredHandObjectId === cardObjectId;
+        const isKeyboardSelected = keyboardNavigationActive && keyboardSelectedObjectId === cardObjectId;
         const isInspected = !isMobileFan && (
-          (selectedObjectIdKey != null && cardObjectId === selectedObjectIdKey)
+          ((selectedObjectIdKey != null && cardObjectId === selectedObjectIdKey)
+            || cardObjectId === keyboardSelectedObjectId)
           || isMenuActionPreview
         );
         const isDrawInFlight = reserveDrawSlots && hiddenDrawCardIds.has(cardObjectId);
@@ -1393,12 +1528,14 @@ export default function HandZone({
               isInspected={isInspected}
               onClick={isPlayable ? undefined : (e) => handleCardClick(e, card)}
               onKeyboardActivate={(event) => handleKeyboardCardActivate(event, card, plays, glowKind)}
+              onKeyboardNavigation={handleKeyboardNavigation}
               onPointerDown={isPlayable ? (e) => handlePointerDown(e, card, plays, glowKind) : undefined}
-              onMouseEnter={(event) => { handleHoverEnter(card.id); event.currentTarget.focus({ preventScroll: true }); }}
+              onMouseEnter={(event) => { handleHoverEnter(card.id); if (!keyboardNavigationRef.current) event.currentTarget.focus({ preventScroll: true }); }}
               onMouseLeave={isMobileFan ? undefined : handleHoverLeave}
               onFocus={() => handleHoverEnter(card.id)}
               className={[
                 isMobileFan && isPlayable ? "hand-card--mobile-draggable" : null,
+                isKeyboardSelected ? "keyboard-selected" : null,
                 String(dragState?.objectId) === cardObjectId ? "hand-card--drag-source" : null,
               ].filter(Boolean).join(" ") || undefined}
               style={cardStyle}
@@ -1425,9 +1562,11 @@ export default function HandZone({
         ? baseGlowKind
         : isActionLinkedHover ? "action-link" : baseGlowKind;
       const extraObjectId = String(extra.id);
-      const isHovered = hoveredHandObjectId === extraObjectId;
+      const isHovered = !keyboardNavigationActive && hoveredHandObjectId === extraObjectId;
+      const isKeyboardSelected = keyboardNavigationActive && keyboardSelectedObjectId === extraObjectId;
       const isInspected = !isMobileFan && (
-        (selectedObjectIdKey != null && extraObjectId === selectedObjectIdKey)
+        ((selectedObjectIdKey != null && extraObjectId === selectedObjectIdKey)
+          || extraObjectId === keyboardSelectedObjectId)
         || isMenuActionPreview
       );
       const { wrapperStyle: baseWrapperStyle, cardStyle } = splitHandCardRowStyle(
@@ -1457,12 +1596,14 @@ export default function HandZone({
             isInspected={isInspected}
             onClick={isPlayable ? undefined : (e) => handleCardClick(e, card)}
             onKeyboardActivate={(event) => handleKeyboardCardActivate(event, card, plays, glowKind)}
+            onKeyboardNavigation={handleKeyboardNavigation}
             onPointerDown={plays.length > 0 ? (e) => handlePointerDown(e, card, plays, baseGlowKind || "extra") : undefined}
-            onMouseEnter={(event) => { handleHoverEnter(extra.id); event.currentTarget.focus({ preventScroll: true }); }}
+            onMouseEnter={(event) => { handleHoverEnter(extra.id); if (!keyboardNavigationRef.current) event.currentTarget.focus({ preventScroll: true }); }}
             onMouseLeave={isMobileFan ? undefined : handleHoverLeave}
             onFocus={() => handleHoverEnter(extra.id)}
             className={[
               isMobileFan && isPlayable ? "hand-card--mobile-draggable" : null,
+              isKeyboardSelected ? "keyboard-selected" : null,
               String(dragState?.objectId) === extraObjectId ? "hand-card--drag-source" : null,
             ].filter(Boolean).join(" ") || undefined}
             style={cardStyle}
@@ -1473,7 +1614,7 @@ export default function HandZone({
 
     if (isVerticalRail) {
       return (
-        <section className="mobile-hand-rail-zone min-h-0 h-full overflow-hidden">
+        <section className="mobile-hand-rail-zone min-h-0 h-full overflow-hidden" data-card-navigation-scope="hand" data-hand-navigation-scope="hand" data-keyboard-navigation={keyboardNavigationActive ? "true" : undefined}>
           <div className="mobile-hand-rail-scroll min-h-0 h-full overflow-y-auto overflow-x-hidden pr-0.5">
             <div
               ref={handListRef}
@@ -1494,6 +1635,9 @@ export default function HandZone({
       return (
         <section
           className={`hand-zone-surface min-w-0 bg-transparent px-2 py-1 h-full min-h-0 overflow-visible ${isRoulette ? "hand-zone-surface-roulette" : "max-w-full"} ${isMobileFan ? "hand-zone-surface-mobile-fan" : ""}`}
+          data-card-navigation-scope="hand"
+          data-hand-navigation-scope="hand"
+          data-keyboard-navigation={keyboardNavigationActive ? "true" : undefined}
           style={{
             width: surfaceWidth,
             maxWidth: isRoulette ? surfaceWidth : "100%",

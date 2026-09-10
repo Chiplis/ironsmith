@@ -1,11 +1,19 @@
 .original-card-fallback {
   position: absolute;
   inset: 0;
+  background-color: var(--card-frame-edge, #050505);
+  background-image: var(--source-frame-image, none);
+  background-size: calc(100% + 24px) calc(100% + 24px);
+  background-position: center;
 }
 .original-card-fallback > img {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  /* Full-print scans occasionally include square white wedges beyond the
+     physical card's rounded edge. This only removes that exterior radius. */
+  border-radius: 0;
+  clip-path: polygon(0 10px, 10px 0, calc(100% - 10px) 0, 100% 10px, 100% calc(100% - 10px), calc(100% - 10px) 100%, 10px 100%, 0 calc(100% - 10px));
 }
 .original-card-details {
   position: absolute;

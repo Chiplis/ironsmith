@@ -724,6 +724,7 @@ export default function MobileBattleScene({
             cardWidth={layout.cardWidth}
             cardHeight={layout.cardHeight}
             selectedObjectId={selectedObjectId}
+            onInspect={requestInspectObject}
             onCardClick={handleCardInspect}
             onCardPointerDown={handleCardTargetPointerDown}
             onMobileCardActionMenu={openObjectActions}
@@ -753,6 +754,7 @@ export default function MobileBattleScene({
             cardHeight={layout.cardHeight}
             selfBackVisibleHeight={layout.selfBackVisibleHeight}
             selectedObjectId={selectedObjectId}
+            onInspect={requestInspectObject}
             onCardClick={handleCardInspect}
             onCardPointerDown={handleCardTargetPointerDown}
             onMobileCardActionMenu={openObjectActions}

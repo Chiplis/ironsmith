@@ -655,6 +655,7 @@ function OpponentSlot({
                       compact
                       battlefieldSide="top"
                       selectedObjectId={selectedObjectId}
+                      onInspect={onInspect}
                       onCardClick={handleCardClick}
                       onCardPointerDown={handleCardPointerDown}
                       onMobileCardActionMenu={mobileBattleScene ? onMobileCardActionMenu : null}
@@ -754,6 +755,7 @@ function OpponentSlot({
                   paperMinSlotsPerRow={mobileBattleScene && entry.zone === "battlefield" ? 7 : null}
                   enableReposition={entry.zone === "battlefield"}
                   selectedObjectId={selectedObjectId}
+                  onInspect={onInspect}
                   onCardClick={handleCardClick}
                   onCardPointerDown={handleCardPointerDown}
                   onMobileCardActionMenu={mobileBattleScene && entry.zone === "battlefield" ? onMobileCardActionMenu : null}

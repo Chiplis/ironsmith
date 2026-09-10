@@ -9,9 +9,9 @@ export const MANABREW_HAND_CARD_BASE = {
 export const MANABREW_HAND_FAN_PARAMS = {
   arcRadius: 900,
   maxArcDeg: 30,
-  hoverScale: 1.8,
-  hoverLift: 70,
-  neighborPush: 78,
+  hoverScale: 1.78,
+  hoverLift: 58,
+  neighborPush: 92,
   maxSpread: 90,
   minSpread: 38,
   spreadWidth: 900,

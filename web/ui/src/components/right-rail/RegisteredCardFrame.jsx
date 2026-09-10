@@ -170,6 +170,10 @@ export default function RegisteredCardFrame({registration,imageUrl,typography,ru
   return <article className="registered-card-frame" aria-label={name} data-registration-id={registration.id} data-rules-scale={sharedScale} data-rules-shrink={columns?columns.shrink.toFixed(3):undefined}>
     <div className="registered-card-frame__surface" ref={surfaceRef}>
       <img className="registered-card-frame__scan" src={imageUrl} alt={name} referrerPolicy="no-referrer" />
+      <span className="registered-card-frame__corner-fill registered-card-frame__corner-fill--tl" aria-hidden="true" />
+      <span className="registered-card-frame__corner-fill registered-card-frame__corner-fill--tr" aria-hidden="true" />
+      <span className="registered-card-frame__corner-fill registered-card-frame__corner-fill--bl" aria-hidden="true" />
+      <span className="registered-card-frame__corner-fill registered-card-frame__corner-fill--br" aria-hidden="true" />
       {fields.map((field,index)=>{
         const entry=entries[index];
         if(!entry)return null;
