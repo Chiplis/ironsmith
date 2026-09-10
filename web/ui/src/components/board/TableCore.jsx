@@ -68,7 +68,7 @@ export default function TableCore({
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const tableRef = useRef(null);
   const [openDecklist, setOpenDecklist] = useState(null);
-  const [tableToolsExpanded, setTableToolsExpanded] = useState(true);
+  const [tableToolsExpanded, setTableToolsExpanded] = useState(false);
   const {
     portraitCompactViewport,
     landscapeMobileViewport,
@@ -261,6 +261,27 @@ export default function TableCore({
             {middleUtilityControls}
           </div>
         ) : null}
+        {zoneActionControls ? (
+          <div className="table-header-tools-popover-wrap">
+            <button
+              type="button"
+              className="table-tools-toggle table-header-tools-toggle"
+              aria-expanded={tableToolsExpanded}
+              aria-controls="table-header-tool-popover"
+              aria-label={t(tableToolsExpanded ? "action.hideTableTools" : "action.showTableTools")}
+              title={t(tableToolsExpanded ? "action.hideTableTools" : "action.showTableTools")}
+              onClick={() => setTableToolsExpanded((expanded) => !expanded)}
+            >
+              {tableToolsExpanded ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
+            </button>
+            {tableToolsExpanded ? (
+              <div id="table-header-tool-popover" className="table-header-tools-popover" role="dialog" aria-label={t("settings.quick.eyebrow")}>
+                <DiagnosticsSheet />
+                {zoneActionControls}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       {!dockStackRailInBoard ? (
         <StackTimelineRail
@@ -320,12 +341,13 @@ export default function TableCore({
           </div>
         ) : null}
       </div>
-      <div className="table-persistent-utility-strip" aria-label="Table utilities">
-        <DiagnosticsSheet />
-        <div id="table-utility-actions" className="table-inline-utility-actions" hidden={!tableToolsExpanded}>
-          {zoneActionControls}
-        </div>
-        {zoneActionControls ? (
+      {!sharedMiddleControls ? (
+        <div className="table-persistent-utility-strip" aria-label="Table utilities">
+          <DiagnosticsSheet />
+          <div id="table-utility-actions" className="table-inline-utility-actions" hidden={!tableToolsExpanded}>
+            {zoneActionControls}
+          </div>
+          {zoneActionControls ? (
           <button
             type="button"
             className="table-tools-toggle"
@@ -341,8 +363,9 @@ export default function TableCore({
               <ChevronRight aria-hidden="true" />
             )}
           </button>
-        ) : null}
-      </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   ) : null;
   const planarZoneElement = (

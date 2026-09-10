@@ -4020,6 +4020,32 @@ button:disabled,
   background: #090c0e;
 }
 .table-persistent-utility-strip .table-tools-toggle { margin-left: auto; flex-shrink: 0; }
+.table-header-tools-popover-wrap { position: relative; flex: 0 0 auto; }
+.table-header-tools-toggle { display: inline-flex; align-items: center; justify-content: center; width: 26px; min-height: 26px; padding: 0; }
+.table-header-tools-toggle svg { width: 14px; height: 14px; }
+.table-header-tools-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 180;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  min-width: min(860px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  padding: 8px;
+  background: rgba(9, 12, 14, 0.97);
+  border: 1px solid rgba(205, 178, 122, 0.36);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.48);
+}
+.table-header-tools-popover > .table-zone-action-controls {
+  flex: 1 1 auto;
+  min-width: 0;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(112px, 1fr);
+  gap: 6px;
+}
+.table-header-tools-popover > .table-zone-action-button { flex: 0 0 auto; }
 .table-inline-utility-actions {
   flex: 1 1 0;
   min-width: 0;
