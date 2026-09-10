@@ -25,7 +25,9 @@
 .interactive-card-frame__rules[data-fit-text="true"] .interactive-card-frame__ability {
   font-size: inherit;
   line-height: 1.24;
-  padding: calc(clamp(5px, 1.35cqw, 8px) * var(--card-rules-spacing-scale, 1));
+  /* The ability box is a pseudo-element outside the text flow; the text keeps
+     the same position whether or not a line is wrapped in a button. */
+  padding: 0;
 }
 .interactive-card-frame__rules[data-fit-text="true"] .inspector-flavor-text {
   padding-top: calc(8px * var(--card-rules-spacing-scale, 1));

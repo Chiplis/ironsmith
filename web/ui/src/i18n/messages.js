@@ -1,6 +1,7 @@
 export const messages = {
   en: {
     "card.previewDetails": "Card details",
+    "card.manaAbility.add": "Add",
     "app.menu": "Menu",
     "app.settings": "Settings",
     "app.openNavigationMenu": "Open navigation menu",
@@ -153,6 +154,7 @@ export const messages = {
   },
   es: {
     "card.previewDetails": "Detalles de la carta",
+    "card.manaAbility.add": "Agrega",
     "app.menu": "Menu",
     "app.settings": "Ajustes",
     "app.openNavigationMenu": "Abrir menu de navegacion",

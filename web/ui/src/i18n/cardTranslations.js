@@ -1,6 +1,6 @@
 import { cardRouteKey, fetchScryfallLocalizedCardTranslation } from "@/lib/scryfall";
 import { loadGeneratedTextTranslation } from "./generatedTextTranslations";
-import { translationForFace } from "./cardTranslationFace";
+import { hasTranslatedFields, translationForFace } from "./cardTranslationFace";
 
 const cardI18nBucketCache = new Map();
 const officialCardTranslationCache = new Map();
@@ -64,8 +64,11 @@ export async function loadOfficialCardTranslation(locale, cardName, oracleId = n
     officialCardTranslationCache.set(cacheKey, (async () => {
       const byOracle = await lookupCardI18nBucket(locale, "by-oracle", oracleKey);
       if (byOracle) return byOracle;
+      // A by-name hit can be another card whose face shares this name (older
+      // buckets let "Emeritus of Conflict // Lightning Bolt" take the Lightning
+      // Bolt route). If nothing for this face survives, ask Scryfall instead.
       const byName = await lookupCardI18nBucket(locale, "by-name", route);
-      if (byName) return byName;
+      if (byName && hasTranslatedFields(translationForFace(byName, cardName))) return byName;
       return fetchScryfallLocalizedCardTranslation(cardName, locale).catch(() => null);
     })());
   }

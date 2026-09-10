@@ -1,3 +1,5 @@
+import { messages } from '../i18n/messages.js';
+
 // Deliberately accept only pure, fixed mana production. Conditions, spending
 // restrictions, triggers, and additional effects must retain their own lines.
 export function simpleManaAbility(line) {
@@ -18,12 +20,34 @@ function localizedTemplate(line, output) {
   return { prefix: line.slice(0, start), suffix: line.slice(end) };
 }
 
+// Lands produce mana through intrinsic abilities the engine words in English
+// and no printing translates ("{T}: Add {U}."), so they stay English even when
+// a card's other text is official Spanish. Fixed mana production is a closed
+// phrase: swap its verb for the interface language's when the line was never
+// translated. Anything already localized, or with conditions, is left alone.
+// Oracle wording of dual lands already joins the outputs ("Add {U} or {R}").
+const FIXED_MANA_CHOICES = /^(\(?)([^:]+):\s*Add\s+((?:\{[WUBRGC]\}\s*)+(?:,?\s*or\s+(?:\{[WUBRGC]\}\s*)+|,\s*(?:\{[WUBRGC]\}\s*)+)*)\.(\)?)$/i;
+export function localizeSimpleManaLine(line, source, locale = 'en') {
+  const verb = messages[locale]?.['card.manaAbility.add'];
+  if (!verb || locale === 'en' || line !== source) return { line, localized: false };
+  const match = String(line).trim().match(FIXED_MANA_CHOICES);
+  if (!match) return { line, localized: false };
+  const [, open, cost, outputs, close] = match;
+  const choices = outputs.split(/\s*,?\s*\bor\b\s*|\s*,\s*/i).map(choice => choice.replace(/\s/g, '')).filter(Boolean);
+  const joined = new Intl.ListFormat(locale, { style: 'long', type: 'disjunction' }).format(choices);
+  return { line: `${open}${cost.trim()}: ${verb} ${joined}.${close}`, localized: true };
+}
+
 export function groupManaAbilities(view, locale = 'en') {
   const rows = [];
   const groups = new Map();
-  view.lines.forEach((line, index) => {
-    const sources = view.sourceLines?.[index] || [line];
+  let localized = false;
+  view.lines.forEach((displayed, index) => {
+    const sources = view.sourceLines?.[index] || [displayed];
     const ability = sources.length === 1 ? simpleManaAbility(sources[0]) : null;
+    const local = sources.length === 1 ? localizeSimpleManaLine(displayed, sources[0], locale) : { line: displayed, localized: false };
+    const line = local.line;
+    localized ||= local.localized;
     const template = ability && localizedTemplate(line, ability.output);
     const actions = view.actions.get(index) || [];
     // Keep localized cost wording and sentence structure identical, too.
@@ -45,7 +69,7 @@ export function groupManaAbilities(view, locale = 'en') {
       option.actions.push(...actions);
     }
   });
-  const formatter = new Intl.ListFormat(view.translated ? locale : 'en', { style: 'long', type: 'disjunction' });
+  const formatter = new Intl.ListFormat(view.translated || localized ? locale : 'en', { style: 'long', type: 'disjunction' });
   const actions = new Map(), manaGroups = new Map();
   const lines = rows.map((row, index) => {
     if (row.actions.length) actions.set(index, row.actions);

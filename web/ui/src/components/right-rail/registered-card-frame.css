@@ -4,7 +4,7 @@
 .registered-card-frame__patch { position:absolute; pointer-events:none; z-index:1; }
 .registered-card-frame__field { position:absolute; z-index:2; min-width:0; }
 .registered-card-frame__field[data-replaced="true"] { display:flex; }
-.registered-card-frame__field .interactive-card-frame__rules { padding:0!important; border:0; box-shadow:none; background:none; overflow:hidden; }
+.registered-card-frame__field .interactive-card-frame__rules { padding:0!important; border:0; box-shadow:none; background:none; overflow:hidden; line-height:var(--registered-field-line-height,1.2); }
 .registered-card-frame__field .interactive-card-frame__rule-line { font-weight:400; text-shadow:none; line-height:var(--registered-field-line-height,1.2); color:var(--registered-field-ink,var(--card-frame-ink)); }
 /* Registered fields already sit on the printed baseline grid: the preview-wide
    clamp for assembled frames would shrink or enlarge them away from the scan. */
@@ -25,4 +25,9 @@
 .registered-card-frame__hotspot:not(:disabled):hover, .registered-card-frame__hotspot:focus-visible,
 .registered-card-frame__mana-hotspots button:not(:disabled):hover,.registered-card-frame__mana-hotspots button:focus-visible,
 .registered-card-frame__field[data-stack-highlighted="true"] { outline:2px solid #deb963; outline-offset:2px; border-radius:2px; }
-.registered-card-frame__action { color:inherit; background:none; border:0; padding:0; width:100%; text-align:left; }
+/* A block button with the field's own leading: the UI line-height a button
+   inherits would add a strut to every printed line and force the fitter to
+   shrink the whole text box. */
+.registered-card-frame__action { display:block; color:inherit; background:none; border:0; padding:0; margin:0; width:100%; text-align:left; font:inherit; line-height:var(--registered-field-line-height,1.2); }
+/* Flowed paragraphs: a block button so the field's text height is its own. */
+.registered-card-frame__action > .interactive-card-frame__rule-line { display:block; }

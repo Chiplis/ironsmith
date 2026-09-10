@@ -18,3 +18,8 @@ export function translationForFace(translation, cardName) {
   return {...translation, englishName: names[index], name: field('name'),
     typeLine: field('typeLine'), oracleText: field('oracleText')};
 }
+
+// A translation carries something to show for the requested face.
+export function hasTranslatedFields(translation) {
+  return Boolean(translation && (String(translation.name || '').trim() || String(translation.typeLine || '').trim() || String(translation.oracleText || '').trim()));
+}

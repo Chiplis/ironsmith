@@ -145,10 +145,141 @@ export function registeredFieldLayouts(fields, measureFor, { fallbackLineHeight 
     const region = item.field.region;
     if (region) {
       const top = Math.max(region.y, y);
-      return {size:item.size,lineHeight,bounds:{x:Math.max(region.x,bounds.x),y:top,
+      return {size:item.size,lineHeight,span,bounds:{x:Math.max(region.x,bounds.x),y:top,
         width:Math.min(width,region.x+region.width-Math.max(region.x,bounds.x)),
         height:Math.min(Math.max(height,region.y+region.height-top),region.y+region.height-top)}};
     }
-    return { size: item.size, lineHeight, bounds: { x: bounds.x, width, y, height } };
+    return { size: item.size, lineHeight, span, bounds: { x: bounds.x, width, y, height } };
+  });
+}
+
+// Lay a text box's replaced paragraphs out as one column at the printed type
+// size. Each paragraph keeps its printed top unless the one above it grew, in
+// which case it moves down by no less than `minGap`. When the column overruns
+// `limit`, the printed gaps between paragraphs give up their slack first and
+// only then does `shrink` (< 1) ask for smaller type. `displaced` says the
+// column no longer matches the registered ink, so every printed paragraph in
+// it has to be masked or the moved text would land on printed lettering.
+// Items are {index, top, footprint, natural|null} sorted by top; every measure
+// is a fraction of the scan height.
+export function registeredColumnFlow(items, { limit, minGap, tolerance = 0 }) {
+  if (!items.length) return { positions: new Map(), shrink: 1, displaced: false };
+  const heights = items.map(item => item.natural ?? item.footprint);
+  const tops = [];
+  let cursor = -Infinity;
+  items.forEach((item, i) => {
+    const top = i ? Math.max(item.top, cursor + minGap) : item.top;
+    tops.push(top);
+    cursor = top + heights[i];
+  });
+  let shrink = 1;
+  if (cursor > limit + tolerance) {
+    const overflow = cursor - limit;
+    const slack = tops.map((top, i) => i ? Math.max(0, top - (tops[i - 1] + heights[i - 1]) - minGap) : 0);
+    const total = slack.reduce((sum, value) => sum + value, 0);
+    const consumed = total > 0 ? Math.min(1, overflow / total) : 0;
+    for (let i = 1; i < tops.length; i++) tops[i] = tops[i - 1] + heights[i - 1] + minGap + slack[i] * (1 - consumed);
+    const bottom = tops[tops.length - 1] + heights[heights.length - 1];
+    if (bottom > limit + tolerance && bottom > tops[0]) shrink = Math.max(0, (limit - tops[0]) / (bottom - tops[0]));
+  }
+  const displaced = items.some((item, i) => Math.abs(tops[i] - item.top) > tolerance);
+  return {
+    positions: new Map(items.map((item, i) => [item.index, { top: tops[i], bottom: tops[i] + heights[i] }])),
+    shrink,
+    displaced,
+  };
+}
+
+const FLOWING_KINDS = ['rule', 'flavor'];
+// The text box of each face as one column: where every rules and flavor
+// paragraph starts at the printed type size, the room the column has, and
+// whether the printed layout still holds. Measures are fractions of the scan
+// height; `measured` holds the natural text heights fields have reported.
+export function registeredColumns(fields,layouts,texts,measured,{unit,scale}) {
+  const height=unit*SCAN_ASPECT;
+  if(!height)return null;
+  const tolerance=1.5/height;
+  const positions=new Map(),forced=new Set();
+  let shrink=1;
+  const faces=[...new Set(fields.filter(f=>FLOWING_KINDS.includes(f.kind)&&f.bounds).map(f=>f.face))];
+  for(const face of faces) {
+    const indices=fields.map((field,index)=>index).filter(index=>{const f=fields[index];return FLOWING_KINDS.includes(f.kind)&&f.bounds&&f.face===face&&layouts[index];})
+      .sort((a,b)=>layouts[a].bounds.y-layouts[b].bounds.y);
+    if(!indices.length)continue;
+    // Only a plain column flows: paragraphs stacked over one another. Level
+    // bands, split faces and boxes set beside the text keep their registered
+    // places and the per-field fitter.
+    const widest=indices.map(index=>fields[index].bounds).reduce((a,b)=>b.width>a.width?b:a);
+    const plain=indices.every(index=>{
+      const b=fields[index].bounds;
+      const overlap=Math.min(b.x+b.width,widest.x+widest.width)-Math.max(b.x,widest.x);
+      return overlap>=Math.min(b.width,widest.width)*.6;
+    });
+    if(!plain)continue;
+    const first=layouts[indices[0]].bounds.y;
+    const regions=indices.map(index=>fields[index].region).filter(Boolean);
+    const statsTop=Math.min(...fields.filter(f=>f.kind==='stats'&&f.bounds&&f.face===face).map(f=>f.bounds.y));
+    const limit=regions.length?Math.min(...regions.map(r=>r.y+r.height)):Math.min(statsTop>first?statsTop:1,.875)-.006;
+    const pitch=median(indices.map(index=>layouts[index].lineHeight*layouts[index].size/SCAN_ASPECT).filter(Boolean))||.03;
+    // Footprints are the printed paragraphs' line boxes, measured the same way
+    // the browser reports the replacement text, so a translation with the
+    // printed line count lands exactly on the printed ink.
+    const items=indices.map(index=>{
+      const field=fields[index],layout=layouts[index];
+      const report=measured.get(index);
+      const natural=report&&report.unit===unit&&report.scale===scale&&report.text===texts[index]?report.px/height:null;
+      const footprint=layout.span??Math.max(0,field.bounds.y+field.bounds.height-layout.bounds.y);
+      return {index,top:layout.bounds.y,footprint,natural};
+    });
+    // Paragraphs may close up to the tightest gap the printing itself used.
+    const printedGaps=items.slice(1).map((item,i)=>item.top-(items[i].top+items[i].footprint)).filter(gap=>gap>0);
+    const minGap=Math.min(pitch*.3,...printedGaps);
+    // The printed ink itself never overruns its box: the column reaches at
+    // least as far as the lowest registered line.
+    const floor=Math.max(limit,...items.map(item=>item.top+item.footprint));
+    const flow=registeredColumnFlow(items,{limit:floor,minGap,tolerance});
+    for(const [index,place] of flow.positions)positions.set(index,{top:place.top,bottom:place.bottom,limit:floor,footprint:items.find(item=>item.index===index).footprint});
+    if(flow.displaced)forced.add(face);
+    // Smaller type is a last resort, and only once every paragraph has reported
+    // its height at the current scale; a stale or missing measurement would
+    // otherwise ratchet the shared scale down one notch per render.
+    if(items.every(item=>item.natural!=null))shrink=Math.min(shrink,flow.shrink);
+  }
+  return {positions,forced,shrink};
+}
+
+
+// OCR sometimes runs a name into the generic mana digit beside it ("Yawgmoth,
+// Thran Physician 2"), so the name's box covers the digit and the mask erases
+// it. Trim such a line back to the card name by the face's advance widths and
+// stop translated names where the cost begins.
+const MANA_SUFFIX = /^(?:\s*(?:\d+|[xyzwubrgcsp]|\{[^}]*\}))+\s*$/i;
+const normalizeLine = text => String(text || '').normalize('NFKC').replace(/\s+/g, ' ').trim();
+export function trimRegisteredNameCosts(fields, measure) {
+  return fields.map(field => {
+    if (field.kind !== 'name' || field.lines?.length !== 1 || !field.bounds) return field;
+    const line = field.lines[0];
+    const lineText = normalizeLine(line.text), name = normalizeLine(field.text);
+    if (!name || lineText.length <= name.length || !lineText.toLowerCase().startsWith(name.toLowerCase())) return field;
+    if (!MANA_SUFFIX.test(lineText.slice(name.length))) return field;
+    const full = measure(lineText)?.width, kept = measure(name)?.width;
+    if (!full || !kept || kept >= full) return field;
+    // The OCR box ends at the last mana symbol. Printed pips are discs about
+    // .7 of the line height wide (23px in a 34px line on the DMR Yawgmoth
+    // scan), set a quarter line after the name, so the name ends well before
+    // the digit glyph's advance would suggest; a box that reached the disc
+    // would let the mask nibble the first pip, one that stopped short would
+    // leave the last letter's edge on the card.
+    const pips = lineText.slice(name.length).match(/\d+|[a-z]|\{[^}]*\}/gi)?.length || 1;
+    const disc = line.height * SCAN_ASPECT;
+    const bySymbols = line.width - pips * disc * .7 - disc * .25;
+    const width = Math.max(0, Math.min(line.width * kept / full, bySymbols));
+    const limit = line.x + width + disc * .2;
+    return {
+      ...field,
+      limit: Math.min(field.limit ?? 1, limit),
+      lines: [{...line, text: name, width}],
+      bounds: {...field.bounds, width: Math.min(field.bounds.width, line.x + width - field.bounds.x)},
+    };
   });
 }

@@ -879,8 +879,10 @@ export async function fetchScryfallLocalizedCardTranslation(cardName, locale) {
     const englishTokens = wordTokens(firstFaceValue(englishCard, "oracle_text"));
     const candidates = (payload?.data || [])
       .map((card) => localizedCardPayload(card, targetLang))
+      // Basic lands carry their large mana symbol as a bare letter ("B"): text
+      // without a single word is not a translation either.
       .map((card) => (
-        card && card.oracleText && looksUntranslated(englishTokens, card.oracleText)
+        card && card.oracleText && (wordTokens(card.oracleText).size === 0 || looksUntranslated(englishTokens, card.oracleText))
           ? { ...card, oracleText: "" }
           : card
       ))
@@ -893,7 +895,13 @@ export async function fetchScryfallLocalizedCardTranslation(cardName, locale) {
     const translated = candidates.find((card) => card.oracleText && parenGroupCount(card.oracleText) >= englishParens)
       || candidates.find((card) => card.oracleText)
       || candidates[0];
-    return translated || null;
+    if (!translated) return null;
+    // Not every printing records printed_name/printed_type_line; borrow them
+    // from the newest sibling printing that does.
+    for (const key of ["name", "typeLine"]) {
+      if (!translated[key]) translated[key] = candidates.find((card) => card[key])?.[key] || "";
+    }
+    return translated;
   })()
     .catch((error) => {
       localizedCardTranslationCache.delete(cacheKey);

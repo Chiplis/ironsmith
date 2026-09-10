@@ -83,6 +83,23 @@ export function inpaintGlyphMask({data,width,height},mask) {
   return {data:out,width,height,mask};
 }
 
+// Panel bevels and rules that run along the edge of a text region are frame,
+// not lettering. Left in the ink, a descender that touches one merges with it
+// into a component far too wide to match any glyph, and that letter stays on
+// the card under the replacement text (the "p" of Relámpago). Clear rows and
+// columns in the outer band that are inked almost end to end.
+export function clearEdgeRules(ink,width,height,{band=3,coverage=.7}={}) {
+  for(let row=0;row<height;row++)if(row<band||row>=height-band) {
+    let count=0;for(let px=0;px<width;px++)count+=ink[row*width+px];
+    if(count>width*coverage)for(let px=0;px<width;px++)ink[row*width+px]=0;
+  }
+  for(let col=0;col<width;col++)if(col<band||col>=width-band) {
+    let count=0;for(let py=0;py<height;py++)count+=ink[py*width+col];
+    if(count>height*coverage)for(let py=0;py<height;py++)ink[py*width+col]=0;
+  }
+  return ink;
+}
+
 export function fontGuidedPanel(scan,{family,weight=400,italic=false,allowItalic=false,symbols=false,text='',section='',outlined=false}) {
   const {data,width,height}=scan,bins=new Map();
   for(let p=0;p<width*height;p++) {
@@ -95,6 +112,7 @@ export function fontGuidedPanel(scan,{family,weight=400,italic=false,allowItalic
     const v=(data[p*4]+data[p*4+1]+data[p*4+2])/3;
     ink[p]=outlined ? (Math.min(data[p*4],data[p*4+1],data[p*4+2])>165 && Math.max(data[p*4],data[p*4+1],data[p*4+2])-Math.min(data[p*4],data[p*4+1],data[p*4+2])<65?1:0) : (light?v>paper+65:v<paper-55)?1:0;
   }
+  clearEdgeRules(ink,width,height);
   const bank=[...glyphBank(family,weight,italic,text),...(allowItalic?glyphBank(family,400,true,text):[])];
   const visited=new Uint8Array(ink.length),accepted=new Uint8Array(ink.length),components=[];
   for(let p=0;p<ink.length;p++)if(ink[p]&&!visited[p]) {

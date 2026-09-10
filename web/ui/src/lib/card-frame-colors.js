@@ -790,6 +790,17 @@ function futureFrameGeometry(scan) {
   return style;
 }
 
+// Modern basic lands print only their large mana symbol in the text box, so
+// the box is kept as printed. Printings that set flavor text or real reminder
+// text there (The Hobbit basics, for example) must be masked like any other
+// card, or the printed lettering shows through the live text laid over it.
+// Scryfall records the bare symbol as a single letter (printed_text "B").
+export function basicLandBoxIsTextless(printing) {
+  if (!/\bBasic\b.*\bLand\b/.test(printing?.type_line || '') || !['2003', '2015'].includes(printing?.frame)) return false;
+  if (String(printing?.flavor_text || '').trim()) return false;
+  return !/\p{L}{3,}/u.test(String(printing?.printed_text || ''));
+}
+
 async function sample(fullUrl, typography, printing, setSymbolUrl) {
   const layoutGap=sourceMaskLayoutGap(printing);
   if(layoutGap)return {'--source-frame-status':'original','--source-frame-fallback-reason':layoutGap};
@@ -931,7 +942,20 @@ async function sample(fullUrl, typography, printing, setSymbolUrl) {
         const inkTop = (lineHeight - metrics.fontBoundingBoxAscent - metrics.fontBoundingBoxDescent) / 2
           + metrics.fontBoundingBoxAscent - metrics.actualBoundingBoxAscent;
         style['--printed-rules-padding-top'] = `${Math.max(4, firstLine.y - boxes.rules.y - inkTop) / fullScan.width * 100}cqw`;
-        style['--printed-rules-padding-left'] = `${Math.max(6, firstLine.x - boxes.rules.x + metrics.actualBoundingBoxLeft) / fullScan.width * 100}cqw`;
+        // Text set on the printing's centre line (dual lands, promos) starts far
+        // from the box edge. That inset is not a padding: kept as one, a longer
+        // translation wraps inside a narrow column and its second line falls
+        // back to the box edge. No printing indents its text by more than a
+        // seventh of the box, so centre the live text and give it the whole box.
+        const leftInset = firstLine.x - boxes.rules.x, rightInset = boxes.rules.x + boxes.rules.width - (firstLine.x + firstLine.width);
+        const centred = leftInset > boxes.rules.width * .15
+          || leftInset > boxes.rules.width * .1 && rightInset > boxes.rules.width * .1 && Math.abs(leftInset - rightInset) < boxes.rules.width * .08;
+        if (centred) {
+          style['--printed-rules-text-align'] = 'center';
+          style['--printed-rules-padding-left'] = `${6 / fullScan.width * 100}cqw`;
+        } else {
+          style['--printed-rules-padding-left'] = `${Math.max(6, firstLine.x - boxes.rules.x + metrics.actualBoundingBoxLeft) / fullScan.width * 100}cqw`;
+        }
       }
     }
     const masked=maskSourceFrame(fullScan,JSON.parse(style['--printed-layout']),stats,detectStatsPanelBounds(fullScan,stats),typography ? (patch,options)=>fontGuidedPanel(patch,{
@@ -940,7 +964,7 @@ async function sample(fullUrl, typography, printing, setSymbolUrl) {
       section:options.section,
       allowItalic:options.section==='rules',symbols:options.section==='rules'||options.section==='title'&&Boolean(printing.mana_cost)&&!manaMatch,
       text:options.section==='rules'?`${printing?.printed_text||printing?.oracle_text||''} ${printing?.flavor_text||''}`:options.section==='title'?(printing?.printed_name||printing?.name):options.section==='type'?(printing?.printed_type_line||printing?.type_line):options.section==='footer'?`${printing?.artist||''} Illus. Ilus. Wizards of the Coast Inc.`:`${printing?.power||''}/${printing?.toughness||''}`,
-    }):reconstructPanel,{title:titlePanel?.kind,type:typePanel?.kind,fontGuided:!!typography,setSymbol,manaMatch,icons,preserveRules:/\bBasic\b.*\bLand\b/.test(printing.type_line||'') && ['2003','2015'].includes(printing.frame),textBounds:Object.fromEntries(['title','type'].map(name=>[name,JSON.parse(style[`--printed-${name}-text-bounds`]||'null')]))});
+    }):reconstructPanel,{title:titlePanel?.kind,type:typePanel?.kind,fontGuided:!!typography,setSymbol,manaMatch,icons,preserveRules:basicLandBoxIsTextless(printing),textBounds:Object.fromEntries(['title','type'].map(name=>[name,JSON.parse(style[`--printed-${name}-text-bounds`]||'null')]))});
     if(masked) {
       const original=document.createElement('canvas');original.width=masked.width;original.height=masked.height;
       original.getContext('2d').putImageData(new ImageData(masked.data,masked.width,masked.height),0,0);

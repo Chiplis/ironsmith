@@ -1,11 +1,15 @@
 import { useLayoutEffect, useRef } from "react";
 import "@/styles/card-frame-text-fit.css";
 
-export default function CardFrameRulesBox({ children, label, onFit, refitKey }) {
+export default function CardFrameRulesBox({ children, label, onFit, onMeasure, refitKey }) {
   const boxRef = useRef(null);
   const fitRef = useRef(null);
   const onFitRef = useRef(onFit);
-  onFitRef.current = onFit;
+  const onMeasureRef = useRef(onMeasure);
+  useLayoutEffect(() => {
+    onFitRef.current = onFit;
+    onMeasureRef.current = onMeasure;
+  });
 
   useLayoutEffect(() => {
     const box = boxRef.current;
@@ -22,6 +26,20 @@ export default function CardFrameRulesBox({ children, label, onFit, refitKey }) 
       box.dataset.textOverflow = "false";
       const preferred = parseFloat(getComputedStyle(box).fontSize);
       const flavorPreferred = flavor ? parseFloat(getComputedStyle(flavor).fontSize) : preferred;
+      // The height the text needs at the preferred size, before any fitting:
+      // registered frames flow their paragraphs from it instead of shrinking.
+      if (onMeasureRef.current) {
+        let top = Infinity, bottom = -Infinity;
+        for (const node of box.querySelectorAll('.interactive-card-frame__rule-line')) {
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          const rect = range.getBoundingClientRect();
+          if (!rect.height) continue;
+          top = Math.min(top, rect.top);
+          bottom = Math.max(bottom, rect.bottom);
+        }
+        onMeasureRef.current(bottom > top ? bottom - top : 0);
+      }
       const apply = scale => {
         box.style.setProperty("--card-fitted-rules-font-size", `${preferred * scale}px`);
         box.style.setProperty("--card-fitted-flavor-font-size", `${flavorPreferred * scale}px`);

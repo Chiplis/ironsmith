@@ -424,6 +424,11 @@
 .interactive-card-frame-stage[data-source-frame="true"][style*="--printed-rules-font-size"] .interactive-card-frame__rule-line {
   line-height: var(--printed-rules-line-height);
 }
+/* Printings that centre their text keep the live text centred as well. */
+.interactive-card-frame-stage[data-source-frame="true"][style*="--printed-rules-text-align"] .interactive-card-frame__rules[data-fit-text="true"],
+.interactive-card-frame-stage[data-source-frame="true"][style*="--printed-rules-text-align"] .interactive-card-frame__rules[data-fit-text="true"] :is(.interactive-card-frame__rule-line, .interactive-card-frame__ability, .inspector-mana-line, .inspector-flavor-text) {
+  text-align: var(--printed-rules-text-align);
+}
 .interactive-card-frame-stage[data-source-frame="true"] .interactive-card-frame__inner::before,
 .interactive-card-frame-stage[data-source-frame="true"] .interactive-card-frame__inner::after,
 .interactive-card-frame-stage[data-source-frame="true"] .interactive-card-frame__art::before,

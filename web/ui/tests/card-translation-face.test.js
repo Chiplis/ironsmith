@@ -20,3 +20,15 @@ test('missing face fields fall back instead of borrowing another face',()=>{
   assert.equal(translationForFace(single,'Omniscience'),single);
   assert.equal(translationForFace(null,'Back'),null);
 });
+
+test('an alias face with nothing to show is not a translation', async () => {
+  const {hasTranslatedFields, translationForFace} = await import('../src/i18n/cardTranslationFace.js');
+  const shadow = {englishName: 'Emeritus of Conflict // Lightning Bolt', name: 'Emérita del conflicto', typeLine: '', oracleText: 'Daña primero.'};
+  assert.equal(hasTranslatedFields(translationForFace(shadow, 'Lightning Bolt')), false);
+  // A legacy bucket that joined both faces still resolves the face it names.
+  const joined = {...shadow, name: 'Emérita del conflicto // Relámpago', oracleText: 'Daña primero. // El Relámpago hace 3 puntos de daño a cualquier objetivo.'};
+  assert.equal(hasTranslatedFields(translationForFace(joined, 'Lightning Bolt')), true);
+  assert.equal(translationForFace(joined, 'Lightning Bolt').name, 'Relámpago');
+  assert.equal(hasTranslatedFields({englishName: 'Lightning Bolt', name: 'Relámpago', typeLine: '', oracleText: ''}), true);
+  assert.equal(hasTranslatedFields(null), false);
+});

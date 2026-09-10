@@ -648,30 +648,54 @@
   text-shadow: 0 1px rgba(255, 255, 255, 0.34);
 }
 
+/* The ability box is decoration only. Its border and padding live on a
+   pseudo-element that extends outside the text, so enabling or disabling an
+   ability, or wrapping a line in a button, never reflows the printing's rules
+   text or changes the fitted font size; the box may overflow into the gaps. */
 .interactive-card-frame__ability.inspector-oracle-line-action {
+  --ability-box-pad-x: clamp(5px, 1.35cqw, 8px);
+  --ability-box-pad-y: clamp(3px, 0.9cqw, 4.5px);
+  position: relative;
   grid-template-columns: minmax(0, 1fr);
   gap: 0;
   margin: 0;
   width: 100%;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.interactive-card-frame__ability.inspector-oracle-line-action::before {
+  content: "";
+  position: absolute;
+  inset: calc(-1 * var(--ability-box-pad-y)) calc(-1 * var(--ability-box-pad-x));
+  z-index: -1;
+  pointer-events: none;
   border: 1px solid color-mix(in srgb, var(--card-frame-accent) 48%, transparent);
   border-left: 3px solid var(--card-frame-accent);
   border-radius: 3px;
-  padding: clamp(5px, 1.35cqw, 8px);
   background: color-mix(in srgb, var(--card-frame-accent) 9%, transparent);
+  transition: background-color 110ms ease, border-color 110ms ease, box-shadow 110ms ease;
 }
 
-.interactive-card-frame__ability.inspector-oracle-line-action:hover,
-.interactive-card-frame__ability.inspector-oracle-line-action:focus-visible {
+.interactive-card-frame__ability.inspector-oracle-line-action:hover::before,
+.interactive-card-frame__ability.inspector-oracle-line-action:focus-visible::before {
   border-color: color-mix(in srgb, var(--card-frame-accent) 78%, #161616);
   border-left-color: var(--card-frame-accent);
   background: color-mix(in srgb, var(--card-frame-accent) 18%, white);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--card-frame-accent) 25%, transparent);
 }
 
-.interactive-card-frame__ability.inspector-oracle-line-action:disabled {
+.interactive-card-frame__ability.inspector-oracle-line-action:disabled::before {
   border-color: rgba(43, 42, 38, 0.18);
   border-left-color: rgba(43, 42, 38, 0.34);
   background: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+}
+
+.interactive-card-frame__ability.inspector-oracle-line-action:disabled {
   opacity: 0.68;
 }
 
@@ -3782,6 +3806,12 @@ button:disabled,
   border-color: transparent;
   background: transparent;
   box-shadow: none;
+}
+.inspector-ability-section:is(
+  [data-stack-highlighted="true"],
+  :has(> .inspector-oracle-line-action[data-available="true"]:not(:disabled):is(:hover, :focus-visible))
+) > .interactive-card-frame__ability.inspector-oracle-line-action::before {
+  opacity: 0;
 }
 @media (prefers-reduced-motion: reduce) {
   .inspector-ability-section::before,

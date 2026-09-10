@@ -43,8 +43,9 @@ test('different costs, restrictions, and extra effects stay separate', () => {
   ]) assert.equal(group(source).lines.length, 2, source);
 });
 
-test('missing translations keep the entire combined sentence in English', () => {
-  assert.deepEqual(group(text, text, [], 'es').lines, ['{T}: Add {G} or {W}.']);
+test('missing translations of fixed mana lines use the interface verb, or stay English without one', () => {
+  assert.deepEqual(group(text, text, [], 'es').lines, ['{T}: Agrega {G} o {W}.']);
+  assert.deepEqual(group(text, text, [], 'fr').lines, ['{T}: Add {G} or {W}.']);
 });
 
 test('identical complex costs and fixed multi-mana outputs combine', () => {
@@ -68,4 +69,21 @@ test('unrelated lines retain their action and index after grouping', () => {
   const view = group(source, source, [green, white, draw]);
   assert.deepEqual(view.lines, ['{T}: Add {G} or {W}.', draw.ability_text]);
   assert.equal(view.actions.get(1)[0], draw);
+});
+
+test('untranslated fixed mana production takes the interface language verb', () => {
+  const dual = group('{T}: Add {U}.\n{T}: Add {R}.', '{T}: Add {U}.\n{T}: Add {R}.', [], 'es');
+  assert.deepEqual(dual.lines, ['{T}: Agrega {U} o {R}.']);
+  assert.deepEqual(dual.sourceLines, [['{T}: Add {U}.', '{T}: Add {R}.']]);
+  assert.ok(dual.manaGroups.has(0));
+  const basic = group('({T}: Add {B}.)', '({T}: Add {B}.)', [], 'es');
+  assert.deepEqual(basic.lines, ['({T}: Agrega {B}.)']);
+  // Oracle reminder wording already joins a dual land's outputs.
+  assert.deepEqual(group('({T}: Add {U} or {R}.)', '({T}: Add {U} or {R}.)', [], 'es').lines, ['({T}: Agrega {U} o {R}.)']);
+  assert.deepEqual(group('{T}: Add {W}, {U}, or {B}.', '{T}: Add {W}, {U}, or {B}.', [], 'es').lines, ['{T}: Agrega {W}, {U} o {B}.']);
+  assert.deepEqual(group('{T}: Add {C}{C}.', '{T}: Add {C}{C}.', [], 'es').lines, ['{T}: Agrega {C}{C}.']);
+  // English stays English; official Spanish wording and conditional lines are untouched.
+  assert.deepEqual(group('{T}: Add {G}.', '{T}: Add {G}.', [], 'en').lines, ['{T}: Add {G}.']);
+  assert.deepEqual(group('{T}: Add {G}.', '{T}: Agrega {G}.', [], 'es').lines, ['{T}: Agrega {G}.']);
+  assert.deepEqual(group('{T}: Add one mana of any color.', '{T}: Add one mana of any color.', [], 'es').lines, ['{T}: Add one mana of any color.']);
 });

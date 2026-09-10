@@ -84,3 +84,92 @@ test('registrations match the pinned scan by path, or another language of the sa
   assert.equal(registrationForPrinting(catalog, {set: 'dmr', collector_number: '387'}), null);
   assert.equal(registrationForPrinting(catalog, null), null);
 });
+
+test('a flowed column keeps printed tops, closes gaps before shrinking, and flags displaced ink', async () => {
+  const {registeredColumnFlow} = await import('../src/lib/card-region-layout.js');
+  const items = [
+    {index: 0, top: .61, footprint: .027, natural: .027},
+    {index: 1, top: .653, footprint: .088, natural: .088},
+    {index: 2, top: .756, footprint: .12, natural: .10},
+  ];
+  // Everything fits where it was printed: nothing moves, nothing shrinks.
+  const still = registeredColumnFlow(items, {limit: .88, minGap: .01});
+  assert.equal(still.displaced, false);
+  assert.equal(still.shrink, 1);
+  assert.deepEqual([...still.positions.values()].map(p => +p.top.toFixed(3)), [.61, .653, .756]);
+  // A longer translation of the middle paragraph pushes the last one down into
+  // the room below it instead of shrinking the type.
+  const longer = registeredColumnFlow([items[0], {...items[1], natural: .1}, items[2]], {limit: .88, minGap: .01});
+  assert.equal(longer.displaced, true);
+  assert.equal(longer.shrink, 1);
+  assert.ok(Math.abs(longer.positions.get(2).top - .763) < 1e-9);
+  // When the column overruns the box even with the printed gaps closed to the
+  // minimum, it asks for exactly the type scale that would fit.
+  const crowded = registeredColumnFlow([items[0], {...items[1], natural: .13}, {...items[2], natural: .13}], {limit: .88, minGap: .01});
+  assert.equal(crowded.displaced, true);
+  assert.ok(crowded.shrink < 1 && crowded.shrink > .8, String(crowded.shrink));
+  const bottom = crowded.positions.get(2).bottom;
+  assert.ok(Math.abs((bottom - .61) * crowded.shrink - (.88 - .61)) < 1e-9);
+  // Unmeasured paragraphs occupy their printed footprint and are never moved.
+  const unknown = registeredColumnFlow(items.map(item => ({...item, natural: null})), {limit: .88, minGap: .01});
+  assert.equal(unknown.displaced, false);
+});
+
+test('columns are built per face from measured heights that still describe the current text', async () => {
+  const {registeredColumns} = await import('../src/lib/card-region-layout.js');
+  const fields = [
+    {kind: 'rule', face: 0, bounds: {x: .1, y: .61, width: .7, height: .026}},
+    {kind: 'rule', face: 0, bounds: {x: .1, y: .653, width: .7, height: .088}},
+    {kind: 'stats', face: 0, bounds: {x: .83, y: .9, width: .09, height: .035}},
+  ];
+  const layouts = [
+    {size: .04, lineHeight: 1, span: .03, bounds: {x: .1, y: .608, width: .7, height: .03}},
+    {size: .04, lineHeight: 1, span: .092, bounds: {x: .1, y: .651, width: .7, height: .2}},
+    {size: .04, lineHeight: 1, span: .035, bounds: {x: .83, y: .9, width: .09, height: .035}},
+  ];
+  const unit = 488, height = unit * SCAN_ASPECT;
+  const measured = new Map([[0, {px: .08 * height, unit, scale: 1, text: 'a'}], [1, {px: .05 * height, unit, scale: .9, text: 'b'}]]);
+  const columns = registeredColumns(fields, layouts, ['a', 'b', '2/4'], measured, {unit, scale: 1});
+  // The first paragraph tripled in height and pushes the second down; the
+  // second's stale report (another scale) counts as its printed footprint.
+  assert.ok(columns.forced.has(0));
+  assert.ok(columns.positions.get(1).top > .651);
+  assert.equal(columns.positions.get(1).limit, .869);
+  assert.equal(columns.shrink, 1);
+  assert.equal(registeredColumns(fields, layouts, ['a', 'b', '2/4'], measured, {unit: 0, scale: 1}), null);
+});
+
+test('level bands and side boxes are not flowed as one column', async () => {
+  const {registeredColumns} = await import('../src/lib/card-region-layout.js');
+  const fields = [
+    {kind: 'rule', face: 0, bounds: {x: .1, y: .62, width: .7, height: .05}},
+    {kind: 'rule', face: 0, bounds: {x: .1, y: .7, width: .15, height: .02}},
+    {kind: 'rule', face: 0, bounds: {x: .8, y: .7, width: .08, height: .03}},
+  ];
+  const layouts = fields.map(f => ({size: .04, lineHeight: 1, span: f.bounds.height, bounds: {...f.bounds}}));
+  const unit = 488, height = unit * SCAN_ASPECT;
+  const measured = new Map(fields.map((f, i) => [i, {px: .2 * height, unit, scale: 1, text: String(i)}]));
+  const columns = registeredColumns(fields, layouts, ['0', '1', '2'], measured, {unit, scale: 1});
+  assert.equal(columns.positions.size, 0);
+  assert.equal(columns.forced.size, 0);
+  assert.equal(columns.shrink, 1);
+});
+
+test('a generic mana digit run into the name line is trimmed off the name box', async () => {
+  const {trimRegisteredNameCosts} = await import('../src/lib/card-region-layout.js');
+  const measureName = text => ({width: text.length * 50});
+  const merged = {kind: 'name', text: 'Yawgmoth, Thran Physician', lines: [{text: 'Yawgmoth, Thran Physician 2', x: .1, y: .05, width: .54, height: .05}], bounds: {x: .1, y: .05, width: .54, height: .05}};
+  const [trimmed] = trimRegisteredNameCosts([merged], measureName);
+  assert.equal(trimmed.lines[0].text, 'Yawgmoth, Thran Physician');
+  // One printed pip: a disc .7 line heights wide after a quarter-line gap.
+  const disc = .05 * SCAN_ASPECT, expected = .54 - disc * .7 - disc * .25;
+  assert.ok(expected < .54 * 25 / 27, 'the disc estimate is the tighter one here');
+  assert.ok(Math.abs(trimmed.lines[0].width - expected) < 1e-9);
+  assert.ok(Math.abs(trimmed.bounds.width - expected) < 1e-9);
+  assert.ok(Math.abs(trimmed.limit - (.1 + expected + disc * .2)) < 1e-9, 'translations stop where the cost begins');
+  // Spelling variants, casing and translations are left alone.
+  const [variant] = trimRegisteredNameCosts([{...merged, lines: [{...merged.lines[0], text: 'Tarmogoyi'}], text: 'Tarmogoyf'}], measureName);
+  assert.equal(variant.lines[0].text, 'Tarmogoyi');
+  const [upper] = trimRegisteredNameCosts([{...merged, lines: [{...merged.lines[0], text: 'TREASURE'}], text: 'Treasure'}], measureName);
+  assert.equal(upper.lines[0].width, .54);
+});

@@ -8,7 +8,7 @@ import { pipeline } from "node:stream/promises";
 const ROOT = process.cwd();
 const DEFAULT_LOCALE = "es";
 const BULK_DATA_URL = "https://api.scryfall.com/bulk-data";
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 const USER_AGENT = "Ironsmith i18n asset builder (local development)";
 
 function parseArgs(argv) {
@@ -161,10 +161,19 @@ function looksUntranslated(englishTokens, printedText) {
   return shared / printedTokens.size >= 0.6;
 }
 
+// Scryfall records the large mana symbol printed on basic lands as its bare
+// letter (printed_text "B" for a Spanish Swamp). Text without a single word
+// is not a translation of the reminder text; treat it as absent so the card
+// falls back to English instead of showing a stray letter in its rules box.
+export function hasTranslatableWords(text) {
+  return wordTokens(text).size > 0;
+}
+
 function localizedPrintedText(english, localizedCard) {
   const printedText = firstFaceValue(localizedCard, "printed_text");
   if (
     !printedText
+    || !hasTranslatableWords(printedText)
     || normalizeText(printedText) === english.textNorm
     || looksUntranslated(english.tokens, printedText)
   ) {
@@ -192,6 +201,43 @@ function translatedPayload(english, localizedCard, locale, printedText) {
     set: localizedCard.set || null,
     collectorNumber: localizedCard.collector_number || null,
   };
+}
+
+// Scryfall does not record printed_name/printed_type_line on every localized
+// printing (Game Night Lightning Bolt has Spanish text but no type line). The
+// chosen printing supplies the rules text; an empty name or type line is
+// filled from the newest sibling printing of the same card that has one.
+export function rememberFieldFills(fills, oracleId, fields, releasedAt) {
+  const entry = fills.get(oracleId) || {};
+  for (const [key, value] of Object.entries(fields)) {
+    if (!value) continue;
+    if (!entry[key] || releasedAt > entry[key].releasedAt) entry[key] = { value, releasedAt };
+  }
+  fills.set(oracleId, entry);
+}
+
+export function backfillPayloadFields(payload, fills) {
+  if (!fills) return payload;
+  const filled = { ...payload };
+  for (const key of ["name", "typeLine"]) {
+    if (!filled[key] && fills[key]?.value) filled[key] = fills[key].value;
+  }
+  return filled;
+}
+
+// By-name routes: a card's own full name always wins its route. Face routes
+// of multi-face cards only fill routes no whole card owns, so a new
+// double-faced card whose back face is called "Lightning Bolt" cannot shadow
+// the real Lightning Bolt (the UI looks cards up by name first).
+export function nameRouteEntries(payloads, faceRoutesFor) {
+  const byRoute = new Map();
+  for (const payload of payloads) byRoute.set(payload.route, payload);
+  for (const payload of payloads) {
+    for (const faceRoute of faceRoutesFor(payload)) {
+      if (faceRoute && !byRoute.has(faceRoute)) byRoute.set(faceRoute, payload);
+    }
+  }
+  return [...byRoute.entries()];
 }
 
 // Scryfall bulk files are a JSON array with one card object per line; parsing
@@ -349,10 +395,15 @@ console.log(`  indexed ${englishByOracle.size} English cards`);
 
 console.log(`Pass 2/2: selecting best ${locale} printing per card...`);
 const byOracle = new Map();
+const fieldFills = new Map();
 for await (const card of streamBulkCards(bulkFile)) {
   if (card?.lang !== locale || !card?.oracle_id) continue;
   const english = englishByOracle.get(card.oracle_id);
   if (!english || !english.route) continue;
+  rememberFieldFills(fieldFills, card.oracle_id, {
+    name: firstFaceValue(card, "printed_name"),
+    typeLine: firstFaceValue(card, "printed_type_line"),
+  }, String(card.released_at || ""));
   // Rank printings: 2 = localized text keeping at least as many parenthetical
   // (reminder) groups as the English oracle text, 1 = any localized text,
   // 0 = name/typeLine only. Newest printing wins within each tier.
@@ -373,16 +424,12 @@ for await (const card of streamBulkCards(bulkFile)) {
 
 await rm(path.join(outRoot, "by-oracle"), { recursive: true, force: true });
 await rm(path.join(outRoot, "by-name"), { recursive: true, force: true });
-const oracleEntries = [];
-const nameEntries = [];
-for (const { payload } of byOracle.values()) {
-  oracleEntries.push([payload.oracleId, payload]);
-  nameEntries.push([payload.route, payload]);
-  const english = englishByOracle.get(payload.oracleId);
-  for (const faceRoute of english?.faceRoutes || []) {
-    if (faceRoute !== payload.route) nameEntries.push([faceRoute, payload]);
-  }
-}
+const payloads = [...byOracle.values()].map(({ payload }) => backfillPayloadFields(payload, fieldFills.get(payload.oracleId)));
+const oracleEntries = payloads.map((payload) => [payload.oracleId, payload]);
+const nameEntries = nameRouteEntries(
+  payloads,
+  (payload) => englishByOracle.get(payload.oracleId)?.faceRoutes || []
+);
 const oracleBuckets = await writeBuckets(path.join(outRoot, "by-oracle"), oracleEntries);
 const nameBuckets = await writeBuckets(path.join(outRoot, "by-name"), nameEntries);
 
