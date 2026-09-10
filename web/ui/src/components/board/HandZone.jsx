@@ -220,7 +220,7 @@ function buildHandCardRowStyle(index, total, { dims, activeIndex = null, activeI
     const sign = index < activeIndex ? -1 : 1;
     // Open a small reading corridor around the centered card. The nearby
     // cards move apart the most, while farther cards preserve the hand shape.
-    pushX = sign * Math.max(0, dims.neighborPush * 0.62 - distance * 10);
+    pushX = sign * Math.max(0, dims.neighborPush * 0.45 - distance * 8);
   }
 
   const fanRotate = isActive && centerActive && !activeIsPlayable ? "0deg" : `${base.rot.toFixed(2)}deg`;
@@ -232,7 +232,7 @@ function buildHandCardRowStyle(index, total, { dims, activeIndex = null, activeI
   // hover targets next to the active reading card.
   const cardScale = isActive
     ? MANABREW_HAND_FAN_PARAMS.hoverScale
-    : (activeIndex !== null && activeIndex >= 0 ? 0.88 : 1);
+    : (activeIndex !== null && activeIndex >= 0 ? 0.94 : 1);
 
   return {
     flex: `0 0 ${dims.cardW}px`,
