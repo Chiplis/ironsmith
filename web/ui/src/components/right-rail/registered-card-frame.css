@@ -31,3 +31,5 @@
 .registered-card-frame__action { display:block; color:inherit; background:none; border:0; padding:0; margin:0; width:100%; text-align:left; font:inherit; line-height:var(--registered-field-line-height,1.2); }
 /* Flowed paragraphs: a block button so the field's text height is its own. */
 .registered-card-frame__action > .interactive-card-frame__rule-line { display:block; }
+/* A printing that centres a line on its text box keeps it centred. */
+.registered-card-frame__field[data-centred="true"] :is(.interactive-card-frame__rule-line, .registered-card-frame__action, .inspector-mana-line) { text-align:center; }

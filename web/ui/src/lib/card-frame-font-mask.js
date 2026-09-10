@@ -39,20 +39,47 @@ export function glyphSimilarity(component, template) {
   return union?intersection/union:0;
 }
 
+// Frame material is not one colour. Split and gradient text boxes (dual-land
+// promos, two-tone panels) shade from one side to the other, so a single paper
+// level sits between the two halves: on the lighter side only glyph cores pass
+// the ink threshold, leaving pale mana discs and anti-aliased halos behind, and
+// the fill finds no donor paper to rebuild from. Estimate the level per tile
+// and interpolate between tile centres. A uniform panel yields one level in
+// every tile, so its masking is unchanged, and a region smaller than a tile
+// keeps a single global level.
+export function paperField({data,width,height},{tile=32}={}) {
+  const cols=Math.max(1,Math.round(width/tile)),rows=Math.max(1,Math.round(height/tile));
+  const levels=new Float64Array(cols*rows);
+  for(let ty=0;ty<rows;ty++)for(let tx=0;tx<cols;tx++) {
+    const x0=Math.floor(tx*width/cols),x1=Math.max(x0+1,Math.floor((tx+1)*width/cols));
+    const y0=Math.floor(ty*height/rows),y1=Math.max(y0+1,Math.floor((ty+1)*height/rows));
+    const bins=new Map();
+    for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++) {
+      const p=y*width+x,v=Math.round((data[p*4]+data[p*4+1]+data[p*4+2])/3/16);
+      bins.set(v,(bins.get(v)||0)+1);
+    }
+    levels[ty*cols+tx]=([...bins].sort((a,b)=>b[1]-a[1])[0]?.[0]??0)*16;
+  }
+  return (x,y)=>{
+    const fx=Math.min(cols-1,Math.max(0,x*cols/width-.5)),fy=Math.min(rows-1,Math.max(0,y*rows/height-.5));
+    const x0=Math.floor(fx),y0=Math.floor(fy),x1=Math.min(cols-1,x0+1),y1=Math.min(rows-1,y0+1);
+    const dx=fx-x0,dy=fy-y0;
+    return levels[y0*cols+x0]*(1-dx)*(1-dy)+levels[y0*cols+x1]*dx*(1-dy)
+      +levels[y1*cols+x0]*(1-dx)*dy+levels[y1*cols+x1]*dx*dy;
+  };
+}
+
 // Fill only accepted glyph footprints. Boundary propagation retains local
 // lighting; repeated relaxation avoids donor stripes and rectangular patches.
 export function inpaintGlyphMask({data,width,height},mask) {
   const out=new Uint8ClampedArray(data),known=new Uint8Array(mask.length),pending=[];
-  const levels=new Map();
-  for(let p=0;p<mask.length;p++)if(!mask[p]) {
-    const level=Math.round((data[p*4]+data[p*4+1]+data[p*4+2])/48);
-    levels.set(level,(levels.get(level)||0)+1);
-  }
-  const paper=([...levels].sort((a,b)=>b[1]-a[1])[0]?.[0]??0)*16;
+  const paperAt=paperField({data,width,height});
   for(let p=0;p<mask.length;p++) {
     const light=(data[p*4]+data[p*4+1]+data[p*4+2])/3;
     // Nearby border strokes are preserved, but must not bleed into a glyph fill.
-    known[p]=!mask[p]&&Math.abs(light-paper)<55?1:0;
+    // The comparison is against the paper beside this pixel, so a two-tone box
+    // keeps donors on both sides of its divide.
+    known[p]=!mask[p]&&Math.abs(light-paperAt(p%width,Math.floor(p/width)))<55?1:0;
   }
   for(let p=0;p<mask.length;p++)if(mask[p])pending.push(p);
   const neighbors=p=>{const x=p%width,y=Math.floor(p/width),ns=[];if(x)ns.push(p-1);if(x<width-1)ns.push(p+1);if(y)ns.push(p-width);if(y<height-1)ns.push(p+width);return ns;};
@@ -101,15 +128,12 @@ export function clearEdgeRules(ink,width,height,{band=3,coverage=.7}={}) {
 }
 
 export function fontGuidedPanel(scan,{family,weight=400,italic=false,allowItalic=false,symbols=false,text='',section='',outlined=false}) {
-  const {data,width,height}=scan,bins=new Map();
-  for(let p=0;p<width*height;p++) {
-    const v=Math.round((data[p*4]+data[p*4+1]+data[p*4+2])/3/16);
-    bins.set(v,(bins.get(v)||0)+1);
-  }
-  const paper=[...bins].sort((a,b)=>b[1]-a[1])[0][0]*16,light=paper<115;
+  const {data,width,height}=scan;
+  const paperAt=paperField(scan);
   const ink=new Uint8Array(width*height);
   for(let p=0;p<ink.length;p++) {
     const v=(data[p*4]+data[p*4+1]+data[p*4+2])/3;
+    const paper=paperAt(p%width,Math.floor(p/width)),light=paper<115;
     ink[p]=outlined ? (Math.min(data[p*4],data[p*4+1],data[p*4+2])>165 && Math.max(data[p*4],data[p*4+1],data[p*4+2])-Math.min(data[p*4],data[p*4+1],data[p*4+2])<65?1:0) : (light?v>paper+65:v<paper-55)?1:0;
   }
   clearEdgeRules(ink,width,height);
@@ -161,6 +185,7 @@ export function fontGuidedPanel(scan,{family,weight=400,italic=false,allowItalic
     for(let r=4;r<=Math.min(15,height/2-1);r++)for(let cy=r+1;cy<height-r-1;cy+=2)for(let cx=r+1;cx<width-r-1;cx+=2) {
       if(section==='title'&&cx<width*.7)continue;
       let support=0,contrast=0;
+      const light=paperAt(cx,cy)<115;
       for(let a=0;a<16;a++) {
         const angle=a*Math.PI/8,dx=Math.cos(angle),dy=Math.sin(angle);
         const inner=value(cx+dx*(r-1),cy+dy*(r-1)),outer=value(cx+dx*(r+1),cy+dy*(r+1));

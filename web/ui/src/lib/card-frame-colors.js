@@ -942,20 +942,28 @@ async function sample(fullUrl, typography, printing, setSymbolUrl) {
         const inkTop = (lineHeight - metrics.fontBoundingBoxAscent - metrics.fontBoundingBoxDescent) / 2
           + metrics.fontBoundingBoxAscent - metrics.actualBoundingBoxAscent;
         style['--printed-rules-padding-top'] = `${Math.max(4, firstLine.y - boxes.rules.y - inkTop) / fullScan.width * 100}cqw`;
-        // Text set on the printing's centre line (dual lands, promos) starts far
-        // from the box edge. That inset is not a padding: kept as one, a longer
-        // translation wraps inside a narrow column and its second line falls
-        // back to the box edge. No printing indents its text by more than a
-        // seventh of the box, so centre the live text and give it the whole box.
-        const leftInset = firstLine.x - boxes.rules.x, rightInset = boxes.rules.x + boxes.rules.width - (firstLine.x + firstLine.width);
-        const centred = leftInset > boxes.rules.width * .15
-          || leftInset > boxes.rules.width * .1 && rightInset > boxes.rules.width * .1 && Math.abs(leftInset - rightInset) < boxes.rules.width * .08;
-        if (centred) {
-          style['--printed-rules-text-align'] = 'center';
-          style['--printed-rules-padding-left'] = `${6 / fullScan.width * 100}cqw`;
-        } else {
-          style['--printed-rules-padding-left'] = `${Math.max(6, firstLine.x - boxes.rules.x + metrics.actualBoundingBoxLeft) / fullScan.width * 100}cqw`;
-        }
+        // Text the printing sets on the box's centre line (dual-land promos)
+        // stands off both edges by the same margin. That inset is not a
+        // padding: kept as one it squeezes the live text into a narrow column,
+        // where a longer translation wraps and its next line starts back at
+        // the box edge. Centre the live text instead and give it the whole box.
+        const leftInset = firstLine.x - boxes.rules.x;
+        const rightInset = boxes.rules.x + boxes.rules.width - (firstLine.x + firstLine.width);
+        // A left-aligned printing starts its rules text at the same frame
+        // inset as its type line, and a line that merely fills most of the box
+        // leaves similar margins either side whatever its alignment. Centred
+        // text clears that inset and is symmetric to within a rounding error.
+        const printedType = JSON.parse(style['--printed-type-text-bounds'] || 'null');
+        const typeInset = printedType ? printedType.x - boxes.type.x : 0;
+        const centred = Math.abs(leftInset - rightInset) < boxes.rules.width * .01
+          && leftInset > typeInset + boxes.rules.width * .03;
+        if (centred) style['--printed-rules-text-align'] = 'center';
+        // A left-aligned printing indents its text by a frame inset, never by
+        // a fraction of the box. Cap the padding so a mismeasured line cannot
+        // reflow the live text either.
+        const padding = centred ? 6
+          : Math.min(Math.max(6, leftInset + metrics.actualBoundingBoxLeft), boxes.rules.width * .12);
+        style['--printed-rules-padding-left'] = `${padding / fullScan.width * 100}cqw`;
       }
     }
     const masked=maskSourceFrame(fullScan,JSON.parse(style['--printed-layout']),stats,detectStatsPanelBounds(fullScan,stats),typography ? (patch,options)=>fontGuidedPanel(patch,{

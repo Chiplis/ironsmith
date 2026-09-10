@@ -1,6 +1,6 @@
 import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {SymbolText} from '@/lib/mana-symbols';
-import {registeredColumns,registeredFieldLayouts,registeredRuleAssignments,trimRegisteredNameCosts} from '@/lib/card-region-layout';
+import {mergeRegisteredLineSegments,registeredColumns,registeredFieldLayouts,registeredRuleAssignments,trimRegisteredNameCosts} from '@/lib/card-region-layout';
 import {maskRegisteredRegion} from '@/lib/card-region-mask';
 import CardFrameRulesBox from './CardFrameRulesBox';
 import GroupedManaAbility from './GroupedManaAbility';
@@ -47,7 +47,7 @@ function RegisteredField({field,layout,flow,unit,scale=1,onFit,onMeasure,forceRe
     <div className="registered-card-frame__field" style={style} data-field-kind={field.kind}
       data-replaced={showReplacement?'true':'false'} data-live-text={text} data-printed-text={field.text} data-outlined={field.outlined?'true':undefined}
       data-stack-highlighted={highlighted?'true':undefined} data-unprinted={field.unprinted?'true':undefined}
-      data-flow-top={flow?flow.top.toFixed(4):undefined} data-flow-bottom={flow?flow.bottom.toFixed(4):undefined} data-flow-limit={flow?flow.limit.toFixed(4):undefined}>
+      data-centred={layout.centred?'true':undefined} data-flow-top={flow?flow.top.toFixed(4):undefined} data-flow-bottom={flow?flow.bottom.toFixed(4):undefined} data-flow-limit={flow?flow.limit.toFixed(4):undefined}>
       {showReplacement ? <CardFrameRulesBox label={text} refitKey={`${unit}|${scale}`} onFit={onFit?fit=>onFit(fit*scale):undefined} onMeasure={onMeasure}>
         {group?<GroupedManaAbility group={group} name={name} onActivate={onActivate}/>:actions.length?
           <button className="registered-card-frame__action" disabled={!available} onClick={activate} aria-label={`${name}: ${text}`}>{content}</button>:content}
@@ -79,7 +79,7 @@ function fieldMeasurer(typography) {
 }
 
 export default function RegisteredCardFrame({registration,imageUrl,typography,rulesView,name,typeLine,stats,flavorText,onActivate,highlighted}) {
-  const fields=useMemo(()=>trimRegisteredNameCosts(registration.fields,fieldMeasurer(typography)('name')),[registration,typography]);
+  const fields=useMemo(()=>mergeRegisteredLineSegments(trimRegisteredNameCosts(registration.fields,fieldMeasurer(typography)('name'))),[registration,typography]);
   const assignments=useMemo(()=>registeredRuleAssignments(fields,rulesView),[fields,rulesView]);
   const {locale}=useI18n();
   const [translated,setTranslated]=useState(null);

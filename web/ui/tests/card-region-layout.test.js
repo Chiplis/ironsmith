@@ -173,3 +173,42 @@ test('a generic mana digit run into the name line is trimmed off the name box', 
   const [upper] = trimRegisteredNameCosts([{...merged, lines: [{...merged.lines[0], text: 'TREASURE'}], text: 'Treasure'}], measureName);
   assert.equal(upper.lines[0].width, .54);
 });
+
+test('line boxes split by a mana symbol merge back into one printed line', async () => {
+  const {mergeRegisteredLineSegments} = await import('../src/lib/card-region-layout.js');
+  const split = {kind: 'rule', lines: [
+    {text: '({T}: Add', x: .31, y: .735, width: .205, height: .035},
+    {text: 'or {R}.)', x: .553, y: .738, width: .139, height: .032},
+  ]};
+  const [merged] = mergeRegisteredLineSegments([split]);
+  assert.equal(merged.lines.length, 1, 'one printed line');
+  assert.equal(merged.lines[0].text, '({T}: Add or {R}.)');
+  assert.ok(Math.abs(merged.lines[0].x - .31) < 1e-9);
+  // The span covers the gap the symbols sit in, so the mask reaches them.
+  assert.ok(Math.abs(merged.lines[0].width - (.553 + .139 - .31)) < 1e-9);
+  assert.ok(Math.abs(merged.lines[0].height - (.738 + .032 - .735)) < 1e-9);
+  // Successive printed lines of a paragraph are not on one baseline.
+  const paragraph = {kind: 'rule', lines: [
+    {text: 'first line', x: .12, y: .65, width: .7, height: .03},
+    {text: 'second line', x: .12, y: .69, width: .6, height: .03},
+  ]};
+  assert.equal(mergeRegisteredLineSegments([paragraph])[0].lines.length, 2);
+  assert.equal(mergeRegisteredLineSegments([{kind: 'name', lines: [paragraph.lines[0]]}])[0].lines.length, 1);
+});
+
+test('a line the printing centres on its text box is centred over the whole column', () => {
+  const type = {kind: 'type', bounds: {x: .078, y: .58, width: .5, height: .03}, lines: [line('Land — Island Mountain', .58, .03)]};
+  const centred = {kind: 'rule', bounds: {x: .307, y: .735, width: .385, height: .035}, lines: [line('({T}: Add {U} or {R}.)', .735, .035)]};
+  const [, laid] = registeredFieldLayouts([type, centred], () => measure);
+  assert.equal(laid.centred, true);
+  assert.ok(Math.abs(laid.bounds.x - .078) < 1e-9, 'starts at the column inset');
+  assert.ok(Math.abs(laid.bounds.width - (1 - .078 * 2)) < 1e-9, 'spans the mirrored column');
+  // A line at the column inset is ordinary left-aligned text.
+  const ordinary = {kind: 'rule', bounds: {x: .085, y: .735, width: .7, height: .035}, lines: [line('Ordinary rules text here.', .735, .035)]};
+  const [, plain] = registeredFieldLayouts([type, ordinary], () => measure);
+  assert.equal(plain.centred, false);
+  assert.ok(Math.abs(plain.bounds.x - .085) < 1e-9);
+  // A box off to one side (level bands, side panels) is not centred either.
+  const aside = {kind: 'rule', bounds: {x: .8, y: .735, width: .1, height: .035}, lines: [line('4/4', .735, .035)]};
+  assert.equal(registeredFieldLayouts([type, aside], () => measure)[1].centred, false);
+});

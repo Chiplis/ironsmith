@@ -127,6 +127,20 @@ export function registeredFieldLayouts(fields, measureFor, { fallbackLineHeight 
   const lastRule = rules.length ? rules.reduce((a, b) => b.field.bounds.y > a.field.bounds.y ? b : a) : null;
   // Short keyword lines share the paragraph column with the longest lines.
   const columnRight = Math.max(...fields.filter(f => ['rule', 'flavor'].includes(f.kind) && f.bounds).map(f => f.bounds.x + f.bounds.width));
+  // The printed text box is centred on the card, and a type line starts at its
+  // left inset, so the column runs from there to that inset's mirror image. A
+  // printed line standing off both ends of the column by the same margin is
+  // centred: its replacement is centred on the same axis and may use the whole
+  // column, since a translation that outgrew the printed extent would
+  // otherwise wrap inside it.
+  const typeBounds = fields.find(f => f.kind === 'type' && f.bounds)?.bounds;
+  const column = typeBounds && typeBounds.x > 0 && typeBounds.x < .5
+    ? {x: typeBounds.x, width: Math.max(1 - typeBounds.x * 2, columnRight - typeBounds.x)} : null;
+  const centredInColumn = bounds => {
+    if (!column) return false;
+    const left = bounds.x - column.x, right = column.x + column.width - (bounds.x + bounds.width);
+    return left > column.width * .06 && Math.abs(left - right) < column.width * .02;
+  };
   return sized.map(item => {
     if (!item) return null;
     const lineHeight = item.lineHeight ?? shared;
@@ -137,7 +151,12 @@ export function registeredFieldLayouts(fields, measureFor, { fallbackLineHeight 
     let width = bounds.width;
     if (item.field.kind === 'name') width = Math.max(width, (item.field.limit ?? .8) - .012 - bounds.x);
     if (item.field.kind === 'type') width = Math.max(width, .84 - bounds.x);
-    if (item.field.kind === 'rule' && Number.isFinite(columnRight)) width = Math.max(width, columnRight - bounds.x);
+    let x = bounds.x, centred = false;
+    if (['rule', 'flavor'].includes(item.field.kind) && item.lines === 1 && centredInColumn(bounds)) {
+      centred = true;
+      x = column.x;
+      width = column.width;
+    } else if (item.field.kind === 'rule' && Number.isFinite(columnRight)) width = Math.max(width, columnRight - bounds.x);
     if (item === lastRule) {
       const below = [bottomOf('flavor'), bottomOf('stats')].filter(limit => limit > bounds.y + bounds.height);
       height = Math.max(height, Math.min(...below, .875) - .006 - y);
@@ -145,11 +164,11 @@ export function registeredFieldLayouts(fields, measureFor, { fallbackLineHeight 
     const region = item.field.region;
     if (region) {
       const top = Math.max(region.y, y);
-      return {size:item.size,lineHeight,span,bounds:{x:Math.max(region.x,bounds.x),y:top,
-        width:Math.min(width,region.x+region.width-Math.max(region.x,bounds.x)),
+      return {size:item.size,lineHeight,span,centred,bounds:{x:Math.max(region.x,x),y:top,
+        width:Math.min(width,region.x+region.width-Math.max(region.x,x)),
         height:Math.min(Math.max(height,region.y+region.height-top),region.y+region.height-top)}};
     }
-    return { size: item.size, lineHeight, span, bounds: { x: bounds.x, width, y, height } };
+    return { size: item.size, lineHeight, span, centred, bounds: { x, width, y, height } };
   });
 }
 
@@ -188,6 +207,28 @@ export function registeredColumnFlow(items, { limit, minGap, tolerance = 0 }) {
     shrink,
     displaced,
   };
+}
+
+// Vision splits one printed line into separate boxes wherever a mana symbol
+// interrupts the lettering ("({T}: Add" + "or {R}.)"). Left apart they count as
+// two printed lines, which halves the measured type size and doubles the box
+// the replacement asks for, and the gap between them — where the symbols sit —
+// belongs to no line box at all, so the printed pips survive the mask.
+export function mergeRegisteredLineSegments(fields) {
+  return fields.map(field => {
+    if (!field.lines || field.lines.length < 2) return field;
+    const lines = [];
+    for (const line of field.lines) {
+      const previous = lines.at(-1);
+      const overlap = previous ? Math.min(previous.y + previous.height, line.y + line.height) - Math.max(previous.y, line.y) : 0;
+      if (previous && overlap >= Math.min(previous.height, line.height) * .6) {
+        const y = Math.min(previous.y, line.y), bottom = Math.max(previous.y + previous.height, line.y + line.height);
+        const x = Math.min(previous.x, line.x), right = Math.max(previous.x + previous.width, line.x + line.width);
+        lines[lines.length - 1] = {...previous, text: `${previous.text} ${line.text}`.trim(), x, y, width: right - x, height: bottom - y};
+      } else lines.push({...line});
+    }
+    return lines.length === field.lines.length ? field : {...field, lines};
+  });
 }
 
 const FLOWING_KINDS = ['rule', 'flavor'];
