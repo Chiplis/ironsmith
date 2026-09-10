@@ -220,7 +220,7 @@ function buildHandCardRowStyle(index, total, { dims, activeIndex = null, activeI
     const sign = index < activeIndex ? -1 : 1;
     // Open a small reading corridor around the centered card. The nearby
     // cards move apart the most, while farther cards preserve the hand shape.
-    pushX = sign * Math.max(0, dims.neighborPush * 1.22 - distance * 7);
+    pushX = sign * Math.max(0, dims.neighborPush * 0.62 - distance * 10);
   }
 
   const fanRotate = isActive && centerActive && !activeIsPlayable ? "0deg" : `${base.rot.toFixed(2)}deg`;
