@@ -3846,6 +3846,11 @@ button:disabled,
   margin-left: 8px;
 }
 
+/* Keep a dedicated slot for the table-tools chevron beside the brand. */
+.table-toolbar .topbar-brand-stack {
+  padding-right: 34px;
+}
+
 /* Option strips scroll sideways by wheel, drag and touch. A visible horizontal
    bar would lie over the row of choices and clip them, so it takes no space. */
 .decision-strip-scroll,
