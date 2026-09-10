@@ -11,6 +11,12 @@ import GameCard from "@/components/cards/GameCard";
 import useHandReflow from "@/hooks/useHandReflow";
 import { samePlayerId } from "@/lib/player-display";
 import { handCardSourcePoint, plainRect } from "@/lib/hand-drag-intent";
+import {
+  HAND_KEYBOARD_CAST_EVENT,
+  handKeyboardCastNeedsPointer,
+  handKeyboardCastPlan,
+  keyboardPlacementDragArgs,
+} from "@/lib/hand-cast-keyboard";
 
 const HAND_ROULETTE_THRESHOLD = 10;
 const HAND_ROULETTE_VISIBLE_CARDS = 7;
@@ -762,23 +768,28 @@ export default function HandZone({
   }, [onInspect]);
 
   const handleKeyboardCardActivate = useCallback((event, card, plays, glowKind) => {
-    if (plays?.length) {
+    const plan = handKeyboardCastPlan({ actions: plays, card });
+    if (plan) {
       const element = event.currentTarget?.closest?.(".game-card") || event.currentTarget;
-      const rect = element?.getBoundingClientRect?.();
-      const x = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
-      const y = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
-      startDrag(
-        card.id,
-        card.name,
-        plays,
-        glowKind,
-        x,
-        y,
-        plainRect(rect),
-        { ...card, id: card.id, name: card.name },
-        { left: 0, top: 0, right: 0, bottom: 0 },
-        handCardSourcePoint(plainRect(rect)),
-      );
+      const rect = plainRect(element?.getBoundingClientRect?.());
+      // A battlefield slot is the one thing the key press cannot decide, so the
+      // card stays held and the slot follows the mouse until it is released.
+      if (handKeyboardCastNeedsPointer(plan)) {
+        startDrag(...keyboardPlacementDragArgs({ card, actions: plan.actions, glowKind, rect }));
+        return;
+      }
+      // Everything else is the same request a released drag makes: one way to
+      // play it casts at once, several open the picker.
+      window.dispatchEvent(new CustomEvent(HAND_KEYBOARD_CAST_EVENT, {
+        detail: {
+          objectId: card.id,
+          cardName: card.name,
+          card: { ...card, id: card.id, name: card.name },
+          actions: plan.actions,
+          glowKind,
+          anchorRect: rect,
+        },
+      }));
       return;
     }
 

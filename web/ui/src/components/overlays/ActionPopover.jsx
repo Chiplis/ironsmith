@@ -78,9 +78,16 @@ export default function ActionPopover({
     };
   }, [anchorElement, handleClose]);
 
+  // Rows the player cannot pick would trap the keyboard on open and swallow a
+  // step of the arrow walk, so both skip them.
+  const actionRows = useCallback(
+    () => Array.from(ref.current?.querySelectorAll('[data-action-row]:not([aria-disabled="true"])') || []),
+    [],
+  );
+
   useEffect(() => {
-    if (focusOnOpen && phase === "open") ref.current?.querySelector("[role=button]")?.focus();
-  }, [focusOnOpen, phase]);
+    if (focusOnOpen && phase === "open") actionRows()[0]?.focus();
+  }, [actionRows, focusOnOpen, phase]);
 
   const palette = useMemo(
     () => (
@@ -212,6 +219,7 @@ export default function ActionPopover({
           return (
             <div
               key={group.key}
+              data-action-row=""
               className="px-3 py-2 cursor-pointer select-none transition-colors duration-150"
               style={{
                 fontSize: variant === "game" ? "12px" : "14px",
@@ -254,6 +262,19 @@ export default function ActionPopover({
                 dispatchHandActionHover(null);
               }}
               onKeyDown={(event) => {
+                if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+                  if (event.currentTarget !== event.target) return;
+                  const rows = actionRows();
+                  if (rows.length === 0) return;
+                  event.preventDefault();
+                  const current = rows.indexOf(event.currentTarget);
+                  const step = event.key === "ArrowDown" ? 1 : -1;
+                  const next = event.key === "Home" ? 0
+                    : event.key === "End" ? rows.length - 1
+                    : (current + step + rows.length) % rows.length;
+                  rows[next]?.focus();
+                  return;
+                }
                 if (event.key === "Enter" || event.key === " ") {
                   if (disabled || (Date.now() - openedAtRef.current) < 160) return;
                   event.preventDefault();

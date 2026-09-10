@@ -38,6 +38,12 @@ import {
   pointIsOutsideRect,
   shouldBeginTargetCastIntent,
 } from "@/lib/hand-drag-intent";
+import {
+  HAND_KEYBOARD_CAST_EVENT,
+  handKeyboardCastNeedsPointer,
+  handKeyboardCastPlan,
+  keyboardPlacementDragArgs,
+} from "@/lib/hand-cast-keyboard";
 
 const HAND_PEEK_HEIGHT_DEFAULT = 72;
 const TOP_LEFT_INSPECTOR_INSET = 6;
@@ -757,7 +763,7 @@ export default function Workspace({
     playerAccentOverrides,
   } = useGame();
   const { updateStackArrows, clearStackArrows } = useCombatArrows();
-  const { endDrag, markCastIntent, setCastTargetPreview } = useDragActions();
+  const { endDrag, markCastIntent, setCastTargetPreview, startDrag } = useDragActions();
   const dragState = useDragState();
   const {
     clearPendingPlacement,
@@ -1408,6 +1414,8 @@ export default function Workspace({
     actions,
     anchorRect,
     placementSlot = null,
+    glowKind = null,
+    keyboard = false,
   }) => {
     const currentDecision = state?.decision || null;
     if (currentDecision?.kind !== "priority") return false;
@@ -1433,10 +1441,26 @@ export default function Workspace({
       actions: liveActions,
       anchorRect: placementSlot?.anchorRect || anchorRect,
       placementSlot,
+      glowKind,
+      keyboard,
     });
     return true;
   }, [clearPendingPlacement, stagePlacement, state?.decision, triggerPriorityCardAction]);
 
+
+  // A key press on a selected hand card has aimed at nothing yet. Casting it
+  // here rather than at a release point means a single way to play it goes
+  // straight to the engine — and on to payment, or to the targeting arrow that
+  // already follows the mouse — while several ways open the picker first.
+  useEffect(() => {
+    const onKeyboardCast = (event) => {
+      const detail = event?.detail;
+      if (!detail?.actions?.length) return;
+      requestHandCardAction({ ...detail, keyboard: true });
+    };
+    window.addEventListener(HAND_KEYBOARD_CAST_EVENT, onKeyboardCast);
+    return () => window.removeEventListener(HAND_KEYBOARD_CAST_EVENT, onKeyboardCast);
+  }, [requestHandCardAction]);
 
   useEffect(() => {
     if (!pendingCastTargetDrop) return;
@@ -1727,13 +1751,31 @@ export default function Workspace({
           anchorRect={handActionMenu.anchorRect}
           actions={handActionMenu.actions}
           collapseEquivalentActions={false}
+          focusOnOpen={Boolean(handActionMenu.keyboard)}
+          ariaLabel={handActionMenu.keyboard
+            ? `Ways to play ${handActionMenu.cardName || "this card"}`
+            : null}
           onAction={(action) => {
+            const plan = handActionMenu.keyboard && !handActionMenu.placementSlot
+              ? handKeyboardCastPlan({ actions: [action], card: handActionMenu.card })
+              : null;
+            setHandActionMenu(null);
+            if (handKeyboardCastNeedsPointer(plan)) {
+              // The chosen way to play it is a permanent: hand the slot back to
+              // the mouse exactly as a single-option permanent does.
+              startDrag(...keyboardPlacementDragArgs({
+                card: handActionMenu.card,
+                actions: [action],
+                glowKind: handActionMenu.glowKind,
+                rect: handActionMenu.anchorRect,
+              }));
+              return;
+            }
             triggerPriorityCardAction(
               action,
               handActionMenu.card,
               handActionMenu.placementSlot
             );
-            setHandActionMenu(null);
           }}
           onClose={() => {
             setHandActionMenu(null);

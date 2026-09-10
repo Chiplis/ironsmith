@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useState, useCallback, useMemo, useRef } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { castHoverTargetAtPoint } from "@/lib/hand-drag-intent";
 
 const CastHoverContext = createContext(null);
@@ -28,8 +28,10 @@ export function DragProvider({ children }) {
   const dragStateRef = useRef(null);
   // dragState shape: {
   //   objectId, cardName, card, actions, glowKind, startX, startY, currentX, currentY,
-  //   sourceRect, sourceContainerRect, hiddenSourcePoint, castIntent
+  //   sourceRect, sourceContainerRect, hiddenSourcePoint, castIntent, keyboard
   // }
+  // `keyboard` marks a card held by the activation key rather than a pointer:
+  // no button is down, so the mouse is tracked for as long as it is held.
 
   const startDrag = useCallback((
     objectId,
@@ -42,6 +44,7 @@ export function DragProvider({ children }) {
     card = null,
     sourceContainerRect = null,
     hiddenSourcePoint = null,
+    { keyboard = false } = {},
   ) => {
     const next = {
       objectId,
@@ -56,6 +59,7 @@ export function DragProvider({ children }) {
       sourceRect,
       sourceContainerRect,
       hiddenSourcePoint,
+      keyboard,
       castIntent: null,
     };
     dragStateRef.current = next;
@@ -144,6 +148,27 @@ export function DragProvider({ children }) {
     () => ({ commitPlacementSlot, stagePlacement, clearPendingPlacement }),
     [clearPendingPlacement, commitPlacementSlot, stagePlacement]
   );
+
+  // A card held by the activation key has no button holding it down, so the
+  // hold follows the bare pointer for as long as it lasts and a click releases
+  // it through the same handler a drag uses. Escape puts the card back: with no
+  // button to lift, nothing else would end the hold.
+  useEffect(() => {
+    if (!dragState?.keyboard) return undefined;
+    const onPointerMove = (event) => updateDrag(event.clientX, event.clientY);
+    const onKeyDown = (event) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      event.preventDefault();
+      endDrag();
+      clearPendingPlacement();
+    };
+    document.addEventListener("pointermove", onPointerMove, { passive: true });
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointermove", onPointerMove);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [clearPendingPlacement, dragState?.keyboard, endDrag, updateDrag]);
 
   return (
     <CastHoverContext.Provider value={dragState?.castIntent ? dragState.hoverCandidate : null}>
