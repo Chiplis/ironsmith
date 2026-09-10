@@ -84,6 +84,7 @@ test("the held card is anchored on itself, outside a hand of no extent", () => {
     actions: [cast()],
     glowKind: "creature",
     rect,
+    viewport: { innerWidth: 1440, innerHeight: 900 },
   });
   const [objectId, cardName, actions, glowKind, x, y, sourceRect, card, containerRect, sourcePoint, options] = args;
   assert.equal(objectId, 8);
@@ -97,7 +98,10 @@ test("the held card is anchored on itself, outside a hand of no extent", () => {
   // tracks the mouse from the first frame instead of waiting for an exit.
   assert.deepEqual(containerRect, { left: 0, top: 0, right: 0, bottom: 0 });
   assert.deepEqual(sourcePoint, { x: 260, y: 600 }, "the arrow leaves from the card's top edge");
-  assert.deepEqual(options, { keyboard: true });
+  assert.equal(options.keyboard, true);
+  // The arrow opens aimed at dead space above the card, not at the resting
+  // pointer, which would stage whatever slot it happened to be over.
+  assert.deepEqual(options.aim, { x: 260, y: 468 });
 });
 
 test("a card with no measurable rect is held at the middle of the viewport", () => {
@@ -110,7 +114,8 @@ test("a card with no measurable rect is held at the middle of the viewport", () 
   });
   assert.deepEqual([args[4], args[5]], [500, 400]);
   assert.equal(args[6], null);
-  assert.equal(args[9], null);
+  assert.equal(args[9], null, "and no printed edge for the arrow to leave from");
+  assert.deepEqual(args[10].aim, { x: 500, y: 532 }, "the aim is taken from the viewport instead");
 });
 
 test("the hand publishes keyboard casts under a namespaced event", () => {

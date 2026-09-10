@@ -31,7 +31,8 @@ export function DragProvider({ children }) {
   //   sourceRect, sourceContainerRect, hiddenSourcePoint, castIntent, keyboard
   // }
   // `keyboard` marks a card held by the activation key rather than a pointer:
-  // no button is down, so the mouse is tracked for as long as it is held.
+  // no button is down, so the mouse is tracked for as long as it is held, and
+  // the hold starts aimed at dead space instead of wherever the mouse rests.
 
   const startDrag = useCallback((
     objectId,
@@ -44,7 +45,7 @@ export function DragProvider({ children }) {
     card = null,
     sourceContainerRect = null,
     hiddenSourcePoint = null,
-    { keyboard = false } = {},
+    { keyboard = false, aim = null } = {},
   ) => {
     const next = {
       objectId,
@@ -54,8 +55,10 @@ export function DragProvider({ children }) {
       glowKind,
       startX: x,
       startY: y,
-      currentX: x,
-      currentY: y,
+      // A key press aims at nothing yet, so the hold can start pointing
+      // somewhere inert rather than at the resting pointer.
+      currentX: aim?.x ?? x,
+      currentY: aim?.y ?? y,
       sourceRect,
       sourceContainerRect,
       hiddenSourcePoint,

@@ -94,6 +94,7 @@ export default function DragOverlay() {
     startX,
     startY,
     castIntent,
+    keyboard,
   } = dragState;
   const placement = battlefieldPlacementForDrag(dragState);
   const isBattlefieldMove = placement?.kind === "move_battlefield";
@@ -106,9 +107,15 @@ export default function DragOverlay() {
     currentX,
     currentY,
   );
+  // A pointer drag carries the card under the cursor until it reaches the
+  // battlefield. A key press has no cursor to carry it, so the arrow stands in
+  // from the moment the card is held, aimed at dead space until the mouse
+  // moves and at the slot it would take once it is over the grid.
   const arrowTarget = castIntent
     ? { x: currentX, y: currentY }
-    : (!isBattlefieldMove && placement && placementTarget?.inside ? placementTarget : null);
+    : (!isBattlefieldMove && placement
+      ? (placementTarget?.inside ? placementTarget : (keyboard ? { x: currentX, y: currentY } : null))
+      : null);
 
   if (arrowTarget) {
     const path = placementArrowPath(sourcePoint, arrowTarget);

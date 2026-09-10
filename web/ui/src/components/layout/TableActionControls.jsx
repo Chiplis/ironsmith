@@ -5,6 +5,7 @@ import { copyTextToClipboard } from "@/lib/clipboard";
 import { buildPuzzleUrlFromGameState } from "@/lib/puzzles";
 import CreateCardForgeSheet from "./CreateCardForgeSheet";
 import AddCardSheet from "./AddCardSheet";
+import RandomGameSheet from "./RandomGameSheet";
 import AuditReplayControls from "./AuditReplayControls";
 import VerifyMatchSheet from "./VerifyMatchSheet";
 import { useI18n } from "@/i18n/I18nContext";
@@ -16,6 +17,7 @@ export default function TableActionControls({
   onAddCardNotice,
   onEnterDeckLoading,
   onOpenPuzzleSetup,
+  onGenerateRandomGame,
   onOpenLobby,
   deckLoadingMode = false,
   puzzleSetupMode = false,
@@ -137,6 +139,19 @@ export default function TableActionControls({
       >
         {deckLoadingMode ? t("action.cancelDeckLoad") : t("action.loadDecks")}
       </button>
+      <RandomGameSheet
+        onGenerate={onGenerateRandomGame}
+        disabled={lobbyBusy}
+        trigger={(
+          <button
+            type="button"
+            className={triggerPill}
+            disabled={lobbyBusy}
+          >
+            {t("action.randomGame")}
+          </button>
+        )}
+      />
       {!compact ? (
         <button
           type="button"

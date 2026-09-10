@@ -37,6 +37,8 @@ async function harness() {
   const page = await browser.newPage({ viewport: { width: 1200, height: 700 }, reducedMotion: "reduce" });
   const errors = [];
   page.on("pageerror", (error) => errors.push(String(error?.message || error)));
+  await page.route("**/api.scryfall.com/**", (route) => route.abort());
+  await page.route("**/cards.scryfall.io/**", (route) => route.abort());
   await page.addInitScript((fixture) => { window.__handKeyboardFixture = fixture; }, { state });
   await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/hand-keyboard-cast.html`);
   await page.locator('[data-hand-case] .game-card.hand-card').first().waitFor();
@@ -83,6 +85,7 @@ test("the activation key casts a hand card without waiting for a pointer release
 test("a permanent stays held so its battlefield slot follows the mouse", { timeout: 120000 }, async () => {
   const { page, press, casts, drag, errors, close } = await harness();
   try {
+    const cardBox = await page.locator('[data-hand-case] .game-card[data-object-id="8"]').boundingBox();
     await press(8);
     assert.deepEqual(await casts(), [], "a permanent is not cast until it is placed");
     const held = await drag();
@@ -90,13 +93,26 @@ test("a permanent stays held so its battlefield slot follows the mouse", { timeo
     assert.equal(held.keyboard, true);
     assert.deepEqual(held.actions, ["Cast Grizzly Bears"]);
     const anchor = { x: held.currentX, y: held.currentY };
+    const grip = { x: held.startX, y: held.startY };
+
+    // The arrow stands in for the pointer from the moment the card is held,
+    // pointing at dead space above the card rather than at the resting mouse.
+    await page.locator(".placement-drag-arrow").waitFor({ timeout: 5000 });
+    assert.ok(anchor.y < cardBox.y, "lifted clear of the card it came from");
+    assert.ok(Math.abs(anchor.x - (cardBox.x + (cardBox.width / 2))) < 1, "straight ahead of it");
+    const overCard = await page.evaluate(
+      ([x, y]) => Boolean(document.elementFromPoint(x, y)?.closest?.(".game-card")),
+      [anchor.x, anchor.y],
+    );
+    assert.equal(overCard, false, "nothing a click would pick sits under the arrow");
 
     // The hold tracks the bare pointer: no button is down to drag with.
     await page.mouse.move(880, 220);
     await page.waitForTimeout(80);
     let moved = await drag();
     assert.deepEqual([moved.currentX, moved.currentY], [880, 220]);
-    assert.deepEqual([moved.startX, moved.startY], [anchor.x, anchor.y], "it still points from the card");
+    assert.notDeepEqual([moved.currentX, moved.currentY], [anchor.x, anchor.y], "the mouse takes the arrow over");
+    assert.deepEqual([moved.startX, moved.startY], [grip.x, grip.y], "it still points from the card");
 
     await page.mouse.move(300, 480);
     await page.waitForTimeout(80);

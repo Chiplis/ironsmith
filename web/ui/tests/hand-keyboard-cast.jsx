@@ -5,6 +5,7 @@ import { HoverProvider } from "../src/context/HoverContext";
 import { DragProvider, useDragState } from "../src/context/DragContext";
 import { I18nProvider } from "../src/i18n/I18nContext";
 import HandZone from "../src/components/board/HandZone";
+import DragOverlay from "../src/components/overlays/DragOverlay";
 import { HAND_KEYBOARD_CAST_EVENT } from "../src/lib/hand-cast-keyboard";
 import "../src/index.css";
 
@@ -49,8 +50,13 @@ export function Fixture() {
         <HoverProvider>
           <DragProvider>
             <DragProbe />
-            <div data-hand-case style={{ position: "relative", width: 1100, height: 320, background: "#14171c" }}>
-              <HandZone player={state.players[0]} selectedObjectId={null} onInspect={() => {}} isExpanded layout="fan" />
+            <DragOverlay />
+            {/* The hand sits at the foot of the viewport, as it does on the
+                board, so an arrow lifted towards the middle points upwards. */}
+            <div style={{ position: "fixed", inset: 0, display: "flex", alignItems: "flex-end", background: "#14171c" }}>
+              <div data-hand-case style={{ position: "relative", width: "100%", height: 300 }}>
+                <HandZone player={state.players[0]} selectedObjectId={null} onInspect={() => {}} isExpanded layout="fan" />
+              </div>
             </div>
           </DragProvider>
         </HoverProvider>

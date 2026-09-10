@@ -1,3 +1,4 @@
+import { deadZoneAimPoint } from "./aim-dead-zone.js";
 import { battlefieldPlacementForDrag } from "./battlefield-layout.js";
 import { handCardSourcePoint, plainRect, shouldBeginTargetCastIntent } from "./hand-drag-intent.js";
 
@@ -35,12 +36,15 @@ export function handKeyboardCastNeedsPointer(plan) {
  * Hold the card the way a drag holds it, anchored on the card itself rather
  * than a pointer that never went down. The hand container is given no extent,
  * so the gesture counts as having left the hand from its first frame and the
- * placement preview tracks the mouse immediately.
+ * placement preview tracks the mouse as soon as it moves. Until it does, the
+ * arrow points at dead space instead of the resting pointer, which would
+ * otherwise stage whatever battlefield slot happened to be under it.
  */
-export function keyboardPlacementDragArgs({ card, actions, glowKind, rect, viewport = globalThis }) {
+export function keyboardPlacementDragArgs({ card, actions, glowKind, rect, viewport = globalThis, aim = null }) {
   const anchor = plainRect(rect);
   const x = anchor ? anchor.left + (anchor.width / 2) : (Number(viewport?.innerWidth) || 0) / 2;
   const y = anchor ? anchor.top + (anchor.height / 2) : (Number(viewport?.innerHeight) || 0) / 2;
+  const sourcePoint = handCardSourcePoint(anchor);
   return [
     card?.id,
     card?.name,
@@ -51,7 +55,7 @@ export function keyboardPlacementDragArgs({ card, actions, glowKind, rect, viewp
     anchor,
     { ...card, id: card?.id, name: card?.name },
     { left: 0, top: 0, right: 0, bottom: 0 },
-    handCardSourcePoint(anchor),
-    { keyboard: true },
+    sourcePoint,
+    { keyboard: true, aim: aim || deadZoneAimPoint({ from: sourcePoint || { x, y }, viewport }) },
   ];
 }

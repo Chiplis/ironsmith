@@ -497,6 +497,11 @@ export default function Shell() {
         setDeckLoadingMode(false);
         setPuzzleSetupMode((mode) => !mode);
       }}
+      onGenerateRandomGame={(payload, successMessage) => {
+        setDeckLoadingMode(false);
+        setPuzzleSetupMode(false);
+        return runWasmInteraction(() => loadPuzzle(payload, successMessage));
+      }}
       puzzleSetupMode={puzzleSetupMode}
       onOpenLobby={() => {
         setDeckLoadingMode(false);
@@ -525,6 +530,11 @@ export default function Shell() {
       onOpenPuzzleSetup={() => {
         setDeckLoadingMode(false);
         setPuzzleSetupMode((mode) => !mode);
+      }}
+      onGenerateRandomGame={(payload, successMessage) => {
+        setDeckLoadingMode(false);
+        setPuzzleSetupMode(false);
+        return runWasmInteraction(() => loadPuzzle(payload, successMessage));
       }}
       puzzleSetupMode={puzzleSetupMode}
       onOpenLobby={() => {
@@ -558,6 +568,11 @@ export default function Shell() {
       onOpenPuzzleSetup={() => {
         setDeckLoadingMode(false);
         setPuzzleSetupMode((mode) => !mode);
+      }}
+      onGenerateRandomGame={(payload, successMessage) => {
+        setDeckLoadingMode(false);
+        setPuzzleSetupMode(false);
+        return runWasmInteraction(() => loadPuzzle(payload, successMessage));
       }}
       onOpenLobby={() => {
         setDeckLoadingMode(false);

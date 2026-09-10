@@ -4,6 +4,7 @@ import { useHover } from "@/context/HoverContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
 import { useDragState } from "@/context/DragContext";
 import { Button } from "@/components/ui/button";
+import { deadZoneAimPoint } from "@/lib/aim-dead-zone";
 import { cn } from "@/lib/utils";
 import { getCardRect, centerOf } from "@/hooks/useCardPositions";
 import {
@@ -690,7 +691,11 @@ export default function TargetsDecision({
       ? centerOf(sourceRect)
       : { x: window.innerWidth * 0.5, y: window.innerHeight * 0.5 };
 
-    startDragArrow(liveTargetSourceId, sourceCenter.x, sourceCenter.y, liveTargetColor);
+    // Aimed at its own source the arrow has no length to see, and aimed at a
+    // resting pointer it reads as a target already chosen. Start it in dead
+    // space; the first mouse move hands it to the player.
+    const aim = deadZoneAimPoint({ from: sourceCenter }) || sourceCenter;
+    startDragArrow(liveTargetSourceId, aim.x, aim.y, liveTargetColor);
 
     const onPointerMove = (event) => {
       updateDragArrow(event.clientX, event.clientY);
