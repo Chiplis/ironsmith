@@ -815,7 +815,7 @@ export default function HandZone({
     event.currentTarget?.focus?.({ preventScroll: true });
     clearHover();
     clearAnchoredCardPreview();
-    window.dispatchEvent(new CustomEvent("ironsmith:hand-inspection"));
+    window.dispatchEvent(new CustomEvent("ironsmith:hand-inspection", { detail: { locked: true } }));
   }, [clearAnchoredCardPreview, clearHover, pinnedHandObjectId]);
 
   useEffect(() => {
@@ -832,6 +832,7 @@ export default function HandZone({
       setKeyboardNavigationActive(false);
       clearHover();
       clearAnchoredCardPreview();
+      window.dispatchEvent(new CustomEvent("ironsmith:hand-inspection", { detail: { locked: false } }));
     };
 
     window.addEventListener("pointerdown", dismissPinnedHandCard, true);
@@ -991,7 +992,7 @@ export default function HandZone({
     // never overlap during that transition.
     clearHover();
     clearAnchoredCardPreview();
-    window.dispatchEvent(new CustomEvent("ironsmith:hand-inspection"));
+    window.dispatchEvent(new CustomEvent("ironsmith:hand-inspection", { detail: { locked: false } }));
     if (hoverClearTimerRef.current) {
       clearTimeout(hoverClearTimerRef.current);
       hoverClearTimerRef.current = null;

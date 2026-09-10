@@ -887,6 +887,7 @@ export default function BattlefieldRow({
 }) {
   const rowRef = useRef(null);
   const keyboardNavigationRef = useRef(false);
+  const handInspectionLockedRef = useRef(false);
   const keyboardExitTimerRef = useRef(null);
   const previousCardsRef = useRef(cards);
   const previousPaperLayoutRef = useRef(null);
@@ -906,6 +907,15 @@ export default function BattlefieldRow({
   const placementSlots = usePlacementSlots();
   const { commitPlacementSlot } = usePlacementActions();
   const { hoverCard, clearHover, clearAnchoredCardPreview, hoveredObjectId, hoveredLinkedObjectIds } = useHover();
+
+  useEffect(() => {
+    const handleHandInspectionState = (event) => {
+      handInspectionLockedRef.current = event.detail?.locked === true;
+      if (handInspectionLockedRef.current) clearHover();
+    };
+    window.addEventListener("ironsmith:hand-inspection", handleHandInspectionState);
+    return () => window.removeEventListener("ironsmith:hand-inspection", handleHandInspectionState);
+  }, [clearHover]);
   const { combatMode, combatModeRef, dragArrow, startDragArrow, updateDragArrow, endDragArrow } = useCombatArrows();
   const paymentActionMap = useMemo(() => manaPaymentActionMap(state), [state]);
   const effectiveActivatableMap = state?.decision?.kind === "mana_payment" ? paymentActionMap : activatableMap;
@@ -2176,6 +2186,8 @@ export default function BattlefieldRow({
   }, [loading, closeManaPopover, clearHover, clearAnchoredCardPreview, dispatch]);
 
   const handleCardSelectionClick = useCallback((event, card) => {
+    // An explicit field click is allowed to take ownership from the hand.
+    handInspectionLockedRef.current = false;
     // A direct field click is also a navigation starting point. Preserve the
     // focus so the next arrow key continues from this exact permanent.
     keyboardNavigationRef.current = true;
@@ -2619,12 +2631,13 @@ export default function BattlefieldRow({
             onPointerCancel={isLayoutHold ? undefined : handleCardPointerPressEnd}
             onPointerLeave={isLayoutHold ? undefined : handleCardPointerPressEnd}
             onMouseEnter={isLayoutHold ? undefined : ((event) => {
-              if (keyboardNavigationRef.current) return;
+              if (keyboardNavigationRef.current || handInspectionLockedRef.current) return;
               if (!showManaPopover(event, card)) { closeManaPopover(); hoverCard(card.id); event.currentTarget.focus({ preventScroll: true }); }
             })}
             onMouseLeave={isLayoutHold ? undefined : (() => { clearHover(); leaveManaPopover(); })}
             onFocus={isLayoutHold ? undefined : (() => {
               closeManaPopover();
+              if (handInspectionLockedRef.current && !keyboardNavigationRef.current) return;
               hoverCard(card.id);
               // Mouse focus is only hover. Keyboard focus is the user's
               // explicit navigation request, so it also advances the detail.
