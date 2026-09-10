@@ -261,27 +261,6 @@ export default function TableCore({
             {middleUtilityControls}
           </div>
         ) : null}
-        {zoneActionControls ? (
-          <div className="table-header-tools-popover-wrap">
-            <button
-              type="button"
-              className="table-tools-toggle table-header-tools-toggle"
-              aria-expanded={tableToolsExpanded}
-              aria-controls="table-header-tool-popover"
-              aria-label={t(tableToolsExpanded ? "action.hideTableTools" : "action.showTableTools")}
-              title={t(tableToolsExpanded ? "action.hideTableTools" : "action.showTableTools")}
-              onClick={() => setTableToolsExpanded((expanded) => !expanded)}
-            >
-              {tableToolsExpanded ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
-            </button>
-            {tableToolsExpanded ? (
-              <div id="table-header-tool-popover" className="table-header-tools-popover" role="dialog" aria-label={t("settings.quick.eyebrow")}>
-                <DiagnosticsSheet />
-                {zoneActionControls}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
       </div>
       {!dockStackRailInBoard ? (
         <StackTimelineRail
@@ -341,6 +320,29 @@ export default function TableCore({
           </div>
         ) : null}
       </div>
+      {zoneActionControls ? (
+        <div className="table-persistent-utility-strip table-header-tools-strip" aria-label="Table utilities">
+          <div className="table-header-tools-popover-wrap">
+            <button
+              type="button"
+              className="table-tools-toggle table-header-tools-toggle"
+              aria-expanded={tableToolsExpanded}
+              aria-controls="table-header-tool-popover"
+              aria-label={t(tableToolsExpanded ? "action.hideTableTools" : "action.showTableTools")}
+              title={t(tableToolsExpanded ? "action.hideTableTools" : "action.showTableTools")}
+              onClick={() => setTableToolsExpanded((expanded) => !expanded)}
+            >
+              {tableToolsExpanded ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
+            </button>
+            {tableToolsExpanded ? (
+              <div id="table-header-tool-popover" className="table-header-tools-popover" role="dialog" aria-label={t("settings.quick.eyebrow")}>
+                <DiagnosticsSheet />
+                {zoneActionControls}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       {!sharedMiddleControls ? (
         <div className="table-persistent-utility-strip" aria-label="Table utilities">
           <DiagnosticsSheet />
