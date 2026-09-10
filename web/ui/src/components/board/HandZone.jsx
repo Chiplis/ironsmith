@@ -784,15 +784,28 @@ export default function HandZone({
   }, [dragState, handLayoutSignature, isExpanded, isRoulette]);
 
   const handleCardClick = useCallback((event, card) => {
-    setKeyboardSelectedObjectId(String(card.id));
-    setPinnedHandObjectId(String(card.id));
+    const cardId = String(card.id);
+    // Clicking the same pinned hand card is the direct, reversible way to
+    // leave inspection without affecting any field-card selection.
+    if (pinnedHandObjectId === cardId) {
+      setPinnedHandObjectId(null);
+      setKeyboardSelectedObjectId(null);
+      keyboardNavigationRef.current = false;
+      setKeyboardNavigationActive(false);
+      clearHover();
+      clearAnchoredCardPreview();
+      return;
+    }
+
+    setKeyboardSelectedObjectId(cardId);
+    setPinnedHandObjectId(cardId);
     keyboardNavigationRef.current = true;
     setKeyboardNavigationActive(true);
     event.currentTarget?.focus?.({ preventScroll: true });
     clearHover();
     clearAnchoredCardPreview();
     window.dispatchEvent(new CustomEvent("ironsmith:hand-inspection"));
-  }, [clearAnchoredCardPreview, clearHover]);
+  }, [clearAnchoredCardPreview, clearHover, pinnedHandObjectId]);
 
   const handleKeyboardCardActivate = useCallback((event, card, plays, glowKind) => {
     if (plays?.length) {
