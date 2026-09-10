@@ -209,10 +209,18 @@ function buildHandCardRowStyle(index, total, { dims, activeIndex = null } = {}) 
   const isActive = activeIndex === index;
 
   let pushX = 0;
-  if (activeIndex !== null && activeIndex >= 0 && index !== activeIndex) {
+  if (isActive) {
+    // Keep the active hand card in the visual center, including at either
+    // edge, so arrow-key reading never forces the player to chase the fan.
+    const totalWidth = Math.max(0, (total - 1) * spread);
+    const selectedCenter = -totalWidth / 2 + index * spread;
+    pushX = -selectedCenter;
+  } else if (activeIndex !== null && activeIndex >= 0) {
     const distance = Math.abs(index - activeIndex);
     const sign = index < activeIndex ? -1 : 1;
-    pushX = sign * Math.max(0, dims.neighborPush - distance * 6);
+    // Open a small reading corridor around the centered card. The nearby
+    // cards move apart the most, while farther cards preserve the hand shape.
+    pushX = sign * Math.max(0, dims.neighborPush * 1.22 - distance * 7);
   }
 
   const fanRotate = isActive ? "0deg" : `${base.rot.toFixed(2)}deg`;
@@ -220,7 +228,11 @@ function buildHandCardRowStyle(index, total, { dims, activeIndex = null } = {}) 
   const fanTranslateY = isActive
     ? `${(-dims.hoverLift).toFixed(1)}px`
     : `${base.drop.toFixed(1)}px`;
-  const cardScale = isActive ? MANABREW_HAND_FAN_PARAMS.hoverScale : 1;
+  // De-emphasize the rest of the fan just enough to expose their art and
+  // hover targets next to the active reading card.
+  const cardScale = isActive
+    ? MANABREW_HAND_FAN_PARAMS.hoverScale
+    : (activeIndex !== null && activeIndex >= 0 ? 0.88 : 1);
 
   return {
     flex: `0 0 ${dims.cardW}px`,

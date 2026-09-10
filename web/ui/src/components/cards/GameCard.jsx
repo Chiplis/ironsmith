@@ -930,7 +930,9 @@ export default function GameCard({
       ? "opacity-100"
       : "opacity-72";
   const showBattlefieldCircuit = battlefieldCircuitActive;
-  const showHandCircuit = variant === "hand" && (Boolean(glowKind) || isPlayable || isInspected);
+  // Availability remains a global hand signal. Reserve the circuit treatment
+  // for explicit selection/inspection so it does not erase playable-card glow.
+  const showHandCircuit = variant === "hand" && (Boolean(glowKind) || isInspected);
   const showCircuitAnimation = !targetingMode && !showActionBorder && (showBattlefieldCircuit || showHandCircuit);
   const replaceGlowWithCircuit = !targetingMode && !showActionBorder && (
     (variant === "hand" && showHandCircuit)
