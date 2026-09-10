@@ -4042,19 +4042,15 @@ button:disabled,
 .table-header-tools-toggle svg { width: 14px; height: 14px; }
 .table-header-tools-popover {
   position: fixed;
-  top: 126px;
-  left: 50%;
-  right: auto;
   z-index: 180;
   display: grid;
   grid-template-columns: 136px minmax(0, 1fr);
   align-items: stretch;
   gap: 8px;
-  width: min(1120px, calc(100vw - 48px));
-  max-width: calc(100vw - 48px);
+  width: min(1120px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
   min-width: 0;
   padding: 8px;
-  transform: translateX(-50%);
   background: rgba(9, 12, 14, 0.97);
   border: 1px solid rgba(205, 178, 122, 0.36);
   box-shadow: 0 14px 32px rgba(0, 0, 0, 0.48);
@@ -4063,8 +4059,6 @@ button:disabled,
 }
 @media (max-width: 720px) {
   .table-header-tools-popover {
-    top: 76px;
-    left: 8px;
     width: calc(100vw - 16px);
     max-width: calc(100vw - 16px);
     grid-template-columns: 1fr;

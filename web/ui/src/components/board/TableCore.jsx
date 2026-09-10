@@ -2,7 +2,7 @@ import DiagnosticsSheet from "@/components/layout/DiagnosticsSheet";
 import PriorityHoldControl from "@/components/decisions/PriorityHoldControl";
 import { useCastPlayerHovered } from "@/context/DragContext";
 import { createPortal } from "react-dom";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import useViewportLayout from "@/hooks/useViewportLayout";
 import OpponentZone from "./OpponentZone";
@@ -68,8 +68,10 @@ export default function TableCore({
   const { t } = useI18n();
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const tableRef = useRef(null);
+  const tableToolsToggleRef = useRef(null);
   const [openDecklist, setOpenDecklist] = useState(null);
   const [tableToolsExpanded, setTableToolsExpanded] = useState(false);
+  const [tableToolsPosition, setTableToolsPosition] = useState(null);
   const {
     portraitCompactViewport,
     landscapeMobileViewport,
@@ -88,11 +90,26 @@ export default function TableCore({
   const playerAccent = me ? getPlayerAccent(players, me?.id, perspective, playerAccentOverrides) : null;
   const decision = state?.decision || null;
   const activeZoneActionControls = tableToolsExpanded ? zoneActionControls : null;
+  const updateTableToolsPosition = useCallback(() => {
+    const rect = tableToolsToggleRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setTableToolsPosition({
+      top: Math.round(rect.bottom + 8),
+      right: Math.max(8, Math.round(window.innerWidth - rect.right)),
+    });
+  }, []);
+  useEffect(() => {
+    if (!tableToolsExpanded) return undefined;
+    updateTableToolsPosition();
+    window.addEventListener("resize", updateTableToolsPosition);
+    return () => window.removeEventListener("resize", updateTableToolsPosition);
+  }, [tableToolsExpanded, updateTableToolsPosition]);
   const tableToolsPopover = tableToolsExpanded && zoneActionControls && typeof document !== "undefined"
     ? createPortal(
       <div
         id="table-header-tool-popover"
         className="table-header-tools-popover"
+        style={tableToolsPosition || undefined}
         role="dialog"
         aria-label={t("settings.quick.eyebrow")}
         onPointerDown={(event) => event.stopPropagation()}
@@ -341,13 +358,17 @@ export default function TableCore({
         <div className="table-persistent-utility-strip table-header-tools-strip" aria-label="Table utilities">
           <div className="table-header-tools-popover-wrap">
             <button
+              ref={tableToolsToggleRef}
               type="button"
               className="table-tools-toggle table-header-tools-toggle"
               aria-expanded={tableToolsExpanded}
               aria-controls="table-header-tool-popover"
               aria-label={t(tableToolsExpanded ? "action.hideTableTools" : "action.showTableTools")}
               title={t(tableToolsExpanded ? "action.hideTableTools" : "action.showTableTools")}
-              onClick={() => setTableToolsExpanded((expanded) => !expanded)}
+              onClick={() => {
+                if (!tableToolsExpanded) updateTableToolsPosition();
+                setTableToolsExpanded((expanded) => !expanded);
+              }}
             >
               {tableToolsExpanded ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
             </button>
