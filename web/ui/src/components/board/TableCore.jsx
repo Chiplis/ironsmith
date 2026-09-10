@@ -335,7 +335,14 @@ export default function TableCore({
               {tableToolsExpanded ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
             </button>
             {tableToolsExpanded ? (
-              <div id="table-header-tool-popover" className="table-header-tools-popover" role="dialog" aria-label={t("settings.quick.eyebrow")}>
+              <div
+                id="table-header-tool-popover"
+                className="table-header-tools-popover"
+                role="dialog"
+                aria-label={t("settings.quick.eyebrow")}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+              >
                 <DiagnosticsSheet />
                 {zoneActionControls}
               </div>

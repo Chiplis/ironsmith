@@ -4031,6 +4031,8 @@ button:disabled,
 }
 .table-header-tools-strip > .table-header-tools-popover-wrap { pointer-events: auto; margin-left: auto; }
 .table-header-tools-popover-wrap { position: relative; flex: 0 0 auto; z-index: 181; }
+.table-header-tools-popover-wrap,
+.table-header-tools-popover-wrap * { pointer-events: auto; }
 .table-header-tools-toggle { display: inline-flex; align-items: center; justify-content: center; width: 26px; min-height: 26px; padding: 0; }
 .table-header-tools-toggle svg { width: 14px; height: 14px; }
 .table-header-tools-popover {
@@ -4049,6 +4051,7 @@ button:disabled,
   border: 1px solid rgba(205, 178, 122, 0.36);
   box-shadow: 0 14px 32px rgba(0, 0, 0, 0.48);
   pointer-events: auto;
+  isolation: isolate;
 }
 .table-header-tools-popover > .table-zone-action-controls {
   display: flex;
