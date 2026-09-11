@@ -3846,6 +3846,11 @@ button:disabled,
   margin-left: 8px;
 }
 
+/* Keep a dedicated slot for the table-tools chevron beside the brand. */
+.table-toolbar .topbar-brand-stack {
+  padding-right: 34px;
+}
+
 /* Option strips scroll sideways by wheel, drag and touch. A visible horizontal
    bar would lie over the row of choices and clip them, so it takes no space. */
 .decision-strip-scroll,
@@ -4020,6 +4025,64 @@ button:disabled,
   background: #090c0e;
 }
 .table-persistent-utility-strip .table-tools-toggle { margin-left: auto; flex-shrink: 0; }
+.table-header-tools-strip {
+  position: absolute;
+  inset: 26px 0 auto;
+  z-index: 116;
+  min-height: 32px;
+  padding: 0 8px;
+  background: transparent;
+  pointer-events: none;
+}
+.table-header-tools-strip > .table-header-tools-popover-wrap { pointer-events: auto; margin-left: auto; }
+.table-header-tools-popover-wrap { position: relative; flex: 0 0 auto; z-index: 181; }
+.table-header-tools-popover-wrap,
+.table-header-tools-popover-wrap * { pointer-events: auto; }
+.table-header-tools-toggle { display: inline-flex; align-items: center; justify-content: center; width: 26px; min-height: 26px; padding: 0; }
+.table-header-tools-toggle svg { width: 14px; height: 14px; }
+.table-header-tools-popover {
+  position: fixed;
+  z-index: 180;
+  display: grid;
+  grid-template-columns: 136px minmax(0, 1fr);
+  align-items: stretch;
+  gap: 8px;
+  width: min(1120px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  min-width: 0;
+  padding: 8px;
+  background: rgba(9, 12, 14, 0.97);
+  border: 1px solid rgba(205, 178, 122, 0.36);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.48);
+  pointer-events: auto;
+  isolation: isolate;
+}
+@media (max-width: 720px) {
+  .table-header-tools-popover {
+    width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+    grid-template-columns: 1fr;
+    max-height: calc(100vh - 92px);
+    overflow-y: auto;
+  }
+}
+.table-header-tools-popover > .table-zone-action-controls {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  align-items: stretch;
+  min-width: 0;
+  width: auto;
+  gap: 6px;
+}
+.table-header-tools-popover > .table-zone-action-button,
+.table-header-tools-popover > .table-zone-action-controls .table-zone-action-button {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 112px;
+  min-height: 34px;
+  white-space: nowrap;
+}
 .table-inline-utility-actions {
   flex: 1 1 0;
   min-width: 0;
