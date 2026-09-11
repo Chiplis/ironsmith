@@ -842,9 +842,23 @@
   z-index: 4;
 }
 
+/* The card under the drag is a ghost left behind in its tucked hand slot.
+   Pointer capture keeps :hover on it for the whole gesture, so it would stay
+   lifted, stacked above the board and hit-testable — swallowing the very
+   field elements the drag is aiming at. Dropping it out of hit-testing both
+   clears that :hover and hands the board back its drop targets. */
+.hand-card--drag-source,
+.hand-card--drag-source * {
+  pointer-events: none !important;
+}
+
 .hand-card--drag-source {
   opacity: 0.62 !important;
   filter: saturate(0.72) brightness(0.78);
+}
+
+.game-card.hand-card.hand-card--drag-source:not(.inspected) {
+  z-index: auto !important;
 }
 
 .placement-drag-arrow__line {

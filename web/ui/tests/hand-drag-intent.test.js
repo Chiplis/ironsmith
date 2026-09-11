@@ -194,10 +194,18 @@ test("targeted casts require an explicit self player box but allow opponent dead
 });
 
 
-test("target-cast arrows prefer the grabbed card over stale collapsed fan coordinates", () => {
+test("target-cast arrows begin at the tucked hand slot the drag returns the card to", () => {
   assert.deepEqual(castIntentSourcePoint({
     sourceRect: { left: 700, right: 800, top: 500, bottom: 640, width: 100, height: 140 },
     hiddenSourcePoint: { x: 400, y: 650 },
+    startX: 740, startY: 520, currentX: 200, currentY: 100,
+  }), { x: 400, y: 650 });
+});
+
+test("target-cast arrows fall back to the grabbed card when nothing tucks it away", () => {
+  assert.deepEqual(castIntentSourcePoint({
+    sourceRect: { left: 700, right: 800, top: 500, bottom: 640, width: 100, height: 140 },
+    hiddenSourcePoint: null,
     startX: 740, startY: 520, currentX: 200, currentY: 100,
   }), { x: 750, y: 500 });
 });

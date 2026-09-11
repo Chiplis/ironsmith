@@ -1703,6 +1703,12 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   z-index: 21000 !important;
 }
 
+/* A card held by a drag keeps its resting slot in the fan, so nothing from
+   the hand stacks over the board while the gesture is aimed at it. */
+.hand-layout-item.hand-layout-item--drag-source:has(> .game-card.hand-card.hand-card--drag-source) {
+  z-index: 1 !important;
+}
+
 .hand-reveal-shell .hand-zone-cycle-gap {
   flex: 0 0 auto;
 }

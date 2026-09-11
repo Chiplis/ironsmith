@@ -676,9 +676,18 @@ fn players_in_apnap_order(game: &GameState) -> Vec<PlayerId> {
         .collect()
 }
 
-fn describe_trigger_for_ordering(trigger: &TriggeredAbilityEntry) -> String {
+fn describe_trigger_for_ordering(game: &GameState, trigger: &TriggeredAbilityEntry) -> String {
     let trigger_text = trigger.ability.trigger.display();
-    let effect_text = crate::runtime_display::compile_effect_list(&trigger.ability.effects);
+    // The ability's own printed sentences, never the compiled structure: these
+    // labels are what a player picks a trigger order from.
+    let effect_text = crate::runtime_display::effect_sentences::effect_summary_text(
+        game,
+        trigger.source,
+        trigger.source_snapshot.as_ref(),
+        None,
+        &trigger.ability.effects,
+    )
+    .unwrap_or_default();
     let detail = if !trigger_text.trim().is_empty() && !effect_text.trim().is_empty() {
         format!("{trigger_text}\n{effect_text}")
     } else if !effect_text.trim().is_empty() {
@@ -721,7 +730,10 @@ fn order_triggers_for_controller(
     }
 
     let description = "Order triggered abilities. The leftmost item becomes the top of your stack.";
-    let mut labels: Vec<String> = triggers.iter().map(describe_trigger_for_ordering).collect();
+    let mut labels: Vec<String> = triggers
+        .iter()
+        .map(|trigger| describe_trigger_for_ordering(game, trigger))
+        .collect();
     uniquify_trigger_labels(&mut labels);
 
     let items: Vec<(ObjectId, String)> = labels

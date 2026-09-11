@@ -468,18 +468,12 @@ impl CostPayer for CostEffect {
     }
 
     fn display(&self) -> String {
+        // A cost is displayed to the player who has to pay it, so an effect
+        // without its own cost wording says so plainly rather than printing the
+        // compiled structure.
         self.effect
             .0
             .cost_description()
-            .or_else(|| {
-                let rendered =
-                    crate::runtime_display::compile_effect_list(std::slice::from_ref(&self.effect));
-                if rendered.trim().is_empty() {
-                    None
-                } else {
-                    Some(rendered)
-                }
-            })
             .unwrap_or_else(|| "Perform the stated effect".to_string())
     }
 

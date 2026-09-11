@@ -1,6 +1,21 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { createLayout, uiSpring, cancelMotion } from "@/lib/motion/anime";
 
+// A layout (FLIP) timeline writes `position: absolute` plus a frozen
+// width/height onto every child it animates, and only restores those inline
+// styles from its completion callback. Cancelling one leaves the children out
+// of flow at whatever size the interrupted step had measured, so an
+// interrupted reflow can empty a list visually while its count still reads
+// full. Finish the timeline instead of cancelling it.
+function settleMotion(motion) {
+  if (!motion) return;
+  if (typeof motion.complete === "function") {
+    motion.complete();
+    return;
+  }
+  cancelMotion(motion);
+}
+
 export default function useLayoutReflow(rootRef, signature, options = {}) {
   const {
     children = ".game-card",
@@ -32,7 +47,7 @@ export default function useLayoutReflow(rootRef, signature, options = {}) {
 
     const layout = layoutRef.current;
     if (disabled) {
-      cancelMotion(motionRef.current);
+      settleMotion(motionRef.current);
       motionRef.current = null;
       layout.record();
       hasRecordedRef.current = true;
@@ -46,7 +61,8 @@ export default function useLayoutReflow(rootRef, signature, options = {}) {
     }
 
     cancelAnimationFrame(settleFrameRef.current);
-    cancelMotion(motionRef.current);
+    settleMotion(motionRef.current);
+    motionRef.current = null;
     const params = paramsRef.current;
     motionRef.current = layout.animate({
       delay: params.delay,
@@ -70,7 +86,7 @@ export default function useLayoutReflow(rootRef, signature, options = {}) {
     return () => {
       cancelAnimationFrame(settleFrameRef.current);
       if (motionRef.current === currentMotion) {
-        cancelMotion(currentMotion);
+        settleMotion(currentMotion);
         motionRef.current = null;
       }
     };
@@ -78,7 +94,7 @@ export default function useLayoutReflow(rootRef, signature, options = {}) {
 
   useEffect(() => () => {
     cancelAnimationFrame(settleFrameRef.current);
-    cancelMotion(motionRef.current);
+    settleMotion(motionRef.current);
     layoutRef.current?.revert();
     layoutRef.current = null;
     motionRef.current = null;

@@ -78,6 +78,21 @@ impl MayEffect {
         self.fallback = fallback;
         self
     }
+
+    /// What this offer says, phrased to follow "You may ".
+    ///
+    /// The optional branch was compiled from a sentence of the source's own
+    /// card text, so the prompt quotes that sentence back rather than exposing
+    /// the compiled structure the engine actually holds.
+    fn prompt_description(&self, game: &GameState, ctx: &ExecutionContext) -> String {
+        crate::runtime_display::effect_sentences::optional_effect_prompt(
+            game,
+            ctx.source,
+            ctx.source_snapshot.as_ref(),
+            ctx.ability_index,
+            &self.effects,
+        )
+    }
 }
 
 impl EffectExecutor for MayEffect {
@@ -123,12 +138,7 @@ impl EffectExecutor for MayEffect {
                     max,
                 )
             })
-            .unwrap_or_else(|| crate::runtime_display::compile_effect_list(&self.effects));
-        let description = if description.trim().is_empty() {
-            "perform the effect".to_string()
-        } else {
-            description
-        };
+            .unwrap_or_else(|| self.prompt_description(game, ctx));
 
         // Use explicit decider when present ("that player may ..."), otherwise
         // preserve established behavior: iterated player if set, then controller.
@@ -176,12 +186,7 @@ impl EffectExecutor for MayEffect {
                 iterated_player: ctx.iteration.iterated_player,
             }));
         }
-        let description = crate::runtime_display::compile_effect_list(&self.effects);
-        let description = if description.trim().is_empty() {
-            "perform the effect".to_string()
-        } else {
-            description
-        };
+        let description = self.prompt_description(game, ctx);
         let deciding_player = if let Some(decider) = &self.decider {
             crate::effects::helpers::resolve_player_filter_as_chooser(game, decider, ctx)?
         } else {

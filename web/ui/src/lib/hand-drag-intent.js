@@ -191,9 +191,14 @@ export function targetDropCompletesDecision(decision, target) {
 }
 
 
-/** Target arrows start at the card that was grabbed, not an older fan layout. */
+/**
+ * Target arrows start where the held card rests, which is the tucked hand
+ * slot: the drag drops the card back into it, so an arrow anchored to the
+ * raised rect the grab was measured from would hang off nothing. Drags from
+ * elsewhere on the board carry no tucked slot and keep their own rect.
+ */
 export function castIntentSourcePoint(drag) {
-  return handCardSourcePoint(drag.sourceRect) || drag.hiddenSourcePoint || rectBoundaryPointToward(
+  return drag.hiddenSourcePoint || handCardSourcePoint(drag.sourceRect) || rectBoundaryPointToward(
     drag.sourceContainerRect, drag.startX, drag.startY, drag.currentX, drag.currentY,
   );
 }

@@ -5,6 +5,8 @@
 //! renderer. Compiled artifacts and browser snapshots should carry authored
 //! presentation strings whenever exact wording matters.
 
+pub mod effect_sentences;
+
 use crate::ability::{Ability, AbilityKind};
 use crate::cards::CardDefinition;
 use crate::effect::{Condition, Effect, Value};

@@ -62,11 +62,33 @@ test("letting go of a targeted cast over dead space keeps it aimable", { timeout
     // Drag the spell out of the hand. Leaving the hand casts it, and the
     // engine comes back asking for a target.
     await page.mouse.move(handBox.x + (handBox.width / 2), handBox.y + 24);
+    // Hovering raises the card far out of the fan first. The grab is measured
+    // in that state, which is exactly what the arrow anchor must not use.
+    await page.waitForFunction(() => {
+      const card = document.querySelector('.game-card.hand-card[data-object-id="5"]');
+      const slot = document.querySelector('.hand-layout-item[data-hand-object-id="5"]');
+      if (!card || !slot) return false;
+      return (slot.getBoundingClientRect().top - card.getBoundingClientRect().top) > 40;
+    }, null, { timeout: 5000 });
     await page.mouse.down();
     await page.mouse.move(dead.x, dead.y, { steps: 12 });
     await page.waitForFunction(() => window.__dispatched.some((command) => command?.type === "priority_action"));
     await page.waitForFunction(() => document.body.innerText.includes("Submit Targets"));
     assert.ok(await page.locator(".cast-intent-drag-arrow").count(), "the gesture draws its own arrow");
+
+    // Taking the card lifts it far above the fan, and the drag tucks it back
+    // into its slot, so the arrow has to leave from the slot rather than from
+    // the raised rect the grab happened to be measured on.
+    const arrowStart = await page.evaluate(() => {
+      const line = document.querySelector(".cast-intent-drag-arrow path.placement-drag-arrow__line");
+      const [, x, y] = (line?.getAttribute("d") || "").match(/^M ([-\d.]+) ([-\d.]+)/) || [];
+      return { x: Number(x), y: Number(y) };
+    });
+    assert.ok(
+      Math.abs(arrowStart.x - (handBox.x + (handBox.width / 2))) < 2
+      && Math.abs(arrowStart.y - handBox.y) < 2,
+      `the arrow leaves the resting hand slot, got ${JSON.stringify(arrowStart)}`,
+    );
 
     // Letting go over dead space must not throw the cast away.
     await page.mouse.up();
