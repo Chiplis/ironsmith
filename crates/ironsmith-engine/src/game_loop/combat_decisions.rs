@@ -486,7 +486,10 @@ fn prepare_attacker_declarations_internal(
             crate::combat_state::defending_player_for_attack_target(game, &decl.target)
         {
             imposed_attack_costs.extend(crate::static_abilities::imposed_attack_costs_for_target(
-                game, decl.creature, &decl.target, &declaration_view,
+                game,
+                decl.creature,
+                &decl.target,
+                &declaration_view,
             ));
             *attackers_per_defending_player
                 .entry(defending_player)
@@ -558,7 +561,9 @@ fn prepare_attacker_declarations_internal(
         declarations: prepared,
         total_generic_attack_mana_cost,
         generic_attack_mana_costs,
-        has_post_tap_attack_costs: has_post_tap_attack_costs || total_generic_attack_mana_cost > 0 || !imposed_attack_costs.is_empty(),
+        has_post_tap_attack_costs: has_post_tap_attack_costs
+            || total_generic_attack_mana_cost > 0
+            || !imposed_attack_costs.is_empty(),
         imposed_attack_costs,
     })
 }
@@ -612,8 +617,19 @@ fn attack_declaration_obeying_more_requirements_exists(
                         target,
                         view.effects(),
                     ) > 0;
-                    let has_imposed_cost = crate::static_abilities::imposed_attack_costs_for_target(game, attacker.id, target, &view)
-                        .iter().any(|cost| cost.resolved_cost(game).is_ok_and(|cost| crate::static_abilities::combat_cost_requires_payment(&cost)));
+                    let has_imposed_cost =
+                        crate::static_abilities::imposed_attack_costs_for_target(
+                            game,
+                            attacker.id,
+                            target,
+                            &view,
+                        )
+                        .iter()
+                        .any(|cost| {
+                            cost.resolved_cost(game).is_ok_and(|cost| {
+                                crate::static_abilities::combat_cost_requires_payment(&cost)
+                            })
+                        });
                     has_creature_cost || has_defender_tax || has_imposed_cost
                 })
                 .collect::<Vec<_>>();
@@ -794,14 +810,23 @@ pub fn preview_required_attack_mana_cost(
     Ok(prepare_attacker_declarations(game, combat, declarations)?.total_generic_attack_mana_cost)
 }
 
-pub fn preview_attack_cost_needs_mana_window(game: &GameState, combat: &CombatState, declarations: &[AttackerDeclaration]) -> Result<bool, GameLoopError> {
+pub fn preview_attack_cost_needs_mana_window(
+    game: &GameState,
+    combat: &CombatState,
+    declarations: &[AttackerDeclaration],
+) -> Result<bool, GameLoopError> {
     let prepared = prepare_attacker_declarations(game, combat, declarations)?;
     Ok(prepared.total_generic_attack_mana_cost > 0 || !prepared.imposed_attack_costs.is_empty())
 }
 
-fn lock_prepared_attack_costs(game: &GameState, prepared: &mut PreparedAttackDeclarations) -> Result<(), GameLoopError> {
+fn lock_prepared_attack_costs(
+    game: &GameState,
+    prepared: &mut PreparedAttackDeclarations,
+) -> Result<(), GameLoopError> {
     for imposed in &mut prepared.imposed_attack_costs {
-        imposed.cost = imposed.resolved_cost(game).map_err(|error| ResponseError::InvalidAttackers(format!("Cannot determine attack cost: {error}")))?;
+        imposed.cost = imposed.resolved_cost(game).map_err(|error| {
+            ResponseError::InvalidAttackers(format!("Cannot determine attack cost: {error}"))
+        })?;
     }
     Ok(())
 }
@@ -927,34 +952,72 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
         }
     }
 
-    let mut locked_costs = prepared.imposed_attack_costs.iter().map(|imposed| LockedCombatCost {
-        payer: imposed.payer, source: Some(imposed.source), cost: imposed.cost.clone(), display: imposed.display.clone(),
-    }).filter(|locked| crate::static_abilities::combat_cost_requires_payment(&locked.cost)).collect::<Vec<_>>();
+    let mut locked_costs = prepared
+        .imposed_attack_costs
+        .iter()
+        .map(|imposed| LockedCombatCost {
+            payer: imposed.payer,
+            source: Some(imposed.source),
+            cost: imposed.cost.clone(),
+            display: imposed.display.clone(),
+        })
+        .filter(|locked| crate::static_abilities::combat_cost_requires_payment(&locked.cost))
+        .collect::<Vec<_>>();
     for payer in game.turn_players() {
-        let amount = prepared.generic_attack_mana_costs.get(&payer).copied().unwrap_or(0);
+        let amount = prepared
+            .generic_attack_mana_costs
+            .get(&payer)
+            .copied()
+            .unwrap_or(0);
         if amount > 0 {
-            locked_costs.push(LockedCombatCost { payer, source: None,
-                cost: crate::cost::TotalCost::mana(generic_mana_cost(amount)), display: "Attack cost".into() });
+            locked_costs.push(LockedCombatCost {
+                payer,
+                source: None,
+                cost: crate::cost::TotalCost::mana(generic_mana_cost(amount)),
+                display: "Attack cost".into(),
+            });
         }
     }
     for locked in order_locked_combat_costs(game, locked_costs, decision_maker, true)? {
         let ordered = ordered_locked_combat_cost(game, &locked, decision_maker, true)?;
         let result = if let Some(source) = locked.source {
-            crate::special_actions::pay_total_cost_with_choice(game, locked.payer, source, &ordered,
-                crate::costs::PaymentReason::Other, decision_maker)
+            crate::special_actions::pay_total_cost_with_choice(
+                game,
+                locked.payer,
+                source,
+                &ordered,
+                crate::costs::PaymentReason::Other,
+                decision_maker,
+            )
         } else {
             // Legacy generic taxes have no single source; retain that mana
             // spend context while allowing their order among imposed costs.
             let ironsmith_core::TotalCostKind::All(components) = ordered.kind() else {
-                return Err(GameLoopError::InvalidState("Generic attack cost must be mana".into()));
+                return Err(GameLoopError::InvalidState(
+                    "Generic attack cost must be mana".into(),
+                ));
             };
             components.iter().try_for_each(|component| {
-                let mana = component.mana_cost_ref().ok_or_else(|| crate::cost::CostPaymentError::Other("Generic attack cost must be mana".into()))?;
-                crate::costs::pay_mana_cost_with_choices(game, locked.payer, None, mana, 0,
-                    crate::costs::PaymentReason::Other, decision_maker)
+                let mana = component.mana_cost_ref().ok_or_else(|| {
+                    crate::cost::CostPaymentError::Other("Generic attack cost must be mana".into())
+                })?;
+                crate::costs::pay_mana_cost_with_choices(
+                    game,
+                    locked.payer,
+                    None,
+                    mana,
+                    0,
+                    crate::costs::PaymentReason::Other,
+                    decision_maker,
+                )
             })
         };
-        result.map_err(|error| ResponseError::InvalidAttackers(format!("Cannot pay required attack cost ({}): {error}", locked.display)))?;
+        result.map_err(|error| {
+            ResponseError::InvalidAttackers(format!(
+                "Cannot pay required attack cost ({}): {error}",
+                locked.display
+            ))
+        })?;
     }
 
     // Costs may have removed or changed control of chosen creatures. Build the
@@ -1375,12 +1438,18 @@ fn ordered_locked_block_cost(
 }
 
 fn combat_cost_choice_error(attack: bool, message: String) -> GameLoopError {
-    if attack { ResponseError::InvalidAttackers(message).into() }
-    else { ResponseError::InvalidBlockers(message).into() }
+    if attack {
+        ResponseError::InvalidAttackers(message).into()
+    } else {
+        ResponseError::InvalidBlockers(message).into()
+    }
 }
 
 fn ordered_locked_combat_cost(
-    game: &GameState, locked: &LockedCombatCost, decision_maker: &mut dyn DecisionMaker, attack: bool,
+    game: &GameState,
+    locked: &LockedCombatCost,
+    decision_maker: &mut dyn DecisionMaker,
+    attack: bool,
 ) -> Result<crate::cost::TotalCost, GameLoopError> {
     let ironsmith_core::TotalCostKind::All(components) = locked.cost.kind() else {
         return Ok(locked.cost.clone());
@@ -1399,7 +1468,11 @@ fn ordered_locked_combat_cost(
     let context = crate::decisions::context::SelectOptionsContext::new(
         locked.payer,
         locked.source,
-        if attack { "Choose the order to pay attack-cost components" } else { "Choose the order to pay blocking-cost components" },
+        if attack {
+            "Choose the order to pay attack-cost components"
+        } else {
+            "Choose the order to pay blocking-cost components"
+        },
         options,
         components.len(),
         components.len(),
@@ -1413,7 +1486,10 @@ fn ordered_locked_combat_cost(
         || unique.len() != components.len()
         || order.iter().any(|index| *index >= components.len())
     {
-        return Err(combat_cost_choice_error(attack, "Invalid combat-cost payment order".into()));
+        return Err(combat_cost_choice_error(
+            attack,
+            "Invalid combat-cost payment order".into(),
+        ));
     }
     Ok(crate::cost::TotalCost::from_costs(
         order
@@ -1432,7 +1508,10 @@ fn order_locked_block_costs(
 }
 
 fn order_locked_combat_costs(
-    game: &GameState, locked_costs: Vec<LockedCombatCost>, decision_maker: &mut dyn DecisionMaker, attack: bool,
+    game: &GameState,
+    locked_costs: Vec<LockedCombatCost>,
+    decision_maker: &mut dyn DecisionMaker,
+    attack: bool,
 ) -> Result<Vec<LockedCombatCost>, GameLoopError> {
     let mut payer_order = Vec::new();
     for locked in &locked_costs {
@@ -1465,7 +1544,11 @@ fn order_locked_combat_costs(
         let context = crate::decisions::context::SelectOptionsContext::new(
             payer,
             None,
-            if attack { "Choose the order to pay attack costs" } else { "Choose the order to pay blocking costs" },
+            if attack {
+                "Choose the order to pay attack costs"
+            } else {
+                "Choose the order to pay blocking costs"
+            },
             options,
             payer_costs.len(),
             payer_costs.len(),
@@ -1479,7 +1562,10 @@ fn order_locked_combat_costs(
             || unique.len() != payer_costs.len()
             || choice.iter().any(|index| *index >= payer_costs.len())
         {
-            return Err(combat_cost_choice_error(attack, "Invalid combat-cost payment order".into()));
+            return Err(combat_cost_choice_error(
+                attack,
+                "Invalid combat-cost payment order".into(),
+            ));
         }
         ordered.extend(choice.into_iter().map(|index| payer_costs[index].1.clone()));
     }
@@ -2024,29 +2110,52 @@ mod declaration_batch_tests {
             let alice = PlayerId::from_index(0);
             let bob = PlayerId::from_index(1);
             game.player_mut(alice).unwrap().life = life;
-            let attackers = (0..count).map(|i| create_attacker(
-                &mut game, alice, &format!("Attacker {i}"), false,
-            )).collect::<Vec<_>>();
+            let attackers = (0..count)
+                .map(|i| create_attacker(&mut game, alice, &format!("Attacker {i}"), false))
+                .collect::<Vec<_>>();
             let tax = CardBuilder::new(CardId::new(), "Phyrexian attack tax")
-                .card_types(vec![CardType::Artifact]).build();
+                .card_types(vec![CardType::Artifact])
+                .build();
             let source = game.create_object_from_card(&tax, bob, Zone::Battlefield);
-            game.object_mut(source).unwrap().abilities_mut().push(Ability::static_ability(
-                StaticAbility::attack_cost(crate::target::ObjectFilter::creature(), false,
+            game.object_mut(source)
+                .unwrap()
+                .abilities_mut()
+                .push(Ability::static_ability(StaticAbility::attack_cost(
+                    crate::target::ObjectFilter::creature(),
+                    false,
                     crate::cost::TotalCost::from_costs(vec![crate::costs::Cost::mana(
-                        ManaCost::from_pips(vec![vec![ManaSymbol::White, ManaSymbol::Life(2)]])
-                    )]), "Phyrexian attack tax")
-            ));
+                        ManaCost::from_pips(vec![vec![ManaSymbol::White, ManaSymbol::Life(2)]]),
+                    )]),
+                    "Phyrexian attack tax",
+                )));
             game.refresh_continuous_state();
-            let declarations = attackers.iter().map(|&creature| AttackerDeclaration {
-                creature, target: AttackTarget::Player(bob),
-            }).collect::<Vec<_>>();
+            let declarations = attackers
+                .iter()
+                .map(|&creature| AttackerDeclaration {
+                    creature,
+                    target: AttackTarget::Player(bob),
+                })
+                .collect::<Vec<_>>();
             let mut combat = CombatState::default();
             let mut triggers = TriggerQueue::new();
-            let result = apply_attacker_declarations(&mut game, &mut combat, &mut triggers, &declarations);
-            assert_eq!(result.is_ok(), succeeds, "life={life}, count={count}: {result:?}");
-            assert_eq!(game.player(alice).unwrap().life, if succeeds { life - 2 * count } else { life });
-            assert_eq!(combat.attackers.len(), if succeeds { count as usize } else { 0 });
-            for attacker in attackers { assert_eq!(game.is_tapped(attacker), succeeds); }
+            let result =
+                apply_attacker_declarations(&mut game, &mut combat, &mut triggers, &declarations);
+            assert_eq!(
+                result.is_ok(),
+                succeeds,
+                "life={life}, count={count}: {result:?}"
+            );
+            assert_eq!(
+                game.player(alice).unwrap().life,
+                if succeeds { life - 2 * count } else { life }
+            );
+            assert_eq!(
+                combat.attackers.len(),
+                if succeeds { count as usize } else { 0 }
+            );
+            for attacker in attackers {
+                assert_eq!(game.is_tapped(attacker), succeeds);
+            }
         }
     }
 
@@ -2058,36 +2167,63 @@ mod declaration_batch_tests {
         let bob = PlayerId::from_index(1);
         let attacker = create_attacker(&mut game, alice, "Attacker", false);
         let enchantment = CardBuilder::new(CardId::new(), "Enchantment")
-            .card_types(vec![CardType::Enchantment]).build();
+            .card_types(vec![CardType::Enchantment])
+            .build();
         let source = game.create_object_from_card(&enchantment, bob, Zone::Battlefield);
         let extra = game.create_object_from_card(&enchantment, bob, Zone::Battlefield);
-        for _ in 0..4 { game.create_object_from_card(&enchantment, alice, Zone::Battlefield); }
-        let dynamic = ironsmith_core::DynamicManaCost::generic_equal_to(crate::effect::Value::Count(
-            crate::target::ObjectFilter::enchantment().you_control(),
-        ));
-        game.object_mut(source).unwrap().abilities_mut().push(Ability::static_ability(
-            StaticAbility::attack_cost(crate::target::ObjectFilter::creature(), true,
+        for _ in 0..4 {
+            game.create_object_from_card(&enchantment, alice, Zone::Battlefield);
+        }
+        let dynamic = ironsmith_core::DynamicManaCost::generic_equal_to(
+            crate::effect::Value::Count(crate::target::ObjectFilter::enchantment().you_control()),
+        );
+        game.object_mut(source)
+            .unwrap()
+            .abilities_mut()
+            .push(Ability::static_ability(StaticAbility::attack_cost(
+                crate::target::ObjectFilter::creature(),
+                true,
                 crate::cost::TotalCost::from_costs(vec![crate::costs::Cost::dynamic_mana(dynamic)]),
-                "Dynamic attack tax")
-        ));
+                "Dynamic attack tax",
+            )));
         game.refresh_continuous_state();
-        assert!(crate::decision::compute_legal_attackers(&game, &CombatState::default()).is_empty());
-        game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Colorless, 2);
-        assert_eq!(crate::decision::compute_legal_attackers(&game, &CombatState::default()).len(), 1);
+        assert!(
+            crate::decision::compute_legal_attackers(&game, &CombatState::default()).is_empty()
+        );
+        game.player_mut(alice)
+            .unwrap()
+            .mana_pool
+            .add(ManaSymbol::Colorless, 2);
+        assert_eq!(
+            crate::decision::compute_legal_attackers(&game, &CombatState::default()).len(),
+            1
+        );
         let mut combat = CombatState::default();
         let mut triggers = TriggerQueue::new();
-        let transaction = begin_attack_declaration_transaction(&mut game, &combat, &mut triggers,
-            &[AttackerDeclaration { creature: attacker, target: AttackTarget::Player(bob) }]
-        ).unwrap();
+        let transaction = begin_attack_declaration_transaction(
+            &mut game,
+            &combat,
+            &mut triggers,
+            &[AttackerDeclaration {
+                creature: attacker,
+                target: AttackTarget::Player(bob),
+            }],
+        )
+        .unwrap();
         // A mana ability can change the counted battlefield during the window.
         game.move_object_by_effect(extra, Zone::Graveyard).unwrap();
         let mut dm = crate::decision::AutoPassDecisionMaker;
-        finish_attack_declaration_transaction(transaction, &mut game, &mut combat, &mut triggers, &mut dm)
-            .expect("the tax was locked at two before the mana window changed the count");
+        finish_attack_declaration_transaction(
+            transaction,
+            &mut game,
+            &mut combat,
+            &mut triggers,
+            &mut dm,
+        )
+        .expect("the tax was locked at two before the mana window changed the count");
         assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0);
         assert_eq!(combat.attackers.len(), 1);
     }
-
 
     use super::*;
     use crate::ability::Ability;
@@ -2571,12 +2707,25 @@ mod declaration_batch_tests {
         .expect("the creature obeying two requirements should be the legal attacker");
     }
 
-    fn add_typed_attack_tax(game: &mut GameState, controller: PlayerId, cost: crate::cost::TotalCost, scope: bool) -> ObjectId {
-        let card = CardBuilder::new(CardId::new(), "Typed attack tax").card_types(vec![CardType::Enchantment]).build();
+    fn add_typed_attack_tax(
+        game: &mut GameState,
+        controller: PlayerId,
+        cost: crate::cost::TotalCost,
+        scope: bool,
+    ) -> ObjectId {
+        let card = CardBuilder::new(CardId::new(), "Typed attack tax")
+            .card_types(vec![CardType::Enchantment])
+            .build();
         let source = game.create_object_from_card(&card, controller, Zone::Battlefield);
-        game.object_mut(source).unwrap().abilities_mut().push(Ability::static_ability(StaticAbility::attack_cost(
-            ObjectFilter::creature(), scope, cost, "Typed attack tax",
-        )));
+        game.object_mut(source)
+            .unwrap()
+            .abilities_mut()
+            .push(Ability::static_ability(StaticAbility::attack_cost(
+                ObjectFilter::creature(),
+                scope,
+                cost,
+                "Typed attack tax",
+            )));
         source
     }
 
@@ -2585,18 +2734,40 @@ mod declaration_batch_tests {
         use crate::mana::{ManaCost, ManaSymbol};
         for life in [20, 3] {
             let mut game = setup_game();
-            let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+            let alice = PlayerId::from_index(0);
+            let bob = PlayerId::from_index(1);
             game.player_mut(alice).unwrap().life = life;
             let first = create_attacker(&mut game, alice, "First", false);
             let second = create_attacker(&mut game, alice, "Second", false);
-            add_typed_attack_tax(&mut game, bob, crate::cost::TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::White, ManaSymbol::Life(2)]])), true);
+            add_typed_attack_tax(
+                &mut game,
+                bob,
+                crate::cost::TotalCost::mana(ManaCost::from_pips(vec![vec![
+                    ManaSymbol::White,
+                    ManaSymbol::Life(2),
+                ]])),
+                true,
+            );
             game.refresh_continuous_state();
-            let mut combat = CombatState::default(); let mut tq = TriggerQueue::new();
-            let declarations = [first, second].map(|creature| AttackerDeclaration { creature, target: AttackTarget::Player(bob) });
+            let mut combat = CombatState::default();
+            let mut tq = TriggerQueue::new();
+            let declarations = [first, second].map(|creature| AttackerDeclaration {
+                creature,
+                target: AttackTarget::Player(bob),
+            });
             let mut dm = crate::decision::SelectFirstDecisionMaker;
-            let result = apply_attacker_declarations_with_dm(&mut game, &mut combat, &mut tq, &declarations, &mut dm);
+            let result = apply_attacker_declarations_with_dm(
+                &mut game,
+                &mut combat,
+                &mut tq,
+                &declarations,
+                &mut dm,
+            );
             assert_eq!(result.is_ok(), life >= 4, "{result:?}");
-            assert_eq!(game.player(alice).unwrap().life, if life >= 4 { life - 4 } else { life });
+            assert_eq!(
+                game.player(alice).unwrap().life,
+                if life >= 4 { life - 4 } else { life }
+            );
             assert_eq!(combat.attackers.len(), if life >= 4 { 2 } else { 0 });
             assert_eq!(game.is_tapped(first), life >= 4);
             assert_eq!(game.is_tapped(second), life >= 4);
@@ -2606,47 +2777,100 @@ mod declaration_batch_tests {
     #[test]
     fn typed_attack_cost_uses_defender_count_and_locks_before_mana_window() {
         let mut game = setup_game();
-        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
         let attacker = create_attacker(&mut game, alice, "Attacker", false);
-        let dynamic = ironsmith_core::DynamicManaCost::generic_equal_to(crate::effect::Value::Count(
-            ObjectFilter::default().with_type(CardType::Enchantment).controlled_by(PlayerFilter::You),
-        ));
-        let source = add_typed_attack_tax(&mut game, bob, crate::cost::TotalCost::from_cost(crate::costs::Cost::dynamic_mana(dynamic)), true);
-        let card = CardBuilder::new(CardId::new(), "Counted enchantment").card_types(vec![CardType::Enchantment]).build();
+        let dynamic =
+            ironsmith_core::DynamicManaCost::generic_equal_to(crate::effect::Value::Count(
+                ObjectFilter::default()
+                    .with_type(CardType::Enchantment)
+                    .controlled_by(PlayerFilter::You),
+            ));
+        let source = add_typed_attack_tax(
+            &mut game,
+            bob,
+            crate::cost::TotalCost::from_cost(crate::costs::Cost::dynamic_mana(dynamic)),
+            true,
+        );
+        let card = CardBuilder::new(CardId::new(), "Counted enchantment")
+            .card_types(vec![CardType::Enchantment])
+            .build();
         let counted = game.create_object_from_card(&card, bob, Zone::Battlefield);
-        for _ in 0..3 { game.create_object_from_card(&card, alice, Zone::Battlefield); }
-        game.player_mut(alice).unwrap().mana_pool.add(crate::mana::ManaSymbol::Colorless, 2);
+        for _ in 0..3 {
+            game.create_object_from_card(&card, alice, Zone::Battlefield);
+        }
+        game.player_mut(alice)
+            .unwrap()
+            .mana_pool
+            .add(crate::mana::ManaSymbol::Colorless, 2);
         game.refresh_continuous_state();
-        let mut combat = CombatState::default(); let mut tq = TriggerQueue::new();
-        let declarations = [AttackerDeclaration { creature: attacker, target: AttackTarget::Player(bob) }];
+        let mut combat = CombatState::default();
+        let mut tq = TriggerQueue::new();
+        let declarations = [AttackerDeclaration {
+            creature: attacker,
+            target: AttackTarget::Player(bob),
+        }];
         assert!(preview_attack_cost_needs_mana_window(&game, &combat, &declarations).unwrap());
-        let tx = begin_attack_declaration_transaction(&mut game, &combat, &mut tq, &declarations).unwrap();
+        let tx = begin_attack_declaration_transaction(&mut game, &combat, &mut tq, &declarations)
+            .unwrap();
         assert!(game.is_tapped(attacker));
-        game.move_object_by_effect(counted, Zone::Graveyard).unwrap();
+        game.move_object_by_effect(counted, Zone::Graveyard)
+            .unwrap();
         game.move_object_by_effect(source, Zone::Graveyard).unwrap();
         let mut dm = crate::decision::SelectFirstDecisionMaker;
-        finish_attack_declaration_transaction(tx, &mut game, &mut combat, &mut tq, &mut dm).unwrap();
-        assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0, "locked two-mana cost survives both enchantments leaving");
+        finish_attack_declaration_transaction(tx, &mut game, &mut combat, &mut tq, &mut dm)
+            .unwrap();
+        assert_eq!(
+            game.player(alice).unwrap().mana_pool.total(),
+            0,
+            "locked two-mana cost survives both enchantments leaving"
+        );
         assert_eq!(combat.attackers.len(), 1);
     }
 
     #[test]
     fn typed_attack_cost_filters_attackers_and_defender_scope() {
         let mut game = setup_game();
-        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
         let attacker = create_attacker(&mut game, alice, "Colorless attacker", false);
-        let white_card = CardBuilder::new(CardId::new(), "White attacker").card_types(vec![CardType::Creature])
-            .color_indicator(crate::color::ColorSet::WHITE).power_toughness(PowerToughness::fixed(2, 2)).build();
+        let white_card = CardBuilder::new(CardId::new(), "White attacker")
+            .card_types(vec![CardType::Creature])
+            .color_indicator(crate::color::ColorSet::WHITE)
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
         let white = game.create_object_from_card(&white_card, alice, Zone::Battlefield);
         let source = game.new_object_id();
         for covers_planeswalkers in [false, true] {
-            let ability = StaticAbility::attack_cost(ObjectFilter::creature().with_colors(crate::color::ColorSet::WHITE), covers_planeswalkers,
-                crate::cost::TotalCost::mana(generic_mana_cost(2)), "typed tax");
-            for target in [crate::static_abilities::AttackTaxTargetKind::Player, crate::static_abilities::AttackTaxTargetKind::Planeswalker, crate::static_abilities::AttackTaxTargetKind::Battle] {
-                assert!(ability.attack_cost_for_declaration(&game, source, bob, attacker, target).is_none());
-                let expected = matches!(target, crate::static_abilities::AttackTaxTargetKind::Player)
-                    || covers_planeswalkers && matches!(target, crate::static_abilities::AttackTaxTargetKind::Planeswalker);
-                assert_eq!(ability.attack_cost_for_declaration(&game, source, bob, white, target).is_some(), expected);
+            let ability = StaticAbility::attack_cost(
+                ObjectFilter::creature().with_colors(crate::color::ColorSet::WHITE),
+                covers_planeswalkers,
+                crate::cost::TotalCost::mana(generic_mana_cost(2)),
+                "typed tax",
+            );
+            for target in [
+                crate::static_abilities::AttackTaxTargetKind::Player,
+                crate::static_abilities::AttackTaxTargetKind::Planeswalker,
+                crate::static_abilities::AttackTaxTargetKind::Battle,
+            ] {
+                assert!(
+                    ability
+                        .attack_cost_for_declaration(&game, source, bob, attacker, target)
+                        .is_none()
+                );
+                let expected =
+                    matches!(target, crate::static_abilities::AttackTaxTargetKind::Player)
+                        || covers_planeswalkers
+                            && matches!(
+                                target,
+                                crate::static_abilities::AttackTaxTargetKind::Planeswalker
+                            );
+                assert_eq!(
+                    ability
+                        .attack_cost_for_declaration(&game, source, bob, white, target)
+                        .is_some(),
+                    expected
+                );
             }
         }
     }
@@ -2655,37 +2879,90 @@ mod declaration_batch_tests {
     fn typed_attack_cost_zero_still_exempts_attack_requirements() {
         for amount in [0, 1] {
             let mut game = setup_game();
-            let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+            let alice = PlayerId::from_index(0);
+            let bob = PlayerId::from_index(1);
             let attacker = create_attacker(&mut game, alice, "Required attacker", false);
-            game.object_mut(attacker).unwrap().abilities_mut().push(Ability::static_ability(StaticAbility::must_attack()));
-            add_typed_attack_tax(&mut game, bob, crate::cost::TotalCost::mana(generic_mana_cost(amount)), false);
-            game.player_mut(alice).unwrap().mana_pool.add(crate::mana::ManaSymbol::Colorless, 1);
+            game.object_mut(attacker)
+                .unwrap()
+                .abilities_mut()
+                .push(Ability::static_ability(StaticAbility::must_attack()));
+            add_typed_attack_tax(
+                &mut game,
+                bob,
+                crate::cost::TotalCost::mana(generic_mana_cost(amount)),
+                false,
+            );
+            game.player_mut(alice)
+                .unwrap()
+                .mana_pool
+                .add(crate::mana::ManaSymbol::Colorless, 1);
             game.refresh_continuous_state();
-            let result = apply_attacker_declarations(&mut game, &mut CombatState::default(), &mut TriggerQueue::new(), &[]);
-            assert!(result.is_ok(), "even a zero attack cost need not be paid: {result:?}");
+            let result = apply_attacker_declarations(
+                &mut game,
+                &mut CombatState::default(),
+                &mut TriggerQueue::new(),
+                &[],
+            );
+            assert!(
+                result.is_ok(),
+                "even a zero attack cost need not be paid: {result:?}"
+            );
         }
     }
 
     #[test]
     fn player_only_attack_ban_keeps_planeswalker_attacks_legal() {
-        let mut game = setup_game(); let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
-        let card = CardBuilder::new(CardId::new(), "Black attacker").card_types(vec![CardType::Creature])
-            .color_indicator(crate::color::ColorSet::BLACK).power_toughness(PowerToughness::fixed(2, 2)).build();
-        let attacker = game.create_object_from_card(&card, alice, Zone::Battlefield); game.remove_summoning_sickness(attacker);
-        let walker = CardBuilder::new(CardId::new(), "Defending planeswalker").card_types(vec![CardType::Planeswalker]).build();
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let card = CardBuilder::new(CardId::new(), "Black attacker")
+            .card_types(vec![CardType::Creature])
+            .color_indicator(crate::color::ColorSet::BLACK)
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let attacker = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.remove_summoning_sickness(attacker);
+        let walker = CardBuilder::new(CardId::new(), "Defending planeswalker")
+            .card_types(vec![CardType::Planeswalker])
+            .build();
         let walker = game.create_object_from_card(&walker, bob, Zone::Battlefield);
-        let ban = CardBuilder::new(CardId::new(), "Player-only restriction").card_types(vec![CardType::Enchantment]).build();
+        let ban = CardBuilder::new(CardId::new(), "Player-only restriction")
+            .card_types(vec![CardType::Enchantment])
+            .build();
         let source = game.create_object_from_card(&ban, bob, Zone::Battlefield);
-        game.object_mut(source).unwrap().abilities_mut().push(Ability::static_ability(StaticAbility::restriction(
-            crate::effect::Restriction::AttackPlayer { attackers: ObjectFilter::creature().with_colors(crate::color::ColorSet::BLACK), player: PlayerFilter::You }, "Black creatures can't attack you".to_string(),
-        )));
+        game.object_mut(source)
+            .unwrap()
+            .abilities_mut()
+            .push(Ability::static_ability(StaticAbility::restriction(
+                crate::effect::Restriction::AttackPlayer {
+                    attackers: ObjectFilter::creature().with_colors(crate::color::ColorSet::BLACK),
+                    player: PlayerFilter::You,
+                },
+                "Black creatures can't attack you".to_string(),
+            )));
         game.refresh_continuous_state();
         let legal = crate::decision::compute_legal_attackers(&game, &CombatState::default());
-        let option = legal.iter().find(|option| option.creature == attacker).unwrap();
+        let option = legal
+            .iter()
+            .find(|option| option.creature == attacker)
+            .unwrap();
         assert!(!option.valid_targets.contains(&AttackTarget::Player(bob)));
-        assert!(option.valid_targets.contains(&AttackTarget::Planeswalker(walker)));
+        assert!(
+            option
+                .valid_targets
+                .contains(&AttackTarget::Planeswalker(walker))
+        );
         let mut combat = CombatState::default();
-        apply_attacker_declarations(&mut game, &mut combat, &mut TriggerQueue::new(), &[AttackerDeclaration { creature: attacker, target: AttackTarget::Planeswalker(walker) }]).unwrap();
+        apply_attacker_declarations(
+            &mut game,
+            &mut combat,
+            &mut TriggerQueue::new(),
+            &[AttackerDeclaration {
+                creature: attacker,
+                target: AttackTarget::Planeswalker(walker),
+            }],
+        )
+        .unwrap();
         assert_eq!(combat.attackers.len(), 1);
     }
 

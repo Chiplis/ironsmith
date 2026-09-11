@@ -46,10 +46,16 @@ pub use ironsmith_compiler_semantic::cards::builders::GrantedAbilityAst;
 pub use ironsmith_compiler_syntax::OwnedLexToken;
 
 pub use crate::model::ast::{
-    ChooseOneModeAst, EffectAst, PredicateAst, StaticAbilityAst, SubjectVerbActionAst,
-    SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst, TriggerFrequencyPredicateAst,
-    TriggerSpec, TurnHistoryPredicateAst,
-    CounterActionAst, DamagePreventionActionAst, GrantActionAst, ManaActionAst, LibraryActionAst, ReplacementActionAst, ExchangeActionAst, TurnStructureActionAst, CharacteristicActionAst, KeywordActionAst, ZoneMoveActionAst, PermanentStateActionAst, RevealLookActionAst, RandomActionAst, LifeResourceActionAst, ChoiceActionAst, DamageActionAst, StatChangeActionAst, StackActionAst, TokenActionAst, ControlActionAst, GameActionAst, DelayedEffectAst, ForEachEffectAst, ObjectChoiceEffectAst, VoteEffectAst, ConditionalEffectAst, PermissionEffectAst, PlayerPredicateAst, SourcePredicateAst, TriggeringPredicateAst, TurnEventPredicateAst,
+    CharacteristicActionAst, ChoiceActionAst, ChooseOneModeAst, ConditionalEffectAst,
+    ControlActionAst, CounterActionAst, DamageActionAst, DamagePreventionActionAst,
+    DelayedEffectAst, EffectAst, ExchangeActionAst, ForEachEffectAst, GameActionAst,
+    GrantActionAst, KeywordActionAst, LibraryActionAst, LifeResourceActionAst, ManaActionAst,
+    ObjectChoiceEffectAst, PermanentStateActionAst, PermissionEffectAst, PlayerPredicateAst,
+    PredicateAst, RandomActionAst, ReplacementActionAst, RevealLookActionAst, SourcePredicateAst,
+    StackActionAst, StatChangeActionAst, StaticAbilityAst, SubjectVerbActionAst,
+    SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst, TokenActionAst,
+    TriggerFrequencyPredicateAst, TriggerSpec, TriggeringPredicateAst, TurnEventPredicateAst,
+    TurnHistoryPredicateAst, TurnStructureActionAst, VoteEffectAst, ZoneMoveActionAst,
 };
 
 pub use ironsmith_compiler_semantic::cards::builders::InsteadSemantics;
@@ -705,7 +711,8 @@ impl CardDefinitionBuilder {
                     crate::target::ChooseSpec::Source,
                     1,
                     0,
-                    crate::effect::Value::PowerOf(Box::new(crate::target::ChooseSpec::Tagged(ironsmith_compiler_semantic::tag::declared_key("enlisted_creature").into(),
+                    crate::effect::Value::PowerOf(Box::new(crate::target::ChooseSpec::Tagged(
+                        ironsmith_compiler_semantic::tag::declared_key("enlisted_creature").into(),
                     ))),
                     crate::effect::Until::EndOfTurn,
                 ),
@@ -1708,7 +1715,9 @@ impl CardDefinitionBuilder {
             vec![
                 crate::effect::Effect::create_tokens(Self::for_mirrodin_rebel_token(), 1)
                     .tag(created_tag.clone()),
-                crate::effect::Effect::attach_to(crate::target::ChooseSpec::Tagged(created_tag.key.clone())),
+                crate::effect::Effect::attach_to(crate::target::ChooseSpec::Tagged(
+                    created_tag.key.clone(),
+                )),
             ],
         ))
     }
@@ -1720,7 +1729,9 @@ impl CardDefinitionBuilder {
             vec![
                 crate::effect::Effect::create_tokens(Self::living_weapon_germ_token(), 1)
                     .tag(created_tag.clone()),
-                crate::effect::Effect::attach_to(crate::target::ChooseSpec::Tagged(created_tag.key.clone())),
+                crate::effect::Effect::attach_to(crate::target::ChooseSpec::Tagged(
+                    created_tag.key.clone(),
+                )),
             ],
         ))
     }
@@ -1817,22 +1828,31 @@ impl CardDefinitionBuilder {
         builder
             .with_ability({
                 let mut ability = crate::ability::Ability::triggered(
-                crate::triggers::Trigger::beginning_of_upkeep(crate::target::PlayerFilter::You),
-                vec![crate::effect::Effect::remove_counters(
-                    crate::object::CounterType::Time,
-                    1,
-                    crate::target::ChooseSpec::Source,
-                )],
-            );
+                    crate::triggers::Trigger::beginning_of_upkeep(crate::target::PlayerFilter::You),
+                    vec![crate::effect::Effect::remove_counters(
+                        crate::object::CounterType::Time,
+                        1,
+                        crate::target::ChooseSpec::Source,
+                    )],
+                );
                 if let crate::ability::AbilityKind::Triggered(triggered) = &mut ability.kind {
-                    triggered.intervening_if = Some(crate::effect::Condition::SourceHasCounterAtLeast { counter_type: crate::object::CounterType::Time, count: 1, surface: Default::default() });
+                    triggered.intervening_if =
+                        Some(crate::effect::Condition::SourceHasCounterAtLeast {
+                            counter_type: crate::object::CounterType::Time,
+                            count: 1,
+                            surface: Default::default(),
+                        });
                 }
                 ability
             })
             .with_ability(crate::ability::Ability::triggered(
-                crate::triggers::Trigger::new(crate::triggers::CounterRemovedFromTrigger::new(
-                    crate::target::ObjectFilter::source(),
-                ).counter_type(crate::object::CounterType::Time).last()),
+                crate::triggers::Trigger::new(
+                    crate::triggers::CounterRemovedFromTrigger::new(
+                        crate::target::ObjectFilter::source(),
+                    )
+                    .counter_type(crate::object::CounterType::Time)
+                    .last(),
+                ),
                 vec![crate::effect::Effect::sacrifice_source()],
             ))
     }
@@ -2094,7 +2114,9 @@ impl CardDefinitionBuilder {
                     )),
                     crate::effect::Effect::new(
                         crate::effects::MoveToZoneEffect::new(
-                            crate::target::ChooseSpec::Tagged(ironsmith_compiler_semantic::tag::declared_key(return_tag).into()),
+                            crate::target::ChooseSpec::Tagged(
+                                ironsmith_compiler_semantic::tag::declared_key(return_tag).into(),
+                            ),
                             crate::zone::Zone::Battlefield,
                             true,
                         )
@@ -2143,7 +2165,9 @@ impl CardDefinitionBuilder {
                     )),
                     crate::effect::Effect::new(
                         crate::effects::MoveToZoneEffect::new(
-                            crate::target::ChooseSpec::Tagged(ironsmith_compiler_semantic::tag::declared_key(return_tag).into()),
+                            crate::target::ChooseSpec::Tagged(
+                                ironsmith_compiler_semantic::tag::declared_key(return_tag).into(),
+                            ),
                             crate::zone::Zone::Battlefield,
                             true,
                         )

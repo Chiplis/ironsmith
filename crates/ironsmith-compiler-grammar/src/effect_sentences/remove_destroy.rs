@@ -1,10 +1,10 @@
-use crate::cards::builders::SourcePredicateAst;
-use crate::cards::builders::ConditionalEffectAst;
-use crate::cards::builders::ObjectChoiceEffectAst;
-use crate::cards::builders::ForEachEffectAst;
-use crate::cards::builders::DelayedEffectAst;
 use super::*;
-use crate::cards::builders::{SubjectVerbEffectAst, SubjectVerbActionAst, ZoneMoveActionAst};
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::DelayedEffectAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::SourcePredicateAst;
+use crate::cards::builders::{SubjectVerbActionAst, SubjectVerbEffectAst, ZoneMoveActionAst};
 use crate::effect::ChoiceCount;
 use crate::grammar::effects::remove_destroy_shapes as shapes;
 use crate::util::{
@@ -321,7 +321,9 @@ pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
     // them in one union so attachments are selected before any host leaves.
     if tokens.first().is_some_and(|token| token.is_word("all")) {
         for index in 1..tokens.len().saturating_sub(1) {
-            if !tokens[index].is_word("and") || !tokens[index + 1].is_word("all") { continue; }
+            if !tokens[index].is_word("and") || !tokens[index + 1].is_word("all") {
+                continue;
+            }
             let left = parse_destroy_all_filter(&tokens[1..index])?;
             let right = parse_destroy_all_filter(&tokens[index + 2..])?;
             let mut filter = ObjectFilter::default();
@@ -333,29 +335,49 @@ pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
     // A shared destroy verb can govern independently quantified targets;
     // type alternatives inside either target remain inside that target.
     for (and_index, token) in tokens.iter().enumerate() {
-        if !token.is_word("and") { continue; }
+        if !token.is_word("and") {
+            continue;
+        }
         let left = &tokens[..and_index];
         let right = &tokens[and_index + 1..];
         if left.iter().filter(|token| token.is_word("target")).count() != 1
             || right.iter().filter(|token| token.is_word("target")).count() != 1
-            || right.iter().any(|token| token.is_any_word(&["destroy", "exile", "return", "draw", "gain", "gains", "lose", "loses"]))
-        { continue; }
+            || right.iter().any(|token| {
+                token.is_any_word(&[
+                    "destroy", "exile", "return", "draw", "gain", "gains", "lose", "loses",
+                ])
+            })
+        {
+            continue;
+        }
         let operand = |tokens: &[OwnedLexToken]| -> Result<EffectAst, CardTextError> {
-            if let Some(choice) = crate::grammar::choices::parse_possessive_object_choice_tokens(tokens)
+            if let Some(choice) =
+                crate::grammar::choices::parse_possessive_object_choice_tokens(tokens)
                 && choice.actor == crate::grammar::choices::PossessiveObjectChoiceActor::Opponent
             {
-                return Ok(EffectAst::Sequence { effects: vec![
-                    EffectAst::subject_verb_explicit_target_only_for_chooser(parse_target_phrase(&choice.object_tokens)?, PlayerAst::Opponent),
-                    EffectAst::subject_verb_destroy(TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None)),
-                ] });
+                return Ok(EffectAst::Sequence {
+                    effects: vec![
+                        EffectAst::subject_verb_explicit_target_only_for_chooser(
+                            parse_target_phrase(&choice.object_tokens)?,
+                            PlayerAst::Opponent,
+                        ),
+                        EffectAst::subject_verb_destroy(TargetAst::Tagged(
+                            crate::tag::CompilerReferenceTag::It.bind(),
+                            None,
+                        )),
+                    ],
+                });
             }
-            Ok(EffectAst::subject_verb_destroy(parse_target_phrase(tokens)?))
+            Ok(EffectAst::subject_verb_destroy(parse_target_phrase(
+                tokens,
+            )?))
         };
         let first = operand(left)?;
         let second = operand(right)?;
         return Ok(EffectAst::Coordinated {
             effects: vec![first, second],
-            leading_duration: false, result_conjunction: false,
+            leading_duration: false,
+            result_conjunction: false,
         });
     }
     let original_clause = crate::lexer::token_word_refs(tokens).join(" ");
@@ -405,11 +427,17 @@ pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
             let mut effect = lower_destroy_all_shape(all_shape)?;
             if tokens.first().is_some_and(|token| token.is_word("each"))
                 && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { filter, .. }), ..
+                    action:
+                        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll {
+                            filter, ..
+                        }),
+                    ..
                 }) = &mut effect
-            { filter.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Each)); }
+            {
+                filter.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Each));
+            }
             effect
-        },
+        }
         shapes::DestroyClauseKind::UnlessTargetSetPredicate {
             target_tokens,
             predicate,
@@ -495,9 +523,9 @@ pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
                     })],
                     if_false: Vec::new(),
                 }),
-                ConditionalPredicateTailSpec::Plain(PredicateAst::Source(SourcePredicateAst::SourceIsInZone(
-                    Zone::Battlefield,
-                ))) if target_is_anaphoric_battlefield_object(&target) => {
+                ConditionalPredicateTailSpec::Plain(PredicateAst::Source(
+                    SourcePredicateAst::SourceIsInZone(Zone::Battlefield),
+                )) if target_is_anaphoric_battlefield_object(&target) => {
                     // The target filter already means "that referenced
                     // object, currently on the battlefield". Keeping a
                     // separate SourceIsInZone condition would instead test
@@ -505,11 +533,13 @@ pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
                     // the whole action after a sacrifice cost.
                     EffectAst::subject_verb_destroy(target)
                 }
-                ConditionalPredicateTailSpec::Plain(predicate) => EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-                    predicate,
-                    if_true: vec![EffectAst::subject_verb_destroy(target)],
-                    if_false: Vec::new(),
-                }),
+                ConditionalPredicateTailSpec::Plain(predicate) => {
+                    EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                        predicate,
+                        if_true: vec![EffectAst::subject_verb_destroy(target)],
+                        if_false: Vec::new(),
+                    })
+                }
             }
         }
         shapes::DestroyClauseKind::UnsupportedConditional => {
@@ -522,8 +552,10 @@ pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
             let mut attachment_filter = parse_object_filter(shape.attachment_filter_tokens, false)?;
             attachment_filter.set_demonstrative_antecedent_surface(shape.demonstrative_antecedent);
             let target_tag = helper_tag_for_tokens(tokens, "destroy_attachment_target");
-            let tagged_target =
-                TargetAst::Tagged(crate::tag::TagRef::of(target_tag.clone()), span_from_tokens(shape.target_tokens));
+            let tagged_target = TargetAst::Tagged(
+                crate::tag::TagRef::of(target_tag.clone()),
+                span_from_tokens(shape.target_tokens),
+            );
 
             EffectAst::Sequence {
                 effects: vec![
@@ -664,8 +696,8 @@ pub fn apply_except_filter_exclusions(base: &mut ObjectFilter, exception: &Objec
 
 #[cfg(test)]
 mod tests {
-    use crate::cards::builders::ZoneMoveActionAst;
     use super::*;
+    use crate::cards::builders::ZoneMoveActionAst;
     use crate::clause_support::parse_effect_sentences_lexed;
     use crate::model::ast::{SubjectVerbActionAst, SubjectVerbEffectAst};
     use crate::{CardType, Subtype};
@@ -696,7 +728,8 @@ mod tests {
             let tokens = crate::lexer::lex_line(text, 0).expect("destroy exception should lex");
             let effect = parse_destroy(&tokens[1..]).expect("destroy exception should parse");
             let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { filter, .. }),
+                action:
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { filter, .. }),
                 ..
             }) = effect
             else {

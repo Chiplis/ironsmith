@@ -1,4 +1,6 @@
-use crate::cards::builders::{PredicateAst, TurnHistoryPredicateAst, PlayerPredicateAst, SourcePredicateAst};
+use crate::cards::builders::{
+    PlayerPredicateAst, PredicateAst, SourcePredicateAst, TurnHistoryPredicateAst,
+};
 use winnow::Parser;
 use winnow::combinator::{alt, opt};
 use winnow::error::ModalResult as WResult;
@@ -574,9 +576,11 @@ impl PlayerStatusConditionAst {
             PlayerStatusAst::Monarch => PredicateAst::Player(PlayerPredicateAst::PlayerIsMonarch {
                 player: self.player,
             }),
-            PlayerStatusAst::Initiative => PredicateAst::Player(PlayerPredicateAst::PlayerHasInitiative {
-                player: self.player,
-            }),
+            PlayerStatusAst::Initiative => {
+                PredicateAst::Player(PlayerPredicateAst::PlayerHasInitiative {
+                    player: self.player,
+                })
+            }
             PlayerStatusAst::MaxSpeed => PredicateAst::ValueComparison {
                 left: Value::Speed(unconditional_player_filter(self.player)?),
                 operator: ValueComparisonOperator::GreaterThanOrEqual,
@@ -593,9 +597,11 @@ impl PlayerAchievementConditionAst {
     /// shape needs one.
     pub fn condition_expr(self) -> Option<PredicateAst> {
         let condition = match self.achievement {
-            PlayerAchievementAst::CitysBlessing => PredicateAst::Player(PlayerPredicateAst::PlayerHasCitysBlessing {
-                player: self.player,
-            }),
+            PlayerAchievementAst::CitysBlessing => {
+                PredicateAst::Player(PlayerPredicateAst::PlayerHasCitysBlessing {
+                    player: self.player,
+                })
+            }
             PlayerAchievementAst::CompletedDungeon { dungeon_name } => {
                 PredicateAst::Player(PlayerPredicateAst::PlayerCompletedDungeon {
                     player: self.player,
@@ -618,16 +624,20 @@ impl PlayerAchievementConditionAst {
 impl PlayerCardsInHandConditionAst {
     pub fn condition_expr(self) -> Option<PredicateAst> {
         if let Some(count) = comparison_to_strict_at_least_threshold(&self.comparison) {
-            return Some(PredicateAst::Player(PlayerPredicateAst::PlayerCardsInHandOrMore {
-                player: self.player,
-                count,
-            }));
+            return Some(PredicateAst::Player(
+                PlayerPredicateAst::PlayerCardsInHandOrMore {
+                    player: self.player,
+                    count,
+                },
+            ));
         }
         if let Some(count) = comparison_to_strict_at_most_threshold(&self.comparison) {
-            return Some(PredicateAst::Player(PlayerPredicateAst::PlayerCardsInHandOrFewer {
-                player: self.player,
-                count,
-            }));
+            return Some(PredicateAst::Player(
+                PlayerPredicateAst::PlayerCardsInHandOrFewer {
+                    player: self.player,
+                    count,
+                },
+            ));
         }
         None
     }

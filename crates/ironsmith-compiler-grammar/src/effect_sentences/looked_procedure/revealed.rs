@@ -16,7 +16,8 @@ use super::super::sequence_rules::generic_subject_verb_sequences::reference_link
 };
 use super::ViewedGroup;
 use crate::cards::builders::{
-    ChoiceCount, EffectAst, ObjectFilter, PlayerAst, ReturnControllerAst, TargetAst, ObjectChoiceEffectAst, PermissionEffectAst,
+    ChoiceCount, EffectAst, ObjectChoiceEffectAst, ObjectFilter, PermissionEffectAst, PlayerAst,
+    ReturnControllerAst, TargetAst,
 };
 use crate::grammar::effects::looked_card_shapes::{
     RevealedCardChooserShape, parse_chosen_card_move_followup_shape,
@@ -49,17 +50,20 @@ pub(super) fn revealed_choice(group: &mut ViewedGroup, sentence: &SentenceInput)
     // The program this replaces named the group "revealed_candidates".
     group.tag = helper_tag_for_tokens(&group.view_tokens, "revealed_candidates").into();
     let chosen_tag = helper_tag_for_tokens(sentence.lowered(), "revealed_choice");
-    group.effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
-        filter: tagged_library_candidate_filter(&group.tag, &[]),
-        count: ChoiceCount::exactly(1),
-        player: chooser,
-        tag: crate::tag::TagRef::of(chosen_tag.clone()),
-        zone: Zone::Library,
-    }));
+    group.effects.push(EffectAst::ObjectChoices(
+        ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+            filter: tagged_library_candidate_filter(&group.tag, &[]),
+            count: ChoiceCount::exactly(1),
+            player: chooser,
+            tag: crate::tag::TagRef::of(chosen_tag.clone()),
+            zone: Zone::Library,
+        },
+    ));
     if let Some(destination) = shape.destination {
-        group
-            .effects
-            .push(move_tagged_to_looked_destination(chosen_tag.clone().into(), destination));
+        group.effects.push(move_tagged_to_looked_destination(
+            chosen_tag.clone().into(),
+            destination,
+        ));
     }
     group.selected = Some(chosen_tag.key.clone());
     true
@@ -126,13 +130,15 @@ pub(super) fn opponent_selection(
         false,
         0,
     ));
-    group.effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
-        filter: selected_filter,
-        count: ChoiceCount::exactly(1),
-        player: PlayerAst::That,
-        tag: crate::tag::TagRef::of(selected_tag.clone()),
-        zone: Zone::Library,
-    }));
+    group.effects.push(EffectAst::ObjectChoices(
+        ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+            filter: selected_filter,
+            count: ChoiceCount::exactly(1),
+            player: PlayerAst::That,
+            tag: crate::tag::TagRef::of(selected_tag.clone()),
+            zone: Zone::Library,
+        },
+    ));
     group.selected = Some(selected_tag.key.clone());
     group.remainder_player = PlayerAst::That;
     Ok(true)
@@ -148,11 +154,16 @@ pub(super) fn chosen_partition(group: &mut ViewedGroup, sentence: &SentenceInput
         return false;
     };
     let remainder_tag = helper_tag_for_tokens(sentence.lowered(), "revealed_remainder");
-    group.effects.push(EffectAst::subject_verb_tag_matching_objects(
-        tagged_library_candidate_filter(&group.tag, std::slice::from_ref(&crate::tag::TagRef::of(selected.clone()))),
-        vec![Zone::Library],
-        crate::tag::TagRef::of(remainder_tag.clone()),
-    ));
+    group
+        .effects
+        .push(EffectAst::subject_verb_tag_matching_objects(
+            tagged_library_candidate_filter(
+                &group.tag,
+                std::slice::from_ref(&crate::tag::TagRef::of(selected.clone())),
+            ),
+            vec![Zone::Library],
+            crate::tag::TagRef::of(remainder_tag.clone()),
+        ));
     group.effects.push(move_tagged_to_looked_destination(
         selected,
         partition.selected_destination,
@@ -214,13 +225,15 @@ pub(super) fn opponent_exile_then_hand(
         false,
         0,
     ));
-    group.effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
-        filter: exile_filter,
-        count: ChoiceCount::exactly(1),
-        player: PlayerAst::That,
-        tag: crate::tag::TagRef::of(exiled_tag.clone()),
-        zone: Zone::Library,
-    }));
+    group.effects.push(EffectAst::ObjectChoices(
+        ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+            filter: exile_filter,
+            count: ChoiceCount::exactly(1),
+            player: PlayerAst::That,
+            tag: crate::tag::TagRef::of(exiled_tag.clone()),
+            zone: Zone::Library,
+        },
+    ));
     group.effects.push(EffectAst::subject_verb_exile(
         TargetAst::Tagged(crate::tag::TagRef::of(exiled_tag.clone()), None),
         false,
@@ -235,17 +248,19 @@ pub(super) fn opponent_exile_then_hand(
     ));
     // The first opponent reference above creates the concrete player choice;
     // "that opponent" casting the card is that same player.
-    group.pending_statements = std::collections::VecDeque::from([vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
-        player: PlayerAst::That,
-        effects: vec![EffectAst::subject_verb_cast_tagged(
-            crate::tag::TagRef::of(exiled_tag.clone()),
-            PlayerAst::That,
-            false,
-            false,
-            true,
-            None,
-        )],
-    })]]);
+    group.pending_statements = std::collections::VecDeque::from([vec![EffectAst::Permissions(
+        PermissionEffectAst::MayByPlayer {
+            player: PlayerAst::That,
+            effects: vec![EffectAst::subject_verb_cast_tagged(
+                crate::tag::TagRef::of(exiled_tag.clone()),
+                PlayerAst::That,
+                false,
+                false,
+                true,
+                None,
+            )],
+        },
+    )]]);
     group.selected = Some(exiled_tag.key.clone());
     true
 }

@@ -1,7 +1,7 @@
-use crate::cards::builders::ConditionalEffectAst;
-use crate::cards::builders::DelayedEffectAst;
-use crate::cards::builders::CounterActionAst;
 use super::*;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::CounterActionAst;
+use crate::cards::builders::DelayedEffectAst;
 use crate::condition_antecedent::{
     ConditionAntecedentBinding, bind_condition_antecedent_in_effects,
     bind_condition_counter_antecedent_in_effects,
@@ -13,13 +13,19 @@ pub fn compile_delayed_trigger_spec(
     trigger: &TriggerSpec,
 ) -> Result<ironsmith_core::DelayedTriggerSpec, CardTextError> {
     match trigger {
-        TriggerSpec::ConditionQualified { trigger, condition, surface } => Ok(
-            ironsmith_core::DelayedTriggerSpec::ConditionQualified {
-                trigger: Box::new(compile_delayed_trigger_spec(trigger)?),
-                condition: compile_condition_from_predicate_ast(condition, &mut EffectLoweringContext::new(), &None)?,
-                surface: surface.clone(),
-            }
-        ),
+        TriggerSpec::ConditionQualified {
+            trigger,
+            condition,
+            surface,
+        } => Ok(ironsmith_core::DelayedTriggerSpec::ConditionQualified {
+            trigger: Box::new(compile_delayed_trigger_spec(trigger)?),
+            condition: compile_condition_from_predicate_ast(
+                condition,
+                &mut EffectLoweringContext::new(),
+                &None,
+            )?,
+            surface: surface.clone(),
+        }),
         TriggerSpec::WithIntro { trigger, .. } => compile_delayed_trigger_spec(trigger),
         TriggerSpec::BeginningOfUpkeep(player) => Ok(
             ironsmith_core::DelayedTriggerSpec::BeginningOfUpkeep(player.clone()),
@@ -347,7 +353,8 @@ fn compile_delayed_effects_preserving_outer_context_with_event_value(
 /// accumulated amount as its event value when it resolves.
 fn replace_delayed_prior_prevention_amounts(effect: &mut EffectAst) {
     if let EffectAst::SubjectVerb(subject_verb) = effect
-        && let SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { count, .. }) = &mut subject_verb.action
+        && let SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { count, .. }) =
+            &mut subject_verb.action
         && matches!(
             count.unhinted(),
             Value::PendingPriorEffectMetric(query) | Value::PriorEffectMetric { query, .. }
@@ -422,7 +429,12 @@ fn set_effect_tag_relation(
     to: TaggedOpbjectRelation,
 ) -> Effect {
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
-        return Effect::new(tagged.with_effect(set_effect_tag_relation((*tagged.effect).clone(), tag, from, to)));
+        return Effect::new(tagged.with_effect(set_effect_tag_relation(
+            (*tagged.effect).clone(),
+            tag,
+            from,
+            to,
+        )));
     }
 
     if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
@@ -493,11 +505,28 @@ fn compile_duration_scoped_delayed_trigger(
     while_any_tagged_object_in_zone: &Option<(TagKey, Zone)>,
     ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
-    if let TriggerSpec::ConditionQualified { trigger, condition, surface } = trigger_without_intro(trigger) {
-        let (compiled, choices) = compile_duration_scoped_delayed_trigger(trigger, effects, one_shot,
-            duration, either_of_watched_objects, while_any_tagged_object_in_zone, ctx)?;
-        let [effect] = compiled.as_slice() else { unreachable!("delayed registration is one effect"); };
-        let mut schedule = effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>().unwrap().clone();
+    if let TriggerSpec::ConditionQualified {
+        trigger,
+        condition,
+        surface,
+    } = trigger_without_intro(trigger)
+    {
+        let (compiled, choices) = compile_duration_scoped_delayed_trigger(
+            trigger,
+            effects,
+            one_shot,
+            duration,
+            either_of_watched_objects,
+            while_any_tagged_object_in_zone,
+            ctx,
+        )?;
+        let [effect] = compiled.as_slice() else {
+            unreachable!("delayed registration is one effect");
+        };
+        let mut schedule = effect
+            .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+            .unwrap()
+            .clone();
         schedule.trigger = ironsmith_core::DelayedTriggerSpec::ConditionQualified {
             trigger: Box::new(schedule.trigger),
             condition: compile_condition_from_predicate_ast(condition, ctx, &None)?,
@@ -505,10 +534,14 @@ fn compile_duration_scoped_delayed_trigger(
         };
         return Ok((vec![Effect::new(schedule)], choices));
     }
-    let lowered = compile_trigger_effects_with_imports(Some(trigger), effects, &ReferenceImports {
-        last_object_tag: ctx.last_object_tag.clone(),
-        ..Default::default()
-    })?;
+    let lowered = compile_trigger_effects_with_imports(
+        Some(trigger),
+        effects,
+        &ReferenceImports {
+            last_object_tag: ctx.last_object_tag.clone(),
+            ..Default::default()
+        },
+    )?;
     let delayed_effects = lowered.effects.to_vec();
     let refs = current_reference_env(ctx);
     let mut watched_tag = None;
@@ -801,7 +834,10 @@ pub(super) fn try_compile_timing_and_control_effect(
             ));
             (vec![effect], choices)
         }
-        EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextFirstMainPhase { player, effects }) => {
+        EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextFirstMainPhase {
+            player,
+            effects,
+        }) => {
             let (delayed_effects, choices) =
                 compile_delayed_effects_preserving_outer_context(effects, ctx)?;
             let effect = Effect::new(crate::effects::ScheduleDelayedTriggerEffect::new(
@@ -813,7 +849,10 @@ pub(super) fn try_compile_timing_and_control_effect(
             ));
             (vec![effect], choices)
         }
-        EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndStepOfExtraTurn { player, effects }) => {
+        EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndStepOfExtraTurn {
+            player,
+            effects,
+        }) => {
             let subject = LoweredSubject::resolve_affected_player(*player, ctx, true, true, true)?;
             let player_filter = subject.into_player_filter();
             let mut choices = subject.into_choices();
@@ -858,7 +897,9 @@ pub(super) fn try_compile_timing_and_control_effect(
                 *one_shot,
                 duration,
                 *either_of_watched_objects,
-                &while_any_tagged_object_in_zone.as_ref().map(|(tag, zone)| (tag.key.clone(), *zone)),
+                &while_any_tagged_object_in_zone
+                    .as_ref()
+                    .map(|(tag, zone)| (tag.key.clone(), *zone)),
                 ctx,
             )
             .map(Some);
@@ -870,10 +911,24 @@ pub(super) fn try_compile_timing_and_control_effect(
             until_end_of_combat,
             attach_to_previous_ability,
         }) => {
-            if matches!(trigger_without_intro(trigger), TriggerSpec::ConditionQualified { .. }) {
-                return compile_duration_scoped_delayed_trigger(trigger, effects, *one_shot,
-                    &if *until_end_of_combat { Until::EndOfCombat } else { Until::EndOfTurn },
-                    false, &None, ctx).map(Some);
+            if matches!(
+                trigger_without_intro(trigger),
+                TriggerSpec::ConditionQualified { .. }
+            ) {
+                return compile_duration_scoped_delayed_trigger(
+                    trigger,
+                    effects,
+                    *one_shot,
+                    &if *until_end_of_combat {
+                        Until::EndOfCombat
+                    } else {
+                        Until::EndOfTurn
+                    },
+                    false,
+                    &None,
+                    ctx,
+                )
+                .map(Some);
             }
             let (mut delayed_effects, _delayed_choices) =
                 compile_trigger_effects(Some(trigger), effects)?;
@@ -999,9 +1054,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                         event_filter.source = true;
                         let delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
                             watched_tag.clone(),
-                            ironsmith_core::DelayedTriggerSpec::PutIntoGraveyard(
-                                event_filter,
-                            ),
+                            ironsmith_core::DelayedTriggerSpec::PutIntoGraveyard(event_filter),
                             delayed_effects,
                             *one_shot,
                             Vec::new(),
@@ -1075,7 +1128,8 @@ pub(super) fn try_compile_timing_and_control_effect(
                     let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
                     let watched_tag = watch_tag_from_filter(&resolved_filter).or_else(|| {
                         filter_references_tag(filter, crate::tag::CompilerReferenceTag::It.as_str())
-                            .then(|| crate::tag::CompilerReferenceTag::Targeted0.bind()).map(Into::into)
+                            .then(|| crate::tag::CompilerReferenceTag::Targeted0.bind())
+                            .map(Into::into)
                     });
                     if let Some(watched_tag) = watched_tag {
                         let lowered = compile_trigger_effects_with_imports(
@@ -1276,7 +1330,10 @@ pub(super) fn try_compile_timing_and_control_effect(
                 }
             }
         }
-        EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn { filter, effects }) => {
+        EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn {
+            filter,
+            effects,
+        }) => {
             let target_tag = ctx.last_object_tag.clone().ok_or_else(|| {
                 CardTextError::ParseError(
                     "cannot schedule 'dies this turn' trigger without prior object context"
@@ -1284,7 +1341,8 @@ pub(super) fn try_compile_timing_and_control_effect(
                 )
             })?;
             let previous_last = ctx.last_object_tag.clone();
-            ctx.last_object_tag = Some((crate::tag::CompilerReferenceTag::Triggering.bind()).into());
+            ctx.last_object_tag =
+                Some((crate::tag::CompilerReferenceTag::Triggering.bind()).into());
             let compiled = compile_effects_preserving_last_effect(effects, ctx);
             ctx.last_object_tag = previous_last;
             let (delayed_effects, choices) = compiled?;
@@ -1304,7 +1362,10 @@ pub(super) fn try_compile_timing_and_control_effect(
             let effect = Effect::new(delayed);
             (vec![effect], choices)
         }
-        EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectLeavesBattlefield { filter, effects }) => {
+        EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectLeavesBattlefield {
+            filter,
+            effects,
+        }) => {
             let target_tag = ctx.last_object_tag.clone().ok_or_else(|| {
                 CardTextError::ParseError(
                     "cannot schedule leaves-the-battlefield trigger without prior object context"
@@ -1312,7 +1373,8 @@ pub(super) fn try_compile_timing_and_control_effect(
                 )
             })?;
             let previous_last = ctx.last_object_tag.clone();
-            ctx.last_object_tag = Some((crate::tag::CompilerReferenceTag::Triggering.bind()).into());
+            ctx.last_object_tag =
+                Some((crate::tag::CompilerReferenceTag::Triggering.bind()).into());
             let compiled = compile_effects_preserving_last_effect(effects, ctx);
             ctx.last_object_tag = previous_last;
             let (delayed_effects, choices) = compiled?;

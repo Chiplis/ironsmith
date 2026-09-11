@@ -2278,14 +2278,18 @@ pub(crate) fn describe_consult_reveal_put_battlefield_then_bottom(
         ),
     };
 
-    if matches!(consult.player, PlayerFilter::ControllerOf(_) | PlayerFilter::AliasedControllerOf(_))
-        && player_filters_refer_to_same_player(&consult.player, &bottom.player)
+    if matches!(
+        consult.player,
+        PlayerFilter::ControllerOf(_) | PlayerFilter::AliasedControllerOf(_)
+    ) && player_filters_refer_to_same_player(&consult.player, &bottom.player)
     {
         let order = match bottom.order {
             crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
             crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => " in any order",
         };
-        return Some(format!("{player} {consult_verb} cards from the top of their library until they {pronoun_consult_verb} {stop_text}. The player puts {moved_phrase} onto the battlefield{tapped_suffix} and the rest on the bottom of their library{order}"));
+        return Some(format!(
+            "{player} {consult_verb} cards from the top of their library until they {pronoun_consult_verb} {stop_text}. The player puts {moved_phrase} onto the battlefield{tapped_suffix} and the rest on the bottom of their library{order}"
+        ));
     }
     if player == "you" {
         Some(format!(
@@ -4892,10 +4896,15 @@ pub(crate) fn for_each_exiles_search_tag(
 
 /// Identify the outcome collection of an exile consuming the exact search set.
 /// Older compiled programs express the action as a per-tag move loop.
-pub(crate) fn search_exile_result_tag<'a>(effect: &'a Effect, searched: &'a TagKey) -> Option<&'a TagKey> {
+pub(crate) fn search_exile_result_tag<'a>(
+    effect: &'a Effect,
+    searched: &'a TagKey,
+) -> Option<&'a TagKey> {
     let inner = structural_unwrap_render_wrappers(effect);
     if let Some(exile) = inner.downcast_ref::<crate::effects::ExileEffect>() {
-        if exile.face_down || !matches!(exile.spec.base(), ChooseSpec::Tagged(tag) if tag == searched) {
+        if exile.face_down
+            || !matches!(exile.spec.base(), ChooseSpec::Tagged(tag) if tag == searched)
+        {
             return None;
         }
         return wrapped_effect_tag(effect);
@@ -6291,8 +6300,8 @@ pub(in crate::compiled_text) fn describe_each_player_exile_sacrifice_return_resu
         false
     }
 
-    let for_players =
-        structural_unwrap_render_wrappers(effect).downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    let for_players = structural_unwrap_render_wrappers(effect)
+        .downcast_ref::<crate::effects::ForPlayersEffect>()?;
     if for_players.filter != PlayerFilter::Any
         || for_players.starting_with_controller
         || for_players.stop_after_first_happened
@@ -6300,8 +6309,8 @@ pub(in crate::compiled_text) fn describe_each_player_exile_sacrifice_return_resu
         return None;
     }
     let per_player_effects = if let [effect] = for_players.effects.as_slice()
-        && let Some(sequence) =
-            structural_unwrap_render_wrappers(effect).downcast_ref::<crate::effects::SequenceEffect>()
+        && let Some(sequence) = structural_unwrap_render_wrappers(effect)
+            .downcast_ref::<crate::effects::SequenceEffect>()
         && matches!(
             sequence.surface,
             ironsmith_core::SequenceSurface::CommaThen
@@ -6315,7 +6324,8 @@ pub(in crate::compiled_text) fn describe_each_player_exile_sacrifice_return_resu
         return None;
     };
 
-    let exile = structural_unwrap_render_wrappers(exile_effect).downcast_ref::<crate::effects::ExileEffect>()?;
+    let exile = structural_unwrap_render_wrappers(exile_effect)
+        .downcast_ref::<crate::effects::ExileEffect>()?;
     let (ChooseSpec::All(exile_filter) | ChooseSpec::Object(exile_filter)) = exile.spec.base()
     else {
         return None;
@@ -6362,17 +6372,22 @@ pub(in crate::compiled_text) fn describe_each_player_exile_sacrifice_return_resu
                     put_onto_battlefield.target.base(),
                     ChooseSpec::Tagged(tag) if wrapper_contains_tag(exile_effect, tag)
                 )
-        } else if let Some(returned) = returned.downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>() {
+        } else if let Some(returned) =
+            returned.downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>()
+        {
             let mut remainder = returned.filter.clone();
             let matching_pool = remainder.zone == Some(Zone::Exile)
                 && remainder.tagged_constraints.len() == 1
-                && remainder.tagged_constraints[0].relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && remainder.tagged_constraints[0].relation
+                    == crate::filter::TaggedOpbjectRelation::IsTaggedObject
                 && wrapper_contains_tag(exile_effect, &remainder.tagged_constraints[0].tag);
             remainder.zone = None;
             remainder.tagged_constraints.clear();
             remainder.union_surface = Default::default();
-            matching_pool && remainder == ObjectFilter::default()
-                && !returned.tapped && !returned.face_down
+            matching_pool
+                && remainder == ObjectFilter::default()
+                && !returned.tapped
+                && !returned.face_down
                 && returned.battlefield_controller == crate::effects::BattlefieldController::Owner
         } else {
             false

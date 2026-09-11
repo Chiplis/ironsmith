@@ -1,5 +1,5 @@
-use crate::cards::builders::ConditionalEffectAst;
 use super::*;
+use crate::cards::builders::ConditionalEffectAst;
 
 pub fn apply_explicit_intervening_if_to_triggered_chunk(
     chunk: LineAst,
@@ -136,7 +136,9 @@ pub fn apply_explicit_intervening_if_to_triggered_chunk(
                 if let Some(effects_ast) = parsed.effects_ast.take() {
                     if let [
                         EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-                            if_true, if_false, ..
+                            if_true,
+                            if_false,
+                            ..
                         }),
                     ] = effects_ast.as_slice()
                         && if_false.is_empty()

@@ -1,7 +1,7 @@
+use super::*;
+use crate::cards::builders::KeywordActionAst;
 use crate::cards::builders::LifeResourceActionAst;
 use crate::cards::builders::ZoneMoveActionAst;
-use crate::cards::builders::KeywordActionAst;
-use super::*;
 use crate::grammar::activated_lines::{self as activated_line_grammar, ActivatedCyclingContext};
 use crate::grammar::keyword_activated_lines::{
     self as keyword_activated_grammar, CraftMaterialKind, CyclingFilterSpec,
@@ -464,7 +464,9 @@ pub fn parse_reconfigure_line_lexed(
                     EffectAst::subject_verb(
                         SubjectVerbRoleAst::Actor,
                         PlayerAst::Implicit,
-                        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Reconfigure { target }),
+                        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Reconfigure {
+                            target,
+                        }),
                     ),
                 ]),
                 choices: vec![],

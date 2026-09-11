@@ -68,7 +68,9 @@ pub(crate) fn stack_entry_for_copy_target(
     target_id: crate::ids::ObjectId,
     ctx: &ExecutionContext,
 ) -> Result<Option<StackEntry>, ExecutionError> {
-    if let Some(activation) = ctx.triggering_event.as_ref()
+    if let Some(activation) = ctx
+        .triggering_event
+        .as_ref()
         .and_then(|event| event.downcast::<crate::events::AbilityActivatedEvent>())
         && activation.source == target_id
         && let Some(provenance) = activation.stack_entry_provenance
@@ -76,9 +78,13 @@ pub(crate) fn stack_entry_for_copy_target(
         // Several activations can share one permanent's object ID. The event
         // identifies the activation that triggered this copy, including when
         // that entry has since left the stack and no copy can be made.
-        return Ok(game.stack.iter().find(|entry|
-            entry.is_ability && entry.object_id == target_id && entry.provenance == provenance
-        ).cloned());
+        return Ok(game
+            .stack
+            .iter()
+            .find(|entry| {
+                entry.is_ability && entry.object_id == target_id && entry.provenance == provenance
+            })
+            .cloned());
     }
     if let Some(entry) = game
         .stack
@@ -156,12 +162,18 @@ pub(crate) fn create_stack_copy_from_object(
     let announced_type = game.chosen_subtype(source.id).filter(|_| {
         source.spell_effect.as_ref().is_some_and(|program| {
             crate::game_loop::spell_program_uses_chosen_creature_type_target(
-                game, program, original_entry.controller, Some(source.id), original_entry.chosen_modes.as_deref())
+                game,
+                program,
+                original_entry.controller,
+                Some(source.id),
+                original_entry.chosen_modes.as_deref(),
+            )
         })
     });
     game.add_object(copy_obj);
-    if let Some(subtype) = announced_type { game.set_chosen_subtype(copy_id, subtype); }
-
+    if let Some(subtype) = announced_type {
+        game.set_chosen_subtype(copy_id, subtype);
+    }
 
     if let Some(chosen_player) = copy_entry.chosen_player {
         game.set_chosen_player(copy_id, chosen_player);
@@ -211,7 +223,9 @@ impl EffectExecutor for CopySpellEffect {
         // A referenced activation remains on the stack independently of its
         // permanent. Tagged source snapshots may already refer to the new zone
         // object, so recover the event's exact activation identity here.
-        let referenced_activation = ctx.triggering_event.as_ref()
+        let referenced_activation = ctx
+            .triggering_event
+            .as_ref()
             .and_then(|event| event.downcast::<crate::events::AbilityActivatedEvent>())
             .filter(|activation| {
                 !self.target.is_target()
@@ -224,11 +238,13 @@ impl EffectExecutor for CopySpellEffect {
             });
         let target_ids = if let Some(activation) = referenced_activation {
             vec![activation.source]
-        } else { match resolve_objects_for_effect(game, ctx, &self.target) {
-            Ok(targets) => targets,
-            Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::target_invalid()),
-            Err(error) => return Err(error),
-        }};
+        } else {
+            match resolve_objects_for_effect(game, ctx, &self.target) {
+                Ok(targets) => targets,
+                Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::target_invalid()),
+                Err(error) => return Err(error),
+            }
+        };
         if target_ids.is_empty() {
             return Err(ExecutionError::InvalidTarget);
         }
@@ -239,12 +255,24 @@ impl EffectExecutor for CopySpellEffect {
             let Some(original_entry) = stack_entry_for_copy_target(game, target_id, ctx)? else {
                 continue;
             };
-            let target = game.object(target_id).cloned().or_else(|| {
-                original_entry.is_ability.then(|| {
-                    original_entry.source_snapshot.as_ref().map(|snapshot|
-                        Object::token_copy_from_snapshot(snapshot, target_id, snapshot.owner))
-                }).flatten()
-            }).ok_or(ExecutionError::ObjectNotFound(target_id))?;
+            let target = game
+                .object(target_id)
+                .cloned()
+                .or_else(|| {
+                    original_entry
+                        .is_ability
+                        .then(|| {
+                            original_entry.source_snapshot.as_ref().map(|snapshot| {
+                                Object::token_copy_from_snapshot(
+                                    snapshot,
+                                    target_id,
+                                    snapshot.owner,
+                                )
+                            })
+                        })
+                        .flatten()
+                })
+                .ok_or(ExecutionError::ObjectNotFound(target_id))?;
             for _ in 0..copy_count {
                 let copy_id = create_stack_copy_from_object(
                     game,

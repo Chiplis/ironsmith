@@ -35,7 +35,10 @@ fn swallow_whole_cast_preserves_paid_creature() {
         );
         let cast_result = crate::effects::execute_effect(&mut game, &effect, &mut ctx);
         if scenario == 4 {
-            assert!(cast_result.is_err(), "the unpaid mandatory cost must reject casting");
+            assert!(
+                cast_result.is_err(),
+                "the unpaid mandatory cost must reject casting"
+            );
             assert!(
                 game.stack.is_empty(),
                 "an already tapped creature cannot pay the cost"

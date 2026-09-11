@@ -35,11 +35,14 @@ pub fn parse_vote_count_rewrite_surface_tokens(
 ) -> Option<VoteCountRewriteSurface> {
     // Preserve the count inside a reveal/exile-until stop condition. Hoisting
     // it to a loop changes which cards are revealed and retained for followups.
-    if crate::grammar::effects::parse_consult_traversal_shape(tokens)
-        .is_some_and(|shape| matches!(shape.stop.stop_rule,
+    if crate::grammar::effects::parse_consult_traversal_shape(tokens).is_some_and(|shape| {
+        matches!(
+            shape.stop.stop_rule,
             crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(
-                crate::effect::Value::VoteCount(_))))
-    {
+                crate::effect::Value::VoteCount(_)
+            )
+        )
+    }) {
         return None;
     }
     crate::grammar::primitives::probe_all(
@@ -72,10 +75,22 @@ fn parse_shared_subject_vote_pair_lexed(
         primitives::phrase(&["each", "player"]),
         primitives::kw("you").void(),
         peek(primitives::any_phrase(&[
-            &["put"], &["create"], &["draw"], &["gain"], &["lose"],
-            &["discard"], &["sacrifice"], &["exile"], &["return"],
-            &["destroy"], &["tap"], &["untap"], &["mill"], &["investigate"],
-        ])).void(),
+            &["put"],
+            &["create"],
+            &["draw"],
+            &["gain"],
+            &["lose"],
+            &["discard"],
+            &["sacrifice"],
+            &["exile"],
+            &["return"],
+            &["destroy"],
+            &["tap"],
+            &["untap"],
+            &["mill"],
+            &["investigate"],
+        ]))
+        .void(),
     ))
     .take()
     .parse_next(input)?;
@@ -169,9 +184,12 @@ mod tests {
 
     #[test]
     fn parses_typed_vote_rewrites_without_card_names() {
-        assert_eq!(parse_vote_count_rewrite_surface(
-            "Reveal cards from the top of your library until you reveal a creature card for each wild vote"
-        ), None);
+        assert_eq!(
+            parse_vote_count_rewrite_surface(
+                "Reveal cards from the top of your library until you reveal a creature card for each wild vote"
+            ),
+            None
+        );
         assert_eq!(
             parse_vote_count_rewrite_surface("You draw cards equal to the number of truth votes"),
             Some(VoteCountRewriteSurface::DrawForEachVote {
@@ -191,14 +209,18 @@ mod tests {
 
     #[test]
     fn parses_imperative_vote_pair_without_merging_counts() {
-        assert_eq!(parse_vote_count_rewrite_surface("Put a +1/+1 counter on this creature for each strength vote and create a 1/1 white Soldier creature token for each numbers vote."),
+        assert_eq!(
+            parse_vote_count_rewrite_surface(
+                "Put a +1/+1 counter on this creature for each strength vote and create a 1/1 white Soldier creature token for each numbers vote."
+            ),
             Some(VoteCountRewriteSurface::SharedSubjectPair {
                 subject: String::new(),
                 first_action: "Put a +1/+1 counter on this creature".into(),
                 first_vote: "strength".into(),
                 second_action: "create a 1/1 white Soldier creature token".into(),
                 second_vote: "numbers".into(),
-            }));
+            })
+        );
     }
 
     #[test]

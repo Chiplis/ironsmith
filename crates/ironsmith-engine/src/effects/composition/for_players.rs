@@ -363,7 +363,8 @@ impl EffectExecutor for ForPlayersEffect {
         // order and carries no unit grouping.
         let simultaneous_effects = flatten_sequences_for_simultaneous_units(&self.effects);
 
-        if !self.sequential && !self.starting_with_controller
+        if !self.sequential
+            && !self.starting_with_controller
             && !self.stop_after_first_happened
             && let Some(unsupported) = simultaneous_effects.iter().find(|effect| {
                 !effect.0.supports_simultaneous_player_action()
@@ -881,8 +882,9 @@ mod tests {
             ],
         );
         effect.sequential = true;
-        effect.execute(&mut game, &mut ctx)
-        .expect("each-player effect should resolve");
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("each-player effect should resolve");
 
         assert_eq!(
             decisions.prompts,
@@ -1466,7 +1468,8 @@ mod tests {
             4,
             "two tokens for each of two opponents must feed the plural follow-up"
         );
-    }    #[test]
+    }
+    #[test]
     fn sequential_results_accumulate_for_plural_followup() {
         let mut game = GameState::new(
             vec!["Alice".to_string(), "Bob".to_string(), "Cara".to_string()],

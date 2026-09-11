@@ -5,12 +5,30 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         return None;
     }
     let offset = usize::from(words.first() == Some(&"the"));
-    if permission_shapes::starts_at_words(words, offset, &["number", "of", "players", "you", "attacked", "this", "combat"]) {
-        return Some((Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::PlayersAttackedThisCombat(PlayerFilter::You)), offset + 7));
+    if permission_shapes::starts_at_words(
+        words,
+        offset,
+        &[
+            "number", "of", "players", "you", "attacked", "this", "combat",
+        ],
+    ) {
+        return Some((
+            Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::PlayersAttackedThisCombat(
+                PlayerFilter::You,
+            )),
+            offset + 7,
+        ));
     }
-    if permission_shapes::starts_at_words(words, offset, &["amount", "of", "mana", "spent", "to", "cast", "this"])
-        && words.get(offset + 7).is_some_and(|word| matches!(*word, "spell" | "creature" | "artifact" | "enchantment" | "permanent"))
-    {
+    if permission_shapes::starts_at_words(
+        words,
+        offset,
+        &["amount", "of", "mana", "spent", "to", "cast", "this"],
+    ) && words.get(offset + 7).is_some_and(|word| {
+        matches!(
+            *word,
+            "spell" | "creature" | "artifact" | "enchantment" | "permanent"
+        )
+    }) {
         return Some((Value::ManaSpentToCastThisSpell, offset + 8));
     }
     if let Some(devotion) = parse_devotion_value_words(words) {
@@ -306,11 +324,10 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if permission_shapes::prefix_words(words, &["its", "power"]) {
         return Some((
             Value::PowerOf(Box::new(
-                ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into()).with_surface_hint(
-                    ChooseSpecSurfaceHint::SourceReference(
+                ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into())
+                    .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(
                         SourceReferenceSurface::ThisPermanentType("it".to_string()),
-                    ),
-                ),
+                    )),
             )),
             2,
         ));
@@ -349,11 +366,10 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if permission_shapes::prefix_words(words, &["its", "toughness"]) {
         return Some((
             Value::ToughnessOf(Box::new(
-                ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into()).with_surface_hint(
-                    ChooseSpecSurfaceHint::SourceReference(
+                ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into())
+                    .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(
                         SourceReferenceSurface::ThisPermanentType("it".to_string()),
-                    ),
-                ),
+                    )),
             )),
             2,
         ));
@@ -378,11 +394,10 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if permission_shapes::prefix_words(words, &["its", "mana", "value"]) {
         return Some((
             Value::ManaValueOf(Box::new(
-                ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into()).with_surface_hint(
-                    ChooseSpecSurfaceHint::SourceReference(
+                ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into())
+                    .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(
                         SourceReferenceSurface::ThisPermanentType("it".to_string()),
-                    ),
-                ),
+                    )),
             )),
             3,
         ));
@@ -458,9 +473,12 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     }
     if let Some(used) = prefix_len(words, EXILED_MANA_VALUE_PREFIXES) {
         return Some((
-            with_sacrificed_object_surface(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
-                (crate::tag::CompilerReferenceTag::SourceExiled.bind()).into(),
-            ))), &words[..used]),
+            with_sacrificed_object_surface(
+                Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
+                    (crate::tag::CompilerReferenceTag::SourceExiled.bind()).into(),
+                ))),
+                &words[..used],
+            ),
             used,
         ));
     }

@@ -554,7 +554,9 @@ impl Modification {
             ironsmith_core::CompiledContinuousModification::RemoveCardTypes(card_types) => {
                 Self::RemoveCardTypes(card_types)
             }
-            ironsmith_core::CompiledContinuousModification::AddSupertypes(supertypes) => Self::AddSupertypes(supertypes),
+            ironsmith_core::CompiledContinuousModification::AddSupertypes(supertypes) => {
+                Self::AddSupertypes(supertypes)
+            }
             ironsmith_core::CompiledContinuousModification::SetName(name) => Self::SetName(name),
             ironsmith_core::CompiledContinuousModification::RemoveSupertypes(supertypes) => {
                 Self::RemoveSupertypes(supertypes)
@@ -595,12 +597,13 @@ impl Modification {
                     sublayer: sublayer.into(),
                 }
             }
-            ironsmith_core::CompiledContinuousModification::SetToughness { toughness, sublayer } => {
-                Self::SetToughness {
-                    value: toughness,
-                    sublayer: sublayer.into(),
-                }
-            }
+            ironsmith_core::CompiledContinuousModification::SetToughness {
+                toughness,
+                sublayer,
+            } => Self::SetToughness {
+                value: toughness,
+                sublayer: sublayer.into(),
+            },
             ironsmith_core::CompiledContinuousModification::DoesntUntap => Self::DoesntUntap,
             ironsmith_core::CompiledContinuousModification::MakeColorless => Self::MakeColorless,
             ironsmith_core::CompiledContinuousModification::SwitchPowerToughness => {
@@ -3124,7 +3127,9 @@ fn effect_target_definitely_excludes_object(
     match &effect.applies_to {
         EffectTarget::Specific(id) => *id != object.id,
         EffectTarget::Source => effect.source != object.id,
-        EffectTarget::AllPermanents | EffectTarget::AllCreatures => object.zone != Zone::Battlefield,
+        EffectTarget::AllPermanents | EffectTarget::AllCreatures => {
+            object.zone != Zone::Battlefield
+        }
         EffectTarget::AttachedTo(source_id) => {
             object.zone != Zone::Battlefield
                 || objects.get(source_id).is_none_or(|source| {

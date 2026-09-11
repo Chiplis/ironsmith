@@ -1,7 +1,7 @@
 use crate::cards::builders::{
-    CardTextError, ChoiceCount, EffectAst, IfResultPredicate, OwnedLexToken, PlayerAst,
-    PredicateAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey,
-    TargetAst, TokenActionAst, ObjectChoiceEffectAst, PermissionEffectAst, PlayerPredicateAst,
+    CardTextError, ChoiceCount, EffectAst, IfResultPredicate, ObjectChoiceEffectAst, OwnedLexToken,
+    PermissionEffectAst, PlayerAst, PlayerPredicateAst, PredicateAst, SubjectVerbActionAst,
+    SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst, TokenActionAst,
 };
 use crate::diagnostics::TextSpan;
 use crate::effect::{Until, Value};
@@ -29,12 +29,22 @@ use super::dispatch_entry::replace_unbound_x_in_effects_anywhere;
 fn sequential_participant_body(effect: EffectAst) -> EffectAst {
     use crate::cards::builders::ForEachEffectAst;
     let (filter, effects) = match effect {
-        EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }) => (PlayerFilter::Opponent, effects),
-        EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }) => (PlayerFilter::Any, effects),
-        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { filter, effects, .. }) => (filter, effects),
+        EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }) => {
+            (PlayerFilter::Opponent, effects)
+        }
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }) => {
+            (PlayerFilter::Any, effects)
+        }
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+            filter, effects, ..
+        }) => (filter, effects),
         other => return other,
     };
-    EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { filter, effects, sequential: true })
+    EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+        filter,
+        effects,
+        sequential: true,
+    })
 }
 
 fn has_independent_participant_continuation(tokens: &[OwnedLexToken]) -> bool {
@@ -42,12 +52,16 @@ fn has_independent_participant_continuation(tokens: &[OwnedLexToken]) -> bool {
     // key; naming the acting controller inside that body does not end scope.
     if for_each_shapes::parse_participant_clause_shape(tokens)
         .is_some_and(|shape| !shape.participant_is_actor)
-    { return false; }
+    {
+        return false;
+    }
     // The consequence after "who can't, ..." belongs to the quantified
     // failure clause even when it names a different actor explicitly.
     if for_each_shapes::parse_participant_clause_shape(tokens)
         .is_some_and(|shape| for_each_shapes::parse_who_clause_shape(shape.inner_tokens).is_some())
-    { return false; }
+    {
+        return false;
+    }
     use crate::grammar::effects::{coordination, typed_clause_heads::ClauseActorHeadAst};
     matches!(coordination::recognize_coordination(tokens),
         crate::recognition::ParseOutcome::Match(plan)
@@ -187,16 +201,28 @@ pub fn parse_has_base_power_clause(
 ) -> Result<Option<EffectAst>, CardTextError> {
     if let Some(shape) = for_each_shapes::parse_base_power_or_toughness_clause_shape(tokens)? {
         let target = parse_target_phrase(shape.target_tokens)?;
-        return Ok(Some(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf {
-            modes: vec![
-                crate::cards::builders::ChooseOneModeAst { description: String::new(), effects: vec![
-                    EffectAst::subject_verb_set_base_power(shape.power, target.clone(), shape.duration.clone()),
-                ] },
-                crate::cards::builders::ChooseOneModeAst { description: String::new(), effects: vec![
-                    EffectAst::subject_verb_set_base_toughness(shape.toughness, target, shape.duration),
-                ] },
-            ],
-        })));
+        return Ok(Some(EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::ChooseOneOf {
+                modes: vec![
+                    crate::cards::builders::ChooseOneModeAst {
+                        description: String::new(),
+                        effects: vec![EffectAst::subject_verb_set_base_power(
+                            shape.power,
+                            target.clone(),
+                            shape.duration.clone(),
+                        )],
+                    },
+                    crate::cards::builders::ChooseOneModeAst {
+                        description: String::new(),
+                        effects: vec![EffectAst::subject_verb_set_base_toughness(
+                            shape.toughness,
+                            target,
+                            shape.duration,
+                        )],
+                    },
+                ],
+            },
+        )));
     }
     let Some(shape) = for_each_shapes::parse_base_power_clause_shape(tokens)? else {
         return Ok(None);
@@ -413,7 +439,10 @@ pub fn force_implicit_token_controller_you(effects: &mut [EffectAst]) {
                 action:
                     SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { player, .. })
                     | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { player, .. })
-                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { player, .. }),
+                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
+                        player,
+                        ..
+                    }),
                 ..
             }) => {
                 if matches!(*player, PlayerAst::Implicit) {
@@ -431,13 +460,25 @@ fn bind_implicit_choose_chooser(effects: &mut [EffectAst], chooser: PlayerAst) {
     for effect in effects {
         match effect {
             EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { player, .. })
-            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { player, .. })
-            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { player, .. })
-            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone { player, .. })
-            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { player, .. })
-            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { player, .. })
-                if matches!(*player, PlayerAst::Implicit) =>
-            {
+            | EffectAst::ObjectChoices(
+                ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { player, .. },
+            )
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
+                player,
+                ..
+            })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone {
+                player,
+                ..
+            })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                player,
+                ..
+            })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+                player,
+                ..
+            }) if matches!(*player, PlayerAst::Implicit) => {
                 *player = chooser;
             }
             _ => for_each_nested_effects_mut(effect, true, |nested| {
@@ -465,11 +506,21 @@ fn stabilize_standalone_participant_choice_tag(
     };
     let tag = match effect {
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { tag, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { tag, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
+            tag,
+            ..
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
+            tag,
+            ..
+        })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone { tag, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { tag, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { tag, .. }) => tag,
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            tag, ..
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+            tag, ..
+        }) => tag,
         _ => return,
     };
     if tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str() {
@@ -489,12 +540,14 @@ fn stabilize_standalone_participant_choice_tag(
 fn tagged_predicate(filter_tokens: Option<&[OwnedLexToken]>) -> Option<PredicateAst> {
     let filter =
         crate::grammar::primitives::probe_shape(parse_object_filter(filter_tokens?, false))?;
-    Some(PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches {
-        player: PlayerAst::That,
-        tag: crate::tag::CompilerReferenceTag::It.bind(),
-        filter,
-        mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
-    }))
+    Some(PredicateAst::Player(
+        PlayerPredicateAst::PlayerTaggedObjectMatches {
+            player: PlayerAst::That,
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
+            filter,
+            mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
+        },
+    ))
 }
 
 fn tagged_past_action_predicate(
@@ -502,8 +555,11 @@ fn tagged_past_action_predicate(
     action_tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
     let mut predicate = tagged_predicate(filter_tokens)?;
-    if action_tokens.iter().any(|token| token.is_word("sacrificed"))
-        && let PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches { mode, .. }) = &mut predicate
+    if action_tokens
+        .iter()
+        .any(|token| token.is_word("sacrificed"))
+        && let PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches { mode, .. }) =
+            &mut predicate
     {
         // Eligibility is determined when the permanent was sacrificed, not
         // by the characteristics of its new graveyard object.
@@ -549,7 +605,9 @@ fn parse_maybe_effects(
             bind_implicit_player_context(effect, PlayerAst::That);
         }
     }
-    Ok(vec![EffectAst::Permissions(PermissionEffectAst::May { effects })])
+    Ok(vec![EffectAst::Permissions(PermissionEffectAst::May {
+        effects,
+    })])
 }
 
 /// Parse a coordinated action program whose actor is supplied by an outer
@@ -664,7 +722,10 @@ fn bind_quantified_participant_actor(effects: &mut [EffectAst]) {
                 action:
                     SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { player, .. })
                     | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { player, .. })
-                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { player, .. }),
+                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
+                        player,
+                        ..
+                    }),
             }) => {
                 if subject.role == SubjectVerbRoleAst::Actor
                     && matches!(subject.player, PlayerAst::Implicit | PlayerAst::You)
@@ -683,11 +744,25 @@ fn bind_quantified_participant_actor(effects: &mut [EffectAst]) {
                 }
             }
             EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { player, .. })
-            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { player, .. })
-            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { player, .. })
-            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone { player, .. })
-            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { player, .. })
-            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { player, .. }) => {
+            | EffectAst::ObjectChoices(
+                ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { player, .. },
+            )
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
+                player,
+                ..
+            })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone {
+                player,
+                ..
+            })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                player,
+                ..
+            })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+                player,
+                ..
+            }) => {
                 if matches!(*player, PlayerAst::Implicit | PlayerAst::You) {
                     *player = PlayerAst::That;
                 }

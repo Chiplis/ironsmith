@@ -1,6 +1,6 @@
-use crate::cards::builders::{DelayedEffectAst, TriggerSpec};
 use super::*;
 use crate::cards::builders::SubjectVerbActionAst;
+use crate::cards::builders::{DelayedEffectAst, TriggerSpec};
 use crate::effect_sentences::SubjectVerbPrimitiveClause;
 pub(crate) fn parse_return_with_event_timing(
     tokens: &[OwnedLexToken],
@@ -11,31 +11,37 @@ pub(crate) fn parse_return_with_event_timing(
     let Some(when_idx) = tokens.iter().position(|token| token.is_word("when")) else {
         return Ok(None);
     };
-    if when_idx <= 1 { return Ok(None); }
+    if when_idx <= 1 {
+        return Ok(None);
+    }
     let trigger_words = crate::lexer::token_word_refs(&tokens[when_idx..]);
-    let trigger = if trigger_words.len() == 4 && trigger_words[1] == "that"
-        && trigger_words[3] == "dies"
-    {
-        let mut filter = crate::object_filters::parse_object_filter_lexed(
-            &tokens[when_idx + 2..tokens.len() - 1], false,
-        )?;
-        filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.bind().into(),
-            relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
-        });
-        TriggerSpec::Dies(filter)
-    } else {
-        crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens[when_idx..])?
-    };
+    let trigger =
+        if trigger_words.len() == 4 && trigger_words[1] == "that" && trigger_words[3] == "dies" {
+            let mut filter = crate::object_filters::parse_object_filter_lexed(
+                &tokens[when_idx + 2..tokens.len() - 1],
+                false,
+            )?;
+            filter
+                .tagged_constraints
+                .push(crate::target::TaggedObjectConstraint {
+                    tag: crate::tag::CompilerReferenceTag::It.bind().into(),
+                    relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+                });
+            TriggerSpec::Dies(filter)
+        } else {
+            crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens[when_idx..])?
+        };
     let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens[..when_idx])?;
-    Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
-        trigger,
-        effects,
-        one_shot: true,
-        duration: Until::Forever,
-        either_of_watched_objects: false,
-        while_any_tagged_object_in_zone: None,
-    })]))
+    Ok(Some(vec![EffectAst::Delayed(
+        DelayedEffectAst::DelayedTriggerForDuration {
+            trigger,
+            effects,
+            one_shot: true,
+            duration: Until::Forever,
+            either_of_watched_objects: false,
+            while_any_tagged_object_in_zone: None,
+        },
+    )]))
 }
 
 fn parse_return_back_reference_target(
@@ -117,17 +123,23 @@ pub fn wrap_return_with_delayed_timing(
     };
 
     match timing {
-        DelayedReturnTimingAst::NextEndStep(player) => EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
-            player,
-            effects: vec![effect],
-        }),
-        DelayedReturnTimingAst::NextUpkeep(player) => EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep {
-            player,
-            effects: vec![effect],
-        }),
-        DelayedReturnTimingAst::EndOfCombat => EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat {
-            effects: vec![effect],
-        }),
+        DelayedReturnTimingAst::NextEndStep(player) => {
+            EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
+                player,
+                effects: vec![effect],
+            })
+        }
+        DelayedReturnTimingAst::NextUpkeep(player) => {
+            EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep {
+                player,
+                effects: vec![effect],
+            })
+        }
+        DelayedReturnTimingAst::EndOfCombat => {
+            EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat {
+                effects: vec![effect],
+            })
+        }
     }
 }
 

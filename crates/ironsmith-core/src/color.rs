@@ -1,8 +1,7 @@
 use crate::tag::TagKeyWalk;
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
 pub enum Color {
     White,
     Blue,
@@ -55,8 +54,7 @@ impl Color {
 
 /// A set of colors represented as bitflags for efficient operations.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, TagKeyWalk)]
 pub struct ColorSet(u8);
 
 impl ColorSet {

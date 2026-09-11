@@ -1,18 +1,22 @@
-use crate::cards::builders::ObjectChoiceEffectAst;
-use crate::cards::builders::DelayedEffectAst;
-use crate::cards::builders::StatChangeActionAst;
-use crate::cards::builders::CharacteristicActionAst;
-use crate::cards::builders::GrantActionAst;
-use crate::cards::builders::{CounterActionAst, DamagePreventionActionAst};
 use super::*;
+use crate::cards::builders::CharacteristicActionAst;
+use crate::cards::builders::DelayedEffectAst;
+use crate::cards::builders::GrantActionAst;
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::StatChangeActionAst;
+use crate::cards::builders::{CounterActionAst, DamagePreventionActionAst};
 use crate::grammar::effects::counter_marker_shapes as counter_shapes;
 use crate::grammar::effects::zone_counter_shapes;
 
 fn subject_verb_put_counters_target(effect: &EffectAst) -> Option<TargetAst> {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-            SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target, .. }) => Some(target.clone()),
-            SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice { target, .. }) => Some(target.clone()),
+            SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target, .. }) => {
+                Some(target.clone())
+            }
+            SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice {
+                target, ..
+            }) => Some(target.clone()),
             _ => None,
         },
         _ => None,
@@ -66,7 +70,9 @@ fn retarget_it_restriction_for_counter_followup(
     match restriction {
         Restriction::BeSacrificedByCause { filter, cause } => {
             retarget_it_filter_for_counter_followup(filter, source_filter);
-            if let Some(filter) = &mut cause.source_filter { retarget_it_filter_for_counter_followup(filter, source_filter); }
+            if let Some(filter) = &mut cause.source_filter {
+                retarget_it_filter_for_counter_followup(filter, source_filter);
+            }
         }
         Restriction::Attack(filter)
         | Restriction::Block(filter)
@@ -117,9 +123,14 @@ fn retarget_it_effect_for_counter_followup(effect: &mut EffectAst, source_target
     match effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) => match action {
             SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
+                target, ..
+            })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { target, .. })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceToTarget { target, .. }) => {
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceToTarget {
+                target,
+                ..
+            }) => {
                 retarget_it_target_for_counter_followup(target, source_target);
             }
             SubjectVerbActionAst::Cant { restriction, .. } => {
@@ -228,14 +239,16 @@ pub fn parse_sentence_sacrifice_at_end_of_combat(
         parse_object_filter(shape.object_tokens, false)?
     };
 
-    Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat {
-        effects: vec![EffectAst::subject_verb_sacrifice(
-            PlayerAst::Implicit,
-            filter,
-            1,
-            None,
-        )],
-    })]))
+    Ok(Some(vec![EffectAst::Delayed(
+        DelayedEffectAst::DelayedUntilEndOfCombat {
+            effects: vec![EffectAst::subject_verb_sacrifice(
+                PlayerAst::Implicit,
+                filter,
+                1,
+                None,
+            )],
+        },
+    )]))
 }
 
 pub fn parse_sentence_for_each_counter_kind_put_or_remove(
@@ -336,9 +349,15 @@ pub fn is_pump_like_effect(effect: &EffectAst) -> bool {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { .. })
                 | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpByLastEffect { .. })
-                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness { .. })
-                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness { .. }),
+                | SubjectVerbActionAst::Characteristics(
+                    CharacteristicActionAst::SetBasePowerToughness { .. }
+                )
+                | SubjectVerbActionAst::Characteristics(
+                    CharacteristicActionAst::SetBasePower { .. }
+                )
+                | SubjectVerbActionAst::Characteristics(
+                    CharacteristicActionAst::SetBaseToughness { .. }
+                ),
             ..
         })
     )
@@ -445,13 +464,19 @@ pub fn parse_return_with_counters_on_it_sentence(
     let wrapped = if let Some(timing) = shape.timing {
         match timing {
             counter_shapes::CounterMarkerTimingShape::NextEndStep(player) => {
-                vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep { player, effects })]
+                vec![EffectAst::Delayed(
+                    DelayedEffectAst::DelayedUntilNextEndStep { player, effects },
+                )]
             }
             counter_shapes::CounterMarkerTimingShape::NextUpkeep(player) => {
-                vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep { player, effects })]
+                vec![EffectAst::Delayed(
+                    DelayedEffectAst::DelayedUntilNextUpkeep { player, effects },
+                )]
             }
             counter_shapes::CounterMarkerTimingShape::EndOfCombat => {
-                vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat { effects })]
+                vec![EffectAst::Delayed(
+                    DelayedEffectAst::DelayedUntilEndOfCombat { effects },
+                )]
             }
         }
     } else {
@@ -773,7 +798,9 @@ pub use resource_programs::{parse_draw_then_connive_sentence, parse_sentence_dra
 mod zone_programs;
 pub use zone_programs::clone_return_effect_with_subtype;
 
-pub fn parse_shared_counter_target(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+pub fn parse_shared_counter_target(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if let Some(shape) = counter_shapes::parse_shared_counter_target_tokens(tokens) {
         let target = parse_target_phrase(shape.target_tokens)?;
         let effects = shape
@@ -784,8 +811,13 @@ pub fn parse_shared_counter_target(tokens: &[OwnedLexToken]) -> Result<Option<Ve
                 EffectAst::subject_verb_put_counters(
                     descriptor.counter_type,
                     Value::Fixed(descriptor.count as i32),
-                    if index == 0 { target.clone() } else {
-                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), crate::util::span_from_tokens(tokens))
+                    if index == 0 {
+                        target.clone()
+                    } else {
+                        TargetAst::Tagged(
+                            crate::tag::CompilerReferenceTag::It.bind(),
+                            crate::util::span_from_tokens(tokens),
+                        )
                     },
                     None,
                     false,

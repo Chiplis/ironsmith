@@ -1,10 +1,9 @@
 //! The delayed actions of `EffectAst`.
 
-use ironsmith_compiler_ast::TagRef;
 use super::*;
+use ironsmith_compiler_ast::TagRef;
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum DelayedEffectAst {
     DelayedUntilNextEndStep {
         player: PlayerFilter,

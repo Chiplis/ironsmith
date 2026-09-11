@@ -1,16 +1,4 @@
 #![allow(unused_imports)]
-use crate::cards::builders::PlayerPredicateAst;
-use crate::cards::builders::PermissionEffectAst;
-use crate::cards::builders::ConditionalEffectAst;
-use crate::cards::builders::ForEachEffectAst;
-use crate::cards::builders::ControlActionAst;
-use crate::cards::builders::StackActionAst;
-use crate::cards::builders::DamageActionAst;
-use crate::cards::builders::LifeResourceActionAst;
-use crate::cards::builders::ZoneMoveActionAst;
-use crate::cards::builders::KeywordActionAst;
-use crate::cards::builders::ManaActionAst;
-use crate::cards::builders::GrantActionAst;
 use super::shard_00::*;
 use super::shard_02::*;
 use super::shard_03::*;
@@ -18,6 +6,18 @@ use super::shard_04::*;
 use super::shard_05::*;
 use super::shard_06::*;
 use super::*;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::ControlActionAst;
+use crate::cards::builders::DamageActionAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::GrantActionAst;
+use crate::cards::builders::KeywordActionAst;
+use crate::cards::builders::LifeResourceActionAst;
+use crate::cards::builders::ManaActionAst;
+use crate::cards::builders::PermissionEffectAst;
+use crate::cards::builders::PlayerPredicateAst;
+use crate::cards::builders::StackActionAst;
+use crate::cards::builders::ZoneMoveActionAst;
 #[cfg(test)]
 use ironsmith_compiler::ParseCardText;
 #[cfg(test)]
@@ -72,9 +72,10 @@ pub(super) fn conditional_effect_parts(
             predicate,
             effects: if_true,
         }) => (predicate, if_true, &[]),
-        crate::cards::builders::EffectAst::Conditionals(ConditionalEffectAst::TrailingUnless { predicate, effects }) => {
-            (predicate, &[], effects)
-        }
+        crate::cards::builders::EffectAst::Conditionals(ConditionalEffectAst::TrailingUnless {
+            predicate,
+            effects,
+        }) => (predicate, &[], effects),
         other => panic!("expected a conditional effect, got {other:?}"),
     }
 }
@@ -123,7 +124,11 @@ pub(super) fn attach_up_to_one_target_equipment_to_it_parses_target_object() {
     let [
         crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::Control(ControlActionAst::Attach { object, target }),
+                action:
+                    crate::cards::builders::SubjectVerbActionAst::Control(ControlActionAst::Attach {
+                        object,
+                        target,
+                    }),
                 ..
             },
         ),
@@ -155,7 +160,11 @@ pub(super) fn attach_source_to_up_to_one_target_preserves_optional_destination_c
     let [
         crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::Control(ControlActionAst::Attach { target, .. }),
+                action:
+                    crate::cards::builders::SubjectVerbActionAst::Control(ControlActionAst::Attach {
+                        target,
+                        ..
+                    }),
                 ..
             },
         ),
@@ -441,7 +450,11 @@ pub(super) fn attach_any_number_equipment_to_it_parses_counted_object_set() {
     let [
         crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::Control(ControlActionAst::Attach { object, target }),
+                action:
+                    crate::cards::builders::SubjectVerbActionAst::Control(ControlActionAst::Attach {
+                        object,
+                        target,
+                    }),
                 ..
             },
         ),
@@ -560,7 +573,10 @@ pub(super) fn amass_where_x_clause_replaces_unbound_x() {
     let [
         crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { amount, .. }),
+                action:
+                    crate::cards::builders::SubjectVerbActionAst::KeywordActions(
+                        KeywordActionAst::Amass { amount, .. },
+                    ),
                 ..
             },
         ),
@@ -674,7 +690,9 @@ pub(super) fn rewrite_if_clause_supports_passive_this_way_tagged_object_predicat
         effects.as_slice(),
         [crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { .. }),
+                action: crate::cards::builders::SubjectVerbActionAst::Damage(
+                    DamageActionAst::DealDamage { .. }
+                ),
                 ..
             }
         )]
@@ -782,7 +800,12 @@ pub(super) fn rewrite_if_clause_binds_it_was_cast_to_tagged_object() {
     let parsed =
         parse_effect_sentence_lexed(&tokens).expect("tagged cast-history conditional should parse");
 
-    let [crate::cards::builders::EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. })] = parsed.as_slice()
+    let [
+        crate::cards::builders::EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate,
+            ..
+        }),
+    ] = parsed.as_slice()
     else {
         panic!("expected conditional exile clause, got {parsed:?}");
     };
@@ -818,7 +841,9 @@ pub(super) fn rewrite_verb_handlers_keep_trailing_instead_if_damage_clause_after
         if_true,
         [crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { .. }),
+                action: crate::cards::builders::SubjectVerbActionAst::Damage(
+                    DamageActionAst::DealDamage { .. }
+                ),
                 ..
             }
         )]
@@ -841,7 +866,9 @@ pub(super) fn rewrite_verb_handlers_keep_trailing_if_draw_clause_after_structure
         if_true,
         [crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { .. }),
+                action: crate::cards::builders::SubjectVerbActionAst::LifeResources(
+                    LifeResourceActionAst::Draw { .. }
+                ),
                 ..
             }
         )]
@@ -856,29 +883,33 @@ pub(super) fn rewrite_verb_handlers_keep_draw_for_each_player_condition_after_st
     let parsed = parse_effect_sentence_lexed(&tokens).expect("draw-for-each clause should parse");
 
     match parsed.as_slice() {
-        [crate::cards::builders::EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })] => {
-            match effects.as_slice() {
-                [
-                    crate::cards::builders::EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+        [
+            crate::cards::builders::EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }),
+        ] => match effects.as_slice() {
+            [
+                crate::cards::builders::EffectAst::Conditionals(
+                    ConditionalEffectAst::Conditional {
                         predicate: _,
                         if_true,
                         if_false,
-                    }),
-                ] => {
-                    assert!(if_false.is_empty());
-                    assert!(matches!(
-                        if_true.as_slice(),
-                        [crate::cards::builders::EffectAst::SubjectVerb(
-                            crate::cards::builders::SubjectVerbEffectAst {
-                                action: crate::cards::builders::SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { .. }),
-                                ..
-                            }
-                        )]
-                    ));
-                }
-                other => panic!("expected conditional draw effect, got {other:?}"),
+                    },
+                ),
+            ] => {
+                assert!(if_false.is_empty());
+                assert!(matches!(
+                    if_true.as_slice(),
+                    [crate::cards::builders::EffectAst::SubjectVerb(
+                        crate::cards::builders::SubjectVerbEffectAst {
+                            action: crate::cards::builders::SubjectVerbActionAst::LifeResources(
+                                LifeResourceActionAst::Draw { .. }
+                            ),
+                            ..
+                        }
+                    )]
+                ));
             }
-        }
+            other => panic!("expected conditional draw effect, got {other:?}"),
+        },
         other => panic!("expected for-each-player draw clause, got {other:?}"),
     }
 }
@@ -903,10 +934,15 @@ pub(super) fn each_player_exiles_hand_and_draws_keeps_draw_on_iterated_player() 
                             player: crate::cards::builders::PlayerAst::That,
                             ..
                         },
-                    action: crate::cards::builders::SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { .. }),
+                    action:
+                        crate::cards::builders::SubjectVerbActionAst::LifeResources(
+                            LifeResourceActionAst::Draw { .. },
+                        ),
                 },
             ) => true,
-            crate::cards::builders::EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })
+            crate::cards::builders::EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+                effects,
+            })
             | crate::cards::builders::EffectAst::Coordinated { effects, .. } => {
                 effects.iter().any(has_iterated_draw)
             }
@@ -943,10 +979,15 @@ pub(super) fn each_player_exiles_hand_and_draws_keeps_draw_on_iterated_player_in
                             player: crate::cards::builders::PlayerAst::That,
                             ..
                         },
-                    action: crate::cards::builders::SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { .. }),
+                    action:
+                        crate::cards::builders::SubjectVerbActionAst::LifeResources(
+                            LifeResourceActionAst::Draw { .. },
+                        ),
                 },
             ) => true,
-            crate::cards::builders::EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })
+            crate::cards::builders::EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+                effects,
+            })
             | crate::cards::builders::EffectAst::Coordinated { effects, .. } => {
                 effects.iter().any(has_iterated_draw)
             }
@@ -1003,7 +1044,9 @@ pub(super) fn rewrite_verb_handlers_keep_conditional_gain_control_clause_after_s
         if_true,
         [crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::Control(ControlActionAst::GainControl { .. }),
+                action: crate::cards::builders::SubjectVerbActionAst::Control(
+                    ControlActionAst::GainControl { .. }
+                ),
                 ..
             }
         )]
@@ -1030,7 +1073,9 @@ pub(super) fn rewrite_verb_handlers_keep_unless_gain_control_clause_after_struct
         if_false,
         [crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::Control(ControlActionAst::GainControl { .. }),
+                action: crate::cards::builders::SubjectVerbActionAst::Control(
+                    ControlActionAst::GainControl { .. }
+                ),
                 ..
             }
         )]
@@ -1240,7 +1285,9 @@ pub(super) fn rewrite_zone_handlers_keep_conditional_destroy_clause_after_struct
         if_true,
         [crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { .. }),
+                action: crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
+                    ZoneMoveActionAst::Destroy { .. }
+                ),
                 ..
             }
         )]
@@ -1330,11 +1377,13 @@ pub(super) fn rewrite_destroy_target_unless_controller_chooses_source_power_dama
         effects.as_slice(),
         [EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy {
-                    target: crate::cards::builders::TargetAst::Object(_, _, _),
-                    no_regeneration: false,
-                    ..
-                }),
+                action: crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
+                    ZoneMoveActionAst::Destroy {
+                        target: crate::cards::builders::TargetAst::Object(_, _, _),
+                        no_regeneration: false,
+                        ..
+                    }
+                ),
                 ..
             }
         )]
@@ -1457,7 +1506,9 @@ pub(super) fn rewrite_zone_handlers_keep_nested_instead_if_destroy_clause_after_
         nested_if_true,
         [crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { .. }),
+                action: crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
+                    ZoneMoveActionAst::Destroy { .. }
+                ),
                 ..
             }
         )]
@@ -1484,7 +1535,9 @@ pub(super) fn rewrite_zone_handlers_keep_conditional_exile_clause_after_structur
         if_true,
         [crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. }),
+                action: crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
+                    ZoneMoveActionAst::Exile { .. }
+                ),
                 ..
             }
         )]
@@ -1503,7 +1556,12 @@ pub(super) fn optional_exile_pair_keeps_repeated_article_filters_independent() {
 
     let optional_effects = match parsed.as_slice() {
         [crate::cards::builders::EffectAst::Permissions(PermissionEffectAst::May { effects })]
-        | [crate::cards::builders::EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. })] => effects,
+        | [
+            crate::cards::builders::EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
+                effects,
+                ..
+            }),
+        ] => effects,
         _ => panic!("expected one optional effect, got {parsed:#?}"),
     };
     let [crate::cards::builders::EffectAst::Coordination(coordination)] =
@@ -1628,8 +1686,11 @@ pub(super) fn rewrite_zone_handlers_parse_mixed_target_and_all_exile_list() {
                 effect,
                 crate::cards::builders::EffectAst::SubjectVerb(
                     crate::cards::builders::SubjectVerbEffectAst {
-                        action: crate::cards::builders::SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. })
-                            | crate::cards::builders::SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { .. }),
+                        action: crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
+                            ZoneMoveActionAst::Exile { .. }
+                        ) | crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
+                            ZoneMoveActionAst::ExileAll { .. }
+                        ),
                         ..
                     }
                 )
@@ -1643,7 +1704,9 @@ pub(super) fn rewrite_zone_handlers_parse_mixed_target_and_all_exile_list() {
         source_exile,
         crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. }),
+                action: crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
+                    ZoneMoveActionAst::Exile { .. }
+                ),
                 ..
             }
         )
@@ -1652,10 +1715,12 @@ pub(super) fn rewrite_zone_handlers_parse_mixed_target_and_all_exile_list() {
         crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
                 action:
-                    crate::cards::builders::SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll {
-                        filter,
-                        face_down: false,
-                    }),
+                    crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
+                        ZoneMoveActionAst::ExileAll {
+                            filter,
+                            face_down: false,
+                        },
+                    ),
                 ..
             },
         ) => filter,
@@ -1673,10 +1738,12 @@ pub(super) fn rewrite_zone_handlers_parse_mixed_target_and_all_exile_list() {
         crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
                 action:
-                    crate::cards::builders::SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll {
-                        filter,
-                        face_down: false,
-                    }),
+                    crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
+                        ZoneMoveActionAst::ExileAll {
+                            filter,
+                            face_down: false,
+                        },
+                    ),
                 ..
             },
         ) => filter,
@@ -1809,10 +1876,12 @@ pub(super) fn rewrite_activation_helpers_parse_add_mana_preserves_chosen_color_t
                     player: crate::cards::builders::PlayerAst::Implicit,
                     ..
                 },
-                action: crate::cards::builders::SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor {
-                    amount: crate::effect::Value::Fixed(1),
-                    fixed_option: Some(crate::color::Color::Red),
-                }),
+                action: crate::cards::builders::SubjectVerbActionAst::Mana(
+                    ManaActionAst::AddManaChosenColor {
+                        amount: crate::effect::Value::Fixed(1),
+                        fixed_option: Some(crate::color::Color::Red),
+                    }
+                ),
             }
         )
     ));
@@ -1866,7 +1935,11 @@ pub(super) fn rewrite_activation_helpers_parse_add_mana_scales_by_greatest_power
     {
         crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled { mana, amount }),
+                action:
+                    crate::cards::builders::SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled {
+                        mana,
+                        amount,
+                    }),
                 ..
             },
         ) => {
@@ -1906,7 +1979,10 @@ pub(super) fn rewrite_activation_helpers_parse_add_mana_wraps_instead_if_tail() 
                     crate::cards::builders::EffectAst::SubjectVerb(
                         crate::cards::builders::SubjectVerbEffectAst {
                             subject,
-                            action: crate::cards::builders::SubjectVerbActionAst::Mana(ManaActionAst::AddMana { mana }),
+                            action:
+                                crate::cards::builders::SubjectVerbActionAst::Mana(
+                                    ManaActionAst::AddMana { mana },
+                                ),
                         },
                     ),
                 ] => {
@@ -1944,11 +2020,13 @@ pub(super) fn rewrite_activation_helpers_parse_add_mana_accepts_player_choice_ta
                     player: crate::cards::builders::PlayerAst::Implicit,
                     ..
                 },
-                action: crate::cards::builders::SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor {
-                    amount: crate::effect::Value::Fixed(1),
-                    available_colors: None,
-                    distinct_colors: false,
-                }),
+                action: crate::cards::builders::SubjectVerbActionAst::Mana(
+                    ManaActionAst::AddManaAnyColor {
+                        amount: crate::effect::Value::Fixed(1),
+                        available_colors: None,
+                        distinct_colors: false,
+                    }
+                ),
             }
         )
     ));
@@ -2004,7 +2082,8 @@ pub(super) fn rewrite_effect_sentence_parse_add_mana_wraps_instead_if_tail() {
         crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
                 subject,
-                action: crate::cards::builders::SubjectVerbActionAst::Mana(ManaActionAst::AddMana { mana }),
+                action:
+                    crate::cards::builders::SubjectVerbActionAst::Mana(ManaActionAst::AddMana { mana }),
             },
         ),
     ] = if_true
@@ -2039,7 +2118,9 @@ pub(super) fn rewrite_effect_sentence_parse_add_mana_scales_by_greatest_power_en
             crate::cards::builders::EffectAst::SubjectVerb(
                 crate::cards::builders::SubjectVerbEffectAst {
                     action:
-                        crate::cards::builders::SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled { mana, amount }),
+                        crate::cards::builders::SubjectVerbActionAst::Mana(
+                            ManaActionAst::AddManaScaled { mana, amount },
+                        ),
                     ..
                 },
             ),
@@ -2564,7 +2645,8 @@ pub(super) fn semantic_document_supports_next_turn_silence() {
     .expect("rewrite lexer");
     let effects = super::super::clause_support::parse_effect_sentences_lexed(&tokens)
         .expect("next-turn restriction AST");
-    let [crate::cards::builders::EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })] = effects.as_slice()
+    let [crate::cards::builders::EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })] =
+        effects.as_slice()
     else {
         panic!("expected per-opponent restriction, got {effects:#?}");
     };
@@ -2774,10 +2856,12 @@ pub(super) fn rewrite_lexed_permission_helpers_cover_flash_and_free_cast_grants(
         ),
         Ok(Some(crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::Grants(GrantActionAst::GrantBySpec {
-                    duration: crate::grant::GrantDuration::UntilEndOfTurn,
-                    ..
-                }),
+                action: crate::cards::builders::SubjectVerbActionAst::Grants(
+                    GrantActionAst::GrantBySpec {
+                        duration: crate::grant::GrantDuration::UntilEndOfTurn,
+                        ..
+                    }
+                ),
                 ..
             }
         )))
@@ -2968,10 +3052,13 @@ pub(super) fn rewrite_lexed_permission_helpers_parse_temporary_graveyard_cast_gr
                 }) if spec.filter.card_types == vec![CardType::Creature]
                     && spec.zone == crate::zone::Zone::Graveyard
             ),
-            crate::cards::builders::EffectAst::Permissions(PermissionEffectAst::May { effects })
-            | crate::cards::builders::EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. }) => {
-                has_temporary_creature_graveyard_grant(effects)
-            }
+            crate::cards::builders::EffectAst::Permissions(PermissionEffectAst::May {
+                effects,
+            })
+            | crate::cards::builders::EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
+                effects,
+                ..
+            }) => has_temporary_creature_graveyard_grant(effects),
             _ => false,
         })
     }
@@ -3121,12 +3208,14 @@ pub(super) fn rewrite_lexed_permission_helpers_route_singular_hand_free_casts_to
 
     let (player, filter, zone) = match effects.as_slice() {
         [
-            crate::cards::builders::EffectAst::Permissions(PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
-                player,
-                filter,
-                zone,
-                ..
-            }),
+            crate::cards::builders::EffectAst::Permissions(
+                PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                    player,
+                    filter,
+                    zone,
+                    ..
+                },
+            ),
         ] => (player, filter, zone),
         [
             crate::cards::builders::EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
@@ -3135,12 +3224,14 @@ pub(super) fn rewrite_lexed_permission_helpers_route_singular_hand_free_casts_to
             }),
         ] => match effects.as_slice() {
             [
-                crate::cards::builders::EffectAst::Permissions(PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
-                    player,
-                    filter,
-                    zone,
-                    ..
-                }),
+                crate::cards::builders::EffectAst::Permissions(
+                    PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                        player,
+                        filter,
+                        zone,
+                        ..
+                    },
+                ),
             ] => (player, filter, zone),
             _ => panic!("expected nested singular hand free-cast effect, got {effects:#?}"),
         },
@@ -3171,12 +3262,14 @@ pub(super) fn rewrite_lexed_parse_commander_command_zone_free_cast_clause() {
 
     let (player, filter, zone) = match effects.as_slice() {
         [
-            crate::cards::builders::EffectAst::Permissions(PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
-                player,
-                filter,
-                zone,
-                ..
-            }),
+            crate::cards::builders::EffectAst::Permissions(
+                PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                    player,
+                    filter,
+                    zone,
+                    ..
+                },
+            ),
         ] => (player, filter, zone),
         [
             crate::cards::builders::EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
@@ -3185,12 +3278,14 @@ pub(super) fn rewrite_lexed_parse_commander_command_zone_free_cast_clause() {
             }),
         ] => match effects.as_slice() {
             [
-                crate::cards::builders::EffectAst::Permissions(PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
-                    player,
-                    filter,
-                    zone,
-                    ..
-                }),
+                crate::cards::builders::EffectAst::Permissions(
+                    PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                        player,
+                        filter,
+                        zone,
+                        ..
+                    },
+                ),
             ] => (player, filter, zone),
             _ => {
                 panic!("expected nested commander command-zone free-cast effect, got {effects:#?}")
@@ -3230,13 +3325,15 @@ pub(super) fn rewrite_lexed_parse_cast_target_graveyard_without_paying_mana_cost
                         role: crate::cards::builders::SubjectVerbRoleAst::Actor,
                         player: crate::cards::builders::PlayerAst::Implicit,
                     },
-                    action: crate::cards::builders::SubjectVerbActionAst::Stack(StackActionAst::CastTagged {
-                        player: crate::cards::builders::PlayerAst::Implicit,
-                        allow_land: false,
-                        as_copy: false,
-                        without_paying_mana_cost: true,
-                        ..
-                    }),
+                    action: crate::cards::builders::SubjectVerbActionAst::Stack(
+                        StackActionAst::CastTagged {
+                            player: crate::cards::builders::PlayerAst::Implicit,
+                            allow_land: false,
+                            as_copy: false,
+                            without_paying_mana_cost: true,
+                            ..
+                        }
+                    ),
                 },
             )]
         ),
@@ -3265,12 +3362,14 @@ pub(super) fn rewrite_lexed_parse_counterpoint_followup_clause_with_tagged_mana_
 
     let (player, filter, zone) = match effects.as_slice() {
         [
-            crate::cards::builders::EffectAst::Permissions(PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
-                player,
-                filter,
-                zone,
-                ..
-            }),
+            crate::cards::builders::EffectAst::Permissions(
+                PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                    player,
+                    filter,
+                    zone,
+                    ..
+                },
+            ),
         ] => (player, filter, zone),
         [
             crate::cards::builders::EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
@@ -3279,12 +3378,14 @@ pub(super) fn rewrite_lexed_parse_counterpoint_followup_clause_with_tagged_mana_
             }),
         ] => match effects.as_slice() {
             [
-                crate::cards::builders::EffectAst::Permissions(PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
-                    player,
-                    filter,
-                    zone,
-                    ..
-                }),
+                crate::cards::builders::EffectAst::Permissions(
+                    PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                        player,
+                        filter,
+                        zone,
+                        ..
+                    },
+                ),
             ] => (player, filter, zone),
             _ => panic!("expected nested free-cast effect, got {effects:#?}"),
         },
@@ -3336,12 +3437,14 @@ pub(super) fn rewrite_lexed_parse_glamdring_trigger_clause_with_damage_value_gat
 
     let (player, filter, zone) = match effects.as_slice() {
         [
-            crate::cards::builders::EffectAst::Permissions(PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
-                player,
-                filter,
-                zone,
-                ..
-            }),
+            crate::cards::builders::EffectAst::Permissions(
+                PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                    player,
+                    filter,
+                    zone,
+                    ..
+                },
+            ),
         ] => (player, filter, zone),
         _ => panic!("expected one-shot hand free-cast effect, got {effects:#?}"),
     };
@@ -3380,12 +3483,14 @@ pub(super) fn rewrite_lexed_parse_surtland_elementalist_trigger_clause_without_m
 
     let (player, filter, zone) = match effects.as_slice() {
         [
-            crate::cards::builders::EffectAst::Permissions(PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
-                player,
-                filter,
-                zone,
-                ..
-            }),
+            crate::cards::builders::EffectAst::Permissions(
+                PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                    player,
+                    filter,
+                    zone,
+                    ..
+                },
+            ),
         ] => (player, filter, zone),
         _ => panic!("expected one-shot hand free-cast effect, got {effects:#?}"),
     };
@@ -3413,11 +3518,11 @@ pub(super) fn rewrite_lexed_parse_brain_in_a_jar_free_cast_clause_with_counter_v
 
     let (filter, zone) = match effects.as_slice() {
         [
-            crate::cards::builders::EffectAst::Permissions(PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
-                filter,
-                zone,
-                ..
-            }),
+            crate::cards::builders::EffectAst::Permissions(
+                PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                    filter, zone, ..
+                },
+            ),
         ] => (filter, zone),
         _ => panic!("expected one-shot counter-gated hand free-cast effect, got {effects:#?}"),
     };

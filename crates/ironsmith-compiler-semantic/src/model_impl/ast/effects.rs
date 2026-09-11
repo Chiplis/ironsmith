@@ -25,15 +25,13 @@ use crate::model::document_program::CompilerDocumentProgramAst;
 
 /// One mode of an `EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf)` modal choice: a label shown to the
 /// player and the effects that resolve when that mode is chosen.
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ChooseOneModeAst {
     pub description: String,
     pub effects: Vec<EffectAst>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum EffectAst {
     /// Permissions: see [`PermissionEffectAst`].
     Permissions(PermissionEffectAst),
@@ -179,7 +177,10 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
-            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::DrawForEachTaggedMatching { tag, filter }),
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::DrawForEachTaggedMatching {
+                tag,
+                filter,
+            }),
         )
     }
 
@@ -375,7 +376,9 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllCombatDamage { duration }),
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllCombatDamage { duration },
+            ),
         )
     }
 
@@ -383,7 +386,9 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::AssignNoCombatDamage { source, duration }),
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::AssignNoCombatDamage { source, duration },
+            ),
         )
     }
 
@@ -413,11 +418,13 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllCombatDamageFromSource {
-                duration,
-                source,
-                source_would_deal_surface,
-            }),
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllCombatDamageFromSource {
+                    duration,
+                    source,
+                    source_would_deal_surface,
+                },
+            ),
         )
     }
 
@@ -428,11 +435,13 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllCombatDamageFromSourceFilter {
-                duration,
-                source_filter,
-                excluded_source_target: None,
-            }),
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllCombatDamageFromSourceFilter {
+                    duration,
+                    source_filter,
+                    excluded_source_target: None,
+                },
+            ),
         )
     }
 
@@ -444,11 +453,13 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllCombatDamageFromSourceFilter {
-                duration,
-                source_filter,
-                excluded_source_target: Some(excluded_source_target),
-            }),
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllCombatDamageFromSourceFilter {
+                    duration,
+                    source_filter,
+                    excluded_source_target: Some(excluded_source_target),
+                },
+            ),
         )
     }
 
@@ -456,7 +467,9 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllCombatDamageToPlayers { duration }),
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllCombatDamageToPlayers { duration },
+            ),
         )
     }
 
@@ -464,7 +477,9 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllCombatDamageToYou { duration }),
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllCombatDamageToYou { duration },
+            ),
         )
     }
 
@@ -483,12 +498,14 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventNextTimeDamage {
-                source,
-                target,
-                reflect_damage_to_source_controller,
-                follow_up_effects: Vec::new(),
-            }),
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventNextTimeDamage {
+                    source,
+                    target,
+                    reflect_damage_to_source_controller,
+                    follow_up_effects: Vec::new(),
+                },
+            ),
         )
     }
 
@@ -500,11 +517,13 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::ReplaceNextDamageToTarget {
-                target,
-                damage_target_tag,
-                replacement_effects,
-            }),
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::ReplaceNextDamageToTarget {
+                    target,
+                    damage_target_tag,
+                    replacement_effects,
+                },
+            ),
         )
     }
 
@@ -562,13 +581,15 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllDamageToTarget {
-                target,
-                duration,
-                source_of_your_choice,
-                source_choice_shares_activation_mana_color: false,
-                source_target: None,
-            }),
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllDamageToTarget {
+                    target,
+                    duration,
+                    source_of_your_choice,
+                    source_choice_shares_activation_mana_color: false,
+                    source_target: None,
+                },
+            ),
         )
     }
 
@@ -579,13 +600,15 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllDamageToTarget {
-                target,
-                duration,
-                source_of_your_choice: true,
-                source_choice_shares_activation_mana_color: true,
-                source_target: None,
-            }),
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllDamageToTarget {
+                    target,
+                    duration,
+                    source_of_your_choice: true,
+                    source_choice_shares_activation_mana_color: true,
+                    source_target: None,
+                },
+            ),
         )
     }
 
@@ -597,13 +620,15 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllDamageToTarget {
-                target,
-                duration,
-                source_of_your_choice: false,
-                source_choice_shares_activation_mana_color: false,
-                source_target: Some(source_target),
-            }),
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllDamageToTarget {
+                    target,
+                    duration,
+                    source_of_your_choice: false,
+                    source_choice_shares_activation_mana_color: false,
+                    source_target: Some(source_target),
+                },
+            ),
         )
     }
 
@@ -615,11 +640,13 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter {
-                target,
-                duration,
-                source_filter,
-            }),
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter {
+                    target,
+                    duration,
+                    source_filter,
+                },
+            ),
         )
     }
 
@@ -630,10 +657,12 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllDamageFromSourceFilter {
-                duration,
-                source_filter,
-            }),
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllDamageFromSourceFilter {
+                    duration,
+                    source_filter,
+                },
+            ),
         )
     }
 
@@ -646,12 +675,14 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamageToTargetPutCounters {
-                amount,
-                target,
-                duration,
-                counter_type,
-            }),
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventDamageToTargetPutCounters {
+                    amount,
+                    target,
+                    duration,
+                    counter_type,
+                },
+            ),
         )
     }
 
@@ -986,13 +1017,15 @@ impl EffectAst {
         filter: ObjectFilter,
         zone: Zone,
     ) -> Self {
-        Self::Permissions(PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
-            player,
-            zone_owner: player,
-            filter,
-            zone,
-            payment: ironsmith_core::MayCastMatchingSpellPayment::WithoutPayingManaCost,
-        })
+        Self::Permissions(
+            PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                player,
+                zone_owner: player,
+                filter,
+                zone,
+                payment: ironsmith_core::MayCastMatchingSpellPayment::WithoutPayingManaCost,
+            },
+        )
     }
 
     pub fn may_cast_matching_spell_without_paying_mana_cost_from_zone_owner(
@@ -1001,13 +1034,15 @@ impl EffectAst {
         filter: ObjectFilter,
         zone: Zone,
     ) -> Self {
-        Self::Permissions(PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
-            player,
-            zone_owner,
-            filter,
-            zone,
-            payment: ironsmith_core::MayCastMatchingSpellPayment::WithoutPayingManaCost,
-        })
+        Self::Permissions(
+            PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                player,
+                zone_owner,
+                filter,
+                zone,
+                payment: ironsmith_core::MayCastMatchingSpellPayment::WithoutPayingManaCost,
+            },
+        )
     }
 
     pub fn may_cast_matching_spell_with_alternative_cost(
@@ -1016,13 +1051,15 @@ impl EffectAst {
         zone: Zone,
         kind: crate::filter::AlternativeCastKind,
     ) -> Self {
-        Self::Permissions(PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
-            player,
-            zone_owner: player,
-            filter,
-            zone,
-            payment: ironsmith_core::MayCastMatchingSpellPayment::AlternativeCost(kind),
-        })
+        Self::Permissions(
+            PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                player,
+                zone_owner: player,
+                filter,
+                zone,
+                payment: ironsmith_core::MayCastMatchingSpellPayment::AlternativeCost(kind),
+            },
+        )
     }
 
     pub fn subject_verb_grant_play_tagged_until_end_of_turn(
@@ -1161,10 +1198,12 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Grants(GrantActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
-                tag,
-                player,
-            }),
+            SubjectVerbActionAst::Grants(
+                GrantActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
+                    tag,
+                    player,
+                },
+            ),
         )
     }
 
@@ -1217,8 +1256,13 @@ impl EffectAst {
     pub fn with_tagged_play_max_plays(mut self, limit: Option<u32>) -> Self {
         if let Self::SubjectVerb(subject_verb) = &mut self {
             match &mut subject_verb.action {
-                SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn { max_plays, .. })
-                | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilYourNextTurn { max_plays, .. }) => {
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+                    max_plays,
+                    ..
+                })
+                | SubjectVerbActionAst::Grants(
+                    GrantActionAst::GrantPlayTaggedUntilYourNextTurn { max_plays, .. },
+                ) => {
                     *max_plays = limit;
                 }
                 _ => {}
@@ -1310,13 +1354,15 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource {
-                tag,
-                player,
-                allow_land,
-                allow_any_color_for_cast,
-                surface,
-            }),
+            SubjectVerbActionAst::Grants(
+                GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource {
+                    tag,
+                    player,
+                    allow_land,
+                    allow_any_color_for_cast,
+                    surface,
+                },
+            ),
         )
     }
 
@@ -1654,8 +1700,14 @@ impl EffectAst {
     ) -> Self {
         if let Self::SubjectVerb(subject_verb) = &mut self {
             match &mut subject_verb.action {
-                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { verb_surface, .. })
-                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield { verb_surface, .. }) => {
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+                    verb_surface,
+                    ..
+                })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield {
+                    verb_surface,
+                    ..
+                }) => {
                     *verb_surface = surface;
                 }
                 _ => {}
@@ -1671,10 +1723,12 @@ impl EffectAst {
         if let Self::SubjectVerb(subject_verb) = &mut self {
             match &mut subject_verb.action {
                 SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
-                    source_top_only, ..
+                    source_top_only,
+                    ..
                 })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
-                    source_top_only, ..
+                    source_top_only,
+                    ..
                 }) => *source_top_only = true,
                 _ => {}
             }
@@ -1794,7 +1848,9 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice { target }),
+            SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice {
+                target,
+            }),
         )
     }
 
@@ -1973,14 +2029,18 @@ impl EffectAst {
                 set_quantifier_surface,
                 ..
             })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness {
-                set_quantifier_surface,
-                ..
-            })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
-                set_quantifier_surface,
-                ..
-            })
+            | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::SetBasePowerToughness {
+                    set_quantifier_surface,
+                    ..
+                },
+            )
+            | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeBasePtCreature {
+                    set_quantifier_surface,
+                    ..
+                },
+            )
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll {
                 set_quantifier_surface,
                 ..
@@ -2010,7 +2070,11 @@ impl EffectAst {
         )
     }
 
-    pub fn subject_verb_set_base_toughness(toughness: Value, target: TargetAst, duration: Until) -> Self {
+    pub fn subject_verb_set_base_toughness(
+        toughness: Value,
+        target: TargetAst,
+        duration: Until,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -2181,7 +2245,9 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeSaddledUntilEndOfTurn { target }),
+            SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeSaddledUntilEndOfTurn { target },
+            ),
         )
     }
 
@@ -2205,11 +2271,13 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddAllSubtypesOfFamily {
-                target,
-                family,
-                duration,
-            }),
+            SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::AddAllSubtypesOfFamily {
+                    target,
+                    family,
+                    duration,
+                },
+            ),
         )
     }
 
@@ -2292,7 +2360,10 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::StatChanges(StatChangeActionAst::MakeColorless { target, duration }),
+            SubjectVerbActionAst::StatChanges(StatChangeActionAst::MakeColorless {
+                target,
+                duration,
+            }),
         )
     }
 
@@ -2300,7 +2371,9 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasicLandTypeChoice { target, duration }),
+            SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeBasicLandTypeChoice { target, duration },
+            ),
         )
     }
 
@@ -2312,11 +2385,13 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCreatureTypeChoice {
-                target,
-                duration,
-                excluded_subtypes,
-            }),
+            SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeCreatureTypeChoice {
+                    target,
+                    duration,
+                    excluded_subtypes,
+                },
+            ),
         )
     }
 
@@ -2702,7 +2777,10 @@ impl EffectAst {
 
     pub fn with_search_zones(mut self, zones: Vec<Zone>) -> Self {
         if let Self::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary { search_zones, .. }),
+            action:
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
+                    search_zones, ..
+                }),
             ..
         }) = &mut self
         {
@@ -2784,12 +2862,14 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectNextDamageFromSourceToTarget {
-                amount,
-                protected_target: None,
-                destination: RedirectNextTimeDamageDestinationAst::TargetObject,
-                destination_target: Some(target),
-            }),
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::RedirectNextDamageFromSourceToTarget {
+                    amount,
+                    protected_target: None,
+                    destination: RedirectNextTimeDamageDestinationAst::TargetObject,
+                    destination_target: Some(target),
+                },
+            ),
         )
     }
 
@@ -2800,12 +2880,14 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectNextDamageFromSourceToTarget {
-                amount,
-                protected_target: Some(protected_target),
-                destination: RedirectNextTimeDamageDestinationAst::Controller,
-                destination_target: None,
-            }),
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::RedirectNextDamageFromSourceToTarget {
+                    amount,
+                    protected_target: Some(protected_target),
+                    destination: RedirectNextTimeDamageDestinationAst::Controller,
+                    destination_target: None,
+                },
+            ),
         )
     }
 
@@ -2817,13 +2899,15 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectNextTimeDamageToSource {
-                source,
-                target,
-                destination,
-                destination_target: None,
-                all_this_turn: false,
-            }),
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::RedirectNextTimeDamageToSource {
+                    source,
+                    target,
+                    destination,
+                    destination_target: None,
+                    all_this_turn: false,
+                },
+            ),
         )
     }
 
@@ -2835,13 +2919,15 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectNextTimeDamageToSource {
-                source,
-                target,
-                destination: RedirectNextTimeDamageDestinationAst::TargetObject,
-                destination_target: Some(destination_target),
-                all_this_turn: false,
-            }),
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::RedirectNextTimeDamageToSource {
+                    source,
+                    target,
+                    destination: RedirectNextTimeDamageDestinationAst::TargetObject,
+                    destination_target: Some(destination_target),
+                    all_this_turn: false,
+                },
+            ),
         )
     }
 
@@ -2853,13 +2939,15 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectNextTimeDamageToSource {
-                source,
-                target,
-                destination,
-                destination_target: None,
-                all_this_turn: true,
-            }),
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::RedirectNextTimeDamageToSource {
+                    source,
+                    target,
+                    destination,
+                    destination_target: None,
+                    all_this_turn: true,
+                },
+            ),
         )
     }
 
@@ -2869,7 +2957,11 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectAllDamageThisTurnBySourceToSourceController { source }),
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
+                    source,
+                },
+            ),
         )
     }
 
@@ -2881,11 +2973,13 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectAllDamageThisTurnToTarget {
-                player_filter,
-                object_filter,
-                target,
-            }),
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::RedirectAllDamageThisTurnToTarget {
+                    player_filter,
+                    object_filter,
+                    target,
+                },
+            ),
         )
     }
 
@@ -3014,7 +3108,10 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAllAttachedTo { filter, target }),
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAllAttachedTo {
+                filter,
+                target,
+            }),
         )
     }
 
@@ -3070,7 +3167,9 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeSourceWhenLeaves { target }),
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeSourceWhenLeaves {
+                target,
+            }),
         )
     }
 
@@ -3189,15 +3288,17 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterFutureZoneReplacement {
-                filter,
-                from_zone,
-                to_zone,
-                replacement_zone,
-                duration,
-                cause_policy,
-                link_exiled_to_source,
-            }),
+            SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterFutureZoneReplacement {
+                    filter,
+                    from_zone,
+                    to_zone,
+                    replacement_zone,
+                    duration,
+                    cause_policy,
+                    link_exiled_to_source,
+                },
+            ),
         )
     }
 
@@ -3243,13 +3344,15 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamagedBySourceZoneReplacement {
-                filter,
-                from_zone,
-                to_zone,
-                replacement_zone,
-                duration,
-            }),
+            SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterDamagedBySourceZoneReplacement {
+                    filter,
+                    from_zone,
+                    to_zone,
+                    replacement_zone,
+                    duration,
+                },
+            ),
         )
     }
 
@@ -3260,7 +3363,9 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterEnterUnderControlReplacement { filter, duration }),
+            SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterEnterUnderControlReplacement { filter, duration },
+            ),
         )
     }
 
@@ -3271,18 +3376,30 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterEnterTappedReplacement { filter, duration }),
+            SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterEnterTappedReplacement { filter, duration },
+            ),
         )
     }
 
     pub fn subject_verb_register_enter_with_counters_replacement(
-        filter: ObjectFilter, counter_type: CounterType, count: Value,
+        filter: ObjectFilter,
+        counter_type: CounterType,
+        count: Value,
         mode: crate::effects::ReplacementApplyMode,
     ) -> Self {
-        Self::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
-            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterEnterWithCountersReplacement {
-                filter, counter_type, count, mode,
-            }))
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterEnterWithCountersReplacement {
+                    filter,
+                    counter_type,
+                    count,
+                    mode,
+                },
+            ),
+        )
     }
 
     pub fn subject_verb_register_next_batch_enter_with_counters(
@@ -3293,11 +3410,13 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterNextBatchEnterWithCounters {
-                filter,
-                counter_type,
-                count,
-            }),
+            SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterNextBatchEnterWithCounters {
+                    filter,
+                    counter_type,
+                    count,
+                },
+            ),
         )
     }
 
@@ -3457,7 +3576,10 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction { action, amount }),
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction {
+                action,
+                amount,
+            }),
         )
     }
 
@@ -3661,7 +3783,8 @@ impl EffectAst {
 
     pub fn with_mutual_fight_surface(mut self) -> Self {
         if let Self::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fight { mutual_surface, .. }),
+            action:
+                SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fight { mutual_surface, .. }),
             ..
         }) = &mut self
         {
@@ -3910,7 +4033,10 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
-            SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn { filter, reduction }),
+            SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn {
+                filter,
+                reduction,
+            }),
         )
     }
 
@@ -4154,7 +4280,11 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::LibraryOwner,
             player,
-            SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { count, tag, reveal }),
+            SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
+                count,
+                tag,
+                reveal,
+            }),
         )
     }
 
@@ -4179,7 +4309,10 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
-            SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalLandPlays { count, duration }),
+            SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalLandPlays {
+                count,
+                duration,
+            }),
         )
     }
 
@@ -4346,7 +4479,9 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
-            SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary),
+            SubjectVerbActionAst::Library(
+                LibraryActionAst::ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary,
+            ),
         )
     }
 
@@ -4990,7 +5125,9 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHandOfChosenColor { filter }),
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHandOfChosenColor {
+                filter,
+            }),
         )
     }
 
@@ -4998,7 +5135,10 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryNthFromTop { target, position }),
+            SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryNthFromTop {
+                target,
+                position,
+            }),
         )
     }
 
@@ -5071,7 +5211,10 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::SwitchPowerToughness { target, duration }),
+            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::SwitchPowerToughness {
+                target,
+                duration,
+            }),
         )
     }
 
@@ -5292,7 +5435,9 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
-            SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipNextCombatPhaseThisTurn),
+            SubjectVerbActionAst::TurnStructure(
+                TurnStructureActionAst::SkipNextCombatPhaseThisTurn,
+            ),
         )
     }
 
@@ -5320,10 +5465,17 @@ impl EffectAst {
         )
     }
 
-    pub fn subject_verb_additional_phases_with_main_surface(phases: Vec<crate::effects::AdditionalPhase>, after_main_phase: bool) -> Self {
+    pub fn subject_verb_additional_phases_with_main_surface(
+        phases: Vec<crate::effects::AdditionalPhase>,
+        after_main_phase: bool,
+    ) -> Self {
         Self::subject_verb(
-            SubjectVerbRoleAst::AffectedPlayer, PlayerAst::Implicit,
-            SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalPhases { phases, after_main_phase }),
+            SubjectVerbRoleAst::AffectedPlayer,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalPhases {
+                phases,
+                after_main_phase,
+            }),
         )
     }
 
@@ -5331,7 +5483,10 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalPhases { phases, after_main_phase: false }),
+            SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalPhases {
+                phases,
+                after_main_phase: false,
+            }),
         )
     }
 
@@ -5460,7 +5615,9 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat { target }),
+            SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
+                target,
+            }),
         )
     }
 

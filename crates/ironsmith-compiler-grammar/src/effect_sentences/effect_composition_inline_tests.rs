@@ -1,6 +1,6 @@
-use crate::cards::builders::StackActionAst;
-use crate::cards::builders::ChoiceActionAst;
 use super::*;
+use crate::cards::builders::ChoiceActionAst;
+use crate::cards::builders::StackActionAst;
 use crate::lexer::lex_line;
 
 #[test]
@@ -13,7 +13,8 @@ fn each_opponent_hand_exile_keeps_permission_tax_and_land_entry_linked() {
     let effects =
         parse_typed_effect_bundle_lexed(&tokens).expect("linked each-opponent hand exile bundle");
     let [
-        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+            sequential: false,
             filter: PlayerFilter::Opponent,
             effects: per_player,
         }),
@@ -104,7 +105,11 @@ fn per_player_type_choice_phase_out_keeps_one_shared_card_type() {
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseOutAll { filter, .. }),
+            action:
+                SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseOutAll {
+                    filter,
+                    ..
+                }),
             ..
         }),
     ] = effects.as_slice()
@@ -152,7 +157,8 @@ fn mixed_target_collection_reuses_one_complete_consult_procedure_per_target() {
             effect: declaration,
             tag: object_targets,
         },
-        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+            sequential: false,
             filter: PlayerFilter::AliasedTarget(player_filter),
             effects: player_body,
         }),
@@ -238,10 +244,12 @@ fn mixed_target_collection_reuses_one_complete_consult_procedure_per_target() {
     assert!(matches!(
         player_disposition,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
-                keep_tagged: None,
-                ..
-            }),
+            action: SubjectVerbActionAst::Library(
+                LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                    keep_tagged: None,
+                    ..
+                }
+            ),
             ..
         })
     ));
@@ -268,10 +276,12 @@ fn mixed_target_collection_reuses_one_complete_consult_procedure_per_target() {
     assert!(matches!(
         object_disposition,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
-                keep_tagged: None,
-                ..
-            }),
+            action: SubjectVerbActionAst::Library(
+                LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                    keep_tagged: None,
+                    ..
+                }
+            ),
             ..
         })
     ));
@@ -418,7 +428,10 @@ fn inline_exile_top_then_put_binds_the_exact_exiled_collection() {
         .expect("inline exile-top collection bundle should parse");
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { count, tags, .. }),
+            action:
+                SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
+                    count, tags, ..
+                }),
             ..
         }),
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
@@ -507,7 +520,10 @@ fn inline_exile_top_choose_one_rebinds_the_play_permission() {
         .expect("inline choose-one exile permission should parse");
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { count, tags, .. }),
+            action:
+                SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
+                    count, tags, ..
+                }),
             ..
         }),
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
@@ -547,7 +563,8 @@ fn optional_result_exile_choice_rebinds_the_trailing_play_permission() {
     let effects = parse_typed_effect_bundle_lexed(&tokens)
         .expect("optional result-gated exile choice should parse as one linked bundle");
     let [
-        EffectAst::Permissions(PermissionEffectAst::May { .. }) | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. }),
+        EffectAst::Permissions(PermissionEffectAst::May { .. })
+        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. }),
         EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Did,
             effects: linked,
@@ -600,14 +617,18 @@ fn shuffle_prefix_stays_in_the_exile_top_free_play_bundle() {
                     ..
                 }),
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { .. }),
+                    action: SubjectVerbActionAst::Library(
+                        LibraryActionAst::ExileTopOfLibrary { .. }
+                    ),
                     ..
                 }),
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
-                        without_paying_mana_cost: true,
-                        ..
-                    }),
+                    action: SubjectVerbActionAst::Grants(
+                        GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+                            without_paying_mana_cost: true,
+                            ..
+                        }
+                    ),
                     ..
                 }),
             ]

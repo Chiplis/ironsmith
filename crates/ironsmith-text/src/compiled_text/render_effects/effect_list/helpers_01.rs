@@ -1924,9 +1924,24 @@ pub(crate) fn describe_create_token_then_set_base_pt_bundle(
     };
 
     let action = if create.actor_surface_explicit {
-        describe_create_token_action(&with_indefinite_article(&token_phrase), &create.controller, true)
-    } else { format!("Create {}{controller_suffix}", with_indefinite_article(&token_phrase)) };
-    Some(append_token_cleanup(format!("{action}, where X is {}", describe_dynamic_token_pt_value(basis)), create))
+        describe_create_token_action(
+            &with_indefinite_article(&token_phrase),
+            &create.controller,
+            true,
+        )
+    } else {
+        format!(
+            "Create {}{controller_suffix}",
+            with_indefinite_article(&token_phrase)
+        )
+    };
+    Some(append_token_cleanup(
+        format!(
+            "{action}, where X is {}",
+            describe_dynamic_token_pt_value(basis)
+        ),
+        create,
+    ))
 }
 
 pub(crate) fn describe_dynamic_token_pt_value(value: &Value) -> String {

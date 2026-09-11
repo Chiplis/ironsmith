@@ -379,7 +379,11 @@ mod tests {
                 .is_none()
         );
         // The option no longer exists now, but it did exist at the first pass.
-        game.move_object(id, crate::zone::Zone::Graveyard, crate::events::cause::EventCause::effect());
+        game.move_object(
+            id,
+            crate::zone::Zone::Graveyard,
+            crate::events::cause::EventCause::effect(),
+        );
         deferred.pending_windows.push(game.clone());
         assert!(
             deferred

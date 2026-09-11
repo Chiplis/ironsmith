@@ -11,14 +11,16 @@ fn parse(second: &str) -> Option<Vec<EffectAst>> {
         .map(|tokens| SentenceInput::from_lexed(tokens))
         .collect::<Vec<_>>();
     crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
-        .map(|matched| matched.map(|matched| matched.effects)).unwrap()
+        .map(|matched| matched.map(|matched| matched.effects))
+        .unwrap()
 }
 
 #[test]
 fn exact_choice_keeps_branch_specific_nonland_and_opponent_constraints() {
     let effects = parse("You choose a nonland card from it or a card from their graveyard.")
         .expect("revealed-hand/graveyard choice");
-    let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, .. }) = &effects[1] else {
+    let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, .. }) = &effects[1]
+    else {
         panic!("expected cross-zone choice: {effects:#?}");
     };
     let [hand, graveyard] = filter.any_of.as_slice() else {

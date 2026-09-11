@@ -1,6 +1,6 @@
-use crate::cards::builders::ForEachEffectAst;
-use crate::cards::builders::CharacteristicActionAst;
 use super::*;
+use crate::cards::builders::CharacteristicActionAst;
+use crate::cards::builders::ForEachEffectAst;
 use crate::lexer::lex_line;
 
 #[test]
@@ -28,7 +28,9 @@ fn each_player_choice_keeps_comma_separated_negative_modifiers_in_one_filter() {
     let EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }) = effect else {
         panic!("expected a player loop, got {effect:#?}");
     };
-    let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, count, .. })] = effects.as_slice() else {
+    let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, count, .. })] =
+        effects.as_slice()
+    else {
         panic!("expected one object choice, got {effects:#?}");
     };
 

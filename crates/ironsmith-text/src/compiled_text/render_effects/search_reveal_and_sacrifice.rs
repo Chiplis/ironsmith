@@ -827,16 +827,21 @@ pub(super) fn describe_iterated_player_search_effects(effects: &[Effect]) -> Opt
 
     let move_effect = structural_unwrap_render_wrappers(effects.get(next)?);
     let direct_move;
-    let for_each = if let Some(for_each) = move_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>() {
-        for_each
-    } else {
-        let movement = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
-        if !matches!(movement.target.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag) { return None; }
-        direct_move = crate::effects::ForEachTaggedEffect {
-            tag: choose.tag.clone(), effects: vec![move_effect.clone()], controller_at_last_blocked_by: None,
+    let for_each =
+        if let Some(for_each) = move_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>() {
+            for_each
+        } else {
+            let movement = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+            if !matches!(movement.target.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag) {
+                return None;
+            }
+            direct_move = crate::effects::ForEachTaggedEffect {
+                tag: choose.tag.clone(),
+                effects: vec![move_effect.clone()],
+                controller_at_last_blocked_by: None,
+            };
+            &direct_move
         };
-        &direct_move
-    };
     next += 1;
 
     let shuffle = if let Some(effect) = effects.get(next) {
@@ -3880,78 +3885,127 @@ pub(super) fn describe_consult_reveal_move_matches_then_bottom(
 
 /// Keep a single matching card and the revealed remainder linked across a
 /// sequence wrapper. Every movement modifier is checked before compacting.
-pub(super) fn describe_single_consult_move_shuffle(
-    effects: &[&Effect],
-) -> Option<(String, usize)> {
+pub(super) fn describe_single_consult_move_shuffle(effects: &[&Effect]) -> Option<(String, usize)> {
     describe_single_consult_move_shuffle_with_bound_type(effects, false)
 }
 
-pub(super) fn describe_choose_type_then_single_consult_shuffle(effects: &[&Effect]) -> Option<String> {
+pub(super) fn describe_choose_type_then_single_consult_shuffle(
+    effects: &[&Effect],
+) -> Option<String> {
     let choice = unwrap_basic_tag_wrappers(effects.first()?)
         .downcast_ref::<crate::effects::ChooseCreatureTypeEffect>()?;
-    if choice.chooser != PlayerFilter::You || !choice.excluded_subtypes.is_empty()
-        || choice.family != crate::types::SubtypeFamily::Creature { return None; }
-    let (body, consumed) = describe_single_consult_move_shuffle_with_bound_type(&effects[1..], true)?;
+    if choice.chooser != PlayerFilter::You
+        || !choice.excluded_subtypes.is_empty()
+        || choice.family != crate::types::SubtypeFamily::Creature
+    {
+        return None;
+    }
+    let (body, consumed) =
+        describe_single_consult_move_shuffle_with_bound_type(&effects[1..], true)?;
     (consumed + 1 == effects.len()).then(|| format!("Choose a creature type. {body}"))
 }
 
 fn describe_single_consult_move_shuffle_with_bound_type(
-    effects: &[&Effect], chosen_type: bool,
+    effects: &[&Effect],
+    chosen_type: bool,
 ) -> Option<(String, usize)> {
     let consult_effect = *effects.first()?;
     let consult = unwrap_basic_tag_wrappers(consult_effect)
         .downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
     if consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Reveal
         || consult.max_exposed.is_some()
-        || !matches!(consult.stop_rule, crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
-            | crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1))) {
+        || !matches!(
+            consult.stop_rule,
+            crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
+                | crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1))
+        )
+    {
         return None;
     }
     let next = *effects.get(1)?;
-    let (move_effect, shuffle_effect, consumed, coordinated) = if let Some(sequence) = unwrap_basic_tag_wrappers(next)
-        .downcast_ref::<crate::effects::SequenceEffect>() {
-        let [movement, shuffle] = sequence.effects.as_slice() else { return None; };
-        (movement, shuffle, 2, matches!(sequence.surface, ironsmith_core::SequenceSurface::Coordinated | ironsmith_core::SequenceSurface::ResultConjunction { leading_duration: false }))
+    let (move_effect, shuffle_effect, consumed, coordinated) = if let Some(sequence) =
+        unwrap_basic_tag_wrappers(next).downcast_ref::<crate::effects::SequenceEffect>()
+    {
+        let [movement, shuffle] = sequence.effects.as_slice() else {
+            return None;
+        };
+        (
+            movement,
+            shuffle,
+            2,
+            matches!(
+                sequence.surface,
+                ironsmith_core::SequenceSurface::Coordinated
+                    | ironsmith_core::SequenceSurface::ResultConjunction {
+                        leading_duration: false
+                    }
+            ),
+        )
     } else {
         (next, *effects.get(2)?, 3, false)
     };
     let movement = unwrap_basic_tag_wrappers(move_effect)
         .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     if !matches!(movement.target.base(), ChooseSpec::Tagged(tag) if tag == &consult.match_tag)
-        || movement.zone != Zone::Battlefield || movement.to_top
-        || movement.enters_tapped || movement.enters_attacking || movement.enters_face_down
-        || movement.enters_transformed || !movement.enters_with_counters.is_empty()
-        || movement.attack_target_mode.is_some() || movement.transfer_exiled_with_source_links
-        || movement.battlefield_controller != crate::effects::BattlefieldController::Preserve {
+        || movement.zone != Zone::Battlefield
+        || movement.to_top
+        || movement.enters_tapped
+        || movement.enters_attacking
+        || movement.enters_face_down
+        || movement.enters_transformed
+        || !movement.enters_with_counters.is_empty()
+        || movement.attack_target_mode.is_some()
+        || movement.transfer_exiled_with_source_links
+        || movement.battlefield_controller != crate::effects::BattlefieldController::Preserve
+    {
         return None;
     }
     let same_library_shuffle = unwrap_basic_tag_wrappers(shuffle_effect)
         .downcast_ref::<crate::effects::ShuffleLibraryEffect>()
-        .is_some_and(|shuffle| shuffle.target_spec.is_none()
-            && player_filters_refer_to_same_player(&shuffle.player, &consult.player));
+        .is_some_and(|shuffle| {
+            shuffle.target_spec.is_none()
+                && player_filters_refer_to_same_player(&shuffle.player, &consult.player)
+        });
     if !same_library_shuffle && !is_exact_consult_remainder_shuffle(shuffle_effect, consult) {
         return None;
     }
     let reveal = if chosen_type {
-        if consult.player != PlayerFilter::You || !consult.filter.chosen_creature_type { return None; }
+        if consult.player != PlayerFilter::You || !consult.filter.chosen_creature_type {
+            return None;
+        }
         let mut filter = consult.filter.clone();
         filter.chosen_creature_type = false;
         let selection = describe_single_search_filter_in_zone(&filter, Zone::Library);
-        format!("Reveal cards from the top of your library until you reveal {selection} of that type")
-    } else { describe_effect(consult_effect) };
+        format!(
+            "Reveal cards from the top of your library until you reveal {selection} of that type"
+        )
+    } else {
+        describe_effect(consult_effect)
+    };
     let reveal = reveal.trim().trim_end_matches('.');
-    let reveal = reveal.strip_prefix("You ").or_else(|| reveal.strip_prefix("you ")).unwrap_or(reveal);
+    let reveal = reveal
+        .strip_prefix("You ")
+        .or_else(|| reveal.strip_prefix("you "))
+        .unwrap_or(reveal);
     let conjunction = if coordinated { " and" } else { ", then" };
     let explicit_revealed_others = unwrap_basic_tag_wrappers(shuffle_effect)
         .downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()
         .is_some_and(|shuffle| matches!(shuffle.target.base(), ChooseSpec::Object(filter)
             if filter.set_quantifier_surface() == Some(ironsmith_core::SetQuantifierSurface::All)
                 && filter.union_surface.prior_effect_action() == Some(ironsmith_core::PriorEffectAction::Revealed)));
-    let remainder = if explicit_revealed_others { "all other cards revealed this way" } else { "the rest" };
-    let action = if consult.player == PlayerFilter::You {
-        format!("Put that card onto the battlefield{conjunction} shuffle {remainder} into your library")
+    let remainder = if explicit_revealed_others {
+        "all other cards revealed this way"
     } else {
-        format!("That player puts that card onto the battlefield{conjunction} shuffles {remainder} into their library")
+        "the rest"
+    };
+    let action = if consult.player == PlayerFilter::You {
+        format!(
+            "Put that card onto the battlefield{conjunction} shuffle {remainder} into your library"
+        )
+    } else {
+        format!(
+            "That player puts that card onto the battlefield{conjunction} shuffles {remainder} into their library"
+        )
     };
     Some((format!("{}. {action}", capitalize_first(reveal)), consumed))
 }
@@ -3961,24 +4015,35 @@ pub(super) fn is_exact_consult_remainder_shuffle(
     consult: &crate::effects::ConsultTopOfLibraryEffect,
 ) -> bool {
     let Some(shuffle) = unwrap_basic_tag_wrappers(effect)
-        .downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>() else { return false; };
+        .downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()
+    else {
+        return false;
+    };
     let zone = match consult.mode {
         crate::effects::consult_helpers::LibraryConsultMode::Reveal => Zone::Library,
         crate::effects::consult_helpers::LibraryConsultMode::Exile => Zone::Exile,
     };
-    let target = ChooseSpec::Object(ObjectFilter::tagged(consult.all_tag.clone())
-        .not_tagged(consult.match_tag.clone()).in_zone(zone));
+    let target = ChooseSpec::Object(
+        ObjectFilter::tagged(consult.all_tag.clone())
+            .not_tagged(consult.match_tag.clone())
+            .in_zone(zone),
+    );
     let mut normalized = shuffle.clone();
     if let ChooseSpec::Object(filter) = &mut normalized.target {
         if filter.set_quantifier_surface() == Some(ironsmith_core::SetQuantifierSurface::All)
-            && filter.union_surface.prior_effect_action() == Some(ironsmith_core::PriorEffectAction::Revealed) {
+            && filter.union_surface.prior_effect_action()
+                == Some(ironsmith_core::PriorEffectAction::Revealed)
+        {
             filter.set_set_quantifier_surface(None);
             filter.set_prior_effect_action_surface(None);
         }
     }
-    if !player_filters_refer_to_same_player(&normalized.player, &consult.player) { return false; }
+    if !player_filters_refer_to_same_player(&normalized.player, &consult.player) {
+        return false;
+    }
     normalized.player = consult.player.clone();
-    normalized == crate::effects::ShuffleObjectsIntoLibraryEffect::new(target, consult.player.clone())
+    normalized
+        == crate::effects::ShuffleObjectsIntoLibraryEffect::new(target, consult.player.clone())
 }
 
 pub(super) fn describe_exile_creatures_consult_that_many_battlefield_shuffle(
@@ -4164,7 +4229,9 @@ pub(super) fn describe_exile_creatures_consult_that_many_battlefield_shuffle(
 
     let whole_library_shuffle = unwrap_effect(shuffle_effect)
         .downcast_ref::<crate::effects::ShuffleLibraryEffect>()
-        .is_some_and(|shuffle| shuffle.player == PlayerFilter::You && shuffle.target_spec.is_none());
+        .is_some_and(|shuffle| {
+            shuffle.player == PlayerFilter::You && shuffle.target_spec.is_none()
+        });
     if !whole_library_shuffle && !is_exact_consult_remainder_shuffle(shuffle_effect, consult) {
         return None;
     }
@@ -5412,7 +5479,9 @@ pub(super) fn describe_for_players_choice_complement(
     if for_players.starting_with_controller || for_players.stop_after_first_happened {
         return None;
     }
-    let [choice, sacrifice] = for_players.effects.as_slice() else { return None; };
+    let [choice, sacrifice] = for_players.effects.as_slice() else {
+        return None;
+    };
     let choice = choice.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let sacrifice = sacrifice.downcast_ref::<crate::effects::zones::SacrificePlayerEffect>()?;
     if choice.chooser != PlayerFilter::IteratedPlayer
@@ -5421,25 +5490,37 @@ pub(super) fn describe_for_players_choice_complement(
         || choice.filter.controller != Some(PlayerFilter::IteratedPlayer)
         || choice.filter.zone != Some(Zone::Battlefield)
         || choice.zone != Some(Zone::Battlefield)
-        || choice.is_search || choice.reveal || choice.top_only || choice.bottom_only
-        || !choice.additional_zones.is_empty() || choice.aggregate_constraint.is_some()
+        || choice.is_search
+        || choice.reveal
+        || choice.top_only
+        || choice.bottom_only
+        || !choice.additional_zones.is_empty()
+        || choice.aggregate_constraint.is_some()
         || choice.count_value.is_some()
         || !matches!(&sacrifice.count, Value::Count(filter) if filter == &sacrifice.filter)
     {
         return None;
     }
     let mut complement = choice.filter.clone();
-    complement.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
-        tag: choice.tag.clone(),
-        relation: crate::filter::TaggedOpbjectRelation::IsNotTaggedObject,
-    });
-    if complement != sacrifice.filter { return None; }
+    complement
+        .tagged_constraints
+        .push(crate::filter::TaggedObjectConstraint {
+            tag: choice.tag.clone(),
+            relation: crate::filter::TaggedOpbjectRelation::IsNotTaggedObject,
+        });
+    if complement != sacrifice.filter {
+        return None;
+    }
     let subject = describe_for_players_subject(&for_players.filter)?;
-    if subject == "You" { return None; }
+    if subject == "You" {
+        return None;
+    }
     let mut selection = choice.clone();
     selection.filter.controller = None;
     let selection = describe_choose_selection(&selection);
-    Some(format!("{subject} chooses {selection} they control, then sacrifices the rest"))
+    Some(format!(
+        "{subject} chooses {selection} they control, then sacrifices the rest"
+    ))
 }
 
 #[cfg(test)]
@@ -5450,20 +5531,30 @@ mod repeated_quantified_action_tests {
     fn choice_complement_requires_the_exact_sacrificed_set() {
         let filter = ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer);
         let choice = crate::effects::ChooseObjectsEffect::new(
-            filter.clone(), crate::effect::ChoiceCount::exactly(2),
-            PlayerFilter::IteratedPlayer, "selected",
-        ).in_zone(Zone::Battlefield);
+            filter.clone(),
+            crate::effect::ChoiceCount::exactly(2),
+            PlayerFilter::IteratedPlayer,
+            "selected",
+        )
+        .in_zone(Zone::Battlefield);
         let complement = filter.not_tagged("selected");
         let sacrifice = crate::effects::zones::SacrificePlayerEffect::new(
-            complement.clone(), Value::Count(complement), PlayerFilter::IteratedPlayer,
+            complement.clone(),
+            Value::Count(complement),
+            PlayerFilter::IteratedPlayer,
         );
         let mut loop_effect = crate::effects::ForPlayersEffect::new(
-            PlayerFilter::Opponent, vec![Effect::new(choice), Effect::new(sacrifice)],
+            PlayerFilter::Opponent,
+            vec![Effect::new(choice), Effect::new(sacrifice)],
         );
-        assert_eq!(describe_for_players_choice_complement(&loop_effect).as_deref(),
-            Some("Each opponent chooses two creatures they control, then sacrifices the rest"));
+        assert_eq!(
+            describe_for_players_choice_complement(&loop_effect).as_deref(),
+            Some("Each opponent chooses two creatures they control, then sacrifices the rest")
+        );
         loop_effect.effects[1] = Effect::new(crate::effects::zones::SacrificePlayerEffect::new(
-            ObjectFilter::creature(), Value::Fixed(1), PlayerFilter::IteratedPlayer,
+            ObjectFilter::creature(),
+            Value::Fixed(1),
+            PlayerFilter::IteratedPlayer,
         ));
         assert!(describe_for_players_choice_complement(&loop_effect).is_none());
     }

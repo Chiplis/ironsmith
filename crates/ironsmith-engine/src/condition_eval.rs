@@ -1632,7 +1632,8 @@ fn evaluate_value_comparison(
     attacking_player: Option<PlayerId>,
 ) -> bool {
     let mut ctx = ExecutionContext::new_default(source, controller);
-    if let Some(attached) = game.object(source)
+    if let Some(attached) = game
+        .object(source)
         .and_then(|source| source.attached_to.as_ref())
         .and_then(|target| target.object_id())
         .and_then(|id| game.object(id))
@@ -1661,8 +1662,12 @@ fn evaluate_value_comparison(
     }
     // Explicit declaration context takes precedence over any event-derived
     // combat context; ordinary callers leave these fields unspecified.
-    if let Some(player) = defending_player { ctx.combat.defending_player = Some(player); }
-    if let Some(player) = attacking_player { ctx.combat.attacking_player = Some(player); }
+    if let Some(player) = defending_player {
+        ctx.combat.defending_player = Some(player);
+    }
+    if let Some(player) = attacking_player {
+        ctx.combat.attacking_player = Some(player);
+    }
     let source_exiled = game
         .get_exiled_with_source_links(source)
         .iter()
@@ -2385,21 +2390,30 @@ fn evaluate_turn_history_condition(
             }),
         TurnHistoryCondition::ObjectAttackedDuringControllersLastTurn(filter) => {
             let mut filter_ctx = FilterContext::new(ctx.controller).with_source(ctx.source);
-            if let Some(attached) = game.object(ctx.source)
+            if let Some(attached) = game
+                .object(ctx.source)
                 .and_then(|source| source.attached_to.as_ref())
                 .and_then(|target| target.object_id())
                 .and_then(|id| game.object(id))
             {
                 let snapshot = crate::snapshot::ObjectSnapshot::from_object(attached, game);
                 for tag in ["enchanted", "equipped"] {
-                    filter_ctx.tagged_objects.insert(crate::tag::TagKey::from(tag), vec![snapshot.clone()]);
+                    filter_ctx
+                        .tagged_objects
+                        .insert(crate::tag::TagKey::from(tag), vec![snapshot.clone()]);
                 }
             }
-            game.battlefield.iter().filter_map(|id| game.object(*id)).any(|object| {
-                filter.matches(object, &filter_ctx, game)
-                    && game.last_turn_history_for_player(game.controller_of(object))
-                        .is_some_and(|history| history.creatures_attacked_this_turn.contains(&object.id))
-            })
+            game.battlefield
+                .iter()
+                .filter_map(|id| game.object(*id))
+                .any(|object| {
+                    filter.matches(object, &filter_ctx, game)
+                        && game
+                            .last_turn_history_for_player(game.controller_of(object))
+                            .is_some_and(|history| {
+                                history.creatures_attacked_this_turn.contains(&object.id)
+                            })
+                })
         }
         TurnHistoryCondition::SourceAttackedThisTurn { .. } => {
             game.creature_attacked_this_turn(ctx.source)
@@ -3800,13 +3814,27 @@ pub fn evaluate_condition_external(
                 })
                 .any(|obj| filter.matches(obj, &filter_ctx, game))
         }
-        Condition::PlayerHasAtLeast { player, filter, count } =>
-            matching_condition_players_external(game, ctx, player).into_iter().any(|player_id| {
-                let filter_ctx = condition_filter_context(game, player_id, ctx.source, player, ctx.triggering_event);
+        Condition::PlayerHasAtLeast {
+            player,
+            filter,
+            count,
+        } => matching_condition_players_external(game, ctx, player)
+            .into_iter()
+            .any(|player_id| {
+                let filter_ctx = condition_filter_context(
+                    game,
+                    player_id,
+                    ctx.source,
+                    player,
+                    ctx.triggering_event,
+                );
                 condition_objects_for_zone(game, filter.zone)
-                    .filter(|obj| condition_object_matches_player_zone(game, obj, player_id, filter.zone))
+                    .filter(|obj| {
+                        condition_object_matches_player_zone(game, obj, player_id, filter.zone)
+                    })
                     .filter(|obj| filter.matches(obj, &filter_ctx, game))
-                    .count() >= *count as usize
+                    .count()
+                    >= *count as usize
             }),
         Condition::PlayerControlsExactly {
             player,
@@ -3873,9 +3901,13 @@ pub fn evaluate_condition_external(
             })
         }
         Condition::PlayerControlsMoreThanEachOtherPlayer { player, filter } => {
-            matching_condition_players_external(game, ctx, player).into_iter().any(|player_id| {
-                player_controls_more_than_each_other_player(game, ctx.source, player, player_id, filter)
-            })
+            matching_condition_players_external(game, ctx, player)
+                .into_iter()
+                .any(|player_id| {
+                    player_controls_more_than_each_other_player(
+                        game, ctx.source, player, player_id, filter,
+                    )
+                })
         }
         Condition::PlayerControlsMoreThanYou { player, filter } => {
             let count_for = |candidate: PlayerId| {
@@ -4178,9 +4210,16 @@ pub fn evaluate_condition_external(
             .as_ref()
             .is_some_and(|combat| crate::combat_state::is_blocking(combat, ctx.source)),
         Condition::SourceIsSoulbondPaired => game.is_soulbond_paired(ctx.source),
-        Condition::SourceSoulbondPartnerMatches(filter) => game.soulbond_partner(ctx.source)
+        Condition::SourceSoulbondPartnerMatches(filter) => game
+            .soulbond_partner(ctx.source)
             .and_then(|id| game.object(id))
-            .is_some_and(|partner| filter.matches(partner, &crate::filter::FilterContext::new(ctx.controller).with_source(ctx.source), game)),
+            .is_some_and(|partner| {
+                filter.matches(
+                    partner,
+                    &crate::filter::FilterContext::new(ctx.controller).with_source(ctx.source),
+                    game,
+                )
+            }),
         Condition::TurnHistory(_) => unreachable!("handled by shared condition evaluator"),
         Condition::StableObjectIsTopOfLibrary {
             stable_id,
@@ -4477,7 +4516,9 @@ fn evaluate_condition_simple(
         right,
     } = condition
     {
-        return evaluate_value_comparison(game, controller, source, left, *operator, right, None, None, None);
+        return evaluate_value_comparison(
+            game, controller, source, left, *operator, right, None, None, None,
+        );
     }
     if let Condition::ValueIsPrime(value) = condition {
         return evaluate_value_is_prime(game, controller, source, value, None);
@@ -4579,9 +4620,15 @@ fn evaluate_condition_simple(
             }
             true
         }
-        Condition::PlayerHasAtLeast { player, filter, count } =>
-            matching_condition_players_simple(game, controller, player).into_iter().any(|player_id| {
-                condition_count_for_player(game, source, player, player_id, filter) >= *count as usize
+        Condition::PlayerHasAtLeast {
+            player,
+            filter,
+            count,
+        } => matching_condition_players_simple(game, controller, player)
+            .into_iter()
+            .any(|player_id| {
+                condition_count_for_player(game, source, player, player_id, filter)
+                    >= *count as usize
             }),
         Condition::PlayerControlsBasicLandTypesAmongLandsOrMore { player, count } => {
             use crate::types::Subtype;
@@ -4687,9 +4734,13 @@ fn evaluate_condition_simple(
             current == max_count
         }
         Condition::PlayerControlsMoreThanEachOtherPlayer { player, filter } => {
-            matching_condition_players_simple(game, controller, player).into_iter().any(|player_id| {
-                player_controls_more_than_each_other_player(game, source, player, player_id, filter)
-            })
+            matching_condition_players_simple(game, controller, player)
+                .into_iter()
+                .any(|player_id| {
+                    player_controls_more_than_each_other_player(
+                        game, source, player, player_id, filter,
+                    )
+                })
         }
         Condition::PlayerControlsMoreThanYou { player, filter } => {
             let count_for = |candidate: PlayerId| {
@@ -4968,9 +5019,16 @@ fn evaluate_condition_simple(
         | Condition::TriggeringObjectHadCountersPutFirstTimeThisTurn
         | Condition::TriggeringObjectHadToAttackThisCombat
         | Condition::TriggeringObjectHadCounters { .. } => false,
-        Condition::SourceSoulbondPartnerMatches(filter) => game.soulbond_partner(source)
+        Condition::SourceSoulbondPartnerMatches(filter) => game
+            .soulbond_partner(source)
             .and_then(|id| game.object(id))
-            .is_some_and(|partner| filter.matches(partner, &crate::filter::FilterContext::new(controller).with_source(source), game)),
+            .is_some_and(|partner| {
+                filter.matches(
+                    partner,
+                    &crate::filter::FilterContext::new(controller).with_source(source),
+                    game,
+                )
+            }),
         Condition::ControlCreaturesTotalPowerAtLeast(_)
         | Condition::CardInYourGraveyard { .. }
         | Condition::ActivationTiming(_)
@@ -5410,14 +5468,22 @@ fn evaluate_condition(
 
             Ok(true)
         }
-        Condition::PlayerHasAtLeast { player, filter, count } =>
-            Ok(matching_condition_players_exec(game, ctx, player)?.into_iter().any(|player_id| {
+        Condition::PlayerHasAtLeast {
+            player,
+            filter,
+            count,
+        } => Ok(matching_condition_players_exec(game, ctx, player)?
+            .into_iter()
+            .any(|player_id| {
                 let mut filter_ctx = ctx.filter_context(game);
                 filter_ctx.iterated_player = Some(player_id);
                 condition_objects_for_zone(game, filter.zone)
-                    .filter(|obj| condition_object_matches_player_zone(game, obj, player_id, filter.zone))
+                    .filter(|obj| {
+                        condition_object_matches_player_zone(game, obj, player_id, filter.zone)
+                    })
                     .filter(|obj| filter.matches(obj, &filter_ctx, game))
-                    .count() >= *count as usize
+                    .count()
+                    >= *count as usize
             })),
         Condition::PlayerControlsBasicLandTypesAmongLandsOrMore { player, count } => {
             use crate::types::Subtype;
@@ -5493,9 +5559,13 @@ fn evaluate_condition(
             Ok(current == max_count)
         }
         Condition::PlayerControlsMoreThanEachOtherPlayer { player, filter } => {
-            Ok(matching_condition_players_exec(game, ctx, player)?.into_iter().any(|player_id| {
-                player_controls_more_than_each_other_player(game, ctx.source, player, player_id, filter)
-            }))
+            Ok(matching_condition_players_exec(game, ctx, player)?
+                .into_iter()
+                .any(|player_id| {
+                    player_controls_more_than_each_other_player(
+                        game, ctx.source, player, player_id, filter,
+                    )
+                }))
         }
         Condition::PlayerControlsMoreThanYou { player, filter } => {
             let count_for = |candidate: PlayerId| {
@@ -6361,7 +6431,8 @@ fn evaluate_condition(
             .as_ref()
             .is_some_and(|combat| crate::combat_state::is_blocking(combat, ctx.source))),
         Condition::SourceIsSoulbondPaired => Ok(game.is_soulbond_paired(ctx.source)),
-        Condition::SourceSoulbondPartnerMatches(filter) => Ok(game.soulbond_partner(ctx.source)
+        Condition::SourceSoulbondPartnerMatches(filter) => Ok(game
+            .soulbond_partner(ctx.source)
             .and_then(|id| game.object(id))
             .is_some_and(|partner| filter.matches(partner, &ctx.filter_context(game), game))),
         Condition::TurnHistory(_) => unreachable!("handled by shared condition evaluator"),
@@ -6420,7 +6491,13 @@ fn evaluate_condition(
 fn matching_snow_mana_was_spent(snapshot: &crate::snapshot::ObjectSnapshot) -> bool {
     use crate::color::Color;
     let spent = &snapshot.snow_mana_spent_to_cast;
-    [(Color::White, spent.white), (Color::Blue, spent.blue), (Color::Black, spent.black),
-        (Color::Red, spent.red), (Color::Green, spent.green)]
-        .into_iter().any(|(color, amount)| amount > 0 && snapshot.colors.contains(color))
+    [
+        (Color::White, spent.white),
+        (Color::Blue, spent.blue),
+        (Color::Black, spent.black),
+        (Color::Red, spent.red),
+        (Color::Green, spent.green),
+    ]
+    .into_iter()
+    .any(|(color, amount)| amount > 0 && snapshot.colors.contains(color))
 }

@@ -1,9 +1,9 @@
-use crate::cards::builders::ObjectChoiceEffectAst;
-use crate::cards::builders::TokenActionAst;
-use crate::cards::builders::LifeResourceActionAst;
-use crate::cards::builders::KeywordActionAst;
 use super::*;
+use crate::cards::builders::KeywordActionAst;
+use crate::cards::builders::LifeResourceActionAst;
+use crate::cards::builders::ObjectChoiceEffectAst;
 use crate::cards::builders::PredicateAst;
+use crate::cards::builders::TokenActionAst;
 #[cfg(test)]
 use ironsmith_compiler::ParseCardText;
 
@@ -729,7 +729,9 @@ pub fn parse_spells_cost_modifier_line(
     if !is_this_spell && let Some(boundary) = as_long_as_boundary {
         let condition_start =
             static_keyword_shapes::parse_word_token_offset(remaining_tokens, boundary + 3)
-                .ok_or_else(|| CardTextError::ParseError("missing trailing cost condition".to_string()))?;
+                .ok_or_else(|| {
+                    CardTextError::ParseError("missing trailing cost condition".to_string())
+                })?;
         let condition_tokens = trim_commas(&remaining_tokens[condition_start..]);
         let condition = parse_static_condition_clause(&condition_tokens)?;
         non_this_condition = Some(match non_this_condition.take() {
@@ -2925,14 +2927,51 @@ fn parse_attacked_during_controllers_last_turn(
     let words = crate::lexer::token_word_refs(tokens);
     let matches = [
         &["it", "attacked", "during", "your", "last", "turn"][..],
-        &["it", "attacked", "during", "its", "controllers", "last", "turn"],
-        &["it", "attacked", "during", "its", "controller's", "last", "turn"],
-        &["it", "attacked", "during", "its", "controller", "last", "turn"],
-        &["it", "attacked", "during", "its", "controller", "s", "last", "turn"],
-    ].iter().any(|phrase| crate::word_primitives::parse_sequence_complete(&words, phrase));
-    matches.then(|| PredicateAst::Bound(Box::new(crate::ConditionExpr::TurnHistory(
-        ironsmith_core::TurnHistoryCondition::ObjectAttackedDuringControllersLastTurn(filter),
-    ))))
+        &[
+            "it",
+            "attacked",
+            "during",
+            "its",
+            "controllers",
+            "last",
+            "turn",
+        ],
+        &[
+            "it",
+            "attacked",
+            "during",
+            "its",
+            "controller's",
+            "last",
+            "turn",
+        ],
+        &[
+            "it",
+            "attacked",
+            "during",
+            "its",
+            "controller",
+            "last",
+            "turn",
+        ],
+        &[
+            "it",
+            "attacked",
+            "during",
+            "its",
+            "controller",
+            "s",
+            "last",
+            "turn",
+        ],
+    ]
+    .iter()
+    .any(|phrase| crate::word_primitives::parse_sequence_complete(&words, phrase));
+    matches.then(|| {
+        PredicateAst::Bound(Box::new(crate::ConditionExpr::TurnHistory(
+            ironsmith_core::TurnHistoryCondition::ObjectAttackedDuringControllersLastTurn(filter),
+        )))
+    })
 }
 
 pub fn parse_doesnt_untap_during_untap_step_line(
@@ -2955,7 +2994,10 @@ pub fn parse_doesnt_untap_during_untap_step_line(
                         clause_display
                     )));
                 }
-                let condition = match parse_attacked_during_controllers_last_turn(&condition_tokens, ObjectFilter::source()) {
+                let condition = match parse_attacked_during_controllers_last_turn(
+                    &condition_tokens,
+                    ObjectFilter::source(),
+                ) {
                     Some(condition) => condition,
                     None => parse_static_condition_clause(&condition_tokens)?,
                 };
@@ -2976,7 +3018,11 @@ pub fn parse_doesnt_untap_during_untap_step_line(
             during_your_untap_step,
         }) => {
             let subject = render_token_slice(subject_tokens);
-            let step_owner = if during_your_untap_step { "your" } else { "its controller's" };
+            let step_owner = if during_your_untap_step {
+                "your"
+            } else {
+                "its controller's"
+            };
             let text = format!("{subject} doesn't untap during {step_owner} untap step");
             let condition = if tail_tokens.is_empty() {
                 None
@@ -2998,40 +3044,60 @@ pub fn parse_doesnt_untap_during_untap_step_line(
                         clause_display
                     )));
                 }
-                let tag = if subject_tokens.first().is_some_and(|token| token.is_word("equipped")) {
+                let tag = if subject_tokens
+                    .first()
+                    .is_some_and(|token| token.is_word("equipped"))
+                {
                     crate::tag::CompilerReferenceTag::Equipped
-                } else { crate::tag::CompilerReferenceTag::Enchanted };
-                let mut predicate = match parse_attacked_during_controllers_last_turn(&condition_tokens, ObjectFilter::tagged(tag.bind())) {
+                } else {
+                    crate::tag::CompilerReferenceTag::Enchanted
+                };
+                let mut predicate = match parse_attacked_during_controllers_last_turn(
+                    &condition_tokens,
+                    ObjectFilter::tagged(tag.bind()),
+                ) {
                     Some(predicate) => predicate,
                     None => parse_static_condition_clause(&condition_tokens)?,
                 };
                 // A possessive pronoun in the attached subject's condition
                 // refers to that permanent, not to the Aura or Equipment.
-                if condition_tokens.first().is_some_and(|token| token.is_word("it"))
+                if condition_tokens
+                    .first()
+                    .is_some_and(|token| token.is_word("it"))
                     && let PredicateAst::CountComparison {
-                        count: crate::static_abilities::AnthemCountExpression::CountersOnSource(counter),
+                        count:
+                            crate::static_abilities::AnthemCountExpression::CountersOnSource(counter),
                         comparison: crate::effect::Comparison::GreaterThanOrEqual(minimum),
                         ..
                     } = &predicate
                 {
                     predicate = PredicateAst::ValueComparison {
-                        left: Value::CountersOn(Box::new(crate::target::ChooseSpec::Tagged(tag.bind().into())), Some(*counter)),
+                        left: Value::CountersOn(
+                            Box::new(crate::target::ChooseSpec::Tagged(tag.bind().into())),
+                            Some(*counter),
+                        ),
                         operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                         right: Value::Fixed(*minimum),
                     };
                 }
                 Some(if tail_tokens[0].is_word("unless") {
                     PredicateAst::Not(Box::new(predicate))
-                } else { predicate })
+                } else {
+                    predicate
+                })
             };
             // DoesntUntap applies during the affected permanent's natural untap.
             // For an Aura's "your" step, grant it only on the Aura controller's turn.
             let condition = if during_your_untap_step {
                 Some(match condition {
-                    Some(condition) => PredicateAst::And(Box::new(condition), Box::new(PredicateAst::YourTurn)),
+                    Some(condition) => {
+                        PredicateAst::And(Box::new(condition), Box::new(PredicateAst::YourTurn))
+                    }
                     None => PredicateAst::YourTurn,
                 })
-            } else { condition };
+            } else {
+                condition
+            };
             Ok(Some(StaticAbilityAst::AttachedStaticAbilityGrant {
                 ability: Box::new(StaticAbilityAst::Static(StaticAbility::doesnt_untap())),
                 display: text,
@@ -4293,8 +4359,8 @@ pub fn parse_exile_to_countered_exile_instead_of_graveyard_line(
 
 #[cfg(test)]
 mod optional_draw_replacement_regression_tests {
-    use crate::cards::builders::TokenActionAst;
     use super::*;
+    use crate::cards::builders::TokenActionAst;
     use crate::lexer::lex_line;
 
     fn parse(text: &str) -> Option<StaticAbility> {
@@ -5705,10 +5771,16 @@ mod tests {
     fn first_x_spell_counter_discount_retains_both_constraints() {
         let tokens = lex_line("The first spell you cast with {X} in its mana cost each turn costs {1} less to cast for each +1/+1 counter on this creature.", 0).unwrap();
         let ability = parse_spells_cost_modifier_line(&tokens).unwrap().unwrap();
-        let ironsmith_core::StaticAbilityPayload::CostReduction(reduction) = &ability.payload else { panic!("{ability:#?}") };
+        let ironsmith_core::StaticAbilityPayload::CostReduction(reduction) = &ability.payload
+        else {
+            panic!("{ability:#?}")
+        };
         assert!(reduction.filter.has_x_in_cost, "{reduction:#?}");
         assert!(reduction.filter.first_spell_cast_each_turn);
-        assert!(format!("{:?}", reduction.amount).contains("PlusOnePlusOne"), "{reduction:#?}");
+        assert!(
+            format!("{:?}", reduction.amount).contains("PlusOnePlusOne"),
+            "{reduction:#?}"
+        );
     }
 
     #[test]
@@ -5845,14 +5917,27 @@ mod attached_your_untap_tests {
                 .parse_text("Enchant creature\nEnchanted creature doesn't untap during your untap step if this Aura has a pupa counter on it.")
         });
         let definition = result.unwrap();
-        assert!(!format!("{:?}", definition.spell_effect).contains("UntapEffect"), "{}\n{:#?}", trace.render(), definition.spell_effect);
+        assert!(
+            !format!("{:?}", definition.spell_effect).contains("UntapEffect"),
+            "{}\n{:#?}",
+            trace.render(),
+            definition.spell_effect
+        );
     }
 
     #[test]
     fn attached_your_untap_retains_step_owner_and_counter_condition() {
         let tokens = crate::lexer::lex_line("Enchanted creature doesn't untap during your untap step if this Aura has a pupa counter on it.", 0).unwrap();
-        let parsed = parse_doesnt_untap_during_untap_step_line(&tokens).unwrap().expect("conditional attached restriction");
-        let StaticAbilityAst::AttachedStaticAbilityGrant { condition: Some(condition), .. } = parsed else { panic!("conditional attached grant required"); };
+        let parsed = parse_doesnt_untap_during_untap_step_line(&tokens)
+            .unwrap()
+            .expect("conditional attached restriction");
+        let StaticAbilityAst::AttachedStaticAbilityGrant {
+            condition: Some(condition),
+            ..
+        } = parsed
+        else {
+            panic!("conditional attached grant required");
+        };
         let text = format!("{condition:?}");
         assert!(text.contains("YourTurn"), "{text}");
         assert!(text.contains("pupa"), "{text}");

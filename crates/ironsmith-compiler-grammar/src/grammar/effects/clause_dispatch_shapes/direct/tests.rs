@@ -198,8 +198,11 @@ fn parses_protection_choice_shapes() {
 
 #[test]
 fn opponent_target_declaration_is_distinct_from_resolution_choice() {
-    let tokens=lex_line("An opponent chooses target creature they control.",0).unwrap();
-    assert_eq!(parse_choose_target_shape(&tokens).unwrap().chooser,ChooseTargetChooserShape::Opponent);
-    let tokens=lex_line("An opponent chooses a creature they control.",0).unwrap();
+    let tokens = lex_line("An opponent chooses target creature they control.", 0).unwrap();
+    assert_eq!(
+        parse_choose_target_shape(&tokens).unwrap().chooser,
+        ChooseTargetChooserShape::Opponent
+    );
+    let tokens = lex_line("An opponent chooses a creature they control.", 0).unwrap();
     assert!(parse_choose_target_shape(&tokens).is_none());
 }

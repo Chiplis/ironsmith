@@ -12,7 +12,8 @@ fn normalize_bare_counter_spell_nouns(line: &str) -> String {
             let end = index + prefix.len();
             output.push_str(&remainder[..end]);
             remainder = &remainder[end..];
-            if remainder.is_empty() || remainder.starts_with('.')
+            if remainder.is_empty()
+                || remainder.starts_with('.')
                 || remainder.starts_with(" unless ")
             {
                 output.push_str(" spell");
@@ -26,11 +27,23 @@ fn normalize_bare_counter_spell_nouns(line: &str) -> String {
 
 #[test]
 fn bare_counter_spell_nouns_preserve_coordinated_types() {
-    for surface in ["Counter target instant or sorcery spell.", "Counter target instant spell.", "Counter target sorcery spell."] {
+    for surface in [
+        "Counter target instant or sorcery spell.",
+        "Counter target instant spell.",
+        "Counter target sorcery spell.",
+    ] {
         assert_eq!(normalize_bare_counter_spell_nouns(surface), surface);
     }
-    assert_eq!(normalize_bare_counter_spell_nouns("Counter target instant unless its controller pays {2}."), "Counter target instant spell unless its controller pays {2}.");
-    assert_eq!(normalize_bare_counter_spell_nouns("Counter target sorcery."), "Counter target sorcery spell.");
+    assert_eq!(
+        normalize_bare_counter_spell_nouns(
+            "Counter target instant unless its controller pays {2}."
+        ),
+        "Counter target instant spell unless its controller pays {2}."
+    );
+    assert_eq!(
+        normalize_bare_counter_spell_nouns("Counter target sorcery."),
+        "Counter target sorcery spell."
+    );
 }
 
 fn compact_repeated_counter_recipient_damage_source(line: &str) -> Option<String> {

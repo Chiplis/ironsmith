@@ -1,6 +1,6 @@
+use super::*;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::LibraryActionAst;
-use super::*;
 
 pub fn parse_consult_match_move_all_to_graveyard(
     sentences: &[SentenceInput],
@@ -114,4 +114,3 @@ pub fn parse_consult_match_into_hand_others_graveyard(
         gate_on_previous_result,
     )))
 }
-

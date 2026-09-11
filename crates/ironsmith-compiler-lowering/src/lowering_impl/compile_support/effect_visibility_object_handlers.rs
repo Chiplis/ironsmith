@@ -1,5 +1,5 @@
-use crate::cards::builders::ObjectChoiceEffectAst;
 use super::*;
+use crate::cards::builders::ObjectChoiceEffectAst;
 
 fn mark_choose_effects_reveal(mut effects: Vec<Effect>) -> Vec<Effect> {
     for effect in &mut effects {

@@ -46,7 +46,10 @@ pub(in crate::compiled_text) fn describe_you_action_and_create_token(
         .strip_prefix("You ")
         .or_else(|| action.strip_prefix("you "))
         .unwrap_or(action);
-    if !action.starts_with("gain ") && !action.starts_with("lose ") && action != "take the initiative" {
+    if !action.starts_with("gain ")
+        && !action.starts_with("lose ")
+        && action != "take the initiative"
+    {
         return None;
     }
     let create = create
@@ -177,26 +180,35 @@ pub(in crate::compiled_text) fn describe_explicit_you_action_sequence(
     effects: &[Effect],
 ) -> Option<String> {
     let simple_actions = || -> Option<Vec<String>> {
-        if effects.len() < 3 { return None; }
+        if effects.len() < 3 {
+            return None;
+        }
         let mut actions = Vec::new();
         let mut explicit_actor = false;
         for root in effects {
             let effect = structural_unwrap_render_wrappers(root);
-            let is_yours = if let Some(draw) = effect.downcast_ref::<crate::effects::DrawCardsEffect>() {
+            let is_yours = if let Some(draw) =
+                effect.downcast_ref::<crate::effects::DrawCardsEffect>()
+            {
                 draw.player == PlayerFilter::You
             } else if let Some(gain) = effect.downcast_ref::<crate::effects::GainLifeEffect>() {
                 gain.player == ChooseSpec::Player(PlayerFilter::You)
             } else if let Some(lose) = effect.downcast_ref::<crate::effects::LoseLifeEffect>() {
                 lose.player == ChooseSpec::Player(PlayerFilter::You)
-            } else if let Some(initiative) = effect.downcast_ref::<crate::effects::TakeInitiativeEffect>() {
+            } else if let Some(initiative) =
+                effect.downcast_ref::<crate::effects::TakeInitiativeEffect>()
+            {
                 initiative.player == PlayerFilter::You
-            } else if let Some(create) = effect.downcast_ref::<crate::effects::CreateTokenEffect>() {
+            } else if let Some(create) = effect.downcast_ref::<crate::effects::CreateTokenEffect>()
+            {
                 explicit_actor |= create.actor_surface_explicit;
                 create.controller == PlayerFilter::You && create.controller_target.is_none()
             } else {
                 return None;
             };
-            if !is_yours { return None; }
+            if !is_yours {
+                return None;
+            }
             let text = describe_effect(root);
             actions.push(strip_you_action(&text)?.to_string());
         }
@@ -349,19 +361,36 @@ mod tests {
     #[test]
     fn longer_explicit_action_lists_require_every_action_to_share_the_actor() {
         for changed in 0..6 {
-            let player = |slot| if changed == slot { PlayerFilter::Opponent } else { PlayerFilter::You };
+            let player = |slot| {
+                if changed == slot {
+                    PlayerFilter::Opponent
+                } else {
+                    PlayerFilter::You
+                }
+            };
             let mut create = crate::effects::CreateTokenEffect::new(
-                crate::cards::tokens::treasure_token_definition(), 1, player(4));
+                crate::cards::tokens::treasure_token_definition(),
+                1,
+                player(4),
+            );
             create.actor_surface_explicit = changed != 5;
             let effects = vec![
                 Effect::new(crate::effects::TakeInitiativeEffect::new(player(1))),
-                Effect::new(crate::effects::GainLifeEffect { amount: Value::Fixed(3), player: ChooseSpec::Player(player(2)) }),
+                Effect::new(crate::effects::GainLifeEffect {
+                    amount: Value::Fixed(3),
+                    player: ChooseSpec::Player(player(2)),
+                }),
                 Effect::new(crate::effects::DrawCardsEffect::new(1, player(3))),
                 Effect::new(create),
             ];
-            assert_eq!(describe_explicit_you_action_sequence(&effects), if changed == 0 {
-                Some("You take the initiative, gain 3 life, draw a card, and create a Treasure token".to_string())
-            } else { None });
+            assert_eq!(
+                describe_explicit_you_action_sequence(&effects),
+                if changed == 0 {
+                    Some("You take the initiative, gain 3 life, draw a card, and create a Treasure token".to_string())
+                } else {
+                    None
+                }
+            );
         }
     }
 

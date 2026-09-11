@@ -1,5 +1,5 @@
-use crate::cards::builders::SourcePredicateAst;
 use super::*;
+use crate::cards::builders::SourcePredicateAst;
 
 pub(super) fn source_remains_on_battlefield(input: &mut WordSliceInput<'_>) -> WResult<Until> {
     for_as_long_as.parse_next(input)?;

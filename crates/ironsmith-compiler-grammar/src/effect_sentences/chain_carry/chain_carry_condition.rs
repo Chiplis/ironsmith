@@ -1,6 +1,6 @@
-use crate::cards::builders::TurnEventPredicateAst;
-use crate::cards::builders::PlayerPredicateAst;
 use super::*;
+use crate::cards::builders::PlayerPredicateAst;
+use crate::cards::builders::TurnEventPredicateAst;
 
 pub(super) fn parse_carried_cant_effects(
     tokens: &[OwnedLexToken],
@@ -138,8 +138,12 @@ pub(super) fn trailing_if_predicate_supported(predicate: &PredicateAst) -> bool 
             | PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast { .. })
             | PredicateAst::Player(PlayerPredicateAst::PlayerControlsExactly { .. })
             | PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeastWithDifferentPowers { .. })
-            | PredicateAst::Player(PlayerPredicateAst::PlayerLifeAtMostHalfStartingLifeTotal { .. })
-            | PredicateAst::Player(PlayerPredicateAst::PlayerLifeLessThanHalfStartingLifeTotal { .. })
+            | PredicateAst::Player(
+                PlayerPredicateAst::PlayerLifeAtMostHalfStartingLifeTotal { .. }
+            )
+            | PredicateAst::Player(
+                PlayerPredicateAst::PlayerLifeLessThanHalfStartingLifeTotal { .. }
+            )
             | PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreLifeThanYou { .. })
             | PredicateAst::Player(PlayerPredicateAst::PlayerHasNoOpponentWithMoreLifeThan { .. })
             | PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreLifeThanEachOtherPlayer { .. })
@@ -149,7 +153,9 @@ pub(super) fn trailing_if_predicate_supported(predicate: &PredicateAst) -> bool 
             | PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreCardsInHandThanYou { .. })
             | PredicateAst::Player(PlayerPredicateAst::PlayerHasCardTypesInGraveyardOrMore { .. })
             | PredicateAst::YouControlMoreCreaturesThanTargetSpellController
-            | PredicateAst::TurnEvents(TurnEventPredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(_))
+            | PredicateAst::TurnEvents(
+                TurnEventPredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(_)
+            )
             | PredicateAst::ValueComparison { .. }
     ) || matches!(predicate, PredicateAst::TaggedMatches(tag, _) if crate::tag::CompilerReferenceTag::Enchanted.matches(tag))
 }

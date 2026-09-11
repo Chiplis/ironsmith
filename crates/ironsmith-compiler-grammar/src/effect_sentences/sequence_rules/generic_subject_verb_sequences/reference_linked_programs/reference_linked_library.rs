@@ -1,6 +1,6 @@
+use super::*;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{LibraryActionAst, LibraryConsultModeAst};
-use super::*;
 
 pub fn parse_may_put_filtered_card_from_among_into_hand(
     tokens: &[OwnedLexToken],
@@ -51,33 +51,38 @@ pub fn parse_delayed_dies_exile_top_power_choose_play(
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
 
-    Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn {
-        filter: None,
-        effects: vec![
-            EffectAst::subject_verb_look_at_top_cards(
-                PlayerAst::You,
-                Value::PowerOf(Box::new(ChooseSpec::Tagged(
-                    (crate::tag::CompilerReferenceTag::It.bind()).into(),
-                )))
-                .with_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo),
-                crate::tag::TagRef::of(looked_tag.clone()),
-            ),
-            EffectAst::subject_verb_exile(TargetAst::Tagged(crate::tag::TagRef::of(looked_tag), None), false),
-            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
-                filter: exiled_filter,
-                count: ChoiceCount::exactly(1),
-                player: PlayerAst::You,
-                tag: crate::tag::TagRef::of(chosen_tag.clone()),
-                zone: Zone::Exile,
-            }),
-            EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
-                crate::tag::TagRef::of(chosen_tag),
-                PlayerAst::You,
-                true,
-                false,
-            ),
-        ],
-    })]))
+    Ok(Some(vec![EffectAst::Delayed(
+        DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn {
+            filter: None,
+            effects: vec![
+                EffectAst::subject_verb_look_at_top_cards(
+                    PlayerAst::You,
+                    Value::PowerOf(Box::new(ChooseSpec::Tagged(
+                        (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                    )))
+                    .with_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo),
+                    crate::tag::TagRef::of(looked_tag.clone()),
+                ),
+                EffectAst::subject_verb_exile(
+                    TargetAst::Tagged(crate::tag::TagRef::of(looked_tag), None),
+                    false,
+                ),
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+                    filter: exiled_filter,
+                    count: ChoiceCount::exactly(1),
+                    player: PlayerAst::You,
+                    tag: crate::tag::TagRef::of(chosen_tag.clone()),
+                    zone: Zone::Exile,
+                }),
+                EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
+                    crate::tag::TagRef::of(chosen_tag),
+                    PlayerAst::You,
+                    true,
+                    false,
+                ),
+            ],
+        },
+    )]))
 }
 
 pub fn parse_mill_then_may_put_from_among_into_hand(
@@ -279,13 +284,15 @@ pub(crate) fn parse_put_from_milled_cards_followup(
                 tag: chosen_tag.clone().into(),
                 relation: TaggedOpbjectRelation::IsNotTaggedObject,
             });
-            effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
-                filter: branch,
-                count: ChoiceCount::up_to(1),
-                player: chooser,
-                tag: crate::tag::TagRef::of(chosen_tag.clone()),
-                zone: Zone::Graveyard,
-            }));
+            effects.push(EffectAst::ObjectChoices(
+                ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+                    filter: branch,
+                    count: ChoiceCount::up_to(1),
+                    player: chooser,
+                    tag: crate::tag::TagRef::of(chosen_tag.clone()),
+                    zone: Zone::Graveyard,
+                },
+            ));
         }
     } else {
         filter.zone = Some(Zone::Graveyard);
@@ -293,13 +300,15 @@ pub(crate) fn parse_put_from_milled_cards_followup(
             tag: milled_tag,
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
-        effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
-            filter,
-            count: choice_count,
-            player: chooser,
-            tag: crate::tag::TagRef::of(chosen_tag.clone()),
-            zone: Zone::Graveyard,
-        }));
+        effects.push(EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+                filter,
+                count: choice_count,
+                player: chooser,
+                tag: crate::tag::TagRef::of(chosen_tag.clone()),
+                zone: Zone::Graveyard,
+            },
+        ));
     }
     let mut move_effect = EffectAst::subject_verb_move_to_zone_with_attack_target(
         TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
@@ -449,7 +458,11 @@ pub(super) fn compose_reveal_top_put_matching_into_hand_rest_on_bottom(
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
     vec![
-        EffectAst::subject_verb_look_at_top_cards(PlayerAst::You, count, crate::tag::TagRef::of(looked_tag.clone())),
+        EffectAst::subject_verb_look_at_top_cards(
+            PlayerAst::You,
+            count,
+            crate::tag::TagRef::of(looked_tag.clone()),
+        ),
         EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(looked_tag.clone())),
         EffectAst::subject_verb_tag_matching_objects(
             filter,
@@ -489,7 +502,11 @@ pub(super) fn compose_reveal_top_put_matching_into_hand_rest_into_graveyard(
     filter.zone = None;
     let iterated = || TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None);
     vec![
-        EffectAst::subject_verb_look_at_top_cards(PlayerAst::You, count, crate::tag::TagRef::of(looked_tag.clone())),
+        EffectAst::subject_verb_look_at_top_cards(
+            PlayerAst::You,
+            count,
+            crate::tag::TagRef::of(looked_tag.clone()),
+        ),
         EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(looked_tag.clone())),
         EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
             tag: crate::tag::TagRef::of(looked_tag),
@@ -531,7 +548,8 @@ pub fn parse_consult_match_move_and_bottom_remainder(
     let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action: SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary { mode, .. }),
         ..
-    })) = parts.effects.last() else {
+    })) = parts.effects.last()
+    else {
         return Ok(None);
     };
     let remainder_zone = match mode {
@@ -560,17 +578,29 @@ pub fn parse_consult_match_move_and_bottom_remainder(
             .with_move_to_zone_plural_surface_if(matched.target_plural_surface),
         ];
         return Ok(Some(wrap_optional_consult_effects(
-            parts, optional, followups, gate_on_result, false,
+            parts,
+            optional,
+            followups,
+            gate_on_result,
+            false,
         )));
     }
     let Some(shape) = effect_grammar::parse_consult_move_bottom_shape(&second_tokens) else {
         return Ok(None);
     };
-    if let effect_grammar::ConsultMoveBottomShape::MatchedToBattlefieldAndShuffle { target_plural_surface, explicit_revealed_others, coordinated } = shape {
-        let mut filter = ObjectFilter::tagged(parts.all_tag.clone()).not_tagged(parts.match_tag.clone()).in_zone(remainder_zone);
+    if let effect_grammar::ConsultMoveBottomShape::MatchedToBattlefieldAndShuffle {
+        target_plural_surface,
+        explicit_revealed_others,
+        coordinated,
+    } = shape
+    {
+        let mut filter = ObjectFilter::tagged(parts.all_tag.clone())
+            .not_tagged(parts.match_tag.clone())
+            .in_zone(remainder_zone);
         if explicit_revealed_others {
             filter.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::All));
-            filter.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Revealed));
+            filter
+                .set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Revealed));
         }
         let remainder = TargetAst::Object(filter, None, None);
         let followups = vec![
@@ -583,16 +613,29 @@ pub fn parse_consult_match_move_and_bottom_remainder(
                 None,
             )
             .with_move_to_zone_plural_surface_if(target_plural_surface),
-            EffectAst::subject_verb_shuffle_objects_into_library(match parts.player {
-                PlayerAst::ItsController | PlayerAst::ItsOwner => PlayerAst::That,
-                other => other,
-            }, remainder),
+            EffectAst::subject_verb_shuffle_objects_into_library(
+                match parts.player {
+                    PlayerAst::ItsController | PlayerAst::ItsOwner => PlayerAst::That,
+                    other => other,
+                },
+                remainder,
+            ),
         ];
-        let followups = if coordinated { vec![EffectAst::Coordinated {
-            effects: followups, leading_duration: false, result_conjunction: gate_on_result,
-        }] } else { followups };
+        let followups = if coordinated {
+            vec![EffectAst::Coordinated {
+                effects: followups,
+                leading_duration: false,
+                result_conjunction: gate_on_result,
+            }]
+        } else {
+            followups
+        };
         return Ok(Some(wrap_optional_consult_effects(
-            parts, optional, followups, gate_on_result, false,
+            parts,
+            optional,
+            followups,
+            gate_on_result,
+            false,
         )));
     }
 
@@ -613,7 +656,9 @@ pub fn parse_consult_match_move_and_bottom_remainder(
             false,
             crate::cards::builders::ReturnControllerAst::Preserve,
             battlefield_tapped,
-            attached_to_tokens.map(|(start, end)| crate::util::parse_target_phrase(&second_tokens[start..end])).transpose()?,
+            attached_to_tokens
+                .map(|(start, end)| crate::util::parse_target_phrase(&second_tokens[start..end]))
+                .transpose()?,
         ),
         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
             crate::tag::TagRef::of(parts.all_tag.clone()),
@@ -623,6 +668,10 @@ pub fn parse_consult_match_move_and_bottom_remainder(
         ),
     ];
     Ok(Some(wrap_optional_consult_effects(
-        parts, optional, followups, gate_on_result, false,
+        parts,
+        optional,
+        followups,
+        gate_on_result,
+        false,
     )))
 }

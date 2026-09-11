@@ -163,18 +163,24 @@ pub(crate) fn resolve_source_object_id(
     // A zone-change trigger may refer to the new object created by that
     // transition. Its recorded destination identity is authoritative: after
     // another zone change, following the stable card would affect a new object.
-    if let Some(event) = ctx.triggering_event.as_ref()
+    if let Some(event) = ctx
+        .triggering_event
+        .as_ref()
         .and_then(|event| event.downcast::<crate::events::ZoneChangeEvent>())
         && event.objects.contains(&ctx.source)
         && !event.result_objects.is_empty()
     {
         let source_snapshot = ctx.source_snapshot.as_ref().or_else(|| {
-            event.snapshots.iter().find(|snapshot| snapshot.object_id == ctx.source)
+            event
+                .snapshots
+                .iter()
+                .find(|snapshot| snapshot.object_id == ctx.source)
         });
         return event.result_objects.iter().copied().find(|id| {
             game.object(*id).is_some_and(|object| {
-                object.zone == event.to && source_snapshot
-                    .is_some_and(|snapshot| snapshot.stable_id == object.stable_id)
+                object.zone == event.to
+                    && source_snapshot
+                        .is_some_and(|snapshot| snapshot.stable_id == object.stable_id)
             })
         });
     }
@@ -2145,10 +2151,16 @@ pub fn resolve_value(
             Ok(source_obj.mana_spent_to_cast.amount(*symbol) as i32)
         }
 
-        Value::ManaFromSourceSpentToCastThisSpell { source_filter, reference, .. } => {
+        Value::ManaFromSourceSpentToCastThisSpell {
+            source_filter,
+            reference,
+            ..
+        } => {
             let tag = ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG;
             let snapshots = ctx.get_tagged_all(tag).map(Vec::as_slice).or_else(|| {
-                if *reference == ironsmith_core::ManaSpentCastReferenceSurface::ThisAbility { return None; }
+                if *reference == ironsmith_core::ManaSpentCastReferenceSurface::ThisAbility {
+                    return None;
+                }
                 game.object(ctx.source)
                     .and_then(|source_obj| source_obj.cast_tagged_objects.get(tag))
                     .map(Vec::as_slice)
@@ -3440,8 +3452,14 @@ fn matching_object_targets_for_spec(
         let assigned: Vec<ObjectId> = ctx
             .target_assignments
             .iter()
-            .filter(|assignment| assignment.spec == *spec || assignment.spec.base() == spec.base()
-                || crate::targeting::target_spec_matches_chooser_assignment(spec, &assignment.spec))
+            .filter(|assignment| {
+                assignment.spec == *spec
+                    || assignment.spec.base() == spec.base()
+                    || crate::targeting::target_spec_matches_chooser_assignment(
+                        spec,
+                        &assignment.spec,
+                    )
+            })
             .flat_map(|assignment| ctx.targets[assignment.range.clone()].iter())
             .filter_map(|target| match target {
                 ResolvedTarget::Object(id) => Some(*id),
@@ -3473,8 +3491,14 @@ fn matching_player_targets_for_spec(
         let assigned: Vec<PlayerId> = ctx
             .target_assignments
             .iter()
-            .filter(|assignment| assignment.spec == *spec || assignment.spec.base() == spec.base()
-                || crate::targeting::target_spec_matches_chooser_assignment(spec, &assignment.spec))
+            .filter(|assignment| {
+                assignment.spec == *spec
+                    || assignment.spec.base() == spec.base()
+                    || crate::targeting::target_spec_matches_chooser_assignment(
+                        spec,
+                        &assignment.spec,
+                    )
+            })
             .flat_map(|assignment| ctx.targets[assignment.range.clone()].iter())
             .filter_map(|target| match target {
                 ResolvedTarget::Player(id) => Some(*id),
@@ -5865,21 +5889,44 @@ mod tests {
         let alice = game.players[0].id;
         let source = game.new_object_id();
         let card = CardBuilder::new(crate::ids::CardId::new(), "Chosen permanent")
-            .card_types(vec![CardType::Artifact]).build();
+            .card_types(vec![CardType::Artifact])
+            .build();
         let chosen = game.create_object_from_card(&card, alice, Zone::Battlefield);
         let mut ctx = ExecutionContext::new_default(source, alice);
-        ctx.set_tagged_objects("chosen", vec![ObjectSnapshot::from_object(game.object(chosen).unwrap(), &game)]);
+        ctx.set_tagged_objects(
+            "chosen",
+            vec![ObjectSnapshot::from_object(
+                game.object(chosen).unwrap(),
+                &game,
+            )],
+        );
         let historical = crate::filter::ObjectFilter::tagged("chosen").in_zone(Zone::Battlefield);
         let mut current = historical.clone();
         current.match_current_state = true;
-        assert_eq!(resolve_value(&game, &Value::Count(current.clone()), &ctx).unwrap(), 1);
+        assert_eq!(
+            resolve_value(&game, &Value::Count(current.clone()), &ctx).unwrap(),
+            1
+        );
         let exiled = game.move_object_by_effect(chosen, Zone::Exile).unwrap();
-        assert_eq!(resolve_value(&game, &Value::Count(current.clone()), &ctx).unwrap(), 0);
-        assert_eq!(resolve_value(&game, &Value::Count(historical.clone()), &ctx).unwrap(), 1);
-        game.move_object_by_effect(exiled, Zone::Battlefield).unwrap();
-        assert_eq!(resolve_value(&game, &Value::Count(current), &ctx).unwrap(), 0,
-            "returning the same card creates a new object, not a surviving chosen permanent");
-        assert_eq!(resolve_value(&game, &Value::Count(historical), &ctx).unwrap(), 1);
+        assert_eq!(
+            resolve_value(&game, &Value::Count(current.clone()), &ctx).unwrap(),
+            0
+        );
+        assert_eq!(
+            resolve_value(&game, &Value::Count(historical.clone()), &ctx).unwrap(),
+            1
+        );
+        game.move_object_by_effect(exiled, Zone::Battlefield)
+            .unwrap();
+        assert_eq!(
+            resolve_value(&game, &Value::Count(current), &ctx).unwrap(),
+            0,
+            "returning the same card creates a new object, not a surviving chosen permanent"
+        );
+        assert_eq!(
+            resolve_value(&game, &Value::Count(historical), &ctx).unwrap(),
+            1
+        );
     }
 
     #[test]

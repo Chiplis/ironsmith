@@ -1,18 +1,4 @@
 #![allow(unused_imports)]
-use crate::cards::builders::SourcePredicateAst;
-use crate::cards::builders::PlayerPredicateAst;
-use crate::cards::builders::PermissionEffectAst;
-use crate::cards::builders::ConditionalEffectAst;
-use crate::cards::builders::ForEachEffectAst;
-use crate::cards::builders::DelayedEffectAst;
-use crate::cards::builders::GameActionAst;
-use crate::cards::builders::ControlActionAst;
-use crate::cards::builders::TokenActionAst;
-use crate::cards::builders::StackActionAst;
-use crate::cards::builders::StatChangeActionAst;
-use crate::cards::builders::DamageActionAst;
-use crate::cards::builders::LifeResourceActionAst;
-use crate::cards::builders::CounterActionAst;
 use super::shard_01::*;
 use super::shard_02::*;
 use super::shard_03::*;
@@ -20,6 +6,20 @@ use super::shard_04::*;
 use super::shard_05::*;
 use super::shard_06::*;
 use super::*;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::ControlActionAst;
+use crate::cards::builders::CounterActionAst;
+use crate::cards::builders::DamageActionAst;
+use crate::cards::builders::DelayedEffectAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::GameActionAst;
+use crate::cards::builders::LifeResourceActionAst;
+use crate::cards::builders::PermissionEffectAst;
+use crate::cards::builders::PlayerPredicateAst;
+use crate::cards::builders::SourcePredicateAst;
+use crate::cards::builders::StackActionAst;
+use crate::cards::builders::StatChangeActionAst;
+use crate::cards::builders::TokenActionAst;
 #[cfg(test)]
 use ironsmith_compiler::ParseCardText;
 #[cfg(test)]
@@ -1031,8 +1031,10 @@ pub(super) fn rewrite_effect_sentence_parser_merges_quoted_token_rule_reminder()
     let [EffectAst::SubjectVerb(subject_verb)] = effects.as_slice() else {
         panic!("expected one token creation effect, got {effects:#?}");
     };
-    let crate::model::ast::SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { definition, .. }) =
-        &subject_verb.action
+    let crate::model::ast::SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
+        definition,
+        ..
+    }) = &subject_verb.action
     else {
         panic!("expected typed token creation action, got {subject_verb:#?}");
     };
@@ -1313,7 +1315,9 @@ pub(super) fn rewrite_structure_if_clause_splitter_routes_commaless_conditional_
         spec.effects.as_slice(),
         [crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { .. }),
+                action: crate::cards::builders::SubjectVerbActionAst::Tokens(
+                    TokenActionAst::CreateTokenWithMods { .. }
+                ),
                 ..
             }
         )]
@@ -1369,10 +1373,12 @@ pub(super) fn rewrite_structure_if_clause_splitter_keeps_player_may_search_subje
     assert!(
         matches!(
             spec.effects.as_slice(),
-            [crate::cards::builders::EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
-                player: crate::cards::builders::PlayerAst::ItsController,
-                ..
-            })]
+            [crate::cards::builders::EffectAst::Permissions(
+                PermissionEffectAst::MayByPlayer {
+                    player: crate::cards::builders::PlayerAst::ItsController,
+                    ..
+                }
+            )]
         ),
         "expected full 'its controller may search' effect subject, got {:?}",
         spec.effects
@@ -2190,7 +2196,9 @@ pub(super) fn refreshed_instead_conditional_token_entry_followup_branches_the_ty
             panic!("expected one token creation branch: {branch:#?}");
         };
         let crate::model::ast::SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
-            tapped, attacking, ..
+            tapped,
+            attacking,
+            ..
         }) = &subject_verb.action
         else {
             panic!("expected a typed token producer: {subject_verb:#?}");
@@ -2919,7 +2927,9 @@ pub(super) fn rewrite_statement_lowering_reuses_full_token_slice_for_pact_line()
         [crate::cards::builders::LineAst::Statement { effects }] => {
             assert!(matches!(
                 effects.last(),
-                Some(crate::cards::builders::EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep { .. }))
+                Some(crate::cards::builders::EffectAst::Delayed(
+                    DelayedEffectAst::DelayedUntilNextUpkeep { .. }
+                ))
             ));
         }
         other => panic!("expected single pact statement chunk, got {other:?}"),
@@ -3095,7 +3105,8 @@ pub(super) fn rewrite_lexed_for_each_exiled_reveal_until_then_bottom_uses_consul
 
     let parsed = parse_effect_sentence_lexed(&lexed)
         .expect("for-each exiled reveal-until-bottom sentence should parse");
-    let [EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, effects })] = parsed.as_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, effects })] = parsed.as_slice()
+    else {
         panic!("expected canonical tagged exile iteration, got {parsed:#?}");
     };
     assert_eq!(
@@ -3316,9 +3327,11 @@ pub(super) fn rewrite_gift_keyword_lowering_builds_closed_form_followup_effects(
                                     player: crate::cards::builders::PlayerAst::Chosen,
                                     ..
                                 },
-                                action: crate::cards::builders::SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
-                                    count: crate::effect::Value::Fixed(1),
-                                }),
+                                action: crate::cards::builders::SubjectVerbActionAst::LifeResources(
+                                    LifeResourceActionAst::Draw {
+                                        count: crate::effect::Value::Fixed(1),
+                                    }
+                                ),
                             }
                         )]
                     )),
@@ -3342,19 +3355,20 @@ pub(super) fn rewrite_gift_keyword_lowering_builds_closed_form_followup_effects(
                     }
                     "extra-turn" => assert!(matches!(
                         effects.as_slice(),
-                        [
-                            crate::cards::builders::EffectAst::SubjectVerb(
-                                crate::cards::builders::SubjectVerbEffectAst {
-                                    subject: crate::cards::builders::SubjectVerbSubjectAst {
-                                        player: crate::cards::builders::PlayerAst::Chosen,
-                                        ..
-                                    },
-                                    action: crate::cards::builders::SubjectVerbActionAst::Game(GameActionAst::ExtraTurnAfterTurn {
-                                        anchor: crate::cards::builders::ExtraTurnAnchorAst::CurrentTurn,
-                                    }),
-                                }
-                            )
-                        ]
+                        [crate::cards::builders::EffectAst::SubjectVerb(
+                            crate::cards::builders::SubjectVerbEffectAst {
+                                subject: crate::cards::builders::SubjectVerbSubjectAst {
+                                    player: crate::cards::builders::PlayerAst::Chosen,
+                                    ..
+                                },
+                                action: crate::cards::builders::SubjectVerbActionAst::Game(
+                                    GameActionAst::ExtraTurnAfterTurn {
+                                        anchor:
+                                            crate::cards::builders::ExtraTurnAnchorAst::CurrentTurn,
+                                    }
+                                ),
+                            }
+                        )]
                     )),
                     other => panic!("unexpected gift effect variant: {other}"),
                 }
@@ -3898,7 +3912,9 @@ pub(super) fn rewrite_restriction_support_preserves_text_only_attack_conditions(
     );
     assert!(matches!(
         attacked_restriction.text_only_condition,
-        Some(PredicateAst::Source(SourcePredicateAst::SourceAttackedThisTurn))
+        Some(PredicateAst::Source(
+            SourcePredicateAst::SourceAttackedThisTurn
+        ))
     ));
 
     let didnt_attack_restriction =
@@ -4100,7 +4116,9 @@ pub(super) fn rewrite_triggered_it_damage_source_binds_to_triggering_object() {
     assert!(
         compact.contains("TagTriggeringObjectEffect")
             && compact.contains("ExecuteWithSourceEffect")
-            && compact.replace("SurfaceHinted{spec:", "").contains("source:Tagged")
+            && compact
+                .replace("SurfaceHinted{spec:", "")
+                .contains("source:Tagged")
             && compact.contains("TagKey(\"triggering\"")
             && compact.contains("PowerOf")
             && compact.contains("spec:Tagged"),
@@ -4127,7 +4145,9 @@ pub(super) fn dealt_damage_trigger_binds_it_to_damaged_object_and_tests_player_r
         compact.contains("TagTriggeringDamageTargetEffect")
             && compact.contains("TagKey(\"damaged\"")
             && compact.contains("ExecuteWithSourceEffect")
-            && compact.replace("SurfaceHinted{spec:", "").contains("source:Tagged")
+            && compact
+                .replace("SurfaceHinted{spec:", "")
+                .contains("source:Tagged")
             && compact.contains("predicate:DealtDamageToPlayer"),
         "expected the damaged object to deal damage and the followup to test player damage, got {rendered}"
     );
@@ -4158,7 +4178,9 @@ pub(super) fn rewrite_zone_counter_helpers_keep_trailing_if_counter_clause_after
         if_true,
         [crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { .. }),
+                action: crate::cards::builders::SubjectVerbActionAst::Counters(
+                    CounterActionAst::PutCounters { .. }
+                ),
                 ..
             }
         )]
@@ -4185,7 +4207,9 @@ pub(super) fn rewrite_verb_handlers_keep_trailing_if_counter_clause_after_struct
         if_true,
         [crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::Stack(StackActionAst::Counter { .. }),
+                action: crate::cards::builders::SubjectVerbActionAst::Stack(
+                    StackActionAst::Counter { .. }
+                ),
                 ..
             }
         )]
@@ -4215,7 +4239,9 @@ pub(super) fn rewrite_verb_handlers_keep_trailing_if_damage_clause_after_structu
         if_true,
         [crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { .. }),
+                action: crate::cards::builders::SubjectVerbActionAst::Damage(
+                    DamageActionAst::DealDamage { .. }
+                ),
                 ..
             }
         )]
@@ -4263,7 +4289,11 @@ pub(super) fn rewrite_if_clause_binds_that_enchantment_and_created_token_referen
     let [
         crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::Control(ControlActionAst::Attach { object, target }),
+                action:
+                    crate::cards::builders::SubjectVerbActionAst::Control(ControlActionAst::Attach {
+                        object,
+                        target,
+                    }),
                 ..
             },
         ),

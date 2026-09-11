@@ -1,4 +1,3 @@
-use crate::cards::builders::ForEachEffectAst;
 use super::super::activation_and_restrictions::{
     normalize_cant_words, parse_cant_restriction_clause, parse_cant_restrictions,
 };
@@ -24,10 +23,11 @@ use super::super::util::{
     span_from_tokens, trim_commas,
 };
 use super::primitives;
+use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{
-    CardTextError, ChoiceCount, EffectAst, IfResultPredicate, PlayerAst, PredicateAst,
-    ReturnControllerAst, SearchLibrarySlotAst, SubjectAst, SubjectVerbActionAst,
-    SubjectVerbRoleAst, TagKey, TargetAst, TextSpan, ConditionalEffectAst, SourcePredicateAst,
+    CardTextError, ChoiceCount, ConditionalEffectAst, EffectAst, IfResultPredicate, PlayerAst,
+    PredicateAst, ReturnControllerAst, SearchLibrarySlotAst, SourcePredicateAst, SubjectAst,
+    SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst, TextSpan,
 };
 use crate::effect::SearchSelectionMode;
 use crate::static_abilities::StaticAbilityId;
@@ -1403,15 +1403,19 @@ pub fn parse_conditional_sentence_with_grammar_entrypoint_lexed(
     let split = split_if_clause_lexed(tokens, parse_effect_chain_lexed)?;
 
     Ok(vec![match split.predicate {
-        IfClausePredicateSpec::Conditional(predicate) => EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-            predicate,
-            if_true: split.effects,
-            if_false: Vec::new(),
-        }),
-        IfClausePredicateSpec::Result(predicate) => EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-            predicate,
-            effects: split.effects,
-        }),
+        IfClausePredicateSpec::Conditional(predicate) => {
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate,
+                if_true: split.effects,
+                if_false: Vec::new(),
+            })
+        }
+        IfClausePredicateSpec::Result(predicate) => {
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                predicate,
+                effects: split.effects,
+            })
+        }
     }])
 }
 
@@ -1566,9 +1570,11 @@ pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
                         None,
                     );
                     match player {
-                        PlayerFilter::Opponent => Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
-                            effects: vec![restriction],
-                        })]),
+                        PlayerFilter::Opponent => Some(vec![EffectAst::ForEach(
+                            ForEachEffectAst::ForEachOpponent {
+                                effects: vec![restriction],
+                            },
+                        )]),
                         PlayerFilter::IteratedPlayer => Some(vec![restriction]),
                         _ => None,
                     }
@@ -1585,9 +1591,11 @@ pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
                         None,
                     );
                     match player {
-                        PlayerFilter::Opponent => Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
-                            effects: vec![restriction],
-                        })]),
+                        PlayerFilter::Opponent => Some(vec![EffectAst::ForEach(
+                            ForEachEffectAst::ForEachOpponent {
+                                effects: vec![restriction],
+                            },
+                        )]),
                         PlayerFilter::IteratedPlayer => Some(vec![restriction]),
                         _ => None,
                     }
@@ -1626,7 +1634,8 @@ pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
                 duration,
                 crate::effect::RestrictionStart::Immediate,
                 duration_surface,
-                source_tapped_duration.then_some(PredicateAst::Source(SourcePredicateAst::SourceIsTapped)),
+                source_tapped_duration
+                    .then_some(PredicateAst::Source(SourcePredicateAst::SourceIsTapped)),
             ),
         ]));
     }
@@ -1658,7 +1667,8 @@ pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
             duration.clone(),
             crate::effect::RestrictionStart::Immediate,
             duration_surface,
-            source_tapped_duration.then_some(PredicateAst::Source(SourcePredicateAst::SourceIsTapped)),
+            source_tapped_duration
+                .then_some(PredicateAst::Source(SourcePredicateAst::SourceIsTapped)),
         ));
     }
     if let Some(target) = target {

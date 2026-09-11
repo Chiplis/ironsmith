@@ -1,5 +1,5 @@
-use crate::cards::builders::SourcePredicateAst;
 use super::*;
+use crate::cards::builders::SourcePredicateAst;
 
 #[derive(Debug, Clone, Default)]
 pub struct RewriteLoweredCardState {
@@ -497,7 +497,8 @@ mod tests {
     fn demonstrative_replacement_reuses_the_entire_previous_set() {
         let previous_filter = ObjectFilter::creature().you_control().other();
         let previous_target = ChooseSpec::Object(previous_filter.clone());
-        let replacement_filter = ObjectFilter::creature().match_tagged(ironsmith_compiler_semantic::tag::declared_key("triggering"),
+        let replacement_filter = ObjectFilter::creature().match_tagged(
+            ironsmith_compiler_semantic::tag::declared_key("triggering"),
             crate::target::TaggedOpbjectRelation::IsTaggedObject,
         );
         let replacement = crate::effect::Effect::new(

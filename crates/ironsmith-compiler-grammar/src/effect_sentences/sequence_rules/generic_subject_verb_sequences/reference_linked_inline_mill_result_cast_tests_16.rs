@@ -9,7 +9,8 @@ fn parse_pair(second: &str) -> Option<Vec<EffectAst>> {
         SentenceInput::from_lexed(&second),
     ];
     crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
-        .map(|matched| matched.map(|matched| matched.effects)).expect("pair parser")
+        .map(|matched| matched.map(|matched| matched.effects))
+        .expect("pair parser")
 }
 
 #[test]
@@ -67,7 +68,10 @@ fn dynamic_mana_value_cap_is_shared_by_both_spell_types() {
         )
         .expect("exact capped mill-result cast pair");
     let filter = effects.iter().find_map(|effect| match effect {
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { filter, .. }) => Some(filter),
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+            filter,
+            ..
+        }) => Some(filter),
         _ => None,
     });
     let filter = filter.expect("milled-card choice");

@@ -10,25 +10,37 @@ use crate::{
 /// Describe a shared filter over either combat role without dropping the
 /// outer filter's power, ownership, or other common restrictions.
 pub fn describe_shared_combat_role_union(filter: &ObjectFilter) -> Option<String> {
-    let [first, second] = filter.any_of.as_slice() else { return None; };
+    let [first, second] = filter.any_of.as_slice() else {
+        return None;
+    };
     if filter.union_connective() != ObjectFilterUnionConnective::Or
-        || filter.attacking || filter.blocking || filter.nonattacking || filter.nonblocking
-        || !filter.card_types.is_empty() || !filter.all_card_types.is_empty()
+        || filter.attacking
+        || filter.blocking
+        || filter.nonattacking
+        || filter.nonblocking
+        || !filter.card_types.is_empty()
+        || !filter.all_card_types.is_empty()
         || !((first.attacking && !first.blocking && !second.attacking && second.blocking)
             || (first.blocking && !first.attacking && !second.blocking && second.attacking))
-    { return None; }
+    {
+        return None;
+    }
     let mut common = first.clone();
     common.attacking = false;
     common.blocking = false;
     let mut other = second.clone();
     other.attacking = false;
     other.blocking = false;
-    if common != other { return None; }
+    if common != other {
+        return None;
+    }
     let mut type_only = common.clone();
     type_only.card_types.clear();
     type_only.all_card_types.clear();
     type_only.set_explicit_card_type_noun(None);
-    if type_only != ObjectFilter::default() { return None; }
+    if type_only != ObjectFilter::default() {
+        return None;
+    }
     let mut combined = filter.clone();
     combined.any_of.clear();
     combined.set_explicit_card_type_noun(common.explicit_card_type_noun());
@@ -38,9 +50,13 @@ pub fn describe_shared_combat_role_union(filter: &ObjectFilter) -> Option<String
     combined.blocking = first.blocking;
     let (role, alternatives) = if first.attacking {
         ("attacking ", "attacking or blocking ")
-    } else { ("blocking ", "blocking or attacking ") };
+    } else {
+        ("blocking ", "blocking or attacking ")
+    };
     let description = combined.description();
-    description.contains(role).then(|| description.replacen(role, alternatives, 1))
+    description
+        .contains(role)
+        .then(|| description.replacen(role, alternatives, 1))
 }
 
 fn ensure_indefinite_article(text: String) -> String {
@@ -193,8 +209,7 @@ fn describe_conjunctive_filter_list(mut parts: Vec<String>) -> String {
 
 /// A reference to an object for use in filters and effects.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, TagKeyWalk)]
 pub enum ObjectRef {
     #[default]
     Target,
@@ -215,8 +230,7 @@ impl ObjectRef {
 /// Constraint requiring the candidate object to be a legal target for a
 /// referenced stack object.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub struct TargetabilityConstraint {
     pub stack_object: ObjectRef,
     /// Restrict candidates to controllers different from the spell's current object targets.
@@ -226,7 +240,10 @@ pub struct TargetabilityConstraint {
 
 impl TargetabilityConstraint {
     pub fn by_stack_object(stack_object: ObjectRef) -> Self {
-        Self { stack_object, exclude_current_target_controllers: false }
+        Self {
+            stack_object,
+            exclude_current_target_controllers: false,
+        }
     }
 }
 
@@ -236,8 +253,7 @@ impl TargetabilityConstraint {
 /// distinction lets compiled text preserve Oracle's `and/or` surface without
 /// changing which objects match the filter.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
 pub enum ObjectFilterUnionConnective {
     #[default]
     Or,
@@ -251,8 +267,7 @@ pub enum ObjectFilterUnionConnective {
 /// an authored antecedent such as "that spell" or "that creature" to the
 /// ambiguous pronoun "it".
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum SameNameAntecedentSurface {
     Card,
     Spell,
@@ -300,8 +315,7 @@ impl SameNameAntecedentSurface {
 /// The tagged same-name constraint remains the executable relationship. This
 /// equality-transparent value only preserves which source noun Oracle used.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum ChosenNameSourceSurface {
     Artifact,
     Card,
@@ -342,8 +356,7 @@ impl ChosenNameSourceSurface {
 /// equality-transparent presentation metadata retained on the comparison
 /// filter so compiled text does not collapse an explicit antecedent to "it."
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum DemonstrativeAntecedentSurface {
     Artifact,
     Card,
@@ -394,8 +407,7 @@ impl DemonstrativeAntecedentSurface {
 /// an additional cost. Object identity remains a tagged runtime relation;
 /// this value preserves the authored action on the cost object.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum AdditionalCostObjectAction {
     Sacrificed,
     Exiled,
@@ -415,8 +427,7 @@ impl AdditionalCostObjectAction {
 /// Presentation-only description of an explicit additional-cost object
 /// reference such as "the sacrificed creature" or "the exiled permanent."
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub struct AdditionalCostObjectSurface {
     pub action: AdditionalCostObjectAction,
     pub kind: crate::target_model::SacrificedObjectKind,
@@ -432,7 +443,10 @@ impl AdditionalCostObjectSurface {
 
     pub fn description(self) -> String {
         if self.action == AdditionalCostObjectAction::TappedForSpellCost {
-            return format!("the {} tapped to pay this spell's additional cost", self.kind.noun());
+            return format!(
+                "the {} tapped to pay this spell's additional cost",
+                self.kind.noun()
+            );
         }
         format!("the {} {}", self.action.past_participle(), self.kind.noun())
     }
@@ -440,8 +454,7 @@ impl AdditionalCostObjectSurface {
 
 /// Authored opponent quantifier in a "played by ..." entry restriction.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum PlayedByOpponentSurface {
     YourOpponents,
     AnOpponent,
@@ -464,8 +477,7 @@ impl PlayedByOpponentSurface {
 /// equality-transparent surface distinguishes the broad canonical wording
 /// "put there this turn" from an explicitly authored "from anywhere" clause.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum GraveyardEntryHistorySurface {
     PutThereThisTurn,
     PutThereFromAnywhereThisTurn,
@@ -477,8 +489,7 @@ pub enum GraveyardEntryHistorySurface {
 /// semantic fields; this distinguishes the authored object categories that
 /// jointly cover that global set.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum GlobalCharacteristicDomainSurface {
     CardsOutsideBattlefieldSpellsAndPermanents,
 }
@@ -490,8 +501,7 @@ pub enum GlobalCharacteristicDomainSurface {
 /// checks. Oracle-only spelling choices must therefore compare equal to the
 /// same runtime filter rendered with a canonical surface.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, Default, TagKeyWalk)]
 pub struct ObjectFilterUnionSurface {
     connective: ObjectFilterUnionConnective,
     /// Oracle placed subtype arms before card-type arms in a mixed
@@ -1154,8 +1164,7 @@ impl Eq for ObjectFilterUnionSurface {}
 
 /// Which power/toughness reference a filter should use.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
 pub enum PtReference {
     #[default]
     Effective,
@@ -1164,8 +1173,7 @@ pub enum PtReference {
 
 /// Relationship between a candidate object's own power and toughness.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum PowerToughnessRelation {
     PowerGreaterThanToughness,
     ToughnessGreaterThanPower,
@@ -1174,8 +1182,7 @@ pub enum PowerToughnessRelation {
 
 /// Relationship an object may have with a tagged object set.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum TaggedOpbjectRelation {
     IsTaggedObject,
     /// Matches the captured object incarnation, never a later zone-change object.
@@ -1218,8 +1225,7 @@ pub enum TaggedOpbjectRelation {
 /// A characteristic that can be compared between a candidate object and a
 /// separately filtered set of objects.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum ObjectCharacteristic {
     CardType,
     /// Runtime-equivalent to `CardType`, while preserving Oracle's
@@ -1245,8 +1251,7 @@ impl ObjectCharacteristic {
 /// Whether a candidate must share at least one listed characteristic with the
 /// comparison set, or share none of them.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum ObjectCharacteristicRelationKind {
     SharesAny,
     SharesNone,
@@ -1258,8 +1263,7 @@ pub enum ObjectCharacteristicRelationKind {
 /// Multiple characteristics are alternatives, matching Oracle constructions
 /// such as "shares a color or mana value with the exiled card."
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ObjectCharacteristicRelation {
     pub kind: ObjectCharacteristicRelationKind,
     pub characteristics: Vec<ObjectCharacteristic>,
@@ -1309,8 +1313,7 @@ impl ObjectCharacteristicRelation {
 
 /// Alternative casting capability qualifier for card filters.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum AlternativeCastKind {
     Blitz,
     Dash,
@@ -1324,8 +1327,7 @@ pub enum AlternativeCastKind {
 
 /// Counter-state qualifier for object filters.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum CounterConstraint {
     Any,
     Typed(CounterType),
@@ -1337,8 +1339,7 @@ pub enum CounterConstraint {
 
 /// A parity requirement for numeric object properties.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum ParityRequirement {
     Odd,
     Even,
@@ -1366,16 +1367,14 @@ impl ParityRequirement {
 
 /// Power relationship against the source object in filter context.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum SourcePowerRelation {
     LessThanSource,
 }
 
 /// Stack object kind constraint for stack-targeting filters.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum StackObjectKind {
     Spell,
     Ability,
@@ -1386,8 +1385,7 @@ pub enum StackObjectKind {
 
 /// A tagged-object constraint used by object filters.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub struct TaggedObjectConstraint {
     pub tag: TagKey,
     pub relation: TaggedOpbjectRelation,
@@ -1395,8 +1393,7 @@ pub struct TaggedObjectConstraint {
 
 /// Filter for selecting players.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, Default)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Default, TagKeyWalk)]
 pub enum PlayerFilter {
     #[default]
     Any,
@@ -1751,8 +1748,7 @@ impl PlayerFilter {
 
 /// A numeric comparison for filtering.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum Comparison {
     Equal(i32),
     OneOf(Vec<i32>),
@@ -1796,8 +1792,7 @@ impl Comparison {
 /// player; this constraint asks which player controlled the source of the
 /// counter-placement event for this exact object during the current turn.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CountersPutOnThisTurnConstraint {
     /// `None` matches counters of any type.
     pub counter_type: Option<CounterType>,
@@ -1828,8 +1823,7 @@ impl CountersPutOnThisTurnConstraint {
 /// deliberately equality-transparent so capitalization and punctuation never
 /// affect lowering, deduplication, or runtime behavior.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Default)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Default, TagKeyWalk)]
 pub struct LiteralNameSurface(Option<String>);
 
 pub type ExcludedNameSurface = LiteralNameSurface;
@@ -1852,8 +1846,7 @@ impl PartialEq for LiteralNameSurface {
 
 /// Filter for selecting objects (permanents, spells, cards).
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, Default)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Default, TagKeyWalk)]
 pub struct ObjectFilter {
     pub zone: Option<Zone>,
     /// Match a saved reference only while that exact object still exists,
@@ -2613,7 +2606,9 @@ impl ObjectFilter {
 
     /// Preserve an explicit battlefield location in an activation source.
     pub fn set_activation_source_battlefield_surface(&mut self, explicit: bool) {
-        self.union_surface = self.union_surface.with_activation_source_battlefield_surface(explicit);
+        self.union_surface = self
+            .union_surface
+            .with_activation_source_battlefield_surface(explicit);
     }
 
     pub const fn has_activation_source_battlefield_surface(&self) -> bool {
@@ -3332,8 +3327,12 @@ impl ObjectFilter {
     pub fn name_surface(&self) -> Option<&str> {
         let surface = self.name_surface.as_deref()?;
         let semantic = self.name.as_deref()?;
-        let normalized = |text: &str| text.chars().filter(char::is_ascii_alphanumeric)
-            .map(|ch| ch.to_ascii_lowercase()).collect::<String>();
+        let normalized = |text: &str| {
+            text.chars()
+                .filter(char::is_ascii_alphanumeric)
+                .map(|ch| ch.to_ascii_lowercase())
+                .collect::<String>()
+        };
         (normalized(surface) == normalized(semantic)).then_some(surface)
     }
 
@@ -4214,7 +4213,9 @@ impl ObjectFilter {
                         .push("with the same mana value as another tagged object".to_string());
                 }
                 TaggedOpbjectRelation::ManaValueLteTagged => {
-                    if self.union_surface.equal_or_lesser_mana_value() && constraint.tag.as_str() != "triggering" {
+                    if self.union_surface.equal_or_lesser_mana_value()
+                        && constraint.tag.as_str() != "triggering"
+                    {
                         post_noun_qualifiers.push("with equal or lesser mana value".to_string());
                     } else if constraint.tag.as_str() == "triggering" {
                         post_noun_qualifiers
@@ -5364,7 +5365,11 @@ impl ObjectFilter {
         if let Some(player) = &self.dealt_damage_to_player_this_turn {
             parts.push(format!(
                 "that dealt {}damage to {} this turn",
-                if self.dealt_damage_to_player_this_turn_combat_only { "combat " } else { "" },
+                if self.dealt_damage_to_player_this_turn_combat_only {
+                    "combat "
+                } else {
+                    ""
+                },
                 describe_player_filter(player)
             ));
         }

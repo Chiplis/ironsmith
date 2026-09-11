@@ -18,10 +18,11 @@ fn additional_copy_count_keeps_typed_authored_surface() {
         .iter()
         .map(|tokens| SentenceInput::from_lexed(tokens))
         .collect();
-    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
-        .map(|matched| matched.map(|matched| matched.effects))
-        .expect("tempting-offer parser should not error")
-        .expect("tempting-offer copy sequence should match");
+    let effects =
+        crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+            .map(|matched| matched.map(|matched| matched.effects))
+            .expect("tempting-offer parser should not error")
+            .expect("tempting-offer copy sequence should match");
     assert!(matches!(
         effects.first(),
         Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {

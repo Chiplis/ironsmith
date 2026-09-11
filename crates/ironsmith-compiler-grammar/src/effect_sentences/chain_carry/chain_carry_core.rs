@@ -1,8 +1,8 @@
-use crate::cards::builders::ControlActionAst;
-use crate::cards::builders::CharacteristicActionAst;
-use crate::cards::builders::GrantActionAst;
-use crate::cards::builders::DamagePreventionActionAst;
 use super::*;
+use crate::cards::builders::CharacteristicActionAst;
+use crate::cards::builders::ControlActionAst;
+use crate::cards::builders::DamagePreventionActionAst;
+use crate::cards::builders::GrantActionAst;
 
 pub(super) fn is_orphan_rounded_up_where_x_tail(
     segment: &[OwnedLexToken],
@@ -118,18 +118,22 @@ pub(super) fn apply_carried_effect_duration(effect: &mut EffectAst, duration: &U
                     duration: effect_duration,
                     ..
                 })
-                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasicLandTypeChoice {
-                    duration: effect_duration,
-                    ..
-                })
+                | SubjectVerbActionAst::Characteristics(
+                    CharacteristicActionAst::BecomeBasicLandTypeChoice {
+                        duration: effect_duration,
+                        ..
+                    },
+                )
                 | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
                     duration: effect_duration,
                     ..
                 })
-                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCreatureTypeChoice {
-                    duration: effect_duration,
-                    ..
-                })
+                | SubjectVerbActionAst::Characteristics(
+                    CharacteristicActionAst::BecomeCreatureTypeChoice {
+                        duration: effect_duration,
+                        ..
+                    },
+                )
                 | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCopy {
                     duration: effect_duration,
                     ..
@@ -154,18 +158,24 @@ pub(super) fn apply_carried_effect_duration(effect: &mut EffectAst, duration: &U
                     duration: effect_duration,
                     ..
                 })
-                | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllDamageToTarget {
-                    duration: effect_duration,
-                    ..
-                })
-                | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter {
-                    duration: effect_duration,
-                    ..
-                })
-                | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllDamageFromSourceFilter {
-                    duration: effect_duration,
-                    ..
-                })
+                | SubjectVerbActionAst::DamagePrevention(
+                    DamagePreventionActionAst::PreventAllDamageToTarget {
+                        duration: effect_duration,
+                        ..
+                    },
+                )
+                | SubjectVerbActionAst::DamagePrevention(
+                    DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter {
+                        duration: effect_duration,
+                        ..
+                    },
+                )
+                | SubjectVerbActionAst::DamagePrevention(
+                    DamagePreventionActionAst::PreventAllDamageFromSourceFilter {
+                        duration: effect_duration,
+                        ..
+                    },
+                )
                 | SubjectVerbActionAst::Cant {
                     duration: effect_duration,
                     ..

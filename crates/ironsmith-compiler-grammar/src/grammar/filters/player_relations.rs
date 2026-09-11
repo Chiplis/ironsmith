@@ -188,7 +188,9 @@ fn parse_relation_subject_word_slice(
             relation_phrase(&["its", "controllers"])
                 .map(|()| PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)),
             relation_phrase(&["enchanted", "player"]).map(|()| {
-                PlayerFilter::TaggedPlayer((crate::tag::CompilerReferenceTag::Enchanted.bind()).into())
+                PlayerFilter::TaggedPlayer(
+                    (crate::tag::CompilerReferenceTag::Enchanted.bind()).into(),
+                )
             }),
             relation_phrase(&["their", "controller"])
                 .map(|()| PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)),
@@ -1476,8 +1478,12 @@ pub(super) fn try_apply_dealt_damage_this_turn_clause(
         (&["that", "dealt", "damage", "to"][..], false),
     ] {
         if let Some(start) = crate::word_primitives::parse_sequence_start(all_words, prefix)
-            && let Some((player, used)) = parse_player_relation_subject(&all_words[start + prefix.len()..], &PlayerFilter::IteratedPlayer)
-            && all_words.get(start + prefix.len() + used..start + prefix.len() + used + 2) == Some(&["this", "turn"][..])
+            && let Some((player, used)) = parse_player_relation_subject(
+                &all_words[start + prefix.len()..],
+                &PlayerFilter::IteratedPlayer,
+            )
+            && all_words.get(start + prefix.len() + used..start + prefix.len() + used + 2)
+                == Some(&["this", "turn"][..])
         {
             let end = start + prefix.len() + used + 2;
             let phrase = all_words[start..end].to_vec();
@@ -1485,9 +1491,12 @@ pub(super) fn try_apply_dealt_damage_this_turn_clause(
             filter.dealt_damage_to_player_this_turn_combat_only = combat_only;
             let view = crate::lexer::TokenWordView::new(segment_tokens);
             let segment_words = view.to_word_refs();
-            if let Some(offset) = crate::word_primitives::parse_sequence_start(&segment_words, &phrase)
+            if let Some(offset) =
+                crate::word_primitives::parse_sequence_start(&segment_words, &phrase)
                 && let Some(range) = view.token_span_for_words(offset, offset + phrase.len())
-            { segment_tokens.drain(range); }
+            {
+                segment_tokens.drain(range);
+            }
             all_words.drain(start..end);
             return true;
         }

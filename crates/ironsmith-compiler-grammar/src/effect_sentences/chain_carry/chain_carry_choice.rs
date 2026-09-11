@@ -61,8 +61,14 @@ pub(super) fn explicit_target_choose_spec(target: &TargetAst) -> Option<ChooseSp
 pub(super) fn normalize_imperative_choose_player(effect: &mut EffectAst) -> bool {
     let player = match effect {
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { player, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { player, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { player, .. }) => player,
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
+            player,
+            ..
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            player,
+            ..
+        }) => player,
         _ => return false,
     };
 

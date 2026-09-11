@@ -765,9 +765,16 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
                 TurnHistoryCount::PutIntoGraveyard { owner, .. } => {
                     bind_relative_iterated_player_filter_to_player_filter(owner, player_filter);
                 }
-                TurnHistoryCount::CountersPutOn { source_controller, filter, .. } => {
+                TurnHistoryCount::CountersPutOn {
+                    source_controller,
+                    filter,
+                    ..
+                } => {
                     if let Some(player) = source_controller {
-                        bind_relative_iterated_player_filter_to_player_filter(player, player_filter);
+                        bind_relative_iterated_player_filter_to_player_filter(
+                            player,
+                            player_filter,
+                        );
                     }
                     bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
                 }
@@ -3100,11 +3107,15 @@ pub fn lower_token_definition_shape(shape: TokenDefinitionSpec) -> Option<CardDe
         TokenDefinitionSpec::Artifact(artifact) => build_artifact_token_definition(artifact),
         TokenDefinitionSpec::Enchantment(shape) => {
             let mut builder = CardDefinitionBuilder::new(CardId::new(), &shape.name)
-                .token().card_types(vec![CardType::Enchantment]).subtypes(shape.subtypes)
+                .token()
+                .card_types(vec![CardType::Enchantment])
+                .subtypes(shape.subtypes)
                 .color_indicator(shape.colors);
-            if shape.legendary { builder = builder.supertypes(vec![crate::types::Supertype::Legendary]); }
+            if shape.legendary {
+                builder = builder.supertypes(vec![crate::types::Supertype::Legendary]);
+            }
             Some(apply_embedded_token_rules(builder, &shape.token_rules).build())
-        },
+        }
         TokenDefinitionSpec::Angel => Some(
             CardDefinitionBuilder::new(CardId::new(), "Angel")
                 .token()

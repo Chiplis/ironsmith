@@ -1004,9 +1004,9 @@ fn tagged_constraint_matches_subject(
     game: &GameState,
 ) -> bool {
     match relation {
-        TaggedOpbjectRelation::SameObjectId => tagged_snapshots.iter().any(|snapshot| {
-            snapshot.object_id == subject.subject_object_id()
-        }),
+        TaggedOpbjectRelation::SameObjectId => tagged_snapshots
+            .iter()
+            .any(|snapshot| snapshot.object_id == subject.subject_object_id()),
         TaggedOpbjectRelation::IsTaggedObject
         | TaggedOpbjectRelation::IsTaggedObjectSacrificedAsSourceEntered => {
             tagged_snapshots.iter().any(|snapshot| {
@@ -1478,8 +1478,11 @@ fn resolve_filter_comparison_rhs_value(
         power: bool,
     ) -> Option<i32> {
         match spec.base() {
-            ChooseSpec::Source => current_object_pt(game, ctx.source?, power)
-                .or_else(|| ctx.source_snapshot.as_ref().and_then(|snapshot| snapshot_pt(snapshot, power))),
+            ChooseSpec::Source => current_object_pt(game, ctx.source?, power).or_else(|| {
+                ctx.source_snapshot
+                    .as_ref()
+                    .and_then(|snapshot| snapshot_pt(snapshot, power))
+            }),
             ChooseSpec::SpecificObject(object_id) => current_object_pt(game, *object_id, power),
             ChooseSpec::Tagged(tag) => ctx
                 .tagged_objects
@@ -1728,7 +1731,9 @@ fn resolve_filter_comparison_rhs_value(
         Value::DistinctManaValues(filter) => {
             let mut seen = std::collections::HashSet::new();
             for object in game.objects_in_deterministic_order() {
-                if filter.matches(object, ctx, game) { seen.insert(object_mana_value_for_filter(object)); }
+                if filter.matches(object, ctx, game) {
+                    seen.insert(object_mana_value_for_filter(object));
+                }
             }
             Some(seen.len() as i32)
         }
@@ -1774,10 +1779,16 @@ fn resolve_filter_comparison_rhs_value(
             let source = game.object(ctx.source?)?;
             Some(source.counters.get(counter_type).copied().unwrap_or(0) as i32)
         }
-        Value::SourcePower => current_object_pt(game, ctx.source?, true)
-            .or_else(|| ctx.source_snapshot.as_ref().and_then(|snapshot| snapshot_pt(snapshot, true))),
-        Value::SourceToughness => current_object_pt(game, ctx.source?, false)
-            .or_else(|| ctx.source_snapshot.as_ref().and_then(|snapshot| snapshot_pt(snapshot, false))),
+        Value::SourcePower => current_object_pt(game, ctx.source?, true).or_else(|| {
+            ctx.source_snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot_pt(snapshot, true))
+        }),
+        Value::SourceToughness => current_object_pt(game, ctx.source?, false).or_else(|| {
+            ctx.source_snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot_pt(snapshot, false))
+        }),
         Value::PowerOf(spec) => resolve_pt_choose_spec(spec, game, ctx, true),
         Value::ToughnessOf(spec) => resolve_pt_choose_spec(spec, game, ctx, false),
         Value::CountersOn(spec, counter_type) => match spec.base() {
@@ -2032,12 +2043,18 @@ fn object_could_be_targeted_by(
     };
 
     if constraint.exclude_current_target_controllers {
-        let Some(candidate) = game.object(object_id) else { return false; };
+        let Some(candidate) = game.object(object_id) else {
+            return false;
+        };
         let controller = game.controller_of(candidate);
         if entry.targets.iter().any(|target| match target {
-            crate::game_state::Target::Object(id) => game.object(*id).is_some_and(|object| game.controller_of(object) == controller),
+            crate::game_state::Target::Object(id) => game
+                .object(*id)
+                .is_some_and(|object| game.controller_of(object) == controller),
             _ => false,
-        }) { return false; }
+        }) {
+            return false;
+        }
     }
 
     effects_for_stack_entry(game, entry).iter().any(|effect| {
@@ -3185,10 +3202,15 @@ impl ObjectFilterExt for ObjectFilter {
             let dealt_damage_to_matching_player = game.players.iter().any(|player| {
                 player.is_in_game()
                     && player_filter.matches_player(player.id, ctx)
-                    && game.turn_store.turn_history.source_dealt_damage_to_player_this_turn_matching(
-                        object.id, Some(object.stable_id), player.id,
-                        self.dealt_damage_to_player_this_turn_combat_only,
-                    )
+                    && game
+                        .turn_store
+                        .turn_history
+                        .source_dealt_damage_to_player_this_turn_matching(
+                            object.id,
+                            Some(object.stable_id),
+                            player.id,
+                            self.dealt_damage_to_player_this_turn_combat_only,
+                        )
             });
             if !dealt_damage_to_matching_player {
                 return false;
@@ -3755,8 +3777,11 @@ impl ObjectFilterExt for ObjectFilter {
         if self.other
             && (ctx.target_objects.is_empty() || other_relative_to_source)
             && let Some(source_id) = ctx.source
-            && (object.id == source_id || (game.object(source_id).is_none()
-                && ctx.source_snapshot.as_ref().is_some_and(|source| source.object_id == source_id && source.stable_id == object.stable_id)))
+            && (object.id == source_id
+                || (game.object(source_id).is_none()
+                    && ctx.source_snapshot.as_ref().is_some_and(|source| {
+                        source.object_id == source_id && source.stable_id == object.stable_id
+                    })))
         {
             return false;
         }
@@ -4214,7 +4239,9 @@ impl ObjectFilterExt for ObjectFilter {
         game: &crate::game_state::GameState,
     ) -> bool {
         if self.match_current_state {
-            let Some(current) = game.object(snapshot.object_id) else { return false; };
+            let Some(current) = game.object(snapshot.object_id) else {
+                return false;
+            };
             let mut live_filter = self.clone();
             live_filter.match_current_state = false;
             return live_filter.matches(current, ctx, game);
@@ -4759,8 +4786,12 @@ impl ObjectFilterExt for ObjectFilter {
             && (ctx.target_objects.is_empty() || other_relative_to_source)
             && let Some(source_id) = ctx.source
         {
-            if snapshot.object_id == source_id || (game.object(source_id).is_none()
-                && ctx.source_snapshot.as_ref().is_some_and(|source| source.object_id == source_id && source.stable_id == snapshot.stable_id)) {
+            if snapshot.object_id == source_id
+                || (game.object(source_id).is_none()
+                    && ctx.source_snapshot.as_ref().is_some_and(|source| {
+                        source.object_id == source_id && source.stable_id == snapshot.stable_id
+                    }))
+            {
                 return false;
             }
             if let Some(source) = game.object(source_id)
@@ -5114,7 +5145,9 @@ impl ObjectFilterExt for ObjectFilter {
     ///
     /// Used primarily for trigger display text.
     fn description(&self) -> String {
-        if let Some(description) = ironsmith_core::filter_model::describe_shared_combat_role_union(self) {
+        if let Some(description) =
+            ironsmith_core::filter_model::describe_shared_combat_role_union(self)
+        {
             return description;
         }
 
@@ -5725,7 +5758,9 @@ impl ObjectFilterExt for ObjectFilter {
                         .push("with the same mana value as another tagged object".to_string());
                 }
                 TaggedOpbjectRelation::ManaValueLteTagged => {
-                    if self.union_surface.equal_or_lesser_mana_value() && constraint.tag.as_str() != "triggering" {
+                    if self.union_surface.equal_or_lesser_mana_value()
+                        && constraint.tag.as_str() != "triggering"
+                    {
                         post_noun_qualifiers.push("with equal or lesser mana value".to_string());
                     } else if constraint.tag.as_str() == "triggering" {
                         post_noun_qualifiers
@@ -6755,7 +6790,11 @@ impl ObjectFilterExt for ObjectFilter {
         if let Some(player) = &self.dealt_damage_to_player_this_turn {
             parts.push(format!(
                 "that dealt {}damage to {} this turn",
-                if self.dealt_damage_to_player_this_turn_combat_only { "combat " } else { "" },
+                if self.dealt_damage_to_player_this_turn_combat_only {
+                    "combat "
+                } else {
+                    ""
+                },
                 describe_player_filter(player)
             ));
         }

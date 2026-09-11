@@ -130,13 +130,13 @@ pub use self::priority_mana::{
     apply_decision_context_with_dm, expand_mana_cost_to_display_pips, mana_ability_is_undo_safe,
 };
 pub(crate) use self::targeting::{
-    spell_program_uses_chosen_creature_type_target,
     CoordinatedTargetState, count_target_selection_slots_for_coordinated_child,
     count_target_selection_slots_for_isolated_effect,
     extract_target_requirements_for_effect_with_state, spell_has_legal_targets_with_mode_preview,
     spell_has_legal_targets_with_modes, spell_has_legal_targets_with_modes_and_view,
     spell_program_has_legal_targets_with_modes,
     spell_program_has_legal_targets_with_modes_and_view,
+    spell_program_uses_chosen_creature_type_target,
 };
 pub use self::targeting::{
     drain_pending_trigger_events, extract_target_requirements_from_program_with_modes,

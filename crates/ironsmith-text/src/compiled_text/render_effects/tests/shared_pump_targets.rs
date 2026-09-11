@@ -74,8 +74,15 @@ fn shared_pump_targets_keep_both_sides_and_one_shared_count() {
             Some(if include_opponent { 14 } else { 20 })
         );
         game.create_object_from_card(&elf, alice, Zone::Battlefield);
-        assert_eq!(game.calculated_power(own), Some(8), "X must stay fixed after resolution");
-        assert_eq!(game.calculated_toughness(opposing), Some(if include_opponent {14} else {20}));
+        assert_eq!(
+            game.calculated_power(own),
+            Some(8),
+            "X must stay fixed after resolution"
+        );
+        assert_eq!(
+            game.calculated_toughness(opposing),
+            Some(if include_opponent { 14 } else { 20 })
+        );
         game.effect_store.continuous_effects.cleanup_end_of_turn();
         game.refresh_continuous_state();
         assert_eq!(game.calculated_power(own), Some(2));

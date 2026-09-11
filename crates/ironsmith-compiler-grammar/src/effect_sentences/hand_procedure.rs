@@ -11,8 +11,9 @@
 
 use super::dispatch_entry::SentenceInput;
 use crate::cards::builders::{
-    CardTextError, ChoiceCount, EffectAst, ObjectFilter, PlayerAst, SubjectVerbActionAst,
-    SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst, TargetAst, Value, RevealLookActionAst, LifeResourceActionAst, ObjectChoiceEffectAst, PermissionEffectAst,
+    CardTextError, ChoiceCount, EffectAst, LifeResourceActionAst, ObjectChoiceEffectAst,
+    ObjectFilter, PermissionEffectAst, PlayerAst, RevealLookActionAst, SubjectVerbActionAst,
+    SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst, TargetAst, Value,
 };
 use crate::target::{PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::CardType;
@@ -56,8 +57,9 @@ fn shown_hand(sentence: &SentenceInput) -> Option<(EffectAst, Shown)> {
     {
         return Some((look_effect.clone(), Shown::Looked(hand_owner.clone())));
     }
-    let effects =
-        crate::grammar::primitives::probe_shape(super::parse_effect_sentence_lexed(sentence.lowered()))?;
+    let effects = crate::grammar::primitives::probe_shape(super::parse_effect_sentence_lexed(
+        sentence.lowered(),
+    ))?;
     let [effect] = effects.as_slice() else {
         return None;
     };
@@ -79,12 +81,35 @@ fn choose_from_it_or_graveyard(sentence: &SentenceInput) -> Option<EffectAst> {
         &words,
         &[
             &[
-                "you", "choose", "a", "nonland", "card", "from", "it", "or", "a", "card", "from",
-                "their", "graveyard",
+                "you",
+                "choose",
+                "a",
+                "nonland",
+                "card",
+                "from",
+                "it",
+                "or",
+                "a",
+                "card",
+                "from",
+                "their",
+                "graveyard",
             ],
             &[
-                "you", "choose", "a", "nonland", "card", "from", "it", "or", "a", "card", "from",
-                "that", "players", "graveyard",
+                "you",
+                "choose",
+                "a",
+                "nonland",
+                "card",
+                "from",
+                "it",
+                "or",
+                "a",
+                "card",
+                "from",
+                "that",
+                "players",
+                "graveyard",
             ],
         ],
     ) {
@@ -99,16 +124,20 @@ fn choose_from_it_or_graveyard(sentence: &SentenceInput) -> Option<EffectAst> {
     });
     let mut graveyard = ObjectFilter::default();
     graveyard.zone = Some(Zone::Graveyard);
-    graveyard.owner = Some(PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Opponent)));
+    graveyard.owner = Some(PlayerFilter::AliasedTarget(Box::new(
+        PlayerFilter::Opponent,
+    )));
     let mut filter = ObjectFilter::default();
     filter.any_of = vec![hand, graveyard];
-    Some(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-        filter,
-        count: ChoiceCount::exactly(1),
-        count_value: None,
-        player: PlayerAst::You,
-        tag: crate::tag::CompilerReferenceTag::It.bind(),
-    }))
+    Some(EffectAst::ObjectChoices(
+        ObjectChoiceEffectAst::ChooseObjects {
+            filter,
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
+        },
+    ))
 }
 
 /// "You may cast an instant or sorcery spell/card from among those cards
@@ -129,7 +158,9 @@ fn may_cast_instant_or_sorcery_from_among(sentence: &SentenceInput) -> Option<Ef
     let chosen_tag = helper_tag_for_tokens(sentence.lowered(), "chosen_revealed_spell");
     let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::RevealedThisWay.bind());
     filter.zone = Some(Zone::Hand);
-    filter.owner = Some(PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Opponent)));
+    filter.owner = Some(PlayerFilter::AliasedTarget(Box::new(
+        PlayerFilter::Opponent,
+    )));
     filter.card_types = vec![CardType::Instant, CardType::Sorcery];
     Some(EffectAst::Permissions(PermissionEffectAst::May {
         effects: vec![
@@ -140,7 +171,14 @@ fn may_cast_instant_or_sorcery_from_among(sentence: &SentenceInput) -> Option<Ef
                 tag: crate::tag::TagRef::of(chosen_tag.clone()),
                 zone: Zone::Hand,
             }),
-            EffectAst::subject_verb_cast_tagged(crate::tag::TagRef::of(chosen_tag), PlayerAst::You, false, false, true, None),
+            EffectAst::subject_verb_cast_tagged(
+                crate::tag::TagRef::of(chosen_tag),
+                PlayerAst::You,
+                false,
+                false,
+                true,
+                None,
+            ),
         ],
     }))
 }
@@ -158,12 +196,14 @@ fn may_cast_spell_from_among(sentence: &SentenceInput) -> Option<EffectAst> {
     if words.as_slice() != exact_surface {
         return None;
     }
-    Some(EffectAst::may_cast_matching_spell_without_paying_mana_cost_from_zone_owner(
-        PlayerAst::You,
-        PlayerAst::That,
-        ObjectFilter::nonland().in_zone(Zone::Hand),
-        Zone::Hand,
-    ))
+    Some(
+        EffectAst::may_cast_matching_spell_without_paying_mana_cost_from_zone_owner(
+            PlayerAst::You,
+            PlayerAst::That,
+            ObjectFilter::nonland().in_zone(Zone::Hand),
+            Zone::Hand,
+        ),
+    )
 }
 
 /// "You draw a card for each Mountain and red card in it."
@@ -176,8 +216,10 @@ fn draw_for_each_in_it(sentence: &SentenceInput, revealed: PlayerFilter) -> Opti
         return None;
     }
     let filter_tokens = crate::lexer::synthetic_word_tokens(&words[6..words.len() - 2]);
-    let mut filter =
-        crate::grammar::filters::parse_subtype_color_shared_card_union_lexed(&filter_tokens, false)?;
+    let mut filter = crate::grammar::filters::parse_subtype_color_shared_card_union_lexed(
+        &filter_tokens,
+        false,
+    )?;
     filter.zone = Some(Zone::Hand);
     filter.owner = Some(PlayerFilter::AliasedTarget(Box::new(revealed)));
     let count = Value::Count(filter).with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach);
@@ -210,22 +252,43 @@ fn exile_noncreature_nonland_hand_and_graveyard(sentence: &SentenceInput) -> Opt
     Some(EffectAst::subject_verb_exile_all(union, false))
 }
 
-fn cast_from_selected_hand(tag: &crate::tag::TagKey, sentence: &SentenceInput) -> Option<EffectAst> {
-    let shape = crate::grammar::effects::clause_dispatch_shapes::parse_cast_tagged_collection_shape(sentence.lexed())?;
+fn cast_from_selected_hand(
+    tag: &crate::tag::TagKey,
+    sentence: &SentenceInput,
+) -> Option<EffectAst> {
+    let shape =
+        crate::grammar::effects::clause_dispatch_shapes::parse_cast_tagged_collection_shape(
+            sentence.lexed(),
+        )?;
     let mut filter = super::sequence_rules::generic_subject_verb_sequences::exiled_collections::parse_collection_cast_filter(&shape).ok()??;
     filter.zone = Some(Zone::Hand);
-    filter.tagged_constraints.push(TaggedObjectConstraint { tag: tag.clone(), relation: TaggedOpbjectRelation::IsTaggedObject });
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: tag.clone(),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
     let selected = helper_tag_for_tokens(sentence.lexed(), "chosen_hand_spell");
-    Some(EffectAst::Permissions(PermissionEffectAst::May { effects: vec![
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
-            filter, count: shape.count, player: PlayerAst::You,
-            tag: crate::tag::TagRef::of(selected.clone()), zone: Zone::Hand,
-        }),
-        EffectAst::ForEach(crate::cards::builders::ForEachEffectAst::ForEachTagged {
-            tag: crate::tag::TagRef::of(selected),
-            effects: vec![EffectAst::subject_verb_cast_tagged(crate::tag::CompilerReferenceTag::It.bind(), PlayerAst::You, false, false, true, None)],
-        }),
-    ] }))
+    Some(EffectAst::Permissions(PermissionEffectAst::May {
+        effects: vec![
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+                filter,
+                count: shape.count,
+                player: PlayerAst::You,
+                tag: crate::tag::TagRef::of(selected.clone()),
+                zone: Zone::Hand,
+            }),
+            EffectAst::ForEach(crate::cards::builders::ForEachEffectAst::ForEachTagged {
+                tag: crate::tag::TagRef::of(selected),
+                effects: vec![EffectAst::subject_verb_cast_tagged(
+                    crate::tag::CompilerReferenceTag::It.bind(),
+                    PlayerAst::You,
+                    false,
+                    false,
+                    true,
+                    None,
+                )],
+            }),
+        ],
+    }))
 }
 
 /// The statement a sentence makes over the shown hand, if any.
@@ -265,19 +328,30 @@ pub(super) fn open(
         return Ok(None);
     };
     let next_words = crate::lexer::parser_token_word_refs(next.lexed());
-    if matches!(next_words.as_slice(), ["look", "at", "those", "cards"] | ["look", "at", "them"])
-        && let Some(following) = sentences.get(sentence_idx + 2)
+    if matches!(
+        next_words.as_slice(),
+        ["look", "at", "those", "cards"] | ["look", "at", "them"]
+    ) && let Some(following) = sentences.get(sentence_idx + 2)
         && let Ok(mut choices) = super::parse_effect_sentence_lexed(sentence.lexed())
-        && let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, tag, .. })] = choices.as_mut_slice()
+        && let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, tag, .. })] =
+            choices.as_mut_slice()
         && filter.zone == Some(Zone::Hand)
     {
         let selected = helper_tag_for_tokens(sentence.lexed(), "chosen_hand_cards");
         *tag = crate::tag::TagRef::of(selected.clone());
         if let Some(cast) = cast_from_selected_hand(&selected, following) {
-            choices.push(EffectAst::subject_verb_look_at_objects(PlayerAst::You, ObjectFilter::tagged(selected.clone()).in_zone(Zone::Hand)));
+            choices.push(EffectAst::subject_verb_look_at_objects(
+                PlayerAst::You,
+                ObjectFilter::tagged(selected.clone()).in_zone(Zone::Hand),
+            ));
             choices.push(cast);
-            return Ok(Some(HandGroup { effects: choices, shown: Shown::Selected(selected.into()), closed: true,
-                first_sentence: sentence_idx, consumed: 3 }));
+            return Ok(Some(HandGroup {
+                effects: choices,
+                shown: Shown::Selected(selected.into()),
+                closed: true,
+                first_sentence: sentence_idx,
+                consumed: 3,
+            }));
         }
     }
     let Some((effect, shown)) = shown_hand(sentence) else {
@@ -321,13 +395,32 @@ mod selected_hand_tests {
     use super::*;
     #[test]
     fn hand_selection_exports_an_object_choice() {
-        let tokens = crate::lexer::lex_line("Target opponent chooses X cards from their hand.", 0).unwrap();
+        let tokens =
+            crate::lexer::lex_line("Target opponent chooses X cards from their hand.", 0).unwrap();
         let effects = super::super::parse_effect_sentence_lexed(&tokens).unwrap();
-        assert!(matches!(effects.as_slice(), [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { .. })]), "hand selection: {effects:#?}");
-        let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, .. })] = effects.as_slice() else { unreachable!() };
+        assert!(
+            matches!(
+                effects.as_slice(),
+                [EffectAst::ObjectChoices(
+                    ObjectChoiceEffectAst::ChooseObjects { .. }
+                )]
+            ),
+            "hand selection: {effects:#?}"
+        );
+        let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, .. })] =
+            effects.as_slice()
+        else {
+            unreachable!()
+        };
         assert_eq!(filter.zone, Some(Zone::Hand), "{effects:#?}");
         let all = crate::lexer::lex_line("Target opponent chooses X cards from their hand. Look at those cards. You may cast a spell from among them without paying its mana cost.", 0).unwrap();
-        let inputs = crate::lexer::split_lexed_sentences(&all).into_iter().map(SentenceInput::from_lexed).collect::<Vec<_>>();
-        assert!(open(&inputs, 0).unwrap().is_some(), "selected hand procedure should open");
+        let inputs = crate::lexer::split_lexed_sentences(&all)
+            .into_iter()
+            .map(SentenceInput::from_lexed)
+            .collect::<Vec<_>>();
+        assert!(
+            open(&inputs, 0).unwrap().is_some(),
+            "selected hand procedure should open"
+        );
     }
 }

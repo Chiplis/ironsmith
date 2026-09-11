@@ -239,7 +239,9 @@ mod tests {
         filter.controller = Some(crate::filter::PlayerFilter::You);
         let mut dm = AutoPassDecisionMaker;
         let mut ctx = ExecutionContext::new(source, alice, &mut dm);
-        ClearGoadEffect::new(ChooseSpec::All(filter)).execute(&mut game, &mut ctx).unwrap();
+        ClearGoadEffect::new(ChooseSpec::All(filter))
+            .execute(&mut game, &mut ctx)
+            .unwrap();
         assert!(!game.is_goaded(own));
         assert!(game.is_goaded(other));
         game.add_goad_effect(own, bob, Until::Forever, source);
@@ -278,22 +280,33 @@ mod tests {
     }
 }
 
-
 pub use ironsmith_core::ClearGoadEffect;
 
 impl EffectExecutor for ClearGoadEffect {
-    fn execute(&self, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<EffectOutcome, ExecutionError> {
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
         let objects = if let Some(target) = &self.target {
             resolve_objects_for_effect(game, ctx, target)?
-        } else { game.battlefield.to_vec() };
+        } else {
+            game.battlefield.to_vec()
+        };
         let mut count = 0;
         for id in objects {
-            if game.object(id).is_some_and(|object| object.zone == Zone::Battlefield) && game.current_is_creature(id) {
+            if game
+                .object(id)
+                .is_some_and(|object| object.zone == Zone::Battlefield)
+                && game.current_is_creature(id)
+            {
                 game.clear_goad(id);
                 count += 1;
             }
         }
         Ok(EffectOutcome::count(count))
     }
-    fn get_target_spec(&self) -> Option<&ChooseSpec> { self.target.as_ref() }
+    fn get_target_spec(&self) -> Option<&ChooseSpec> {
+        self.target.as_ref()
+    }
 }

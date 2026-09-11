@@ -9,12 +9,10 @@ use ironsmith_core::tag::TagKeyWalk;
 use crate::model::ast::EffectAst;
 use crate::model::symbols::{SymbolReference, SymbolScopeId};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
 pub struct CompilerStatementId(pub u32);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
 pub enum CompilerStatementEdgeKindAst {
     Ordered,
     Then,
@@ -22,8 +20,7 @@ pub enum CompilerStatementEdgeKindAst {
     Result,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CompilerDocumentStatementAst {
     pub id: CompilerStatementId,
     pub scope: SymbolScopeId,
@@ -35,8 +32,7 @@ pub struct CompilerDocumentStatementAst {
     pub starting_with_controller: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CompilerStatementEdgeAst {
     pub from: CompilerStatementId,
     pub to: CompilerStatementId,
@@ -44,8 +40,7 @@ pub struct CompilerStatementEdgeAst {
     pub references: Vec<SymbolReference>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CompilerDocumentProgramAst {
     pub scope: SymbolScopeId,
     pub parent_scope: SymbolScopeId,

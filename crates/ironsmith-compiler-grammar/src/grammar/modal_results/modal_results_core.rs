@@ -112,9 +112,14 @@ pub(super) fn parse_direct_prior_effect_result_surface(
         ],
     ) {
         PriorEffectAction::PutOntoBattlefield
-    } else if crate::word_primitives::parse_any_sequence_prefix(&after, &[
-        &["put", "into", "a", "graveyard"], &["put", "into", "the", "graveyard"], &["put", "into", "graveyard"],
-    ]) {
+    } else if crate::word_primitives::parse_any_sequence_prefix(
+        &after,
+        &[
+            &["put", "into", "a", "graveyard"],
+            &["put", "into", "the", "graveyard"],
+            &["put", "into", "graveyard"],
+        ],
+    ) {
         PriorEffectAction::PutIntoGraveyard
     } else if after.first() == Some(&"removed") {
         PriorEffectAction::Removed
@@ -167,10 +172,17 @@ pub(super) fn parse_direct_prior_effect_result_surface(
         .any(|token| token.as_word().is_some());
     let action_only = non_object_subject || !has_subject;
     let mut surface = PriorEffectResultSurface::new(
-        action, filter, PriorEffectResultActor::Passive,
-        if action_only { PriorEffectResultQuantifier::ActionOnly } else { ordinary_quantifier },
+        action,
+        filter,
+        PriorEffectResultActor::Passive,
+        if action_only {
+            PriorEffectResultQuantifier::ActionOnly
+        } else {
+            ordinary_quantifier
+        },
     );
-    surface.put_into_exile_surface = crate::word_primitives::parse_sequence_prefix(&after, &["put", "into", "exile"])
-        && tokens[copula_idx].is_any_word(&["is", "are"]);
+    surface.put_into_exile_surface =
+        crate::word_primitives::parse_sequence_prefix(&after, &["put", "into", "exile"])
+            && tokens[copula_idx].is_any_word(&["is", "are"]);
     Some(surface)
 }

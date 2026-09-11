@@ -478,7 +478,9 @@ fn lower_materialization_costs(
                 let mut filter = filter.clone();
                 apply_activation_cost_default_battlefield_scope(&mut filter);
                 filter.untapped = true;
-                let tag = ironsmith_compiler_semantic::tag::declared_key(format!("tap_cost_{tap_tag_id}"));
+                let tag = ironsmith_compiler_semantic::tag::declared_key(format!(
+                    "tap_cost_{tap_tag_id}"
+                ));
                 tap_tag_id += 1;
                 costs.push(Cost::validated_effect(Effect::choose_objects(
                     filter,
@@ -533,7 +535,9 @@ fn lower_materialization_costs(
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 if *random || name.is_some() || *other || filter.is_some() || !supertypes.is_empty()
                 {
-                    let tag = ironsmith_compiler_semantic::tag::declared_key(format!("discard_cost_{discard_tag_id}"));
+                    let tag = ironsmith_compiler_semantic::tag::declared_key(format!(
+                        "discard_cost_{discard_tag_id}"
+                    ));
                     discard_tag_id += 1;
                     let card_filter = if let Some(filter) = filter {
                         Some(filter.clone())
@@ -585,7 +589,9 @@ fn lower_materialization_costs(
             }
             MaterializationCost::Blight { count } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
-                let tag = ironsmith_compiler_semantic::tag::declared_key(format!("blight_cost_{tap_tag_id}"));
+                let tag = ironsmith_compiler_semantic::tag::declared_key(format!(
+                    "blight_cost_{tap_tag_id}"
+                ));
                 tap_tag_id += 1;
                 costs.push(Cost::validated_effect(Effect::choose_objects(
                     ObjectFilter::creature().you_control(),
@@ -620,13 +626,17 @@ fn lower_materialization_costs(
                 let exact_count =
                     (!count.dynamic_x && count.max == Some(count.min)).then_some(count.min as u32);
                 if let Some(exact_count) = exact_count {
-                    let tag = ironsmith_compiler_semantic::tag::declared_key(format!("sacrifice_cost_{sacrifice_tag_id}"));
+                    let tag = ironsmith_compiler_semantic::tag::declared_key(format!(
+                        "sacrifice_cost_{sacrifice_tag_id}"
+                    ));
                     sacrifice_tag_id += 1;
                     costs.push(Cost::validated_effect(
                         Effect::sacrifice(filter, exact_count).tag(tag),
                     ));
                 } else {
-                    let tag = ironsmith_compiler_semantic::tag::declared_key(format!("sacrifice_cost_{sacrifice_tag_id}"));
+                    let tag = ironsmith_compiler_semantic::tag::declared_key(format!(
+                        "sacrifice_cost_{sacrifice_tag_id}"
+                    ));
                     sacrifice_tag_id += 1;
                     costs.push(Cost::validated_effect(Effect::choose_objects(
                         filter,
@@ -647,7 +657,9 @@ fn lower_materialization_costs(
                 if filter.controller.is_none() {
                     filter.controller = Some(PlayerFilter::You);
                 }
-                let tag = ironsmith_compiler_semantic::tag::declared_key(format!("sacrifice_cost_{sacrifice_tag_id}"));
+                let tag = ironsmith_compiler_semantic::tag::declared_key(format!(
+                    "sacrifice_cost_{sacrifice_tag_id}"
+                ));
                 sacrifice_tag_id += 1;
                 costs.push(Cost::validated_effect(
                     Effect::sacrifice_player(
@@ -664,7 +676,9 @@ fn lower_materialization_costs(
                 if filter.zone.is_none() {
                     filter.zone = Some(crate::zone::Zone::Battlefield);
                 }
-                let tag = ironsmith_compiler_semantic::tag::declared_key(format!("unattach_cost_{return_tag_id}"));
+                let tag = ironsmith_compiler_semantic::tag::declared_key(format!(
+                    "unattach_cost_{return_tag_id}"
+                ));
                 return_tag_id += 1;
                 costs.push(Cost::validated_effect(Effect::choose_objects(
                     filter,
@@ -707,7 +721,9 @@ fn lower_materialization_costs(
                 {
                     filter.controller = Some(PlayerFilter::You);
                 }
-                let tag = ironsmith_compiler_semantic::tag::declared_key(format!("exile_cost_{exile_tag_id}"));
+                let tag = ironsmith_compiler_semantic::tag::declared_key(format!(
+                    "exile_cost_{exile_tag_id}"
+                ));
                 exile_tag_id += 1;
                 let mut choose = crate::effects::ChooseObjectsEffect::new(
                     filter,
@@ -747,7 +763,9 @@ fn lower_materialization_costs(
                     {
                         filter.controller = Some(PlayerFilter::You);
                     }
-                    let tag = ironsmith_compiler_semantic::tag::declared_key(format!("exile_cost_{exile_tag_id}"));
+                    let tag = ironsmith_compiler_semantic::tag::declared_key(format!(
+                        "exile_cost_{exile_tag_id}"
+                    ));
                     exile_tag_id += 1;
                     costs.push(Cost::validated_effect(Effect::choose_objects(
                         filter,
@@ -764,7 +782,9 @@ fn lower_materialization_costs(
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::exile_self());
                 for name in names {
-                    let tag = ironsmith_compiler_semantic::tag::declared_key(format!("exile_cost_{exile_tag_id}"));
+                    let tag = ironsmith_compiler_semantic::tag::declared_key(format!(
+                        "exile_cost_{exile_tag_id}"
+                    ));
                     exile_tag_id += 1;
                     let mut filter = ObjectFilter {
                         zone: Some(crate::zone::Zone::Battlefield),
@@ -828,7 +848,9 @@ fn lower_materialization_costs(
                 if filter.zone.is_none() {
                     filter.zone = Some(crate::zone::Zone::Battlefield);
                 }
-                let tag = ironsmith_compiler_semantic::tag::declared_key(format!("return_cost_{return_tag_id}"));
+                let tag = ironsmith_compiler_semantic::tag::declared_key(format!(
+                    "return_cost_{return_tag_id}"
+                ));
                 return_tag_id += 1;
                 costs.push(Cost::validated_effect(Effect::choose_objects(
                     filter,
@@ -842,7 +864,9 @@ fn lower_materialization_costs(
             }
             MaterializationCost::MoveChosenToLibraryTop { filter } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
-                let tag = ironsmith_compiler_semantic::tag::declared_key(format!("library_cost_{library_tag_id}"));
+                let tag = ironsmith_compiler_semantic::tag::declared_key(format!(
+                    "library_cost_{library_tag_id}"
+                ));
                 library_tag_id += 1;
                 costs.push(Cost::validated_effect(Effect::choose_objects(
                     filter.clone(),
@@ -858,7 +882,9 @@ fn lower_materialization_costs(
             }
             MaterializationCost::MoveChosenToLibraryBottom { count, filter } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
-                let tag = ironsmith_compiler_semantic::tag::declared_key(format!("library_cost_{library_tag_id}"));
+                let tag = ironsmith_compiler_semantic::tag::declared_key(format!(
+                    "library_cost_{library_tag_id}"
+                ));
                 library_tag_id += 1;
                 costs.push(Cost::validated_effect(Effect::choose_objects(
                     filter.clone(),
@@ -882,7 +908,9 @@ fn lower_materialization_costs(
             }
             MaterializationCost::MoveOpponentOwnedExiledCardToGraveyard => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
-                let tag = ironsmith_compiler_semantic::tag::declared_key(format!("graveyard_cost_{return_tag_id}"));
+                let tag = ironsmith_compiler_semantic::tag::declared_key(format!(
+                    "graveyard_cost_{return_tag_id}"
+                ));
                 return_tag_id += 1;
                 let filter = ObjectFilter {
                     zone: Some(crate::zone::Zone::Exile),

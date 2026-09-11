@@ -22,7 +22,9 @@ fn double_counters_on_that_creature_reuses_the_default_target() {
         matches!(
             if_true.as_slice(),
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnTarget { .. }),
+                action: SubjectVerbActionAst::Counters(
+                    CounterActionAst::DoubleCountersOnTarget { .. }
+                ),
                 ..
             })]
         ),

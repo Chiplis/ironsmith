@@ -295,7 +295,10 @@ impl<'a> ParseContextView<'a> {
 
     /// Binds the keys minted while the guard lives in `scope` (a scope this
     /// context created earlier, such as a line's, re-entered by a later phase).
-    pub fn reference_scope_at(self, scope: SymbolScopeId) -> crate::reference_ledger::ReferenceScopeGuard<'a> {
+    pub fn reference_scope_at(
+        self,
+        scope: SymbolScopeId,
+    ) -> crate::reference_ledger::ReferenceScopeGuard<'a> {
         crate::reference_ledger::ReferenceScopeGuard::enter(self.symbols, scope)
     }
 

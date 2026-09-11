@@ -2078,11 +2078,18 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
         }
         ChooseSpec::Target(inner) => {
             if let ChooseSpec::Object(filter) = inner.as_ref()
-                && filter.tagged_constraints.iter().any(|constraint|
+                && filter.tagged_constraints.iter().any(|constraint| {
                     constraint.tag.as_str() == ironsmith_core::SOURCE_EXILED_TAG
-                    && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
+                        && constraint.relation
+                            == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                })
             {
-                return format!("target {}", strip_indefinite_article(&describe_object_filter_with_fixed_pt_shorthand(filter)));
+                return format!(
+                    "target {}",
+                    strip_indefinite_article(&describe_object_filter_with_fixed_pt_shorthand(
+                        filter
+                    ))
+                );
             }
             if let ChooseSpec::Object(filter) = inner.as_ref()
                 && filter.has_x_in_cost
@@ -2245,7 +2252,11 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                 rest.tagged_constraints.clear();
                 if rest == ObjectFilter::default()
                     && filter.tagged_constraints.len() == 1
-                    && matches!(filter.tagged_constraints[0].relation, crate::filter::TaggedOpbjectRelation::IsTaggedObject | crate::filter::TaggedOpbjectRelation::SameObjectId)
+                    && matches!(
+                        filter.tagged_constraints[0].relation,
+                        crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                            | crate::filter::TaggedOpbjectRelation::SameObjectId
+                    )
                 {
                     return surface.description();
                 }
@@ -4581,7 +4592,10 @@ pub(crate) fn describe_prior_effect_metric_basis(
         return format!("{noun} returned to your hand this way");
     }
     if query.action == Some(crate::effect::PriorEffectAction::PutIntoGraveyard)
-        && let Some(controller) = query.filter.as_ref().and_then(|filter| filter.controller.as_ref())
+        && let Some(controller) = query
+            .filter
+            .as_ref()
+            .and_then(|filter| filter.controller.as_ref())
     {
         // This query matches captured pre-move characteristics, so control
         // is historical rather than ownership in the destination graveyard.
@@ -4593,7 +4607,10 @@ pub(crate) fn describe_prior_effect_metric_basis(
         } else {
             describe_player_filter(controller)
         };
-        return format!("{noun} {player} controlled that {} put into a graveyard this way", if plural { "were" } else { "was" });
+        return format!(
+            "{noun} {player} controlled that {} put into a graveyard this way",
+            if plural { "were" } else { "was" }
+        );
     }
     let noun = prior_effect_query_noun(query, plural);
     match query.action {
@@ -4741,8 +4758,21 @@ pub(crate) fn describe_explicit_where_x_surface(value: &Value) -> Option<&'stati
         return Some("the amount of {E} paid this way");
     }
     if value.has_surface_hint(ValueSurfaceHint::PriorEffectResult)
-        && !matches!(value.unhinted(), Value::Add(_, _)) {
-        return Some(if matches!(value.unhinted(), Value::EffectMetric { metric: crate::effect::EffectMetric::OtherNumber, .. }) { "the other result" } else { "the result" });
+        && !matches!(value.unhinted(), Value::Add(_, _))
+    {
+        return Some(
+            if matches!(
+                value.unhinted(),
+                Value::EffectMetric {
+                    metric: crate::effect::EffectMetric::OtherNumber,
+                    ..
+                }
+            ) {
+                "the other result"
+            } else {
+                "the result"
+            },
+        );
     }
     if value.has_surface_hint(ValueSurfaceHint::ManaValueOfPermanentExiledThisWay) {
         return Some("the mana value of the permanent exiled this way");
@@ -4850,7 +4880,14 @@ pub(crate) fn describe_turn_history_for_each_basis(value: &Value) -> Option<Stri
             );
             Some(format!(
                 "{counter} {} on {subject}{controlled} this turn",
-                source_controller.as_ref().map_or_else(|| "put".to_string(), |player| if player == &PlayerFilter::You { "you've put".to_string() } else { format!("{} has put", describe_player_filter(player)) })
+                source_controller.as_ref().map_or_else(
+                    || "put".to_string(),
+                    |player| if player == &PlayerFilter::You {
+                        "you've put".to_string()
+                    } else {
+                        format!("{} has put", describe_player_filter(player))
+                    }
+                )
             ))
         }
         Value::TurnHistoryCount(TurnHistoryCount::Sacrificed { player, filter }) => {
@@ -5032,7 +5069,10 @@ fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
             counter_type.map_or("".to_string(), |counter_type| counter_type
                 .description()
                 .to_string()),
-            source_controller.as_ref().map_or_else(|| "put".to_string(), |player| format!("{} put", describe_player_filter(player))),
+            source_controller.as_ref().map_or_else(
+                || "put".to_string(),
+                |player| format!("{} put", describe_player_filter(player))
+            ),
             pluralize_noun_phrase(&describe_for_each_filter(filter))
         ),
         TurnHistoryCount::CreaturesAttackedWith { player, filter } => format!(
@@ -5040,7 +5080,10 @@ fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
             pluralize_noun_phrase(&describe_for_each_filter(filter)),
             describe_player_filter(player)
         ),
-        TurnHistoryCount::PlayersAttackedThisCombat(player) => format!("the number of players {} attacked this combat", describe_player_filter(player)),
+        TurnHistoryCount::PlayersAttackedThisCombat(player) => format!(
+            "the number of players {} attacked this combat",
+            describe_player_filter(player)
+        ),
         TurnHistoryCount::OpponentsAttacked(player) => match player {
             PlayerFilter::You => "the number of opponents you attacked this turn".to_string(),
             _ => format!(
@@ -5111,7 +5154,9 @@ fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
                 describe_player_filter(player)
             ),
         },
-        TurnHistoryCount::DamageDealtBySource => "the amount of damage dealt by it this turn".to_string(),
+        TurnHistoryCount::DamageDealtBySource => {
+            "the amount of damage dealt by it this turn".to_string()
+        }
         TurnHistoryCount::DamageDealtToSource => {
             "the amount of damage dealt to it this turn".to_string()
         }

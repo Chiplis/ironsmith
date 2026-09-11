@@ -190,13 +190,13 @@ fn reorder_zone_subset_in_place(
     let object_set = object_ids.iter().copied().collect::<HashSet<_>>();
     let mut desired_iter = desired_underlying_order.iter().copied();
     zone_objects.with_vec_mut(|ids| {
-    for entry in ids.iter_mut() {
-        if object_set.contains(entry)
-            && let Some(next_id) = desired_iter.next()
-        {
-            *entry = next_id;
+        for entry in ids.iter_mut() {
+            if object_set.contains(entry)
+                && let Some(next_id) = desired_iter.next()
+            {
+                *entry = next_id;
+            }
         }
-    }
     });
 }
 

@@ -97,11 +97,20 @@ fn lavabrink_counter_sacrifice_upkeep_choice_and_reflexive_damage() {
 
 #[test]
 fn lavabrink_counter_sacrifice_renders_the_actual_source() {
-    let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Lavabrink Floodgates")
-        .card_types(vec![CardType::Artifact]).parse_text(TEXT).unwrap();
+    let definition =
+        crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Lavabrink Floodgates")
+            .card_types(vec![CardType::Artifact])
+            .parse_text(TEXT)
+            .unwrap();
     let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
     assert!(!rendered.contains("hand"), "{rendered}");
-    assert!(rendered.contains("that player may put a doom counter on"), "{rendered}");
-    assert!(rendered.contains("When you do, it deals 6 damage to each creature.")
-        || rendered.contains("When you do, this artifact deals 6 damage to each creature."), "{rendered}");
+    assert!(
+        rendered.contains("that player may put a doom counter on"),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains("When you do, it deals 6 damage to each creature.")
+            || rendered.contains("When you do, this artifact deals 6 damage to each creature."),
+        "{rendered}"
+    );
 }

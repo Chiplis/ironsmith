@@ -33,8 +33,7 @@ pub enum AttachmentConditionHost {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
 pub enum EffectMetricSource {
     Outcome,
     ChosenObjects,
@@ -42,8 +41,7 @@ pub enum EffectMetricSource {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
 pub enum EffectMetric {
     Count,
     ChosenCount,
@@ -79,8 +77,7 @@ pub enum EffectMetric {
 /// this way". Runtime identity comes from the exact producer [`EffectId`], not
 /// from guessing an action from a generated tag name.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
 pub enum PriorEffectAction {
     Cast,
     Chosen,
@@ -114,8 +111,7 @@ pub enum PriorEffectAction {
 /// objects. `player` optionally selects a per-player memory partition before
 /// the filter and aggregate are applied.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct PriorEffectMetricQuery {
     pub source: EffectMetricSource,
     pub metric: EffectMetric,
@@ -162,8 +158,7 @@ impl PriorEffectMetricQuery {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
 pub enum ValueSurfaceHint {
     /// Preserve an unbounded choice with a minimum of one, such as
     /// "discard one or more land cards." Effects that support optional
@@ -354,8 +349,7 @@ pub enum ValueSurfaceHint {
 /// Spell references use the spell's recorded payment; `ThisAbility` uses
 /// only the resolving activation's payment, never the source's casting cost.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, TagKeyWalk)]
 pub enum ManaSpentCastReferenceSurface {
     It,
     #[default]
@@ -366,7 +360,10 @@ pub enum ManaSpentCastReferenceSurface {
 
 impl ManaSpentCastReferenceSurface {
     pub const fn payment_verb(self) -> &'static str {
-        match self { Self::ThisAbility => "activate", _ => "cast" }
+        match self {
+            Self::ThisAbility => "activate",
+            _ => "cast",
+        }
     }
 
     pub const fn text(self) -> &'static str {
@@ -385,8 +382,7 @@ impl ManaSpentCastReferenceSurface {
 /// which left the stack, or a token which no longer exists must still be
 /// counted from its event snapshot rather than from the current zone state.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
 pub enum DeathHistoryControllerSurface {
     /// Oracle placed the controller after the event:
     /// "creatures that died under your control this turn."
@@ -398,8 +394,7 @@ pub enum DeathHistoryControllerSurface {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum TurnHistoryCount {
     /// Objects matching the filter which moved from the battlefield to a
     /// graveyard this turn.
@@ -510,8 +505,7 @@ impl TurnHistoryCount {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum Value {
     SurfaceHinted {
         value: Box<Value>,
@@ -859,8 +853,7 @@ impl From<u32> for Value {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum Restriction {
     AdditionalLandPlays(PlayerFilter, u32),
     /// A lasting player rule that removes the cleanup-step hand-size limit.
@@ -948,8 +941,7 @@ pub enum Restriction {
 /// colored mana satisfy a colorless `{C}` symbol. "Any type" includes
 /// colorless, so it permits either conversion.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, TagKeyWalk)]
 pub enum ManaSpendMode {
     #[default]
     Normal,
@@ -982,8 +974,7 @@ impl From<bool> for ManaSpendMode {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ManaSpendPermission {
     pub player: PlayerFilter,
     pub scope: ManaSpendScope,
@@ -1102,8 +1093,7 @@ impl ManaSpendPermission {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum ManaSpendScope {
     AllCosts,
     ActivationCostsOf(ObjectFilter),
@@ -1357,8 +1347,7 @@ impl Restriction {
 /// "there are ... counters on ..." clause, including that clause's source
 /// reference.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, TagKeyWalk)]
 pub enum SourceCounterThresholdSurface {
     #[default]
     SourceHas,
@@ -1374,8 +1363,7 @@ pub enum SourceCounterThresholdSurface {
 /// Both variants have identical event-history semantics. This only preserves
 /// whether Oracle used "left ... under your control" or "you controlled left".
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
 pub enum PermanentLeftBattlefieldControlSurface {
     #[default]
     LeftUnderYourControl,
@@ -1465,8 +1453,7 @@ pub enum TurnHistoryCondition {
 /// inspect the snapshot even when the moved object still exists in its new
 /// zone.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
 pub enum TaggedObjectMatchMode {
     #[default]
     CurrentOrLastKnown,
@@ -1488,8 +1475,7 @@ impl ConditionConjunction for Condition {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum Condition {
     YouControl(ObjectFilter),
     OpponentControls(ObjectFilter),

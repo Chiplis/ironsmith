@@ -1364,7 +1364,11 @@ impl GameState {
             Some(request.source),
             request.reason,
             &request.cost,
-            self.chosen_color_activation_mana_restriction(request.source, &request.cost, request.reason),
+            self.chosen_color_activation_mana_restriction(
+                request.source,
+                &request.cost,
+                request.reason,
+            ),
         );
         let edges: Vec<Vec<usize>> = units
             .iter()
@@ -2064,7 +2068,9 @@ impl GameState {
         // Preserve the production-time snow property and the actual color of
         // each spent unit; later changes to the mana source cannot alter it.
         if reason == crate::costs::PaymentReason::CastSpell
-            && source_snapshot.as_ref().is_some_and(|snapshot| snapshot.supertypes.contains(&crate::types::Supertype::Snow))
+            && source_snapshot.as_ref().is_some_and(|snapshot| {
+                snapshot.supertypes.contains(&crate::types::Supertype::Snow)
+            })
             && let Some(spell) = payment_source.and_then(|id| self.object_mut(id))
         {
             spell.snow_mana_spent_to_cast.add(symbol, 1);

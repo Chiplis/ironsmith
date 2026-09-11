@@ -12,7 +12,9 @@ use std::cell::{Cell, RefCell};
 
 use ironsmith_core::TagKey;
 
-use crate::model::symbols::{Cardinality, ObjectDomain, ReferenceRole, SymbolId, SymbolScopeId, SymbolTable};
+use crate::model::symbols::{
+    Cardinality, ObjectDomain, ReferenceRole, SymbolId, SymbolScopeId, SymbolTable,
+};
 use crate::tag_ref::TagRef;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,10 +46,20 @@ thread_local! {
 
 /// Binds `key` for a reference of `role` over `domain` in the active scope
 /// (or the default table) and returns the symbol, as a `TagRef`.
-pub fn note_minted(key: TagKey, role: ReferenceRole, domain: ObjectDomain, cardinality: Cardinality) -> TagRef {
+pub fn note_minted(
+    key: TagKey,
+    role: ReferenceRole,
+    domain: ObjectDomain,
+    cardinality: Cardinality,
+) -> TagRef {
     OBSERVERS.with(|observers| {
         for frame in observers.borrow_mut().iter_mut() {
-            frame.push(MintedReference { key: key.clone(), role, domain, cardinality });
+            frame.push(MintedReference {
+                key: key.clone(),
+                role,
+                domain,
+                cardinality,
+            });
         }
     });
     let frame = FRAMES.with(|frames| frames.borrow().last().copied());
@@ -100,7 +112,12 @@ pub struct ReferenceScopeGuard<'a> {
 
 impl<'a> ReferenceScopeGuard<'a> {
     pub fn enter(symbols: &'a RefCell<SymbolTable>, scope: SymbolScopeId) -> Self {
-        FRAMES.with(|frames| frames.borrow_mut().push(Frame { symbols: symbols as *const _, scope }));
+        FRAMES.with(|frames| {
+            frames.borrow_mut().push(Frame {
+                symbols: symbols as *const _,
+                scope,
+            })
+        });
         ACTIVE_SCOPES.with(|active| active.set(active.get() + 1));
         Self { _symbols: symbols }
     }
@@ -115,20 +132,29 @@ impl Drop for ReferenceScopeGuard<'_> {
     }
 }
 
-#[cfg(test)]#[cfg(test)]
+#[cfg(test)]
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::symbols::SymbolScopeKind;
 
     fn minted(key: &str) -> (TagKey, ReferenceRole, ObjectDomain, Cardinality) {
-        (TagKey::new(key), ReferenceRole::Affected, ObjectDomain::Object, Cardinality::Any)
+        (
+            TagKey::new(key),
+            ReferenceRole::Affected,
+            ObjectDomain::Object,
+            Cardinality::Any,
+        )
     }
 
     #[test]
     fn a_scope_binds_what_was_minted_while_it_lived_and_dedupes_keys() {
         let symbols = RefCell::new(SymbolTable::default());
         let root = symbols.borrow().root_scope();
-        let line = symbols.borrow_mut().create_scope(root, SymbolScopeKind::Line { source_line: 0 }).unwrap();
+        let line = symbols
+            .borrow_mut()
+            .create_scope(root, SymbolScopeKind::Line { source_line: 0 })
+            .unwrap();
         {
             let _scope = ReferenceScopeGuard::enter(&symbols, line);
             let (key, role, domain, cardinality) = minted("__it__");
@@ -136,8 +162,13 @@ mod tests {
             note_minted(key, role, domain, cardinality);
         }
         let table = symbols.borrow();
-        let bound = table.symbol_for_key(line, &TagKey::new("__it__")).expect("bound at the line");
-        assert_eq!(table.binding(bound).and_then(|b| b.key.clone()), Some(TagKey::new("__it__")));
+        let bound = table
+            .symbol_for_key(line, &TagKey::new("__it__"))
+            .expect("bound at the line");
+        assert_eq!(
+            table.binding(bound).and_then(|b| b.key.clone()),
+            Some(TagKey::new("__it__"))
+        );
         assert_eq!(table.visible_bindings(line).len(), 1);
     }
 
@@ -145,8 +176,14 @@ mod tests {
     fn a_nested_scope_keeps_its_own_mints_and_returns_the_outer_ones() {
         let symbols = RefCell::new(SymbolTable::default());
         let root = symbols.borrow().root_scope();
-        let line = symbols.borrow_mut().create_scope(root, SymbolScopeKind::Line { source_line: 0 }).unwrap();
-        let nested = symbols.borrow_mut().create_scope(line, SymbolScopeKind::NestedAbility).unwrap();
+        let line = symbols
+            .borrow_mut()
+            .create_scope(root, SymbolScopeKind::Line { source_line: 0 })
+            .unwrap();
+        let nested = symbols
+            .borrow_mut()
+            .create_scope(line, SymbolScopeKind::NestedAbility)
+            .unwrap();
         {
             let _line_scope = ReferenceScopeGuard::enter(&symbols, line);
             let (outer, role, domain, cardinality) = minted("__outer__");
@@ -158,17 +195,36 @@ mod tests {
             }
         }
         let table = symbols.borrow();
-        assert!(table.symbol_for_key(nested, &TagKey::new("__inner__")).is_some());
-        assert!(table.symbol_for_key(line, &TagKey::new("__inner__")).is_none());
-        assert!(table.symbol_for_key(nested, &TagKey::new("__outer__")).is_some(), "outer keys resolve from the nested scope");
+        assert!(
+            table
+                .symbol_for_key(nested, &TagKey::new("__inner__"))
+                .is_some()
+        );
+        assert!(
+            table
+                .symbol_for_key(line, &TagKey::new("__inner__"))
+                .is_none()
+        );
+        assert!(
+            table
+                .symbol_for_key(nested, &TagKey::new("__outer__"))
+                .is_some(),
+            "outer keys resolve from the nested scope"
+        );
     }
 
     #[test]
     fn an_observed_parse_reports_every_mint_and_a_replay_binds_them_elsewhere() {
         let symbols = RefCell::new(SymbolTable::default());
         let root = symbols.borrow().root_scope();
-        let first = symbols.borrow_mut().create_scope(root, SymbolScopeKind::Line { source_line: 1 }).unwrap();
-        let second = symbols.borrow_mut().create_scope(root, SymbolScopeKind::Line { source_line: 2 }).unwrap();
+        let first = symbols
+            .borrow_mut()
+            .create_scope(root, SymbolScopeKind::Line { source_line: 1 })
+            .unwrap();
+        let second = symbols
+            .borrow_mut()
+            .create_scope(root, SymbolScopeKind::Line { source_line: 2 })
+            .unwrap();
         let minted_in_first = {
             let _scope = ReferenceScopeGuard::enter(&symbols, first);
             let (key, role, domain, cardinality) = minted("__it__");
@@ -183,7 +239,11 @@ mod tests {
             replay(&minted_in_first);
         }
         let table = symbols.borrow();
-        assert!(table.symbol_for_key(second, &TagKey::new("__it__")).is_some());
+        assert!(
+            table
+                .symbol_for_key(second, &TagKey::new("__it__"))
+                .is_some()
+        );
         assert_ne!(
             table.symbol_for_key(first, &TagKey::new("__it__")),
             table.symbol_for_key(second, &TagKey::new("__it__"))

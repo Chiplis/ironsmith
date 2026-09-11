@@ -1,5 +1,5 @@
-use crate::cards::builders::PlayerPredicateAst;
 use super::*;
+use crate::cards::builders::PlayerPredicateAst;
 
 pub(super) fn try_parse_combat_damage_trigger_lexed(
     tokens: &[OwnedLexToken],
@@ -751,7 +751,8 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             SHARED_SUBJECT_ETB_OR_COMBAT_DAMAGE_TAIL_PATTERN,
         );
         if shared_subject_or_combat_damage {
-            let or_idx = enters_idx + 1 + tail.iter().position(|token| token.is_word("or")).unwrap();
+            let or_idx =
+                enters_idx + 1 + tail.iter().position(|token| token.is_word("or")).unwrap();
             let left_tokens = &tokens[..or_idx];
             let mut right_tokens = tokens[..enters_idx].to_vec();
             right_tokens.extend_from_slice(&tokens[or_idx + 1..]);
@@ -848,7 +849,10 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         {
             trigger_atom_token(left_tokens, TriggerClauseAtom::Copy)
                 .or_else(|| trigger_atom_token(left_tokens, TriggerClauseAtom::Play))
-        } else if right_words.first().is_some_and(|word| matches!(*word, "play" | "plays")) {
+        } else if right_words
+            .first()
+            .is_some_and(|word| matches!(*word, "play" | "plays"))
+        {
             trigger_atom_token(left_tokens, TriggerClauseAtom::Cast)
         } else {
             None
@@ -883,9 +887,14 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         let left_tokens = strip_leading_trigger_intro(left_raw_tokens);
         let right_tokens = strip_leading_trigger_intro(right_raw_tokens);
         let mut resolved_right = right_tokens.to_vec();
-        if right_tokens.first().is_some_and(|token| token.is_word("it"))
+        if right_tokens
+            .first()
+            .is_some_and(|token| token.is_word("it"))
             && let Some(enter_idx) = trigger_atom_token(left_tokens, TriggerClauseAtom::Enter)
-            && is_source_reference_words(&crate::lexer::parser_token_word_refs(&left_tokens[..enter_idx])) {
+            && is_source_reference_words(&crate::lexer::parser_token_word_refs(
+                &left_tokens[..enter_idx],
+            ))
+        {
             resolved_right = left_tokens[..enter_idx].to_vec();
             resolved_right.extend_from_slice(&right_tokens[1..]);
         }
@@ -923,25 +932,37 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     if let Some(attacks_word_idx) = trigger_atom_word(&words, TriggerClauseAtom::Attack) {
         let tail_words = &words[attacks_word_idx + 1..];
         if tail_words == ["the", "monarch"] {
-            let attacks_token_idx = trigger_word_token_start(tokens, attacks_word_idx).unwrap_or(tokens.len());
+            let attacks_token_idx =
+                trigger_word_token_start(tokens, attacks_word_idx).unwrap_or(tokens.len());
             let subject_tokens = &tokens[..attacks_token_idx];
-            let demonstrative = subject_tokens.first().is_some_and(|token| token.is_word("that"));
+            let demonstrative = subject_tokens
+                .first()
+                .is_some_and(|token| token.is_word("that"));
             let mut filter = if demonstrative {
                 crate::object_filters::parse_object_filter_lexed(&subject_tokens[1..], false)?
             } else {
-                parse_attack_trigger_subject_filter_lexed(subject_tokens)?.unwrap_or_else(ObjectFilter::source)
+                parse_attack_trigger_subject_filter_lexed(subject_tokens)?
+                    .unwrap_or_else(ObjectFilter::source)
             };
-            if subject_tokens.first().is_some_and(|token| token.is_word("that")) {
-                filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::It.bind().into(),
-                    relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
-                });
+            if subject_tokens
+                .first()
+                .is_some_and(|token| token.is_word("that"))
+            {
+                filter
+                    .tagged_constraints
+                    .push(crate::target::TaggedObjectConstraint {
+                        tag: crate::tag::CompilerReferenceTag::It.bind().into(),
+                        relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+                    });
             }
             filter = filter.attacking_player(PlayerFilter::Any);
             return Ok(TriggerSpec::ConditionQualified {
                 trigger: Box::new(TriggerSpec::Attacks(filter)),
                 condition: crate::cards::builders::PredicateAst::Player(
-                    crate::cards::builders::PlayerPredicateAst::PlayerIsMonarch { player: crate::cards::builders::PlayerAst::Defending }),
+                    crate::cards::builders::PlayerPredicateAst::PlayerIsMonarch {
+                        player: crate::cards::builders::PlayerAst::Defending,
+                    },
+                ),
                 surface: "the defending player is the monarch".to_string(),
             });
         }

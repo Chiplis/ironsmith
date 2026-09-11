@@ -413,8 +413,9 @@ impl AttacksTrigger {
         let attacked_player_filter = object_filter
             .attacking_player_or_planeswalker_controlled_by
             .take();
-        let attacked_target_must_be_player = std::mem::take(&mut object_filter.attacking_player_only)
-            | object_filter.targets_only_player.take().is_some();
+        let attacked_target_must_be_player =
+            std::mem::take(&mut object_filter.attacking_player_only)
+                | object_filter.targets_only_player.take().is_some();
         if !object_filter.matches(obj, &ctx.filter_ctx, ctx.game) {
             return false;
         }
@@ -565,8 +566,9 @@ impl TriggerMatcher for AttacksTrigger {
         let attacked_player = display_filter
             .attacking_player_or_planeswalker_controlled_by
             .take();
-        let attacked_target_must_be_player = std::mem::take(&mut display_filter.attacking_player_only)
-            | display_filter.targets_only_player.take().is_some();
+        let attacked_target_must_be_player =
+            std::mem::take(&mut display_filter.attacking_player_only)
+                | display_filter.targets_only_player.take().is_some();
         let described_subject = display_filter.description();
         let articleless_attachment_subject =
             display_filter.tagged_constraints.iter().any(|constraint| {

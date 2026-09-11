@@ -2430,8 +2430,12 @@ fn ordinary_untap_keeps_unrelated_characteristics_warm_and_clones_independent() 
     let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
     let alice = PlayerId::from_index(0);
     let creature = CardDefinitionBuilder::new(CardId::from_raw(90_011), "Cache Test Creature")
-        .card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(2, 2)).build();
-    let ids: Vec<_> = (0..200).map(|_| game.create_object_from_definition(&creature, alice, Zone::Battlefield)).collect();
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let ids: Vec<_> = (0..200)
+        .map(|_| game.create_object_from_definition(&creature, alice, Zone::Battlefield))
+        .collect();
     game.tap(ids[0]);
     game.refresh_continuous_state();
     game.prewarm_calculated_characteristics(&ids);
@@ -2445,30 +2449,48 @@ fn ordinary_untap_keeps_unrelated_characteristics_warm_and_clones_independent() 
     assert_eq!(branch.work_counters().continuous_global_invalidations, 0);
     assert_eq!(game.work_counters(), before);
     branch.object_mut(ids[1]).unwrap().name = "Changed in branch".into();
-    assert_eq!(game.object(ids[1]).unwrap().name.as_str(), "Cache Test Creature");
+    assert_eq!(
+        game.object(ids[1]).unwrap().name.as_str(),
+        "Cache Test Creature"
+    );
     assert_eq!(game.battlefield, branch.battlefield);
 }
 
 #[test]
 fn clearing_goad_ends_prior_sources_but_allows_later_goad() {
     let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Carol".into()], 20);
-    let alice = game.players[0].id; let bob = game.players[1].id; let carol = game.players[2].id;
-    let card = crate::card::CardBuilder::new(CardId::new(), "Goad fixture").card_types(vec![CardType::Creature]).build();
+    let alice = game.players[0].id;
+    let bob = game.players[1].id;
+    let carol = game.players[2].id;
+    let card = crate::card::CardBuilder::new(CardId::new(), "Goad fixture")
+        .card_types(vec![CardType::Creature])
+        .build();
     let target = game.create_object_from_card(&card, alice, Zone::Battlefield);
     let untouched = game.create_object_from_card(&card, alice, Zone::Battlefield);
     let source = game.create_object_from_card(&card, bob, Zone::Battlefield);
-    std::sync::Arc::make_mut(&mut game.object_mut(target).unwrap().abilities).push(crate::ability::Ability::static_ability(
-        crate::static_abilities::StaticAbility::goaded_by_source_controller(source)));
+    std::sync::Arc::make_mut(&mut game.object_mut(target).unwrap().abilities).push(
+        crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::goaded_by_source_controller(source),
+        ),
+    );
     game.add_goad_effect(target, carol, Until::YourNextTurn, source);
     game.add_goad_effect(untouched, carol, Until::YourNextTurn, source);
     game.refresh_continuous_state();
-    assert_eq!(game.active_goaders_for(target), [bob, carol].into_iter().collect());
+    assert_eq!(
+        game.active_goaders_for(target),
+        [bob, carol].into_iter().collect()
+    );
     game.clear_goad(target);
     assert!(!game.is_goaded(target));
     assert!(game.is_goaded(untouched));
     game.add_goad_effect(target, carol, Until::YourNextTurn, source);
-    assert_eq!(game.active_goaders_for(target), [carol].into_iter().collect());
+    assert_eq!(
+        game.active_goaders_for(target),
+        [carol].into_iter().collect()
+    );
     game.clear_goad(target);
-    game.effect_store.continuous_effects.record_attachment(source);
+    game.effect_store
+        .continuous_effects
+        .record_attachment(source);
     assert_eq!(game.active_goaders_for(target), [bob].into_iter().collect());
 }

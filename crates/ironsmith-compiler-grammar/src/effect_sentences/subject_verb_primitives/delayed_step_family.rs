@@ -1,9 +1,9 @@
-use crate::cards::builders::ForEachEffectAst;
+use super::*;
+use crate::cards::builders::CounterActionAst;
 use crate::cards::builders::DelayedEffectAst;
+use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::LifeResourceActionAst;
 use crate::cards::builders::ZoneMoveActionAst;
-use crate::cards::builders::CounterActionAst;
-use super::*;
 use crate::grammar::effects as effect_grammar;
 use crate::grammar::effects::delayed_step_shapes as delayed_grammar;
 
@@ -61,17 +61,27 @@ pub(super) fn wrap_delayed_next_step_unless_pays(
     effects: Vec<EffectAst>,
 ) -> EffectAst {
     match step {
-        DelayedNextStepKind::Upkeep => EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep { player, effects }),
-        DelayedNextStepKind::DrawStep => EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextDrawStep { player, effects }),
-        DelayedNextStepKind::EndStep => EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
-            player: delayed_end_step_player_filter(player).unwrap_or(PlayerFilter::Any),
-            effects,
-        }),
-        DelayedNextStepKind::CleanupStep => EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextCleanupStep {
-            player: delayed_end_step_player_filter(player).unwrap_or(PlayerFilter::Any),
-            effects,
-        }),
-        DelayedNextStepKind::EndOfCombat => EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat { effects }),
+        DelayedNextStepKind::Upkeep => {
+            EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep { player, effects })
+        }
+        DelayedNextStepKind::DrawStep => {
+            EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextDrawStep { player, effects })
+        }
+        DelayedNextStepKind::EndStep => {
+            EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
+                player: delayed_end_step_player_filter(player).unwrap_or(PlayerFilter::Any),
+                effects,
+            })
+        }
+        DelayedNextStepKind::CleanupStep => {
+            EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextCleanupStep {
+                player: delayed_end_step_player_filter(player).unwrap_or(PlayerFilter::Any),
+                effects,
+            })
+        }
+        DelayedNextStepKind::EndOfCombat => {
+            EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat { effects })
+        }
     }
 }
 
@@ -120,18 +130,24 @@ fn wrap_delayed_timing_effects(
     effects: Vec<EffectAst>,
 ) -> Option<EffectAst> {
     Some(match marker.step {
-        delayed_grammar::DelayedTimingStepShape::EndStep => EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
-            player: delayed_end_step_player_filter(marker.player)?,
-            effects,
-        }),
-        delayed_grammar::DelayedTimingStepShape::Upkeep => EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep {
-            player: marker.player,
-            effects,
-        }),
-        delayed_grammar::DelayedTimingStepShape::DrawStep => EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextDrawStep {
-            player: marker.player,
-            effects,
-        }),
+        delayed_grammar::DelayedTimingStepShape::EndStep => {
+            EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
+                player: delayed_end_step_player_filter(marker.player)?,
+                effects,
+            })
+        }
+        delayed_grammar::DelayedTimingStepShape::Upkeep => {
+            EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep {
+                player: marker.player,
+                effects,
+            })
+        }
+        delayed_grammar::DelayedTimingStepShape::DrawStep => {
+            EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextDrawStep {
+                player: marker.player,
+                effects,
+            })
+        }
         delayed_grammar::DelayedTimingStepShape::CleanupStep => {
             EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextCleanupStep {
                 player: delayed_end_step_player_filter(marker.player)?,
@@ -259,14 +275,18 @@ pub fn parse_sentence_delayed_timing_suffix(
     immediate_effects.push(delayed);
     let effect = match leading_result {
         Some(prefix) => match prefix.kind {
-            crate::grammar::structure::LeadingResultPrefixKind::If => EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-                predicate: prefix.predicate,
-                effects: immediate_effects,
-            }),
-            crate::grammar::structure::LeadingResultPrefixKind::When => EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
-                predicate: prefix.predicate,
-                effects: immediate_effects,
-            }),
+            crate::grammar::structure::LeadingResultPrefixKind::If => {
+                EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                    predicate: prefix.predicate,
+                    effects: immediate_effects,
+                })
+            }
+            crate::grammar::structure::LeadingResultPrefixKind::When => {
+                EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
+                    predicate: prefix.predicate,
+                    effects: immediate_effects,
+                })
+            }
         },
         None => return Ok(Some(immediate_effects)),
     };
@@ -473,10 +493,12 @@ pub fn parse_sentence_delayed_next_step_unless_pays(
             }
             effects.extend(parsed);
         }
-        effects.push(EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
-            player: PlayerFilter::Any,
-            effects: vec![unless_effect],
-        }));
+        effects.push(EffectAst::Delayed(
+            DelayedEffectAst::DelayedUntilNextEndStep {
+                player: PlayerFilter::Any,
+                effects: vec![unless_effect],
+            },
+        ));
         return Ok(Some(effects));
     }
     let Some((timing_start_word, _timing_end_word, step, player)) =
@@ -576,15 +598,17 @@ pub fn parse_sentence_delayed_next_upkeep_unless_pays_lose_game(
         return Ok(None);
     }
 
-    effects.push(EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep {
-        player: PlayerAst::You,
-        effects: vec![EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
-            effects: vec![EffectAst::subject_verb_lose_game(PlayerAst::You)],
+    effects.push(EffectAst::Delayed(
+        DelayedEffectAst::DelayedUntilNextUpkeep {
             player: PlayerAst::You,
-            cost: ironsmith_core::TotalCost::mana(crate::mana::ManaCost::from_symbols(mana)),
-            before_delayed_step: false,
-        })],
-    }));
+            effects: vec![EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
+                effects: vec![EffectAst::subject_verb_lose_game(PlayerAst::You)],
+                player: PlayerAst::You,
+                cost: ironsmith_core::TotalCost::mana(crate::mana::ManaCost::from_symbols(mana)),
+                before_delayed_step: false,
+            })],
+        },
+    ));
     Ok(Some(effects))
 }
 
@@ -682,9 +706,10 @@ fn parse_unless_sacrifice_clause_as_cost(
     }
     let effect = super::super::zone_handlers::parse_sacrifice(clause.tokens(), None, None)?;
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice {
-            filter, count: 1, ..
-        }),
+        action:
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice {
+                filter, count: 1, ..
+            }),
         ..
     }) = effect
     else {
@@ -807,12 +832,14 @@ pub(in crate::effect_sentences) fn try_build_simple_unless_pays(
     .is_some_and(|before| {
         crate::slice_primitives::contains_any(&after_words[before + 1..], &["step", "upkeep"])
     });
-    Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
-        effects,
-        player,
-        cost,
-        before_delayed_step,
-    })))
+    Ok(Some(EffectAst::Conditionals(
+        ConditionalEffectAst::UnlessPays {
+            effects,
+            player,
+            cost,
+            before_delayed_step,
+        },
+    )))
 }
 
 /// Try to build an UnlessPays or UnlessAction AST from the tokens after "unless".
@@ -834,12 +861,14 @@ pub fn try_build_unless(
     let payment_shape = delayed_grammar::split_delayed_payment_action_shape(after_clause.tokens());
 
     if let Some((player, cost)) = parse_unless_sacrifice_or_pay_cost(after_clause)? {
-        return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
-            effects,
-            player,
-            cost,
-            before_delayed_step,
-        })));
+        return Ok(Some(EffectAst::Conditionals(
+            ConditionalEffectAst::UnlessPays {
+                effects,
+                player,
+                cost,
+                before_delayed_step,
+            },
+        )));
     }
 
     // Determine the player from the "unless" clause
@@ -863,11 +892,13 @@ pub fn try_build_unless(
     let action_words = action_word_storage.to_word_refs();
 
     if let Some(alternative) = parse_causative_source_damage_to_player(action_clause, player) {
-        return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
-            effects,
-            alternative: vec![alternative],
-            player,
-        })));
+        return Ok(Some(EffectAst::Conditionals(
+            ConditionalEffectAst::UnlessAction {
+                effects,
+                alternative: vec![alternative],
+                player,
+            },
+        )));
     }
 
     if delayed_clause_starts_with_action(action_clause, delayed_grammar::DelayedActionShape::Pay) {
@@ -892,12 +923,14 @@ pub fn try_build_unless(
         Some("sacrifice" | "sacrifices")
     ) && let Some(cost) = parse_unless_payment_clause_as_cost(action_clause)?
     {
-        return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
-            effects,
-            player,
-            cost,
-            before_delayed_step,
-        })));
+        return Ok(Some(EffectAst::Conditionals(
+            ConditionalEffectAst::UnlessPays {
+                effects,
+                player,
+                cost,
+                before_delayed_step,
+            },
+        )));
     }
 
     if matches!(
@@ -913,20 +946,24 @@ pub fn try_build_unless(
         for effect in &mut alternative {
             bind_unless_player_context(effect, player);
         }
-        return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
-            effects,
-            alternative,
-            player,
-        })));
+        return Ok(Some(EffectAst::Conditionals(
+            ConditionalEffectAst::UnlessAction {
+                effects,
+                alternative,
+                player,
+            },
+        )));
     }
 
     if let Some(cost) = parse_unless_payment_clause_as_cost(action_clause)? {
-        return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
-            effects,
-            player,
-            cost,
-            before_delayed_step,
-        })));
+        return Ok(Some(EffectAst::Conditionals(
+            ConditionalEffectAst::UnlessPays {
+                effects,
+                player,
+                cost,
+                before_delayed_step,
+            },
+        )));
     }
 
     // Prefer the action-only slice for explicit-player clauses like
@@ -938,11 +975,13 @@ pub fn try_build_unless(
         for effect in &mut alternative {
             bind_unless_player_context(effect, player);
         }
-        return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
-            effects,
-            alternative,
-            player,
-        })));
+        return Ok(Some(EffectAst::Conditionals(
+            ConditionalEffectAst::UnlessAction {
+                effects,
+                alternative,
+                player,
+            },
+        )));
     }
 
     // Fall back to the full clause when the action-only parse needs the
@@ -953,11 +992,13 @@ pub fn try_build_unless(
         for effect in &mut alternative {
             bind_unless_player_context(effect, player);
         }
-        return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
-            effects,
-            alternative,
-            player,
-        })));
+        return Ok(Some(EffectAst::Conditionals(
+            ConditionalEffectAst::UnlessAction {
+                effects,
+                alternative,
+                player,
+            },
+        )));
     }
 
     if let Ok(mut alternative) = parse_effect_sentence_lexed(after_clause.tokens())
@@ -966,11 +1007,13 @@ pub fn try_build_unless(
         for effect in &mut alternative {
             bind_unless_player_context(effect, player);
         }
-        return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
-            effects,
-            alternative,
-            player,
-        })));
+        return Ok(Some(EffectAst::Conditionals(
+            ConditionalEffectAst::UnlessAction {
+                effects,
+                alternative,
+                player,
+            },
+        )));
     }
 
     if let Ok(mut alternative) = parse_effect_sentence_lexed(action_clause.tokens())
@@ -979,11 +1022,13 @@ pub fn try_build_unless(
         for effect in &mut alternative {
             bind_unless_player_context(effect, player);
         }
-        return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
-            effects,
-            alternative,
-            player,
-        })));
+        return Ok(Some(EffectAst::Conditionals(
+            ConditionalEffectAst::UnlessAction {
+                effects,
+                alternative,
+                player,
+            },
+        )));
     }
 
     if let Ok(mut alternative) =
@@ -993,11 +1038,13 @@ pub fn try_build_unless(
         for effect in &mut alternative {
             bind_unless_player_context(effect, player);
         }
-        return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
-            effects,
-            alternative,
-            player,
-        })));
+        return Ok(Some(EffectAst::Conditionals(
+            ConditionalEffectAst::UnlessAction {
+                effects,
+                alternative,
+                player,
+            },
+        )));
     }
 
     if delayed_clause_starts_with_action(
@@ -1010,11 +1057,13 @@ pub fn try_build_unless(
         for effect in &mut alternative {
             bind_unless_player_context(effect, player);
         }
-        return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
-            effects,
-            alternative,
-            player,
-        })));
+        return Ok(Some(EffectAst::Conditionals(
+            ConditionalEffectAst::UnlessAction {
+                effects,
+                alternative,
+                player,
+            },
+        )));
     }
 
     Ok(None)
@@ -1355,17 +1404,19 @@ pub fn parse_sentence_lose_draw_clash_repeat_process(
         return Ok(Some(effects));
     }
 
-    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
-        effects,
-        continue_effect_index: 2,
-        continue_predicate: IfResultPredicate::WonClash,
-    })]))
+    Ok(Some(vec![EffectAst::ForEach(
+        ForEachEffectAst::RepeatProcess {
+            effects,
+            continue_effect_index: 2,
+            continue_predicate: IfResultPredicate::WonClash,
+        },
+    )]))
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::cards::builders::ControlActionAst;
     use super::*;
+    use crate::cards::builders::ControlActionAst;
     use crate::lexer::lex_line;
 
     #[test]
@@ -1440,7 +1491,9 @@ mod tests {
                 parse_sentence_delayed_timing_suffix(SubjectVerbPrimitiveClause::new(&tokens))
                     .expect("end-of-combat action should parse")
                     .expect("end-of-combat suffix should match");
-            let [EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat { effects: delayed })] = effects.as_slice()
+            let [
+                EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat { effects: delayed }),
+            ] = effects.as_slice()
             else {
                 panic!("expected only a delayed end-of-combat action for {text}: {effects:#?}");
             };
@@ -1538,7 +1591,10 @@ mod tests {
             panic!("expected an immediate action followed by one delayed action: {effects:#?}");
         };
         assert!(
-            !matches!(immediate, EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep { .. })),
+            !matches!(
+                immediate,
+                EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep { .. })
+            ),
             "the leading life gain must resolve immediately: {immediate:#?}"
         );
         assert_eq!(delayed.len(), 1, "only the return should be delayed");
@@ -1600,7 +1656,9 @@ mod tests {
         assert!(
             matches!(
                 if_true.as_slice(),
-                [EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep { .. })]
+                [EffectAst::Delayed(
+                    DelayedEffectAst::DelayedUntilNextEndStep { .. }
+                )]
             ),
             "only the conditioned return should be scheduled: {if_true:#?}"
         );

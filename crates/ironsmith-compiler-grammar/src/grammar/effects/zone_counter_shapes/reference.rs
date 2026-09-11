@@ -96,7 +96,9 @@ pub fn player_filter_for_half_reference(player: PlayerAst) -> Option<PlayerFilte
         | PlayerAst::ItsOwner
         | PlayerAst::Enchanted => None,
         PlayerAst::TriggeringSourceController => Some(PlayerFilter::ControllerOf(
-            crate::filter::ObjectRef::tagged(crate::tag::CompilerReferenceTag::TriggeringSource.bind()),
+            crate::filter::ObjectRef::tagged(
+                crate::tag::CompilerReferenceTag::TriggeringSource.bind(),
+            ),
         )),
     }
 }

@@ -329,7 +329,9 @@ impl<'a> CanonicalReferenceResolver<'a> {
                 }
             },
             EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-                if_true, if_false, ..
+                if_true,
+                if_false,
+                ..
             })
             | EffectAst::SelfReplacement {
                 if_true, if_false, ..
@@ -346,7 +348,8 @@ impl<'a> CanonicalReferenceResolver<'a> {
                     vec![true_env, false_env],
                 )
             }
-            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes }) | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
                 let branches = modes
                     .iter()
                     .map(|mode| self.resolve_sequence(&mode.effects, env.clone()))
@@ -373,7 +376,10 @@ impl<'a> CanonicalReferenceResolver<'a> {
             | EffectAst::ForEach(ForEachEffectAst::ForEachTargetPlayers { effects, .. })
             | EffectAst::ForEach(ForEachEffectAst::ForEachObject { effects, .. })
             | EffectAst::ForEach(ForEachEffectAst::ForEachTagged { effects, .. })
-            | EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy { effects, .. })
+            | EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy {
+                effects,
+                ..
+            })
             | EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDoesNot { effects, .. })
             | EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDoesNot { effects, .. })
             | EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDid { effects, .. })
@@ -387,18 +393,32 @@ impl<'a> CanonicalReferenceResolver<'a> {
                 )
             }
             EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep { effects, .. })
-            | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextCleanupStep { effects, .. })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextCleanupStep {
+                effects, ..
+            })
             | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUntapStep { effects, .. })
             | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep { effects, .. })
             | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextDrawStep { effects, .. })
             | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextMainPhase { effects, .. })
-            | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextFirstMainPhase { effects, .. })
-            | EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextFirstMainPhase {
+                effects,
+                ..
+            })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndStepOfExtraTurn {
+                effects,
+                ..
+            })
             | EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat { effects })
             | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn { effects, .. })
             | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { effects, .. })
-            | EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. })
-            | EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectLeavesBattlefield { effects, .. }) => {
+            | EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn {
+                effects,
+                ..
+            })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectLeavesBattlefield {
+                effects,
+                ..
+            }) => {
                 let branch = self.resolve_sequence(effects, env.clone());
                 self.join(ReferenceJoinKindAst::Delayed, env, vec![branch])
             }

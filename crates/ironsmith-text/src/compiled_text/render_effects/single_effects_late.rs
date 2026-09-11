@@ -202,8 +202,11 @@ pub(super) fn describe_collection_scoped_each_upkeep_return(
     }
 
     let effects = schedule.effects.flattened_default_effects();
-    let [choice_effect, move_effect] = effects else { return None; };
-    let choose = structural_unwrap_render_wrappers(choice_effect).downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let [choice_effect, move_effect] = effects else {
+        return None;
+    };
+    let choose = structural_unwrap_render_wrappers(choice_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     if choose.chooser != PlayerFilter::Active
         || choose.count.min != 1
         || choose.count.max != Some(1)
@@ -221,7 +224,8 @@ pub(super) fn describe_collection_scoped_each_upkeep_return(
         return None;
     }
 
-    let return_effect = structural_unwrap_render_wrappers(move_effect).downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let return_effect = structural_unwrap_render_wrappers(move_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     if return_effect.zone != Zone::Battlefield
         || return_effect.verb_surface != ironsmith_core::MoveToZoneVerbSurface::Return
         || return_effect.battlefield_controller != crate::effects::BattlefieldController::Owner

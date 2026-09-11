@@ -13,8 +13,7 @@ use crate::model::clauses::{ClauseActionAst, ClauseObjectAst, ClauseSubjectAst};
 use crate::model::provenance::SemanticProvenance;
 use crate::model::symbols::SymbolReference;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
 pub enum CoordinationKindAst {
     Sequence,
     Conjunction,
@@ -25,8 +24,7 @@ pub enum CoordinationKindAst {
     Mixed,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
 pub enum CoordinationOperatorAst {
     And,
     Or,
@@ -37,16 +35,14 @@ pub enum CoordinationOperatorAst {
     SentenceBoundary,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
 pub enum EffectOrderingAst {
     Ordered,
     Unordered,
     Alternative,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub enum EffectDependencyAst {
     Independent,
     DependsOnMembers(Vec<usize>),
@@ -62,8 +58,7 @@ pub enum CarryKindAst {
     Reference,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum CarriedFactAst {
     Actor,
     Subject(Option<ClauseSubjectAst>),
@@ -86,16 +81,14 @@ impl CarriedFactAst {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CoordinationCarryAst {
     pub from_member: usize,
     pub to_member: usize,
     pub fact: CarriedFactAst,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CoordinationBoundaryAst {
     pub operator: CoordinationOperatorAst,
     pub ordering: EffectOrderingAst,
@@ -105,8 +98,7 @@ pub struct CoordinationBoundaryAst {
     pub provenance: Option<SemanticProvenance>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CoordinationMemberAst {
     pub effects: Vec<EffectAst>,
     pub imports: Vec<SymbolReference>,
@@ -151,8 +143,7 @@ pub enum CoordinationError {
 
 /// A compiler-owned effect program whose clause relationships have already
 /// been resolved by grammar recognition.
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CoordinationAst {
     pub kind: CoordinationKindAst,
     pub members: Vec<CoordinationMemberAst>,

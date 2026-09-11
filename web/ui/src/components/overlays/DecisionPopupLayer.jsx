@@ -3,6 +3,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from "react-dom";
 import { useGame } from "@/context/GameContext";
 import { useHover } from "@/context/HoverContext";
+import { useChosenObjectIds } from "@/context/ObjectSelectionContext";
+import SelectionCheckBadge from "@/components/cards/SelectionCheckBadge";
+import { isObjectChosen, requestObjectSelection } from "@/lib/object-selection";
 import { Button } from "@/components/ui/button";
 import DecisionRouter from "@/components/decisions/DecisionRouter";
 import DecisionSummary from "@/components/decisions/DecisionSummary";
@@ -1078,6 +1081,7 @@ function ViewedCardsStrip({
   wrap = false,
 }) {
   const { state, playerAccentOverrides: contextAccentOverrides } = useGame();
+  const chosenObjectIds = useChosenObjectIds();
   const effectiveAccentOverrides = accentOverrides || contextAccentOverrides;
   const { attachScrollableRef, hoverSuppressed } = useHoverSuppressedWhileScrolling({
     onScrollStart: onCardHoverEnd,
@@ -1155,9 +1159,7 @@ function ViewedCardsStrip({
               title={selectableCandidate ? `Select ${card.name}` : undefined}
               onClick={() => {
                 if (!selectableCandidate) return;
-                window.dispatchEvent(new CustomEvent("ironsmith:select-object-choice", {
-                  detail: { objectId: selectableCandidate.id },
-                }));
+                requestObjectSelection(selectableCandidate.id, "add");
               }}
               onMouseEnter={() => {
                 if (hoverSuppressed) return;
@@ -1171,6 +1173,12 @@ function ViewedCardsStrip({
                   highlightText={normalizeDecisionText(card.name)}
                 />
               </span>
+              {selectableCandidate && isObjectChosen(chosenObjectIds, selectableCandidate.id) && (
+                <SelectionCheckBadge
+                  objectId={selectableCandidate.id}
+                  className="card-selection-check--inline"
+                />
+              )}
             </button>
           );
         }) : (

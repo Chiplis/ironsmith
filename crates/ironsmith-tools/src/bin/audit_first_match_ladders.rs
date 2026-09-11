@@ -22,7 +22,16 @@ use std::process::Command;
 mod tooling_paths;
 
 const RECOGNIZER_PREFIXES: &[&str] = &[
-    "try_parse", "parse", "recognize", "probe", "classify", "match", "bind", "split", "read", "open",
+    "try_parse",
+    "parse",
+    "recognize",
+    "probe",
+    "classify",
+    "match",
+    "bind",
+    "split",
+    "read",
+    "open",
 ];
 
 struct Ladder {
@@ -69,7 +78,11 @@ fn main() {
                 .then_with(|| left.line.cmp(&right.line))
         });
     } else {
-        ladders.sort_by(|left, right| left.path.cmp(&right.path).then_with(|| left.line.cmp(&right.line)));
+        ladders.sort_by(|left, right| {
+            left.path
+                .cmp(&right.path)
+                .then_with(|| left.line.cmp(&right.line))
+        });
     }
     let rungs: usize = ladders.iter().map(|ladder| ladder.rungs).sum();
     println!("parser modules covered: {}", modules.len());
@@ -170,9 +183,7 @@ fn top_level_ifs(body: &str) -> Vec<IfStatement> {
                 };
                 let condition = &body[i..block_start];
                 let block = &body[block_start..=block_end];
-                let has_else = body[block_end + 1..]
-                    .trim_start()
-                    .starts_with("else");
+                let has_else = body[block_end + 1..].trim_start().starts_with("else");
                 let is_decline = !has_else && is_decline_block(block);
                 statements.push(IfStatement {
                     start: i,
@@ -240,7 +251,9 @@ fn next_function(text: &str, from: usize) -> Option<(String, usize)> {
         }
         let name_start = at;
         let mut name_end = name_start;
-        while name_end < bytes.len() && (bytes[name_end].is_ascii_alphanumeric() || bytes[name_end] == b'_') {
+        while name_end < bytes.len()
+            && (bytes[name_end].is_ascii_alphanumeric() || bytes[name_end] == b'_')
+        {
             name_end += 1;
         }
         if name_end == name_start {
@@ -284,12 +297,17 @@ fn calls_recognizer(condition: &str) -> bool {
         }
         let word = &condition[i..end];
         let is_recognizer = RECOGNIZER_PREFIXES.iter().any(|prefix| {
-            word == *prefix || word.strip_prefix(prefix).is_some_and(|rest| rest.starts_with('_'))
+            word == *prefix
+                || word
+                    .strip_prefix(prefix)
+                    .is_some_and(|rest| rest.starts_with('_'))
         });
         if is_recognizer {
             let mut after = end;
             // a turbofish may sit between the name and its call
-            if condition[after..].starts_with("::<") && let Some(close) = condition[after..].find('>') {
+            if condition[after..].starts_with("::<")
+                && let Some(close) = condition[after..].find('>')
+            {
                 after += close + 1;
             }
             if condition[after..].trim_start().starts_with('(') {
@@ -304,7 +322,11 @@ fn calls_recognizer(condition: &str) -> bool {
 /// Whether a block only refuses: its single statement is `return Ok(None);`,
 /// `return None;` or `return false;`.
 fn is_decline_block(block: &str) -> bool {
-    let inner = block.trim().trim_start_matches('{').trim_end_matches('}').trim();
+    let inner = block
+        .trim()
+        .trim_start_matches('{')
+        .trim_end_matches('}')
+        .trim();
     matches!(inner, "return Ok(None);" | "return None;" | "return false;")
 }
 
@@ -314,8 +336,10 @@ fn contains_word(text: &str, word: &str) -> bool {
     while let Some(offset) = text[at..].find(word) {
         let start = at + offset;
         let end = start + word.len();
-        let before_ok = start == 0 || !(bytes[start - 1].is_ascii_alphanumeric() || bytes[start - 1] == b'_');
-        let after_ok = end >= bytes.len() || !(bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_');
+        let before_ok =
+            start == 0 || !(bytes[start - 1].is_ascii_alphanumeric() || bytes[start - 1] == b'_');
+        let after_ok =
+            end >= bytes.len() || !(bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_');
         if before_ok && after_ok {
             return true;
         }
@@ -325,7 +349,11 @@ fn contains_word(text: &str, word: &str) -> bool {
 }
 
 fn line_of(text: &str, index: usize) -> usize {
-    text.as_bytes()[..index].iter().filter(|byte| **byte == b'\n').count() + 1
+    text.as_bytes()[..index]
+        .iter()
+        .filter(|byte| **byte == b'\n')
+        .count()
+        + 1
 }
 
 /// Replace comments and string/char literal contents with spaces, keeping
@@ -368,7 +396,13 @@ fn blank_comments_and_literals(source: &str) -> String {
                     }
                     if bytes[i] == b'"' {
                         let closes = match raw_hashes {
-                            Some(hashes) => bytes[i + 1..].iter().take_while(|byte| **byte == b'#').count() >= hashes,
+                            Some(hashes) => {
+                                bytes[i + 1..]
+                                    .iter()
+                                    .take_while(|byte| **byte == b'#')
+                                    .count()
+                                    >= hashes
+                            }
                             None => true,
                         };
                         if closes {
@@ -407,7 +441,9 @@ fn raw_string_hashes(bytes: &[u8], quote: usize) -> Option<usize> {
         hashes += 1;
         i -= 1;
     }
-    (i > 0 && bytes[i - 1] == b'r' && (i == 1 || !(bytes[i - 2].is_ascii_alphanumeric() || bytes[i - 2] == b'_')))
+    (i > 0
+        && bytes[i - 1] == b'r'
+        && (i == 1 || !(bytes[i - 2].is_ascii_alphanumeric() || bytes[i - 2] == b'_')))
         .then_some(hashes)
 }
 
@@ -451,7 +487,14 @@ fn blank_test_modules(text: &str) -> String {
 fn tracked_production_modules(repo_root: &Path) -> Result<Vec<PathBuf>, String> {
     let output = Command::new("git")
         .current_dir(repo_root)
-        .args(["ls-files", "--cached", "--others", "--exclude-standard", "--", "*.rs"])
+        .args([
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "--",
+            "*.rs",
+        ])
         .output()
         .map_err(|error| format!("failed to run git ls-files: {error}"))?;
     if !output.status.success() {

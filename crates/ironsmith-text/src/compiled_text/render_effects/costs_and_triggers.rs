@@ -886,7 +886,10 @@ pub(super) fn describe_simple_hand_card_filter(filter: &ObjectFilter) -> Option<
     if let Some(name) = filter.name.as_deref() {
         return Some(format!(
             "a card named {}",
-            filter.name_surface().map(str::to_owned).unwrap_or_else(|| normalize_card_name_for_surface(name))
+            filter
+                .name_surface()
+                .map(str::to_owned)
+                .unwrap_or_else(|| normalize_card_name_for_surface(name))
         ));
     }
     if filter.card_types.len() == 1 && filter.subtypes.is_empty() && filter.colors.is_none() {
@@ -4178,24 +4181,37 @@ pub(crate) fn describe_for_players_choose_types_then_sacrifice_rest(
         constraint.tag != keep_tag
             || constraint.relation != crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
     });
-    if base.controller != Some(PlayerFilter::IteratedPlayer) { return None; }
+    if base.controller != Some(PlayerFilter::IteratedPlayer) {
+        return None;
+    }
     let mut chosen_types = Vec::new();
     let mut chosen_card_types = Vec::new();
     for choose in chooses {
         if choose_primary_zone(choose) != Some(Zone::Battlefield)
-            || choose.is_search || choose.chooser != PlayerFilter::IteratedPlayer
-            || choose.tag != keep_tag || !choose.count.is_single()
-            || choose.count_value.is_some() || choose.aggregate_constraint.is_some()
+            || choose.is_search
+            || choose.chooser != PlayerFilter::IteratedPlayer
+            || choose.tag != keep_tag
+            || !choose.count.is_single()
+            || choose.count_value.is_some()
+            || choose.aggregate_constraint.is_some()
             || choose.filter.card_types.len() != 1
-        { return None; }
+        {
+            return None;
+        }
         let card_type = choose.filter.card_types[0];
         let mut expected = base.clone();
         expected.card_types = vec![card_type];
-        if choose.filter != expected { return None; }
+        if choose.filter != expected {
+            return None;
+        }
         chosen_card_types.push(card_type);
-        chosen_types.push(with_indefinite_article(describe_card_type_word_local(card_type)));
+        chosen_types.push(with_indefinite_article(describe_card_type_word_local(
+            card_type,
+        )));
     }
-    if chosen_types.len() < 2 { return None; }
+    if chosen_types.len() < 2 {
+        return None;
+    }
     let list = join_with_and(&chosen_types);
     let (subject, choose_verb, sacrifice_verb, controls) = match for_players.filter {
         PlayerFilter::Any => ("Each player", "chooses", "sacrifices", "they control"),
@@ -4206,15 +4222,37 @@ pub(crate) fn describe_for_players_choose_types_then_sacrifice_rest(
     base.controller = None;
     base.zone = None;
     let mut permanent_base = base.clone();
-    let permanent_types = [CardType::Artifact, CardType::Battle, CardType::Creature, CardType::Enchantment, CardType::Land, CardType::Planeswalker];
-    if base.card_types.len() == permanent_types.len() && permanent_types.iter().all(|kind| base.card_types.contains(kind)) {
+    let permanent_types = [
+        CardType::Artifact,
+        CardType::Battle,
+        CardType::Creature,
+        CardType::Enchantment,
+        CardType::Land,
+        CardType::Planeswalker,
+    ];
+    if base.card_types.len() == permanent_types.len()
+        && permanent_types
+            .iter()
+            .all(|kind| base.card_types.contains(kind))
+    {
         permanent_base.card_types.clear();
     }
-    if permanent_base == ObjectFilter::default() && chosen_card_types.len() == 6
-        && [CardType::Artifact, CardType::Battle, CardType::Creature, CardType::Enchantment, CardType::Land, CardType::Planeswalker]
-            .iter().all(|kind| chosen_card_types.contains(kind))
+    if permanent_base == ObjectFilter::default()
+        && chosen_card_types.len() == 6
+        && [
+            CardType::Artifact,
+            CardType::Battle,
+            CardType::Creature,
+            CardType::Enchantment,
+            CardType::Land,
+            CardType::Planeswalker,
+        ]
+        .iter()
+        .all(|kind| chosen_card_types.contains(kind))
     {
-        return Some(format!("{subject} {choose_verb} a permanent {controls} of each permanent type and {sacrifice_verb} the rest"));
+        return Some(format!(
+            "{subject} {choose_verb} a permanent {controls} of each permanent type and {sacrifice_verb} the rest"
+        ));
     }
     let eligible = describe_count_filter_value_subject(&base);
     Some(format!(
@@ -6230,13 +6268,22 @@ pub(crate) fn describe_additional_combat_then_chosen_attack_or_block_restriction
         return None;
     }
     let restriction = describe_chosen_added_combat_restriction(cant)?;
-    Some(format!("After this {}phase, there is an additional combat phase. {restriction}",
-        if additional_phases.after_main_phase { "main " } else { "" }))
+    Some(format!(
+        "After this {}phase, there is an additional combat phase. {restriction}",
+        if additional_phases.after_main_phase {
+            "main "
+        } else {
+            ""
+        }
+    ))
 }
 
-pub(crate) fn describe_chosen_added_combat_restriction(cant: &crate::effects::CantEffect) -> Option<String> {
+pub(crate) fn describe_chosen_added_combat_restriction(
+    cant: &crate::effects::CantEffect,
+) -> Option<String> {
     if cant.start != crate::effect::RestrictionStart::LastAddedCombatPhase
-        || cant.duration != crate::effect::Until::EndOfCombat {
+        || cant.duration != crate::effect::Until::EndOfCombat
+    {
         return None;
     }
 
@@ -7014,23 +7061,43 @@ mod choice_slot_regression_tests {
     #[test]
     fn one_union_choice_renders_the_exact_complement() {
         let text = "Each player chooses a creature or planeswalker they control, then sacrifices the rest. Players can't cast creature or planeswalker spells until the end of your next turn.";
-        let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Choice Probe")
-            .card_types(vec![CardType::Sorcery]).parse_text(text).unwrap();
+        let definition =
+            crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Choice Probe")
+                .card_types(vec![CardType::Sorcery])
+                .parse_text(text)
+                .unwrap();
         let program = definition.spell_effect.as_ref().unwrap();
-        let players = structural_unwrap_render_wrappers(&program.segments[0].default_effects[0]).downcast_ref::<crate::effects::ForPlayersEffect>().unwrap();
-        assert_eq!(describe_for_players_choose_types_then_sacrifice_rest(players).as_deref(),
-            Some("Each player chooses a creature or planeswalker they control, then sacrifices the rest"), "{players:#?}");
+        let players = structural_unwrap_render_wrappers(&program.segments[0].default_effects[0])
+            .downcast_ref::<crate::effects::ForPlayersEffect>()
+            .unwrap();
+        assert_eq!(
+            describe_for_players_choose_types_then_sacrifice_rest(players).as_deref(),
+            Some(
+                "Each player chooses a creature or planeswalker they control, then sacrifices the rest"
+            ),
+            "{players:#?}"
+        );
         let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
         assert!(rendered.contains("then sacrifices the rest"), "{rendered}");
     }
     #[test]
     fn independent_type_slots_keep_the_full_eligible_set() {
         let text = "Each player chooses an artifact and an enchantment from among nonland permanents they control, then sacrifices the rest.";
-        let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Choice Probe")
-            .card_types(vec![CardType::Sorcery]).parse_text(text).unwrap();
+        let definition =
+            crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Choice Probe")
+                .card_types(vec![CardType::Sorcery])
+                .parse_text(text)
+                .unwrap();
         let program = definition.spell_effect.as_ref().unwrap();
-        let players = structural_unwrap_render_wrappers(&program.segments[0].default_effects[0]).downcast_ref::<crate::effects::ForPlayersEffect>().unwrap_or_else(|| panic!("{program:#?}"));
-        assert_eq!(describe_for_players_choose_types_then_sacrifice_rest(players).as_deref(),
-            Some("Each player chooses an artifact and an enchantment from among nonland permanents they control, then sacrifices the rest"), "{players:#?}");
+        let players = structural_unwrap_render_wrappers(&program.segments[0].default_effects[0])
+            .downcast_ref::<crate::effects::ForPlayersEffect>()
+            .unwrap_or_else(|| panic!("{program:#?}"));
+        assert_eq!(
+            describe_for_players_choose_types_then_sacrifice_rest(players).as_deref(),
+            Some(
+                "Each player chooses an artifact and an enchantment from among nonland permanents they control, then sacrifices the rest"
+            ),
+            "{players:#?}"
+        );
     }
 }

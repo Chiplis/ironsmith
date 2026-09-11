@@ -299,10 +299,14 @@ pub fn parse_turn_target_face_up_shape(
             .void()
     })?;
     let target_tokens = trim_lexed_commas(target_tokens);
-    if super::super::super::activation_restrictions::parse_target_indicator_tokens(target_tokens).is_none()
-        && primitives::probe_all(target_tokens, primitives::any_phrase(&[
-            &["that", "creature"], &["that", "permanent"],
-         ]), "face-up object reference").is_none()
+    if super::super::super::activation_restrictions::parse_target_indicator_tokens(target_tokens)
+        .is_none()
+        && primitives::probe_all(
+            target_tokens,
+            primitives::any_phrase(&[&["that", "creature"], &["that", "permanent"]]),
+            "face-up object reference",
+        )
+        .is_none()
     {
         return None;
     }

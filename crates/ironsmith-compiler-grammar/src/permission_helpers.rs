@@ -1,5 +1,3 @@
-use crate::cards::builders::ForEachEffectAst;
-use crate::cards::builders::GrantActionAst;
 use super::grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed;
 use super::grammar::permission_facts::{
     graveyard_source as permission_graveyard_facts,
@@ -11,12 +9,17 @@ use super::lexer::{OwnedLexToken, TokenKind, token_word_refs, trim_lexed_commas}
 use super::object_filters::merge_spell_filters;
 use super::token_primitives::{TurnDurationPhrase, parse_turn_duration_suffix};
 use super::util::{parse_target_phrase, strip_leading_token_words_any, trim_commas};
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::GrantActionAst;
 use crate::cards::builders::GrantedAbilityAst;
 use crate::effect::{Until, Value, ValueComparisonOperator};
 use crate::grammar::shared_util::value_semantics::{
     parse_value_prefix_lexed, starts_explicit_ordered_comparison,
 };
-use crate::host::{CardTextError, EffectAst, PlayerAst, PredicateAst, TagKey, TargetAst, ConditionalEffectAst, PermissionEffectAst};
+use crate::host::{
+    CardTextError, ConditionalEffectAst, EffectAst, PermissionEffectAst, PlayerAst, PredicateAst,
+    TagKey, TargetAst,
+};
 use crate::model::CompilerStaticAbilityCore as StaticAbility;
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::CardType;
@@ -1079,9 +1082,11 @@ pub fn parse_permission_clause_spec_lexed(
                     tag: crate::tag::CompilerReferenceTag::SourceExiled.bind().into(),
                     as_copy: false,
                     max_plays: None,
-                    surface: Some(ironsmith_core::GrantPlayTaggedObjectSurface::CardsExiledWithSource {
-                        source: reference.surface,
-                    }),
+                    surface: Some(
+                        ironsmith_core::GrantPlayTaggedObjectSurface::CardsExiledWithSource {
+                            source: reference.surface,
+                        },
+                    ),
                 },
                 tail,
                 None,
@@ -1150,7 +1155,12 @@ pub fn parse_permission_clause_spec_lexed(
                 clause_refs.join(" ")
             )));
         }
+        // A filtered "<spells> from among them" pool keeps its wording in the
+        // matching filter rather than in a modelled object surface, so the
+        // compiled text can still be rebuilt without one.
+        let filtered_pool_without_object_surface = filter.is_some() && target_surface.is_none();
         if without_paying_mana_cost
+            && !filtered_pool_without_object_surface
             && matches!(
                 lifetime,
                 PermissionLifetime::ThisTurn | PermissionLifetime::UntilEndOfTurn
@@ -1600,13 +1610,17 @@ pub fn parse_additional_land_plays_clause_lexed(
     )))
 }
 
-fn next_turn_permission_grant_duration(tokens: &[OwnedLexToken]) -> Result<crate::grant::GrantDuration, CardTextError> {
+fn next_turn_permission_grant_duration(
+    tokens: &[OwnedLexToken],
+) -> Result<crate::grant::GrantDuration, CardTextError> {
     // The shared permission lifetime historically groups both next-turn
     // boundaries. Retain the actual grammatical duration when lowering a grant.
-    Ok(match crate::search_library_support::parse_restriction_duration_lexed(tokens)? {
-        Some((Until::YourNextTurn, _)) => crate::grant::GrantDuration::UntilYourNextTurn,
-        _ => crate::grant::GrantDuration::UntilYourNextTurnEnd,
-    })
+    Ok(
+        match crate::search_library_support::parse_restriction_duration_lexed(tokens)? {
+            Some((Until::YourNextTurn, _)) => crate::grant::GrantDuration::UntilYourNextTurn,
+            _ => crate::grant::GrantDuration::UntilYourNextTurnEnd,
+        },
+    )
 }
 
 pub fn parse_cast_spells_as_though_they_had_flash_clause(
@@ -2317,16 +2331,18 @@ mod source_exile_duration_tests {
         assert!(matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
-                    allow_land: true,
-                    surface: Some(ironsmith_core::GrantPlayTaggedSurface {
-                        object: Some(
-                            ironsmith_core::GrantPlayTaggedObjectSurface::ThatCardFromExile
-                        ),
+                action: SubjectVerbActionAst::Grants(
+                    GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+                        allow_land: true,
+                        surface: Some(ironsmith_core::GrantPlayTaggedSurface {
+                            object: Some(
+                                ironsmith_core::GrantPlayTaggedObjectSurface::ThatCardFromExile
+                            ),
+                            ..
+                        }),
                         ..
-                    }),
-                    ..
-                }),
+                    }
+                ),
                 ..
             })
         ));
@@ -2339,7 +2355,9 @@ mod source_exile_duration_tests {
         let effect = parse_cast_or_play_tagged_clause(&tokens)
             .expect("permission parsing should not error")
             .expect("permission should parse");
-        let EffectAst::Permissions(PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost { filter, zone, .. }) = effect
+        let EffectAst::Permissions(
+            PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost { filter, zone, .. },
+        ) = effect
         else {
             panic!("expected one matching-spell cast permission: {effect:#?}");
         };
@@ -2349,7 +2367,10 @@ mod source_exile_duration_tests {
         assert_eq!(filter.tagged_constraints.len(), 1, "{filter:#?}");
         assert!(filter.union_surface.equal_or_lesser_mana_value());
         let constraint = &filter.tagged_constraints[0];
-        assert_eq!(constraint.tag, crate::tag::CompilerReferenceTag::It.bind().into());
+        assert_eq!(
+            constraint.tag,
+            crate::tag::CompilerReferenceTag::It.bind().into()
+        );
         assert_eq!(
             constraint.relation,
             crate::filter::TaggedOpbjectRelation::ManaValueLteTagged

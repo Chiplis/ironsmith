@@ -34,7 +34,9 @@ fn triggering_object_first_tap_predicate_is_per_object_history() -> Result<(), C
         let tokens = lex_line(text, 0)?;
         assert_eq!(
             parse_predicate(&predicate_tokens_after_if(&tokens))?,
-            PredicateAst::Triggering(TriggeringPredicateAst::TriggeringObjectBecameTappedFirstTimeThisTurn),
+            PredicateAst::Triggering(
+                TriggeringPredicateAst::TriggeringObjectBecameTappedFirstTimeThisTurn
+            ),
             "{text}"
         );
     }
@@ -45,7 +47,9 @@ fn triggering_object_first_tap_predicate_is_per_object_history() -> Result<(), C
     )?;
     assert!(!matches!(
         parse_predicate(&predicate_tokens_after_if(&near_miss)),
-        Ok(PredicateAst::Triggering(TriggeringPredicateAst::TriggeringObjectBecameTappedFirstTimeThisTurn))
+        Ok(PredicateAst::Triggering(
+            TriggeringPredicateAst::TriggeringObjectBecameTappedFirstTimeThisTurn
+        ))
     ));
     Ok(())
 }
@@ -59,7 +63,9 @@ fn triggering_object_first_counter_predicate_is_per_object_history() -> Result<(
         let tokens = lex_line(text, 0)?;
         assert_eq!(
             parse_predicate(&predicate_tokens_after_if(&tokens))?,
-            PredicateAst::Triggering(TriggeringPredicateAst::TriggeringObjectHadCountersPutFirstTimeThisTurn),
+            PredicateAst::Triggering(
+                TriggeringPredicateAst::TriggeringObjectHadCountersPutFirstTimeThisTurn
+            ),
             "{text}"
         );
     }
@@ -70,7 +76,9 @@ fn triggering_object_first_counter_predicate_is_per_object_history() -> Result<(
     )?;
     assert!(!matches!(
         parse_predicate(&predicate_tokens_after_if(&near_miss)),
-        Ok(PredicateAst::Triggering(TriggeringPredicateAst::TriggeringObjectHadCountersPutFirstTimeThisTurn))
+        Ok(PredicateAst::Triggering(
+            TriggeringPredicateAst::TriggeringObjectHadCountersPutFirstTimeThisTurn
+        ))
     ));
     Ok(())
 }
@@ -313,18 +321,18 @@ fn parse_predicate_source_identity_uses_capture_parser() -> Result<(), CardTextE
     let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
     assert_eq!(
         parsed,
-        PredicateAst::Not(Box::new(PredicateAst::Source(SourcePredicateAst::SourceMatches(
-            ObjectFilter::creature()
-        ))))
+        PredicateAst::Not(Box::new(PredicateAst::Source(
+            SourcePredicateAst::SourceMatches(ObjectFilter::creature())
+        )))
     );
 
     let tokens = lex_line("If this source is not an artifact", 0)?;
     let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
     assert_eq!(
         parsed,
-        PredicateAst::Not(Box::new(PredicateAst::Source(SourcePredicateAst::SourceMatches(
-            ObjectFilter::artifact()
-        ))))
+        PredicateAst::Not(Box::new(PredicateAst::Source(
+            SourcePredicateAst::SourceMatches(ObjectFilter::artifact())
+        )))
     );
 
     let tokens = lex_line("If this permanent is red", 0)?;
@@ -466,7 +474,10 @@ fn parse_predicate_opponent_controls_uses_capture_parser() -> Result<(), CardTex
     let tokens = lex_line("If an opponent controls more creatures than you", 0)?;
     let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
     assert!(
-        matches!(parsed, PredicateAst::Player(PlayerPredicateAst::PlayerControlsMoreThanYou { .. })),
+        matches!(
+            parsed,
+            PredicateAst::Player(PlayerPredicateAst::PlayerControlsMoreThanYou { .. })
+        ),
         "{parsed:?}"
     );
     Ok(())
@@ -645,23 +656,31 @@ fn parse_predicate_world_state_timing_uses_shared_capture_parser() -> Result<(),
         (
             "If you or player you're attacking has initiative",
             PredicateAst::Or(
-                Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerHasInitiative {
-                    player: PlayerAst::You,
-                })),
-                Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerHasInitiative {
-                    player: PlayerAst::Defending,
-                })),
+                Box::new(PredicateAst::Player(
+                    PlayerPredicateAst::PlayerHasInitiative {
+                        player: PlayerAst::You,
+                    },
+                )),
+                Box::new(PredicateAst::Player(
+                    PlayerPredicateAst::PlayerHasInitiative {
+                        player: PlayerAst::Defending,
+                    },
+                )),
             ),
         ),
         (
             "If you or a player you're attacking has the initiative",
             PredicateAst::Or(
-                Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerHasInitiative {
-                    player: PlayerAst::You,
-                })),
-                Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerHasInitiative {
-                    player: PlayerAst::Defending,
-                })),
+                Box::new(PredicateAst::Player(
+                    PlayerPredicateAst::PlayerHasInitiative {
+                        player: PlayerAst::You,
+                    },
+                )),
+                Box::new(PredicateAst::Player(
+                    PlayerPredicateAst::PlayerHasInitiative {
+                        player: PlayerAst::Defending,
+                    },
+                )),
             ),
         ),
         ("If it's night", PredicateAst::ItIsNight),
@@ -868,7 +887,8 @@ fn control_or_returned_to_hand_keeps_independent_tagged_result() -> Result<(), C
     let PredicateAst::Or(left, right) = parsed else {
         panic!("expected independent control/result alternatives: {parsed:#?}");
     };
-    let PredicateAst::Player(PlayerPredicateAst::PlayerControls { player, filter }) = left.as_ref() else {
+    let PredicateAst::Player(PlayerPredicateAst::PlayerControls { player, filter }) = left.as_ref()
+    else {
         panic!("left side should remain a control condition: {left:#?}");
     };
     assert_eq!(*player, PlayerAst::You);
@@ -917,9 +937,11 @@ fn parse_predicate_repeated_or_if_uses_capture_parser() -> Result<(), CardTextEr
     assert_eq!(
         parsed,
         PredicateAst::Or(
-            Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerHasInitiative {
-                player: PlayerAst::You,
-            })),
+            Box::new(PredicateAst::Player(
+                PlayerPredicateAst::PlayerHasInitiative {
+                    player: PlayerAst::You,
+                }
+            )),
             Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerIsMonarch {
                 player: PlayerAst::You,
             })),
@@ -998,11 +1020,15 @@ fn parse_predicate_source_counter_or_cards_in_hand_uses_capture_parser() -> Resu
     assert_eq!(
         parsed,
         PredicateAst::Or(
-            Box::new(PredicateAst::Source(SourcePredicateAst::SourceHasCountersAtLeast(20))),
-            Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerCardsInHandOrMore {
-                player: PlayerAst::You,
-                count: 20,
-            })),
+            Box::new(PredicateAst::Source(
+                SourcePredicateAst::SourceHasCountersAtLeast(20)
+            )),
+            Box::new(PredicateAst::Player(
+                PlayerPredicateAst::PlayerCardsInHandOrMore {
+                    player: PlayerAst::You,
+                    count: 20,
+                }
+            )),
         )
     );
     Ok(())
@@ -1189,12 +1215,12 @@ fn parse_predicate_source_attack_control_gate_uses_capture_parser() -> Result<()
         assert_eq!(
             parsed,
             PredicateAst::And(
-                Box::new(PredicateAst::Not(Box::new(
-                    PredicateAst::Source(SourcePredicateAst::SourceAttackedThisTurn),
-                ))),
-                Box::new(PredicateAst::Not(Box::new(
-                    PredicateAst::Source(SourcePredicateAst::SourceCameUnderYourControlThisTurn),
-                ))),
+                Box::new(PredicateAst::Not(Box::new(PredicateAst::Source(
+                    SourcePredicateAst::SourceAttackedThisTurn
+                ),))),
+                Box::new(PredicateAst::Not(Box::new(PredicateAst::Source(
+                    SourcePredicateAst::SourceCameUnderYourControlThisTurn
+                ),))),
             ),
             "{text}"
         );
@@ -1205,10 +1231,15 @@ fn parse_predicate_source_attack_control_gate_uses_capture_parser() -> Result<()
 #[test]
 fn parse_predicate_source_states_use_shared_capture_parser() -> Result<(), CardTextError> {
     for (text, expected) in [
-        ("If this tapped", PredicateAst::Source(SourcePredicateAst::SourceIsTapped)),
+        (
+            "If this tapped",
+            PredicateAst::Source(SourcePredicateAst::SourceIsTapped),
+        ),
         (
             "If this creature is untapped",
-            PredicateAst::Not(Box::new(PredicateAst::Source(SourcePredicateAst::SourceIsTapped))),
+            PredicateAst::Not(Box::new(PredicateAst::Source(
+                SourcePredicateAst::SourceIsTapped,
+            ))),
         ),
         (
             "If this creature is enchanted",
@@ -1216,7 +1247,9 @@ fn parse_predicate_source_states_use_shared_capture_parser() -> Result<(), CardT
         ),
         (
             "If this creature isn't equipped",
-            PredicateAst::Not(Box::new(PredicateAst::Source(SourcePredicateAst::SourceIsEquipped))),
+            PredicateAst::Not(Box::new(PredicateAst::Source(
+                SourcePredicateAst::SourceIsEquipped,
+            ))),
         ),
         (
             "If this permanent is saddled",
@@ -1224,7 +1257,9 @@ fn parse_predicate_source_states_use_shared_capture_parser() -> Result<(), CardT
         ),
         (
             "If it isn't saddled",
-            PredicateAst::Not(Box::new(PredicateAst::Source(SourcePredicateAst::SourceIsSaddled))),
+            PredicateAst::Not(Box::new(PredicateAst::Source(
+                SourcePredicateAst::SourceIsSaddled,
+            ))),
         ),
     ] {
         let tokens = lex_line(text, 0)?;
@@ -1322,10 +1357,12 @@ fn parse_predicate_player_achievements_use_shared_capture_parser() -> Result<(),
         ),
         (
             "If you haven't completed Lost Mine of Phandelver",
-            PredicateAst::Not(Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerCompletedDungeon {
-                player: PlayerAst::You,
-                dungeon_name: Some("Lost Mine of Phandelver".to_string()),
-            }))),
+            PredicateAst::Not(Box::new(PredicateAst::Player(
+                PlayerPredicateAst::PlayerCompletedDungeon {
+                    player: PlayerAst::You,
+                    dungeon_name: Some("Lost Mine of Phandelver".to_string()),
+                },
+            ))),
         ),
         ("If you have a full party", PredicateAst::YouHaveFullParty),
     ] {
@@ -1433,12 +1470,14 @@ fn parse_predicate_supports_if_you_dont_put_card_into_your_hand() -> Result<(), 
 
     assert_eq!(
         parsed,
-        PredicateAst::Not(Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches {
-            player: PlayerAst::You,
-            tag: crate::tag::CompilerReferenceTag::It.bind(),
-            filter: ObjectFilter::default().in_zone(Zone::Hand),
-            mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
-        })))
+        PredicateAst::Not(Box::new(PredicateAst::Player(
+            PlayerPredicateAst::PlayerTaggedObjectMatches {
+                player: PlayerAst::You,
+                tag: crate::tag::CompilerReferenceTag::It.bind(),
+                filter: ObjectFilter::default().in_zone(Zone::Hand),
+                mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
+            }
+        )))
     );
     Ok(())
 }
@@ -1461,12 +1500,14 @@ fn parse_predicate_negative_put_tagged_object_uses_shared_capture_parser()
 
         assert_eq!(
             parsed,
-            PredicateAst::Not(Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches {
-                player: PlayerAst::You,
-                tag: crate::tag::CompilerReferenceTag::It.bind(),
-                filter: ObjectFilter::default().in_zone(zone),
-                mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
-            }))),
+            PredicateAst::Not(Box::new(PredicateAst::Player(
+                PlayerPredicateAst::PlayerTaggedObjectMatches {
+                    player: PlayerAst::You,
+                    tag: crate::tag::CompilerReferenceTag::It.bind(),
+                    filter: ObjectFilter::default().in_zone(zone),
+                    mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
+                }
+            ))),
             "{text}"
         );
     }
@@ -1483,17 +1524,21 @@ fn parse_predicate_combat_damage_this_turn_uses_shared_capture_parser() -> Resul
         ),
         (
             "if a player was dealt combat damage by a Zombie this turn",
-            PredicateAst::Player(PlayerPredicateAst::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn {
-                player: PlayerAst::Any,
-                subtype: parse_subtype_word("zombie").expect("known subtype"),
-            }),
+            PredicateAst::Player(
+                PlayerPredicateAst::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn {
+                    player: PlayerAst::Any,
+                    subtype: parse_subtype_word("zombie").expect("known subtype"),
+                },
+            ),
         ),
         (
             "if an opponent was dealt combat damage by a Dragon this turn",
-            PredicateAst::Player(PlayerPredicateAst::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn {
-                player: PlayerAst::Opponent,
-                subtype: parse_subtype_word("dragon").expect("known subtype"),
-            }),
+            PredicateAst::Player(
+                PlayerPredicateAst::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn {
+                    player: PlayerAst::Opponent,
+                    subtype: parse_subtype_word("dragon").expect("known subtype"),
+                },
+            ),
         ),
     ] {
         let tokens = lex_line(text, 0)?;
@@ -1515,12 +1560,14 @@ fn parse_predicate_supports_if_you_dont_put_it_into_your_hand() -> Result<(), Ca
 
     assert_eq!(
         parsed,
-        PredicateAst::Not(Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches {
-            player: PlayerAst::You,
-            tag: crate::tag::CompilerReferenceTag::It.bind(),
-            filter: ObjectFilter::default().in_zone(Zone::Hand),
-            mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
-        })))
+        PredicateAst::Not(Box::new(PredicateAst::Player(
+            PlayerPredicateAst::PlayerTaggedObjectMatches {
+                player: PlayerAst::You,
+                tag: crate::tag::CompilerReferenceTag::It.bind(),
+                filter: ObjectFilter::default().in_zone(Zone::Hand),
+                mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
+            }
+        )))
     );
     Ok(())
 }
@@ -1693,7 +1740,8 @@ fn parse_predicate_attacking_own_control_meld_uses_capture_parser() -> Result<()
             panic!("expected attacking own-control conjoined predicate for {text}");
         };
         for side in [left, right] {
-            let PredicateAst::Player(PlayerPredicateAst::PlayerControls { player, filter }) = *side else {
+            let PredicateAst::Player(PlayerPredicateAst::PlayerControls { player, filter }) = *side
+            else {
                 panic!("expected controls predicate for {text}");
             };
             assert_eq!(player, PlayerAst::You, "{text}");
@@ -1785,9 +1833,11 @@ fn parse_predicate_while_conjoined_uses_capture_parser() -> Result<(), CardTextE
     assert_eq!(
         parsed,
         PredicateAst::And(
-            Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerWouldDrawCard {
-                player: PlayerAst::You,
-            })),
+            Box::new(PredicateAst::Player(
+                PlayerPredicateAst::PlayerWouldDrawCard {
+                    player: PlayerAst::You,
+                }
+            )),
             Box::new(PredicateAst::YouHaveNoCardsInHand),
         )
     );
@@ -1838,9 +1888,11 @@ fn parse_predicate_cards_in_hand_relations_use_shared_capture_parser() -> Result
         ),
         (
             "If a player has more cards in hand than each other player",
-            PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreCardsInHandThanEachOtherPlayer {
-                player: PlayerAst::Any,
-            }),
+            PredicateAst::Player(
+                PlayerPredicateAst::PlayerHasMoreCardsInHandThanEachOtherPlayer {
+                    player: PlayerAst::Any,
+                },
+            ),
         ),
         (
             "If that player has more cards in their hand than you do",
@@ -1979,11 +2031,11 @@ fn parse_predicate_tagged_state_uses_shared_capture_parser() -> Result<(), CardT
     for (text, expected) in [
         (
             "If those cards remain exiled",
-            PredicateAst::TaggedMatches(
-                crate::tag::CompilerReferenceTag::It.bind(),
-                { let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
-                  filter.set_plural_pronoun_reference_surface(true); filter },
-            ),
+            PredicateAst::TaggedMatches(crate::tag::CompilerReferenceTag::It.bind(), {
+                let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
+                filter.set_plural_pronoun_reference_surface(true);
+                filter
+            }),
         ),
         (
             "If it is paired with another creature",
@@ -2008,10 +2060,12 @@ fn parse_predicate_tagged_state_uses_shared_capture_parser() -> Result<(), CardT
         ),
         (
             "If that card entered under your control",
-            PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectEnteredBattlefieldThisTurn {
-                player: PlayerAst::You,
-                tag: crate::tag::CompilerReferenceTag::It.bind(),
-            }),
+            PredicateAst::Player(
+                PlayerPredicateAst::PlayerTaggedObjectEnteredBattlefieldThisTurn {
+                    player: PlayerAst::You,
+                    tag: crate::tag::CompilerReferenceTag::It.bind(),
+                },
+            ),
         ),
         (
             "If that creature was not blocking",
@@ -2119,10 +2173,12 @@ fn parse_predicate_independent_positive_control_and_hand_conditions_stay_distinc
                 player: PlayerAst::You,
                 filter: ObjectFilter::artifact().controlled_by(PlayerFilter::You),
             })),
-            Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerCardsInHandOrMore {
-                player: PlayerAst::You,
-                count: 1,
-            })),
+            Box::new(PredicateAst::Player(
+                PlayerPredicateAst::PlayerCardsInHandOrMore {
+                    player: PlayerAst::You,
+                    count: 1,
+                }
+            )),
         )
     );
     Ok(())
@@ -2204,8 +2260,14 @@ fn parse_predicate_preserves_mana_source_provenance() -> Result<(), CardTextErro
 #[test]
 fn parse_predicate_spell_lifecycle_uses_shared_capture_parser() -> Result<(), CardTextError> {
     for (text, expected) in [
-        ("If you cast this spell", PredicateAst::Source(SourcePredicateAst::SourceWasCast)),
-        ("If you cast it", PredicateAst::Source(SourcePredicateAst::SourceWasCast)),
+        (
+            "If you cast this spell",
+            PredicateAst::Source(SourcePredicateAst::SourceWasCast),
+        ),
+        (
+            "If you cast it",
+            PredicateAst::Source(SourcePredicateAst::SourceWasCast),
+        ),
         (
             "If it was cast",
             PredicateAst::TaggedWasCast(crate::tag::CompilerReferenceTag::It.bind()),
@@ -2310,7 +2372,9 @@ fn parse_predicate_combat_turn_uses_shared_capture_parser() -> Result<(), CardTe
         ),
         (
             "If you attacked with exactly two other creatures this combat",
-            PredicateAst::TurnEvents(TurnEventPredicateAst::YouAttackedWithExactlyNOtherCreaturesThisCombat(2)),
+            PredicateAst::TurnEvents(
+                TurnEventPredicateAst::YouAttackedWithExactlyNOtherCreaturesThisCombat(2),
+            ),
         ),
         (
             "If this creature attacked or blocked this turn",
@@ -2332,19 +2396,27 @@ fn parse_predicate_negative_attack_history_gates() -> Result<(), CardTextError> 
     for (text, expected) in [
         (
             "If this creature didn't attack this turn",
-            PredicateAst::Not(Box::new(PredicateAst::Source(SourcePredicateAst::SourceAttackedThisTurn))),
+            PredicateAst::Not(Box::new(PredicateAst::Source(
+                SourcePredicateAst::SourceAttackedThisTurn,
+            ))),
         ),
         (
             "If this creature did not attack this turn",
-            PredicateAst::Not(Box::new(PredicateAst::Source(SourcePredicateAst::SourceAttackedThisTurn))),
+            PredicateAst::Not(Box::new(PredicateAst::Source(
+                SourcePredicateAst::SourceAttackedThisTurn,
+            ))),
         ),
         (
             "If you didn't attack with a creature this turn",
-            PredicateAst::Not(Box::new(PredicateAst::TurnEvents(TurnEventPredicateAst::YouAttackedThisTurn))),
+            PredicateAst::Not(Box::new(PredicateAst::TurnEvents(
+                TurnEventPredicateAst::YouAttackedThisTurn,
+            ))),
         ),
         (
             "If you did not attack with a creature this turn",
-            PredicateAst::Not(Box::new(PredicateAst::TurnEvents(TurnEventPredicateAst::YouAttackedThisTurn))),
+            PredicateAst::Not(Box::new(PredicateAst::TurnEvents(
+                TurnEventPredicateAst::YouAttackedThisTurn,
+            ))),
         ),
     ] {
         let tokens = lex_line(text, 0)?;
@@ -2704,13 +2776,17 @@ fn parse_predicate_ring_bearer_temptation_uses_capture_parser() -> Result<(), Ca
         (
             "If this is your Ring-bearer and the Ring has tempted you two or more times this game",
             PredicateAst::And(
-                Box::new(PredicateAst::Source(SourcePredicateAst::SourceIsRingBearer {
-                    player: PlayerAst::You,
-                })),
-                Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerRingTemptedThisGameOrMore {
-                    player: PlayerAst::You,
-                    count: 2,
-                })),
+                Box::new(PredicateAst::Source(
+                    SourcePredicateAst::SourceIsRingBearer {
+                        player: PlayerAst::You,
+                    },
+                )),
+                Box::new(PredicateAst::Player(
+                    PlayerPredicateAst::PlayerRingTemptedThisGameOrMore {
+                        player: PlayerAst::You,
+                        count: 2,
+                    },
+                )),
             ),
         ),
     ] {
@@ -2768,7 +2844,9 @@ fn parse_predicate_battlefield_change_this_turn_uses_shared_capture_parser()
     let cases = [
         (
             "If no permanents left battlefield this turn",
-            PredicateAst::Not(Box::new(PredicateAst::TurnEvents(TurnEventPredicateAst::PermanentLeftBattlefieldThisTurn))),
+            PredicateAst::Not(Box::new(PredicateAst::TurnEvents(
+                TurnEventPredicateAst::PermanentLeftBattlefieldThisTurn,
+            ))),
         ),
         (
             "If a permanent left battlefield this turn",
@@ -2777,21 +2855,29 @@ fn parse_predicate_battlefield_change_this_turn_uses_shared_capture_parser()
         (
             "If a nonland permanent left the battlefield this turn or a spell was warped this turn",
             PredicateAst::Or(
-                Box::new(PredicateAst::TurnEvents(TurnEventPredicateAst::NonlandPermanentLeftBattlefieldThisTurn)),
-                Box::new(PredicateAst::TurnEvents(TurnEventPredicateAst::SpellWasWarpedThisTurn)),
+                Box::new(PredicateAst::TurnEvents(
+                    TurnEventPredicateAst::NonlandPermanentLeftBattlefieldThisTurn,
+                )),
+                Box::new(PredicateAst::TurnEvents(
+                    TurnEventPredicateAst::SpellWasWarpedThisTurn,
+                )),
             ),
         ),
         (
             "If creatures left battlefield under your control this turn",
-            PredicateAst::TurnEvents(TurnEventPredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn {
-                surface: crate::PermanentLeftBattlefieldControlSurface::LeftUnderYourControl,
-            }),
+            PredicateAst::TurnEvents(
+                TurnEventPredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn {
+                    surface: crate::PermanentLeftBattlefieldControlSurface::LeftUnderYourControl,
+                },
+            ),
         ),
         (
             "If lands you controlled were put into graveyard from battlefield this turn",
-            PredicateAst::TurnEvents(TurnEventPredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(
-                ObjectFilter::land().controlled_by(PlayerFilter::You),
-            )),
+            PredicateAst::TurnEvents(
+                TurnEventPredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(
+                    ObjectFilter::land().controlled_by(PlayerFilter::You),
+                ),
+            ),
         ),
     ];
 
@@ -2828,7 +2914,9 @@ fn parse_predicate_object_death_this_turn_uses_shared_capture_parser() -> Result
         ),
         (
             "If a creature card was put into your graveyard from anywhere this turn",
-            PredicateAst::TurnEvents(TurnEventPredicateAst::CreatureCardPutIntoYourGraveyardThisTurn),
+            PredicateAst::TurnEvents(
+                TurnEventPredicateAst::CreatureCardPutIntoYourGraveyardThisTurn,
+            ),
         ),
     ];
 
@@ -2915,7 +3003,9 @@ fn parse_predicate_independently_articled_graveyard_cards_are_conjunctive()
         };
         let expected = [CardType::Instant, CardType::Sorcery];
         for (predicate, expected_type) in [left, right].into_iter().zip(expected) {
-            let PredicateAst::Player(PlayerPredicateAst::PlayerControls { player, filter }) = *predicate else {
+            let PredicateAst::Player(PlayerPredicateAst::PlayerControls { player, filter }) =
+                *predicate
+            else {
                 panic!("expected each existential arm to be a controls predicate");
             };
             assert_eq!(player, PlayerAst::You);
@@ -3023,7 +3113,9 @@ fn parse_predicate_preserves_ordered_graveyard_cards_above_source() -> Result<()
         0,
     )?;
     let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
-    let PredicateAst::Source(SourcePredicateAst::SourceInGraveyardWithCardsAbove { filter, count }) = parsed else {
+    let PredicateAst::Source(SourcePredicateAst::SourceInGraveyardWithCardsAbove { filter, count }) =
+        parsed
+    else {
         panic!("expected ordered-graveyard source predicate: {parsed:#?}");
     };
     assert_eq!(count, 3);
@@ -3120,7 +3212,9 @@ fn parse_predicate_triggering_object_counters_use_shared_capture_parser()
     for (text, expected) in [
         (
             "If it had no stun counters on it",
-            PredicateAst::Triggering(TriggeringPredicateAst::TriggeringObjectHadNoCounter(CounterType::Stun)),
+            PredicateAst::Triggering(TriggeringPredicateAst::TriggeringObjectHadNoCounter(
+                CounterType::Stun,
+            )),
         ),
         (
             "If that creature had a +1/+1 counter on it",
@@ -3390,7 +3484,9 @@ fn parse_predicate_card_types_among_uses_capture_parser() -> Result<(), CardText
     assert_eq!(
         parsed,
         PredicateAst::ValueComparison {
-            left: Value::CardTypesAmong(ObjectFilter::tagged(crate::tag::CompilerReferenceTag::Sacrificed0.bind())),
+            left: Value::CardTypesAmong(ObjectFilter::tagged(
+                crate::tag::CompilerReferenceTag::Sacrificed0.bind()
+            )),
             operator: ValueComparisonOperator::GreaterThanOrEqual,
             right: Value::Fixed(2),
         }
@@ -3439,17 +3535,21 @@ fn parse_predicate_basic_land_types_uses_capture_parser() -> Result<(), CardText
     for (text, expected) in [
         (
             "If there are two or more basic land types among lands you control",
-            PredicateAst::Player(PlayerPredicateAst::PlayerControlsBasicLandTypesAmongLandsOrMore {
-                player: PlayerAst::You,
-                count: 2,
-            }),
+            PredicateAst::Player(
+                PlayerPredicateAst::PlayerControlsBasicLandTypesAmongLandsOrMore {
+                    player: PlayerAst::You,
+                    count: 2,
+                },
+            ),
         ),
         (
             "If there are three basic land types among lands that player controls",
-            PredicateAst::Player(PlayerPredicateAst::PlayerControlsBasicLandTypesAmongLandsOrMore {
-                player: PlayerAst::That,
-                count: 3,
-            }),
+            PredicateAst::Player(
+                PlayerPredicateAst::PlayerControlsBasicLandTypesAmongLandsOrMore {
+                    player: PlayerAst::That,
+                    count: 3,
+                },
+            ),
         ),
     ] {
         let tokens = lex_line(text, 0)?;
@@ -3488,7 +3588,9 @@ fn parse_predicate_source_counters_use_shared_capture_parser() -> Result<(), Car
         ),
         (
             "If there are no more scream counters on it",
-            PredicateAst::Source(SourcePredicateAst::SourceHasNoCounter(CounterType::Named("scream".into()))),
+            PredicateAst::Source(SourcePredicateAst::SourceHasNoCounter(CounterType::Named(
+                "scream".into(),
+            ))),
         ),
         (
             "If there are two counters on this creature",
@@ -3928,13 +4030,19 @@ fn parse_predicate_rejects_entered_from_zone_as_bare_it_matches() {
 
 #[test]
 fn exiled_source_state_is_a_zone_predicate() -> Result<(), CardTextError> {
-    assert_eq!(parse_predicate(&lex_line("it's exiled", 0)?)?,
-        PredicateAst::ItMatches(ObjectFilter::default().in_zone(Zone::Exile)));
-    assert_eq!(parse_predicate_for_source("Semantic Probe", "If it's exiled")?,
-        PredicateAst::ItMatches(ObjectFilter::default().in_zone(Zone::Exile)));
+    assert_eq!(
+        parse_predicate(&lex_line("it's exiled", 0)?)?,
+        PredicateAst::ItMatches(ObjectFilter::default().in_zone(Zone::Exile))
+    );
+    assert_eq!(
+        parse_predicate_for_source("Semantic Probe", "If it's exiled")?,
+        PredicateAst::ItMatches(ObjectFilter::default().in_zone(Zone::Exile))
+    );
     for text in ["If this card is exiled", "If this card is in exile"] {
-        assert_eq!(parse_predicate_for_source("Semantic Probe", text)?,
-            PredicateAst::Source(SourcePredicateAst::SourceIsInZone(Zone::Exile)));
+        assert_eq!(
+            parse_predicate_for_source("Semantic Probe", text)?,
+            PredicateAst::Source(SourcePredicateAst::SourceIsInZone(Zone::Exile))
+        );
     }
     Ok(())
 }
@@ -3946,7 +4054,10 @@ fn intrinsic_counter_condition_rejects_other_subjects_and_extra_actions() {
         "this creature has exactly five +1/+1 counters on it",
     ] {
         let tokens = lex_line(text, 0).unwrap();
-        assert!(parse_intrinsic_source_counter_condition(&tokens).is_some(), "{text}");
+        assert!(
+            parse_intrinsic_source_counter_condition(&tokens).is_some(),
+            "{text}"
+        );
     }
     for text in [
         "that creature has five or more +1/+1 counters on it",
@@ -3954,6 +4065,9 @@ fn intrinsic_counter_condition_rejects_other_subjects_and_extra_actions() {
         "it has five or more +1/+1 counters on it and pay {2}",
     ] {
         let tokens = lex_line(text, 0).unwrap();
-        assert!(parse_intrinsic_source_counter_condition(&tokens).is_none(), "{text}");
+        assert!(
+            parse_intrinsic_source_counter_condition(&tokens).is_none(),
+            "{text}"
+        );
     }
 }

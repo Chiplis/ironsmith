@@ -4,10 +4,10 @@
 //! intentionally run before preparation/lowering and never inspect Oracle
 //! text or token shapes.
 
-use crate::cards::builders::TriggeringPredicateAst;
-use crate::cards::builders::ConditionalEffectAst;
 use super::*;
+use crate::cards::builders::ConditionalEffectAst;
 use crate::cards::builders::TriggerFrequencyPredicateAst;
+use crate::cards::builders::TriggeringPredicateAst;
 use crate::model::ast::TriggerIntroSurfaceAst;
 use crate::model::facts::TriggeredLineSemanticFacts;
 use ironsmith_compiler_semantic::condition_antecedent::{
@@ -254,17 +254,26 @@ fn link_spell_cast_mana_spent_predicate(
 
     fn retarget(predicate: PredicateAst) -> PredicateAst {
         match predicate {
-            PredicateAst::TargetSpellNoManaSpentToCast => PredicateAst::Not(Box::new(
-                PredicateAst::Triggering(TriggeringPredicateAst::TriggeringSpellManaSpentToCastAtLeast {
-                    amount: 1,
-                    symbol: None,
-                }),
-            )),
+            PredicateAst::TargetSpellNoManaSpentToCast => {
+                PredicateAst::Not(Box::new(PredicateAst::Triggering(
+                    TriggeringPredicateAst::TriggeringSpellManaSpentToCastAtLeast {
+                        amount: 1,
+                        symbol: None,
+                    },
+                )))
+            }
             PredicateAst::ManaSpentToCastThisSpellAtLeast { amount, symbol } => {
-                PredicateAst::Triggering(TriggeringPredicateAst::TriggeringSpellManaSpentToCastAtLeast { amount, symbol })
+                PredicateAst::Triggering(
+                    TriggeringPredicateAst::TriggeringSpellManaSpentToCastAtLeast {
+                        amount,
+                        symbol,
+                    },
+                )
             }
             PredicateAst::ColoredManaSpentToCastThisSpellAtLeast(amount) => {
-                PredicateAst::Triggering(TriggeringPredicateAst::TriggeringSpellColoredManaSpentToCastAtLeast(amount))
+                PredicateAst::Triggering(
+                    TriggeringPredicateAst::TriggeringSpellColoredManaSpentToCastAtLeast(amount),
+                )
             }
             PredicateAst::Not(inner) => PredicateAst::Not(Box::new(retarget(*inner))),
             PredicateAst::And(left, right) => {

@@ -3,8 +3,8 @@ use crate::activation_and_restrictions::{
     build_may_cast_tagged_effect, parse_may_cast_it_sentence,
 };
 use crate::cards::builders::{
-    CardTextError, EffectAst, PlayerAst, SubjectVerbActionAst, SubjectVerbEffectAst,
-    SubjectVerbSubjectAst, TagKey, TargetAst, ZoneMoveActionAst, StackActionAst,
+    CardTextError, EffectAst, PlayerAst, StackActionAst, SubjectVerbActionAst,
+    SubjectVerbEffectAst, SubjectVerbSubjectAst, TagKey, TargetAst, ZoneMoveActionAst,
 };
 use crate::effect::Value;
 use crate::effect_sentences;
@@ -66,7 +66,9 @@ fn normalize_shared_graveyard_union_target(target: &mut TargetAst) {
 
 pub(crate) fn normalize_shared_graveyard_union_exile(effect: &mut EffectAst) {
     let effect = match effect {
-        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => effect.as_mut(),
+        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => {
+            effect.as_mut()
+        }
         effect => effect,
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {

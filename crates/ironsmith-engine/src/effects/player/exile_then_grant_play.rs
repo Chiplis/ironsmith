@@ -74,7 +74,11 @@ impl EffectExecutor for ExileThenGrantPlayEffect {
 
         for &exiled_id in &result.new_object_ids {
             let grant_source = match self.duration {
-                GrantDuration::UntilYourNextTurn => GrantSource::until_player_next_turn_start(ctx.source, player, game.turn.turn_number),
+                GrantDuration::UntilYourNextTurn => GrantSource::until_player_next_turn_start(
+                    ctx.source,
+                    player,
+                    game.turn.turn_number,
+                ),
                 GrantDuration::UntilYourNextTurnEnd => {
                     GrantSource::until_player_next_turn_end(ctx.source, player, expires)
                 }

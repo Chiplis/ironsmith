@@ -1,5 +1,7 @@
 use crate::effect::Value;
-use crate::host::{CardTextError, EffectAst, OwnedLexToken, PlayerAst, SubjectAst, TagKey, ConditionalEffectAst};
+use crate::host::{
+    CardTextError, ConditionalEffectAst, EffectAst, OwnedLexToken, PlayerAst, SubjectAst, TagKey,
+};
 use crate::mana::ManaSymbol;
 use crate::target::ObjectFilter;
 
@@ -85,11 +87,13 @@ pub fn parse_add_mana(
                     clause_words.join(" ")
                 ))
             })?;
-        Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-            predicate,
-            if_true: vec![base_effect],
-            if_false: Vec::new(),
-        })))
+        Ok(Some(EffectAst::Conditionals(
+            ConditionalEffectAst::Conditional {
+                predicate,
+                if_true: vec![base_effect],
+                if_false: Vec::new(),
+            },
+        )))
     };
 
     if let Some(any_color_among) = parse_add_one_mana_any_color_among_filter(tokens)? {

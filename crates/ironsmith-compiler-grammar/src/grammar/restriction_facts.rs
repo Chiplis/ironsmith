@@ -113,9 +113,9 @@ pub fn parse_mana_restriction_surface_tokens(tokens: &[OwnedLexToken]) -> Parsed
 
 fn text_only_condition(parsed: TextOnlyActivationRestriction) -> PredicateAst {
     match parsed {
-        TextOnlyActivationRestriction::SourceDidNotAttackThisTurn => {
-            PredicateAst::Not(Box::new(PredicateAst::Source(SourcePredicateAst::SourceAttackedThisTurn)))
-        }
+        TextOnlyActivationRestriction::SourceDidNotAttackThisTurn => PredicateAst::Not(Box::new(
+            PredicateAst::Source(SourcePredicateAst::SourceAttackedThisTurn),
+        )),
         TextOnlyActivationRestriction::SourceAttackedThisTurn => {
             PredicateAst::Source(SourcePredicateAst::SourceAttackedThisTurn)
         }

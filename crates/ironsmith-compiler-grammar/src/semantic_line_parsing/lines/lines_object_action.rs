@@ -1,6 +1,6 @@
+use super::*;
 use crate::cards::builders::PermissionEffectAst;
 use crate::cards::builders::StackActionAst;
-use super::*;
 
 #[test]
 pub(super) fn additional_land_play_static_count_uses_token_words() {

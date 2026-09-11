@@ -1,5 +1,5 @@
-use crate::cards::builders::GrantActionAst;
 use super::*;
+use crate::cards::builders::GrantActionAst;
 use crate::cards::builders::{
     CardDefinitionBuilder, GrantedAbilityAst, StaticAbilityAst, TargetAst,
 };
@@ -232,7 +232,9 @@ fn normalize_line_chunk(
                     imports
                         .snapshot_tag_aliases
                         .retain(|(existing, _)| *existing != alias.key);
-                    imports.snapshot_tag_aliases.push((alias.key.clone(), cost_tag.clone()));
+                    imports
+                        .snapshot_tag_aliases
+                        .push((alias.key.clone(), cost_tag.clone()));
                 }
             }
             if let Some(cost_tag) = imports.last_object_tag.as_ref()
@@ -343,19 +345,27 @@ fn resolve_as_enters_source_counter_grants(effects: &mut [EffectAst]) {
     for effect in effects {
         if let EffectAst::SubjectVerb(subject_verb) = effect
             && let SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
-                target, abilities, duration, ..
+                target,
+                abilities,
+                duration,
+                ..
             }) = &subject_verb.action
             && matches!(target, TargetAst::Tagged(_, _) | TargetAst::Source(_))
             && *duration == ironsmith_core::Until::Forever
             && let [GrantedAbilityAst::StaticAbility(static_ability)] = abilities.as_slice()
             && let StaticAbilityAst::Static(ability) = static_ability.as_ref()
-            && let ironsmith_core::StaticAbilityPayload::EntersWithCountersValue { counter, count } = &ability.payload
+            && let ironsmith_core::StaticAbilityPayload::EntersWithCountersValue { counter, count } =
+                &ability.payload
         {
             // This program runs during entry preparation. Its source counter
             // additions are transferred to the entering object; granting a
             // future entry replacement to the source-zone card is too late.
             *effect = EffectAst::subject_verb_put_counters(
-                *counter, count.clone(), TargetAst::Source(None), None, false,
+                *counter,
+                count.clone(),
+                TargetAst::Source(None),
+                None,
+                false,
             );
         }
         crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
@@ -463,8 +473,10 @@ pub fn normalize_parsed_card_ast_for_lowering(
             .map(|scope| scope.id)
             .unwrap_or(table.root_scope())
     };
-    let document_references =
-        ironsmith_compiler_ast::reference_ledger::ReferenceScopeGuard::enter(&symbols, document_scope);
+    let document_references = ironsmith_compiler_ast::reference_ledger::ReferenceScopeGuard::enter(
+        &symbols,
+        document_scope,
+    );
     let overload_branch = if let Some(branch) = overload_branch {
         let mut state = RewriteNormalizationState::default();
         let mut items = Vec::new();

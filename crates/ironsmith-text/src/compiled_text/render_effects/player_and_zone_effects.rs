@@ -686,38 +686,68 @@ pub(super) fn describe_for_players_shuffle_then_conditional_consult(
 pub(super) fn describe_for_players_shuffle_reveal_permanents_put_rest_bottom(
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {
-    if for_players.filter != PlayerFilter::Any || for_players.starting_with_controller
-        || for_players.stop_after_first_happened || for_players.effects.len() < 4 { return None; }
+    if for_players.filter != PlayerFilter::Any
+        || for_players.starting_with_controller
+        || for_players.stop_after_first_happened
+        || for_players.effects.len() < 4
+    {
+        return None;
+    }
     let effects = &for_players.effects;
     let with_id = wrapped_with_id(&effects[0])?;
     let shuffle = structural_unwrap_render_wrappers(&with_id.effect)
         .downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()?;
-    if shuffle.player != PlayerFilter::IteratedPlayer || shuffle.owner_library_destination { return None; }
-    let ChooseSpec::All(shuffled_filter) = shuffle.target.base() else { return None; };
+    if shuffle.player != PlayerFilter::IteratedPlayer || shuffle.owner_library_destination {
+        return None;
+    }
+    let ChooseSpec::All(shuffled_filter) = shuffle.target.base() else {
+        return None;
+    };
     if shuffled_filter.zone != Some(Zone::Battlefield)
-        || shuffled_filter.owner != Some(PlayerFilter::IteratedPlayer) { return None; }
+        || shuffled_filter.owner != Some(PlayerFilter::IteratedPlayer)
+    {
+        return None;
+    }
     let look = structural_unwrap_render_wrappers(&effects[1])
         .downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
-    if look.player != PlayerFilter::IteratedPlayer || !look.reveal
+    if look.player != PlayerFilter::IteratedPlayer
+        || !look.reveal
         || !matches!(&look.count, Value::EffectMetric { effect_id, metric: crate::effect::EffectMetric::Count, .. } if *effect_id == with_id.id)
-    { return None; }
+    {
+        return None;
+    }
     let mut pool = ObjectFilter::tagged(look.tag.clone());
     pool.zone = Some(Zone::Library);
     let (last, categories) = effects[2..].split_last()?;
-    let rest = structural_unwrap_render_wrappers(last).downcast_ref::<crate::effects::MoveToZoneEffect>()?;
-    if rest.zone != Zone::Library || rest.to_top
+    let rest = structural_unwrap_render_wrappers(last)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if rest.zone != Zone::Library
+        || rest.to_top
         || rest.battlefield_controller != crate::effects::BattlefieldController::Preserve
         || !matches!(rest.target.base(), ChooseSpec::All(filter) if filter == &pool)
-    { return None; }
+    {
+        return None;
+    }
     let mut phrases = Vec::new();
     for effect in categories {
-        let movement = structural_unwrap_render_wrappers(effect).downcast_ref::<crate::effects::MoveToZoneEffect>()?;
-        if movement.zone != Zone::Battlefield || movement.enters_tapped
+        let movement = structural_unwrap_render_wrappers(effect)
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+        if movement.zone != Zone::Battlefield
+            || movement.enters_tapped
             || movement.battlefield_controller != crate::effects::BattlefieldController::Owner
-            || movement.enters_attacking || movement.enters_face_down || movement.enters_transformed
-            || !movement.enters_with_counters.is_empty() { return None; }
-        let ChooseSpec::All(filter) = movement.target.base() else { return None; };
-        if filter.zone != pool.zone || filter.tagged_constraints != pool.tagged_constraints { return None; }
+            || movement.enters_attacking
+            || movement.enters_face_down
+            || movement.enters_transformed
+            || !movement.enters_with_counters.is_empty()
+        {
+            return None;
+        }
+        let ChooseSpec::All(filter) = movement.target.base() else {
+            return None;
+        };
+        if filter.zone != pool.zone || filter.tagged_constraints != pool.tagged_constraints {
+            return None;
+        }
         let mut display = filter.clone();
         display.zone = None;
         display.tagged_constraints.clear();
@@ -729,8 +759,12 @@ pub(super) fn describe_for_players_shuffle_reveal_permanents_put_rest_bottom(
     shuffled.owner = None;
     let shuffled = describe_count_filter_value_subject(&shuffled);
     let (first, later) = phrases.split_first()?;
-    let mut result = format!("Each player shuffles all {shuffled} they own into their library, then reveals that many cards from the top of their library. Each player puts all {first} revealed this way onto the battlefield");
-    for category in later { result.push_str(&format!(", then does the same for {category}")); }
+    let mut result = format!(
+        "Each player shuffles all {shuffled} they own into their library, then reveals that many cards from the top of their library. Each player puts all {first} revealed this way onto the battlefield"
+    );
+    for category in later {
+        result.push_str(&format!(", then does the same for {category}"));
+    }
     result.push_str(", then puts all cards revealed this way that weren't put onto the battlefield on the bottom of their library");
     Some(result)
 }
@@ -1527,7 +1561,11 @@ pub(super) fn append_token_where_x_continuation(mut text: String, basis: &str) -
 pub(super) fn describe_token_creator_subject(controller: &PlayerFilter) -> Option<String> {
     match controller {
         PlayerFilter::You => None,
-        PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(tag)) if tag.as_str() == crate::tag::SOURCE_EXILED_TAG => Some("the exiled card's owner".to_string()),
+        PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(tag))
+            if tag.as_str() == crate::tag::SOURCE_EXILED_TAG =>
+        {
+            Some("the exiled card's owner".to_string())
+        }
         PlayerFilter::DamagedPlayer => Some("that player".to_string()),
         PlayerFilter::ControllerOf(crate::target::ObjectRef::Target) => {
             Some("its controller".to_string())
@@ -2184,9 +2222,14 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
         if let Some(minimum) = constraint.minimum.as_ref() {
             let minimum = describe_value(minimum);
             selection.push_str(&format!(" with total {metric} {minimum} or greater"));
-        } else if constraint.maximum.has_surface_hint(ValueSurfaceHint::WhereXIs) {
+        } else if constraint
+            .maximum
+            .has_surface_hint(ValueSurfaceHint::WhereXIs)
+        {
             let maximum = describe_value(&constraint.maximum);
-            selection.push_str(&format!(" with total {metric} X or less, where X is {maximum}"));
+            selection.push_str(&format!(
+                " with total {metric} X or less, where X is {maximum}"
+            ));
         } else if matches!(constraint.maximum.unhinted(), Value::Fixed(_)) {
             let maximum = describe_value(&constraint.maximum);
             selection.push_str(&format!(" with total {metric} {maximum} or less"));
@@ -2574,7 +2617,10 @@ pub(super) fn choose_spec_references_tagged_object(spec: &ChooseSpec, tag: &crat
 
 pub(super) fn filter_checks_for_suspend(filter: &ObjectFilter) -> bool {
     filter.alternative_cast == Some(crate::filter::AlternativeCastKind::Suspend)
-        || filter.ability_markers.iter().any(|marker| marker.eq_ignore_ascii_case("suspend"))
+        || filter
+            .ability_markers
+            .iter()
+            .any(|marker| marker.eq_ignore_ascii_case("suspend"))
 }
 
 pub(super) fn condition_is_tagged_object_without_suspend(
@@ -2690,11 +2736,15 @@ pub(in crate::compiled_text) fn describe_exile_with_counters_then_gain_suspend(
         return None;
     };
     let exile_with_counters = describe_source_exile_with_counters_pair(exile_effect, put_effect)?;
-    if let Some(put) = structural_unwrap_render_wrappers(put_effect).downcast_ref::<crate::effects::PutCountersEffect>()
+    if let Some(put) = structural_unwrap_render_wrappers(put_effect)
+        .downcast_ref::<crate::effects::PutCountersEffect>()
         && let ChooseSpec::Tagged(tag) = put.target.base()
-        && let Some(apply) = structural_unwrap_render_wrappers(conditional_effect).downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        && let Some(apply) = structural_unwrap_render_wrappers(conditional_effect)
+            .downcast_ref::<crate::effects::ApplyContinuousEffect>()
         && apply_grants_suspend_to_tag(apply, tag)
-    { return Some(format!("{exile_with_counters}, and it gains suspend")); }
+    {
+        return Some(format!("{exile_with_counters}, and it gains suspend"));
+    }
 
     let put_then_suspend =
         describe_put_counters_then_gain_suspend(&[put_effect.clone(), conditional_effect.clone()])?;
@@ -3370,13 +3420,24 @@ pub(super) fn append_battlefield_entry_counter_surface(
         let counter_phrase = battlefield_entry_counter_phrase(counter, additional);
         let clause = match counter.surface {
             ironsmith_core::BattlefieldEntryCounterSurface::Inline => {
-                if counter.amount.has_surface_hint(ValueSurfaceHint::EqualToAfterTarget) {
-                    let basis = if counter.amount.has_surface_hint(ValueSurfaceHint::PriorEffectResult)
-                        && matches!(counter.amount.unhinted(), Value::EffectValue(_)) {
+                if counter
+                    .amount
+                    .has_surface_hint(ValueSurfaceHint::EqualToAfterTarget)
+                {
+                    let basis = if counter
+                        .amount
+                        .has_surface_hint(ValueSurfaceHint::PriorEffectResult)
+                        && matches!(counter.amount.unhinted(), Value::EffectValue(_))
+                    {
                         "that result".to_string()
-                    } else { describe_value(&counter.amount) };
+                    } else {
+                        describe_value(&counter.amount)
+                    };
                     let modifier = if additional { "additional " } else { "" };
-                    rendered.push_str(&format!(" with a number of {modifier}{} counters on it equal to {basis}", describe_counter_type(counter.counter_type)));
+                    rendered.push_str(&format!(
+                        " with a number of {modifier}{} counters on it equal to {basis}",
+                        describe_counter_type(counter.counter_type)
+                    ));
                     index += 1;
                     continue;
                 }
@@ -3389,7 +3450,9 @@ pub(super) fn append_battlefield_entry_counter_surface(
             ironsmith_core::BattlefieldEntryCounterSurface::EachOfThemEnters => {
                 let condition = if counter.object_filter.is_some() {
                     format!(" if it's {}", with_indefinite_article(&noun))
-                } else { String::new() };
+                } else {
+                    String::new()
+                };
                 format!("Each of them enters with {counter_phrase} on it{condition}")
             }
             ironsmith_core::BattlefieldEntryCounterSurface::IfObjectEntersThisWay => {
@@ -5435,42 +5498,73 @@ pub(super) fn describe_choose_filter_from_looked_cards_with_ignored_tags(
 
 /// A single ability restriction on the exact collection produced by exile.
 /// Strip rendering facts only after validating the collection identity.
-pub(super) fn filtered_exiled_collection_ability(filter: &ObjectFilter, excluded: bool) -> Option<&str> {
-    let markers = if excluded { &filter.excluded_ability_markers } else { &filter.ability_markers };
-    let [marker] = markers.as_slice() else { return None; };
-    let [constraint] = filter.tagged_constraints.as_slice() else { return None; };
+pub(super) fn filtered_exiled_collection_ability(
+    filter: &ObjectFilter,
+    excluded: bool,
+) -> Option<&str> {
+    let markers = if excluded {
+        &filter.excluded_ability_markers
+    } else {
+        &filter.ability_markers
+    };
+    let [marker] = markers.as_slice() else {
+        return None;
+    };
+    let [constraint] = filter.tagged_constraints.as_slice() else {
+        return None;
+    };
     if constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
         || !(constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
             || crate::cards::is_sentence_helper_tag(constraint.tag.as_str(), "exiled"))
         || !matches!(filter.zone, None | Some(Zone::Exile))
-    { return None; }
+    {
+        return None;
+    }
     let mut plain = filter.clone();
     plain.zone = None;
     plain.tagged_constraints.clear();
     plain.set_explicit_card_type_noun(None);
-    if excluded { plain.excluded_ability_markers.clear(); } else { plain.ability_markers.clear(); }
+    if excluded {
+        plain.excluded_ability_markers.clear();
+    } else {
+        plain.ability_markers.clear();
+    }
     (plain == ObjectFilter::default()).then_some(marker.as_str())
 }
 
 pub(super) fn describe_hand_reveal_and_same_actor_exile(effects: &[Effect]) -> Option<String> {
-        if let [reveal, exile] = effects
-            && let Some(reveal) = unwrap_basic_tag_wrappers(reveal).downcast_ref::<crate::effects::LookAtHandEffect>()
-            && reveal.reveal
-            && let Some(exile) = unwrap_basic_tag_wrappers(exile).downcast_ref::<crate::effects::ExileEffect>()
-            && let ChooseSpec::Player(player) = reveal.target.base()
-            && let ChooseSpec::All(filter) = exile.spec.base()
-            && filter.zone == Some(Zone::Hand)
-            && filter.owner.as_ref().is_some_and(|owner| player_filters_refer_to_same_player(owner, player))
-            && !exile.face_down
-        {
-            let mut cards = filter.clone();
-            cards.zone = None;
-            cards.owner = None;
-            cards.set_explicit_card_noun(true);
-            let cards = pluralize_noun_phrase(&describe_for_each_count_filter(&cards));
-            let actor = describe_player_filter(player);
-            let possessive = if *player == PlayerFilter::You { "your" } else { "their" };
-            return Some(format!("{} {} {possessive} hand and {} all {cards} from it", capitalize_first(&actor), player_verb(&actor, "reveal", "reveals"), player_verb(&actor, "exile", "exiles")));
-        }
+    if let [reveal, exile] = effects
+        && let Some(reveal) =
+            unwrap_basic_tag_wrappers(reveal).downcast_ref::<crate::effects::LookAtHandEffect>()
+        && reveal.reveal
+        && let Some(exile) =
+            unwrap_basic_tag_wrappers(exile).downcast_ref::<crate::effects::ExileEffect>()
+        && let ChooseSpec::Player(player) = reveal.target.base()
+        && let ChooseSpec::All(filter) = exile.spec.base()
+        && filter.zone == Some(Zone::Hand)
+        && filter
+            .owner
+            .as_ref()
+            .is_some_and(|owner| player_filters_refer_to_same_player(owner, player))
+        && !exile.face_down
+    {
+        let mut cards = filter.clone();
+        cards.zone = None;
+        cards.owner = None;
+        cards.set_explicit_card_noun(true);
+        let cards = pluralize_noun_phrase(&describe_for_each_count_filter(&cards));
+        let actor = describe_player_filter(player);
+        let possessive = if *player == PlayerFilter::You {
+            "your"
+        } else {
+            "their"
+        };
+        return Some(format!(
+            "{} {} {possessive} hand and {} all {cards} from it",
+            capitalize_first(&actor),
+            player_verb(&actor, "reveal", "reveals"),
+            player_verb(&actor, "exile", "exiles")
+        ));
+    }
     None
 }

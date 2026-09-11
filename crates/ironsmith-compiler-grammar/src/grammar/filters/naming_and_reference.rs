@@ -925,7 +925,10 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
         &["with", "x", "in", "their", "mana", "cost"],
         &["with", "x", "in", "their", "mana", "costs"],
         &["mana", "cost", "that", "contains", "x"],
-    ].iter().any(|phrase| find_any_phrase_start(words, &[*phrase]).is_some()) {
+    ]
+    .iter()
+    .any(|phrase| find_any_phrase_start(words, &[*phrase]).is_some())
+    {
         filter.has_x_in_cost = true;
     }
     if words.iter().any(|word| matches!(*word, "kicked" | "kick")) {

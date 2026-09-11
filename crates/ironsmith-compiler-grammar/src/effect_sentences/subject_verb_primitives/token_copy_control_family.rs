@@ -1,9 +1,9 @@
-use crate::cards::builders::ObjectChoiceEffectAst;
-use crate::cards::builders::ForEachEffectAst;
-use crate::cards::builders::ZoneMoveActionAst;
-use crate::cards::builders::LibraryActionAst;
-use crate::cards::builders::CounterActionAst;
 use super::*;
+use crate::cards::builders::CounterActionAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::LibraryActionAst;
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::ZoneMoveActionAst;
 use crate::effect_sentences::parse_artifact_enchantment_or_token_filter;
 use crate::grammar::effects as effect_grammar;
 
@@ -33,38 +33,42 @@ pub fn parse_sentence_each_player_reveals_top_count_put_permanents_onto_battlefi
     let iterated_target =
         TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), clause.span());
 
-    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
-        effects: vec![
-            EffectAst::subject_verb_look_at_top_cards(
-                PlayerAst::That,
-                count,
-                crate::tag::TagRef::of(revealed_tag_key.clone()),
-            ),
-            EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(revealed_tag_key.clone())),
-            EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
-                tag: crate::tag::TagRef::of(revealed_tag_key),
-                effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-                    predicate: PredicateAst::ItMatches(shape.matching_filter),
-                    if_true: vec![EffectAst::subject_verb_move_to_zone(
-                        iterated_target.clone(),
-                        Zone::Battlefield,
-                        false,
-                        ReturnControllerAst::Owner,
-                        shape.matching_enters_tapped,
-                        None,
-                    )],
-                    if_false: vec![EffectAst::subject_verb_move_to_zone(
-                        iterated_target,
-                        shape.remainder_zone,
-                        false,
-                        ReturnControllerAst::Preserve,
-                        false,
-                        None,
-                    )],
-                })],
-            }),
-        ],
-    })]))
+    Ok(Some(vec![EffectAst::ForEach(
+        ForEachEffectAst::ForEachPlayer {
+            effects: vec![
+                EffectAst::subject_verb_look_at_top_cards(
+                    PlayerAst::That,
+                    count,
+                    crate::tag::TagRef::of(revealed_tag_key.clone()),
+                ),
+                EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(
+                    revealed_tag_key.clone(),
+                )),
+                EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+                    tag: crate::tag::TagRef::of(revealed_tag_key),
+                    effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                        predicate: PredicateAst::ItMatches(shape.matching_filter),
+                        if_true: vec![EffectAst::subject_verb_move_to_zone(
+                            iterated_target.clone(),
+                            Zone::Battlefield,
+                            false,
+                            ReturnControllerAst::Owner,
+                            shape.matching_enters_tapped,
+                            None,
+                        )],
+                        if_false: vec![EffectAst::subject_verb_move_to_zone(
+                            iterated_target,
+                            shape.remainder_zone,
+                            false,
+                            ReturnControllerAst::Preserve,
+                            false,
+                            None,
+                        )],
+                    })],
+                }),
+            ],
+        },
+    )]))
 }
 
 pub fn parse_return_then_do_same_for_subtypes_sentence(
@@ -131,21 +135,25 @@ pub fn parse_choose_then_do_same_for_filter_sentence(
         return Ok(None);
     }
 
-    let mut effects = vec![EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-        filter: base_filter.clone(),
-        count,
-        count_value: None,
-        player,
-        tag: tag.clone(),
-    })];
-    for filter in followup_filters {
-        effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-            filter,
+    let mut effects = vec![EffectAst::ObjectChoices(
+        ObjectChoiceEffectAst::ChooseObjects {
+            filter: base_filter.clone(),
             count,
             count_value: None,
             player,
             tag: tag.clone(),
-        }));
+        },
+    )];
+    for filter in followup_filters {
+        effects.push(EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::ChooseObjects {
+                filter,
+                count,
+                count_value: None,
+                player,
+                tag: tag.clone(),
+            },
+        ));
     }
 
     Ok(Some(effects))
@@ -427,7 +435,9 @@ pub fn parse_exile_then_shuffle_graveyard_into_library_sentence(
                 action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { .. }),
                 ..
             }) | EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileUntilSourceLeaves { .. }),
+                action: SubjectVerbActionAst::ZoneMoves(
+                    ZoneMoveActionAst::ExileUntilSourceLeaves { .. }
+                ),
                 ..
             })
         )
@@ -440,7 +450,9 @@ pub fn parse_exile_then_shuffle_graveyard_into_library_sentence(
         matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Library(LibraryActionAst::ShuffleGraveyardIntoLibrary { .. }),
+                action: SubjectVerbActionAst::Library(
+                    LibraryActionAst::ShuffleGraveyardIntoLibrary { .. }
+                ),
                 ..
             })
         )

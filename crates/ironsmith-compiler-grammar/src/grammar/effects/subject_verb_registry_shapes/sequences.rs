@@ -107,7 +107,11 @@ enum DrawAction {
 
 fn draw_action<'a>(input: &mut LexStream<'a>) -> WResult<DrawAction> {
     alt((
-        (primitives::kw("shuffles"), opt(primitives::comma()), primitives::phrase(&["then", "draws"]))
+        (
+            primitives::kw("shuffles"),
+            opt(primitives::comma()),
+            primitives::phrase(&["then", "draws"]),
+        )
             .value(DrawAction::ShuffleThenDraw),
         primitives::kw("draw").value(DrawAction::Draw),
         primitives::kw("draws").value(DrawAction::Draws),
@@ -128,11 +132,15 @@ fn draw_exiled_hand_count<'a>(input: &mut LexStream<'a>) -> WResult<ExiledHandOw
 }
 
 pub fn parse_draw_for_exiled_hand_count_shape(tokens: &[OwnedLexToken]) -> Option<ExiledHandOwner> {
-    crate::grammar::primitives::probe_all(tokens, |input: &mut LexStream<'_>| {
-        let owner = draw_exiled_hand_count.parse_next(input)?;
-        primitives::sentence_end().parse_next(input)?;
-        Ok(owner)
-    }, "draw-exiled-hand-count")
+    crate::grammar::primitives::probe_all(
+        tokens,
+        |input: &mut LexStream<'_>| {
+            let owner = draw_exiled_hand_count.parse_next(input)?;
+            primitives::sentence_end().parse_next(input)?;
+            Ok(owner)
+        },
+        "draw-exiled-hand-count",
+    )
 }
 
 fn draw_for_exiled_hand<'a>(input: &mut LexStream<'a>) -> WResult<DrawForExiledHandShape<'a>> {
@@ -229,7 +237,11 @@ mod tests {
         let comma_draw = lex_line(
             "That player shuffles, then draws a card for each card exiled from their hand this way.", 0,
         ).unwrap();
-        assert!(parse_draw_for_exiled_hand_shape(&comma_draw).unwrap().shuffles_first);
+        assert!(
+            parse_draw_for_exiled_hand_shape(&comma_draw)
+                .unwrap()
+                .shuffles_first
+        );
 
         let historical = lex_line(
             "Backdraft deals damage to that player equal to half the damage dealt by one of those sorcery spells this turn, rounded down.",

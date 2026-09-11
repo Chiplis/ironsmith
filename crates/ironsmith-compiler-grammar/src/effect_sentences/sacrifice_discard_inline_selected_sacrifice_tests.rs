@@ -1,7 +1,7 @@
+use super::*;
+use crate::cards::builders::ManaActionAst;
 use crate::cards::builders::ObjectChoiceEffectAst;
 use crate::cards::builders::ZoneMoveActionAst;
-use crate::cards::builders::ManaActionAst;
-use super::*;
 use crate::lexer::lex_line;
 use crate::model::ast::{SubjectVerbActionAst, SubjectVerbEffectAst};
 
@@ -48,7 +48,8 @@ fn any_number_sacrifice_keeps_a_comma_then_mana_followup() {
     let [
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, tag, .. }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter: sacrificed }),
+            action:
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter: sacrificed }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -211,7 +212,8 @@ fn unit_fraction_rounded_up_sacrifice_chooses_the_exact_dynamic_set() {
 
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         subject,
-        action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter: sacrificed }),
+        action:
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter: sacrificed }),
     }) = sacrifice
     else {
         panic!("chosen set must feed the typed sacrifice consumer");
@@ -239,7 +241,8 @@ fn sacrifice_all_except_kept_count_chooses_count_minus_keep_set() {
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             subject,
-            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter: sacrificed }),
+            action:
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter: sacrificed }),
         }),
     ] = effects.as_slice()
     else {
@@ -261,7 +264,12 @@ fn sacrifice_all_except_kept_count_chooses_count_minus_keep_set() {
 #[test]
 fn fixed_sacrifice_count_retains_the_actor_and_followup() {
     let tokens = lex_line("Sacrifices three permanents, then draws a card.", 0).unwrap();
-    let effect = parse_sacrifice(&tokens, Some(SubjectAst::Player(PlayerAst::ThatPlayerOrTargetController)), None).unwrap();
+    let effect = parse_sacrifice(
+        &tokens,
+        Some(SubjectAst::Player(PlayerAst::ThatPlayerOrTargetController)),
+        None,
+    )
+    .unwrap();
     let debug = format!("{effect:?}");
     assert!(!debug.contains("ChooseObjects"));
     assert!(debug.contains("ThatPlayerOrTargetController"));

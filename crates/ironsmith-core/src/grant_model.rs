@@ -125,8 +125,7 @@ impl<C> DerivedAlternativeCast<C> {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum GrantUsageLimit {
     OnceEachTurn,
     OnceDuringEachOfYourTurns,
@@ -137,8 +136,7 @@ pub enum GrantUsageLimit {
 /// this value only preserves the authored source noun and plural spell/pool
 /// wording.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub struct SourceExiledGrantSurface {
     pub source: SourceReferenceSurface,
     pub plural_spell_subject: bool,
@@ -230,8 +228,7 @@ impl<C: CostComponent> DerivedAlternativeCast<C> {
 
 /// Duration for one-shot grant effects.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum GrantDuration {
     /// Permanent (for effects that say "gains X" without duration).
     Forever,
@@ -422,8 +419,7 @@ where
 
 /// A grant specification describing what to grant and to whom.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct GrantSpec<SA, E, C, Cond> {
     /// What to grant (ability or alternative casting method).
     pub grantable: Grantable<SA, E, C, Cond>,

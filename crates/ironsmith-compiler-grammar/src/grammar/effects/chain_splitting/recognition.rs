@@ -392,7 +392,8 @@ pub fn preserve_and_reason(
     {
         return Some(AndPreservation::ExchangeZones);
     }
-    if starts_any(current, &[&["return"]]) && primitives::contains_word(current, "target")
+    if starts_any(current, &[&["return"]])
+        && primitives::contains_word(current, "target")
         && starts_any(remaining, &[&["target"], &["up"]])
         && primitives::contains_word(remaining, "from")
         && !contains_any(current, &["hand", "hands", "battlefield"])

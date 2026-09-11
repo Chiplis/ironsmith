@@ -1,15 +1,15 @@
-pub use ironsmith_core::TagKey;
 pub use ironsmith_compiler_ast::TagRef;
-pub use ironsmith_core::tag::{TagKeyWalk, tag_keys_of};
 use ironsmith_compiler_ast::symbols::{Cardinality, ObjectDomain, ReferenceRole};
+pub use ironsmith_core::TagKey;
+pub use ironsmith_core::tag::{TagKeyWalk, tag_keys_of};
 
 const SENTENCE_HELPER_ROOT: &str = "__sentence_helper_";
 
 pub fn sentence_helper_tag(purpose: &str, line: usize, start: usize, end: usize) -> TagRef {
     declared({
-    TagKey::new(format!(
-        "{SENTENCE_HELPER_ROOT}{purpose}_l{line}_s{start}_e{end}"
-    ))
+        TagKey::new(format!(
+            "{SENTENCE_HELPER_ROOT}{purpose}_l{line}_s{start}_e{end}"
+        ))
     })
 }
 
@@ -34,11 +34,11 @@ pub fn is_sentence_helper_tag(tag: &TagKey, purpose: &str) -> bool {
 
 pub fn generated_result_tag(purpose: &str, ordinal: u32) -> TagRef {
     declared({
-    if matches!(purpose, "exiled" | "looked" | "chosen" | "revealed") {
-        sentence_helper_tag(purpose, 0, 0, ordinal as usize).into()
-    } else {
-        TagKey::new(format!("{purpose}_{ordinal}"))
-    }
+        if matches!(purpose, "exiled" | "looked" | "chosen" | "revealed") {
+            sentence_helper_tag(purpose, 0, 0, ordinal as usize).into()
+        } else {
+            TagKey::new(format!("{purpose}_{ordinal}"))
+        }
     })
 }
 
@@ -122,7 +122,11 @@ impl CompilerDerivedTag {
     }
 
     pub fn key(self, source: &TagKey) -> TagRef {
-        declared(TagKey::new(format!("{}{}", source.as_str(), self.serialized_suffix())))
+        declared(TagKey::new(format!(
+            "{}{}",
+            source.as_str(),
+            self.serialized_suffix()
+        )))
     }
 }
 
@@ -183,11 +187,11 @@ pub enum CompilerProvenanceTag {
 impl CompilerProvenanceTag {
     pub fn key(self) -> TagRef {
         declared({
-        match self {
-            Self::ParticipantChoice { line, start } => {
-                TagKey::new(format!("participant_choice_l{line}_s{start}"))
+            match self {
+                Self::ParticipantChoice { line, start } => {
+                    TagKey::new(format!("participant_choice_l{line}_s{start}"))
+                }
             }
-        }
         })
     }
 }
@@ -510,9 +514,10 @@ impl CompilerReferenceTag {
             | Self::VotedAgainstYou
             | Self::ExchangePlayerOne
             | Self::ExchangePlayerTwo => (R::Chosen, D::Player),
-            Self::Sacrificed0 | Self::ThisWaySacrificed | Self::SacrificeCost0 | Self::JointDiscardOrSacrifice => {
-                (R::Sacrificed, D::Object)
-            }
+            Self::Sacrificed0
+            | Self::ThisWaySacrificed
+            | Self::SacrificeCost0
+            | Self::JointDiscardOrSacrifice => (R::Sacrificed, D::Object),
             Self::DiscardedThisWay | Self::DiscardedCost => (R::Discarded, D::Card),
             Self::RevealedThisWay
             | Self::LastRevealed
@@ -528,9 +533,10 @@ impl CompilerReferenceTag {
             | Self::ControllerConsultMatched
             | Self::DrawnRevealedCard
             | Self::HideawayLooked => (R::Revealed, D::Card),
-            Self::Searched | Self::SearchedOutsideGame | Self::SearchedMultiZone | Self::SearchLibrarySlotsProgress => {
-                (R::Searched, D::Card)
-            }
+            Self::Searched
+            | Self::SearchedOutsideGame
+            | Self::SearchedMultiZone
+            | Self::SearchLibrarySlotsProgress => (R::Searched, D::Card),
             Self::PriorExiledCard
             | Self::ExiledThisWay
             | Self::SourceExiled
@@ -541,10 +547,14 @@ impl CompilerReferenceTag {
             | Self::ManifestDreadGraveyard => (R::Exiled, D::Card),
             Self::LivingWeaponCreated | Self::ForMirrodinCreated => (R::Created, D::Object),
             Self::CopiedStackObject => (R::Copied, D::Spell),
-            Self::PreviousIteratedObjects | Self::IterativeLibraryCurrent => (R::Iteration, D::Object),
-            Self::ManaPaidObject | Self::TapCost0 | Self::ConvokedThisSpell | Self::AdditionalCostObject | Self::BeheldCost0 => {
-                (R::CostPaid, D::Object)
+            Self::PreviousIteratedObjects | Self::IterativeLibraryCurrent => {
+                (R::Iteration, D::Object)
             }
+            Self::ManaPaidObject
+            | Self::TapCost0
+            | Self::ConvokedThisSpell
+            | Self::AdditionalCostObject
+            | Self::BeheldCost0 => (R::CostPaid, D::Object),
             Self::SourceObject => (R::Source, D::Object),
             _ => (R::Affected, D::Object),
         }

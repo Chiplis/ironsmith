@@ -152,6 +152,7 @@ pub(super) struct TokenDefinitionReminderFacts {
 
 #[path = "reminder/dynamic_power_toughness.rs"]
 mod dynamic_power_toughness;
+pub use dynamic_power_toughness::parse_named_source_counter_dynamic_power_toughness_tokens;
 pub use dynamic_power_toughness::parse_token_dynamic_power_toughness_tokens;
 use dynamic_power_toughness::{normalized_reminder_words, parse_dynamic_power_toughness};
 

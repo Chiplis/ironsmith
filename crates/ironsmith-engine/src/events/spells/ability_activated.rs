@@ -61,7 +61,10 @@ impl AbilityActivatedEvent {
         self
     }
 
-    pub fn with_stack_entry_provenance(mut self, provenance: Option<crate::provenance::ProvNodeId>) -> Self {
+    pub fn with_stack_entry_provenance(
+        mut self,
+        provenance: Option<crate::provenance::ProvNodeId>,
+    ) -> Self {
         self.stack_entry_provenance = provenance;
         self
     }

@@ -1,15 +1,17 @@
+use super::*;
 use crate::cards::builders::DamageActionAst;
 use crate::cards::builders::GrantActionAst;
-use super::*;
 
 pub(super) fn source_damage_then_gain_ability_actions(effects: &[EffectAst]) -> bool {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { source, .. }),
+            action:
+                SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { source, .. }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { target, .. }),
+            action:
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { target, .. }),
             ..
         }),
     ] = effects
@@ -69,7 +71,9 @@ pub fn collapse_token_copy_end_of_combat_exile_followup_lexed(
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action:
                         SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. })
-                        | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { .. })
+                        | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
+                            ..
+                        })
                         | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { .. }),
                     ..
                 }),

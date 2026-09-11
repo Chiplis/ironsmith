@@ -10,7 +10,8 @@ fn creature_card_put_into_graveyard_this_way_keeps_a_typed_lki_gate() {
     let effects = parse_for_each_put_into_graveyard_this_way_sentence(&tokens)
         .expect("typed iterator should parse")
         .expect("typed iterator should claim the sentence");
-    let [EffectAst::ForEach(ForEachEffectAst::ForEachTagged { effects, .. })] = effects.as_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachTagged { effects, .. })] = effects.as_slice()
+    else {
         panic!("expected a tagged result iterator: {effects:#?}");
     };
     let [
@@ -40,7 +41,8 @@ fn unqualified_card_iterator_keeps_only_an_equality_transparent_surface_gate() {
     let effects = parse_for_each_put_into_graveyard_this_way_sentence(&tokens)
         .expect("ordinary iterator should parse")
         .expect("ordinary iterator should claim the sentence");
-    let [EffectAst::ForEach(ForEachEffectAst::ForEachTagged { effects, .. })] = effects.as_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachTagged { effects, .. })] = effects.as_slice()
+    else {
         panic!("expected a tagged result iterator: {effects:#?}");
     };
     let [

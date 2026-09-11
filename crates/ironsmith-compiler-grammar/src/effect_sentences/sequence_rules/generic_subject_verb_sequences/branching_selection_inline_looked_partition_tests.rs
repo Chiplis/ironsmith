@@ -1,6 +1,6 @@
-use crate::cards::builders::PlayerPredicateAst;
-use crate::cards::builders::CounterActionAst;
 use super::*;
+use crate::cards::builders::CounterActionAst;
+use crate::cards::builders::PlayerPredicateAst;
 use crate::lexer::lex_line;
 
 #[test]
@@ -48,19 +48,22 @@ fn conditional_instead_count_keeps_two_exact_optional_looked_partitions() {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
                     SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
-                        tag: looked_tag, ..
+                        tag: looked_tag,
+                        ..
                     }),
                 ..
             }),
             EffectAst::Permissions(PermissionEffectAst::May { effects: optional }),
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
-                        tag,
-                        keep_tagged: Some(keep_tagged),
-                        order: LibraryBottomOrderAst::Random,
-                        ..
-                    }),
+                    SubjectVerbActionAst::Library(
+                        LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                            tag,
+                            keep_tagged: Some(keep_tagged),
+                            order: LibraryBottomOrderAst::Random,
+                            ..
+                        },
+                    ),
                 ..
             }),
         ] = branch
@@ -295,16 +298,18 @@ fn your_turn_destination_branch_keeps_one_selected_card_and_one_remainder() {
     );
     let effects =
         crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
-        .map(|matched| matched.map(|matched| matched.effects))
+            .map(|matched| matched.map(|matched| matched.effects))
             .expect("your-turn destination parser should not error")
             .expect("your-turn destination partition should parse");
     let [look, choose, reveal, conditional, remainder] = effects.as_slice() else {
         panic!("expected one selected-card destination program: {effects:#?}");
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
-            tag: looked_tag, ..
-        }),
+        action:
+            SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
+                tag: looked_tag,
+                ..
+            }),
         ..
     }) = look
     else {
@@ -371,17 +376,20 @@ fn unfiltered_optional_exile_uses_one_tag_for_exile_remainder_and_permission() {
         .map(|tokens| SentenceInput::from_lexed(tokens))
         .collect::<Vec<_>>();
 
-    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
-        .map(|matched| matched.map(|matched| matched.effects))
-        .expect("optional exile parser should not error")
-        .expect("unfiltered optional exile partition should parse");
+    let effects =
+        crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+            .map(|matched| matched.map(|matched| matched.effects))
+            .expect("optional exile parser should not error")
+            .expect("unfiltered optional exile partition should parse");
     let [look, choose, exile, remainder, permission] = effects.as_slice() else {
         panic!("expected looked/exiled/remainder/permission program: {effects:#?}");
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
-            tag: looked_tag, ..
-        }),
+        action:
+            SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
+                tag: looked_tag,
+                ..
+            }),
         ..
     }) = look
     else {
@@ -525,16 +533,19 @@ fn conditional_cardinality_branches_share_one_selected_tag_and_one_complement() 
         .map(|tokens| SentenceInput::from_lexed(tokens))
         .collect::<Vec<_>>();
 
-    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
-        .map(|matched| matched.map(|matched| matched.effects))
-        .expect("conditional partition parser should not error")
-        .expect("Advice from the Fae shape should parse");
+    let effects =
+        crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+            .map(|matched| matched.map(|matched| matched.effects))
+            .expect("conditional partition parser should not error")
+            .expect("Advice from the Fae shape should parse");
     assert_eq!(effects.len(), 3);
 
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
-            tag: looked_tag, ..
-        }),
+        action:
+            SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
+                tag: looked_tag,
+                ..
+            }),
         ..
     }) = &effects[0]
     else {
@@ -550,7 +561,10 @@ fn conditional_cardinality_branches_share_one_selected_tag_and_one_complement() 
     let branch = |effects: &[EffectAst]| {
         let [
             EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
-                count, tag, filter, ..
+                count,
+                tag,
+                filter,
+                ..
             }),
             EffectAst::MoveTaggedGroupToZone {
                 tag: moved_tag,
@@ -609,17 +623,20 @@ fn conditional_remainder_branches_share_the_looked_minus_selected_partition() {
         .map(|tokens| SentenceInput::from_lexed(tokens))
         .collect::<Vec<_>>();
 
-    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
-        .map(|matched| matched.map(|matched| matched.effects))
-        .expect("conditional partition parser should not error")
-        .expect("looked/selected/conditional-remainder shape should parse");
+    let effects =
+        crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+            .map(|matched| matched.map(|matched| matched.effects))
+            .expect("conditional partition parser should not error")
+            .expect("looked/selected/conditional-remainder shape should parse");
     let [look, choose, move_selected, conditional] = effects.as_slice() else {
         panic!("expected look/choose/move/conditional program: {effects:#?}");
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
-            tag: looked_tag, ..
-        }),
+        action:
+            SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
+                tag: looked_tag,
+                ..
+            }),
         ..
     }) = look
     else {
@@ -695,16 +712,20 @@ fn conditional_entry_modifier_is_not_claimed_as_a_remainder_branch() {
         .map(|tokens| SentenceInput::from_lexed(tokens))
         .collect::<Vec<_>>();
 
-    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
-        .expect("ownership check should not error")
-        .expect("the looked procedure reads the entry modifier as a statement")
-        .effects;
+    let effects =
+        crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+            .expect("ownership check should not error")
+            .expect("the looked procedure reads the entry modifier as a statement")
+            .effects;
     let debug = format!("{effects:#?}");
     assert!(
         !debug.contains("PutTaggedRemainderInZone"),
         "conditional entry modifiers must not be rewritten into a remainder branch: {debug}"
     );
-    assert!(debug.contains("PutTaggedRemainderOnBottomOfLibrary"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
 }
 
 #[test]
@@ -722,16 +743,24 @@ fn conditional_entry_modifier_keeps_one_looked_partition_program() {
 
     let effects =
         crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
-        .map(|matched| matched.map(|matched| matched.effects))
-        .expect("typed program should not error")
-        .expect("conditional entry-counter partition should match");
+            .map(|matched| matched.map(|matched| matched.effects))
+            .expect("typed program should not error")
+            .expect("conditional entry-counter partition should match");
     assert_eq!(effects.len(), 5, "{effects:#?}");
-    assert!(matches!(effects[2], EffectAst::ForEach(ForEachEffectAst::ForEachTagged { .. })));
-    assert!(matches!(effects[3], EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. })));
+    assert!(matches!(
+        effects[2],
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged { .. })
+    ));
+    assert!(matches!(
+        effects[3],
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. })
+    ));
     assert!(matches!(
         effects[4],
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary { .. }),
+            action: SubjectVerbActionAst::Library(
+                LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary { .. }
+            ),
             ..
         })
     ));
@@ -762,9 +791,11 @@ fn optional_source_payment_does_not_replace_plural_looked_card_branches() {
         panic!("expected look/optional/two-branch program: {effects:#?}");
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
-            tag: looked_tag, ..
-        }),
+        action:
+            SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
+                tag: looked_tag,
+                ..
+            }),
         ..
     }) = look
     else {
@@ -772,7 +803,8 @@ fn optional_source_payment_does_not_replace_plural_looked_card_branches() {
     };
     assert!(matches!(
         optional,
-        EffectAst::Permissions(PermissionEffectAst::May { .. }) | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. })
+        EffectAst::Permissions(PermissionEffectAst::May { .. })
+            | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. })
     ));
 
     let branch_target = |effect: &EffectAst, expected| {
@@ -786,7 +818,8 @@ fn optional_source_payment_does_not_replace_plural_looked_card_branches() {
         assert_eq!(*predicate, expected);
         let [
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { target, .. }),
+                action:
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { target, .. }),
                 ..
             }),
         ] = branch.as_slice()
@@ -836,9 +869,11 @@ fn intervening_sacrifice_does_not_replace_the_looked_candidate_pool() {
             .expect("Birthing Ritual shape should parse");
 
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
-            tag: looked_tag, ..
-        }),
+        action:
+            SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
+                tag: looked_tag,
+                ..
+            }),
         ..
     }) = &effects[0]
     else {

@@ -78,8 +78,7 @@ pub mod cards {
         pub use crate::static_abilities::StaticAbility;
         pub use crate::tag::TagKey;
 
-        #[derive(Debug, Clone, PartialEq)]
-        #[derive(ironsmith_core::tag::TagKeyWalk)]
+        #[derive(Debug, Clone, PartialEq, ironsmith_core::tag::TagKeyWalk)]
         pub enum GrantedAbilityAst {
             KeywordAction(Box<KeywordAction>),
             StaticAbility(Box<StaticAbilityAst>),

@@ -203,7 +203,9 @@ pub fn coordination_from_effects(
 }
 
 fn member_produces_plural_created_collection(effect: &crate::cards::builders::EffectAst) -> bool {
-    use crate::cards::builders::{EffectAst, SubjectVerbActionAst, DamageActionAst, TokenActionAst};
+    use crate::cards::builders::{
+        DamageActionAst, EffectAst, SubjectVerbActionAst, TokenActionAst,
+    };
     use crate::effect::Value;
 
     if matches!(
@@ -229,8 +231,9 @@ fn bind_singular_damage_source_to_ability_source(effect: &mut crate::cards::buil
     use crate::target::ObjectFilter;
 
     if let EffectAst::SubjectVerb(subject_verb) = effect
-        && let SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { source, .. }) =
-            &mut subject_verb.action
+        && let SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
+            source, ..
+        }) = &mut subject_verb.action
     {
         match source {
             TargetAst::Tagged(tag, span)
@@ -241,10 +244,10 @@ fn bind_singular_damage_source_to_ability_source(effect: &mut crate::cards::buil
             }
             TargetAst::Object(filter, None, span)
                 if {
-                let mut identity = filter.clone();
-                identity.source_surface = None;
-                identity == ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind())
-            } =>
+                    let mut identity = filter.clone();
+                    identity.source_surface = None;
+                    identity == ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind())
+                } =>
             {
                 *source = TargetAst::Source(*span);
                 return;
@@ -763,8 +766,20 @@ fn classify_boundary<'a>(
         return None;
     }
     if candidate.operator == CoordinationOperatorAst::Or
-        && before.last().is_some_and(|token| token_is_card_type_noun(token) || token.as_word().and_then(crate::util::parse_subtype_word).is_some())
-        && after.first().is_some_and(|token| token_is_card_type_noun(token) || token.as_word().and_then(crate::util::parse_subtype_word).is_some())
+        && before.last().is_some_and(|token| {
+            token_is_card_type_noun(token)
+                || token
+                    .as_word()
+                    .and_then(crate::util::parse_subtype_word)
+                    .is_some()
+        })
+        && after.first().is_some_and(|token| {
+            token_is_card_type_noun(token)
+                || token
+                    .as_word()
+                    .and_then(crate::util::parse_subtype_word)
+                    .is_some()
+        })
     {
         // A card-type union is one object operand even when a later action
         // follows in the same sentence. Do not let the typed clause-head

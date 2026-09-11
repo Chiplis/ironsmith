@@ -1,12 +1,15 @@
+use super::*;
 use crate::cards::builders::ConditionalEffectAst;
 use crate::cards::builders::StatChangeActionAst;
-use super::*;
 
 pub(super) fn parse_gain_ability_sentence_with_subject(
     tokens: &[OwnedLexToken],
     typed_subject_tokens: Option<&[OwnedLexToken]>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if tokens.first().is_some_and(|token| token.is_any_word(&["if", "unless", "instead"])) {
+    if tokens
+        .first()
+        .is_some_and(|token| token.is_any_word(&["if", "unless", "instead"]))
+    {
         return Ok(None);
     }
     let stripped_if_you_do = trim_commas(strip_leading_if_you_do_lexed(tokens));
@@ -43,7 +46,13 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
     let Some(gain_token_idx) = word_view.map_word_or_end_to_token_boundary(gain_idx) else {
         return Ok(None);
     };
-    if tokens[..gain_token_idx].iter().filter(|token| token.kind == TokenKind::Quote).count() % 2 != 0 {
+    if tokens[..gain_token_idx]
+        .iter()
+        .filter(|token| token.kind == TokenKind::Quote)
+        .count()
+        % 2
+        != 0
+    {
         return Ok(None);
     }
     if let Some((Verb::Create, create_idx)) = find_verb(tokens)
@@ -77,7 +86,9 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
         && subject_verb != Verb::Get
     {
         if matches!(subject_verb, Verb::Tap | Verb::Untap)
-            && tokens[subject_start_token_idx..gain_token_idx].iter().any(|token| token.is_word("and"))
+            && tokens[subject_start_token_idx..gain_token_idx]
+                .iter()
+                .any(|token| token.is_word("and"))
         {
             return Ok(None);
         }
@@ -601,7 +612,8 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
                     abilities,
                     duration.clone(),
                     &duration_condition,
-                ).with_set_quantifier_surface(pronoun_set_quantifier_surface),
+                )
+                .with_set_quantifier_surface(pronoun_set_quantifier_surface),
             );
         }
         if let Some(become_effect) = &following_become_effect {
@@ -705,7 +717,8 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
                     abilities,
                     duration.clone(),
                     &duration_condition,
-                ).with_set_quantifier_surface(pronoun_set_quantifier_surface),
+                )
+                .with_set_quantifier_surface(pronoun_set_quantifier_surface),
             );
         }
         if let Some(become_effect) = &following_become_effect {
@@ -745,7 +758,8 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
                     abilities,
                     duration.clone(),
                     &duration_condition,
-                ).with_set_quantifier_surface(pronoun_set_quantifier_surface),
+                )
+                .with_set_quantifier_surface(pronoun_set_quantifier_surface),
             );
         }
         if let Some(become_effect) = &following_become_effect {
@@ -838,7 +852,8 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
                     abilities,
                     duration.clone(),
                     &duration_condition,
-                ).with_set_quantifier_surface(pronoun_set_quantifier_surface),
+                )
+                .with_set_quantifier_surface(pronoun_set_quantifier_surface),
             );
         }
         effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;

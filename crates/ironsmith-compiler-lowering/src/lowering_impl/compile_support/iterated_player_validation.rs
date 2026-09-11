@@ -262,8 +262,14 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
                 | TurnHistoryCount::MovedZones { filter, .. } => {
                     object_filter_mentions_iterated_player(filter)
                 }
-                TurnHistoryCount::CountersPutOn { source_controller, filter, .. } => {
-                    source_controller.as_ref().is_some_and(|player| player.mentions_iterated_player())
+                TurnHistoryCount::CountersPutOn {
+                    source_controller,
+                    filter,
+                    ..
+                } => {
+                    source_controller
+                        .as_ref()
+                        .is_some_and(|player| player.mentions_iterated_player())
                         || object_filter_mentions_iterated_player(filter)
                 }
                 TurnHistoryCount::TokensCreated(player)
@@ -295,7 +301,9 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
                     player.mentions_iterated_player()
                         || object_filter_mentions_iterated_player(filter)
                 }
-                TurnHistoryCount::DamageDealtToSource | TurnHistoryCount::DamageDealtBySource => false,
+                TurnHistoryCount::DamageDealtToSource | TurnHistoryCount::DamageDealtBySource => {
+                    false
+                }
             }
         }
         _ => false,

@@ -975,8 +975,12 @@ fn rewrite_vote_count_followups_line(text: &str) -> String {
             }) => {
                 let first = format!("{subject} {first_action}");
                 let second = format!("{subject} {second_action}");
-                format!("For each {first_vote} vote, {}. For each {second_vote} vote, {}", first.trim(), second.trim())
-            },
+                format!(
+                    "For each {first_vote} vote, {}. For each {second_vote} vote, {}",
+                    first.trim(),
+                    second.trim()
+                )
+            }
             Some(preprocess_grammar::VoteCountRewriteSurface::TrailingForEach { head, vote }) => {
                 format!("For each {vote} vote, {head}")
             }
@@ -1152,7 +1156,10 @@ pub fn preprocess_document_with_provenance(
         // Restore only exact case-insensitive matches at the mapped source span.
         for token in &mut tokens {
             let source_span = crate::util::map_span_to_original(
-                token.span, &normalized.normalized, &normalized.original, &normalized.char_map,
+                token.span,
+                &normalized.normalized,
+                &normalized.original,
+                &normalized.char_map,
             );
             if let Some(authored) = normalized.original.get(source_span.start..source_span.end)
                 && authored.eq_ignore_ascii_case(&token.slice)

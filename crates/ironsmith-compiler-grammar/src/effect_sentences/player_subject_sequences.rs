@@ -1,11 +1,11 @@
-use crate::cards::builders::ForEachEffectAst;
 use super::super::lexer::{
     OwnedLexToken, TokenKind, parser_token_word_refs, token_word_refs, trim_lexed_commas,
 };
 use super::lex_chain_helpers::find_verb_lexed;
+use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{
-    EffectAst, PlayerAst, ReturnControllerAst, SubjectVerbActionAst, SubjectVerbEffectAst, TagKey,
-    TargetAst, TextSpan, ZoneMoveActionAst, ConditionalEffectAst,
+    ConditionalEffectAst, EffectAst, PlayerAst, ReturnControllerAst, SubjectVerbActionAst,
+    SubjectVerbEffectAst, TagKey, TargetAst, TextSpan, ZoneMoveActionAst,
 };
 use crate::effect::Value;
 use crate::target::ObjectFilter;
@@ -49,7 +49,9 @@ fn with_each_player_subject(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
 }
 
 fn single_each_player_effect(mut effects: Vec<EffectAst>) -> Option<EffectAst> {
-    let [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects: nested })] = effects.as_mut_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects: nested })] =
+        effects.as_mut_slice()
+    else {
         return None;
     };
     (nested.len() == 1).then(|| nested.remove(0))
@@ -83,7 +85,8 @@ pub(super) fn parse_each_player_exile_sacrifice_return_exiled(
     if !matches!(
         first,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. }) | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { .. }),
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { .. }),
             ..
         })
     ) {
@@ -130,16 +133,18 @@ pub(super) fn parse_each_player_exile_sacrifice_return_exiled(
         ReturnControllerAst::Preserve,
     );
 
-    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
-        effects: vec![
-            EffectAst::TagAffected {
-                effect: Box::new(first),
-                tag: crate::tag::TagRef::of(exiled_tag),
-            },
-            second,
-            put_exiled,
-        ],
-    })]))
+    Ok(Some(vec![EffectAst::ForEach(
+        ForEachEffectAst::ForEachPlayer {
+            effects: vec![
+                EffectAst::TagAffected {
+                    effect: Box::new(first),
+                    tag: crate::tag::TagRef::of(exiled_tag),
+                },
+                second,
+                put_exiled,
+            ],
+        },
+    )]))
 }
 
 /// Parse a coordinated instruction in which the controller and defending
@@ -308,10 +313,10 @@ fn explicit_player_action_after_boundary(
 #[cfg(test)]
 mod tests {
     use crate::cards::builders::ForEachEffectAst;
-    use crate::cards::builders::LifeResourceActionAst;
-    use crate::cards::builders::ZoneMoveActionAst;
     use crate::cards::builders::KeywordActionAst;
     use crate::cards::builders::LibraryActionAst;
+    use crate::cards::builders::LifeResourceActionAst;
+    use crate::cards::builders::ZoneMoveActionAst;
     use crate::cards::builders::{
         EffectAst, SubjectVerbActionAst, SubjectVerbEffectAst, TargetAst,
     };
@@ -519,7 +524,10 @@ mod tests {
 
     fn assert_player_sequence(effects: &[&EffectAst]) {
         assert!(
-            matches!(effects.first(), Some(EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { .. }))),
+            matches!(
+                effects.first(),
+                Some(EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { .. }))
+            ),
             "{effects:#?}"
         );
         assert!(
@@ -536,7 +544,9 @@ mod tests {
             matches!(
                 effects.get(2),
                 Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { .. }),
+                    action: SubjectVerbActionAst::LifeResources(
+                        LifeResourceActionAst::GainLife { .. }
+                    ),
                     ..
                 }))
             ),
@@ -559,7 +569,9 @@ mod tests {
         );
         let effects =
             parse_effect_sentence_lexed(&tokens).expect("result-set sequence should parse");
-        let [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects: nested })] = effects.as_slice() else {
+        let [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects: nested })] =
+            effects.as_slice()
+        else {
             panic!("expected one each-player sequence, got {effects:#?}");
         };
         let nested = match nested.as_slice() {
@@ -570,11 +582,16 @@ mod tests {
             EffectAst::TagAffected { tag, .. },
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { .. }) | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { .. }),
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { .. })
+                    | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { .. }),
                 ..
             }),
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PutOntoBattlefield { target, .. }),
+                action:
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PutOntoBattlefield {
+                        target,
+                        ..
+                    }),
                 ..
             }),
         ] = nested

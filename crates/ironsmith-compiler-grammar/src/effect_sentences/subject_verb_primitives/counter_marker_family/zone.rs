@@ -1,5 +1,5 @@
-use crate::cards::builders::ZoneMoveActionAst;
 use super::*;
+use crate::cards::builders::ZoneMoveActionAst;
 
 pub fn clone_return_effect_with_subtype(base: &EffectAst, subtype: Subtype) -> Option<EffectAst> {
     match base {
@@ -57,8 +57,9 @@ pub fn clone_return_effect_with_subtype(base: &EffectAst, subtype: Subtype) -> O
                     )
                     .with_top_only_return_choice(*top_only);
                     if let EffectAst::SubjectVerb(subject_verb) = &mut effect
-                        && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { as_aura: dst, .. }) =
-                            &mut subject_verb.action
+                        && let SubjectVerbActionAst::ZoneMoves(
+                            ZoneMoveActionAst::ReturnToBattlefield { as_aura: dst, .. },
+                        ) = &mut subject_verb.action
                     {
                         *dst = as_aura.clone();
                     }

@@ -327,45 +327,95 @@ const VARIABLE_COST_REFLEXIVE_CAST: &str = "Flying\nWhen this creature enters, y
 #[test]
 fn reflexive_variable_cost_cast_replacement_checks_the_cast_result() {
     let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Halo Forager")
-        .card_types(vec![CardType::Creature]).parse_text(VARIABLE_COST_REFLEXIVE_CAST).unwrap();
-    let triggered = definition.abilities.iter().find_map(|a| match &a.kind {
-        AbilityKind::Triggered(t) => Some(t), _ => None,
-    }).unwrap();
-    let reflexive = triggered.effects.iter().find_map(|e| e.downcast_ref::<crate::effects::ReflexiveTriggerEffect>()).unwrap();
-    let cast = reflexive.effects.iter().find_map(|e| e.downcast_ref::<crate::effects::WithIdEffect>()).unwrap();
-    let replacement = reflexive.effects.iter().find_map(|e| e.downcast_ref::<crate::effects::IfEffect>()).unwrap();
-    assert_eq!(replacement.condition, cast.id, "the replacement must check the optional cast's actual result ID");
+        .card_types(vec![CardType::Creature])
+        .parse_text(VARIABLE_COST_REFLEXIVE_CAST)
+        .unwrap();
+    let triggered = definition
+        .abilities
+        .iter()
+        .find_map(|a| match &a.kind {
+            AbilityKind::Triggered(t) => Some(t),
+            _ => None,
+        })
+        .unwrap();
+    let reflexive = triggered
+        .effects
+        .iter()
+        .find_map(|e| e.downcast_ref::<crate::effects::ReflexiveTriggerEffect>())
+        .unwrap();
+    let cast = reflexive
+        .effects
+        .iter()
+        .find_map(|e| e.downcast_ref::<crate::effects::WithIdEffect>())
+        .unwrap();
+    let replacement = reflexive
+        .effects
+        .iter()
+        .find_map(|e| e.downcast_ref::<crate::effects::IfEffect>())
+        .unwrap();
+    assert_eq!(
+        replacement.condition, cast.id,
+        "the replacement must check the optional cast's actual result ID"
+    );
 }
 
 #[test]
 fn reflexive_variable_cost_cast_renders_target_and_replacement() {
     let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Halo Forager")
-        .card_types(vec![CardType::Creature]).parse_text(VARIABLE_COST_REFLEXIVE_CAST).unwrap();
-    assert_eq!(crate::compiled_text::compiled_text_lines(&definition).join("\n"), VARIABLE_COST_REFLEXIVE_CAST);
+        .card_types(vec![CardType::Creature])
+        .parse_text(VARIABLE_COST_REFLEXIVE_CAST)
+        .unwrap();
+    assert_eq!(
+        crate::compiled_text::compiled_text_lines(&definition).join("\n"),
+        VARIABLE_COST_REFLEXIVE_CAST
+    );
 }
 
 #[test]
 fn reflexive_variable_cost_cast_exiles_only_the_spell_actually_cast() {
     struct CastChoice(bool);
     impl crate::decision::DecisionMaker for CastChoice {
-        fn decide_boolean(&mut self, _: &crate::game_state::GameState,
-            _: &crate::decisions::context::BooleanContext) -> bool { self.0 }
+        fn decide_boolean(
+            &mut self,
+            _: &crate::game_state::GameState,
+            _: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            self.0
+        }
     }
     let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Halo Forager")
-        .card_types(vec![CardType::Creature]).parse_text(VARIABLE_COST_REFLEXIVE_CAST).unwrap();
-    let triggered = definition.abilities.iter().find_map(|a| match &a.kind {
-        AbilityKind::Triggered(t) => Some(t), _ => None,
-    }).unwrap();
-    let reflexive = triggered.effects.iter().find_map(|e| e.downcast_ref::<crate::effects::ReflexiveTriggerEffect>()).unwrap();
+        .card_types(vec![CardType::Creature])
+        .parse_text(VARIABLE_COST_REFLEXIVE_CAST)
+        .unwrap();
+    let triggered = definition
+        .abilities
+        .iter()
+        .find_map(|a| match &a.kind {
+            AbilityKind::Triggered(t) => Some(t),
+            _ => None,
+        })
+        .unwrap();
+    let reflexive = triggered
+        .effects
+        .iter()
+        .find_map(|e| e.downcast_ref::<crate::effects::ReflexiveTriggerEffect>())
+        .unwrap();
     for accept in [false, true] {
         for opposing_graveyard in [false, true] {
-            let mut game = crate::game_state::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let mut game =
+                crate::game_state::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
             let alice = game.players[0].id;
-            let owner = if opposing_graveyard { game.players[1].id } else { alice };
+            let owner = if opposing_graveyard {
+                game.players[1].id
+            } else {
+                alice
+            };
             let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
             let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Selected spell")
                 .card_types(vec![CardType::Sorcery])
-                .mana_cost(crate::mana::ManaCost::from_symbols(vec![crate::mana::ManaSymbol::Generic(2)]))
+                .mana_cost(crate::mana::ManaCost::from_symbols(vec![
+                    crate::mana::ManaSymbol::Generic(2),
+                ]))
                 .build();
             let selected = game.create_object_from_card(&card, owner, Zone::Graveyard);
             let stable = game.object(selected).unwrap().stable_id;
@@ -378,14 +428,27 @@ fn reflexive_variable_cost_cast_exiles_only_the_spell_actually_cast() {
                 crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
             }
             let current = game.find_object_by_stable_id(stable).unwrap();
-            assert_eq!(game.object(current).unwrap().zone, if accept { Zone::Stack } else { Zone::Graveyard });
-            assert_eq!(game.effect_store.replacement_effects.effects().len(), usize::from(accept));
+            assert_eq!(
+                game.object(current).unwrap().zone,
+                if accept { Zone::Stack } else { Zone::Graveyard }
+            );
+            assert_eq!(
+                game.effect_store.replacement_effects.effects().len(),
+                usize::from(accept)
+            );
             if accept {
                 assert!(game.stack.iter().any(|entry| entry.object_id == current));
                 game.remove_object(source);
-                crate::effects::execute_effect(&mut game,
-                    &Effect::move_to_zone(ChooseSpec::SpecificObject(current), Zone::Graveyard, false),
-                    &mut ctx).unwrap();
+                crate::effects::execute_effect(
+                    &mut game,
+                    &Effect::move_to_zone(
+                        ChooseSpec::SpecificObject(current),
+                        Zone::Graveyard,
+                        false,
+                    ),
+                    &mut ctx,
+                )
+                .unwrap();
                 let final_id = game.find_object_by_stable_id(stable).unwrap();
                 assert_eq!(game.object(final_id).unwrap().zone, Zone::Exile);
             }

@@ -2,8 +2,7 @@
 
 use super::*;
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum TriggeringPredicateAst {
     /// The object in the surrounding tap event is becoming tapped for the
     /// first time this turn. This is per object, not per triggered ability.

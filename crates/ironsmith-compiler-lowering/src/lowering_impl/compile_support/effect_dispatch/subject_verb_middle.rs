@@ -1,27 +1,42 @@
-use crate::cards::builders::TokenActionAst;
+use super::*;
+use crate::cards::builders::CharacteristicActionAst;
+use crate::cards::builders::CounterActionAst;
+use crate::cards::builders::GrantActionAst;
+use crate::cards::builders::KeywordActionAst;
+use crate::cards::builders::LibraryActionAst;
 use crate::cards::builders::StackActionAst;
 use crate::cards::builders::StatChangeActionAst;
-use crate::cards::builders::KeywordActionAst;
-use crate::cards::builders::CharacteristicActionAst;
-use crate::cards::builders::LibraryActionAst;
-use crate::cards::builders::GrantActionAst;
-use crate::cards::builders::CounterActionAst;
-use super::*;
+use crate::cards::builders::TokenActionAst;
 
 pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
     matches!(
         action,
-        SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddAllSubtypesOfFamily { .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddCardTypes { .. })
+        SubjectVerbActionAst::Characteristics(
+            CharacteristicActionAst::AddAllSubtypesOfFamily { .. }
+        ) | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddCardTypes { .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddColors { .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes { .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeAuraEnchantment { .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature { .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasicLandType { .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasicLandTypeChoice { .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice { .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCreatureTypeChoice { .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeSaddledUntilEndOfTurn { .. })
+            | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeAuraEnchantment { .. }
+            )
+            | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeBasePtCreature { .. }
+            )
+            | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeBasicLandType { .. }
+            )
+            | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeBasicLandTypeChoice { .. }
+            )
+            | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeColorChoice { .. }
+            )
+            | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeCreatureTypeChoice { .. }
+            )
+            | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeSaddledUntilEndOfTurn { .. }
+            )
             | SubjectVerbActionAst::Cant { .. }
             | SubjectVerbActionAst::Stack(StackActionAst::CastTagged { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary { .. })
@@ -35,23 +50,35 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceToTarget { .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantBySpec { .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled { .. })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { .. })
+            | SubjectVerbActionAst::Grants(
+                GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { .. }
+            )
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn { .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilYourNextTurn { .. })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn { .. })
+            | SubjectVerbActionAst::Grants(
+                GrantActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn { .. }
+            )
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::MakeColorless { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Meld { .. })
-            | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice { .. })
+            | SubjectVerbActionAst::Library(
+                LibraryActionAst::MoveToLibraryTopOrBottomChoice { .. }
+            )
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpByLastEffect { .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutOrRemoveCounters { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderInZone { .. })
-            | SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary { .. })
+            | SubjectVerbActionAst::Library(
+                LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary { .. }
+            )
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll { .. })
-            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget { .. })
-            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAllSubtypesOfFamily { .. })
+            | SubjectVerbActionAst::StatChanges(
+                StatChangeActionAst::RemoveAbilitiesFromTarget { .. }
+            )
+            | SubjectVerbActionAst::StatChanges(
+                StatChangeActionAst::RemoveAllSubtypesOfFamily { .. }
+            )
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveCardTypes { .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSubtypes { .. })
             | SubjectVerbActionAst::Stack(StackActionAst::RetargetStackObject { .. })
@@ -61,11 +88,17 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrarySlotsToHand { .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness { .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness { .. })
+            | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::SetBaseToughness { .. }
+            )
+            | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::SetBasePowerToughness { .. }
+            )
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCardTypes { .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetColors { .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCreatureSubtypes { .. })
+            | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::SetCreatureSubtypes { .. }
+            )
             | SubjectVerbActionAst::TagMatchingObjects { .. }
     )
 }
@@ -528,7 +561,9 @@ pub(super) fn compile_become_base_pt_creature_action(
     ctx: &mut EffectLoweringContext,
 ) -> Result<EffectCompileOutcome, CardTextError> {
     let SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
-        name_override, add_supertypes, remove_all_abilities,
+        name_override,
+        add_supertypes,
+        remove_all_abilities,
         power,
         toughness,
         target,
@@ -583,13 +618,19 @@ pub(super) fn compile_become_base_pt_creature_action(
         })
         .resolve_set_pt_values_at_resolution();
         if let Some(name) = name_override {
-            apply = apply.with_additional_modification(crate::continuous::Modification::SetName(name.clone()));
+            apply = apply.with_additional_modification(crate::continuous::Modification::SetName(
+                name.clone(),
+            ));
         }
         if !add_supertypes.is_empty() {
-            apply = apply.with_additional_modification(crate::continuous::Modification::AddSupertypes(add_supertypes.clone()));
+            apply = apply.with_additional_modification(
+                crate::continuous::Modification::AddSupertypes(add_supertypes.clone()),
+            );
         }
         if *remove_all_abilities {
-            apply = apply.with_additional_runtime_modification(crate::effects::continuous::RuntimeModification::RemoveAllAbilities);
+            apply = apply.with_additional_runtime_modification(
+                crate::effects::continuous::RuntimeModification::RemoveAllAbilities,
+            );
         }
         if let Some(colors) = colors {
             apply = apply
@@ -975,7 +1016,9 @@ pub(super) fn compile_subject_verb_middle(
                     )
                 })?
             } else if tag.as_str() == "__source_exiled__" {
-                ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| tag.clone().into())
+                ctx.last_exiled_collection_tag
+                    .clone()
+                    .unwrap_or_else(|| tag.clone().into())
             } else {
                 tag.clone().into()
             };
@@ -1032,7 +1075,9 @@ pub(super) fn compile_subject_verb_middle(
                     )
                 })?
             } else if tag.as_str() == "__source_exiled__" {
-                ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| tag.clone().into())
+                ctx.last_exiled_collection_tag
+                    .clone()
+                    .unwrap_or_else(|| tag.clone().into())
             } else {
                 tag.clone().into()
             };
@@ -1088,10 +1133,12 @@ pub(super) fn compile_subject_verb_middle(
             }
             Ok((effects, Vec::new()))
         }
-        SubjectVerbActionAst::Grants(GrantActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
-            tag,
-            player,
-        }) => {
+        SubjectVerbActionAst::Grants(
+            GrantActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
+                tag,
+                player,
+            },
+        ) => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
             let resolved_tag = if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
@@ -1101,7 +1148,9 @@ pub(super) fn compile_subject_verb_middle(
                     )
                 })?
             } else if tag.as_str() == "__source_exiled__" {
-                ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| tag.clone().into())
+                ctx.last_exiled_collection_tag
+                    .clone()
+                    .unwrap_or_else(|| tag.clone().into())
             } else {
                 tag.clone().into()
             };
@@ -1132,7 +1181,9 @@ pub(super) fn compile_subject_verb_middle(
                     )
                 })?
             } else if tag.as_str() == "__source_exiled__" {
-                ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| tag.clone().into())
+                ctx.last_exiled_collection_tag
+                    .clone()
+                    .unwrap_or_else(|| tag.clone().into())
             } else {
                 tag.clone().into()
             };
@@ -1175,7 +1226,9 @@ pub(super) fn compile_subject_verb_middle(
                     )
                 })?
             } else if tag.as_str() == "__source_exiled__" {
-                ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| tag.clone().into())
+                ctx.last_exiled_collection_tag
+                    .clone()
+                    .unwrap_or_else(|| tag.clone().into())
             } else {
                 tag.clone().into()
             };
@@ -1213,13 +1266,15 @@ pub(super) fn compile_subject_verb_middle(
             }
             Ok((effects, Vec::new()))
         }
-        SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource {
-            tag,
-            player,
-            allow_land,
-            allow_any_color_for_cast,
-            surface,
-        }) => {
+        SubjectVerbActionAst::Grants(
+            GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource {
+                tag,
+                player,
+                allow_land,
+                allow_any_color_for_cast,
+                surface,
+            },
+        ) => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
             let resolved_tag = if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
@@ -1229,7 +1284,9 @@ pub(super) fn compile_subject_verb_middle(
                     )
                 })?
             } else if tag.as_str() == "__source_exiled__" {
-                ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| tag.clone().into())
+                ctx.last_exiled_collection_tag
+                    .clone()
+                    .unwrap_or_else(|| tag.clone().into())
             } else {
                 tag.clone().into()
             };
@@ -1345,7 +1402,9 @@ pub(super) fn compile_subject_verb_middle(
                         ChooseSpec::tagged(tag)
                     }
                     ChooseSpec::WithCount(inner, count)
-                        if (count.is_single() || count_value.is_some() || inner.target_set_aggregate_constraint().is_some())
+                        if (count.is_single()
+                            || count_value.is_some()
+                            || inner.target_set_aggregate_constraint().is_some())
                             && matches!(inner.base(), ChooseSpec::Object(filter) if filter.tagged_constraints.is_empty() && filter.zone == Some(Zone::Graveyard)) =>
                     {
                         let ChooseSpec::Object(filter) = inner.base() else {
@@ -1359,7 +1418,9 @@ pub(super) fn compile_subject_verb_middle(
                             implicit_chooser.clone(),
                             tag.clone(),
                         );
-                        if let Some(constraint) = choose.filter.target_set_aggregate_constraint.take() {
+                        if let Some(constraint) =
+                            choose.filter.target_set_aggregate_constraint.take()
+                        {
                             choose = choose.with_aggregate_constraint(*constraint);
                         }
                         if *top_only {
@@ -1465,11 +1526,19 @@ pub(super) fn compile_subject_verb_middle(
                     resolved_spec.base(),
                     ChooseSpec::Tagged(_) | ChooseSpec::All(_)
                 );
-            if aura_return_tag.is_some() || (ctx.auto_tag_object_targets && produces_referencable_objects) {
-                let tag = aura_return_tag.clone().unwrap_or_else(|| reserved_or_next_object_tag(ctx, "returned"));
+            if aura_return_tag.is_some()
+                || (ctx.auto_tag_object_targets && produces_referencable_objects)
+            {
+                let tag = aura_return_tag
+                    .clone()
+                    .unwrap_or_else(|| reserved_or_next_object_tag(ctx, "returned"));
                 ctx.last_object_tag = Some(tag.clone());
                 effect = if aura_return_tag.is_some() {
-                    Effect::new(crate::effects::TaggedEffect { effect: Box::new(effect), tag, outcome_only: true })
+                    Effect::new(crate::effects::TaggedEffect {
+                        effect: Box::new(effect),
+                        tag,
+                        outcome_only: true,
+                    })
                 } else if choose_spec_may_hold_multiple_objects(&resolved_spec) {
                     effect.tag_all(tag)
                 } else {
@@ -1598,7 +1667,10 @@ pub(super) fn compile_subject_verb_middle(
                 // when its members came from a tag and some have since moved.
                 // Resolving it as a bare tagged reference would discard that
                 // restriction before the all-objects movement executes.
-                (ChooseSpec::All(resolve_it_tag(filter, &current_reference_env(ctx))?), Vec::new())
+                (
+                    ChooseSpec::All(resolve_it_tag(filter, &current_reference_env(ctx))?),
+                    Vec::new(),
+                )
             } else {
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?
             };
@@ -1780,7 +1852,8 @@ pub(super) fn compile_subject_verb_middle(
                             "__sentence_helper_exiled_l0_s0_e{}",
                             ctx.id_gen_context().next_tag_id.saturating_sub(1)
                         ))
-                    }).map(Into::into)
+                    })
+                    .map(Into::into)
                 });
                 let Some(remainder_tag) = remainder_tag else {
                     let move_effect = with_move_surfaces(crate::effects::MoveToZoneEffect::new(
@@ -1826,7 +1899,9 @@ pub(super) fn compile_subject_verb_middle(
                 let mut filter = filter.clone();
                 if let Some(tag) = &ctx.last_exiled_collection_tag {
                     for constraint in &mut filter.tagged_constraints {
-                        if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str() {
+                        if constraint.tag.as_str()
+                            == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
+                        {
                             constraint.tag = tag.clone();
                             constraint.relation = TaggedOpbjectRelation::SameObjectId;
                         }
@@ -1951,7 +2026,9 @@ pub(super) fn compile_subject_verb_middle(
             source_choice_prelude.push(effect);
             Ok((source_choice_prelude, choices))
         }
-        SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice { target }) => {
+        SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice {
+            target,
+        }) => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             let mut move_effect =
@@ -1991,7 +2068,13 @@ pub(super) fn compile_subject_verb_middle(
                 effect = effect.in_zones(zones.clone());
             }
             if !source_tags.is_empty() {
-                effect = effect.from_tagged_sources(source_tags.clone().into_iter().map(ironsmith_compiler_semantic::TagKey::from).collect::<Vec<_>>());
+                effect = effect.from_tagged_sources(
+                    source_tags
+                        .clone()
+                        .into_iter()
+                        .map(ironsmith_compiler_semantic::TagKey::from)
+                        .collect::<Vec<_>>(),
+                );
             }
             ctx.last_object_tag = Some(tag.clone().into());
             Ok((vec![Effect::new(effect)], Vec::new()))
@@ -2020,9 +2103,9 @@ pub(super) fn compile_subject_verb_middle(
                 .resolve_set_pt_values_at_resolution(),
             )
         }),
-        SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature { .. }) => {
-            compile_become_base_pt_creature_action(subject_verb, ctx)
-        }
+        SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
+            ..
+        }) => compile_become_base_pt_creature_action(subject_verb, ctx),
         SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower {
             power,
             target,
@@ -2194,14 +2277,14 @@ pub(super) fn compile_subject_verb_middle(
                 ),
             )
         }),
-        SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeSaddledUntilEndOfTurn { target }) => {
-            compile_tagged_effect_for_target(target, ctx, "saddled", |spec| {
-                Effect::new(crate::effects::ExecuteWithSourceEffect::new(
-                    spec,
-                    Effect::new(crate::effects::BecomeSaddledUntilEotEffect::new()),
-                ))
-            })
-        }
+        SubjectVerbActionAst::Characteristics(
+            CharacteristicActionAst::BecomeSaddledUntilEndOfTurn { target },
+        ) => compile_tagged_effect_for_target(target, ctx, "saddled", |spec| {
+            Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+                spec,
+                Effect::new(crate::effects::BecomeSaddledUntilEotEffect::new()),
+            ))
+        }),
         SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddColors {
             target,
             colors,
@@ -2213,11 +2296,13 @@ pub(super) fn compile_subject_verb_middle(
                 duration.clone(),
             ))
         }),
-        SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddAllSubtypesOfFamily {
-            target,
-            family,
-            duration,
-        }) => compile_tagged_effect_for_target(target, ctx, "subtyped", |spec| {
+        SubjectVerbActionAst::Characteristics(
+            CharacteristicActionAst::AddAllSubtypesOfFamily {
+                target,
+                family,
+                duration,
+            },
+        ) => compile_tagged_effect_for_target(target, ctx, "subtyped", |spec| {
             Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
                 spec,
                 crate::continuous::Modification::AddAllSubtypesOfFamily(*family),
@@ -2294,28 +2379,31 @@ pub(super) fn compile_subject_verb_middle(
                 duration.clone(),
             ))
         }),
-        SubjectVerbActionAst::StatChanges(StatChangeActionAst::MakeColorless { target, duration }) => {
-            compile_tagged_effect_for_target(target, ctx, "set_colorless", |spec| {
-                Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
-                    spec,
-                    crate::continuous::Modification::MakeColorless,
-                    duration.clone(),
-                ))
-            })
-        }
-        SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasicLandTypeChoice { target, duration }) => {
-            compile_tagged_effect_for_target(target, ctx, "become_basic_land_type", |spec| {
-                Effect::new(crate::effects::BecomeBasicLandTypeChoiceEffect::new(
-                    spec,
-                    duration.clone(),
-                ))
-            })
-        }
-        SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCreatureTypeChoice {
+        SubjectVerbActionAst::StatChanges(StatChangeActionAst::MakeColorless {
             target,
             duration,
-            excluded_subtypes,
-        }) => compile_tagged_effect_for_target(target, ctx, "become_creature_type_choice", |spec| {
+        }) => compile_tagged_effect_for_target(target, ctx, "set_colorless", |spec| {
+            Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+                spec,
+                crate::continuous::Modification::MakeColorless,
+                duration.clone(),
+            ))
+        }),
+        SubjectVerbActionAst::Characteristics(
+            CharacteristicActionAst::BecomeBasicLandTypeChoice { target, duration },
+        ) => compile_tagged_effect_for_target(target, ctx, "become_basic_land_type", |spec| {
+            Effect::new(crate::effects::BecomeBasicLandTypeChoiceEffect::new(
+                spec,
+                duration.clone(),
+            ))
+        }),
+        SubjectVerbActionAst::Characteristics(
+            CharacteristicActionAst::BecomeCreatureTypeChoice {
+                target,
+                duration,
+                excluded_subtypes,
+            },
+        ) => compile_tagged_effect_for_target(target, ctx, "become_creature_type_choice", |spec| {
             Effect::new(crate::effects::BecomeCreatureTypeChoiceEffect::new(
                 spec,
                 duration.clone(),
@@ -3293,7 +3381,9 @@ pub(super) fn compile_subject_verb_middle(
                         .is_some_and(|tag| tag.as_str() == "triggering")
                     {
                         (
-                            ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::Triggering.bind()).into()),
+                            ChooseSpec::Tagged(
+                                (crate::tag::CompilerReferenceTag::Triggering.bind()).into(),
+                            ),
                             Vec::new(),
                         )
                     } else {
@@ -3345,16 +3435,28 @@ fn apply_token_definition_granted_abilities(
 ) -> Result<(), CardTextError> {
     for granted in abilities {
         if let GrantedAbilityAst::StaticAbility(ability) = granted
-            && let crate::cards::builders::StaticAbilityAst::AttachmentRestriction { filter, .. } = ability.as_ref()
+            && let crate::cards::builders::StaticAbilityAst::AttachmentRestriction {
+                filter, ..
+            } = ability.as_ref()
         {
-            if token.aura_attach_filter.as_ref().is_some_and(|existing| existing != filter) {
-                return Err(CardTextError::ParseError("conflicting token attachment restrictions".into()));
+            if token
+                .aura_attach_filter
+                .as_ref()
+                .is_some_and(|existing| existing != filter)
+            {
+                return Err(CardTextError::ParseError(
+                    "conflicting token attachment restrictions".into(),
+                ));
             }
             token.aura_attach_filter = Some(filter.clone());
             continue;
         }
-        for ability in lower_granted_abilities_ast_to_object_abilities(std::slice::from_ref(granted))? {
-            if !token.abilities.contains(&ability) { token.abilities.push(ability); }
+        for ability in
+            lower_granted_abilities_ast_to_object_abilities(std::slice::from_ref(granted))?
+        {
+            if !token.abilities.contains(&ability) {
+                token.abilities.push(ability);
+            }
         }
     }
     Ok(())

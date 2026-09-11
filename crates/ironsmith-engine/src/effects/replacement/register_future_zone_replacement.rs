@@ -37,7 +37,9 @@ impl EffectExecutor for RegisterFutureZoneReplacementEffect {
                 if constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
                     && frozen.get(&constraint.tag).is_some_and(|snapshots| {
                         !snapshots.is_empty()
-                            && snapshots.iter().all(|snapshot| snapshot.zone == crate::zone::Zone::Stack)
+                            && snapshots
+                                .iter()
+                                .all(|snapshot| snapshot.zone == crate::zone::Zone::Stack)
                     })
                 {
                     constraint.relation = crate::filter::TaggedOpbjectRelation::SameObjectId;
@@ -77,9 +79,9 @@ impl EffectExecutor for RegisterFutureZoneReplacementEffect {
                     .add_until_end_of_turn_effect(replacement);
             }
             crate::effects::ReplacementApplyMode::UntilYourNextTurn => {
-                game.effect_store.replacement_effects.add_until_next_turn_effect(
-                    replacement, ctx.controller, game.turn.turn_number,
-                );
+                game.effect_store
+                    .replacement_effects
+                    .add_until_next_turn_effect(replacement, ctx.controller, game.turn.turn_number);
             }
             crate::effects::ReplacementApplyMode::Resolution => {
                 game.effect_store
@@ -274,10 +276,13 @@ mod tests {
         let source = create_creature(&mut game, alice, "Replacement source");
         let spell = create_spell(&mut game, alice, "Cast spell");
         let tag = crate::tag::TagKey::from("cast_spell");
-        let snapshot = crate::snapshot::ObjectSnapshot::from_object(game.object(spell).unwrap(), &game);
+        let snapshot =
+            crate::snapshot::ObjectSnapshot::from_object(game.object(spell).unwrap(), &game);
         let effect = RegisterFutureZoneReplacementEffect::new(
             ObjectFilter::tagged(tag.clone()).in_zone(Zone::Stack),
-            Some(Zone::Stack), Some(Zone::Graveyard), Zone::Exile,
+            Some(Zone::Stack),
+            Some(Zone::Graveyard),
+            Zone::Exile,
             ReplacementApplyMode::OneShot,
         );
         let mut dm = SelectFirstDecisionMaker;

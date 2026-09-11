@@ -9,12 +9,19 @@ pub(super) struct BoundedCache<K, V, const CAPACITY: usize> {
     previous: HashMap<K, V>,
 }
 impl<K, V, const CAPACITY: usize> Default for BoundedCache<K, V, CAPACITY> {
-    fn default() -> Self { Self { current: HashMap::new(), previous: HashMap::new() } }
+    fn default() -> Self {
+        Self {
+            current: HashMap::new(),
+            previous: HashMap::new(),
+        }
+    }
 }
 impl<K: Eq + Hash + Clone, V, const CAPACITY: usize> BoundedCache<K, V, CAPACITY> {
     pub fn get(&mut self, key: &K) -> Option<&V> {
         if !self.current.contains_key(key) {
-            if let Some(value) = self.previous.remove(key) { self.insert(key.clone(), value); }
+            if let Some(value) = self.previous.remove(key) {
+                self.insert(key.clone(), value);
+            }
         }
         self.current.get(key)
     }
@@ -26,7 +33,9 @@ impl<K: Eq + Hash + Clone, V, const CAPACITY: usize> BoundedCache<K, V, CAPACITY
         self.current.insert(key, value);
     }
     #[cfg(test)]
-    pub fn len(&self) -> usize { self.current.len() + self.previous.len() }
+    pub fn len(&self) -> usize {
+        self.current.len() + self.previous.len()
+    }
 }
 
 #[cfg(test)]
@@ -35,7 +44,9 @@ mod tests {
     #[test]
     fn rotation_retains_hot_entries_and_bounds_storage() {
         let mut cache = BoundedCache::<u32, u32, 4>::default();
-        for key in 0..4 { cache.insert(key, key); }
+        for key in 0..4 {
+            cache.insert(key, key);
+        }
         cache.insert(4, 4);
         assert_eq!(cache.get(&0), Some(&0));
         for key in 5..40 {

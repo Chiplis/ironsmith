@@ -218,11 +218,17 @@ fn unsupported_permission_shapes_are_typed() {
 
 #[test]
 fn source_linked_exile_pool_preserves_permission_duration_tail() {
-    for text in ["cards exiled with this until end of turn", "cards exiled with this creature until end of turn"] {
+    for text in [
+        "cards exiled with this until end of turn",
+        "cards exiled with this creature until end of turn",
+    ] {
         let tokens = lex(text);
         let target = parse_tagged_permission_target_tokens(&tokens).unwrap();
         assert_eq!(target.reference, TaggedPermissionReference::SourceExiled);
         assert_eq!(target.max_plays, None);
-        assert_eq!(TokenWordView::new(target.rest_tokens).word_refs(), vec!["until", "end", "of", "turn"]);
+        assert_eq!(
+            TokenWordView::new(target.rest_tokens).word_refs(),
+            vec!["until", "end", "of", "turn"]
+        );
     }
 }

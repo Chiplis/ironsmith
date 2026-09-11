@@ -1,11 +1,11 @@
-use crate::cards::builders::PlayerPredicateAst;
-use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::DamagePreventionActionAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::PlayerPredicateAst;
 use crate::cards::builders::{
-    CardTextError, EffectAst, GrantedAbilityAst, IfResultPredicate, OwnedLexToken, PlayerAst,
-    PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst,
-    RedirectNextTimeDamageDestinationAst, SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst,
-    TagKey, TargetAst, TextSpan, Verb, StackActionAst, ConditionalEffectAst, PermissionEffectAst,
+    CardTextError, ConditionalEffectAst, EffectAst, GrantedAbilityAst, IfResultPredicate,
+    OwnedLexToken, PermissionEffectAst, PlayerAst, PreventNextTimeDamageSourceAst,
+    PreventNextTimeDamageTargetAst, RedirectNextTimeDamageDestinationAst, StackActionAst,
+    SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst, TagKey, TargetAst, TextSpan, Verb,
 };
 use crate::effect::{EventValueSpec, Until, Value};
 use crate::target::{ObjectFilter, PlayerFilter};
@@ -269,10 +269,12 @@ pub fn parse_copy_spell_clause(
             return Ok(None);
         };
         super::chain_carry::bind_implicit_player_context(&mut effect, player);
-        return Ok(Some(EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
-            player,
-            effects: vec![effect],
-        })));
+        return Ok(Some(EffectAst::Permissions(
+            PermissionEffectAst::MayByPlayer {
+                player,
+                effects: vec![effect],
+            },
+        )));
     }
     if super::super::grammar::effects::clause_dispatch_shapes::parse_leading_may_shape(tokens)
         .is_some()
@@ -421,10 +423,12 @@ pub fn parse_copy_spell_clause(
                 };
                 *may_choose_new_targets = retarget.may_choose;
                 *choose_new_target_singular = retarget.single_target;
-                return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
-                    predicate: trailing_if.predicate,
-                    effects: vec![base],
-                })));
+                return Ok(Some(EffectAst::Conditionals(
+                    ConditionalEffectAst::TrailingIf {
+                        predicate: trailing_if.predicate,
+                        effects: vec![base],
+                    },
+                )));
             }
         }
         let trailing_if = split_trailing_if_clause_lexed(tokens);
@@ -512,10 +516,12 @@ pub fn parse_copy_spell_clause(
             base = base.with_copy_target_reference_kind(kind);
         }
         if let Some(trailing_if) = trailing_if {
-            return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
-                predicate: trailing_if.predicate,
-                effects: vec![base],
-            })));
+            return Ok(Some(EffectAst::Conditionals(
+                ConditionalEffectAst::TrailingIf {
+                    predicate: trailing_if.predicate,
+                    effects: vec![base],
+                },
+            )));
         }
         return Ok(Some(base));
     }
@@ -663,9 +669,9 @@ fn strip_copy_count_suffix(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], Optio
 
 #[cfg(test)]
 mod copy_all_tests {
-    use crate::cards::builders::TokenActionAst;
     use super::*;
-    use crate::model::ast::{PredicateAst, SubjectVerbEffectAst, PlayerPredicateAst};
+    use crate::cards::builders::TokenActionAst;
+    use crate::model::ast::{PlayerPredicateAst, PredicateAst, SubjectVerbEffectAst};
 
     #[test]
     fn copy_for_each_kind_of_counter_uses_a_distinct_counter_type_value() {
@@ -799,10 +805,13 @@ mod copy_all_tests {
         let parsed = parse_copy_spell_clause(&tokens)
             .expect("variable-count copy sentence should parse")
             .expect("copy parser should match");
-        let parsed = match parsed {
-            EffectAst::Permissions(PermissionEffectAst::MayByPlayer { mut effects, .. }) if effects.len() == 1 => effects.remove(0),
-            effect => effect,
-        };
+        let parsed =
+            match parsed {
+                EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
+                    mut effects, ..
+                }) if effects.len() == 1 => effects.remove(0),
+                effect => effect,
+            };
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
@@ -1043,10 +1052,13 @@ mod copy_all_tests {
         let parsed = parse_copy_spell_clause(&tokens)
             .expect("fixed P/T spell-copy sentence should parse")
             .expect("copy parser should own the complete sentence");
-        let parsed = match parsed {
-            EffectAst::Permissions(PermissionEffectAst::MayByPlayer { mut effects, .. }) if effects.len() == 1 => effects.remove(0),
-            effect => effect,
-        };
+        let parsed =
+            match parsed {
+                EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
+                    mut effects, ..
+                }) if effects.len() == 1 => effects.remove(0),
+                effect => effect,
+            };
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
@@ -1286,7 +1298,9 @@ pub fn parse_prevent_all_damage_clause(
 pub fn parse_can_attack_as_though_no_defender_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    if crate::keyword_static::parse_attacked_player_can_attack_as_though_no_defender_line(tokens)?.is_some() {
+    if crate::keyword_static::parse_attacked_player_can_attack_as_though_no_defender_line(tokens)?
+        .is_some()
+    {
         return Ok(None);
     }
     let Some(subject_tokens) = clause_shapes::parse_can_attack_no_defender_subject_tokens(tokens)
@@ -1354,8 +1368,10 @@ pub fn parse_prevent_next_time_damage_sentence(
         }
         let damage_target_tag =
             crate::util::helper_tag_for_tokens(tokens, "replaced_damage_target");
-        let replacement =
-            EffectAst::subject_verb_destroy(TargetAst::Tagged(crate::tag::TagRef::of(damage_target_tag.clone()), None));
+        let replacement = EffectAst::subject_verb_destroy(TargetAst::Tagged(
+            crate::tag::TagRef::of(damage_target_tag.clone()),
+            None,
+        ));
         return Ok(Some(vec![
             EffectAst::subject_verb_replace_next_damage_to_target(
                 target,
@@ -1584,10 +1600,12 @@ pub fn parse_redirect_next_damage_sentence(
                             amount, target,
                         );
                     if let EffectAst::SubjectVerb(subject_verb) = &mut effect
-                        && let SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectNextDamageFromSourceToTarget {
-                            protected_target: effect_protected_target,
-                            ..
-                        }) = &mut subject_verb.action
+                        && let SubjectVerbActionAst::DamagePrevention(
+                            DamagePreventionActionAst::RedirectNextDamageFromSourceToTarget {
+                                protected_target: effect_protected_target,
+                                ..
+                            },
+                        ) = &mut subject_verb.action
                     {
                         *effect_protected_target = protected_target;
                     }
@@ -1646,10 +1664,12 @@ pub fn parse_win_the_game_clause(
         }
         clause_shapes::WinGameShape::ConditionalTail => {
             if let Some(trailing_if) = split_trailing_if_clause_lexed(tokens) {
-                return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
-                    predicate: trailing_if.predicate,
-                    effects: vec![EffectAst::subject_verb_win_game(PlayerAst::You)],
-                })));
+                return Ok(Some(EffectAst::Conditionals(
+                    ConditionalEffectAst::TrailingIf {
+                        predicate: trailing_if.predicate,
+                        effects: vec![EffectAst::subject_verb_win_game(PlayerAst::You)],
+                    },
+                )));
             }
             Ok(None)
         }
@@ -1662,15 +1682,24 @@ pub fn parse_win_the_game_clause(
             if name.is_empty() {
                 return Ok(None);
             }
-            Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-                predicate: crate::cards::builders::PredicateAst::Player(PlayerPredicateAst::PlayerOwnsCardNamedInZones {
-                    player: PlayerAst::You,
-                    name,
-                    zones: vec![Zone::Exile, Zone::Hand, Zone::Graveyard, Zone::Battlefield],
-                }),
-                if_true: vec![EffectAst::subject_verb_win_game(PlayerAst::You)],
-                if_false: Vec::new(),
-            })))
+            Ok(Some(EffectAst::Conditionals(
+                ConditionalEffectAst::Conditional {
+                    predicate: crate::cards::builders::PredicateAst::Player(
+                        PlayerPredicateAst::PlayerOwnsCardNamedInZones {
+                            player: PlayerAst::You,
+                            name,
+                            zones: vec![
+                                Zone::Exile,
+                                Zone::Hand,
+                                Zone::Graveyard,
+                                Zone::Battlefield,
+                            ],
+                        },
+                    ),
+                    if_true: vec![EffectAst::subject_verb_win_game(PlayerAst::You)],
+                    if_false: Vec::new(),
+                },
+            )))
         }
     }
 }
@@ -1931,10 +1960,12 @@ pub fn parse_keyword_mechanic_clause(
                 1,
             )
         }
-        clause_shapes::KeywordMechanicShape::RollD6 { count_tokens } => EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
-            count: parse_keyword_value_tokens(count_tokens, "roll-dice", &clause_text)?,
-            effects: vec![EffectAst::subject_verb_roll_die(PlayerAst::Implicit, 6)],
-        }),
+        clause_shapes::KeywordMechanicShape::RollD6 { count_tokens } => {
+            EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
+                count: parse_keyword_value_tokens(count_tokens, "roll-dice", &clause_text)?,
+                effects: vec![EffectAst::subject_verb_roll_die(PlayerAst::Implicit, 6)],
+            })
+        }
         clause_shapes::KeywordMechanicShape::OddEvenResult { odd, action_tokens } => {
             let predicate = if odd {
                 crate::effect::Comparison::OneOf(ODD_RESULT_VALUES_D6.into())

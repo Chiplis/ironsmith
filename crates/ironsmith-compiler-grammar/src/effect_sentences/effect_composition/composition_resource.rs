@@ -1,5 +1,5 @@
-use crate::cards::builders::VoteEffectAst;
 use super::*;
+use crate::cards::builders::VoteEffectAst;
 
 pub(super) fn parse_controller_sacrifice_consult_bundle(
     tokens: &[OwnedLexToken],

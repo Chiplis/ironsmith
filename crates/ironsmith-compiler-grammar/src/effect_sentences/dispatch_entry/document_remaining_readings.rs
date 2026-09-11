@@ -661,7 +661,7 @@ fn read_emblem_payload(
     // activated-ability colons. Consume the typed whole-sentence shape before
     // generic sentence and subject/verb splitting sees those nested tokens.
     if effect_grammar::emblem_shapes::parse_damaged_player_emblem_payload_tokens(tokens)
-            .or_else(|| effect_grammar::emblem_shapes::parse_emblem_payload_tokens(tokens))
+        .or_else(|| effect_grammar::emblem_shapes::parse_emblem_payload_tokens(tokens))
         .is_some_and(|shape| shape.requires_whole_sentence_dispatch)
         && let Some(effect) = super::super::zone_handlers::parse_emblem_action(tokens, None)
     {

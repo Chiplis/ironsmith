@@ -1,5 +1,5 @@
-use crate::cards::builders::ForEachEffectAst;
 use super::*;
+use crate::cards::builders::ForEachEffectAst;
 
 /// Parse the historical block provenance shared by effects of the form
 /// "destroy creatures that were blocked by target [blocker] this turn" and
@@ -171,11 +171,13 @@ pub fn parse_destroy_historically_blocked_then_reanimate_from_historical_control
         false,
         None,
     );
-    let followup = EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy {
-        tag: crate::tag::TagRef::of(destroyed_tag),
-        blocker_tag: crate::tag::TagRef::of(blocker_tag),
-        effects: vec![reanimate_one],
-    });
+    let followup = EffectAst::ForEach(
+        ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy {
+            tag: crate::tag::TagRef::of(destroyed_tag),
+            blocker_tag: crate::tag::TagRef::of(blocker_tag),
+            effects: vec![reanimate_one],
+        },
+    );
 
     Ok(Some(vec![target_blocker, destroy, followup]))
 }

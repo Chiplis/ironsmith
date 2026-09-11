@@ -7,6 +7,14 @@ import DecisionSummary from "./DecisionSummary";
 import HighlightedDecisionText from "./HighlightedDecisionText";
 import { decisionOptionAccentVars, getPlayerAccent } from "@/lib/player-colors";
 import { buildObjectControllerById } from "@/lib/decision-object-meta";
+import {
+  SELECT_OBJECT_CHOICE_EVENT,
+  isObjectChosen,
+} from "@/lib/object-selection";
+import {
+  useChosenObjectIds,
+  useObjectSelectionActions,
+} from "@/context/ObjectSelectionContext";
 
 const STRIP_ITEM_BASE_CLASS = "decision-option-row decision-option-row--strip h-8 max-w-[360px] min-w-[120px] shrink-0 justify-start self-stretch px-2.5 text-[12px] font-semibold";
 const STRIP_ITEM_ACTIVE_CLASS = "is-selected";
@@ -26,7 +34,9 @@ export default function SelectObjectsDecision({
   useEffect(() => () => clearHoverLinkedObjects(), [clearHoverLinkedObjects]);
   const stripLayout = layout === "strip";
   const candidates = useMemo(() => decision.candidates || [], [decision.candidates]);
-  const [selected, setSelected] = useState(new Set());
+  // Choices live above this panel: every card surface renders a check for them.
+  const selected = useChosenObjectIds();
+  const { applyChoice, clearChoices } = useObjectSelectionActions() || {};
   const min = decision.min ?? 0;
   const max = decision.max ?? candidates.length;
   const allowPartialCompletion = decision.allow_partial_completion === true;
@@ -49,7 +59,7 @@ export default function SelectObjectsDecision({
     const hasHoveredCandidate = candidates.some((c) => String(c.id) === hoveredStr);
     if (!hasHoveredCandidate) return candidates;
     return candidates.filter(
-      (c) => String(c.id) === hoveredStr || selected.has(c.id)
+      (c) => String(c.id) === hoveredStr || isObjectChosen(selected, c.id)
     );
   }, [candidates, hoveredObjectId, selected, stripLayout]);
   const showRows = scopedCandidates.length > 0;
@@ -58,17 +68,9 @@ export default function SelectObjectsDecision({
     && candidates.some((c) => String(c.id) === String(hoveredObjectId));
   const showHeader = !stripLayout;
 
-  const toggleObject = useCallback((id) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else if (next.size < max) {
-        next.add(id);
-      }
-      return next;
-    });
-  }, [max]);
+  const chooseObject = useCallback((id, mode = "toggle") => {
+    applyChoice?.({ objectId: id, mode, max });
+  }, [applyChoice, max]);
 
   useEffect(() => {
     const onExternalObjectChoice = (event) => {
@@ -79,28 +81,29 @@ export default function SelectObjectsDecision({
         (candidate) => String(candidate?.id) === String(externalObjectId)
       );
       if (!matchedCandidate || matchedCandidate.legal === false) return;
-      toggleObject(matchedCandidate.id);
+      chooseObject(matchedCandidate.id, event?.detail?.mode || "toggle");
     };
 
-    window.addEventListener("ironsmith:select-object-choice", onExternalObjectChoice);
+    window.addEventListener(SELECT_OBJECT_CHOICE_EVENT, onExternalObjectChoice);
     return () => {
-      window.removeEventListener("ironsmith:select-object-choice", onExternalObjectChoice);
+      window.removeEventListener(SELECT_OBJECT_CHOICE_EVENT, onExternalObjectChoice);
     };
-  }, [canAct, candidates, toggleObject]);
+  }, [canAct, candidates, chooseObject]);
 
-  const canSubmit = selected.size <= max
-    && (allowPartialCompletion || selected.size >= min);
+  const canSubmit = selected.length <= max
+    && (allowPartialCompletion || selected.length >= min);
   const selectedIds = useMemo(() => Array.from(selected), [selected]);
   const submitRangeLabel = allowPartialCompletion
     ? `0-${max}`
     : (min === max ? min : `${min}-${max}`);
-  const submitLabel = `Submit (${selected.size}/${submitRangeLabel})`;
+  const submitLabel = `Submit (${selected.length}/${submitRangeLabel})`;
   const handleSubmit = useCallback(() => {
     dispatch(
       { type: "select_objects", object_ids: selectedIds },
       `Selected ${selectedIds.length} object(s)`
     );
-  }, [dispatch, selectedIds]);
+    clearChoices?.();
+  }, [clearChoices, dispatch, selectedIds]);
 
   useEffect(() => {
     if (!onSubmitActionChange) return undefined;
@@ -181,8 +184,8 @@ export default function SelectObjectsDecision({
               : "w-full divide-y divide-[rgba(128,107,78,0.28)]"
           )}>
             {visibleCandidates.map((c) => {
-              const isSelected = selected.has(c.id);
-              const isUnavailable = !isSelected && selected.size >= max;
+              const isSelected = isObjectChosen(selected, c.id);
+              const isUnavailable = !isSelected && selected.length >= max;
               const isDisabled = !canAct || !c.legal || isUnavailable;
               const controllerId = c?.object_controller != null
                 ? Number(c.object_controller)
@@ -215,11 +218,11 @@ export default function SelectObjectsDecision({
                   onPointerDown={(event) => {
                     if (isDisabled || event.button !== 0) return;
                     event.preventDefault();
-                    toggleObject(c.id);
+                    chooseObject(c.id);
                   }}
                   onClick={(event) => {
                     if (isDisabled || event.detail !== 0) return;
-                    toggleObject(c.id);
+                    chooseObject(c.id);
                   }}
                   onMouseEnter={() => {
                     hoverCard(c.id);

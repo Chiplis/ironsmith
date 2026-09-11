@@ -1959,10 +1959,7 @@ impl Effect {
         count: impl Into<Value>,
         player: crate::target::PlayerFilter,
     ) -> Self {
-        Self::new(crate::effects::InvestigateEffect::new(
-            count.into(),
-            player,
-        ))
+        Self::new(crate::effects::InvestigateEffect::new(count.into(), player))
     }
 
     pub fn incubate(amount: impl Into<Value>, count: impl Into<Value>) -> Self {

@@ -69,7 +69,9 @@ pub(crate) fn describe_choose_then_return_from_graveyard(
     let tapped = if returned.tapped { " tapped" } else { "" };
     let actor = if choose.aggregate_constraint.is_some() && choose.chooser == PlayerFilter::You {
         String::new()
-    } else { format!("{chooser} ") };
+    } else {
+        format!("{chooser} ")
+    };
 
     Some(append_battlefield_entry_counter_surface(
         format!("{actor}{verb} {selection} {origin} to the battlefield{tapped}{where_x}"),

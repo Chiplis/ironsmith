@@ -1,9 +1,9 @@
-use crate::cards::builders::PermissionEffectAst;
-use crate::cards::builders::ObjectChoiceEffectAst;
-use crate::cards::builders::ForEachEffectAst;
-use crate::cards::builders::ZoneMoveActionAst;
-use crate::cards::builders::LibraryActionAst;
 use super::*;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::LibraryActionAst;
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::PermissionEffectAst;
+use crate::cards::builders::ZoneMoveActionAst;
 
 pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     tokens: &[OwnedLexToken],
@@ -34,26 +34,29 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     if parse_each_chosen_player_search_put_top_shape(tokens).is_some() {
         let mut filter = ObjectFilter::default();
         filter.zone = Some(Zone::Library);
-        return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
-            filter: PlayerFilter::target_player(),
-            effects: vec![EffectAst::subject_verb_search_library(
-                filter,
-                Zone::Library,
-                PlayerAst::That,
-                PlayerAst::That,
-                SearchSelectionMode::Exact,
-                false,
-                None,
-                true,
-                ChoiceCount::exactly(1),
-                None,
-                Some(Value::Fixed(1)),
-                crate::effect::SearchResultReferenceSurface::ThatCard,
-                false,
-                false,
-                false,
-            )],
-        })]));
+        return Ok(Some(vec![EffectAst::ForEach(
+            ForEachEffectAst::ForEachPlayersFiltered {
+                sequential: false,
+                filter: PlayerFilter::target_player(),
+                effects: vec![EffectAst::subject_verb_search_library(
+                    filter,
+                    Zone::Library,
+                    PlayerAst::That,
+                    PlayerAst::That,
+                    SearchSelectionMode::Exact,
+                    false,
+                    None,
+                    true,
+                    ChoiceCount::exactly(1),
+                    None,
+                    Some(Value::Fixed(1)),
+                    crate::effect::SearchResultReferenceSurface::ThatCard,
+                    false,
+                    false,
+                    false,
+                )],
+            },
+        )]));
     }
 
     let clause_display = render_token_slice(tokens);
@@ -179,23 +182,32 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     // tag before lowering the ordinary dynamic-count search.
     let mut filter_end = filter_end;
     if primitives::parse_prefix(count_tokens, primitives::phrase(&["a", "number", "of"])).is_some()
-        && let Some((suffix, _, rest)) = primitives::find_prefix(count_tokens, || primitives::phrase(&["equal", "to", "the", "difference"]))
+        && let Some((suffix, _, rest)) = primitives::find_prefix(count_tokens, || {
+            primitives::phrase(&["equal", "to", "the", "difference"])
+        })
         && rest.is_empty()
         && suffix > 3
         && let Some(EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Choices(crate::cards::builders::ChoiceActionAst::ChoosePlayer {
-                filter: PlayerFilter::OpponentWithMoreControlledObjectsThan { player, filter }, tag, ..
-            }), ..
+            action:
+                SubjectVerbActionAst::Choices(crate::cards::builders::ChoiceActionAst::ChoosePlayer {
+                    filter: PlayerFilter::OpponentWithMoreControlledObjectsThan { player, filter },
+                    tag,
+                    ..
+                }),
+            ..
         })) = leading_effects.last()
     {
         let mut chosen = filter.as_ref().clone();
         chosen.controller = Some(PlayerFilter::TaggedPlayer(tag.clone().into()));
         let mut reference = filter.as_ref().clone();
         reference.controller = Some(player.as_ref().clone());
-        prefix_count_value = Some(Value::Add(
-            Box::new(Value::Count(chosen)),
-            Box::new(Value::Scaled(Box::new(Value::Count(reference)), -1)),
-        ).with_surface_hint(ironsmith_core::ValueSurfaceHint::Difference));
+        prefix_count_value = Some(
+            Value::Add(
+                Box::new(Value::Count(chosen)),
+                Box::new(Value::Scaled(Box::new(Value::Count(reference)), -1)),
+            )
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::Difference),
+        );
         count = ChoiceCount::dynamic_x();
         count_used = 3;
         filter_end = for_idx + 1 + suffix;
@@ -282,7 +294,9 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         .as_ref()
         .map(|reference| match reference {
             SearchLibrarySameNameReference::Tagged(tag) => tag.clone(),
-            SearchLibrarySameNameReference::Target(_) => (crate::tag::CompilerReferenceTag::It.bind()).into(),
+            SearchLibrarySameNameReference::Target(_) => {
+                (crate::tag::CompilerReferenceTag::It.bind()).into()
+            }
             SearchLibrarySameNameReference::Choose { tag, .. } => tag.clone(),
         })
     {
@@ -403,15 +417,17 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         // the searcher, not the last-referenced player from a preceding effect.
         let shuffle_player = player;
 
-        let mut per_object_effects = vec![EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
-            filter,
-            count,
-            count_value: count_value.clone(),
-            player: chooser,
-            tag: crate::tag::TagRef::of(searched_tag.clone()),
-            zones: search_zones.clone(),
-            search_mode: Some(search_mode),
-        })];
+        let mut per_object_effects = vec![EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                filter,
+                count,
+                count_value: count_value.clone(),
+                player: chooser,
+                tag: crate::tag::TagRef::of(searched_tag.clone()),
+                zones: search_zones.clone(),
+                search_mode: Some(search_mode),
+            },
+        )];
         if sentence_has_direct_may {
             handled_direct_may_in_iterated_search = true;
             per_object_effects = vec![if matches!(chooser, PlayerAst::You | PlayerAst::Implicit) {
@@ -431,7 +447,9 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             effects: per_object_effects,
         })];
         if reveal {
-            sequence.push(EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(searched_tag.clone())));
+            sequence.push(EffectAst::subject_verb_reveal_tagged(
+                crate::tag::TagRef::of(searched_tag.clone()),
+            ));
         }
         if shuffle && destination == Zone::Library && zones_have(&search_zones, Zone::Library) {
             sequence.push(EffectAst::subject_verb(
@@ -443,7 +461,10 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         sequence.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
             tag: crate::tag::TagRef::of(searched_tag.clone()),
             effects: vec![EffectAst::subject_verb_move_to_zone(
-                TargetAst::Tagged(crate::tag::TagRef::of(searched_tag), span_from_tokens(tokens)),
+                TargetAst::Tagged(
+                    crate::tag::TagRef::of(searched_tag),
+                    span_from_tokens(tokens),
+                ),
                 destination,
                 matches!(destination, Zone::Library),
                 searched_controller,
@@ -470,21 +491,28 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
                 named_filter.owner = Some(owner);
             }
             normalize_search_library_filter(&mut named_filter);
-            sequence.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
-                filter: named_filter,
-                count: ChoiceCount::exactly(1),
-                count_value: None,
-                player: chooser,
-                tag: crate::tag::TagRef::of(searched_tag.clone()),
-                zones: zones.clone(),
-                search_mode: Some(SearchSelectionMode::Exact),
-            }));
+            sequence.push(EffectAst::ObjectChoices(
+                ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                    filter: named_filter,
+                    count: ChoiceCount::exactly(1),
+                    count_value: None,
+                    player: chooser,
+                    tag: crate::tag::TagRef::of(searched_tag.clone()),
+                    zones: zones.clone(),
+                    search_mode: Some(SearchSelectionMode::Exact),
+                },
+            ));
         }
         if reveal {
-            sequence.push(EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(searched_tag.clone())));
+            sequence.push(EffectAst::subject_verb_reveal_tagged(
+                crate::tag::TagRef::of(searched_tag.clone()),
+            ));
         }
         sequence.push(EffectAst::subject_verb_move_to_zone(
-            TargetAst::Tagged(crate::tag::TagRef::of(searched_tag), span_from_tokens(tokens)),
+            TargetAst::Tagged(
+                crate::tag::TagRef::of(searched_tag),
+                span_from_tokens(tokens),
+            ),
             destination,
             matches!(destination, Zone::Library),
             searched_controller,
@@ -493,57 +521,66 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         ));
         if shuffle && zones_have(&zones, Zone::Library) {
             sequence.push(EffectAst::subject_verb(
-                    SubjectVerbRoleAst::LibraryOwner,
-                    player,
-                    SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
-                ));
+                SubjectVerbRoleAst::LibraryOwner,
+                player,
+                SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
+            ));
         }
         sequence
     } else if !has_explicit_destination {
         let chosen_tag: TagKey = (crate::tag::CompilerReferenceTag::Searched.bind()).into();
         let search_zones = search_zones_override.unwrap_or_else(|| vec![Zone::Library]);
-        let mut sequence = vec![EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
-            filter,
-            count,
-            count_value: count_value.clone(),
-            player: chooser,
-            tag: crate::tag::TagRef::of(chosen_tag.clone()),
-            zones: search_zones.clone(),
-            search_mode: Some(search_mode),
-        })];
+        let mut sequence = vec![EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                filter,
+                count,
+                count_value: count_value.clone(),
+                player: chooser,
+                tag: crate::tag::TagRef::of(chosen_tag.clone()),
+                zones: search_zones.clone(),
+                search_mode: Some(search_mode),
+            },
+        )];
         if reveal {
-            sequence.push(EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(chosen_tag.clone())));
+            sequence.push(EffectAst::subject_verb_reveal_tagged(
+                crate::tag::TagRef::of(chosen_tag.clone()),
+            ));
         }
         if shuffle && zones_have(&search_zones, Zone::Library) {
             sequence.push(EffectAst::subject_verb(
-                    SubjectVerbRoleAst::LibraryOwner,
-                    player,
-                    SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
-                ));
+                SubjectVerbRoleAst::LibraryOwner,
+                player,
+                SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
+            ));
         }
         sequence
     } else if let Some(search_zones) = search_zones_override
         .clone()
         .or_else(|| attachment_target.as_ref().map(|_| vec![Zone::Library]))
     {
-        let chosen_tag: TagKey = (crate::tag::CompilerReferenceTag::SearchedMultiZone.bind()).into();
+        let chosen_tag: TagKey =
+            (crate::tag::CompilerReferenceTag::SearchedMultiZone.bind()).into();
         let battlefield_tapped =
             destination == Zone::Battlefield && effect_routing.has_tapped_modifier;
         // Use the search subject `player` (e.g. Implicit/You) rather than
         // PlayerAst::That, which would resolve to the last referenced player
         // in a preceding effect (e.g. "target player" from a damage clause).
         let shuffle_player = player;
-        let mut sequence = vec![EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
-            filter,
-            count,
-            count_value: count_value.clone(),
-            player: chooser,
-            tag: crate::tag::TagRef::of(chosen_tag.clone()),
-            zones: search_zones.clone(),
-            search_mode: Some(search_mode),
-        })];
+        let mut sequence = vec![EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                filter,
+                count,
+                count_value: count_value.clone(),
+                player: chooser,
+                tag: crate::tag::TagRef::of(chosen_tag.clone()),
+                zones: search_zones.clone(),
+                search_mode: Some(search_mode),
+            },
+        )];
         if reveal {
-            sequence.push(EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(chosen_tag.clone())));
+            sequence.push(EffectAst::subject_verb_reveal_tagged(
+                crate::tag::TagRef::of(chosen_tag.clone()),
+            ));
         }
         if shuffle
             && destination == Zone::Library
@@ -551,10 +588,10 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             && !trailing_that_player_shuffle
         {
             sequence.push(EffectAst::subject_verb(
-                    SubjectVerbRoleAst::LibraryOwner,
-                    shuffle_player,
-                    SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
-                ));
+                SubjectVerbRoleAst::LibraryOwner,
+                shuffle_player,
+                SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
+            ));
         }
         if destination == Zone::Exile {
             // The selected cards are one exile action. Tag its actual outcome
@@ -562,42 +599,51 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             // exclude cards whose zone change was replaced.
             sequence.push(EffectAst::TagAffected {
                 effect: Box::new(EffectAst::subject_verb_exile(
-                    TargetAst::Tagged(crate::tag::TagRef::of(chosen_tag.clone()), span_from_tokens(tokens)),
+                    TargetAst::Tagged(
+                        crate::tag::TagRef::of(chosen_tag.clone()),
+                        span_from_tokens(tokens),
+                    ),
                     face_down_exile,
                 )),
                 tag: helper_tag_for_tokens(tokens, "exiled"),
             });
         } else {
-        let mut per_tag_effects = vec![EffectAst::subject_verb_move_to_zone(
-            TargetAst::Tagged(crate::tag::TagRef::of(chosen_tag.clone()), span_from_tokens(tokens)),
-            destination,
-            matches!(destination, Zone::Library),
-            ReturnControllerAst::Preserve,
-            battlefield_tapped,
-            None,
-        )];
-        if destination == Zone::Battlefield
-            && let Some(target) = attachment_target.clone()
-        {
-            per_tag_effects.push(EffectAst::subject_verb_attach(
-                TargetAst::Tagged(crate::tag::TagRef::of(chosen_tag.clone()), span_from_tokens(tokens)),
-                target,
-            ));
-        }
-        sequence.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
-            tag: crate::tag::TagRef::of(chosen_tag.clone()),
-            effects: per_tag_effects,
-        }));
+            let mut per_tag_effects = vec![EffectAst::subject_verb_move_to_zone(
+                TargetAst::Tagged(
+                    crate::tag::TagRef::of(chosen_tag.clone()),
+                    span_from_tokens(tokens),
+                ),
+                destination,
+                matches!(destination, Zone::Library),
+                ReturnControllerAst::Preserve,
+                battlefield_tapped,
+                None,
+            )];
+            if destination == Zone::Battlefield
+                && let Some(target) = attachment_target.clone()
+            {
+                per_tag_effects.push(EffectAst::subject_verb_attach(
+                    TargetAst::Tagged(
+                        crate::tag::TagRef::of(chosen_tag.clone()),
+                        span_from_tokens(tokens),
+                    ),
+                    target,
+                ));
+            }
+            sequence.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+                tag: crate::tag::TagRef::of(chosen_tag.clone()),
+                effects: per_tag_effects,
+            }));
         }
         if shuffle
             && !(destination == Zone::Library && zones_have(&search_zones, Zone::Library))
             && !trailing_that_player_shuffle
         {
             sequence.push(EffectAst::subject_verb(
-                    SubjectVerbRoleAst::LibraryOwner,
-                    shuffle_player,
-                    SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
-                ));
+                SubjectVerbRoleAst::LibraryOwner,
+                shuffle_player,
+                SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
+            ));
         }
         sequence
     } else if split_battlefield_and_hand {
@@ -613,17 +659,21 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         } else {
             ReturnControllerAst::Owner
         };
-        let mut sequence = vec![EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
-            filter,
-            count,
-            count_value: count_value.clone(),
-            player: chooser,
-            tag: crate::tag::TagRef::of(searched_tag.clone()),
-            zones: vec![Zone::Library],
-            search_mode: Some(search_mode),
-        })];
+        let mut sequence = vec![EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                filter,
+                count,
+                count_value: count_value.clone(),
+                player: chooser,
+                tag: crate::tag::TagRef::of(searched_tag.clone()),
+                zones: vec![Zone::Library],
+                search_mode: Some(search_mode),
+            },
+        )];
         if reveal {
-            sequence.push(EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(searched_tag.clone())));
+            sequence.push(EffectAst::subject_verb_reveal_tagged(
+                crate::tag::TagRef::of(searched_tag.clone()),
+            ));
         }
         sequence.extend([
             EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
@@ -674,7 +724,10 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
                 search_mode: Some(search_mode),
             }),
             EffectAst::subject_verb_exile(
-                TargetAst::Tagged(crate::tag::TagRef::of(searched_tag), span_from_tokens(tokens)),
+                TargetAst::Tagged(
+                    crate::tag::TagRef::of(searched_tag),
+                    span_from_tokens(tokens),
+                ),
                 true,
             ),
         ];
@@ -737,7 +790,10 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             .first()
             .is_some_and(|word| *word == "discard")
             && let EffectAst::SubjectVerb(discard) = &mut discard
-            && matches!(discard.action, SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { .. }))
+            && matches!(
+                discard.action,
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { .. })
+            )
         {
             discard.subject.player = player;
         }
@@ -762,7 +818,10 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
                     // library shuffle. Do not append a second effect merely
                     // because Oracle spells the same shuffle out as a trailing
                     // "Then that player shuffles" sentence.
-                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary { shuffle: true, .. }) => {
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
+                        shuffle: true,
+                        ..
+                    }) => {
                         has_existing_shuffle = true;
                     }
                     _ => {}
@@ -847,9 +906,12 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
 
     if let Some(filter) = player_iteration_filter {
         effects = vec![match filter {
-            PlayerFilter::Opponent => EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }),
+            PlayerFilter::Opponent => {
+                EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })
+            }
             PlayerFilter::Any => EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }),
-            other => EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
+            other => EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+                sequential: false,
                 filter: other,
                 effects,
             }),
@@ -885,10 +947,13 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     }
 
     if wrap_each_target_player {
-        effects = vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
-            filter: PlayerFilter::target_player(),
-            effects,
-        })];
+        effects = vec![EffectAst::ForEach(
+            ForEachEffectAst::ForEachPlayersFiltered {
+                sequential: false,
+                filter: PlayerFilter::target_player(),
+                effects,
+            },
+        )];
     }
 
     Ok(Some(effects))

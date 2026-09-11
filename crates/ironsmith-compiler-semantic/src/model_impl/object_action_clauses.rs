@@ -12,8 +12,7 @@ use crate::object::AuraAttachmentFilter;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum CompilerObjectOperandAst {
     Source,
     Selection(CompilerSelectionAst),

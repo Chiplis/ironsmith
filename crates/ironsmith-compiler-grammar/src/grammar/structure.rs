@@ -6,8 +6,9 @@ use winnow::token::any;
 
 use crate::cards::TextSpan;
 use crate::cards::builders::{
-    CardTextError, EffectAst, IfResultPredicate, PlayerAst, PredicateAst, SubjectVerbActionAst,
-    SubjectVerbRoleAst, LifeResourceActionAst, PlayerPredicateAst, TurnEventPredicateAst,
+    CardTextError, EffectAst, IfResultPredicate, LifeResourceActionAst, PlayerAst,
+    PlayerPredicateAst, PredicateAst, SubjectVerbActionAst, SubjectVerbRoleAst,
+    TurnEventPredicateAst,
 };
 use crate::effect::{Comparison, Value, ValueComparisonOperator};
 use crate::target::PlayerFilter;
@@ -702,18 +703,18 @@ fn parse_modeled_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
             _ => return None,
         };
         match relation.relation {
-            PlayerLifeRelationAst::HasMoreLifeThanYou => {
-                Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreLifeThanYou { player }))
-            }
-            PlayerLifeRelationAst::HasLessLifeThanYou => {
-                Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasLessLifeThanYou { player }))
-            }
-            PlayerLifeRelationAst::HasNoOpponentWithMoreLifeThan => {
-                Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasNoOpponentWithMoreLifeThan { player }))
-            }
-            PlayerLifeRelationAst::HasMoreLifeThanEachOtherPlayer => {
-                Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreLifeThanEachOtherPlayer { player }))
-            }
+            PlayerLifeRelationAst::HasMoreLifeThanYou => Some(PredicateAst::Player(
+                PlayerPredicateAst::PlayerHasMoreLifeThanYou { player },
+            )),
+            PlayerLifeRelationAst::HasLessLifeThanYou => Some(PredicateAst::Player(
+                PlayerPredicateAst::PlayerHasLessLifeThanYou { player },
+            )),
+            PlayerLifeRelationAst::HasNoOpponentWithMoreLifeThan => Some(PredicateAst::Player(
+                PlayerPredicateAst::PlayerHasNoOpponentWithMoreLifeThan { player },
+            )),
+            PlayerLifeRelationAst::HasMoreLifeThanEachOtherPlayer => Some(PredicateAst::Player(
+                PlayerPredicateAst::PlayerHasMoreLifeThanEachOtherPlayer { player },
+            )),
         }
     }
 
@@ -1088,9 +1089,14 @@ pub fn split_trailing_if_clause_lexed<'a>(
         return None;
     }
     if tokens.iter().filter(|token| token.is_word("if")).count() > 1
-        && let crate::recognition::ParseOutcome::Match(matched) = super::effects::coordination::recognize_coordination(tokens)
+        && let crate::recognition::ParseOutcome::Match(matched) =
+            super::effects::coordination::recognize_coordination(tokens)
         && matched.value.members.len() > 1
-        && matched.value.members.iter().all(|member| member.tokens.iter().any(|token| token.is_word("if")))
+        && matched
+            .value
+            .members
+            .iter()
+            .all(|member| member.tokens.iter().any(|token| token.is_word("if")))
     {
         return None;
     }
@@ -1114,13 +1120,17 @@ pub fn split_if_clause_lexed(
         let words = crate::lexer::token_word_refs(predicate);
         const PREFIX: &[&str] = &["if", "one", "or", "more", "of", "the", "chosen"];
         const SUFFIX: &[&str] = &["are", "still", "on", "the", "battlefield"];
-        if words.starts_with(PREFIX) && words.ends_with(SUFFIX)
+        if words.starts_with(PREFIX)
+            && words.ends_with(SUFFIX)
             && predicate.len() > PREFIX.len() + SUFFIX.len()
         {
             let object_tokens = &predicate[PREFIX.len()..predicate.len() - SUFFIX.len()];
             let mut filter = crate::object_filters::parse_object_filter(object_tokens, false)?
                 .in_zone(crate::zone::Zone::Battlefield)
-                .match_tagged(crate::tag::CompilerReferenceTag::It.key(), crate::filter::TaggedOpbjectRelation::IsTaggedObject);
+                .match_tagged(
+                    crate::tag::CompilerReferenceTag::It.key(),
+                    crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+                );
             filter.match_current_state = true;
             filter.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Chosen));
             let count = Value::Count(filter);
@@ -1128,17 +1138,30 @@ pub fn split_if_clause_lexed(
             fn bind_search_count(effects: &mut [EffectAst], count: &Value) {
                 for effect in effects {
                     if let EffectAst::SubjectVerb(subject) = effect
-                        && let SubjectVerbActionAst::ZoneMoves(crate::cards::builders::ZoneMoveActionAst::SearchLibrary { count_value: Some(value), .. }) = &mut subject.action
-                        && matches!(value.unhinted(), Value::EventValue(ironsmith_core::EventValueSpec::Amount)) {
-                            *value = count.clone();
-                        }
-                    crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| bind_search_count(nested, count));
+                        && let SubjectVerbActionAst::ZoneMoves(
+                            crate::cards::builders::ZoneMoveActionAst::SearchLibrary {
+                                count_value: Some(value),
+                                ..
+                            },
+                        ) = &mut subject.action
+                        && matches!(
+                            value.unhinted(),
+                            Value::EventValue(ironsmith_core::EventValueSpec::Amount)
+                        )
+                    {
+                        *value = count.clone();
+                    }
+                    crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+                        bind_search_count(nested, count)
+                    });
                 }
             }
             bind_search_count(&mut effects, &count);
             return Ok(IfClauseSplitSpec {
                 predicate: IfClausePredicateSpec::Conditional(PredicateAst::ValueComparison {
-                    left: count, operator: ValueComparisonOperator::GreaterThan, right: Value::Fixed(0),
+                    left: count,
+                    operator: ValueComparisonOperator::GreaterThan,
+                    right: Value::Fixed(0),
                 }),
                 effects,
             });
@@ -1271,7 +1294,9 @@ pub fn split_if_clause_lexed(
             };
             if !matches!(
                 predicate,
-                PredicateAst::TurnEvents(TurnEventPredicateAst::ThisAbilityResolvedThisTurnExactly(_))
+                PredicateAst::TurnEvents(
+                    TurnEventPredicateAst::ThisAbilityResolvedThisTurnExactly(_)
+                )
             ) {
                 continue;
             }
@@ -1472,7 +1497,9 @@ fn parse_cards_in_hand_difference_draw_effect(
     predicate_tokens: &[OwnedLexToken],
     effect_tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
-    let PredicateAst::Player(PlayerPredicateAst::PlayerCardsInHandOrFewer { player, count }) = predicate else {
+    let PredicateAst::Player(PlayerPredicateAst::PlayerCardsInHandOrFewer { player, count }) =
+        predicate
+    else {
         return None;
     };
     if !one_of_phrases_occurs(predicate_tokens, &[&["fewer", "than"], &["less", "than"]]) {

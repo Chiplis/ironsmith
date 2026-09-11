@@ -661,31 +661,65 @@ fn abilities_have_vanishing(abilities: &[crate::ability::Ability]) -> bool {
             && triggered.effects.segments[0].default_effects.len() == 1
     };
     let has_last_trigger = abilities.iter().any(|ability| {
-        let AbilityKind::Triggered(triggered) = &ability.kind else { return false; };
-        single_effect(triggered) && triggered.intervening_if.is_none()
-            && triggered.trigger.downcast_ref::<crate::triggers::CounterRemovedFromTrigger>().is_some_and(|trigger|
-                trigger.filter == ObjectFilter::source()
-                && trigger.counter_type == Some(crate::object::CounterType::Time)
-                && trigger.last && !trigger.caused_by_source && !trigger.one_or_more)
-            && triggered.effects.segments[0].default_effects[0].downcast_ref::<crate::effects::SacrificeTargetEffect>()
+        let AbilityKind::Triggered(triggered) = &ability.kind else {
+            return false;
+        };
+        single_effect(triggered)
+            && triggered.intervening_if.is_none()
+            && triggered
+                .trigger
+                .downcast_ref::<crate::triggers::CounterRemovedFromTrigger>()
+                .is_some_and(|trigger| {
+                    trigger.filter == ObjectFilter::source()
+                        && trigger.counter_type == Some(crate::object::CounterType::Time)
+                        && trigger.last
+                        && !trigger.caused_by_source
+                        && !trigger.one_or_more
+                })
+            && triggered.effects.segments[0].default_effects[0]
+                .downcast_ref::<crate::effects::SacrificeTargetEffect>()
                 .is_some_and(|effect| matches!(effect.target, ChooseSpec::Source))
     });
-    has_last_trigger && abilities.iter().any(|ability| {
-        let AbilityKind::Triggered(triggered) = &ability.kind else { return false; };
-        if !single_effect(triggered)
-            || !matches!(triggered.intervening_if, Some(crate::effect::Condition::SourceHasCounterAtLeast { counter_type: crate::object::CounterType::Time, count: 1, .. }))
-            || !triggered.trigger.downcast_ref::<crate::triggers::BeginningOfUpkeepTrigger>()
-            .is_some_and(|trigger| trigger.player == PlayerFilter::You) { return false; }
-        let effect = &triggered.effects.segments[0].default_effects[0];
-        let is_removal = |effect: &crate::effect::Effect, target: &ChooseSpec| {
-            effect.downcast_ref::<crate::effects::RemoveCountersEffect>().is_some_and(|remove|
-                remove.counter_type == crate::object::CounterType::Time
-                && remove.count == crate::effect::Value::Fixed(1) && &remove.target == target)
-        };
-        is_removal(effect, &ChooseSpec::Source) || effect.downcast_ref::<crate::effects::ForEachObject>().is_some_and(|each|
-            each.filter == ObjectFilter::source() && each.effects.len() == 1
-            && is_removal(&each.effects[0], &ChooseSpec::Iterated))
-    })
+    has_last_trigger
+        && abilities.iter().any(|ability| {
+            let AbilityKind::Triggered(triggered) = &ability.kind else {
+                return false;
+            };
+            if !single_effect(triggered)
+                || !matches!(
+                    triggered.intervening_if,
+                    Some(crate::effect::Condition::SourceHasCounterAtLeast {
+                        counter_type: crate::object::CounterType::Time,
+                        count: 1,
+                        ..
+                    })
+                )
+                || !triggered
+                    .trigger
+                    .downcast_ref::<crate::triggers::BeginningOfUpkeepTrigger>()
+                    .is_some_and(|trigger| trigger.player == PlayerFilter::You)
+            {
+                return false;
+            }
+            let effect = &triggered.effects.segments[0].default_effects[0];
+            let is_removal = |effect: &crate::effect::Effect, target: &ChooseSpec| {
+                effect
+                    .downcast_ref::<crate::effects::RemoveCountersEffect>()
+                    .is_some_and(|remove| {
+                        remove.counter_type == crate::object::CounterType::Time
+                            && remove.count == crate::effect::Value::Fixed(1)
+                            && &remove.target == target
+                    })
+            };
+            is_removal(effect, &ChooseSpec::Source)
+                || effect
+                    .downcast_ref::<crate::effects::ForEachObject>()
+                    .is_some_and(|each| {
+                        each.filter == ObjectFilter::source()
+                            && each.effects.len() == 1
+                            && is_removal(&each.effects[0], &ChooseSpec::Iterated)
+                    })
+        })
 }
 
 pub(super) fn abilities_have_marker(abilities: &[crate::ability::Ability], marker: &str) -> bool {
@@ -698,11 +732,13 @@ pub(super) fn abilities_have_marker(abilities: &[crate::ability::Ability], marke
     ) {
         return abilities_have_mana_ability(abilities);
     }
-    if normalized_marker == "soulbond" && abilities.iter().any(|ability| {
-        matches!(&ability.kind, AbilityKind::Triggered(triggered)
+    if normalized_marker == "soulbond"
+        && abilities.iter().any(|ability| {
+            matches!(&ability.kind, AbilityKind::Triggered(triggered)
             if triggered.effects.all_effects().into_iter().any(|effect|
                 effect.downcast_ref::<crate::effects::SoulbondPairEffect>().is_some()))
-    }) {
+        })
+    {
         return true;
     }
     if normalized_marker == "vanishing" && abilities_have_vanishing(abilities) {

@@ -191,7 +191,10 @@ fn read_opponent_chosen_second_target(
                             ),
                             tag: crate::tag::TagRef::of(target_tag.clone()),
                         },
-                        EffectAst::subject_verb_tap(TargetAst::Tagged(crate::tag::TagRef::of(target_tag), None)),
+                        EffectAst::subject_verb_tap(TargetAst::Tagged(
+                            crate::tag::TagRef::of(target_tag),
+                            None,
+                        )),
                     ],
                 },
             ],

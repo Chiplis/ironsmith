@@ -73,7 +73,6 @@ pub mod grant;
 pub mod grant_registry;
 pub mod ids;
 pub mod incremental;
-pub mod zone_sequence;
 pub mod mana;
 pub mod mana_payment;
 pub mod marker;
@@ -89,6 +88,7 @@ pub mod replacement_ability_processor;
 pub mod resolution;
 pub mod rules;
 pub mod runtime_display;
+pub mod zone_sequence;
 #[cfg(feature = "analysis")]
 pub mod semantic_compare {
     pub use ironsmith_semantic_compare::*;

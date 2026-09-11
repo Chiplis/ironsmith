@@ -13,12 +13,17 @@ fn optional_cast_chooses_from_the_exact_target_opponents_revealed_hand() {
         SentenceInput::from_lexed(&first),
         SentenceInput::from_lexed(&second),
     ];
-    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
-        .map(|matched| matched.map(|matched| matched.effects))
-        .expect("pair parser should not error")
-        .expect("revealed-hand optional cast should match");
+    let effects =
+        crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+            .map(|matched| matched.map(|matched| matched.effects))
+            .expect("pair parser should not error")
+            .expect("revealed-hand optional cast should match");
 
-    let [_, EffectAst::Permissions(PermissionEffectAst::May { effects: optional })] = effects.as_slice() else {
+    let [
+        _,
+        EffectAst::Permissions(PermissionEffectAst::May { effects: optional }),
+    ] = effects.as_slice()
+    else {
         panic!("expected reveal plus one optional program: {effects:#?}");
     };
     let [

@@ -2,8 +2,7 @@
 use crate::tag::TagKeyWalk;
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
 pub enum Comparison {
     GreaterThan(i32),
     GreaterThanOrEqual(i32),
@@ -32,8 +31,7 @@ impl Comparison {
 
 /// Comparison operations between two runtime-resolved values.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum ValueComparisonOperator {
     GreaterThan,
     GreaterThanOrEqual,
@@ -58,8 +56,7 @@ impl ValueComparisonOperator {
 
 /// Event payload fields that can be referenced by effect values.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub enum EventValueSpec {
     Amount,
     LifeAmount,

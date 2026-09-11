@@ -1815,28 +1815,59 @@ pub(super) fn apply_grants_inline_ability_until_eot(
 }
 
 pub(super) fn describe_target_and_shared_color_pt_change(effects: &[Effect]) -> Option<String> {
-    let visible = effects.iter().filter(|effect| structural_unwrap_render_wrappers(effect)
-        .downcast_ref::<crate::effects::TagMatchingObjectsEffect>().is_none()).collect::<Vec<_>>();
-    let [first_effect, second_effect] = visible.as_slice() else { return None; };
-    let first = structural_unwrap_render_wrappers(first_effect).downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
-    let second = structural_unwrap_render_wrappers(second_effect).downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    let visible = effects
+        .iter()
+        .filter(|effect| {
+            structural_unwrap_render_wrappers(effect)
+                .downcast_ref::<crate::effects::TagMatchingObjectsEffect>()
+                .is_none()
+        })
+        .collect::<Vec<_>>();
+    let [first_effect, second_effect] = visible.as_slice() else {
+        return None;
+    };
+    let first = structural_unwrap_render_wrappers(first_effect)
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    let second = structural_unwrap_render_wrappers(second_effect)
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
     let target = first.target_spec.as_ref()?;
-    if !is_radiance_target_creature_spec(target) || first.until != second.until
-        || first.condition.is_some() || second.condition.is_some()
-        || first.modification.is_some() || second.modification.is_some()
-        || !first.additional_modifications.is_empty() || !second.additional_modifications.is_empty()
+    if !is_radiance_target_creature_spec(target)
+        || first.until != second.until
+        || first.condition.is_some()
+        || second.condition.is_some()
+        || first.modification.is_some()
+        || second.modification.is_some()
+        || !first.additional_modifications.is_empty()
+        || !second.additional_modifications.is_empty()
         || first.runtime_modifications != second.runtime_modifications
-    { return None; }
-    let [crate::effects::continuous::RuntimeModification::ModifyPowerToughness { power, toughness }] = first.runtime_modifications.as_slice() else { return None; };
-    let crate::continuous::EffectTarget::Filter(filter) = &second.target else { return None; };
+    {
+        return None;
+    }
+    let [
+        crate::effects::continuous::RuntimeModification::ModifyPowerToughness { power, toughness },
+    ] = first.runtime_modifications.as_slice()
+    else {
+        return None;
+    };
+    let crate::continuous::EffectTarget::Filter(filter) = &second.target else {
+        return None;
+    };
     let tag = shared_color_other_creature_filter(filter)?;
-    if wrapped_effect_tag(first_effect)? != tag { return None; }
+    if wrapped_effect_tag(first_effect)? != tag {
+        return None;
+    }
     let mut plain = filter.clone();
     plain.tagged_constraints.clear();
     plain.set_explicit_card_type_noun(None);
-    if plain != ObjectFilter::creature() { return None; }
-    Some(format!("Radiance — Target creature and each other creature that shares a color with it get {}/{} {}",
-        describe_signed_value(power), describe_signed_value(toughness), describe_until(&first.until)))
+    if plain != ObjectFilter::creature() {
+        return None;
+    }
+    Some(format!(
+        "Radiance — Target creature and each other creature that shares a color with it get {}/{} {}",
+        describe_signed_value(power),
+        describe_signed_value(toughness),
+        describe_until(&first.until)
+    ))
 }
 
 pub(super) fn describe_target_and_shared_color_inline_ability_grant(
@@ -2748,7 +2779,10 @@ pub(super) fn describe_named_vote_repeated_consult_collection_sequence(
     let consult_effect = consult_repeat_effect;
     let consult = unwrap_basic_tag_wrappers(consult_effect)
         .downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
-    let crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::VoteCount(consult_option_name)) = &consult.stop_rule else {
+    let crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::VoteCount(
+        consult_option_name,
+    )) = &consult.stop_rule
+    else {
         return None;
     };
     if !consult_option_name.eq_ignore_ascii_case(&consult_option.name)
@@ -2814,7 +2848,10 @@ pub(super) fn describe_named_vote_repeated_consult_collection_sequence(
                 .map(|option| option.name.to_ascii_lowercase())
                 .collect::<Vec<_>>()
         ),
-        format!("Reveal cards from the top of your library until you reveal {}", with_indefinite_article(&selected)),
+        format!(
+            "Reveal cards from the top of your library until you reveal {}",
+            with_indefinite_article(&selected)
+        ),
         consult_option.name.to_ascii_lowercase(),
     ))
 }
@@ -5940,19 +5977,35 @@ pub(super) fn describe_reveal_hand_choose_two_filters_then_discard(
 }
 
 /// Preserve a coordinated reveal/selection sentence followed by its linked exile.
-pub(in crate::compiled_text) fn describe_coordinated_hand_reveal_choice_exile(effects: &[Effect]) -> Option<String> {
-    let [sequence, action] = effects else { return None; };
+pub(in crate::compiled_text) fn describe_coordinated_hand_reveal_choice_exile(
+    effects: &[Effect],
+) -> Option<String> {
+    let [sequence, action] = effects else {
+        return None;
+    };
     let sequence = sequence.downcast_ref::<crate::effects::SequenceEffect>()?;
-    if sequence.surface != ironsmith_core::SequenceSurface::Coordinated { return None; }
-    let [look, choose] = sequence.effects.as_slice() else { return None; };
+    if sequence.surface != ironsmith_core::SequenceSurface::Coordinated {
+        return None;
+    }
+    let [look, choose] = sequence.effects.as_slice() else {
+        return None;
+    };
     let look = look.downcast_ref::<crate::effects::LookAtHandEffect>()?;
     let choose = choose.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let action = unwrap_basic_tag_wrappers(action);
     let exile = action.downcast_ref::<crate::effects::ExileEffect>()?;
-    if !look.reveal || exile.face_down || exile.turn_face_up
-        || !exile_uses_chosen_tag(&exile.spec, choose.tag.as_str()) { return None; }
+    if !look.reveal
+        || exile.face_down
+        || exile.turn_face_up
+        || !exile_uses_chosen_tag(&exile.spec, choose.tag.as_str())
+    {
+        return None;
+    }
     let (reveal, choice, _) = describe_reveal_hand_choose_from_it(look, choose)?;
-    Some(format!("{reveal} and you choose {}. Exile that card", card_choice_from_it_text(&choice)))
+    Some(format!(
+        "{reveal} and you choose {}. Exile that card",
+        card_choice_from_it_text(&choice)
+    ))
 }
 
 pub(in crate::compiled_text) fn describe_look_hand_choose_then_discard_or_exile(
@@ -7537,20 +7590,39 @@ pub(in crate::compiled_text) fn describe_reveal_hand_choose_graveyard_or_hand_ex
 
 /// Preserve the shared color choice and revealed-card count in a damage followup.
 pub(super) fn describe_choose_color_reveal_hand_and_damage(effects: &[Effect]) -> Option<String> {
-    let [choose, reveal, damage] = effects else { return None; };
-    let choose = structural_unwrap_render_wrappers(choose).downcast_ref::<crate::effects::ChooseColorEffect>()?;
-    let reveal = structural_unwrap_render_wrappers(reveal).downcast_ref::<crate::effects::LookAtHandEffect>()?;
+    let [choose, reveal, damage] = effects else {
+        return None;
+    };
+    let choose = structural_unwrap_render_wrappers(choose)
+        .downcast_ref::<crate::effects::ChooseColorEffect>()?;
+    let reveal = structural_unwrap_render_wrappers(reveal)
+        .downcast_ref::<crate::effects::LookAtHandEffect>()?;
     let (source, damage) = damage_with_source_view(damage)?;
-    if choose.chooser != PlayerFilter::You || !reveal.reveal || damage.source_is_combat || damage.unpreventable { return None; }
+    if choose.chooser != PlayerFilter::You
+        || !reveal.reveal
+        || damage.source_is_combat
+        || damage.unpreventable
+    {
+        return None;
+    }
     let player = choose_spec_player_filter(&reveal.target)?;
-    if choose_spec_player_filter(&damage.target)? != player { return None; }
-    let Value::Count(filter) = damage.amount.unhinted() else { return None; };
+    if choose_spec_player_filter(&damage.target)? != player {
+        return None;
+    }
+    let Value::Count(filter) = damage.amount.unhinted() else {
+        return None;
+    };
     let mut expected = ObjectFilter::tagged(TagKey::from(crate::effects::REVEALED_THIS_WAY_TAG));
     expected.chosen_color = true;
     expected.set_explicit_card_noun(true);
     expected.set_prior_effect_action_surface(Some(crate::effect::PriorEffectAction::Revealed));
-    if filter != &expected { return None; }
+    if filter != &expected {
+        return None;
+    }
     let source = describe_damage_source_subject(source.unwrap_or(&ChooseSpec::Source));
     let player = describe_player_filter(&player);
-    Some(format!("Choose a color, then {player} {} their hand and {source} deals damage to {player} equal to the number of cards of that color revealed this way", player_verb(&player, "reveal", "reveals")))
+    Some(format!(
+        "Choose a color, then {player} {} their hand and {source} deals damage to {player} equal to the number of cards of that color revealed this way",
+        player_verb(&player, "reveal", "reveals")
+    ))
 }

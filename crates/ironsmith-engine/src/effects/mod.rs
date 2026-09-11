@@ -100,9 +100,9 @@ pub use cards::{
     ShuffleLibraryEffect, SurveilEffect,
 };
 pub use combat::{
-    AssignNoCombatDamageEffect, CombatDamagePreventionTarget, EnterAttackingEffect,
-    ExchangeValueKind, ExchangeValueOperand, ExchangeValuesEffect, FightEffect, GoadEffect, ClearGoadEffect,
-    GrantAbilitiesAllEffect, GrantAbilitiesTargetEffect, MeleeEffect,
+    AssignNoCombatDamageEffect, ClearGoadEffect, CombatDamagePreventionTarget,
+    EnterAttackingEffect, ExchangeValueKind, ExchangeValueOperand, ExchangeValuesEffect,
+    FightEffect, GoadEffect, GrantAbilitiesAllEffect, GrantAbilitiesTargetEffect, MeleeEffect,
     ModifyPowerToughnessAllEffect, ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect,
     PreventAllCombatDamageEffect, PreventAllCombatDamageFromEffect, PreventAllDamageEffect,
     PreventAllDamageToTargetEffect, PreventDamageEffect, RemoveFromCombatEffect,
@@ -197,10 +197,10 @@ pub use player::{
 };
 pub use replacement::{
     ApplyReplacementEffect, RegisterDamagedBySourceZoneReplacementEffect,
-    RegisterDrawReplacementEffect, RegisterEnterTappedReplacementEffect, RegisterEnterWithCountersReplacementEffect,
-    RegisterEnterUnderControlReplacementEffect, RegisterFutureZoneReplacementEffect,
-    RegisterManaReplacementEffect, RegisterNextBatchEnterWithCountersEffect,
-    RegisterZoneReplacementEffect, ReplacementApplyMode,
+    RegisterDrawReplacementEffect, RegisterEnterTappedReplacementEffect,
+    RegisterEnterUnderControlReplacementEffect, RegisterEnterWithCountersReplacementEffect,
+    RegisterFutureZoneReplacementEffect, RegisterManaReplacementEffect,
+    RegisterNextBatchEnterWithCountersEffect, RegisterZoneReplacementEffect, ReplacementApplyMode,
 };
 pub use restrictions::CantEffect;
 pub(crate) use stack::EpicSpellCopyEffect;

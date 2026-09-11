@@ -4,8 +4,7 @@ use std::borrow::Cow;
 
 /// Types of counters that can be placed on objects.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
 pub enum CounterType {
     PlusOnePlusOne,
     MinusOneMinusOne,

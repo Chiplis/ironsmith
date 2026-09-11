@@ -76,8 +76,15 @@ mod tests {
         let mut ctx = ExecutionContext::new_default(source, alice);
         let target = ChooseSpec::target(ChooseSpec::creature());
         let required = TargetOnlyEffect::new(target.clone());
-        assert!(matches!(required.execute(&mut game, &mut ctx), Err(ExecutionError::InvalidTarget)));
-        let optional = TargetOnlyEffect::new(target.with_count(crate::effect::ChoiceCount::up_to(1)));
-        assert_eq!(optional.execute(&mut game, &mut ctx).unwrap().as_count(), Some(0));
+        assert!(matches!(
+            required.execute(&mut game, &mut ctx),
+            Err(ExecutionError::InvalidTarget)
+        ));
+        let optional =
+            TargetOnlyEffect::new(target.with_count(crate::effect::ChoiceCount::up_to(1)));
+        assert_eq!(
+            optional.execute(&mut game, &mut ctx).unwrap().as_count(),
+            Some(0)
+        );
     }
 }

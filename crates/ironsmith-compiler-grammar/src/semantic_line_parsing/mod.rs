@@ -48,10 +48,8 @@ pub use triggered_chunks::{
 
 pub use activated::parse_activated_line;
 pub use lines::{
-    exact_atomic_return_as_aura_bundle,
-    spell_or_activated_ability_x_cost_trigger_spec,
     dynamic_zone_change_group_token_creation_from_authored_trigger,
-    end_of_combat_destroy_then_next_end_step_counter_program,
+    end_of_combat_destroy_then_next_end_step_counter_program, exact_atomic_return_as_aura_bundle,
     exact_graveyard_card_copy_cast_sequence, exact_looked_hand_optional_cast_bundle,
     exact_target_graveyard_any_type_may_cast_bundle,
     exact_target_same_name_graveyard_may_cast_bundle,
@@ -62,6 +60,7 @@ pub use lines::{
     parse_exert_attack_keyword_line, parse_gift_keyword_line, parse_keyword_special_cases,
     parse_library_origin_source_pump_unblockable_triggered_line,
     parse_statement_token_groups_to_chunks, parse_static_line, rewrite_modal_to_parsed_item,
+    spell_or_activated_ability_x_cost_trigger_spec,
 };
 #[cfg(any(test, feature = "test-support"))]
 pub use lines::{

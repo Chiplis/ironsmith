@@ -8,7 +8,9 @@ pub(super) fn parse_tap_those_then_unattach_equipment_lexed(
     }
 
     let mut tapped_filter = ObjectFilter::creature();
-    tapped_filter.source_surface = Some(ironsmith_core::SourceReferenceSurface::ThisPermanentType("those creatures".into()));
+    tapped_filter.source_surface = Some(ironsmith_core::SourceReferenceSurface::ThisPermanentType(
+        "those creatures".into(),
+    ));
     tapped_filter.zone = Some(Zone::Battlefield);
     tapped_filter
         .tagged_constraints
@@ -61,7 +63,9 @@ pub fn collapse_token_copy_next_end_step_exile_followup_lexed(
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action:
                         SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. })
-                        | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { .. }),
+                        | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
+                            ..
+                        }),
                     ..
                 }),
                 EffectAst::SubjectVerb(subject_verb),

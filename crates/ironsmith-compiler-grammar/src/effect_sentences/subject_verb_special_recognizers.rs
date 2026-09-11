@@ -7,7 +7,7 @@ use super::{parse_object_filter, parse_target_phrase as parse_target_phrase_lexe
 use crate::cards::builders::{CardTextError, ChoiceCount, EffectAst, ObjectChoiceEffectAst};
 use crate::cards::builders::{PlayerAst, TagKey, Value};
 use crate::effect::{EventValueSpec, Until};
-use crate::model::ast::{SubjectVerbActionAst, SubjectVerbRoleAst, LifeResourceActionAst};
+use crate::model::ast::{LifeResourceActionAst, SubjectVerbActionAst, SubjectVerbRoleAst};
 use crate::recognition::{ParseOutcome, RuleId};
 use crate::registry::{HeadDiscriminator, RegistryRuleMetadata};
 use crate::target::{ChooseSpec, ObjectFilter};

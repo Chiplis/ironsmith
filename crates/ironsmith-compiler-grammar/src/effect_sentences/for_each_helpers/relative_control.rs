@@ -1,5 +1,5 @@
-use crate::cards::builders::ConditionalEffectAst;
 use super::*;
+use crate::cards::builders::ConditionalEffectAst;
 
 pub(super) fn parse_relative_control_conditional(
     relative: RelativeControlClauseShape<'_>,

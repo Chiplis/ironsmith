@@ -1,5 +1,5 @@
-use crate::cards::builders::ForEachEffectAst;
 use super::*;
+use crate::cards::builders::ForEachEffectAst;
 
 /// Parse a participant-owned creature-type choice followed by another action.
 ///

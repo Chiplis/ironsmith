@@ -6,8 +6,7 @@ use crate::{
 };
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum CountMode {
     One,
     OneOrMore,
@@ -18,8 +17,7 @@ pub enum CountMode {
 /// Both forms fire at every end step; this distinction only preserves whether
 /// the source says "the end step" or "each end step" for compiled text.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
 pub enum EndStepSurface {
     #[default]
     Each,
@@ -31,8 +29,7 @@ pub enum EndStepSurface {
 
 /// Authored wording for a trigger that subscribes to both main phases.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
 pub enum MainPhaseSurface {
     #[default]
     MainPhase,
@@ -43,8 +40,7 @@ pub enum MainPhaseSurface {
 /// subscribes to the same postcombat-main event; this only distinguishes the
 /// traditional ordinal wording from the rules-precise postcombat surfaces.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
 pub enum PostcombatMainPhaseSurface {
     #[default]
     SecondMain,
@@ -58,8 +54,7 @@ pub enum PostcombatMainPhaseSurface {
 /// from explicit "is put into a graveyard" text without changing which zone
 /// change events match the trigger.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum GraveyardTriggerSurface {
     Dies,
     PutIntoGraveyard,
@@ -71,8 +66,7 @@ pub enum GraveyardTriggerSurface {
 /// exists only so compiled text can retain whether the source said "win a
 /// clash" or "clash and win".
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
 pub enum ClashWinTriggerSurface {
     #[default]
     WinAClash,
@@ -80,8 +74,7 @@ pub enum ClashWinTriggerSurface {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum DamagedBySource {
     ThisCreature,
     EquippedCreature,
@@ -93,8 +86,7 @@ pub enum DamagedBySource {
 /// This is evaluated only when the event occurs. It is intentionally distinct
 /// from an intervening-if condition, which is checked again on resolution.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum TriggerTimingRestriction {
     DuringCombat,
 }
@@ -105,8 +97,7 @@ pub enum TriggerTimingRestriction {
 /// planeswalker-only triggers from silently widening to attacks against the
 /// player, and prevents either form from accidentally including Battles.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum AttackTargetRestriction {
     Player(PlayerFilter),
     PlaneswalkerControlledBy(PlayerFilter),
@@ -114,8 +105,7 @@ pub enum AttackTargetRestriction {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum DamageSourceSurface {
     Filter,
     Source,
@@ -127,8 +117,7 @@ pub enum DamageSourceSurface {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum TriggerKind {
     StateBased {
         display: String,
@@ -651,8 +640,7 @@ pub enum TriggerKind {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum TriggerIntroSurface {
     When,
     Whenever,
@@ -670,8 +658,7 @@ impl TriggerIntroSurface {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct Trigger {
     pub label: String,
     pub kind: TriggerKind,
@@ -2163,8 +2150,7 @@ pub trait CompilerTriggerMatcher {
 /// condition ("if it entered from ..." versus "if that creature entered
 /// from ..."). Presentation-only; never read while matching.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, TagKeyWalk)]
 pub enum OriginConditionSubjectSurface {
     /// "it" (or "one or more of them" for batch triggers).
     #[default]
@@ -2175,8 +2161,7 @@ pub enum OriginConditionSubjectSurface {
 
 /// Additional provenance required for a zone-change trigger to match.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum ZoneChangeOriginCondition {
     /// The object either moved directly from this zone or was cast from this
     /// zone before entering the destination zone from the stack.
@@ -2258,8 +2243,7 @@ impl ZoneChangeOriginCondition {
 /// "When Ran and Shaw enter" versus "When Hidetsugu and Kairi enters" without
 /// guessing from the card name.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
 pub enum TriggerSubjectNumber {
     #[default]
     Singular,
@@ -2267,8 +2251,7 @@ pub enum TriggerSubjectNumber {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ZoneChangeTrigger {
     pub from: Option<Zone>,
     pub from_zones: Option<Vec<Zone>>,
@@ -2420,8 +2403,7 @@ pub mod zone_changes {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct PlayerGetsCountersTrigger {
     pub player: PlayerFilter,
     pub counter_type: Option<CounterType>,
@@ -2458,8 +2440,7 @@ impl CompilerTriggerMatcher for PlayerGetsCountersTrigger {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CounterPutOnTrigger {
     pub filter: ObjectFilter,
     pub counter_type: Option<CounterType>,
@@ -2508,8 +2489,7 @@ impl CompilerTriggerMatcher for CounterPutOnTrigger {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CounterRemovedFromTrigger {
     pub filter: ObjectFilter,
     /// Restrict the event to a named counter type when Oracle names it.

@@ -1,6 +1,8 @@
 import { useCastTargeting, useCastTargetHover } from "@/context/DragContext";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
+import { useChosenObjectIdAmong } from "@/context/ObjectSelectionContext";
+import SelectionCheckBadge from "./SelectionCheckBadge";
 import { animate, cancelMotion, createTimeline, uiSpring } from "@/lib/motion/anime";
 import { debounceClick, debouncePointerDown } from "@/lib/interactionDebounce";
 import { cn } from "@/lib/utils";
@@ -862,6 +864,7 @@ export default function GameCard({
   );
   const isCastTargetHovered = isLegalTarget && castHover?.kind === "object"
     && castHover.objectIds.some(id => targetIds.includes(Number(id)));
+  const chosenObjectId = useChosenObjectIdAmong(targetIds);
   const glowKind = targetingMode ? (isLegalTarget ? "target-legal" : null) : requestedGlowKind;
   const showActionBorder = (hasAvailableAction || glowKind === "action-link") && !targetingMode;
   const name = card.name || "";
@@ -1473,6 +1476,7 @@ export default function GameCard({
         (isHovered || isCastTargetHovered) && "hovered",
         isDragging && "dragging",
         isInspected && "inspected",
+        chosenObjectId != null && "card-chosen",
         className,
       )}
       data-object-id={card.id}
@@ -1616,6 +1620,9 @@ export default function GameCard({
       <div className="game-card-surface">
         {(showActionBorder || isLegalTarget) && !useTokenBattlefield && (
           <span className="card-action-border" aria-hidden="true" />
+        )}
+        {chosenObjectId != null && (
+          <SelectionCheckBadge objectId={chosenObjectId} />
         )}
         {artUrl && (variant !== "battlefield" || !useTokenBattlefield) && (
           <img

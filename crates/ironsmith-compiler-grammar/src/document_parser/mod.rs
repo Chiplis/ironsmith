@@ -6,7 +6,7 @@ use crate::PtValue;
 use crate::ability::{ActivationTiming, PresentationLabel};
 use crate::cards::builders::{
     CardTextError, LineAst, ParseAnnotations, ParsedLevelAbilityItemAst,
-    ParsedLevelActivatedAbilityAst, PredicateAst, TextSpan, SourcePredicateAst,
+    ParsedLevelActivatedAbilityAst, PredicateAst, SourcePredicateAst, TextSpan,
 };
 use crate::parse_context::{ParseContext, ParseContextView, ParseScopeKind};
 use crate::parse_trace;
@@ -1227,6 +1227,49 @@ pub(crate) fn normalize_named_source_tokens_with_context(
 /// Word pieces are the unit of matching, as in the string form; a match that
 /// does not begin and end on token boundaries is left alone, since there is no
 /// token to stand in for part of a token.
+/// Mark each token that sits inside a quoted ability whose body defines a
+/// characteristic-defining power and toughness.
+///
+/// Such a body is printed on a created token, so a proper name in it still
+/// refers to the permanent that created the token. Rewriting the name to this
+/// card's `this <type>` subject collapses the two into one self-reference and
+/// the runtime then counts the token's own counters. Only this shape is
+/// marked: elsewhere inside quotes the rewrite is what keeps granted
+/// abilities readable.
+fn quoted_characteristic_pt_token_flags(tokens: &[OwnedLexToken]) -> Vec<bool> {
+    let mut flags = vec![false; tokens.len()];
+    let mut span_start: Option<usize> = None;
+    for (index, token) in tokens.iter().enumerate() {
+        if token.kind != TokenKind::Quote {
+            continue;
+        }
+        let Some(start) = span_start.take() else {
+            span_start = Some(index + 1);
+            continue;
+        };
+        let body = &tokens[start..index];
+        let words = crate::lexer::parser_token_word_refs(body);
+        if words.iter().any(|word| *word == "power")
+            && words.iter().any(|word| *word == "toughness")
+        {
+            flags[start..index].fill(true);
+        }
+    }
+    flags
+}
+
+/// Whether this alias occurrence is the object of a "… counters on <name>"
+/// phrase, the operand the runtime binds back to the creating permanent.
+fn alias_occurrence_is_counters_on_operand(
+    pieces: &[SourceAliasWordPiece<'_>],
+    start_word: usize,
+) -> bool {
+    let previous = start_word.checked_sub(1).and_then(|idx| pieces.get(idx));
+    let before_previous = start_word.checked_sub(2).and_then(|idx| pieces.get(idx));
+    previous.is_some_and(|piece| piece.text == "on")
+        && before_previous.is_some_and(|piece| matches!(piece.text, "counter" | "counters"))
+}
+
 fn replace_named_source_alias_tokens(
     tokens: &[OwnedLexToken],
     alias_words: &[String],
@@ -1253,6 +1296,8 @@ fn replace_named_source_alias_tokens(
         ));
     }
     debug_assert_eq!(piece_tokens.len(), pieces.len());
+
+    let quoted_characteristic_pt_tokens = quoted_characteristic_pt_token_flags(tokens);
 
     let mut out: Vec<OwnedLexToken> = Vec::with_capacity(tokens.len());
     let mut next_token = 0usize;
@@ -1295,7 +1340,12 @@ fn replace_named_source_alias_tokens(
             || (preserve_surface_hints
                 && source_alias_occurrence_should_preserve_surface_lexed(
                     &pieces, word_idx, end_word,
-                ));
+                ))
+            || (quoted_characteristic_pt_tokens
+                .get(piece_tokens[word_idx])
+                .copied()
+                .unwrap_or(false)
+                && alias_occurrence_is_counters_on_operand(&pieces, word_idx));
         if preserve_surface {
             word_idx += 1;
             continue;
@@ -1473,7 +1523,10 @@ fn source_alias_occurrence_is_rules_term_lexed(
 
     // A keyword used as the object of has/gains is an ability, even if a
     // card happens to share its name. Keep named object references elsewhere.
-    if matches!(previous_word, Some("has" | "have" | "gain" | "gains" | "lose" | "loses" | "with")) {
+    if matches!(
+        previous_word,
+        Some("has" | "have" | "gain" | "gains" | "lose" | "loses" | "with")
+    ) {
         let ability_tokens = crate::lexer::synthetic_word_tokens(
             pieces[start_word..end_word].iter().map(|piece| piece.text),
         );
@@ -2223,8 +2276,10 @@ fn split_trigger_sentence_chunks_rewrite_lexed(
             is_delayed_when_that_dies_this_turn_followup_sentence(sentence_tokens)
                 || is_delayed_when_that_leaves_battlefield_followup_sentence(sentence_tokens)
                 || is_delayed_next_end_step_followup_sentence(sentence_tokens)
-                || effect_grammar::delayed_sentence_shapes::parse_delayed_this_turn_shape(sentence_tokens)
-                    .is_some_and(|shape| shape.references_previous_creature);
+                || effect_grammar::delayed_sentence_shapes::parse_delayed_this_turn_shape(
+                    sentence_tokens,
+                )
+                .is_some_and(|shape| shape.references_previous_creature);
         let sentence_is_attack_group_followup =
             is_attack_group_combat_damage_followup_sentence(sentence_tokens);
         if !current.is_empty()
@@ -2457,19 +2512,20 @@ fn try_parse_labeled_line_dispatch(
             grammar::split_lexed_once_on_comma(after_trigger)
         && trigger_with_intro.len() > 1
     {
-        let source_zone_condition = PredicateAst::Source(SourcePredicateAst::SourceMatches(crate::ObjectFilter {
-            any_of: vec![
-                crate::ObjectFilter {
-                    zone: Some(crate::zone::Zone::Command),
-                    ..Default::default()
-                },
-                crate::ObjectFilter {
-                    zone: Some(crate::zone::Zone::Battlefield),
-                    ..Default::default()
-                },
-            ],
-            ..Default::default()
-        }));
+        let source_zone_condition =
+            PredicateAst::Source(SourcePredicateAst::SourceMatches(crate::ObjectFilter {
+                any_of: vec![
+                    crate::ObjectFilter {
+                        zone: Some(crate::zone::Zone::Command),
+                        ..Default::default()
+                    },
+                    crate::ObjectFilter {
+                        zone: Some(crate::zone::Zone::Battlefield),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }));
         let triggered = RecognizedTriggeredLine {
             info: line.info.clone(),
             full_text: render_token_slice(&body_line.tokens),
@@ -3302,18 +3358,34 @@ pub fn recognize_document_with_context(
                 let _line_references = line_context.reference_scope();
                 // Numeric result rows belong to the preceding die-roll
                 // instruction, even when their body contains a gain clause.
-                if document_grammar::parse_numeric_result_prefix_tokens(&line.info.source_tokens).is_some() {
-                    idx = dispatch_remaining_preprocessed_line(line_context, preprocessed, idx, line, allow_unsupported, &mut lines)?;
+                if document_grammar::parse_numeric_result_prefix_tokens(&line.info.source_tokens)
+                    .is_some()
+                {
+                    idx = dispatch_remaining_preprocessed_line(
+                        line_context,
+                        preprocessed,
+                        idx,
+                        line,
+                        allow_unsupported,
+                        &mut lines,
+                    )?;
                     continue;
                 }
                 if let Some(PreprocessedItem::Line(next)) = preprocessed.items.get(idx + 1)
-                    && let Some(effects) = crate::effect_sentences::parse_fight_with_before_modifier(&line.tokens, &next.tokens)?
+                    && let Some(effects) =
+                        crate::effect_sentences::parse_fight_with_before_modifier(
+                            &line.tokens,
+                            &next.tokens,
+                        )?
                 {
                     let mut tokens = line.tokens.clone();
                     tokens.extend_from_slice(&next.tokens);
                     lines.push(RecognizedLine::Statement(RecognizedStatementLine {
                         info: line.info.clone(),
-                        text: format!("{} {}", line.info.normalized.normalized, next.info.normalized.normalized),
+                        text: format!(
+                            "{} {}",
+                            line.info.normalized.normalized, next.info.normalized.normalized
+                        ),
                         parse_tokens: tokens,
                         parse_groups: vec![line.tokens.clone(), next.tokens.clone()],
                         parsed_effects: Some(effects),
@@ -3321,9 +3393,12 @@ pub fn recognize_document_with_context(
                     idx += 2;
                     continue;
                 }
-                if let Some(abilities) = parse_named_attachment_counter_release(line_context, line)? {
+                if let Some(abilities) = parse_named_attachment_counter_release(line_context, line)?
+                {
                     lines.push(RecognizedLine::Static(RecognizedStaticLine {
-                        info: line.info.clone(), parse_tokens: line.tokens.clone(), chosen_option: None,
+                        info: line.info.clone(),
+                        parse_tokens: line.tokens.clone(),
+                        chosen_option: None,
                         parsed: Some(Box::new(LineAst::StaticAbilities(abilities))),
                     }));
                     idx += 1;
@@ -3752,16 +3827,24 @@ fn try_push_complete_typed_static_line(
 /// order.
 const QUOTED_GAIN_DECLINES: &[fn(&PreprocessedLine) -> Result<bool, CardTextError>] = &[
     |line| {
-        let outer = line.tokens.iter().take_while(|token| token.kind != TokenKind::Quote);
-        Ok(outer.clone().any(|token| token.is_any_word(&["has", "have"]))
+        let outer = line
+            .tokens
+            .iter()
+            .take_while(|token| token.kind != TokenKind::Quote);
+        Ok(outer
+            .clone()
+            .any(|token| token.is_any_word(&["has", "have"]))
             && matches!(recognize_static_line(line), Ok(Some(_))))
     },
     // A continuous animation owns its characteristics and quoted grant as
     // one static bundle, including any turn condition on the affected set.
     |line| {
-        Ok(crate::keyword_static::parse_filter_is_pt_creature_in_addition_and_has_line(
-            &line.tokens,
-        )?.is_some())
+        Ok(
+            crate::keyword_static::parse_filter_is_pt_creature_in_addition_and_has_line(
+                &line.tokens,
+            )?
+            .is_some(),
+        )
     },
     // a labeled body reaches labeled-line dispatch first
     |line| {
@@ -3775,7 +3858,7 @@ const QUOTED_GAIN_DECLINES: &[fn(&PreprocessedLine) -> Result<bool, CardTextErro
         Ok(
             crate::keyword_static::parse_anthem_and_keyword_line(&line.tokens)?.is_some()
                 || crate::keyword_static::parse_anthem_with_trailing_segments_line(&line.tokens)?
-                .is_some(),
+                    .is_some(),
         )
     },
     // an enter-as-copy replacement owns its quoted exception
@@ -3806,10 +3889,17 @@ fn try_push_complete_typed_quoted_gain_statement(
     line: &PreprocessedLine,
     lines: &mut Vec<RecognizedLine>,
 ) -> Result<bool, CardTextError> {
-    let Some(quote) = line.tokens.iter().position(|token| token.kind == TokenKind::Quote) else {
+    let Some(quote) = line
+        .tokens
+        .iter()
+        .position(|token| token.kind == TokenKind::Quote)
+    else {
         return Ok(false);
     };
-    if line.tokens[..quote].iter().any(|token| token.kind == TokenKind::Colon) {
+    if line.tokens[..quote]
+        .iter()
+        .any(|token| token.kind == TokenKind::Colon)
+    {
         return Ok(false);
     }
     for declines in QUOTED_GAIN_DECLINES {
@@ -3885,16 +3975,22 @@ fn try_push_complete_typed_statement(
     let typed_persistent_anthem =
         crate::keyword_static::parse_enchanted_land_is_chosen_type_line(&line.tokens)?.is_some()
             || crate::keyword_static::parse_enchanted_creature_has_line(&line.tokens)?.is_some()
-            ||
-        (line.tokens.iter().take_while(|token| token.kind != TokenKind::Quote)
-            .any(|token| token.is_any_word(&["has", "have"]))
-            && matches!(recognize_static_line(line), Ok(Some(_))))
-            ||
-        crate::keyword_static::parse_attacked_player_can_attack_as_though_no_defender_line(&line.tokens)?.is_some()
-            ||
-        crate::keyword_static::parse_plain_can_attack_as_though_no_defender_line(&line.tokens)?.is_some()
-            ||
-        crate::keyword_static::parse_anthem_with_trailing_segments_line(&line.tokens)?.is_some()
+            || (line
+                .tokens
+                .iter()
+                .take_while(|token| token.kind != TokenKind::Quote)
+                .any(|token| token.is_any_word(&["has", "have"]))
+                && matches!(recognize_static_line(line), Ok(Some(_))))
+            || crate::keyword_static::parse_attacked_player_can_attack_as_though_no_defender_line(
+                &line.tokens,
+            )?
+            .is_some()
+            || crate::keyword_static::parse_plain_can_attack_as_though_no_defender_line(
+                &line.tokens,
+            )?
+            .is_some()
+            || crate::keyword_static::parse_anthem_with_trailing_segments_line(&line.tokens)?
+                .is_some()
             || super::grammar::anthem_grants::parse_anthem_modifier_head(&line.tokens)
                 .is_some_and(|head| !head.has_target && !head.temporary);
     if typed_persistent_anthem && matches!(recognize_static_line(line), Ok(Some(_))) {
@@ -4594,17 +4690,23 @@ mod tests {
         ] {
             let line = single_preprocessed_line(text);
             let mut lines = Vec::new();
-            assert!(!super::try_push_complete_typed_quoted_gain_statement(&line, &mut lines).unwrap(), "{text}");
+            assert!(
+                !super::try_push_complete_typed_quoted_gain_statement(&line, &mut lines).unwrap(),
+                "{text}"
+            );
             assert!(lines.is_empty());
-            assert!(super::recognize_static_line(&line).unwrap().is_some(), "{text}");
+            assert!(
+                super::recognize_static_line(&line).unwrap().is_some(),
+                "{text}"
+            );
         }
     }
 
-    use crate::cards::builders::TurnEventPredicateAst;
-    use crate::cards::builders::SourcePredicateAst;
-    use crate::cards::builders::KeywordActionAst;
     use crate::ability::PresentationLabel;
     use crate::cards::builders::CardTextError;
+    use crate::cards::builders::KeywordActionAst;
+    use crate::cards::builders::SourcePredicateAst;
+    use crate::cards::builders::TurnEventPredicateAst;
     use crate::cards::builders::document_parser::KeywordLineKind;
     use crate::ids::CardId;
     use crate::types::{CardType, Subtype};
@@ -4709,7 +4811,9 @@ mod tests {
                 fight_effects.as_slice(),
                 [crate::cards::builders::EffectAst::SubjectVerb(
                     crate::cards::builders::SubjectVerbEffectAst {
-                        action: crate::cards::builders::SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fight { .. }),
+                        action: crate::cards::builders::SubjectVerbActionAst::KeywordActions(
+                            KeywordActionAst::Fight { .. }
+                        ),
                         ..
                     }
                 )]
@@ -6133,13 +6237,17 @@ mod tests {
             (
                 "At the beginning of your end step, if this creature didn't attack this turn, put a +1/+1 counter on it.",
                 crate::cards::builders::PredicateAst::Not(Box::new(
-                    crate::cards::builders::PredicateAst::Source(SourcePredicateAst::SourceAttackedThisTurn),
+                    crate::cards::builders::PredicateAst::Source(
+                        SourcePredicateAst::SourceAttackedThisTurn,
+                    ),
                 )),
             ),
             (
                 "At the beginning of your end step, if you didn't attack with a creature this turn, sacrifice this Aura.",
                 crate::cards::builders::PredicateAst::Not(Box::new(
-                    crate::cards::builders::PredicateAst::TurnEvents(TurnEventPredicateAst::YouAttackedThisTurn),
+                    crate::cards::builders::PredicateAst::TurnEvents(
+                        TurnEventPredicateAst::YouAttackedThisTurn,
+                    ),
                 )),
             ),
         ] {
@@ -6811,20 +6919,42 @@ mod tests {
             .card_types(vec![CardType::Enchantment]);
         let text = "Enchanted permanent is a Treasure artifact with \"{T}, Sacrifice this artifact: Add one mana of any color,\" and it loses all other abilities.";
         let preprocessed = preprocess_document(card, text).unwrap();
-        let Some(PreprocessedItem::Line(line)) = preprocessed.items.first() else { panic!("expected a line"); };
-        assert!(crate::keyword_static::parse_attached_type_transform_line(&line.tokens).unwrap().is_some(), "prepared tokens: {:#?}", line.tokens);
+        let Some(PreprocessedItem::Line(line)) = preprocessed.items.first() else {
+            panic!("expected a line");
+        };
+        assert!(
+            crate::keyword_static::parse_attached_type_transform_line(&line.tokens)
+                .unwrap()
+                .is_some(),
+            "prepared tokens: {:#?}",
+            line.tokens
+        );
         assert!(recognize_static_line(line).unwrap().is_some());
     }
 
     #[test]
     fn leading_then_condition_survives_statement_recognition() {
-        let line = single_preprocessed_line("Then if you control three or more creatures with different powers, draw a card.");
-        let (effects, trace) = crate::parse_trace::capture(|| crate::effect_sentences::parse_effect_sentences_lexed(&line.tokens).unwrap());
+        let line = single_preprocessed_line(
+            "Then if you control three or more creatures with different powers, draw a card.",
+        );
+        let (effects, trace) = crate::parse_trace::capture(|| {
+            crate::effect_sentences::parse_effect_sentences_lexed(&line.tokens).unwrap()
+        });
         let debug = format!("{effects:#?}");
-        assert!(debug.contains("ControlFlow") || debug.contains("Conditionals"), "{debug}\n{}", trace.render());
+        assert!(
+            debug.contains("ControlFlow") || debug.contains("Conditionals"),
+            "{debug}\n{}",
+            trace.render()
+        );
         let statement = recognize_statement_line(&line).unwrap().unwrap();
         let debug = format!("{statement:#?}");
-        assert!(!matches!(statement.parsed_effects.as_deref(), Some([crate::cards::builders::EffectAst::SubjectVerb(_)])), "{debug}");
+        assert!(
+            !matches!(
+                statement.parsed_effects.as_deref(),
+                Some([crate::cards::builders::EffectAst::SubjectVerb(_)])
+            ),
+            "{debug}"
+        );
     }
 
     #[test]

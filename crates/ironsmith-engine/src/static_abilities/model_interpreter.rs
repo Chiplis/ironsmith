@@ -2433,11 +2433,20 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         )
     }
 
-    fn attack_cost_for_declaration(&self, game: &GameState, source: ObjectId, controller: PlayerId,
-        attacker: ObjectId, target: super::AttackTaxTargetKind) -> Option<crate::cost::TotalCost> {
-        self.leaf_static_ability()?.attack_cost_for_declaration(game, source, controller, attacker, target)
+    fn attack_cost_for_declaration(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        attacker: ObjectId,
+        target: super::AttackTaxTargetKind,
+    ) -> Option<crate::cost::TotalCost> {
+        self.leaf_static_ability()?
+            .attack_cost_for_declaration(game, source, controller, attacker, target)
     }
-    fn attack_cost_model(&self) -> Option<&super::AttackCost> { self.leaf_static_ability()?.attack_cost_model() }
+    fn attack_cost_model(&self) -> Option<&super::AttackCost> {
+        self.leaf_static_ability()?.attack_cost_model()
+    }
 
     fn block_cost_model(&self) -> Option<&super::BlockCost> {
         self.leaf_static_ability()?.block_cost_model()

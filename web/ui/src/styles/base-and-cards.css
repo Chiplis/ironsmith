@@ -3429,3 +3429,81 @@
 .game-card.field-card.card-circuit-replaces-glow .card-circuit-edge {
   opacity: 0.9;
 }
+
+/* Chosen cards (search / "choose objects" decisions) keep a check in the top
+   right corner. The check is the only surface that unchooses the card, so it
+   stays a real hit target above the art on every card variant. */
+.card-selection-check {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  z-index: 7;
+  display: grid;
+  place-items: center;
+  width: clamp(16px, 18%, 24px);
+  aspect-ratio: 1;
+  padding: 0;
+  color: #0f1a12;
+  background: linear-gradient(180deg, #9fe8a6, #46a259);
+  border: 1px solid rgba(9, 18, 12, 0.75);
+  border-radius: 3px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45), 0 0 8px rgba(112, 226, 138, 0.45);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform 120ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.card-selection-check:hover {
+  background: linear-gradient(180deg, #ffd9d3, #d2604f);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45), 0 0 10px rgba(226, 112, 112, 0.55);
+  transform: scale(1.08);
+}
+
+.card-selection-check-icon {
+  width: 74%;
+  height: 74%;
+  stroke-width: 3.4;
+}
+
+.game-card.card-chosen .game-card-surface {
+  outline: 1px solid rgba(126, 226, 150, 0.85);
+  outline-offset: -1px;
+  box-shadow: inset 0 0 12px rgba(96, 206, 126, 0.35);
+}
+
+.zone-pile-card-slot {
+  position: relative;
+  display: block;
+  flex: 0 0 var(--zone-strip-card-width, 72px);
+  width: var(--zone-strip-card-width, 72px);
+}
+
+.zone-pile-card-slot > .zone-pile-card-row {
+  width: 100%;
+}
+
+.zone-pile-card-slot .card-selection-check {
+  width: clamp(15px, 22%, 22px);
+}
+
+.zone-pile-card-row.is-chosen {
+  border-color: rgba(126, 226, 150, 0.9);
+  box-shadow: 0 0 5px rgba(96, 206, 126, 0.6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-selection-check,
+  .card-selection-check:hover {
+    transition: none;
+    transform: none;
+  }
+}
+
+/* Clipped pills carry the check inline instead of in a corner. */
+.card-selection-check--inline {
+  position: static;
+  flex: 0 0 auto;
+  width: 14px;
+  margin-left: 5px;
+  border-radius: 2px;
+}

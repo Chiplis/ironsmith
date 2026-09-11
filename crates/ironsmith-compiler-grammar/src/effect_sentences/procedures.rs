@@ -54,16 +54,31 @@ fn open_all(
     };
     // Fixed-shape statements were ranked ahead of every other program.
     consider(pair_procedure::open(sentences, sentence_idx).map(|group| group.map(Procedure::Pair)));
-    consider(Ok(looked_procedure::open(sentences, sentence_idx).map(Procedure::Looked)));
-    consider(consult_procedure::open(sentences, sentence_idx).map(|group| group.map(Procedure::Consulted)));
-    consider(mill_procedure::open(sentences, sentence_idx).map(|group| group.map(Procedure::Milled)));
+    consider(Ok(
+        looked_procedure::open(sentences, sentence_idx).map(Procedure::Looked)
+    ));
+    consider(
+        consult_procedure::open(sentences, sentence_idx)
+            .map(|group| group.map(Procedure::Consulted)),
+    );
+    consider(
+        mill_procedure::open(sentences, sentence_idx).map(|group| group.map(Procedure::Milled)),
+    );
     consider(
         graveyard_cast_procedure::open(sentences, sentence_idx)
             .map(|group| group.map(Procedure::GraveyardCast)),
     );
-    consider(copy_cast_procedure::open(sentences, sentence_idx).map(|group| group.map(Procedure::CopyCast)));
-    consider(exiled_top_procedure::open(sentences, sentence_idx).map(|group| group.map(Procedure::ExiledTop)));
-    consider(rider_procedure::open(sentences, sentence_idx).map(|group| group.map(Procedure::Ridden)));
+    consider(
+        copy_cast_procedure::open(sentences, sentence_idx)
+            .map(|group| group.map(Procedure::CopyCast)),
+    );
+    consider(
+        exiled_top_procedure::open(sentences, sentence_idx)
+            .map(|group| group.map(Procedure::ExiledTop)),
+    );
+    consider(
+        rider_procedure::open(sentences, sentence_idx).map(|group| group.map(Procedure::Ridden)),
+    );
     consider(hand_procedure::open(sentences, sentence_idx).map(|group| group.map(Procedure::Hand)));
     match (opened.is_empty(), deferred) {
         (true, Some(error)) => Err(error),

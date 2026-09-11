@@ -1,5 +1,5 @@
-use crate::cards::builders::StackActionAst;
 use super::*;
+use crate::cards::builders::StackActionAst;
 
 pub(super) fn effect_copies_triggering_stack_object(effect: &EffectAst) -> bool {
     if matches!(

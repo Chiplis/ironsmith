@@ -1,7 +1,7 @@
-use crate::cards::builders::ObjectChoiceEffectAst;
-use crate::cards::builders::ForEachEffectAst;
 use super::super::zone_handlers::parse_return;
 use super::*;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::ObjectChoiceEffectAst;
 use crate::grammar::effects::combat_damage_family_shapes as combat_shapes;
 use crate::grammar::effects::delayed_step_shapes as delayed_shapes;
 use crate::lexer::trim_lexed_commas;
@@ -725,8 +725,8 @@ pub(super) fn delayed_next_step_marker(
 
 #[cfg(test)]
 mod coordinated_return_tests {
-    use crate::cards::builders::ZoneMoveActionAst;
     use super::*;
+    use crate::cards::builders::ZoneMoveActionAst;
     use crate::lexer::lex_line;
 
     #[test]
@@ -785,7 +785,8 @@ mod coordinated_return_tests {
         let [
             _,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. }),
+                action:
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. }),
                 ..
             }),
         ] = effects
@@ -815,7 +816,9 @@ mod coordinated_return_tests {
         assert!(effects.iter().all(|effect| matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { .. }),
+                action: SubjectVerbActionAst::ZoneMoves(
+                    ZoneMoveActionAst::ReturnToBattlefield { .. }
+                ),
                 ..
             })
         )));

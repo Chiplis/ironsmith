@@ -37,7 +37,9 @@ import {
   plainRect,
   pointIsOutsideRect,
   shouldBeginTargetCastIntent,
+  targetDecisionAllowsNoTargets,
 } from "@/lib/hand-drag-intent";
+import { requestObjectSelection } from "@/lib/object-selection";
 import {
   HAND_KEYBOARD_CAST_EVENT,
   handKeyboardCastNeedsPointer,
@@ -1220,11 +1222,9 @@ export default function Workspace({
           && candidateIds.some((candidateId) => String(candidate?.id) === String(candidateId))
         );
         if (matchedCandidate) {
-          window.dispatchEvent(
-            new CustomEvent("ironsmith:select-object-choice", {
-              detail: { objectId: matchedCandidate.id },
-            })
-          );
+          // A click on a card only ever chooses it; the check badge on the
+          // card is what gives it back.
+          requestObjectSelection(matchedCandidate.id, "add");
           return;
         }
       }
@@ -1487,7 +1487,11 @@ export default function Workspace({
     const frameId = requestAnimationFrame(() => {
       if (pendingCastTargetDrop.cancelCast) {
         setPendingCastTargetDrop(null);
-        if (samePlayerId(decision.player, state?.perspective)) cancelDecision();
+        if (!samePlayerId(decision.player, state?.perspective)) return;
+        // "Up to X targets" survives a release over nothing: the player still
+        // gets to submit the cast with no targets.
+        if (targetDecisionAllowsNoTargets(decision)) return;
+        cancelDecision();
         return;
       }
       // Payment and additional-cost decisions can sit between declaring the
@@ -1527,7 +1531,7 @@ export default function Workspace({
       ]);
       setPendingCastTargetDrop(null);
       if (!target) {
-        cancelDecision();
+        if (!targetDecisionAllowsNoTargets(decision)) cancelDecision();
         return;
       }
 
@@ -1554,9 +1558,10 @@ export default function Workspace({
         const targetDecision = state?.decision?.kind === "targets"
           ? state.decision
           : ds.castIntent.targetDecision;
-        const cancelCast = !candidate || (targetDecision?.kind === "targets"
+        const optionalTargets = targetDecisionAllowsNoTargets(targetDecision);
+        const cancelCast = !optionalTargets && (!candidate || (targetDecision?.kind === "targets"
           && !legalTargetForDropCandidates(targetDecision, [candidate])
-          && !zoneHasLegalTargets(state, targetDecision, candidate));
+          && !zoneHasLegalTargets(state, targetDecision, candidate)));
         clearHover();
         if (cancelCast && ds.actions.length > 1) {
           // Provisional gestures have not started a cast in the engine yet.

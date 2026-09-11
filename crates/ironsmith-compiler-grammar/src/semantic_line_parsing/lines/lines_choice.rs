@@ -1,5 +1,5 @@
-use crate::cards::builders::ObjectChoiceEffectAst;
 use super::*;
+use crate::cards::builders::ObjectChoiceEffectAst;
 
 pub(super) fn try_parse_chosen_type_behold_two_additional_cost(
     line: &RewriteKeywordLine,
@@ -74,16 +74,18 @@ pub(super) fn try_parse_chosen_type_behold_two_additional_cost(
         crate::model::CompilerCost::ValidatedEffect(Box::new(
             EffectAst::subject_verb_choose_creature_type(PlayerAst::You, Vec::new()),
         )),
-        crate::model::CompilerCost::ValidatedEffect(Box::new(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-            filter: ObjectFilter {
-                any_of: vec![battlefield, hand],
-                ..Default::default()
+        crate::model::CompilerCost::ValidatedEffect(Box::new(EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::ChooseObjects {
+                filter: ObjectFilter {
+                    any_of: vec![battlefield, hand],
+                    ..Default::default()
+                },
+                count: crate::effect::ChoiceCount::exactly(2),
+                count_value: None,
+                player: PlayerAst::You,
+                tag: crate::tag::CompilerReferenceTag::BeheldChosenType.bind(),
             },
-            count: crate::effect::ChoiceCount::exactly(2),
-            count_value: None,
-            player: PlayerAst::You,
-            tag: crate::tag::CompilerReferenceTag::BeheldChosenType.bind(),
-        }))),
+        ))),
     ]);
     let mut optional_cost = OptionalCost::custom(line.info.raw_line.trim(), total_cost);
     optional_cost.reference =
@@ -183,7 +185,9 @@ pub(super) fn specialize_modal_common_target_suffix(
         };
 
         let mut specialized = common.clone();
-        let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. }) = &mut specialized.action else {
+        let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. }) =
+            &mut specialized.action
+        else {
             unreachable!("common suffix action was validated above");
         };
         *target = TargetAst::Object(

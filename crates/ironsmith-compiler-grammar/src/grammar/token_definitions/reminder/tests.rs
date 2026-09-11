@@ -212,3 +212,51 @@ fn quoted_inner_gain_does_not_replace_the_outer_have_verb() {
     assert!(!token_ability_sentence_uses_gain_verb(&have));
     assert!(token_ability_sentence_uses_gain_verb(&gain));
 }
+
+/// Gutter Grime and Saproling Burst: the token counts counters on the
+/// permanent that created it, so the operand has to stay a named source the
+/// runtime can bind rather than collapsing into the token's own `Source`.
+#[test]
+fn named_source_counter_pt_keeps_the_creating_permanent() {
+    for (line, name, counter) in [
+        (
+            "this token's power and toughness are each equal to the number of slime counters on gutter grime",
+            "Gutter Grime",
+            crate::object::CounterType::Named("slime".into()),
+        ),
+        (
+            "this token's power and toughness are each equal to the number of fade counters on saproling burst",
+            "Saproling Burst",
+            crate::object::CounterType::Fade,
+        ),
+    ] {
+        let tokens = lex_line(line, 0).expect("named-source P/T clause should lex");
+        let (power, toughness) = parse_named_source_counter_dynamic_power_toughness_tokens(&tokens)
+            .expect("named-source P/T clause should parse");
+        assert_eq!(power, toughness);
+        let Value::CountersOn(spec, Some(counter_type)) = power.unhinted() else {
+            panic!("expected a counters-on value, got {power:#?}");
+        };
+        assert_eq!(counter_type, &counter);
+        assert_eq!(spec.base(), &crate::target::ChooseSpec::Source);
+        assert_eq!(
+            spec.source_reference_surface(),
+            Some(&crate::target::SourceReferenceSurface::FullName(
+                name.to_string()
+            )),
+            "the creating permanent's authored name must survive case folding"
+        );
+    }
+
+    // A self-reference stays local to the token.
+    let self_reference = lex_line(
+        "this token's power and toughness are each equal to the number of fade counters on this token",
+        0,
+    )
+    .expect("self-referential P/T clause should lex");
+    assert_eq!(
+        parse_named_source_counter_dynamic_power_toughness_tokens(&self_reference),
+        None,
+        "a this-token operand must not be read as a creating permanent"
+    );
+}

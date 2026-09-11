@@ -1,7 +1,7 @@
-use crate::cards::builders::ConditionalEffectAst;
-use crate::cards::builders::CharacteristicActionAst;
-use crate::cards::builders::GrantActionAst;
 use super::*;
+use crate::cards::builders::CharacteristicActionAst;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::GrantActionAst;
 
 fn animation_pt_surface(text: &str) -> ironsmith_core::AnimationPtSurface {
     let subject =
@@ -11,10 +11,12 @@ fn animation_pt_surface(text: &str) -> ironsmith_core::AnimationPtSurface {
         .expect("animation should parse through the generic become clause");
     let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
         action:
-            crate::cards::builders::SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
-                animation_pt_surface: Some(surface),
-                ..
-            }),
+            crate::cards::builders::SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeBasePtCreature {
+                    animation_pt_surface: Some(surface),
+                    ..
+                },
+            ),
         ..
     }) = effect
     else {
@@ -51,7 +53,10 @@ fn triggering_spell_color_protection_becomes_exact_color_gated_grants() {
     };
     assert_eq!(effects.len(), 6, "{effects:#?}");
     let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-        action: crate::cards::builders::SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature { subtypes, .. }),
+        action:
+            crate::cards::builders::SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeBasePtCreature { subtypes, .. },
+            ),
         ..
     }) = &effects[0]
     else {
@@ -78,10 +83,12 @@ fn triggering_spell_color_protection_becomes_exact_color_gated_grants() {
             if_true.as_slice(),
             [EffectAst::SubjectVerb(
                 crate::cards::builders::SubjectVerbEffectAst {
-                    action: crate::cards::builders::SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
-                        target: TargetAst::Source(_),
-                        ..
-                    }),
+                    action: crate::cards::builders::SubjectVerbActionAst::Grants(
+                        GrantActionAst::GrantAbilitiesToTarget {
+                            target: TargetAst::Source(_),
+                            ..
+                        }
+                    ),
                     ..
                 }
             )]
@@ -110,11 +117,13 @@ fn leading_and_trailing_animation_durations_remain_distinct() {
     let duration_surface = |effect: EffectAst| {
         let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
             action:
-                crate::cards::builders::SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
-                    animation_duration_surface,
-                    duration,
-                    ..
-                }),
+                crate::cards::builders::SubjectVerbActionAst::Characteristics(
+                    CharacteristicActionAst::BecomeBasePtCreature {
+                        animation_duration_surface,
+                        duration,
+                        ..
+                    },
+                ),
             ..
         }) = effect
         else {
@@ -174,11 +183,13 @@ fn aura_animation_preserves_balanced_quoted_ability_grant() {
     let effect = parse_become_clause(&subject, &body).expect("parse Aura animation");
     let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
         action:
-            crate::cards::builders::SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeAuraEnchantment {
-                attachment_filter,
-                granted_abilities,
-                ..
-            }),
+            crate::cards::builders::SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeAuraEnchantment {
+                    attachment_filter,
+                    granted_abilities,
+                    ..
+                },
+            ),
         ..
     }) = effect
     else {
@@ -216,12 +227,14 @@ fn unclosed_sentence_quote_keeps_animation_descriptor_and_granted_trigger() {
     let effect = parse_become_clause(&subject, &body).expect("quoted land animation should parse");
     let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
         action:
-            crate::cards::builders::SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
-                subtypes,
-                colors: Some(colors),
-                granted_abilities,
-                ..
-            }),
+            crate::cards::builders::SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeBasePtCreature {
+                    subtypes,
+                    colors: Some(colors),
+                    granted_abilities,
+                    ..
+                },
+            ),
         ..
     }) = effect
     else {
@@ -235,10 +248,10 @@ fn unclosed_sentence_quote_keeps_animation_descriptor_and_granted_trigger() {
 
 #[test]
 fn creature_animation_without_fixed_size_keeps_type_and_subtype() {
-    let subject=crate::lexer::lex_line("this enchantment",0).unwrap();
-    let body=crate::lexer::lex_line("a Bear creature in addition to its other types",0).unwrap();
-    let effect=parse_become_clause(&subject,&body).expect("type-only creature animation");
-    let debug=format!("{effect:?}");
-    assert!(debug.contains("AddCardTypes"),"{debug}");
-    assert!(debug.contains("Bear"),"{debug}");
+    let subject = crate::lexer::lex_line("this enchantment", 0).unwrap();
+    let body = crate::lexer::lex_line("a Bear creature in addition to its other types", 0).unwrap();
+    let effect = parse_become_clause(&subject, &body).expect("type-only creature animation");
+    let debug = format!("{effect:?}");
+    assert!(debug.contains("AddCardTypes"), "{debug}");
+    assert!(debug.contains("Bear"), "{debug}");
 }

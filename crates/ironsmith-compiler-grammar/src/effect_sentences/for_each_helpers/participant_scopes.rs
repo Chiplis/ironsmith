@@ -1,5 +1,5 @@
-use crate::cards::builders::ForEachEffectAst;
 use super::*;
+use crate::cards::builders::ForEachEffectAst;
 
 pub(super) fn opponent_filter(scope: ForEachParticipantScope) -> Option<PlayerFilter> {
     match scope {
@@ -54,7 +54,9 @@ pub(super) fn reanchor_other_player_copy_filter(
     }
     PlayerFilter::excluding(
         PlayerFilter::Any,
-        PlayerFilter::AliasedControllerOf(ObjectRef::tagged(crate::tag::CompilerReferenceTag::Triggering.bind())),
+        PlayerFilter::AliasedControllerOf(ObjectRef::tagged(
+            crate::tag::CompilerReferenceTag::Triggering.bind(),
+        )),
     )
 }
 
@@ -62,7 +64,8 @@ pub(super) fn wrap_players(filter: &PlayerFilter, effects: Vec<EffectAst>) -> Ef
     if *filter == PlayerFilter::Any {
         EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })
     } else {
-        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+            sequential: false,
             filter: filter.clone(),
             effects,
         })
@@ -118,11 +121,13 @@ pub fn parse_for_each_target_players_clause(
         let normalized = prepend_that_player_subject(shape.effect_tokens);
         parse_maybe_effects(&normalized, true, false)?
     };
-    Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachTargetPlayers {
-        count: shape.count,
-        filter,
-        effects,
-    })))
+    Ok(Some(EffectAst::ForEach(
+        ForEachEffectAst::ForEachTargetPlayers {
+            count: shape.count,
+            filter,
+            effects,
+        },
+    )))
 }
 
 use crate::recognition::ParseOutcome;
@@ -132,7 +137,9 @@ mod for_each_player_readings;
 pub fn parse_for_each_player_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    if has_independent_participant_continuation(tokens) { return Ok(None); }
+    if has_independent_participant_continuation(tokens) {
+        return Ok(None);
+    }
     let Some(outer) = for_each_shapes::parse_participant_clause_shape(tokens) else {
         return Ok(None);
     };
@@ -153,11 +160,13 @@ pub fn parse_for_each_player_clause(
         slot_chooser,
     };
     match for_each_player_readings::read(&input) {
-        ParseOutcome::Match(matched) => return Ok(Some(if outer.participant_is_actor {
-            matched.value.value
-        } else {
-            sequential_participant_body(matched.value.value)
-        })),
+        ParseOutcome::Match(matched) => {
+            return Ok(Some(if outer.participant_is_actor {
+                matched.value.value
+            } else {
+                sequential_participant_body(matched.value.value)
+            }));
+        }
         ParseOutcome::NoMatch => {}
         ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
@@ -198,5 +207,9 @@ pub fn parse_for_each_player_clause(
         stabilize_standalone_participant_choice_tag(&mut effects, outer.inner_tokens);
     }
     let iteration_filter = reanchor_other_player_copy_filter(iteration_filter, &effects);
-    Ok(Some(if outer.participant_is_actor { wrap_players(&iteration_filter, effects) } else { sequential_participant_body(wrap_players(&iteration_filter, effects)) }))
+    Ok(Some(if outer.participant_is_actor {
+        wrap_players(&iteration_filter, effects)
+    } else {
+        sequential_participant_body(wrap_players(&iteration_filter, effects))
+    }))
 }

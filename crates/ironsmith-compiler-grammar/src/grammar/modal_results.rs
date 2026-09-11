@@ -1,4 +1,4 @@
-use crate::cards::builders::{IfResultPredicate, PlayerAst, PredicateAst, PlayerPredicateAst};
+use crate::cards::builders::{IfResultPredicate, PlayerAst, PlayerPredicateAst, PredicateAst};
 use ironsmith_core::{
     ObjectCharacteristic, PriorEffectAction, PriorEffectResultActor, PriorEffectResultQuantifier,
     PriorEffectResultSurface,
@@ -260,7 +260,11 @@ fn parse_typed_prior_effect_result_surface(
         crate::grammar::primitives::probe_shape(super::filters::parse_predicate(tokens))?;
     let (actor, mut filter) = match predicate {
         PredicateAst::TaggedMatches(_, filter) => (PriorEffectResultActor::Passive, filter),
-        PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches { player, filter, .. }) => {
+        PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches {
+            player,
+            filter,
+            ..
+        }) => {
             let actor = match player {
                 PlayerAst::You => PriorEffectResultActor::You,
                 PlayerAst::That | PlayerAst::Implicit | PlayerAst::ItsController => {

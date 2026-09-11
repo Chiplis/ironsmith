@@ -2515,7 +2515,8 @@ pub(crate) fn can_cast_spell_with_context(
     if let Some(base_cost) = base_mana_cost.as_ref() {
         let cost_started_at = PerfTimer::start();
         let has_cost_adjustments = spell_has_intrinsic_cost_adjustments(spell_for_checks)
-            || matches!(casting_method,
+            || matches!(
+                casting_method,
                 CastingMethod::PlayFrom { .. } | CastingMethod::SplitOtherHalfPlayFrom { .. }
             );
         let effective_cost = if ctx.can_use_printed_cost_directly(has_cost_adjustments) {
@@ -2801,7 +2802,8 @@ pub(crate) fn can_cast_with_cost_with_context(
     if let Some(cost) = mana_cost {
         let cost_started_at = PerfTimer::start();
         let has_cost_adjustments = spell_has_intrinsic_cost_adjustments(spell_for_checks)
-            || matches!(casting_method,
+            || matches!(
+                casting_method,
                 CastingMethod::PlayFrom { .. } | CastingMethod::SplitOtherHalfPlayFrom { .. }
             );
         let adjusted = if ctx.can_use_printed_cost_directly(has_cost_adjustments) {
@@ -3964,7 +3966,9 @@ pub(crate) fn apply_spell_cost_modifiers(
         let matches =
             cast_filter.matches_non_recursive(
                 spell_for_match,
-                &ctx.clone().with_caster(Some(caster)).with_prospective_cast(spell.id),
+                &ctx.clone()
+                    .with_caster(Some(caster))
+                    .with_prospective_cast(spell.id),
                 game,
             ) || disturb_linked_face_matches_cost_filter(game, caster, spell, &cast_filter, ctx);
         targets_match
@@ -3994,15 +3998,21 @@ pub(crate) fn apply_spell_cost_modifiers(
     if let CastingMethod::PlayFrom { source, zone, .. }
     | CastingMethod::SplitOtherHalfPlayFrom { source, zone, .. } = casting_method
     {
-        let constraints = spell.cast_play_from_constraints.as_deref()
+        let constraints = spell
+            .cast_play_from_constraints
+            .as_deref()
             .filter(|(grant_source, grant_zone, _)| {
-                spell.zone == Zone::Stack && game.controller_of_id(spell.id) == Some(player)
-                    && grant_source == source && grant_zone == zone
+                spell.zone == Zone::Stack
+                    && game.controller_of_id(spell.id) == Some(player)
+                    && grant_source == source
+                    && grant_zone == zone
             })
             .map(|(_, _, constraints)| constraints.clone())
-            .unwrap_or_else(|| game.effect_store.grant_registry.play_from_constraints_for_card(
-                game, spell.id, *zone, player, *source,
-            ));
+            .unwrap_or_else(|| {
+                game.effect_store
+                    .grant_registry
+                    .play_from_constraints_for_card(game, spell.id, *zone, player, *source)
+            });
         if let Some(reduction) = constraints.spell_cost_reduction {
             reduction_pips.extend(reduction.pips().iter().cloned());
         }
@@ -4264,7 +4274,9 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
         let matches =
             cast_filter.matches_non_recursive(
                 spell_for_match,
-                &ctx.clone().with_caster(Some(caster)).with_prospective_cast(spell.id),
+                &ctx.clone()
+                    .with_caster(Some(caster))
+                    .with_prospective_cast(spell.id),
                 game,
             ) || disturb_linked_face_matches_cost_filter(game, caster, spell, &cast_filter, ctx);
         targets_match

@@ -28,7 +28,10 @@ const MAX_TOTAL_PLANS: usize = 32;
 /// ordering or legality.  The WASM adapter exposes them so a slow priority
 /// action can be correlated with planner work in a real match.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 pub struct ManaPaymentPerfMetrics {
     pub visited_nodes: usize,
     pub search_limited: bool,
@@ -387,52 +390,104 @@ impl ManaPaymentPlanner {
             active: None,
         });
         loop {
-            if cursor.plans.len() >= MAX_TOTAL_PLANS || (stop_after_first && !cursor.plans.is_empty()) { break; }
+            if cursor.plans.len() >= MAX_TOTAL_PLANS
+                || (stop_after_first && !cursor.plans.is_empty())
+            {
+                break;
+            }
             if cursor.active.is_none() {
                 if self.sliced && self.remaining == 0 && cursor.selections.len() > 0 {
                     self.pending = true;
                     self.outer = Some(cursor);
                     return Err(ManaPaymentFailure::SearchLimitReached);
                 }
-                let Some(selection) = cursor.selections.next() else { break; };
-                if self.sliced { self.remaining = self.remaining.saturating_sub(1); }
+                let Some(selection) = cursor.selections.next() else {
+                    break;
+                };
+                if self.sliced {
+                    self.remaining = self.remaining.saturating_sub(1);
+                }
                 let mut staged = game.clone();
                 for allocation in &selection.allocations {
                     match allocation.payment {
-                        super::PlannedPipPayment::Convoke(source) | super::PlannedPipPayment::Improvise(source) => staged.tap(source),
-                        _ => {},
+                        super::PlannedPipPayment::Convoke(source)
+                        | super::PlannedPipPayment::Improvise(source) => staged.tap(source),
+                        _ => {}
                     }
                 }
                 let mut payment_request = request.clone();
-                payment_request.cost = crate::mana::ManaCost::from_pips(selection.remaining.iter()
-                    .map(|slot| slot.alternatives.clone()).collect());
+                payment_request.cost = crate::mana::ManaCost::from_pips(
+                    selection
+                        .remaining
+                        .iter()
+                        .map(|slot| slot.alternatives.clone())
+                        .collect(),
+                );
                 for allocation in &selection.allocations {
                     let source = match allocation.payment {
-                        super::PlannedPipPayment::Convoke(source) | super::PlannedPipPayment::Improvise(source) => source,
+                        super::PlannedPipPayment::Convoke(source)
+                        | super::PlannedPipPayment::Improvise(source) => source,
                         _ => continue,
                     };
-                    payment_request.preferences.required_sources.retain(|required| *required != source);
+                    payment_request
+                        .preferences
+                        .required_sources
+                        .retain(|required| *required != source);
                 }
                 let payable = can_pay_request(&staged, &payment_request);
-                let seek_zero_life = payment_request.allow_mana_abilities && payable
-                    && !payment_request.preferences.prefer_life && preview_life_to_pay(&staged, &payment_request) > 0;
-                if payable && payment_request.preferences.required_sources.is_empty()
-                    && payment_request.preferences.required_activations.is_empty() && !seek_zero_life {
-                    let pool_after = staged.player(request.payer).ok_or(ManaPaymentFailure::MissingPlayer)?.mana_pool.clone();
-                    cursor.plans.push(build_plan(&staged, request, &payment_request, &selection,
-                        cursor.pool_before.clone(), pool_after, Vec::new()));
+                let seek_zero_life = payment_request.allow_mana_abilities
+                    && payable
+                    && !payment_request.preferences.prefer_life
+                    && preview_life_to_pay(&staged, &payment_request) > 0;
+                if payable
+                    && payment_request.preferences.required_sources.is_empty()
+                    && payment_request.preferences.required_activations.is_empty()
+                    && !seek_zero_life
+                {
+                    let pool_after = staged
+                        .player(request.payer)
+                        .ok_or(ManaPaymentFailure::MissingPlayer)?
+                        .mana_pool
+                        .clone();
+                    cursor.plans.push(build_plan(
+                        &staged,
+                        request,
+                        &payment_request,
+                        &selection,
+                        cursor.pool_before.clone(),
+                        pool_after,
+                        Vec::new(),
+                    ));
                     continue;
                 }
-                if !request.allow_mana_abilities { continue; }
-                let depth_limit = expanded_pip_count(&payment_request).saturating_add(MAX_EXTRA_ACTIVATIONS)
-                    .max(payment_request.preferences.required_activations.len()).max(1);
+                if !request.allow_mana_abilities {
+                    continue;
+                }
+                let depth_limit = expanded_pip_count(&payment_request)
+                    .saturating_add(MAX_EXTRA_ACTIVATIONS)
+                    .max(payment_request.preferences.required_activations.len())
+                    .max(1);
                 self.visited_nodes = 0;
-                let search = CandidateSearch::new(staged, &payment_request, depth_limit, stop_after_first, self.lazy_candidates);
-                cursor.active = Some(SelectionWork { selection, request: payment_request, search });
+                let search = CandidateSearch::new(
+                    staged,
+                    &payment_request,
+                    depth_limit,
+                    stop_after_first,
+                    self.lazy_candidates,
+                );
+                cursor.active = Some(SelectionWork {
+                    selection,
+                    request: payment_request,
+                    search,
+                });
             }
             let mut active = cursor.active.take().expect("prepared selection");
             let mut unbounded = usize::MAX;
-            let budget = if self.sliced { &mut self.remaining } else { &mut unbounded };
+            let budget = if self.sliced {
+                &mut self.remaining
+            } else {
+                &mut unbounded
+            };
             let result = active.search.step(&active.request, budget);
             self.visited_nodes = active.search.visited;
             let Some(candidates) = result else {
@@ -442,18 +497,33 @@ impl ManaPaymentPlanner {
                 return Err(ManaPaymentFailure::SearchLimitReached);
             };
             for (final_game, steps) in candidates? {
-                let pool_after = final_game.player(request.payer)
-                    .ok_or(ManaPaymentFailure::MissingPlayer)?.mana_pool.clone();
-                cursor.plans.push(build_plan(&final_game, request, &active.request, &active.selection,
-                    cursor.pool_before.clone(), pool_after, steps));
-                if stop_after_first || cursor.plans.len() >= MAX_TOTAL_PLANS { break; }
+                let pool_after = final_game
+                    .player(request.payer)
+                    .ok_or(ManaPaymentFailure::MissingPlayer)?
+                    .mana_pool
+                    .clone();
+                cursor.plans.push(build_plan(
+                    &final_game,
+                    request,
+                    &active.request,
+                    &active.selection,
+                    cursor.pool_before.clone(),
+                    pool_after,
+                    steps,
+                ));
+                if stop_after_first || cursor.plans.len() >= MAX_TOTAL_PLANS {
+                    break;
+                }
             }
         }
         cursor.plans.sort_by_key(|plan| plan.score);
         cursor.plans.dedup_by_key(|plan| plan.id);
-        if cursor.plans.is_empty() { Err(ManaPaymentFailure::NoLegalPlan) } else { Ok(cursor.plans) }
+        if cursor.plans.is_empty() {
+            Err(ManaPaymentFailure::NoLegalPlan)
+        } else {
+            Ok(cursor.plans)
+        }
     }
-
 }
 
 type Candidate = (GameState, Vec<PlannedManaActivation>);

@@ -133,8 +133,12 @@ pub(super) fn magma_mine_activated_ability_sacrifices_source_and_deals_counter_s
         )
         .expect("Magma Mine text should parse");
     let mine_id = game.create_object_from_definition(&mine_def, alice, Zone::Battlefield);
-    game.add_counters(mine_id, crate::object::CounterType::Named("pressure".into()), 3)
-        .expect("pressure counters should be addable to Magma Mine");
+    game.add_counters(
+        mine_id,
+        crate::object::CounterType::Named("pressure".into()),
+        3,
+    )
+    .expect("pressure counters should be addable to Magma Mine");
 
     {
         let player = game.player_mut(alice).expect("Alice should exist");

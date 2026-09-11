@@ -3,8 +3,7 @@ use crate::tag::TagKeyWalk;
 use crate::{CostComponent, ManaCost, PowerToughness, TotalCost, Zone};
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum TrapCondition {
     OpponentCastSpells { count: u32 },
     OpponentSearchedLibrary,
@@ -13,8 +12,7 @@ pub enum TrapCondition {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub struct AlternativeCastRequirements {
     pub exile_from_graveyard: u32,
     pub discard_from_hand: u32,
@@ -34,8 +32,7 @@ fn compose_total_cost<C: CostComponent>(
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum AlternativeCastingMethod<E, C, Cond> {
     Dash {
         cost: ManaCost,
@@ -215,7 +212,9 @@ where
 
         match self {
             Self::Flashback { total_cost } => non_mana_components(total_cost),
-            Self::Blitz { total_cost } | Self::Madness { total_cost } => non_mana_components(total_cost),
+            Self::Blitz { total_cost } | Self::Madness { total_cost } => {
+                non_mana_components(total_cost)
+            }
             Self::Harmonize { total_cost } => non_mana_components(total_cost),
             Self::Retrace { total_cost } => non_mana_components(total_cost),
             Self::JumpStart { additional_cost }
@@ -597,7 +596,9 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
                 exile_count,
                 additional_cost: map_total_cost(additional_cost)?,
             },
-            Self::Madness { total_cost } => AlternativeCastingMethod::Madness { total_cost: map_total_cost(total_cost)? },
+            Self::Madness { total_cost } => AlternativeCastingMethod::Madness {
+                total_cost: map_total_cost(total_cost)?,
+            },
             Self::Miracle { cost } => AlternativeCastingMethod::Miracle { cost },
             Self::FlashWithAdditionalCost {
                 additional_cost,

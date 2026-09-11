@@ -6,8 +6,7 @@
 use crate::tag::TagKeyWalk;
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
 pub struct AscendEffect;
 
 impl AscendEffect {

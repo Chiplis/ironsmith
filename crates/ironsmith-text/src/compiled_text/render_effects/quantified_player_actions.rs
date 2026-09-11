@@ -100,7 +100,11 @@ pub(super) fn describe_each_player_shuffle_hand_and_graveyard_then_draw(
     let body = if let [effect] = for_players.effects.as_slice()
         && let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
         && sequence.surface == ironsmith_core::SequenceSurface::CommaThen
-    { sequence.effects.as_slice() } else { for_players.effects.as_slice() };
+    {
+        sequence.effects.as_slice()
+    } else {
+        for_players.effects.as_slice()
+    };
     let [shuffle_effect, draw_effect] = body else {
         return None;
     };
@@ -154,20 +158,25 @@ pub(super) fn describe_for_players_coordinated_actions(
     );
     // A selected set must be locked before its complement is sacrificed.
     // Keep that dependency explicit even when lowering emits flat siblings.
-    let preserves_choice_complement_boundary =
-        if let [choice_effect, sacrifice_effect] = for_players.effects.as_slice()
-            && let Some(choice) = choice_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()
-            && let Some(sacrifice) = sacrifice_view(sacrifice_effect)
-        {
-            choice.chooser == PlayerFilter::IteratedPlayer
-                && sacrifice.player == &PlayerFilter::IteratedPlayer
-                && sacrifice.filter.tagged_constraints.iter().any(|constraint| {
+    let preserves_choice_complement_boundary = if let [choice_effect, sacrifice_effect] =
+        for_players.effects.as_slice()
+        && let Some(choice) = choice_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        && let Some(sacrifice) = sacrifice_view(sacrifice_effect)
+    {
+        choice.chooser == PlayerFilter::IteratedPlayer
+            && sacrifice.player == &PlayerFilter::IteratedPlayer
+            && sacrifice
+                .filter
+                .tagged_constraints
+                .iter()
+                .any(|constraint| {
                     constraint.tag == choice.tag
-                        && constraint.relation == crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+                        && constraint.relation
+                            == crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
                 })
-        } else {
-            false
-        };
+    } else {
+        false
+    };
     let rendered = describe_for_players_iterated_action_sequence(for_players)?;
     if preserves_every_ordered_boundary || preserves_choice_complement_boundary {
         return Some(rendered);

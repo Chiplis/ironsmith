@@ -3,17 +3,17 @@
 //! Each of these recognizes real Oracle text and asserts what it lowers to, so
 //! they exercise both phases and live in the crate that assembles them.
 
-use ironsmith_compiler::card_builders::SourcePredicateAst;
-use ironsmith_compiler::card_builders::PlayerPredicateAst;
-use ironsmith_compiler::card_builders::PermissionEffectAst;
-use ironsmith_compiler::card_builders::ConditionalEffectAst;
-use ironsmith_compiler::card_builders::ObjectChoiceEffectAst;
-use ironsmith_compiler::card_builders::ForEachEffectAst;
-use ironsmith_compiler::card_builders::DamageActionAst;
-use ironsmith_compiler::card_builders::LifeResourceActionAst;
-use ironsmith_compiler::card_builders::KeywordActionAst;
 use ironsmith_compiler::ParseCardText;
 use ironsmith_compiler::card::PowerToughness;
+use ironsmith_compiler::card_builders::ConditionalEffectAst;
+use ironsmith_compiler::card_builders::DamageActionAst;
+use ironsmith_compiler::card_builders::ForEachEffectAst;
+use ironsmith_compiler::card_builders::KeywordActionAst;
+use ironsmith_compiler::card_builders::LifeResourceActionAst;
+use ironsmith_compiler::card_builders::ObjectChoiceEffectAst;
+use ironsmith_compiler::card_builders::PermissionEffectAst;
+use ironsmith_compiler::card_builders::PlayerPredicateAst;
+use ironsmith_compiler::card_builders::SourcePredicateAst;
 use ironsmith_compiler::color::ColorSet;
 use ironsmith_compiler::compile_support::*;
 use ironsmith_compiler::front_end::NormalizedLine;
@@ -640,7 +640,9 @@ fn explicit_controller_return_lowering_retains_return_surface() {
     let (effects, choices) = compile_effect(
         &EffectAst::subject_verb_return_to_battlefield(
             TargetAst::Tagged(
-                ironsmith_compiler::tag::TagRef::of(ironsmith_compiler::tag::CompilerReferenceTag::Triggering.key()),
+                ironsmith_compiler::tag::TagRef::of(
+                    ironsmith_compiler::tag::CompilerReferenceTag::Triggering.key(),
+                ),
                 None,
             ),
             false,
@@ -870,7 +872,10 @@ fn compile_damage_equal_to_power_over_each_object_fans_out_per_object() {
     recipients.set_plural_object_noun_surface(true);
     let (effects, choices) = compile_effect(
         &EffectAst::subject_verb_damage_equal_to_power(
-            TargetAst::Tagged(ironsmith_compiler::tag::TagRef::of(TagKey::from("amassed_0")), None),
+            TargetAst::Tagged(
+                ironsmith_compiler::tag::TagRef::of(TagKey::from("amassed_0")),
+                None,
+            ),
             TargetAst::Object(recipients, None, None),
         ),
         &mut EffectLoweringContext::new(),
@@ -2645,7 +2650,9 @@ fn compile_effects_with_explicit_frame_uses_annotated_reference_frames() {
             None,
         )),
         EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-            ironsmith_compiler::tag::TagRef::of(ironsmith_compiler::tag::CompilerReferenceTag::It.key()),
+            ironsmith_compiler::tag::TagRef::of(
+                ironsmith_compiler::tag::CompilerReferenceTag::It.key(),
+            ),
             PlayerAst::You,
             false,
             false,
@@ -2686,15 +2693,22 @@ fn synthesis_pod_consult_match_keeps_its_tag_through_exile_and_cast() {
             ironsmith_compiler::cards::builders::LibraryConsultStopRuleAst::MatchCount(
                 Value::Fixed(1),
             ),
-            ironsmith_compiler::tag::TagRef::of(TagKey::from("__sentence_helper_revealed_l0_s0_e0")),
+            ironsmith_compiler::tag::TagRef::of(TagKey::from(
+                "__sentence_helper_revealed_l0_s0_e0",
+            )),
             ironsmith_compiler::tag::TagRef::of(match_tag.clone()),
         ),
         EffectAst::subject_verb_exile(
-            TargetAst::Tagged(ironsmith_compiler::tag::TagRef::of(match_tag.clone()), Some(TextSpan::synthetic())),
+            TargetAst::Tagged(
+                ironsmith_compiler::tag::TagRef::of(match_tag.clone()),
+                Some(TextSpan::synthetic()),
+            ),
             false,
         ),
         EffectAst::subject_verb_cast_tagged(
-            ironsmith_compiler::tag::TagRef::of(ironsmith_compiler::tag::CompilerReferenceTag::It.key()),
+            ironsmith_compiler::tag::TagRef::of(
+                ironsmith_compiler::tag::CompilerReferenceTag::It.key(),
+            ),
             PlayerAst::You,
             false,
             false,
@@ -2731,11 +2745,16 @@ fn praetors_grasp_search_exile_uses_source_exiled_permission_provenance() {
             tag: ironsmith_compiler::tag::TagRef::of(searched_tag.clone()),
         }),
         EffectAst::subject_verb_exile(
-            TargetAst::Tagged(ironsmith_compiler::tag::TagRef::of(searched_tag.clone()), Some(TextSpan::synthetic())),
+            TargetAst::Tagged(
+                ironsmith_compiler::tag::TagRef::of(searched_tag.clone()),
+                Some(TextSpan::synthetic()),
+            ),
             true,
         ),
         EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
-            ironsmith_compiler::tag::TagRef::of(ironsmith_compiler::tag::CompilerReferenceTag::It.key()),
+            ironsmith_compiler::tag::TagRef::of(
+                ironsmith_compiler::tag::CompilerReferenceTag::It.key(),
+            ),
             PlayerAst::You,
             true,
             false,
@@ -2885,7 +2904,9 @@ fn compile_may_branch_preserves_auto_tagged_destroy_followup() {
             ))],
         }),
         EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-            ironsmith_compiler::tag::TagRef::of(ironsmith_compiler::tag::CompilerReferenceTag::It.key()),
+            ironsmith_compiler::tag::TagRef::of(
+                ironsmith_compiler::tag::CompilerReferenceTag::It.key(),
+            ),
             PlayerAst::You,
             false,
             false,
@@ -3021,7 +3042,9 @@ fn compile_live_permanent_spell_predicate_preserves_stack_identity() {
 fn compile_copy_does_not_replace_the_original_pronoun_antecedent() {
     let effects = vec![EffectAst::subject_verb_copy_spell(
         TargetAst::Tagged(
-            ironsmith_compiler::tag::TagRef::of(ironsmith_compiler::tag::CompilerReferenceTag::Triggering.key()),
+            ironsmith_compiler::tag::TagRef::of(
+                ironsmith_compiler::tag::CompilerReferenceTag::Triggering.key(),
+            ),
             None,
         ),
         Value::Fixed(1),
@@ -3047,7 +3070,9 @@ fn compile_for_each_tagged_rewrites_it_targets_to_iterated_object() {
             predicate: PredicateAst::ItMatches(ObjectFilter::permanent()),
             if_true: vec![EffectAst::subject_verb_move_to_zone(
                 TargetAst::Tagged(
-                    ironsmith_compiler::tag::TagRef::of(ironsmith_compiler::tag::CompilerReferenceTag::It.key()),
+                    ironsmith_compiler::tag::TagRef::of(
+                        ironsmith_compiler::tag::CompilerReferenceTag::It.key(),
+                    ),
                     None,
                 ),
                 Zone::Battlefield,
@@ -3058,7 +3083,9 @@ fn compile_for_each_tagged_rewrites_it_targets_to_iterated_object() {
             )],
             if_false: vec![EffectAst::subject_verb_move_to_zone(
                 TargetAst::Tagged(
-                    ironsmith_compiler::tag::TagRef::of(ironsmith_compiler::tag::CompilerReferenceTag::It.key()),
+                    ironsmith_compiler::tag::TagRef::of(
+                        ironsmith_compiler::tag::CompilerReferenceTag::It.key(),
+                    ),
                     None,
                 ),
                 Zone::Graveyard,
@@ -3117,7 +3144,9 @@ fn consult_inside_for_each_tagged_does_not_steal_the_iteration_binding() {
                         ironsmith_compiler::tag::CompilerReferenceTag::It.key(),
                     ))),
                     target: TargetAst::Tagged(
-                        ironsmith_compiler::tag::TagRef::of(ironsmith_compiler::tag::CompilerReferenceTag::It.key()),
+                        ironsmith_compiler::tag::TagRef::of(
+                            ironsmith_compiler::tag::CompilerReferenceTag::It.key(),
+                        ),
                         None,
                     ),
                     unpreventable: false,

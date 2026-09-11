@@ -74,17 +74,14 @@ pub mod conditionals;
 mod consult_family;
 mod consult_procedure;
 mod copy_cast_procedure;
-mod exiled_top_procedure;
-mod pair_procedure;
-mod rider_procedure;
 mod creation_handlers;
 #[path = "delegated_partition.rs"]
 mod delegated_partition_programs;
 mod dispatch_entry;
-mod document_readings;
-mod statement_readings;
 mod dispatch_inner;
 mod divvy;
+mod document_readings;
+mod exiled_top_procedure;
 mod fanout_family;
 mod for_each_helpers;
 mod gain_ability;
@@ -96,8 +93,11 @@ mod looked_procedure;
 mod mill_procedure;
 mod next_spell_family;
 mod optional_companion_fanout;
+mod pair_procedure;
 mod player_subject_sequences;
 mod procedures;
+mod rider_procedure;
+mod statement_readings;
 pub use procedures::RIDDEN_STATEMENT;
 mod search_library;
 #[cfg(test)]
@@ -154,8 +154,8 @@ pub use search_library::parse_search_library_sentence;
 pub use search_library::parse_search_library_sentence as parse_search_library_sentence_lexed;
 pub use search_library::*;
 pub use sequence_rules::generic_subject_verb_sequences::exile_permission_followups::parse_dynamic_exile_top_then_play_for_as_long_as_exiled;
-pub use sequence_rules::generic_subject_verb_sequences::parse_destroy_then_no_regeneration_sequence;
 pub use sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_look_at_top_partition_face_down_then_filtered_permission;
+pub use sequence_rules::generic_subject_verb_sequences::parse_destroy_then_no_regeneration_sequence;
 pub use sequence_rules::try_parse_document_program;
 pub use subject_verb_primitives::*;
 pub use verb_handlers::parse_exiled_with_source_move_surface;
@@ -165,6 +165,7 @@ pub use verb_handlers::{
 pub use zone_counter_helpers::target_object_filter_mut;
 #[cfg(test)]
 pub use zone_counter_helpers::{
-    parse_half_starting_life_total_value, parse_starting_life_total_value, parse_sentence_put_multiple_counters_on_target,
+    parse_half_starting_life_total_value, parse_sentence_put_multiple_counters_on_target,
+    parse_starting_life_total_value,
 };
 pub use zone_handlers::parse_destroy;

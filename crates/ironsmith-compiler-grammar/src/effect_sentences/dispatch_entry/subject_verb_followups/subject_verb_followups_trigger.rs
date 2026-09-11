@@ -1,5 +1,5 @@
-use crate::cards::builders::SourcePredicateAst;
 use super::*;
+use crate::cards::builders::SourcePredicateAst;
 
 pub(super) fn bind_demonstrative_land_match_to_triggering_object(
     predicate: PredicateAst,
@@ -106,14 +106,17 @@ pub(super) fn post_rule_targeted_object_delayed_leave(
         return Ok(None);
     }
     let Some(tag) = state.effects.iter().rev().find_map(|effect| match effect {
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. }) => Some(tag.clone()),
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. }) => {
+            Some(tag.clone())
+        }
         _ => None,
     }) else {
         return Ok(None);
     };
     for effect in sentence_effects {
         if let EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn { trigger, .. })
-        | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { trigger, .. }) = effect
+        | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { trigger, .. }) =
+            effect
         {
             bind_targeted_leaves_filter(trigger, &tag);
         }
@@ -128,7 +131,10 @@ pub(super) fn post_rule_delayed_trigger_result_followup(
     _sentence_tokens: &[OwnedLexToken],
     sentence_effects: &mut Vec<EffectAst>,
 ) -> Result<Option<PostParseFollowupResult>, CardTextError> {
-    let [EffectAst::Conditionals(ConditionalEffectAst::IfResult { .. }) | EffectAst::Conditionals(ConditionalEffectAst::WhenResult { .. })] = sentence_effects.as_slice()
+    let [
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult { .. })
+        | EffectAst::Conditionals(ConditionalEffectAst::WhenResult { .. }),
+    ] = sentence_effects.as_slice()
     else {
         return Ok(None);
     };
@@ -158,7 +164,9 @@ pub(super) fn trailing_delayed_trigger_effects_mut(
 ) -> Option<&mut Vec<EffectAst>> {
     match effect {
         EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn { effects, .. })
-        | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { effects, .. }) => Some(effects),
+        | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { effects, .. }) => {
+            Some(effects)
+        }
         EffectAst::SourceSentence { effects, .. }
         | EffectAst::Sequence { effects }
         | EffectAst::Coordinated { effects, .. } => effects

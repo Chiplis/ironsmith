@@ -4,9 +4,9 @@
 //! segments, ...). Formerly a first-match ladder in `chain_carry`; every
 //! reading runs, resolved by rank while the overlaps are measured.
 
-use crate::cards::builders::PermissionEffectAst;
-use crate::cards::builders::ForEachEffectAst;
 use super::*;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::PermissionEffectAst;
 use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId, RuleMatch};
 use crate::registry::{
     HeadDiscriminator, RegistryCandidate, RegistryRuleMetadata, resolve_ranked_candidates,
@@ -558,10 +558,12 @@ fn read_cast_or_play_tagged_permission(
         if immediate_tagged_permission_spec(tokens)?
             && let Some(player) = parse_leading_player_may_lexed(tokens)
         {
-            return Ok(Some(vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
-                player,
-                effects: vec![effect],
-            })]));
+            return Ok(Some(vec![EffectAst::Permissions(
+                PermissionEffectAst::MayByPlayer {
+                    player,
+                    effects: vec![effect],
+                },
+            )]));
         }
         return Ok(Some(vec![effect]));
     }
@@ -790,11 +792,13 @@ fn read_each_player_may_discard_hand_and_draw(
                 }),
             ),
         ];
-        return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
-            effects: vec![EffectAst::Permissions(PermissionEffectAst::May {
-                effects: optional_effects,
-            })],
-        })]));
+        return Ok(Some(vec![EffectAst::ForEach(
+            ForEachEffectAst::ForEachPlayer {
+                effects: vec![EffectAst::Permissions(PermissionEffectAst::May {
+                    effects: optional_effects,
+                })],
+            },
+        )]));
     }
     Ok(None)
 }
@@ -846,14 +850,16 @@ fn read_any_player_or_opponent_may(
                 crate::util::trim_edge_punctuation_tokens(&stripped[1..]),
                 Some(crate::cards::builders::SubjectAst::Player(PlayerAst::That)),
             )?;
-            return Ok(Some(vec![EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay {
-                players: if player == PlayerAst::Opponent {
-                    PlayerFilter::Opponent
-                } else {
-                    PlayerFilter::Any
+            return Ok(Some(vec![EffectAst::Permissions(
+                PermissionEffectAst::AnyPlayerMay {
+                    players: if player == PlayerAst::Opponent {
+                        PlayerFilter::Opponent
+                    } else {
+                        PlayerFilter::Any
+                    },
+                    effects: vec![payment],
                 },
-                effects: vec![payment],
-            })]));
+            )]));
         }
     }
     Ok(None)
@@ -868,10 +874,12 @@ fn read_any_player_may_sacrifice(
             Some(crate::cards::builders::SubjectAst::Player(PlayerAst::That)),
             None,
         )?;
-        return Ok(Some(vec![EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay {
-            players: shape.players,
-            effects: vec![sacrifice],
-        })]));
+        return Ok(Some(vec![EffectAst::Permissions(
+            PermissionEffectAst::AnyPlayerMay {
+                players: shape.players,
+                effects: vec![sacrifice],
+            },
+        )]));
     }
     Ok(None)
 }
@@ -910,10 +918,15 @@ fn read_trailing_if_player_may(input: &Chain<'_>) -> Result<Option<Vec<EffectAst
             for effect in &mut effects {
                 bind_implicit_player_context(effect, player);
             }
-            return Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
-                predicate: trailing_if.predicate,
-                effects: vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, effects })],
-            })]));
+            return Ok(Some(vec![EffectAst::Conditionals(
+                ConditionalEffectAst::TrailingIf {
+                    predicate: trailing_if.predicate,
+                    effects: vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
+                        player,
+                        effects,
+                    })],
+                },
+            )]));
         }
 
         if chain_grammar::starts_with_may_tokens(trailing_if.leading_tokens)
@@ -922,10 +935,12 @@ fn read_trailing_if_player_may(input: &Chain<'_>) -> Result<Option<Vec<EffectAst
         {
             let stripped = remove_first_word(trailing_if.leading_tokens);
             let effects = parse_effect_chain_lexed(&stripped)?;
-            return Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
-                predicate: trailing_if.predicate,
-                effects: vec![EffectAst::Permissions(PermissionEffectAst::May { effects })],
-            })]));
+            return Ok(Some(vec![EffectAst::Conditionals(
+                ConditionalEffectAst::TrailingIf {
+                    predicate: trailing_if.predicate,
+                    effects: vec![EffectAst::Permissions(PermissionEffectAst::May { effects })],
+                },
+            )]));
         }
     }
     Ok(None)
@@ -960,7 +975,9 @@ fn read_player_may(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, CardText
                 .copy_exception
                 .is_some()
             });
-        let mut effects = if let Some(effect) = super::super::dispatch_entry::parse_complete_become_statement(&stripped)? {
+        let mut effects = if let Some(effect) =
+            super::super::dispatch_entry::parse_complete_become_statement(&stripped)?
+        {
             vec![effect]
         } else if has_copy_exception {
             super::super::parse_effect_sentence_lexed(&stripped)?
@@ -972,18 +989,27 @@ fn read_player_may(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, CardText
         }
         if leading_may_is_permission_clause_lexed(&stripped)? {
             if immediate_tagged_permission_spec(&stripped)? {
-                return Ok(Some(vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, effects })]));
+                return Ok(Some(vec![EffectAst::Permissions(
+                    PermissionEffectAst::MayByPlayer { player, effects },
+                )]));
             }
             return Ok(Some(effects));
         }
         if has_any_number_of_times_suffix(&stripped) && is_repeatable_optional_payment(&effects) {
-            return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
-                effects: vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, effects })],
-                continue_effect_index: 0,
-                continue_predicate: crate::cards::builders::IfResultPredicate::Did,
-            })]));
+            return Ok(Some(vec![EffectAst::ForEach(
+                ForEachEffectAst::RepeatProcess {
+                    effects: vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
+                        player,
+                        effects,
+                    })],
+                    continue_effect_index: 0,
+                    continue_predicate: crate::cards::builders::IfResultPredicate::Did,
+                },
+            )]));
         }
-        return Ok(Some(vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, effects })]));
+        return Ok(Some(vec![EffectAst::Permissions(
+            PermissionEffectAst::MayByPlayer { player, effects },
+        )]));
     }
     Ok(None)
 }
@@ -1005,18 +1031,24 @@ fn read_leading_may(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, CardTex
         let effects = parse_effect_chain_lexed(&stripped)?;
         if leading_may_is_permission_clause_lexed(&stripped)? {
             if immediate_tagged_permission_spec(&stripped)? {
-                return Ok(Some(vec![EffectAst::Permissions(PermissionEffectAst::May { effects })]));
+                return Ok(Some(vec![EffectAst::Permissions(
+                    PermissionEffectAst::May { effects },
+                )]));
             }
             return Ok(Some(effects));
         }
         if has_any_number_of_times_suffix(&stripped) && is_repeatable_optional_payment(&effects) {
-            return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
-                effects: vec![EffectAst::Permissions(PermissionEffectAst::May { effects })],
-                continue_effect_index: 0,
-                continue_predicate: crate::cards::builders::IfResultPredicate::Did,
-            })]));
+            return Ok(Some(vec![EffectAst::ForEach(
+                ForEachEffectAst::RepeatProcess {
+                    effects: vec![EffectAst::Permissions(PermissionEffectAst::May { effects })],
+                    continue_effect_index: 0,
+                    continue_predicate: crate::cards::builders::IfResultPredicate::Did,
+                },
+            )]));
         }
-        return Ok(Some(vec![EffectAst::Permissions(PermissionEffectAst::May { effects })]));
+        return Ok(Some(vec![EffectAst::Permissions(
+            PermissionEffectAst::May { effects },
+        )]));
     }
     Ok(None)
 }
@@ -1103,10 +1135,12 @@ fn read_cast_or_play_tagged_permission_late(
         if immediate_tagged_permission_spec(tokens)?
             && let Some(player) = parse_leading_player_may_lexed(tokens)
         {
-            return Ok(Some(vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
-                player,
-                effects: vec![effect],
-            })]));
+            return Ok(Some(vec![EffectAst::Permissions(
+                PermissionEffectAst::MayByPlayer {
+                    player,
+                    effects: vec![effect],
+                },
+            )]));
         }
         return Ok(Some(vec![effect]));
     }
@@ -1144,26 +1178,38 @@ fn read_coordinated_and_segments(
     }
     // A shown hand is a zone antecedent, distinct from the object antecedent
     // in a following same-name restriction. Expand only the bound zone phrase.
-    if let Some(hand) = tokens.windows(3).position(|w| w[0].is_any_word(&["reveal", "reveals"])
-        && w[1].is_word("their") && w[2].is_word("hand"))
-        && let Some(from) = tokens[hand + 3..].windows(2).position(|w| w[0].is_word("from") && w[1].is_word("it"))
+    if let Some(hand) = tokens.windows(3).position(|w| {
+        w[0].is_any_word(&["reveal", "reveals"]) && w[1].is_word("their") && w[2].is_word("hand")
+    }) && let Some(from) = tokens[hand + 3..]
+        .windows(2)
+        .position(|w| w[0].is_word("from") && w[1].is_word("it"))
     {
         let from = hand + 3 + from;
-        if tokens[hand + 3..from].iter().any(|token| token.is_any_word(&["exile", "exiles"])) {
+        if tokens[hand + 3..from]
+            .iter()
+            .any(|token| token.is_any_word(&["exile", "exiles"]))
+        {
             let mut expanded = tokens[..from + 1].to_vec();
             expanded.extend(crate::lexer::synthetic_word_tokens(&["their", "hand"]));
             expanded.extend_from_slice(&tokens[from + 2..]);
             let mut effects = parse_effect_chain_inner_lexed(&expanded)?;
             let alias = crate::util::helper_tag_for_tokens(tokens, "name_antecedent_before_hand");
-            fn pin_named_antecedent(effect: &mut EffectAst, alias: &crate::tag::TagKey, pinned: &mut bool) {
+            fn pin_named_antecedent(
+                effect: &mut EffectAst,
+                alias: &crate::tag::TagKey,
+                pinned: &mut bool,
+            ) {
                 if let EffectAst::SubjectVerb(subject) = effect
                     && let crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
-                        crate::cards::builders::ZoneMoveActionAst::ExileAll { filter, .. }) = &mut subject.action
+                        crate::cards::builders::ZoneMoveActionAst::ExileAll { filter, .. },
+                    ) = &mut subject.action
                     && filter.union_surface.same_name_antecedent().is_some()
                 {
                     for constraint in &mut filter.tagged_constraints {
-                        if constraint.relation == crate::target::TaggedOpbjectRelation::SameNameAsTagged
-                            && constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                        if constraint.relation
+                            == crate::target::TaggedOpbjectRelation::SameNameAsTagged
+                            && constraint.tag.as_str()
+                                == crate::tag::CompilerReferenceTag::It.as_str()
                         {
                             constraint.tag = alias.clone();
                             *pinned = true;
@@ -1171,13 +1217,22 @@ fn read_coordinated_and_segments(
                     }
                 }
                 for_each_nested_effects_mut(effect, true, |nested| {
-                    for child in nested { pin_named_antecedent(child, alias, pinned); }
+                    for child in nested {
+                        pin_named_antecedent(child, alias, pinned);
+                    }
                 });
             }
             let mut pinned = false;
-            for effect in &mut effects { pin_named_antecedent(effect, &alias, &mut pinned); }
+            for effect in &mut effects {
+                pin_named_antecedent(effect, &alias, &mut pinned);
+            }
             if pinned {
-                effects.insert(0, EffectAst::SnapshotLastObjectTag { into: crate::tag::TagRef::of(alias) });
+                effects.insert(
+                    0,
+                    EffectAst::SnapshotLastObjectTag {
+                        into: crate::tag::TagRef::of(alias),
+                    },
+                );
             }
             return Ok(Some(effects));
         }

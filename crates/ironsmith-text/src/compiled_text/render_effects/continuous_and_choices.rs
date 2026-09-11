@@ -441,17 +441,20 @@ pub(crate) fn describe_look_at_top_then_may_put_battlefield_else_hand_rest_botto
         || hand_choose.is_search
         || choose_exact_count(hand_choose) != Some(1)
         || !for_each_moves_tag_to_hand(hand_move, hand_choose.tag.as_str())
-
     {
         return None;
     }
 
-    let order = if let Some(remainder) = rest.downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>() {
+    let order = if let Some(remainder) =
+        rest.downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()
+    {
         if remainder.tag != look_at_top.tag
             || remainder.keep_tagged.as_ref() != Some(&battlefield_choose.tag)
             || hand_choose.tag != battlefield_choose.tag
             || remainder.player != look_at_top.player
-        { return None; }
+        {
+            return None;
+        }
         match remainder.order {
             crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
             crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => " in any order",
@@ -459,9 +462,13 @@ pub(crate) fn describe_look_at_top_then_may_put_battlefield_else_hand_rest_botto
     } else {
         let rest = rest.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
         if !for_each_moves_unselected_from_any_to_zone(
-            rest, look_at_top.tag.as_str(),
-            &[battlefield_choose.tag.as_str(), hand_choose.tag.as_str()], Zone::Library,
-        ) { return None; }
+            rest,
+            look_at_top.tag.as_str(),
+            &[battlefield_choose.tag.as_str(), hand_choose.tag.as_str()],
+            Zone::Library,
+        ) {
+            return None;
+        }
         ""
     };
     let battlefield_choice =
@@ -1599,9 +1606,10 @@ pub(crate) fn describe_looked_reveal_selection_rest_bottom_land_creature_split(
     if land_filter != &expected_land {
         return None;
     }
-    let land_move = structural_unwrap_render_wrappers(&conditional.if_true[0]).downcast_ref::<crate::effects::MoveToZoneEffect>()?;
-    let creature_move =
-        structural_unwrap_render_wrappers(&conditional.if_false[0]).downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let land_move = structural_unwrap_render_wrappers(&conditional.if_true[0])
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let creature_move = structural_unwrap_render_wrappers(&conditional.if_false[0])
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     if land_move.zone != Zone::Battlefield
         || !land_move.enters_tapped
         || land_move.to_top

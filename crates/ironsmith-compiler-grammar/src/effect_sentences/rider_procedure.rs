@@ -43,9 +43,9 @@ pub(super) fn open(
     let Some(next) = sentences.get(sentence_idx + 1) else {
         return Ok(None);
     };
-    let Some(mut effects) =
-        crate::grammar::primitives::probe_shape(super::parse_effect_sentence_lexed(sentence.lowered()))
-    else {
+    let Some(mut effects) = crate::grammar::primitives::probe_shape(
+        super::parse_effect_sentence_lexed(sentence.lowered()),
+    ) else {
         return Ok(None);
     };
     if effects.is_empty() {
@@ -56,9 +56,8 @@ pub(super) fn open(
     // put all cards exiled this way into their owners' hands."); the sentences
     // between are read as they are.
     let mut read_ahead = 0;
-    let mut candidates = std::iter::once(next).chain(
-        sentences.get(sentence_idx + 2..).unwrap_or(&[]).iter(),
-    );
+    let mut candidates =
+        std::iter::once(next).chain(sentences.get(sentence_idx + 2..).unwrap_or(&[]).iter());
     loop {
         let Some(candidate) = candidates.next() else {
             return Ok(None);

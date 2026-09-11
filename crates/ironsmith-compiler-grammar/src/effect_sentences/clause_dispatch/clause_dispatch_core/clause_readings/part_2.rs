@@ -1,10 +1,10 @@
 //! Readings shard 2 of 4, in rank order.
 
+use super::super::*;
+use super::Clause;
 use crate::cards::builders::ConditionalEffectAst;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::LifeResourceActionAst;
-use super::super::*;
-use super::Clause;
 
 pub(super) fn read_leading_may_additional_land_plays(
     input: &Clause<'_>,
@@ -57,7 +57,9 @@ pub(super) fn read_leading_may_additional_land_plays(
                 }
                 EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, effects })
             }
-            clause_grammar::LeadingMayActorShape::Implicit => EffectAst::Permissions(PermissionEffectAst::May { effects }),
+            clause_grammar::LeadingMayActorShape::Implicit => {
+                EffectAst::Permissions(PermissionEffectAst::May { effects })
+            }
         }));
     }
     Ok(None)
@@ -459,27 +461,29 @@ pub(super) fn read_for_each_card_payment(
             });
         return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachObject {
             filter,
-            effects: vec![EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
-                effects: vec![EffectAst::subject_verb_move_to_zone(
-                    TargetAst::Tagged(
-                        crate::tag::CompilerReferenceTag::It.bind(),
-                        span_from_tokens(tokens),
-                    ),
-                    crate::zone::Zone::Library,
-                    true,
-                    ReturnControllerAst::Preserve,
-                    false,
-                    None,
-                )],
-                alternative: vec![EffectAst::subject_verb(
-                    SubjectVerbRoleAst::AffectedPlayer,
-                    PlayerAst::You,
-                    SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife {
-                        amount: Value::Fixed(shape.life_amount as i32),
-                    }),
-                )],
-                player: PlayerAst::You,
-            })],
+            effects: vec![EffectAst::Conditionals(
+                ConditionalEffectAst::UnlessAction {
+                    effects: vec![EffectAst::subject_verb_move_to_zone(
+                        TargetAst::Tagged(
+                            crate::tag::CompilerReferenceTag::It.bind(),
+                            span_from_tokens(tokens),
+                        ),
+                        crate::zone::Zone::Library,
+                        true,
+                        ReturnControllerAst::Preserve,
+                        false,
+                        None,
+                    )],
+                    alternative: vec![EffectAst::subject_verb(
+                        SubjectVerbRoleAst::AffectedPlayer,
+                        PlayerAst::You,
+                        SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife {
+                            amount: Value::Fixed(shape.life_amount as i32),
+                        }),
+                    )],
+                    player: PlayerAst::You,
+                },
+            )],
         })));
     }
     Ok(None)
@@ -518,25 +522,27 @@ pub(super) fn read_opponent_return_choice(
     };
     if let Some(shape) = clause_grammar::parse_opponent_return_choice_shape(tokens) {
         let target = parse_target_phrase(shape.target_tokens)?;
-        return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
-            effects: vec![
-                EffectAst::subject_verb_target_only(target),
-                EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
-                    effects: vec![EffectAst::subject_verb_return_to_hand(
-                        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
-                        false,
-                    )],
-                    alternative: vec![EffectAst::subject_verb(
-                        SubjectVerbRoleAst::AffectedPlayer,
-                        PlayerAst::You,
-                        SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
-                            count: Value::Fixed(1),
-                        }),
-                    )],
-                    player: PlayerAst::ItsController,
-                }),
-            ],
-        })));
+        return Ok(Some(EffectAst::ForEach(
+            ForEachEffectAst::ForEachOpponent {
+                effects: vec![
+                    EffectAst::subject_verb_target_only(target),
+                    EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
+                        effects: vec![EffectAst::subject_verb_return_to_hand(
+                            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
+                            false,
+                        )],
+                        alternative: vec![EffectAst::subject_verb(
+                            SubjectVerbRoleAst::AffectedPlayer,
+                            PlayerAst::You,
+                            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
+                                count: Value::Fixed(1),
+                            }),
+                        )],
+                        player: PlayerAst::ItsController,
+                    }),
+                ],
+            },
+        )));
     }
     Ok(None)
 }

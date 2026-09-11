@@ -1,7 +1,7 @@
-use crate::cards::builders::ZoneMoveActionAst;
-use crate::cards::builders::ReplacementActionAst;
-use crate::cards::builders::LibraryActionAst;
 use super::*;
+use crate::cards::builders::LibraryActionAst;
+use crate::cards::builders::ReplacementActionAst;
+use crate::cards::builders::ZoneMoveActionAst;
 use crate::lexer::lex_line;
 
 fn parse_pair(first: &str, second: &str) -> Option<Vec<EffectAst>> {
@@ -132,7 +132,7 @@ fn reflexive_targeted_graveyard_cast_keeps_target_x_and_replacement_scope() {
 
     let effects =
         crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
-        .map(|matched| matched.map(|matched| matched.effects))
+            .map(|matched| matched.map(|matched| matched.effects))
             .expect("reflexive graveyard cast parser should not error")
             .expect("reflexive graveyard cast pair should parse");
     let [
@@ -147,17 +147,19 @@ fn reflexive_targeted_graveyard_cast_keeps_target_x_and_replacement_scope() {
     let debug = format!("{body:#?}");
     assert!(debug.contains("TargetOnly"), "{debug}");
     let target_filter = body.iter().find_map(|effect| match effect {
-        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => match effect.as_ref() {
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action:
-                    SubjectVerbActionAst::TargetOnly {
-                        target: TargetAst::Object(filter, ..),
-                        ..
-                    },
-                ..
-            }) => Some(filter),
-            _ => None,
-        },
+        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => {
+            match effect.as_ref() {
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::TargetOnly {
+                            target: TargetAst::Object(filter, ..),
+                            ..
+                        },
+                    ..
+                }) => Some(filter),
+                _ => None,
+            }
+        }
         _ => None,
     });
     assert!(
@@ -178,7 +180,7 @@ fn reflexive_targeted_graveyard_cast_keeps_target_x_and_replacement_scope() {
     ];
     assert!(
         crate::effect_sentences::sequence_rules::try_parse_document_program(&near_miss, 0)
-        .map(|matched| matched.map(|matched| matched.effects))
+            .map(|matched| matched.map(|matched| matched.effects))
             .unwrap()
             .is_none()
     );
@@ -324,13 +326,15 @@ fn targeted_graveyard_cast_keeps_dynamic_source_power_and_exact_spell_tag() {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterFutureZoneReplacement {
-                    filter: replacement_filter,
-                    from_zone: Some(Zone::Stack),
-                    to_zone: Some(Zone::Graveyard),
-                    replacement_zone: Zone::Exile,
-                    ..
-                }),
+                SubjectVerbActionAst::Replacements(
+                    ReplacementActionAst::RegisterFutureZoneReplacement {
+                        filter: replacement_filter,
+                        from_zone: Some(Zone::Stack),
+                        to_zone: Some(Zone::Graveyard),
+                        replacement_zone: Zone::Exile,
+                        ..
+                    },
+                ),
             ..
         }),
     ] = replacement_effects.as_slice()
@@ -370,17 +374,19 @@ fn targeted_graveyard_cast_keeps_one_shot_any_type_mana_permission() {
     let debug = format!("{effects:#?}");
     assert!(debug.contains("mana_spend_mode: AnyType"), "{debug}");
     let target_filter = effects.iter().find_map(|effect| match effect {
-        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => match effect.as_ref() {
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action:
-                    SubjectVerbActionAst::TargetOnly {
-                        target: TargetAst::Object(filter, ..),
-                        ..
-                    },
-                ..
-            }) => Some(filter),
-            _ => None,
-        },
+        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => {
+            match effect.as_ref() {
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::TargetOnly {
+                            target: TargetAst::Object(filter, ..),
+                            ..
+                        },
+                    ..
+                }) => Some(filter),
+                _ => None,
+            }
+        }
         _ => None,
     });
     assert_eq!(
@@ -426,14 +432,16 @@ fn duration_scoped_targeted_graveyard_cast_keeps_permission_and_replacement_life
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterFutureZoneReplacement {
-                    filter,
-                    from_zone: Some(Zone::Stack),
-                    to_zone: Some(Zone::Graveyard),
-                    replacement_zone: Zone::Exile,
-                    duration: ZoneReplacementDurationAst::UntilEndOfTurn,
-                    ..
-                }),
+                SubjectVerbActionAst::Replacements(
+                    ReplacementActionAst::RegisterFutureZoneReplacement {
+                        filter,
+                        from_zone: Some(Zone::Stack),
+                        to_zone: Some(Zone::Graveyard),
+                        replacement_zone: Zone::Exile,
+                        duration: ZoneReplacementDurationAst::UntilEndOfTurn,
+                        ..
+                    },
+                ),
             ..
         }),
     ] = effects.as_slice()
@@ -478,9 +486,11 @@ fn assert_singleton_hand_partition_has_exact_complement(
         panic!("expected look/choose/complement/two-move program: {effects:#?}");
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
-            tag: looked_tag, ..
-        }),
+        action:
+            SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
+                tag: looked_tag,
+                ..
+            }),
         ..
     }) = look
     else {
@@ -590,9 +600,11 @@ fn target_library_partition_keeps_you_as_chooser_and_tags_the_complement() {
             player: library_owner,
             ..
         },
-        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
-            tag: looked_tag, ..
-        }),
+        action:
+            SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
+                tag: looked_tag,
+                ..
+            }),
     }) = &effects[0]
     else {
         panic!("expected looked-card provenance: {:?}", effects[0]);
@@ -649,7 +661,12 @@ fn selected_and_remainder_library_orders_are_independent() {
             "Put any number of them on the bottom of that library in a random order and the rest on top of the library in any order",
         )
         .expect("Ransack shape should parse");
-    let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { count, player, .. }) = &effects[1] else {
+    let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+        count,
+        player,
+        ..
+    }) = &effects[1]
+    else {
         panic!("expected selected-subset choice: {:?}", effects[1]);
     };
     assert_eq!(*count, ChoiceCount::any_number());
@@ -685,7 +702,10 @@ fn optional_top_selection_uses_a_tagged_move_and_exact_bottom_remainder() {
         panic!("expected look/choose/move/remainder program: {effects:#?}");
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { tag: looked, .. }),
+        action:
+            SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
+                tag: looked, ..
+            }),
         ..
     }) = look
     else {
@@ -783,7 +803,8 @@ fn direct_counted_hand_selection_uses_one_looked_pool_and_exact_complement() {
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
-                    tag: looked_tag, ..
+                    tag: looked_tag,
+                    ..
                 }),
             ..
         }) = look_effect
@@ -939,16 +960,19 @@ fn face_down_exile_keeps_the_graveyard_complement_and_permission_tag() {
         SentenceInput::from_lexed(&first),
         SentenceInput::from_lexed(&second),
     ];
-    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
-        .map(|matched| matched.map(|matched| matched.effects))
-        .expect("face-down partition parser should not error")
-        .expect("Thief of Sanity shape should parse");
+    let effects =
+        crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+            .map(|matched| matched.map(|matched| matched.effects))
+            .expect("face-down partition parser should not error")
+            .expect("Thief of Sanity shape should parse");
     assert_eq!(effects.len(), 5);
 
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
-            tag: looked_tag, ..
-        }),
+        action:
+            SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
+                tag: looked_tag,
+                ..
+            }),
         ..
     }) = &effects[0]
     else {
@@ -1026,7 +1050,8 @@ fn complete_face_down_partition_does_not_steal_cast_permission_followup() {
     assert_eq!(matched.name, "looked-procedure");
     assert_eq!(matched.effects.len(), 5);
     let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
-        tag: selected_tag, ..
+        tag: selected_tag,
+        ..
     }) = &matched.effects[1]
     else {
         panic!("expected selected looked card: {:#?}", matched.effects[1]);

@@ -72,6 +72,7 @@ Notes:
   - The package contains separate engine, compiler, and verifier modules behind one JavaScript facade.
   - Custom-card compilation is always enabled in the engine, including lean builds with default features disabled.
   - IRONSMITH_WASM_OPT_LEVEL selects the shipped optimizer level (-O1, -O2, -Os, or -Oz; default -O1).
+  - --release uses a pinned, checksum-verified native Binaryen wasm-opt (see scripts/lib/wasm-opt.sh), downloaded once into the tools cache; IRONSMITH_WASM_OPT overrides the binary.
 USAGE
 }
 
@@ -511,20 +512,8 @@ else
   echo "[INFO] wasm-opt: disabled (--no-opt)"
 fi
 
-find_cached_wasm_opt() {
-  local cache_root="${WASM_PACK_CACHE:-$HOME/Library/Caches/.wasm-pack}"
-  local candidate
-  if [[ ! -d "$cache_root" ]]; then
-    return 1
-  fi
-  while IFS= read -r candidate; do
-    if [[ -x "$candidate" ]]; then
-      printf '%s\n' "$candidate"
-      return 0
-    fi
-  done < <(find "$cache_root" -maxdepth 4 -type f -path '*/bin/wasm-opt' | sort -r)
-  return 1
-}
+# shellcheck source=scripts/lib/wasm-opt.sh
+source "$ROOT_DIR/scripts/lib/wasm-opt.sh"
 
 build_split_wasm_package() {
   local engine_features
@@ -584,11 +573,14 @@ build_split_wasm_package() {
   done
 
   if [[ "$OPTIMIZE_WASM" -eq 1 ]]; then
-    wasm_opt="$(find_cached_wasm_opt)" || {
-      echo "[ERROR] release packaging requires wasm-opt" >&2
+    wasm_opt="$(resolve_wasm_opt)" || {
+      echo "[ERROR] release packaging requires the pinned Binaryen $IRONSMITH_BINARYEN_VERSION wasm-opt (or IRONSMITH_WASM_OPT)" >&2
       return 1
     }
-    echo "[INFO] optimizing split artifacts with $WASM_OPT_LEVEL and at most two wasm-opt processes"
+    if ! wasm_opt_matches_pin "$wasm_opt"; then
+      echo "[WARN] wasm-opt override reports '$("$wasm_opt" --version 2>/dev/null)'; the pinned optimizer is Binaryen $IRONSMITH_BINARYEN_VERSION" >&2
+    fi
+    echo "[INFO] optimizing split artifacts with $("$wasm_opt" --version) at $WASM_OPT_LEVEL and at most two wasm-opt processes"
     "$wasm_opt" "$WASM_OPT_LEVEL" "${generated_wasm[0]}" -o "${generated_wasm[0]}.optimized" &
     engine_opt_pid="$!"
     "$wasm_opt" "$WASM_OPT_LEVEL" "${generated_wasm[1]}" -o "${generated_wasm[1]}.optimized" &

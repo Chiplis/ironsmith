@@ -1,6 +1,6 @@
+use super::*;
 use crate::cards::builders::ConditionalEffectAst;
 use crate::cards::builders::DelayedEffectAst;
-use super::*;
 
 pub fn dynamic_zone_change_group_token_creation_from_authored_trigger(
     tokens: &[OwnedLexToken],
@@ -72,7 +72,9 @@ pub(super) fn dynamic_static_ability_count_token_creation_from_authored_trigger(
         let EffectAst::SubjectVerb(subject_verb) = effect else {
             continue;
         };
-        let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { count, .. }) = &subject_verb.action else {
+        let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { count, .. }) =
+            &subject_verb.action
+        else {
             continue;
         };
         if matches!(count.unhinted(), Value::StaticAbilitiesAmong { .. }) {
@@ -276,18 +278,24 @@ pub fn end_of_combat_destroy_then_next_end_step_counter_program(
         None,
         false,
     );
-    Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat {
-        effects: vec![
-            destroy_other,
-            EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-                predicate: crate::cards::builders::IfResultPredicate::PriorEffectResult(destroyed),
-                effects: vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
-                    player: PlayerFilter::Any,
-                    effects: vec![counter_first],
-                })],
-            }),
-        ],
-    })])
+    Some(vec![EffectAst::Delayed(
+        DelayedEffectAst::DelayedUntilEndOfCombat {
+            effects: vec![
+                destroy_other,
+                EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                    predicate: crate::cards::builders::IfResultPredicate::PriorEffectResult(
+                        destroyed,
+                    ),
+                    effects: vec![EffectAst::Delayed(
+                        DelayedEffectAst::DelayedUntilNextEndStep {
+                            player: PlayerFilter::Any,
+                            effects: vec![counter_first],
+                        },
+                    )],
+                }),
+            ],
+        },
+    )])
 }
 
 pub(super) fn recognize_authored_correlated_trigger_programs(
@@ -353,18 +361,23 @@ pub(super) fn recognize_authored_correlated_trigger_programs(
             .map(|tokens| crate::effect_sentences::SentenceInput::from_lexed(tokens))
             .collect::<Vec<_>>();
         if sentences.len() == 4
-            && let Some(effects) = crate::effect_sentences::try_parse_document_program(&sentences, 0)?
-                .filter(|matched| matched.consumed_sentences == sentences.len())
-                .map(|matched| matched.effects)
+            && let Some(effects) =
+                crate::effect_sentences::try_parse_document_program(&sentences, 0)?
+                    .filter(|matched| matched.consumed_sentences == sentences.len())
+                    .map(|matched| matched.effects)
         {
             set_triggered_effects(line, &effects)?;
             return Ok(());
         }
     }
 
-    let spell_or_ability_x_cost = semantic_grammar::parse_spell_or_activated_ability_x_cost_trigger_tokens(
-        source_tokens, split.before, split.after,
-    ).is_some();
+    let spell_or_ability_x_cost =
+        semantic_grammar::parse_spell_or_activated_ability_x_cost_trigger_tokens(
+            source_tokens,
+            split.before,
+            split.after,
+        )
+        .is_some();
     if spell_or_ability_x_cost {
         replace_trigger_spec(line, &spell_or_activated_ability_x_cost_trigger_spec());
     }

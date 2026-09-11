@@ -1,7 +1,7 @@
-use crate::cards::builders::TurnEventPredicateAst;
-use crate::cards::builders::SourcePredicateAst;
-use crate::cards::builders::PlayerPredicateAst;
 use super::*;
+use crate::cards::builders::PlayerPredicateAst;
+use crate::cards::builders::SourcePredicateAst;
+use crate::cards::builders::TurnEventPredicateAst;
 
 use crate::CounterType;
 use crate::target::ChooseSpec;
@@ -76,7 +76,9 @@ fn parse_existing_value_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
 
 fn parse_player_counter_placement_gate(clause: LexedClause<'_>) -> Option<PredicateAst> {
     let words = clause.word_refs();
-    if !crate::word_primitives::parse_sequence_suffix(&words, &["this", "turn"]) { return None; }
+    if !crate::word_primitives::parse_sequence_suffix(&words, &["this", "turn"]) {
+        return None;
+    }
     let start = match words.as_slice() {
         ["youve" | "you've" | "you’ve" | "you", "put", ..] => 2,
         ["you", "have", "put", ..] => 3,
@@ -86,23 +88,42 @@ fn parse_player_counter_placement_gate(clause: LexedClause<'_>) -> Option<Predic
         (1, start + 1)
     } else if words.get(start + 1) == Some(&"or") && words.get(start + 2) == Some(&"more") {
         (crate::util::parse_number_word_u32(words[start])?, start + 3)
-    } else { return None; };
-    let noun = words[descriptor_start..].iter().position(|word| matches!(*word, "counter" | "counters"))? + descriptor_start;
-    if words.get(noun + 1) != Some(&"on") { return None; }
-    let counter_type = if noun == descriptor_start { None } else {
-        Some(crate::grammar::filters::parse_counter_type_words(&words[descriptor_start..=noun])?)
+    } else {
+        return None;
+    };
+    let noun = words[descriptor_start..]
+        .iter()
+        .position(|word| matches!(*word, "counter" | "counters"))?
+        + descriptor_start;
+    if words.get(noun + 1) != Some(&"on") {
+        return None;
+    }
+    let counter_type = if noun == descriptor_start {
+        None
+    } else {
+        Some(crate::grammar::filters::parse_counter_type_words(
+            &words[descriptor_start..=noun],
+        )?)
     };
     let objects = clause.between_word_range(noun + 2, words.len() - 2)?;
-    let mut filter = crate::grammar::primitives::probe_shape(parse_object_filter(objects.tokens(), false))?;
+    let mut filter =
+        crate::grammar::primitives::probe_shape(parse_object_filter(objects.tokens(), false))?;
     filter.zone = None;
-    Some(value_at_least(Value::TurnHistoryCount(TurnHistoryCount::CountersPutOn {
-        source_controller: Some(PlayerFilter::You), counter_type, filter,
-    }), i32::try_from(minimum).ok()?))
+    Some(value_at_least(
+        Value::TurnHistoryCount(TurnHistoryCount::CountersPutOn {
+            source_controller: Some(PlayerFilter::You),
+            counter_type,
+            filter,
+        }),
+        i32::try_from(minimum).ok()?,
+    ))
 }
 
 fn parse_turn_history_value_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
-    if let Some(predicate) = parse_player_counter_placement_gate(clause) { return Some(predicate); }
+    if let Some(predicate) = parse_player_counter_placement_gate(clause) {
+        return Some(predicate);
+    }
 
     if surface::exact(clause, &["you", "created", "a", "token", "this", "turn"]) {
         return Some(value_at_least(
@@ -741,7 +762,9 @@ fn parse_control_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, 
         }
         let mut filter = parse_object_filter(object_tokens, false)?;
         filter.controller = Some(controller);
-        return Ok(Some(PredicateAst::Player(PlayerPredicateAst::PlayerControlsNo { player, filter })));
+        return Ok(Some(PredicateAst::Player(
+            PlayerPredicateAst::PlayerControlsNo { player, filter },
+        )));
     }
 
     let Some((comparison, quantity_used)) = predicate_quantity_prefix_tokens(tail.tokens()) else {
@@ -1022,9 +1045,9 @@ fn parse_source_state_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     ) {
         let mut filter = ObjectFilter::creature();
         filter.entered_battlefield_this_turn = true;
-        return Some(PredicateAst::Not(Box::new(PredicateAst::Source(SourcePredicateAst::SourceMatches(
-            filter,
-        )))));
+        return Some(PredicateAst::Not(Box::new(PredicateAst::Source(
+            SourcePredicateAst::SourceMatches(filter),
+        ))));
     }
     if surface::exact(
         clause,
@@ -1032,7 +1055,9 @@ fn parse_source_state_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     ) {
         let mut filter = ObjectFilter::creature();
         filter.was_dealt_damage_this_turn = true;
-        return Some(PredicateAst::Source(SourcePredicateAst::SourceMatches(filter)));
+        return Some(PredicateAst::Source(SourcePredicateAst::SourceMatches(
+            filter,
+        )));
     }
     if surface::exact(
         clause,
@@ -1042,7 +1067,9 @@ fn parse_source_state_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     ) {
         let mut filter = ObjectFilter::creature();
         filter.dealt_damage_to_player_this_turn = Some(PlayerFilter::Opponent);
-        return Some(PredicateAst::Source(SourcePredicateAst::SourceMatches(filter)));
+        return Some(PredicateAst::Source(SourcePredicateAst::SourceMatches(
+            filter,
+        )));
     }
     if surface::exact_any(
         clause,
@@ -1066,12 +1093,16 @@ fn parse_source_state_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
         ],
     ) {
         return Some(PredicateAst::And(
-            Box::new(PredicateAst::Source(SourcePredicateAst::SourceIsInZone(Zone::Exile))),
-            Box::new(PredicateAst::Source(SourcePredicateAst::SourceHasCounterAtLeast {
-                counter_type: CounterType::Time,
-                count: 1,
-                surface: crate::SourceCounterThresholdSurface::SourceHas,
-            })),
+            Box::new(PredicateAst::Source(SourcePredicateAst::SourceIsInZone(
+                Zone::Exile,
+            ))),
+            Box::new(PredicateAst::Source(
+                SourcePredicateAst::SourceHasCounterAtLeast {
+                    counter_type: CounterType::Time,
+                    count: 1,
+                    surface: crate::SourceCounterThresholdSurface::SourceHas,
+                },
+            )),
         ));
     }
     None
@@ -1131,9 +1162,9 @@ fn parse_existing_zone_history_gate(tokens: &[OwnedLexToken]) -> Option<Predicat
             if graveyard_owner.is_some() {
                 filter.owner = graveyard_owner;
             }
-            return Some(PredicateAst::TurnEvents(TurnEventPredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(
-                filter,
-            )));
+            return Some(PredicateAst::TurnEvents(
+                TurnEventPredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter),
+            ));
         }
     }
 
@@ -1162,9 +1193,9 @@ fn parse_existing_zone_history_gate_exact(clause: LexedClause<'_>) -> Option<Pre
     ) {
         let mut filter = ObjectFilter::default();
         filter.card_types = vec![CardType::Artifact, CardType::Creature];
-        return Some(PredicateAst::TurnEvents(TurnEventPredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(
-            filter,
-        )));
+        return Some(PredicateAst::TurnEvents(
+            TurnEventPredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter),
+        ));
     }
     if surface::exact(
         clause,
@@ -1185,9 +1216,9 @@ fn parse_existing_zone_history_gate_exact(clause: LexedClause<'_>) -> Option<Pre
     ) {
         let mut filter = ObjectFilter::enchantment();
         filter.owner = Some(PlayerFilter::You);
-        return Some(PredicateAst::TurnEvents(TurnEventPredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(
-            filter,
-        )));
+        return Some(PredicateAst::TurnEvents(
+            TurnEventPredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter),
+        ));
     }
     if surface::exact(
         clause,
@@ -1209,9 +1240,9 @@ fn parse_existing_zone_history_gate_exact(clause: LexedClause<'_>) -> Option<Pre
         ));
     }
     if surface::exact(clause, &["no", "creatures", "died", "this", "turn"]) {
-        return Some(PredicateAst::Not(Box::new(
-            PredicateAst::TurnEvents(TurnEventPredicateAst::CreatureDiedThisTurn),
-        )));
+        return Some(PredicateAst::Not(Box::new(PredicateAst::TurnEvents(
+            TurnEventPredicateAst::CreatureDiedThisTurn,
+        ))));
     }
     None
 }
@@ -1222,17 +1253,21 @@ fn parse_player_counter_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
         return None;
     }
     let count = comparison_to_at_least_threshold(&condition.comparison)?;
-    Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasPoisonCountersOrMore {
-        player: player_ast_from_status_player_filter(condition.player)?,
-        count,
-    }))
+    Some(PredicateAst::Player(
+        PlayerPredicateAst::PlayerHasPoisonCountersOrMore {
+            player: player_ast_from_status_player_filter(condition.player)?,
+            count,
+        },
+    ))
 }
 
 fn parse_world_status_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     surface::exact(LexedClause::new(tokens), &["there", "is", "no", "monarch"]).then(|| {
-        PredicateAst::Not(Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerIsMonarch {
-            player: PlayerAst::Any,
-        })))
+        PredicateAst::Not(Box::new(PredicateAst::Player(
+            PlayerPredicateAst::PlayerIsMonarch {
+                player: PlayerAst::Any,
+            },
+        )))
     })
 }
 

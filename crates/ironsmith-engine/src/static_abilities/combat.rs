@@ -30,35 +30,83 @@ pub struct AttackCost {
 }
 
 impl AttackCost {
-    pub fn new(attackers: ObjectFilter, covers_planeswalkers: bool, cost: crate::cost::TotalCost, display: impl Into<String>) -> Self {
-        Self { attackers, covers_planeswalkers, cost, display_text: display.into() }
+    pub fn new(
+        attackers: ObjectFilter,
+        covers_planeswalkers: bool,
+        cost: crate::cost::TotalCost,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            attackers,
+            covers_planeswalkers,
+            cost,
+            display_text: display.into(),
+        }
     }
-    pub fn attackers(&self) -> &ObjectFilter { &self.attackers }
-    pub fn covers_planeswalkers(&self) -> bool { self.covers_planeswalkers }
-    pub fn cost(&self) -> &crate::cost::TotalCost { &self.cost }
+    pub fn attackers(&self) -> &ObjectFilter {
+        &self.attackers
+    }
+    pub fn covers_planeswalkers(&self) -> bool {
+        self.covers_planeswalkers
+    }
+    pub fn cost(&self) -> &crate::cost::TotalCost {
+        &self.cost
+    }
 }
 
 impl StaticAbilityKind for AttackCost {
-    fn id(&self) -> StaticAbilityId { StaticAbilityId::AttackCost }
-    fn display(&self) -> String { self.display_text.clone() }
-    fn attack_cost_model(&self) -> Option<&AttackCost> { Some(self) }
-    fn attack_cost_for_declaration(&self, game: &GameState, source: ObjectId, controller: PlayerId,
-        attacker: ObjectId, target: AttackTaxTargetKind) -> Option<crate::cost::TotalCost> {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::AttackCost
+    }
+    fn display(&self) -> String {
+        self.display_text.clone()
+    }
+    fn attack_cost_model(&self) -> Option<&AttackCost> {
+        Some(self)
+    }
+    fn attack_cost_for_declaration(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        attacker: ObjectId,
+        target: AttackTaxTargetKind,
+    ) -> Option<crate::cost::TotalCost> {
         if !matches!(target, AttackTaxTargetKind::Player)
-            && !(self.covers_planeswalkers && matches!(target, AttackTaxTargetKind::Planeswalker)) {
+            && !(self.covers_planeswalkers && matches!(target, AttackTaxTargetKind::Planeswalker))
+        {
             return None;
         }
         let object = game.object(attacker)?;
         let ctx = game.filter_context_for(controller, Some(source));
-        self.attackers.matches(object, &ctx, game).then(|| self.cost.clone())
+        self.attackers
+            .matches(object, &ctx, game)
+            .then(|| self.cost.clone())
     }
-    fn materialize_resolution_values(&self, game: &GameState, ctx: &mut crate::effects::ExecutionContext<'_>)
-        -> Result<Option<super::StaticAbility>, crate::effects::ExecutionError> {
-        let cost = self.cost.clone().try_map(|component| {
-            let Some(dynamic) = component.dynamic_mana_cost_ref() else { return Ok(component); };
-            crate::special_actions::resolve_dynamic_mana_cost(game, dynamic, ctx).map(crate::costs::Cost::mana)
-        }).map_err(|error| crate::effects::ExecutionError::UnresolvableValue(error.to_string()))?;
-        Ok(Some(super::StaticAbility::new(Self::new(self.attackers.clone(), self.covers_planeswalkers, cost, self.display_text.clone()))))
+    fn materialize_resolution_values(
+        &self,
+        game: &GameState,
+        ctx: &mut crate::effects::ExecutionContext<'_>,
+    ) -> Result<Option<super::StaticAbility>, crate::effects::ExecutionError> {
+        let cost = self
+            .cost
+            .clone()
+            .try_map(|component| {
+                let Some(dynamic) = component.dynamic_mana_cost_ref() else {
+                    return Ok(component);
+                };
+                crate::special_actions::resolve_dynamic_mana_cost(game, dynamic, ctx)
+                    .map(crate::costs::Cost::mana)
+            })
+            .map_err(|error| {
+                crate::effects::ExecutionError::UnresolvableValue(error.to_string())
+            })?;
+        Ok(Some(super::StaticAbility::new(Self::new(
+            self.attackers.clone(),
+            self.covers_planeswalkers,
+            cost,
+            self.display_text.clone(),
+        ))))
     }
 }
 
@@ -72,36 +120,73 @@ pub(crate) struct ImposedAttackCost {
 }
 
 impl ImposedAttackCost {
-    pub fn resolved_cost(&self, game: &GameState) -> Result<crate::cost::TotalCost, crate::cost::CostPaymentError> {
+    pub fn resolved_cost(
+        &self,
+        game: &GameState,
+    ) -> Result<crate::cost::TotalCost, crate::cost::CostPaymentError> {
         let mut ctx = crate::effects::ExecutionContext::new_default(self.source, self.controller);
         self.cost.clone().try_map(|component| {
-            let Some(dynamic) = component.dynamic_mana_cost_ref() else { return Ok(component); };
-            crate::special_actions::resolve_dynamic_mana_cost(game, dynamic, &mut ctx).map(crate::costs::Cost::mana)
+            let Some(dynamic) = component.dynamic_mana_cost_ref() else {
+                return Ok(component);
+            };
+            crate::special_actions::resolve_dynamic_mana_cost(game, dynamic, &mut ctx)
+                .map(crate::costs::Cost::mana)
         })
     }
 }
 
 /// The same imposed costs feed legality previews and declaration payment.
 pub(crate) fn imposed_attack_costs_for_target(
-    game: &GameState, attacker: ObjectId, target: &crate::combat_state::AttackTarget,
+    game: &GameState,
+    attacker: ObjectId,
+    target: &crate::combat_state::AttackTarget,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> Vec<ImposedAttackCost> {
-    let Some(defender) = crate::combat_state::defending_player_for_attack_target(game, target) else { return Vec::new(); };
-    let Some(attacker) = game.object(attacker) else { return Vec::new(); };
+    let Some(defender) = crate::combat_state::defending_player_for_attack_target(game, target)
+    else {
+        return Vec::new();
+    };
+    let Some(attacker) = game.object(attacker) else {
+        return Vec::new();
+    };
     let payer = game.controller_of(attacker);
     let mut costs = Vec::new();
     for &source in &game.battlefield {
-        let Some(object) = game.object(source) else { continue; };
+        let Some(object) = game.object(source) else {
+            continue;
+        };
         let controller = game.controller_of(object);
-        if controller != defender { continue; }
-        let abilities = view.calculated_characteristics_arc(source)
+        if controller != defender {
+            continue;
+        }
+        let abilities = view
+            .calculated_characteristics_arc(source)
             .map(|chars| chars.static_abilities.to_vec())
-            .unwrap_or_else(|| object.abilities.iter().filter_map(|ability| match &ability.kind {
-                crate::ability::AbilityKind::Static(ability) => Some(ability.clone()), _ => None,
-            }).collect());
+            .unwrap_or_else(|| {
+                object
+                    .abilities
+                    .iter()
+                    .filter_map(|ability| match &ability.kind {
+                        crate::ability::AbilityKind::Static(ability) => Some(ability.clone()),
+                        _ => None,
+                    })
+                    .collect()
+            });
         for ability in abilities {
-            if let Some(cost) = ability.attack_cost_for_declaration(game, source, controller, attacker.id, AttackTaxTargetKind::from(target)) {
-                costs.push(ImposedAttackCost { payer, source, controller, cost, display: ability.display() });
+            if let Some(cost) = ability.attack_cost_for_declaration(
+                game,
+                source,
+                controller,
+                attacker.id,
+                AttackTaxTargetKind::from(target),
+            ) {
+                costs.push(ImposedAttackCost {
+                    payer,
+                    source,
+                    controller,
+                    cost,
+                    display: ability.display(),
+                });
             }
         }
     }
@@ -1282,8 +1367,16 @@ impl StaticAbilityKind for GoadedBySourceController {
         source: ObjectId,
         _controller: PlayerId,
     ) -> Option<PlayerId> {
-        let timestamp = game.effect_store.continuous_effects.get_object_timestamp(self.source)?;
-        if game.effect_store.goad_cleared_at.get(&source).is_some_and(|cleared| *cleared >= timestamp) {
+        let timestamp = game
+            .effect_store
+            .continuous_effects
+            .get_object_timestamp(self.source)?;
+        if game
+            .effect_store
+            .goad_cleared_at
+            .get(&source)
+            .is_some_and(|cleared| *cleared >= timestamp)
+        {
             return None;
         }
         game.object(self.source)
@@ -2533,13 +2626,22 @@ mod tests {
 
     #[test]
     fn typed_attack_cost_preserves_phyrexian_choices_and_target_scope() {
-        fn collected_cost(game: &mut GameState, source: ObjectId, ability: &AttackCost,
-            attacker: ObjectId, target: &crate::combat_state::AttackTarget) -> Option<crate::cost::TotalCost> {
-            *game.object_mut(source).unwrap().abilities_mut() = vec![crate::ability::Ability::static_ability(
-                super::super::StaticAbility::new(ability.clone()))];
+        fn collected_cost(
+            game: &mut GameState,
+            source: ObjectId,
+            ability: &AttackCost,
+            attacker: ObjectId,
+            target: &crate::combat_state::AttackTarget,
+        ) -> Option<crate::cost::TotalCost> {
+            *game.object_mut(source).unwrap().abilities_mut() =
+                vec![crate::ability::Ability::static_ability(
+                    super::super::StaticAbility::new(ability.clone()),
+                )];
             game.refresh_continuous_state();
             let view = crate::derived_view::DerivedGameView::new(game);
-            imposed_attack_costs_for_target(game, attacker, target, &view).first().map(|cost| cost.cost.clone())
+            imposed_attack_costs_for_target(game, attacker, target, &view)
+                .first()
+                .map(|cost| cost.cost.clone())
         }
 
         use crate::combat_state::AttackTarget;
@@ -2549,39 +2651,100 @@ mod tests {
         let bob = PlayerId::from_index(1);
         let carol = PlayerId::from_index(2);
         let creature = CardBuilder::new(CardId::new(), "Attacker")
-            .card_types(vec![CardType::Creature]).build();
+            .card_types(vec![CardType::Creature])
+            .build();
         let attacker = game.create_object_from_card(&creature, alice, Zone::Battlefield);
         let permanent = CardBuilder::new(CardId::new(), "Tax")
-            .card_types(vec![CardType::Artifact]).build();
+            .card_types(vec![CardType::Artifact])
+            .build();
         let source = game.create_object_from_card(&permanent, bob, Zone::Battlefield);
         let walker = CardBuilder::new(CardId::new(), "Walker")
-            .card_types(vec![CardType::Planeswalker]).build();
+            .card_types(vec![CardType::Planeswalker])
+            .build();
         let bob_walker = game.create_object_from_card(&walker, bob, Zone::Battlefield);
         let carol_walker = game.create_object_from_card(&walker, carol, Zone::Battlefield);
         let cost = crate::cost::TotalCost::from_costs(vec![crate::costs::Cost::mana(
-            ManaCost::from_pips(vec![vec![ManaSymbol::White, ManaSymbol::Life(2)]])
+            ManaCost::from_pips(vec![vec![ManaSymbol::White, ManaSymbol::Life(2)]]),
         )]);
         let mut ability = AttackCost {
-            attackers: ObjectFilter::creature(), covers_planeswalkers: false,
-            cost: cost.clone(), display_text: "Attack tax".into(),
+            attackers: ObjectFilter::creature(),
+            covers_planeswalkers: false,
+            cost: cost.clone(),
+            display_text: "Attack tax".into(),
         };
-        assert_eq!(collected_cost(&mut game, source, &ability, attacker,
-            &AttackTarget::Player(bob)), Some(cost.clone()));
-        assert!(collected_cost(&mut game, source, &ability, attacker,
-            &AttackTarget::Player(carol)).is_none());
-        assert!(collected_cost(&mut game, source, &ability, attacker,
-            &AttackTarget::Planeswalker(bob_walker)).is_none());
+        assert_eq!(
+            collected_cost(
+                &mut game,
+                source,
+                &ability,
+                attacker,
+                &AttackTarget::Player(bob)
+            ),
+            Some(cost.clone())
+        );
+        assert!(
+            collected_cost(
+                &mut game,
+                source,
+                &ability,
+                attacker,
+                &AttackTarget::Player(carol)
+            )
+            .is_none()
+        );
+        assert!(
+            collected_cost(
+                &mut game,
+                source,
+                &ability,
+                attacker,
+                &AttackTarget::Planeswalker(bob_walker)
+            )
+            .is_none()
+        );
         ability.covers_planeswalkers = true;
-        assert_eq!(collected_cost(&mut game, source, &ability, attacker,
-            &AttackTarget::Planeswalker(bob_walker)), Some(cost));
-        assert!(collected_cost(&mut game, source, &ability, attacker,
-            &AttackTarget::Planeswalker(carol_walker)).is_none());
+        assert_eq!(
+            collected_cost(
+                &mut game,
+                source,
+                &ability,
+                attacker,
+                &AttackTarget::Planeswalker(bob_walker)
+            ),
+            Some(cost)
+        );
+        assert!(
+            collected_cost(
+                &mut game,
+                source,
+                &ability,
+                attacker,
+                &AttackTarget::Planeswalker(carol_walker)
+            )
+            .is_none()
+        );
         // The attacker predicate is evaluated relative to the tax controller.
         ability.attackers = ObjectFilter::creature().you_control();
-        assert!(collected_cost(&mut game, source, &ability, attacker,
-            &AttackTarget::Player(bob)).is_none());
-        assert!(collected_cost(&mut game, source, &ability, source,
-            &AttackTarget::Player(bob)).is_none());
+        assert!(
+            collected_cost(
+                &mut game,
+                source,
+                &ability,
+                attacker,
+                &AttackTarget::Player(bob)
+            )
+            .is_none()
+        );
+        assert!(
+            collected_cost(
+                &mut game,
+                source,
+                &ability,
+                source,
+                &AttackTarget::Player(bob)
+            )
+            .is_none()
+        );
     }
 
     #[test]

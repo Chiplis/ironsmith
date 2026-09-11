@@ -11,7 +11,11 @@ fn chosen_permanents_and_sacrifice_results_keep_distinct_typed_sets() {
         .expect("correlated each-player sequence should parse");
 
     let [
-        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { filter: PlayerFilter::Any, sequential: true, .. }),
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+            filter: PlayerFilter::Any,
+            sequential: true,
+            ..
+        }),
         EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
             effects: sacrifice_effects,
         }),
@@ -97,7 +101,8 @@ fn wave_of_vitriol_keeps_sacrificed_lands_partitioned_by_snapshot_controller() {
     };
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter: union }),
+            action:
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter: union }),
             ..
         }),
     ] = sacrifice_effects.as_slice()

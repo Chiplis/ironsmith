@@ -7,8 +7,8 @@
 use ironsmith_core::TotalCost;
 
 use crate::cards::builders::{
-    EffectAst, PlayerAst, PredicateAst, SubjectVerbActionAst, SubjectVerbRoleAst, TargetAst,
-    TriggerSpec, KeywordActionAst,
+    EffectAst, KeywordActionAst, PlayerAst, PredicateAst, SubjectVerbActionAst, SubjectVerbRoleAst,
+    TargetAst, TriggerSpec,
 };
 use crate::effect::Value;
 use crate::filter::PlayerFilter;
@@ -37,7 +37,9 @@ pub fn cumulative_upkeep_granted_ability(total_cost: TotalCost<CompilerCost>) ->
                 EffectAst::subject_verb(
                     SubjectVerbRoleAst::Actor,
                     PlayerAst::You,
-                    SubjectVerbActionAst::KeywordActions(KeywordActionAst::CumulativeUpkeep { cost: total_cost }),
+                    SubjectVerbActionAst::KeywordActions(KeywordActionAst::CumulativeUpkeep {
+                        cost: total_cost,
+                    }),
                 ),
             ]),
             choices: vec![],
@@ -86,23 +88,57 @@ pub fn assemble_parsed_triggered_ability(
 pub fn vanishing_granted_abilities(amount: u32) -> Vec<Ability> {
     let mut abilities = Vec::new();
     if amount > 0 {
-        abilities.push(Ability::static_ability(crate::model::CompilerStaticAbilityCore::enters_with_counters_value(CounterType::Time, Value::Fixed(amount as i32))));
+        abilities.push(Ability::static_ability(
+            crate::model::CompilerStaticAbilityCore::enters_with_counters_value(
+                CounterType::Time,
+                Value::Fixed(amount as i32),
+            ),
+        ));
     }
     let source = crate::filter::ObjectFilter::source();
     for (trigger, effect) in [
-        (TriggerSpec::BeginningOfUpkeep(PlayerFilter::You),
-         EffectAst::subject_verb_remove_counters_all(Value::Fixed(1), source.clone(), Some(CounterType::Time), false)),
-        (TriggerSpec::CounterRemovedFrom { filter: source.clone(), counter_type: Some(CounterType::Time), last: true, one_or_more: false, caused_by_source: false },
-         EffectAst::subject_verb_sacrifice(PlayerAst::You, source, 1, Some(TargetAst::Source(None)))),
+        (
+            TriggerSpec::BeginningOfUpkeep(PlayerFilter::You),
+            EffectAst::subject_verb_remove_counters_all(
+                Value::Fixed(1),
+                source.clone(),
+                Some(CounterType::Time),
+                false,
+            ),
+        ),
+        (
+            TriggerSpec::CounterRemovedFrom {
+                filter: source.clone(),
+                counter_type: Some(CounterType::Time),
+                last: true,
+                one_or_more: false,
+                caused_by_source: false,
+            },
+            EffectAst::subject_verb_sacrifice(
+                PlayerAst::You,
+                source,
+                1,
+                Some(TargetAst::Source(None)),
+            ),
+        ),
     ] {
-        let intervening_if = matches!(trigger, TriggerSpec::BeginningOfUpkeep(_)).then(||
+        let intervening_if = matches!(trigger, TriggerSpec::BeginningOfUpkeep(_)).then(|| {
             PredicateAst::Source(crate::model::SourcePredicateAst::SourceHasCounterAtLeast {
-                counter_type: CounterType::Time, count: 1, surface: Default::default(),
-            }));
-        abilities.push(Ability { kind: AbilityKind::Triggered(TriggeredAbility {
-            trigger, effects: ironsmith_core::ResolutionProgram::from_effects(vec![effect]),
-            choices: vec![], intervening_if, presentation_label: None,
-        }), functional_zones: vec![Zone::Battlefield] });
+                counter_type: CounterType::Time,
+                count: 1,
+                surface: Default::default(),
+            })
+        });
+        abilities.push(Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger,
+                effects: ironsmith_core::ResolutionProgram::from_effects(vec![effect]),
+                choices: vec![],
+                intervening_if,
+                presentation_label: None,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        });
     }
     abilities
 }

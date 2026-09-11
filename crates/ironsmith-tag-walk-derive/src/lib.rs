@@ -7,9 +7,7 @@
 
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{
-    Data, DeriveInput, Fields, GenericParam, Index, parse_macro_input, parse_quote,
-};
+use syn::{Data, DeriveInput, Fields, GenericParam, Index, parse_macro_input, parse_quote};
 
 #[proc_macro_derive(TagKeyWalk, attributes(tag_walk))]
 pub fn derive_tag_key_walk(input: TokenStream) -> TokenStream {

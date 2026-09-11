@@ -729,7 +729,8 @@ fn shared_spell_cast_or_copy_subject_is_preserved_on_both_trigger_arms() {
     else {
         panic!("expected spell-cast and spell-copied trigger arms");
     };
-    let enchanted = PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.bind().into());
+    let enchanted =
+        PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.bind().into());
     assert_eq!(caster, enchanted);
     assert_eq!(copier, enchanted);
     assert_eq!(min_spells_this_turn, Some(2));
@@ -1879,8 +1880,11 @@ fn initiative_holder_attack_target_keeps_dynamic_player_reference() {
     let crate::model::ast::TriggerSpec::AttacksOneOrMore(filter) = &parsed else {
         panic!("expected a group attack trigger, got {parsed:#?}");
     };
-    let expected =
-        PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::InitiativeHolder.bind().into());
+    let expected = PlayerFilter::TaggedPlayer(
+        crate::tag::CompilerReferenceTag::InitiativeHolder
+            .bind()
+            .into(),
+    );
     assert_eq!(
         filter
             .attacking_player_or_planeswalker_controlled_by
@@ -1949,7 +1953,8 @@ fn repeated_attack_intro_resolves_enchanted_player_pronoun_on_both_branches() {
     else {
         panic!("expected enchanted-player counterattack branch, got {right:#?}");
     };
-    let enchanted = PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.bind().into());
+    let enchanted =
+        PlayerFilter::TaggedPlayer(crate::tag::CompilerReferenceTag::Enchanted.bind().into());
     assert_eq!(
         left_filter
             .attacking_player_or_planeswalker_controlled_by
@@ -2251,12 +2256,19 @@ fn play_or_cast_trigger_inherits_the_player_subject() {
         "you cast a spell from exile or play a land from exile",
     ] {
         let tokens = tokenize_line(text, 0);
-        let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).unwrap();
-        let crate::model::ast::TriggerSpec::Either(left, right) = parsed else { panic!("expected two arms"); };
+        let parsed =
+            crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).unwrap();
+        let crate::model::ast::TriggerSpec::Either(left, right) = parsed else {
+            panic!("expected two arms");
+        };
         for arm in [left, right] {
             match *arm {
-                crate::model::ast::TriggerSpec::PlayerPlaysLand { player, .. } => assert_eq!(player, PlayerFilter::You),
-                crate::model::ast::TriggerSpec::SpellCast { caster, .. } => assert_eq!(caster, PlayerFilter::You),
+                crate::model::ast::TriggerSpec::PlayerPlaysLand { player, .. } => {
+                    assert_eq!(player, PlayerFilter::You)
+                }
+                crate::model::ast::TriggerSpec::SpellCast { caster, .. } => {
+                    assert_eq!(caster, PlayerFilter::You)
+                }
                 other => panic!("unexpected arm {other:?}"),
             }
         }

@@ -39,11 +39,17 @@ impl TriggerMatcher for ConditionQualifiedTrigger {
                 &ExternalEvaluationContext {
                     controller: ctx.controller,
                     source: ctx.source_id,
-                    defending_player: event.downcast::<crate::events::combat::CreatureAttackedEvent>()
+                    defending_player: event
+                        .downcast::<crate::events::combat::CreatureAttackedEvent>()
                         .and_then(|attack| match attack.target {
                             crate::triggers::AttackEventTarget::Player(player) => Some(player),
-                            crate::triggers::AttackEventTarget::Planeswalker(id) => ctx.game.object(id).map(|object| ctx.game.controller_of(object)),
-                            crate::triggers::AttackEventTarget::Battle(id) => ctx.game.battle_protector(id),
+                            crate::triggers::AttackEventTarget::Planeswalker(id) => ctx
+                                .game
+                                .object(id)
+                                .map(|object| ctx.game.controller_of(object)),
+                            crate::triggers::AttackEventTarget::Battle(id) => {
+                                ctx.game.battle_protector(id)
+                            }
                         }),
                     filter_source: Some(ctx.source_id),
                     triggering_event: Some(event),

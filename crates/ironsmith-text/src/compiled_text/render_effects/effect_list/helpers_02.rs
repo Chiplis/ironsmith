@@ -839,14 +839,16 @@ pub(crate) fn render_consult_reveal_put_hand_rest_exile(effects: &[&Effect]) -> 
         return None;
     }
 
-    let consult = unwrap_render_wrappers(effects[0]).downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
+    let consult = unwrap_render_wrappers(effects[0])
+        .downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
     if consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Reveal {
         return None;
     }
 
     consult_match_move_to_zone(effects[1], consult, Zone::Hand)?;
 
-    let remainder = unwrap_render_wrappers(effects[2]).downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let remainder =
+        unwrap_render_wrappers(effects[2]).downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
     if remainder.tag != consult.all_tag {
         return None;
     }

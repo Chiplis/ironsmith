@@ -8,7 +8,7 @@
 
 use super::dispatch_entry::SentenceInput;
 use super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::graveyard_cast_with_exile_replacement;
-use crate::cards::builders::{IfResultPredicate, CardTextError, EffectAst, ConditionalEffectAst};
+use crate::cards::builders::{CardTextError, ConditionalEffectAst, EffectAst, IfResultPredicate};
 use crate::grammar::effects::{self as effect_grammar, GraveyardCastReplacementShape};
 use crate::lexer::OwnedLexToken;
 
@@ -35,24 +35,25 @@ pub(super) fn open(
     };
     // "When you do, you may cast target instant or sorcery card ...": the
     // permission under a reflexive result prefix, the whole pair its effect.
-    let (permission, when_result) = match crate::grammar::structure::split_leading_result_prefix_lexed(sentence.lexed()) {
-        Some(prefix)
-            if prefix.kind == crate::grammar::structure::LeadingResultPrefixKind::When
-                && prefix.predicate == IfResultPredicate::Did
-                && crate::word_primitives::parse_sequence_prefix(
-                    &crate::lexer::token_word_refs(prefix.trailing_tokens),
-                    &["you", "may", "cast", "target"],
-                ) =>
-        {
-            (
-                crate::util::trim_commas(
-                    SentenceInput::from_lexed(prefix.trailing_tokens).lowered(),
-                ),
-                true,
-            )
-        }
-        _ => (crate::util::trim_commas(sentence.lowered()), false),
-    };
+    let (permission, when_result) =
+        match crate::grammar::structure::split_leading_result_prefix_lexed(sentence.lexed()) {
+            Some(prefix)
+                if prefix.kind == crate::grammar::structure::LeadingResultPrefixKind::When
+                    && prefix.predicate == IfResultPredicate::Did
+                    && crate::word_primitives::parse_sequence_prefix(
+                        &crate::lexer::token_word_refs(prefix.trailing_tokens),
+                        &["you", "may", "cast", "target"],
+                    ) =>
+            {
+                (
+                    crate::util::trim_commas(
+                        SentenceInput::from_lexed(prefix.trailing_tokens).lowered(),
+                    ),
+                    true,
+                )
+            }
+            _ => (crate::util::trim_commas(sentence.lowered()), false),
+        };
     let Some(shape) = effect_grammar::parse_graveyard_cast_permission_shape(&permission) else {
         return Ok(None);
     };

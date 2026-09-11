@@ -28,7 +28,11 @@ pub(crate) fn sentence_head_is(
     sentence_head(sentences, sentence_idx) == Some(expected)
 }
 
-pub(crate) fn sentence_head_word_is(sentences: &[SentenceInput], sentence_idx: usize, expected: &str) -> bool {
+pub(crate) fn sentence_head_word_is(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+    expected: &str,
+) -> bool {
     sentence_head_word(sentences, sentence_idx) == Some(expected)
 }
 
@@ -62,13 +66,13 @@ pub fn try_parse_document_program(
 
 #[cfg(test)]
 mod tests {
-    use crate::cards::builders::PermissionEffectAst;
-    use crate::cards::builders::ConditionalEffectAst;
-    use crate::cards::builders::ObjectChoiceEffectAst;
-    use crate::cards::builders::ForEachEffectAst;
-    use crate::cards::builders::RevealLookActionAst;
-    use crate::cards::builders::LibraryActionAst;
     use super::*;
+    use crate::cards::builders::ConditionalEffectAst;
+    use crate::cards::builders::ForEachEffectAst;
+    use crate::cards::builders::LibraryActionAst;
+    use crate::cards::builders::ObjectChoiceEffectAst;
+    use crate::cards::builders::PermissionEffectAst;
+    use crate::cards::builders::RevealLookActionAst;
     use crate::cards::builders::{IfResultPredicate, SubjectVerbActionAst, SubjectVerbEffectAst};
     use crate::{lex_line, split_lexed_sentences};
 
@@ -109,7 +113,11 @@ mod tests {
             );
         };
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { tag: looked, .. }),
+            action:
+                SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
+                    tag: looked,
+                    ..
+                }),
             ..
         }) = look
         else {
@@ -185,16 +193,26 @@ mod tests {
             panic!("expected look/choose/move/remainder effects: {effects:#?}");
         };
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { tag: looked, .. }),
+            action:
+                SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
+                    tag: looked,
+                    ..
+                }),
             ..
         }) = look
         else {
             panic!("expected a looked-card producer: {look:#?}");
         };
-        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { tag: chosen, .. }) = choose else {
+        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+            tag: chosen,
+            ..
+        }) = choose
+        else {
             panic!("expected a typed looked-card choice: {choose:#?}");
         };
-        assert!(matches!(move_each, EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, .. }) if tag == chosen));
+        assert!(
+            matches!(move_each, EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, .. }) if tag == chosen)
+        );
         assert!(matches!(
             remainder,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {

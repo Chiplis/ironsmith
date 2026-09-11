@@ -1,9 +1,10 @@
-use crate::cards::builders::ForEachEffectAst;
 use super::super::SentenceInput;
 use crate::activation_and_restrictions::parse_may_cast_it_sentence;
+use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{
-    CardTextError, EffectAst, LibraryBottomOrderAst, ObjectFilter, PlayerAst, ReturnControllerAst,
-    SubjectVerbActionAst, SubjectVerbEffectAst, TagKey, TargetAst, LibraryActionAst, ZoneMoveActionAst, ObjectChoiceEffectAst,
+    CardTextError, EffectAst, LibraryActionAst, LibraryBottomOrderAst, ObjectChoiceEffectAst,
+    ObjectFilter, PlayerAst, ReturnControllerAst, SubjectVerbActionAst, SubjectVerbEffectAst,
+    TagKey, TargetAst, ZoneMoveActionAst,
 };
 use crate::effect::ChoiceCount;
 use crate::effect_sentences;
@@ -30,7 +31,11 @@ fn exiled_top_collection_tag(effect: &EffectAst) -> Option<TagKey> {
         ..
     }) = effect
     {
-        return tags.first().or_else(|| accumulated_tags.first()).cloned().map(Into::into);
+        return tags
+            .first()
+            .or_else(|| accumulated_tags.first())
+            .cloned()
+            .map(Into::into);
     }
 
     let mut found = None;
@@ -69,7 +74,8 @@ fn tag_first_exile(effect: &mut EffectAst, tag: &TagKey) -> bool {
     if matches!(
         effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. }) | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { .. }),
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { .. }),
             ..
         })
     ) {
@@ -192,13 +198,15 @@ pub fn parse_exile_top_then_put_from_among_tokens(
             crate::tag::TagRef::of(chosen_tag.clone()),
         ));
     } else {
-        effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
-            filter,
-            count,
-            player: chooser,
-            tag: crate::tag::TagRef::of(chosen_tag.clone()),
-            zone: Zone::Exile,
-        }));
+        effects.push(EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+                filter,
+                count,
+                player: chooser,
+                tag: crate::tag::TagRef::of(chosen_tag.clone()),
+                zone: Zone::Exile,
+            },
+        ));
     }
 
     effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
@@ -374,9 +382,11 @@ mod tests {
         effects
             .iter()
             .find_map(|effect| match effect {
-                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { filter, count, .. }) => {
-                    Some((filter, *count))
-                }
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+                    filter,
+                    count,
+                    ..
+                }) => Some((filter, *count)),
                 _ => None,
             })
             .expect("collection cast should choose from the exact tagged exile pool")

@@ -290,7 +290,10 @@ fn additional_phases<'a>(input: &mut LexStream<'a>) -> WResult<AdditionalPhasesS
     } else {
         vec![AdditionalPhase::Combat]
     };
-    Ok(AdditionalPhasesShape { phases, after_main_phase: matches!(intro, PhaseIntroShape::AfterThisMain) })
+    Ok(AdditionalPhasesShape {
+        phases,
+        after_main_phase: matches!(intro, PhaseIntroShape::AfterThisMain),
+    })
 }
 
 pub fn parse_additional_phases_shape(tokens: &[OwnedLexToken]) -> Option<AdditionalPhasesShape> {

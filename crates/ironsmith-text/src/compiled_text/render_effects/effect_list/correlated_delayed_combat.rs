@@ -60,11 +60,12 @@ pub(in crate::compiled_text) fn describe_quantified_tap_goad_then_watch_set(
         return None;
     }
 
-    let (goad_action, watched_tag) = if let Some(tagged) = goad_effect.downcast_ref::<crate::effects::TaggedEffect>() {
-        (tagged.effect.as_ref(), &tagged.tag)
-    } else {
-        (goad_effect, &tagged_tap.tag)
-    };
+    let (goad_action, watched_tag) =
+        if let Some(tagged) = goad_effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            (tagged.effect.as_ref(), &tagged.tag)
+        } else {
+            (goad_effect, &tagged_tap.tag)
+        };
     let goad = goad_action.downcast_ref::<crate::effects::GoadEffect>()?;
     let ChooseSpec::Object(goad_filter) = goad.target.base() else {
         return None;

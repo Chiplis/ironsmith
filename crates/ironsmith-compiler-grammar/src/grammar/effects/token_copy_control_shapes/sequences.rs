@@ -107,7 +107,10 @@ pub fn parse_return_same_subtypes_shape(
 ) -> Option<ReturnSameSubtypesShape<'_>> {
     primitives::parse_prefix(tokens, primitives::kw("return"))?;
     let (return_tokens, subtype_tokens) = split_once(tokens, &["do", "the", "same", "for"])?;
-    let return_tokens = if return_tokens.last().is_some_and(|token| token.is_word("then")) {
+    let return_tokens = if return_tokens
+        .last()
+        .is_some_and(|token| token.is_word("then"))
+    {
         trim_lexed_commas(&return_tokens[..return_tokens.len() - 1])
     } else {
         return_tokens
@@ -337,8 +340,14 @@ mod tests {
             0,
         ).unwrap();
         let shape = parse_return_same_subtypes_shape(&tokens).expect("return-same shape with then");
-        assert_eq!(shape.subtypes, vec![Subtype::Vampire, Subtype::Dinosaur, Subtype::Merfolk]);
-        assert_eq!(shape.return_tokens.last().and_then(OwnedLexToken::as_word), Some("hand"));
+        assert_eq!(
+            shape.subtypes,
+            vec![Subtype::Vampire, Subtype::Dinosaur, Subtype::Merfolk]
+        );
+        assert_eq!(
+            shape.return_tokens.last().and_then(OwnedLexToken::as_word),
+            Some("hand")
+        );
 
         let tokens = lex_line(
             "return target creature to its owners hand then create a token",

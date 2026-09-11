@@ -67,8 +67,12 @@ impl EffectExecutor for GrantEffect {
 
         let source_id = ctx.source;
         let grant_source = match self.duration {
-            GrantDuration::UntilYourNextTurn => GrantSource::until_player_next_turn_start(source_id, ctx.controller, game.turn.turn_number),
-                GrantDuration::UntilYourNextTurnEnd => {
+            GrantDuration::UntilYourNextTurn => GrantSource::until_player_next_turn_start(
+                source_id,
+                ctx.controller,
+                game.turn.turn_number,
+            ),
+            GrantDuration::UntilYourNextTurnEnd => {
                 GrantSource::until_player_next_turn_end(source_id, ctx.controller, expires)
             }
             GrantDuration::UntilEndOfTurn | GrantDuration::Forever => GrantSource::Effect {

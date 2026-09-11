@@ -233,16 +233,17 @@ fn parse_named_source_counter_dynamic_power_toughness(
         crate::grammar::filters::parse_counter_type_words(descriptor.get(..=counter_idx)?)?;
 
     // The normalized P/T prefix can collapse `this token's` into `its`, so
-    // locate the unchanged proper-name suffix from the end of the authored
-    // token stream rather than trying to map every normalized prefix word.
+    // locate the name suffix from the end of the token stream rather than
+    // trying to map every normalized prefix word. Preprocessing has already
+    // case-folded the line, so the name is recognized by its shape -- a bare
+    // phrase carrying none of the rules nouns a self-reference would use --
+    // and `render_bare_card_name_surface` restores the authored capitals.
     let positions = crate::lexer::parser_token_word_positions(tokens);
     let reference_word_start = positions.len().checked_sub(reference_words.len())?;
     let reference_token_start = positions.get(reference_word_start)?.0;
     let reference_token_end = positions.last()?.0.checked_add(1)?;
     let reference_tokens = tokens.get(reference_token_start..reference_token_end)?;
-    if !crate::lexer::is_authored_proper_name_phrase(reference_tokens)
-        || !crate::lexer::is_bare_card_name_phrase(reference_tokens)
-    {
+    if !crate::lexer::is_bare_card_name_phrase(reference_tokens) {
         return None;
     }
     let surface = SourceReferenceSurface::FullName(crate::lexer::render_bare_card_name_surface(
@@ -253,6 +254,18 @@ fn parse_named_source_counter_dynamic_power_toughness(
         Some(counter_type),
     );
     Some((value.clone(), value))
+}
+
+/// The named-source reading on its own, for the static-ability line parser:
+/// a quoted characteristic-defining P/T may reach that parser instead of the
+/// token blueprint when the token's ability is authored as a separate
+/// "It has \"...\"" sentence.
+pub fn parse_named_source_counter_dynamic_power_toughness_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<(Value, Value)> {
+    let raw_words = parser_token_word_refs(tokens);
+    let words = normalized_reminder_words(&raw_words);
+    parse_named_source_counter_dynamic_power_toughness(tokens, &words)
 }
 
 pub fn parse_token_dynamic_power_toughness_tokens(

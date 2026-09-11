@@ -10,9 +10,14 @@ fn vote_count_quantifies_matches_in_one_traversal() {
     let parsed = parse_consult_traversal_shape(&lex(
         "Reveal cards from the top of your library until you reveal a creature card for each wild vote",
     )).unwrap();
-    assert_eq!(parsed.stop.stop_rule,
-        LibraryConsultStopRuleAst::MatchCount(Value::VoteCount("wild".into())));
-    assert!(permission_shapes::exact_tokens(&parsed.stop.filter, &["a", "creature", "card"]));
+    assert_eq!(
+        parsed.stop.stop_rule,
+        LibraryConsultStopRuleAst::MatchCount(Value::VoteCount("wild".into()))
+    );
+    assert!(permission_shapes::exact_tokens(
+        &parsed.stop.filter,
+        &["a", "creature", "card"]
+    ));
 }
 
 #[test]
@@ -183,11 +188,21 @@ fn vote_counted_consult_survives_preprocessing() {
     let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Council Probe")
         .card_types(vec![crate::types::CardType::Sorcery]);
     let document = crate::preprocess::preprocess_document(card, text).unwrap();
-    let lines = document.items.iter().filter_map(|item| match item {
-        crate::preprocess::PreprocessedItem::Line(line) => Some(crate::lexer::render_token_slice(&line.tokens)),
-        _ => None,
-    }).collect::<Vec<_>>();
+    let lines = document
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            crate::preprocess::PreprocessedItem::Line(line) => {
+                Some(crate::lexer::render_token_slice(&line.tokens))
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
     assert_eq!(lines.len(), 1);
     assert!(lines[0].starts_with("reveal cards"), "{}", lines[0]);
-    assert!(lines[0].contains("creature card for each wild vote"), "{}", lines[0]);
+    assert!(
+        lines[0].contains("creature card for each wild vote"),
+        "{}",
+        lines[0]
+    );
 }

@@ -1,5 +1,5 @@
-use crate::cards::builders::ObjectChoiceEffectAst;
 use super::*;
+use crate::cards::builders::ObjectChoiceEffectAst;
 
 #[cfg(any(test, feature = "test-support"))]
 pub fn parse_single_effect_lexed(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {

@@ -1,5 +1,5 @@
-use crate::cards::builders::ForEachEffectAst;
 use super::*;
+use crate::cards::builders::ForEachEffectAst;
 
 pub(super) fn rewrite_each_player_choice_complement_chooser(effect: &mut EffectAst) -> bool {
     let EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }) = effect else {
@@ -61,7 +61,8 @@ pub(super) fn rewrite_each_player_choice_complement_chooser(effect: &mut EffectA
 
     let choice_count = effects.len() - 1;
     for choice in effects.iter_mut().take(choice_count) {
-        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { player, .. }) = choice else {
+        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { player, .. }) = choice
+        else {
             unreachable!("choice-complement shape was validated above");
         };
         *player = PlayerAst::You;

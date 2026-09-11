@@ -67,10 +67,9 @@ pub fn parse_choose_target_shape(tokens: &[OwnedLexToken]) -> Option<ChooseTarge
         ),
     ) {
         (ChooseTargetChooserShape::AbilityController, tail)
-    } else if let Some((_, tail)) = primitives::parse_prefix(
-        tokens,
-        primitives::phrase(&["an", "opponent", "chooses"]),
-    ) {
+    } else if let Some((_, tail)) =
+        primitives::parse_prefix(tokens, primitives::phrase(&["an", "opponent", "chooses"]))
+    {
         (ChooseTargetChooserShape::Opponent, tail)
     } else if let Some((_, tail)) = primitives::parse_prefix(
         tokens,
@@ -124,7 +123,10 @@ pub fn parse_embedded_choose_target_shape(
     let chooser_tokens = trim_lexed_commas(&tokens[..choose_idx]);
     let chooser = if exact(chooser_tokens, primitives::kw("you").void()) {
         ChooseTargetChooserShape::AbilityController
-    } else if exact(chooser_tokens, primitives::phrase(&["an", "opponent"]).void()) {
+    } else if exact(
+        chooser_tokens,
+        primitives::phrase(&["an", "opponent"]).void(),
+    ) {
         ChooseTargetChooserShape::Opponent
     } else if exact(
         chooser_tokens,

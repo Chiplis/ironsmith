@@ -1,4 +1,3 @@
-use crate::cards::builders::ForEachEffectAst;
 use super::super::grammar::effects as effect_grammar;
 use super::super::grammar::effects::{
     CounterSpellConditionalKind, ForEachPlayerKind, split_for_each_opponent_doesnt_clause_lexed,
@@ -15,8 +14,10 @@ use super::super::util::{
 use super::parse_effect_chain_inner;
 #[cfg(test)]
 use super::parse_effect_chain_lexed;
+use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{
-    CardTextError, EffectAst, PlayerAst, PredicateAst, TagKey, TargetAst, ConditionalEffectAst, PlayerPredicateAst,
+    CardTextError, ConditionalEffectAst, EffectAst, PlayerAst, PlayerPredicateAst, PredicateAst,
+    TagKey, TargetAst,
 };
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::types::{CardType, Subtype, Supertype};
@@ -77,10 +78,9 @@ pub fn parse_for_each_opponent_doesnt(
 
     let effects = parse_effect_chain_inner(split.effect_tokens)?;
     let predicate = parse_negated_who_this_way_predicate(split.inner_tokens)?;
-    Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDoesNot {
-        effects,
-        predicate,
-    })))
+    Ok(Some(EffectAst::ForEach(
+        ForEachEffectAst::ForEachOpponentDoesNot { effects, predicate },
+    )))
 }
 
 pub fn parse_for_each_player_doesnt(
@@ -102,7 +102,9 @@ pub fn parse_for_each_player_doesnt(
 
     let effects = parse_effect_chain_inner(split.effect_tokens)?;
     let predicate = parse_negated_who_this_way_predicate(split.inner_tokens)?;
-    Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDoesNot { effects, predicate })))
+    Ok(Some(EffectAst::ForEach(
+        ForEachEffectAst::ForEachPlayerDoesNot { effects, predicate },
+    )))
 }
 
 pub fn parse_for_each_doesnt_control_lose_game(
@@ -158,12 +160,14 @@ fn parse_negated_who_this_way_predicate(
         Err(_) => return Ok(None),
     };
 
-    Ok(Some(PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches {
-        player: PlayerAst::That,
-        tag: crate::tag::CompilerReferenceTag::It.bind(),
-        filter,
-        mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
-    })))
+    Ok(Some(PredicateAst::Player(
+        PlayerPredicateAst::PlayerTaggedObjectMatches {
+            player: PlayerAst::That,
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
+            filter,
+            mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
+        },
+    )))
 }
 
 pub fn parse_sentence_counter_target_spell_if_it_was_kicked(

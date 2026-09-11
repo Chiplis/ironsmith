@@ -44,7 +44,8 @@ pub(crate) struct SpanKey {
 #[derive(Debug, Clone)]
 struct Entry {
     result: Result<Vec<EffectAst>, CardTextError>,
-    loss: Vec<ParseLossDiagnostic>,    /// The reference keys the parse minted, replayed on every hit.
+    loss: Vec<ParseLossDiagnostic>,
+    /// The reference keys the parse minted, replayed on every hit.
     minted: Vec<ironsmith_compiler_ast::reference_ledger::MintedReference>,
 }
 

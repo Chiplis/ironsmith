@@ -1,5 +1,5 @@
-use crate::cards::builders::ForEachEffectAst;
 use super::*;
+use crate::cards::builders::ForEachEffectAst;
 
 pub(super) fn parse_each_player_hand_exile_play_constraints_bundle(
     tokens: &[OwnedLexToken],
@@ -11,7 +11,8 @@ pub(super) fn parse_each_player_hand_exile_play_constraints_bundle(
     hand_card.owner = Some(PlayerFilter::IteratedPlayer);
 
     Some(vec![
-        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+            sequential: false,
             filter: shape.players,
             effects: vec![
                 EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
@@ -21,7 +22,10 @@ pub(super) fn parse_each_player_hand_exile_play_constraints_bundle(
                     player: PlayerAst::That,
                     tag: crate::tag::TagRef::of(exiled_tag.clone()),
                 }),
-                EffectAst::subject_verb_exile(TargetAst::Tagged(crate::tag::TagRef::of(exiled_tag.clone()), None), false),
+                EffectAst::subject_verb_exile(
+                    TargetAst::Tagged(crate::tag::TagRef::of(exiled_tag.clone()), None),
+                    false,
+                ),
             ],
         }),
         EffectAst::subject_verb_grant_play_tagged_with_play_constraints(

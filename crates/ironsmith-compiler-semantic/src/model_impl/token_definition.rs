@@ -11,8 +11,7 @@ use crate::types::{CardType, Subtype};
 /// dynamic token definition. Lowering binds it to the retained card reference
 /// (for example, the last exiled card) without letting an intervening token
 /// creation steal the reference.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum BuiltinTokenShape {
     Treasure,
     Clue,
@@ -36,8 +35,7 @@ pub enum BuiltinTokenShape {
     Powerstone,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum TokenKeywordShape {
     Flying,
     WardGeneric(u32),
@@ -64,8 +62,7 @@ pub enum TokenKeywordShape {
     Plainswalk,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum TokenCombatRestrictionShape {
     CantAttackOrBlockAlone,
     CantAttackOrBlock,
@@ -76,15 +73,13 @@ pub enum TokenCombatRestrictionShape {
 
 /// Specialized token rules whose authored order cannot be recovered from the
 /// otherwise independent semantic fields on `CreatureTokenRulesShape`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum CreatureTokenInlineRuleKind {
     CombatRestriction,
     LeavesReturnNamedToHand,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub struct CreatureTokenInlineRulePresentation {
     pub kind: CreatureTokenInlineRuleKind,
     pub self_surface: Option<SourceReferenceSurface>,
@@ -95,8 +90,7 @@ pub struct TokenCrewShape {
     pub amount: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub struct TokenEquipShape {
     pub amount: u32,
 }
@@ -106,15 +100,13 @@ pub struct TokenPowerAsThoughGreaterShape {
     pub amount: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub struct TokenTapManaAbilityShape {
     pub mana: Vec<ManaSymbol>,
     pub restrictions: Vec<ManaUsageRestriction>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub struct TokenTapSacrificeManaLifeShape {
     pub mana_options: Vec<ManaSymbol>,
     pub life: u32,
@@ -125,16 +117,14 @@ pub struct InlineNoncreatureSpellDamageShape {
     pub amount: i32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub struct TokenSacrificeReturnShape {
     pub card_name: String,
     pub mana_symbols: Vec<ManaSymbol>,
     pub tap_cost: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub enum TokenEmbeddedRuleShape {
     CantBlockOrBeBlockedByNonSubtypeCreatures {
         subtype: Subtype,
@@ -167,21 +157,18 @@ pub enum TokenEmbeddedRuleShape {
     TapSacrificeAddManaOrGainLife(TokenTapSacrificeManaLifeShape),
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, TagKeyWalk)]
 pub struct TokenRulesSurfaces {
     pub embedded_rules: Vec<TokenEmbeddedRuleShape>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub struct EquipmentRulesShape {
     pub text: String,
     pub lines: Vec<EquipmentRuleLineShape>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub struct EquipmentDamageGrantShape {
     pub generic_amount: Option<u32>,
     pub tap_cost: bool,
@@ -189,22 +176,19 @@ pub struct EquipmentDamageGrantShape {
     pub damage_amount: i32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum EquipmentGrantCountShape {
     CountersAmongPermanentsYouControl(CounterType),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub struct EquipmentScaledPowerToughnessShape {
     pub power: i32,
     pub toughness: i32,
     pub count: EquipmentGrantCountShape,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub enum EquipmentRuleLineShape {
     GrantedDamage {
         display_text: String,
@@ -219,8 +203,7 @@ pub enum EquipmentRuleLineShape {
     Equip(TokenEquipShape),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub struct VehicleTokenShape {
     pub name: String,
     pub power_toughness: Option<(i32, i32)>,
@@ -229,8 +212,7 @@ pub struct VehicleTokenShape {
     pub crew_amount: Option<u32>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub struct EnchantmentTokenShape {
     pub name: String,
     pub subtypes: Vec<Subtype>,
@@ -239,8 +221,7 @@ pub struct EnchantmentTokenShape {
     pub token_rules: TokenRulesSurfaces,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub struct ArtifactTokenShape {
     pub name: String,
     pub subtypes: Vec<Subtype>,
@@ -252,20 +233,17 @@ pub struct ArtifactTokenShape {
     pub leaves_damage_any_target: Option<i32>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub struct ShapeshifterTokenShape {
     pub changeling: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub struct AstartesWarriorTokenShape {
     pub vigilance: bool,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, TagKeyWalk)]
 pub struct CreatureTokenRulesShape {
     pub token_rules: TokenRulesSurfaces,
     pub authored_inline_rules: Vec<CreatureTokenInlineRulePresentation>,
@@ -304,8 +282,7 @@ pub struct CreatureTokenRulesShape {
     pub landfall_pump: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub struct CreatureTokenShape {
     pub name: String,
     pub card_types: Vec<CardType>,
@@ -319,23 +296,20 @@ pub struct CreatureTokenShape {
     pub rules: CreatureTokenRulesShape,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum ConstructArtifactScalingShape {
     CharacteristicDefining,
     GetsPlusOnePerArtifact,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub struct ConstructTokenShape {
     pub power_toughness: (i32, i32),
     pub artifact_scaling: Option<ConstructArtifactScalingShape>,
 }
 
 /// Parser-owned semantic token definition carried through preparation into lowering.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub enum TokenDefinitionSpec {
     PriorCreated,
     Builtin(BuiltinTokenShape),

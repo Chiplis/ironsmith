@@ -71,15 +71,29 @@ const READINGS: &[Reading] = &[
         id: RuleId::new("hand-choice-then-shuffle-remainder"),
         head: HeadDiscriminator::Any,
         admits: |input| input.tokens.iter().any(|token| token.is_word("rest")),
-        read: |input| input.outcome(crate::activation_and_restrictions::choice_object_clauses::parse_hand_choice_then_shuffle_remainder(input.tokens)),
+        read: |input| {
+            input.outcome(crate::activation_and_restrictions::choice_object_clauses::parse_hand_choice_then_shuffle_remainder(input.tokens))
+        },
     },
     Reading {
         id: RuleId::new("return-coordinated-objects"),
         head: HeadDiscriminator::Any,
-        admits: |input| input.tokens.first().is_some_and(|token| token.is_word("return"))
-            && !super::super::lex_chain_helpers::has_authored_comma_then_surface_lexed(input.tokens),
-        read: |input| input.outcome(super::super::subject_verb_primitives::parse_sentence_return_multiple_targets(
-            super::super::SubjectVerbPrimitiveClause::new(input.tokens))),
+        admits: |input| {
+            input
+                .tokens
+                .first()
+                .is_some_and(|token| token.is_word("return"))
+                && !super::super::lex_chain_helpers::has_authored_comma_then_surface_lexed(
+                    input.tokens,
+                )
+        },
+        read: |input| {
+            input.outcome(
+                super::super::subject_verb_primitives::parse_sentence_return_multiple_targets(
+                    super::super::SubjectVerbPrimitiveClause::new(input.tokens),
+                ),
+            )
+        },
     },
     Reading {
         id: RuleId::new("sacrifice-it-next-end-step"),

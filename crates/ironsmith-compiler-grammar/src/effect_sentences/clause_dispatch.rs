@@ -1,5 +1,4 @@
 pub use self::become_clause::parse_become_clause;
-use crate::cards::builders::ForEachEffectAst;
 use self::helpers::{parse_controller_or_owner_of_target_subject, render_lower_words};
 use self::next_turn_cant::parse_next_turn_cant_clause;
 use super::super::activation_and_restrictions::{
@@ -64,9 +63,12 @@ use super::{
     parse_simple_gain_ability_clause, parse_simple_lose_ability_clause,
 };
 use crate::TagKey;
+use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{
-    CardTextError, ChooseOneModeAst, EffectAst, GrantedAbilityAst, PlayerAst, ReturnControllerAst,
-    SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TargetAst, PermanentStateActionAst, DamageActionAst, StatChangeActionAst, ControlActionAst, ObjectChoiceEffectAst, PermissionEffectAst,
+    CardTextError, ChooseOneModeAst, ControlActionAst, DamageActionAst, EffectAst,
+    GrantedAbilityAst, ObjectChoiceEffectAst, PermanentStateActionAst, PermissionEffectAst,
+    PlayerAst, ReturnControllerAst, StatChangeActionAst, SubjectAst, SubjectVerbActionAst,
+    SubjectVerbEffectAst, SubjectVerbRoleAst, TargetAst,
 };
 use crate::effect::{ChoiceCount, EventValueSpec, Until, Value};
 use crate::model::CompilerStaticAbilityCore as StaticAbility;
@@ -324,11 +326,11 @@ fn target_choice_excluded_controller(
     match chooser {
         clause_grammar::ChooseTargetChooserShape::AbilityController => Some(PlayerFilter::You),
         clause_grammar::ChooseTargetChooserShape::ItsController
-        | clause_grammar::ChooseTargetChooserShape::ThatOpponent => {
-            Some(PlayerFilter::ControllerOf(
-                crate::filter::ObjectRef::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into()),
-            ))
-        }
+        | clause_grammar::ChooseTargetChooserShape::ThatOpponent => Some(
+            PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(
+                (crate::tag::CompilerReferenceTag::It.bind()).into(),
+            )),
+        ),
         clause_grammar::ChooseTargetChooserShape::Opponent => Some(PlayerFilter::IteratedPlayer),
         clause_grammar::ChooseTargetChooserShape::Unresolved => None,
     }
@@ -693,7 +695,10 @@ pub fn parse_for_each_prevent_damage_clause(
     } else {
         vec![prevent_effect]
     };
-    Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachObject { filter, effects })))
+    Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachObject {
+        filter,
+        effects,
+    })))
 }
 
 pub fn parse_for_each_counter_group_removed_this_way_clause(
@@ -829,7 +834,9 @@ pub(crate) fn parse_get_pump_clause(
         let EffectAst::SubjectVerb(subject_verb) = &pump else {
             return Ok(None);
         };
-        let SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. }) = &subject_verb.action else {
+        let SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. }) =
+            &subject_verb.action
+        else {
             return Ok(None);
         };
         let grant = EffectAst::subject_verb_grant_abilities_to_target(
@@ -880,18 +887,20 @@ pub(crate) fn parse_get_pump_clause(
         let first = parse_get_pump_clause(subject_tokens, &first_tokens, full_tokens)?;
         let second = parse_get_pump_clause(subject_tokens, &second_tokens, full_tokens)?;
         if let (Some(first), Some(second)) = (first, second) {
-            return Ok(Some(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf {
-                modes: vec![
-                    ChooseOneModeAst {
-                        description: String::new(),
-                        effects: vec![first],
-                    },
-                    ChooseOneModeAst {
-                        description: String::new(),
-                        effects: vec![second],
-                    },
-                ],
-            })));
+            return Ok(Some(EffectAst::ObjectChoices(
+                ObjectChoiceEffectAst::ChooseOneOf {
+                    modes: vec![
+                        ChooseOneModeAst {
+                            description: String::new(),
+                            effects: vec![first],
+                        },
+                        ChooseOneModeAst {
+                            description: String::new(),
+                            effects: vec![second],
+                        },
+                    ],
+                },
+            )));
         }
     }
 
@@ -1272,12 +1281,22 @@ pub(crate) fn parse_get_pump_clause(
     };
     let authored_quantifier = if demonstrative_set_surface {
         Some(ironsmith_core::SetQuantifierSurface::Those)
-    } else if subject_tokens.first().is_some_and(|token| token.is_word("all")) {
+    } else if subject_tokens
+        .first()
+        .is_some_and(|token| token.is_word("all"))
+    {
         Some(ironsmith_core::SetQuantifierSurface::All)
-    } else if subject_tokens.first().is_some_and(|token| token.is_word("each"))
-        || subject_tokens.last().is_some_and(|token| token.is_word("each")) {
+    } else if subject_tokens
+        .first()
+        .is_some_and(|token| token.is_word("each"))
+        || subject_tokens
+            .last()
+            .is_some_and(|token| token.is_word("each"))
+    {
         Some(ironsmith_core::SetQuantifierSurface::Each)
-    } else { None };
+    } else {
+        None
+    };
     if let Some(authored_quantifier) = authored_quantifier
         && let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
             action:
@@ -1412,22 +1431,28 @@ fn lower_direct_clause_shape(
             ),
             2,
         ),
-        clause_grammar::DirectClauseShape::OnlyChosenCanAttack => EffectAst::subject_verb_cant_starting(
-            crate::effect::Restriction::attack(
-                ObjectFilter::creature().not_tagged(crate::tag::CompilerReferenceTag::It.bind()),
-            ),
-            Until::EndOfCombat,
-            crate::effect::RestrictionStart::LastAddedCombatPhase,
-            None,
-        ),
-        clause_grammar::DirectClauseShape::OnlyChosenCanBlock => EffectAst::subject_verb_cant_starting(
-            crate::effect::Restriction::block(
-                ObjectFilter::creature().not_tagged(crate::tag::CompilerReferenceTag::It.bind()),
-            ),
-            Until::EndOfCombat,
-            crate::effect::RestrictionStart::LastAddedCombatPhase,
-            None,
-        ),
+        clause_grammar::DirectClauseShape::OnlyChosenCanAttack => {
+            EffectAst::subject_verb_cant_starting(
+                crate::effect::Restriction::attack(
+                    ObjectFilter::creature()
+                        .not_tagged(crate::tag::CompilerReferenceTag::It.bind()),
+                ),
+                Until::EndOfCombat,
+                crate::effect::RestrictionStart::LastAddedCombatPhase,
+                None,
+            )
+        }
+        clause_grammar::DirectClauseShape::OnlyChosenCanBlock => {
+            EffectAst::subject_verb_cant_starting(
+                crate::effect::Restriction::block(
+                    ObjectFilter::creature()
+                        .not_tagged(crate::tag::CompilerReferenceTag::It.bind()),
+                ),
+                Until::EndOfCombat,
+                crate::effect::RestrictionStart::LastAddedCombatPhase,
+                None,
+            )
+        }
         clause_grammar::DirectClauseShape::CastNonlandTaggedThisWay => {
             let filter = ObjectFilter::nonland().in_zone(Zone::Exile).match_tagged(
                 crate::tag::CompilerReferenceTag::It.bind(),

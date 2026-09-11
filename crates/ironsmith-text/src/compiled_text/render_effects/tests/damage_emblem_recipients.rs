@@ -4,7 +4,8 @@ const TEXT: &str = "−7: Chandra deals 6 damage to each opponent. Each player d
 fn damage_emblem_recipients_excludes_controller_and_prevented_damage() {
     let definition =
         crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Chandra, Roaring Flame")
-            .supertypes(vec![Supertype::Legendary]).card_types(vec![CardType::Planeswalker])
+            .supertypes(vec![Supertype::Legendary])
+            .card_types(vec![CardType::Planeswalker])
             .parse_text(TEXT)
             .unwrap();
     let ability = definition
@@ -30,7 +31,12 @@ fn damage_emblem_recipients_excludes_controller_and_prevented_damage() {
         let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
         let mut ctx = crate::effects::EffectContext::new_default(source, alice);
         // Damage from an earlier action must not award an emblem to Alice.
-        crate::effects::execute_effect(&mut game, &Effect::deal_damage(1, ChooseSpec::SpecificPlayer(alice)), &mut ctx).unwrap();
+        crate::effects::execute_effect(
+            &mut game,
+            &Effect::deal_damage(1, ChooseSpec::SpecificPlayer(alice)),
+            &mut ctx,
+        )
+        .unwrap();
         if prevented > 0 {
             let prevent = Effect::new(crate::effects::PreventDamageEffect::new(
                 prevented,
@@ -46,10 +52,7 @@ fn damage_emblem_recipients_excludes_controller_and_prevented_damage() {
         }
         drop(ctx);
         assert_eq!(game.player(alice).unwrap().life, 19);
-        assert_eq!(
-            game.player(bob).unwrap().life,
-            14 + prevented
-        );
+        assert_eq!(game.player(bob).unwrap().life, 14 + prevented);
         assert_eq!(game.player(carol).unwrap().life, 14);
         let mut owners = game
             .command_zone
@@ -97,7 +100,8 @@ fn damage_emblem_recipients_excludes_controller_and_prevented_damage() {
 fn damage_emblem_recipients_renders_damage_condition_and_one_quote_pair() {
     let definition =
         crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Chandra, Roaring Flame")
-            .supertypes(vec![Supertype::Legendary]).card_types(vec![CardType::Planeswalker])
+            .supertypes(vec![Supertype::Legendary])
+            .card_types(vec![CardType::Planeswalker])
             .parse_text(TEXT)
             .unwrap();
     assert_eq!(

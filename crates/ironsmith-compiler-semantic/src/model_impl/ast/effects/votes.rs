@@ -2,8 +2,7 @@
 
 use super::*;
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum VoteEffectAst {
     BidLife {
         target: TargetAst,

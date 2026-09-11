@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { GameContext } from "../src/context/GameContext.shared";
 import { HoverProvider } from "../src/context/HoverContext";
 import { DragProvider } from "../src/context/DragContext";
+import { ObjectSelectionProvider } from "../src/context/ObjectSelectionContext";
 import { CombatArrowProvider } from "../src/context/CombatArrowContext";
 import { I18nProvider } from "../src/i18n/I18nContext";
 import { TooltipProvider } from "../src/components/ui/tooltip";
@@ -18,11 +19,11 @@ const context = {
   dispatch:async()=>{}, dispatchInBackground:async()=>{},
 };
 createRoot(document.getElementById("root")).render(
-  <I18nProvider><GameContext.Provider value={context}><HoverProvider><DragProvider><CombatArrowProvider><TooltipProvider>
+  <I18nProvider><GameContext.Provider value={context}><ObjectSelectionProvider><HoverProvider><DragProvider><CombatArrowProvider><TooltipProvider>
     <main style={{padding:40}}>
       <SelectObjectsDecision decision={decision} canAct layout="strip" inlineSubmit={false} />
       <div style={{height:350, marginTop:50}}><BattlefieldRow cards={cards} onInspect={()=>{}} activatableMap={new Map()} /></div>
       <button type="button">Outside decision</button>
     </main>
-  </TooltipProvider></CombatArrowProvider></DragProvider></HoverProvider></GameContext.Provider></I18nProvider>
+  </TooltipProvider></CombatArrowProvider></DragProvider></HoverProvider></ObjectSelectionProvider></GameContext.Provider></I18nProvider>
 );

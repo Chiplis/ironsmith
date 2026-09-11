@@ -22,19 +22,21 @@ use crate::cards::builders::{
     SubjectVerbRoleAst, TargetAst,
 };
 use crate::effect::Value;
-use crate::target::PlayerFilter;
 use crate::grammar::effects::triple_sequence_shapes as triple_grammar;
+use crate::grammar::effects::{
+    self as effect_grammar, generic_sequence_shapes as sequence_grammar,
+};
 use crate::lexer::LexedClause;
+use crate::target::PlayerFilter;
 use crate::util::{helper_tag_for_tokens, trim_commas};
 use crate::zone::Zone;
-use crate::grammar::effects::{self as effect_grammar, generic_sequence_shapes as sequence_grammar};
 
+use super::sequence_rules::generic_subject_verb_sequences::{
+    ordered_control_flow_programs, reference_linked_programs,
+};
 use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId};
 use crate::registry::{
     HeadDiscriminator, RegistryCandidate, RegistryRuleMetadata, resolve_registry_candidates,
-};
-use super::sequence_rules::generic_subject_verb_sequences::{
-    ordered_control_flow_programs, reference_linked_programs,
 };
 
 #[path = "pair_procedure/kinds.rs"]
@@ -137,32 +139,59 @@ const PAIR_SHAPES: &[Shape] = &[
         id: RuleId::new("top-zone-choice-complement"),
         head: HeadDiscriminator::words(&["target", "you"]),
         consumed: 2,
-        read: |sentences, idx| statements(sentences, idx, parse_top_zone_choice_complement(sentences, idx)),
+        read: |sentences, idx| {
+            statements(
+                sentences,
+                idx,
+                parse_top_zone_choice_complement(sentences, idx),
+            )
+        },
     },
     Shape {
         id: RuleId::new("participant-loot"),
         head: HeadDiscriminator::words(&["you"]),
         consumed: 2,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, reference_linked_programs::parse_controller_defending_loot_then_greatest_mana_value_followup(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, reference_linked_programs::parse_controller_defending_loot_then_greatest_mana_value_followup(sentences, sentence_idx))
+        },
     },
     Shape {
         id: RuleId::new("participant-secret-choice"),
         head: HeadDiscriminator::words(&["you"]),
         consumed: 2,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, reference_linked_programs::parse_participant_secret_object_choice_then_reveal_and_sacrifice(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, reference_linked_programs::parse_participant_secret_object_choice_then_reveal_and_sacrifice(sentences, sentence_idx))
+        },
     },
     Shape {
         id: RuleId::new("reciprocal-creature-control"),
         head: HeadDiscriminator::words(&["you", "untap"]),
         consumed: 3,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, reference_linked_programs::parse_reciprocal_creature_control_sequence(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(
+                sentences,
+                sentence_idx,
+                reference_linked_programs::parse_reciprocal_creature_control_sequence(
+                    sentences,
+                    sentence_idx,
+                ),
+            )
+        },
     },
     Shape {
         id: RuleId::new("same-controller-sacrifice-return"),
         head: HeadDiscriminator::words(&["choose"]),
         consumed: 3,
         read: |sentences, sentence_idx| {
-            if !((super::sequence_rules::sentence_words_contain(sentences, sentence_idx, &["controlled", "by", "the", "same", "player"]) || super::sequence_rules::sentence_words_contain(sentences, sentence_idx, &["controlled", "by", "same", "player"]))) {
+            if !(super::sequence_rules::sentence_words_contain(
+                sentences,
+                sentence_idx,
+                &["controlled", "by", "the", "same", "player"],
+            ) || super::sequence_rules::sentence_words_contain(
+                sentences,
+                sentence_idx,
+                &["controlled", "by", "same", "player"],
+            )) {
                 return ParseOutcome::NoMatch;
             }
             statements(sentences, sentence_idx, reference_linked_programs::parse_choose_same_controller_targets_then_sacrifice_one_return_other(sentences, sentence_idx))
@@ -173,10 +202,25 @@ const PAIR_SHAPES: &[Shape] = &[
         head: HeadDiscriminator::words(&["choose"]),
         consumed: 2,
         read: |sentences, sentence_idx| {
-            if !((super::sequence_rules::sentence_words_contain(sentences, sentence_idx, &["controlled", "by", "the", "same", "player"]) || super::sequence_rules::sentence_words_contain(sentences, sentence_idx, &["controlled", "by", "same", "player"]))) {
+            if !(super::sequence_rules::sentence_words_contain(
+                sentences,
+                sentence_idx,
+                &["controlled", "by", "the", "same", "player"],
+            ) || super::sequence_rules::sentence_words_contain(
+                sentences,
+                sentence_idx,
+                &["controlled", "by", "same", "player"],
+            )) {
                 return ParseOutcome::NoMatch;
             }
-            statements(sentences, sentence_idx, reference_linked_programs::parse_choose_same_controller_targets_then_sacrifice_one(sentences, sentence_idx))
+            statements(
+                sentences,
+                sentence_idx,
+                reference_linked_programs::parse_choose_same_controller_targets_then_sacrifice_one(
+                    sentences,
+                    sentence_idx,
+                ),
+            )
         },
     },
     Shape {
@@ -184,7 +228,15 @@ const PAIR_SHAPES: &[Shape] = &[
         head: HeadDiscriminator::words(&["choose"]),
         consumed: 2,
         read: |sentences, sentence_idx| {
-            if !((super::sequence_rules::sentence_words_contain(sentences, sentence_idx, &["do", "same"]) || super::sequence_rules::sentence_words_contain(sentences, sentence_idx, &["do", "the", "same"]))) {
+            if !(super::sequence_rules::sentence_words_contain(
+                sentences,
+                sentence_idx,
+                &["do", "same"],
+            ) || super::sequence_rules::sentence_words_contain(
+                sentences,
+                sentence_idx,
+                &["do", "the", "same"],
+            )) {
                 return ParseOutcome::NoMatch;
             }
             statements(sentences, sentence_idx, reference_linked_programs::parse_choose_then_do_same_for_filter_then_return_to_battlefield(sentences, sentence_idx))
@@ -195,7 +247,11 @@ const PAIR_SHAPES: &[Shape] = &[
         head: HeadDiscriminator::words(&["choose"]),
         consumed: 3,
         read: |sentences, sentence_idx| {
-            if !(super::sequence_rules::sentence_words_contain(sentences, sentence_idx, &["card", "name"])) {
+            if !(super::sequence_rules::sentence_words_contain(
+                sentences,
+                sentence_idx,
+                &["card", "name"],
+            )) {
                 return ParseOutcome::NoMatch;
             }
             statements(sentences, sentence_idx, ordered_control_flow_programs::parse_choose_name_reveal_top_matching_hand_rest_graveyard(sentences, sentence_idx))
@@ -206,7 +262,11 @@ const PAIR_SHAPES: &[Shape] = &[
         head: HeadDiscriminator::words(&["choose"]),
         consumed: 3,
         read: |sentences, sentence_idx| {
-            if !(super::sequence_rules::sentence_words_contain(sentences, sentence_idx, &["land", "or", "nonland"])) {
+            if !(super::sequence_rules::sentence_words_contain(
+                sentences,
+                sentence_idx,
+                &["land", "or", "nonland"],
+            )) {
                 return ParseOutcome::NoMatch;
             }
             statements(sentences, sentence_idx, ordered_control_flow_programs::parse_choose_land_or_nonland_then_consult_to_hand_bottom(sentences, sentence_idx))
@@ -216,7 +276,16 @@ const PAIR_SHAPES: &[Shape] = &[
         id: RuleId::new("directional-adjacent-control"),
         head: HeadDiscriminator::words(&["starting"]),
         consumed: 2,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, reference_linked_programs::parse_directional_adjacent_player_control(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(
+                sentences,
+                sentence_idx,
+                reference_linked_programs::parse_directional_adjacent_player_control(
+                    sentences,
+                    sentence_idx,
+                ),
+            )
+        },
     },
     Shape {
         id: RuleId::new("tagged-copy-retarget"),
@@ -226,141 +295,198 @@ const PAIR_SHAPES: &[Shape] = &[
             if !(super::sequence_rules::sentence_head_word_is(sentences, sentence_idx + 1, "the")) {
                 return ParseOutcome::NoMatch;
             }
-            statements(sentences, sentence_idx, reference_linked_programs::parse_for_each_tagged_copy_then_copy_targets_it(sentences, sentence_idx))
+            statements(
+                sentences,
+                sentence_idx,
+                reference_linked_programs::parse_for_each_tagged_copy_then_copy_targets_it(
+                    sentences,
+                    sentence_idx,
+                ),
+            )
         },
     },
     Shape {
         id: RuleId::new("draw-reveal-mana-value"),
         head: HeadDiscriminator::words(&["draw"]),
         consumed: 2,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, reference_linked_programs::parse_draw_reveal_then_triggering_creature_mana_value_result(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, reference_linked_programs::parse_draw_reveal_then_triggering_creature_mana_value_result(sentences, sentence_idx))
+        },
     },
     Shape {
         id: RuleId::new("mill-land-result-cast"),
         head: HeadDiscriminator::words(&["each"]),
         consumed: 3,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, ordered_control_flow_programs::parse_each_player_mill_then_land_result_then_cast_one_milled_spell(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, ordered_control_flow_programs::parse_each_player_mill_then_land_result_then_cast_one_milled_spell(sentences, sentence_idx))
+        },
     },
     Shape {
         id: RuleId::new("target-modifier-counter-instead-common-damage"),
         head: HeadDiscriminator::words(&["target"]),
         consumed: 3,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_target_modifier_counter_instead_then_common_damage(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_target_modifier_counter_instead_then_common_damage(sentences, sentence_idx))
+        },
     },
     Shape {
         id: RuleId::new("counter-spell-artifact-creature-battlefield-replacement"),
         head: HeadDiscriminator::words(&["counter"]),
         consumed: 2,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_counter_spell_then_artifact_or_creature_enters_under_your_control(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_counter_spell_then_artifact_or_creature_enters_under_your_control(sentences, sentence_idx))
+        },
     },
     Shape {
         id: RuleId::new("revealed-and-or-choice-destination-override"),
         head: HeadDiscriminator::words(&["reveal"]),
         consumed: 4,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::branching_selection_programs::parse_reveal_top_choose_and_or_hand_rest_bottom_with_destination_override(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::branching_selection_programs::parse_reveal_top_choose_and_or_hand_rest_bottom_with_destination_override(sentences, sentence_idx))
+        },
     },
     Shape {
         id: RuleId::new("looked-battlefield-grant-rest-bottom"),
         head: HeadDiscriminator::words(&["look", "reveal"]),
         consumed: 4,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::branching_selection_programs::parse_top_cards_move_then_grant_rest_bottom(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::branching_selection_programs::parse_top_cards_move_then_grant_rest_bottom(sentences, sentence_idx))
+        },
     },
     Shape {
         id: RuleId::new("look-reveal-one-or-instead-two-rest-bottom"),
         head: HeadDiscriminator::words(&["look"]),
         consumed: 4,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::branching_selection_programs::parse_look_reveal_one_or_instead_two_then_rest_bottom(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::branching_selection_programs::parse_look_reveal_one_or_instead_two_then_rest_bottom(sentences, sentence_idx))
+        },
     },
     Shape {
         id: RuleId::new("look-may-sacrifice-if-did-select-battlefield-rest-bottom"),
         head: HeadDiscriminator::words(&["look"]),
         consumed: 4,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::branching_selection_programs::parse_look_then_may_sacrifice_if_did_select_battlefield_rest_bottom(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::branching_selection_programs::parse_look_then_may_sacrifice_if_did_select_battlefield_rest_bottom(sentences, sentence_idx))
+        },
     },
     Shape {
         id: RuleId::new("look-may-action-result-branches-move-looked-card"),
         head: HeadDiscriminator::words(&["look"]),
         consumed: 4,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::branching_selection_programs::parse_look_then_may_action_if_did_or_did_not_move_looked_card(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::branching_selection_programs::parse_look_then_may_action_if_did_or_did_not_move_looked_card(sentences, sentence_idx))
+        },
     },
     Shape {
         id: RuleId::new("reveal-top-optional-battlefield-then-hand-rest-graveyard"),
         head: HeadDiscriminator::words(&["reveal"]),
         consumed: 4,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::branching_selection_programs::parse_reveal_top_optional_battlefield_then_hand_rest_graveyard(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::branching_selection_programs::parse_reveal_top_optional_battlefield_then_hand_rest_graveyard(sentences, sentence_idx))
+        },
     },
     Shape {
         id: RuleId::new("destroy-historical-blocker-reanimation"),
         head: HeadDiscriminator::words(&["destroy"]),
         consumed: 3,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, ordered_control_flow_programs::parse_destroy_historically_blocked_then_reanimate_from_historical_controller(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, ordered_control_flow_programs::parse_destroy_historically_blocked_then_reanimate_from_historical_controller(sentences, sentence_idx))
+        },
     },
     Shape {
         id: RuleId::new("destroy-for-each-destroyed-consult-exile-put-shuffle"),
         head: HeadDiscriminator::words(&["destroy"]),
         consumed: 3,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::parse_destroy_for_each_destroyed_consult_exile_put_shuffle(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::parse_destroy_for_each_destroyed_consult_exile_put_shuffle(sentences, sentence_idx))
+        },
     },
     Shape {
         id: RuleId::new("look-at-top-may-put-with-counter-rest-bottom"),
         head: HeadDiscriminator::words(&["look"]),
         consumed: 3,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_look_at_top_may_put_with_counter_then_rest_bottom(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_look_at_top_may_put_with_counter_then_rest_bottom(sentences, sentence_idx))
+        },
     },
     Shape {
         id: RuleId::new("look-at-top-partition-face-down-filtered-permission"),
         head: HeadDiscriminator::words(&["look"]),
         consumed: 3,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_look_at_top_partition_face_down_then_filtered_permission(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_look_at_top_partition_face_down_then_filtered_permission(sentences, sentence_idx))
+        },
     },
     Shape {
         id: RuleId::new("look-at-top-exile-match-and-rest-bottom-cast-exiled"),
         head: HeadDiscriminator::words(&["look"]),
         consumed: 3,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_look_at_top_exile_match_and_rest_bottom_then_cast_exiled(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_look_at_top_exile_match_and_rest_bottom_then_cast_exiled(sentences, sentence_idx))
+        },
     },
     Shape {
         id: RuleId::new("search-player-names-card-conditional-put-then-shuffle"),
         head: HeadDiscriminator::words(&["search"]),
         consumed: 3,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_search_then_player_names_card_conditional_put_then_shuffle(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_search_then_player_names_card_conditional_put_then_shuffle(sentences, sentence_idx))
+        },
     },
     Shape {
         id: RuleId::new("top-cards-one-hand-then-matching-to-zone-rest-graveyard"),
         head: HeadDiscriminator::words(&["look", "reveal"]),
         consumed: 3,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_top_cards_one_hand_then_matching_to_zone_rest_graveyard(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_top_cards_one_hand_then_matching_to_zone_rest_graveyard(sentences, sentence_idx))
+        },
     },
     Shape {
         id: RuleId::new("reveal-top-one-hand-gain-mana-value-rest-graveyard"),
         head: HeadDiscriminator::words(&["reveal"]),
         consumed: 3,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_reveal_top_one_hand_gain_mana_value_rest_graveyard(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_reveal_top_one_hand_gain_mana_value_rest_graveyard(sentences, sentence_idx))
+        },
     },
     Shape {
-        id: RuleId::new("top-cards-choose-for-each-filter-one-battlefield-others-hand-rest-graveyard"),
+        id: RuleId::new(
+            "top-cards-choose-for-each-filter-one-battlefield-others-hand-rest-graveyard",
+        ),
         head: HeadDiscriminator::words(&["look", "reveal"]),
         consumed: 3,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_top_cards_choose_for_each_filter_one_battlefield_others_hand_rest_graveyard(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_top_cards_choose_for_each_filter_one_battlefield_others_hand_rest_graveyard(sentences, sentence_idx))
+        },
     },
     Shape {
         id: RuleId::new("top-cards-for-each-card-type-put-matching-into-hand-rest-bottom"),
         head: HeadDiscriminator::words(&["reveal"]),
         consumed: 3,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_top_cards_for_each_card_type_put_matching_into_hand_rest_bottom(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_top_cards_for_each_card_type_put_matching_into_hand_rest_bottom(sentences, sentence_idx))
+        },
     },
     Shape {
-        id: RuleId::new("top-cards-for-each-card-type-among-spells-put-matching-into-hand-rest-bottom"),
+        id: RuleId::new(
+            "top-cards-for-each-card-type-among-spells-put-matching-into-hand-rest-bottom",
+        ),
         head: HeadDiscriminator::words(&["reveal"]),
         consumed: 3,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_top_cards_for_each_card_type_among_spells_put_matching_into_hand_rest_bottom(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::parse_top_cards_for_each_card_type_among_spells_put_matching_into_hand_rest_bottom(sentences, sentence_idx))
+        },
     },
     Shape {
         id: RuleId::new("iterative-library-procedure-sequence"),
         head: HeadDiscriminator::words(&["exile"]),
         consumed: 3,
         read: |sentences, sentence_idx| {
-            if !(super::sequence_rules::sentence_head_word_is(sentences, sentence_idx + 2, "repeat")) {
+            if !(super::sequence_rules::sentence_head_word_is(
+                sentences,
+                sentence_idx + 2,
+                "repeat",
+            )) {
                 return ParseOutcome::NoMatch;
             }
             statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::parse_iterative_library_procedure_sequence(sentences, sentence_idx))
@@ -368,28 +494,40 @@ const PAIR_SHAPES: &[Shape] = &[
     },
     Shape {
         id: RuleId::new("exile-face-down-pile-then-cloak-tapped"),
-        head: HeadDiscriminator::words(&["if", "target", "you", "that", "they", "exile", "look", "reveal"]),
+        head: HeadDiscriminator::words(&[
+            "if", "target", "you", "that", "they", "exile", "look", "reveal",
+        ]),
         consumed: 2,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_exile_face_down_pile_then_cloak(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_exile_face_down_pile_then_cloak(sentences, sentence_idx))
+        },
     },
     Shape {
         id: RuleId::new("each-player-shuffle-reveal-put-revealed-types-rest-bottom"),
         head: HeadDiscriminator::words(&["each"]),
         consumed: 2,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::parse_each_player_shuffle_reveal_then_put_revealed_types_bottom(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::parse_each_player_shuffle_reveal_then_put_revealed_types_bottom(sentences, sentence_idx))
+        },
     },
     Shape {
         id: RuleId::new("filtered-future-exile-then-return-next-end-step"),
         head: HeadDiscriminator::words(&["if"]),
         consumed: 2,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_filtered_future_exile_then_return_next_end_step(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_filtered_future_exile_then_return_next_end_step(sentences, sentence_idx))
+        },
     },
     Shape {
         id: RuleId::new("delayed-dies-exile-top-power-choose-play"),
         head: HeadDiscriminator::words(&["when"]),
         consumed: 2,
         read: |sentences, sentence_idx| {
-            if !(super::sequence_rules::sentence_head_is(sentences, sentence_idx, ("when", Some("that")))) {
+            if !(super::sequence_rules::sentence_head_is(
+                sentences,
+                sentence_idx,
+                ("when", Some("that")),
+            )) {
                 return ParseOutcome::NoMatch;
             }
             statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_delayed_dies_exile_top_power_choose_play(sentences, sentence_idx))
@@ -400,7 +538,11 @@ const PAIR_SHAPES: &[Shape] = &[
         head: HeadDiscriminator::words(&["choose"]),
         consumed: 2,
         read: |sentences, sentence_idx| {
-            if !(super::sequence_rules::sentence_words_contain(sentences, sentence_idx, &["card", "type"])) {
+            if !(super::sequence_rules::sentence_words_contain(
+                sentences,
+                sentence_idx,
+                &["card", "type"],
+            )) {
                 return ParseOutcome::NoMatch;
             }
             statements(sentences, sentence_idx, super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(sentences, sentence_idx))
@@ -410,109 +552,220 @@ const PAIR_SHAPES: &[Shape] = &[
         id: RuleId::new("copy-for-each-target"),
         head: HeadDiscriminator::Any,
         consumed: 2,
-        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_copy_for_each_target(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            reading(
+                sentences,
+                sentence_idx,
+                kinds::open_copy_for_each_target(sentences, sentence_idx),
+            )
+        },
     },
     Shape {
         id: RuleId::new("consult-grant-play"),
         head: HeadDiscriminator::words(&["target", "exile", "you", "that", "they"]),
         consumed: 2,
-        read: |sentences, sentence_idx| statements(sentences, sentence_idx, reference_linked_programs::parse_exile_until_match_grant_play_this_turn(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            statements(
+                sentences,
+                sentence_idx,
+                reference_linked_programs::parse_exile_until_match_grant_play_this_turn(
+                    sentences,
+                    sentence_idx,
+                ),
+            )
+        },
     },
     Shape {
         id: RuleId::new("flashback-grant"),
         head: HeadDiscriminator::words(&["target"]),
         consumed: 2,
-        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_flashback_grant(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            reading(
+                sentences,
+                sentence_idx,
+                kinds::open_flashback_grant(sentences, sentence_idx),
+            )
+        },
     },
     Shape {
         id: RuleId::new("chosen-creature-type"),
         head: HeadDiscriminator::Any,
         consumed: 2,
-        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_chosen_creature_type(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            reading(
+                sentences,
+                sentence_idx,
+                kinds::open_chosen_creature_type(sentences, sentence_idx),
+            )
+        },
     },
     Shape {
         id: RuleId::new("delayed-upkeep-payment"),
         head: HeadDiscriminator::Any,
         consumed: 2,
-        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_delayed_upkeep_payment(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            reading(
+                sentences,
+                sentence_idx,
+                kinds::open_delayed_upkeep_payment(sentences, sentence_idx),
+            )
+        },
     },
     Shape {
         id: RuleId::new("choose-then-rest"),
         head: HeadDiscriminator::words(&["choose", "each"]),
         consumed: 2,
-        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_choose_then_rest(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            reading(
+                sentences,
+                sentence_idx,
+                kinds::open_choose_then_rest(sentences, sentence_idx),
+            )
+        },
     },
     Shape {
         id: RuleId::new("target-chooses-cant-block"),
         head: HeadDiscriminator::words(&["target"]),
         consumed: 2,
-        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_target_chooses_cant_block(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            reading(
+                sentences,
+                sentence_idx,
+                kinds::open_target_chooses_cant_block(sentences, sentence_idx),
+            )
+        },
     },
     Shape {
         id: RuleId::new("copy-next-spell-retarget"),
         head: HeadDiscriminator::words(&["copy"]),
         consumed: 2,
-        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_copy_next_spell_retarget(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            reading(
+                sentences,
+                sentence_idx,
+                kinds::open_copy_next_spell_retarget(sentences, sentence_idx),
+            )
+        },
     },
     Shape {
         id: RuleId::new("destroy-then-search-shuffle"),
         head: HeadDiscriminator::words(&["destroy"]),
         consumed: 2,
-        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_destroy_then_search_shuffle(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            reading(
+                sentences,
+                sentence_idx,
+                kinds::open_destroy_then_search_shuffle(sentences, sentence_idx),
+            )
+        },
     },
     Shape {
         id: RuleId::new("search-two-disposition"),
         head: HeadDiscriminator::words(&["search"]),
         consumed: 3,
-        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_search_two_disposition(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            reading(
+                sentences,
+                sentence_idx,
+                kinds::open_search_two_disposition(sentences, sentence_idx),
+            )
+        },
     },
     Shape {
         id: RuleId::new("tempting-offer-copy"),
         head: HeadDiscriminator::words(&["choose", "tempting"]),
         consumed: 4,
-        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_tempting_offer_copy(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            reading(
+                sentences,
+                sentence_idx,
+                kinds::open_tempting_offer_copy(sentences, sentence_idx),
+            )
+        },
     },
     Shape {
         id: RuleId::new("history-counter-source"),
         head: HeadDiscriminator::words(&["put"]),
         consumed: 2,
-        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_history_counter_source(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            reading(
+                sentences,
+                sentence_idx,
+                kinds::open_history_counter_source(sentences, sentence_idx),
+            )
+        },
     },
     Shape {
         id: RuleId::new("history-counter-enchanted"),
         head: HeadDiscriminator::words(&["put"]),
         consumed: 2,
-        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_history_counter_enchanted(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            reading(
+                sentences,
+                sentence_idx,
+                kinds::open_history_counter_enchanted(sentences, sentence_idx),
+            )
+        },
     },
     Shape {
         id: RuleId::new("choose-phase-then-skip"),
         head: HeadDiscriminator::words(&["that", "the"]),
         consumed: 2,
-        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_choose_phase_then_skip(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            reading(
+                sentences,
+                sentence_idx,
+                kinds::open_choose_phase_then_skip(sentences, sentence_idx),
+            )
+        },
     },
     Shape {
         id: RuleId::new("each-player-pay-life-tokens"),
         head: HeadDiscriminator::words(&["starting"]),
         consumed: 3,
-        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_each_player_pay_life_tokens(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            reading(
+                sentences,
+                sentence_idx,
+                kinds::open_each_player_pay_life_tokens(sentences, sentence_idx),
+            )
+        },
     },
     Shape {
         id: RuleId::new("starting-each-player-optional-repeat"),
         head: HeadDiscriminator::words(&["starting"]),
         consumed: 2,
-        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_starting_each_player_optional_repeat(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            reading(
+                sentences,
+                sentence_idx,
+                kinds::open_starting_each_player_optional_repeat(sentences, sentence_idx),
+            )
+        },
     },
     Shape {
         id: RuleId::new("target-opponent-copy-retarget"),
         head: HeadDiscriminator::words(&["up"]),
         consumed: 2,
-        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_target_opponent_copy_retarget(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            reading(
+                sentences,
+                sentence_idx,
+                kinds::open_target_opponent_copy_retarget(sentences, sentence_idx),
+            )
+        },
     },
     Shape {
         id: RuleId::new("opponents-sacrifice-or-discard-damage"),
         head: HeadDiscriminator::words(&["each"]),
         consumed: 2,
-        read: |sentences, sentence_idx| reading(sentences, sentence_idx, kinds::open_opponents_sacrifice_or_discard_damage(sentences, sentence_idx)),
+        read: |sentences, sentence_idx| {
+            reading(
+                sentences,
+                sentence_idx,
+                kinds::open_opponents_sacrifice_or_discard_damage(sentences, sentence_idx),
+            )
+        },
     },
 ];
 
@@ -543,7 +796,11 @@ fn statements(
     sentence_idx: usize,
     read: Result<Option<Vec<EffectAst>>, CardTextError>,
 ) -> ParseOutcome<Pair> {
-    reading(sentences, sentence_idx, read.map(|effects| effects.map(Pair::FixedShape)))
+    reading(
+        sentences,
+        sentence_idx,
+        read.map(|effects| effects.map(Pair::FixedShape)),
+    )
 }
 
 /// How many completing sentences a pair still awaits once opened.
@@ -694,12 +951,17 @@ pub(super) fn finish(group: PairGroup) -> Vec<EffectAst> {
 /// Capture the pool before either move so the complement cannot accidentally
 /// include older cards in the graveyard.
 fn parse_top_zone_choice_complement(
-    sentences: &[SentenceInput], idx: usize,
+    sentences: &[SentenceInput],
+    idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     use crate::cards::builders::ObjectChoiceEffectAst;
     use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
-    let Some(first) = sentences.get(idx) else { return Ok(None); };
-    let Some(second) = sentences.get(idx + 1) else { return Ok(None); };
+    let Some(first) = sentences.get(idx) else {
+        return Ok(None);
+    };
+    let Some(second) = sentences.get(idx + 1) else {
+        return Ok(None);
+    };
     let words = crate::lexer::token_word_refs(first.lowered());
     let (chooser, head) = if words.starts_with(&["target", "opponent", "chooses"]) {
         (PlayerAst::TargetOpponent, 3)
@@ -707,34 +969,74 @@ fn parse_top_zone_choice_complement(
         (PlayerAst::Target, 3)
     } else if words.starts_with(&["you", "choose"]) {
         (PlayerAst::You, 2)
-    } else { return Ok(None); };
+    } else {
+        return Ok(None);
+    };
     let tail = &words[head..];
-    if tail.len() != 9 || tail[..4] != ["one", "of", "the", "top"]
-        || tail[5..] != ["cards", "of", "your", "graveyard"] { return Ok(None); }
-    let Some(amount) = crate::util::parse_number_word_u32(tail[4]) else { return Ok(None); };
+    if tail.len() != 9
+        || tail[..4] != ["one", "of", "the", "top"]
+        || tail[5..] != ["cards", "of", "your", "graveyard"]
+    {
+        return Ok(None);
+    }
+    let Some(amount) = crate::util::parse_number_word_u32(tail[4]) else {
+        return Ok(None);
+    };
     let followup = crate::lexer::token_word_refs(second.lowered());
-    if !crate::word_primitives::parse_any_sequence_complete(&followup, &[
-        &["exile", "that", "card", "and", "put", "the", "other", "one", "into", "your", "hand"],
-        &["exile", "that", "card", "and", "put", "the", "rest", "into", "your", "hand"],
-    ]) { return Ok(None); }
+    if !crate::word_primitives::parse_any_sequence_complete(
+        &followup,
+        &[
+            &[
+                "exile", "that", "card", "and", "put", "the", "other", "one", "into", "your",
+                "hand",
+            ],
+            &[
+                "exile", "that", "card", "and", "put", "the", "rest", "into", "your", "hand",
+            ],
+        ],
+    ) {
+        return Ok(None);
+    }
     let pool = helper_tag_for_tokens(first.lowered(), "ordered_zone_pool");
     let chosen = helper_tag_for_tokens(first.lowered(), "chosen_from_pool");
     let mut remainder = ObjectFilter::tagged(crate::tag::TagRef::of(pool.clone()));
     remainder.zone = Some(Zone::Graveyard);
     remainder.tagged_constraints.push(TaggedObjectConstraint {
-        tag: chosen.clone().into(), relation: TaggedOpbjectRelation::IsNotTaggedObject,
+        tag: chosen.clone().into(),
+        relation: TaggedOpbjectRelation::IsNotTaggedObject,
     });
     Ok(Some(vec![
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone {
-            filter: ObjectFilter::default().in_zone(Zone::Graveyard).owned_by(PlayerFilter::You),
-            count: ChoiceCount::exactly(amount as usize), count_value: None,
-            player: PlayerAst::You, tag: crate::tag::TagRef::of(pool.clone()),
+            filter: ObjectFilter::default()
+                .in_zone(Zone::Graveyard)
+                .owned_by(PlayerFilter::You),
+            count: ChoiceCount::exactly(amount as usize),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: crate::tag::TagRef::of(pool.clone()),
         }),
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
-            filter: ObjectFilter::tagged(crate::tag::TagRef::of(pool)), count: ChoiceCount::exactly(1),
-            player: chooser, tag: crate::tag::TagRef::of(chosen.clone()), zone: Zone::Graveyard,
+            filter: ObjectFilter::tagged(crate::tag::TagRef::of(pool)),
+            count: ChoiceCount::exactly(1),
+            player: chooser,
+            tag: crate::tag::TagRef::of(chosen.clone()),
+            zone: Zone::Graveyard,
         }),
-        EffectAst::subject_verb_move_to_zone(TargetAst::Tagged(crate::tag::TagRef::of(chosen), None), Zone::Exile, false, ReturnControllerAst::Preserve, false, None),
-        EffectAst::subject_verb_move_to_zone(TargetAst::Object(remainder, None, None), Zone::Hand, false, ReturnControllerAst::Preserve, false, None),
+        EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(crate::tag::TagRef::of(chosen), None),
+            Zone::Exile,
+            false,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
+        ),
+        EffectAst::subject_verb_move_to_zone(
+            TargetAst::Object(remainder, None, None),
+            Zone::Hand,
+            false,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
+        ),
     ]))
 }

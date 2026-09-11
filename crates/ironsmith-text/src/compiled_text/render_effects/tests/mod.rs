@@ -114,8 +114,8 @@ mod token_copy_followup_surfaces;
 mod token_definition_cleanup;
 mod trailing_unless;
 
-mod counter_placement_condition;
 mod copied_end_step_ability;
+mod counter_placement_condition;
 mod search_shuffle_event;
 
 mod conditional_quoted_grant;
@@ -129,8 +129,8 @@ mod revealed_hand_cast;
 mod same_name_exile_investigate;
 
 mod aggregate_choice_complement;
-mod leading_duration_quoted_grant;
 mod extraction_hand_draw;
+mod leading_duration_quoted_grant;
 
 mod hand_choice_reveal;
 
@@ -214,8 +214,8 @@ mod kicked_damage_replacement;
 
 mod opponent_target_copy;
 
-mod per_opponent_mill_payment;
 mod chosen_permanent_exile_search;
+mod per_opponent_mill_payment;
 
 mod conditional_draw_fallback;
 
@@ -241,11 +241,11 @@ mod processed_entry_counters;
 
 mod self_subtype_defender;
 
-mod revealed_land_modifier;
+mod greatest_power_discount;
 mod returned_aura_ability;
+mod revealed_land_modifier;
 mod shared_type_copy;
 mod source_power_combat_gate;
-mod greatest_power_discount;
 
 mod sticker_target_modifier;
 
@@ -255,8 +255,8 @@ mod base_plus_entry_counters;
 
 mod conditional_attacker_bonus;
 mod counter_gated_combat_prevention;
-mod milled_card_source_copy;
 mod destroyed_artifact_damage;
+mod milled_card_source_copy;
 
 mod subtype_attack_group;
 

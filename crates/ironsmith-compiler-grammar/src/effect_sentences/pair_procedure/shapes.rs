@@ -3,25 +3,28 @@
 
 #![allow(unused_imports)]
 
-use crate::cards::builders::ForEachEffectAst;
 use super::super::dispatch_entry::SentenceInput;
 use super::super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_copy_for_each_target_sentence;
 use super::super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::target_opponent_filter;
-use crate::cards::builders::{
-    CardTextError, ChoiceCount, ChooseOneModeAst, EffectAst, IfResultPredicate, ObjectFilter,
-    PlayerAst, PredicateAst, ReturnControllerAst, SubjectVerbActionAst, SubjectVerbEffectAst,
-    SubjectVerbRoleAst, TargetAst, LibraryActionAst, ZoneMoveActionAst, TokenActionAst, ObjectChoiceEffectAst, ConditionalEffectAst, PermissionEffectAst, SourcePredicateAst,
-};
-use crate::effect::Value;
-use crate::target::PlayerFilter;
-use crate::grammar::effects::triple_sequence_shapes as triple_grammar;
-use crate::lexer::LexedClause;
-use crate::util::{helper_tag_for_tokens, trim_commas};
-use crate::zone::Zone;
-use crate::grammar::effects::{self as effect_grammar, generic_sequence_shapes as sequence_grammar};
 use super::super::sequence_rules::generic_subject_verb_sequences::{
     ordered_control_flow_programs, reference_linked_programs,
 };
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::{
+    CardTextError, ChoiceCount, ChooseOneModeAst, ConditionalEffectAst, EffectAst,
+    IfResultPredicate, LibraryActionAst, ObjectChoiceEffectAst, ObjectFilter, PermissionEffectAst,
+    PlayerAst, PredicateAst, ReturnControllerAst, SourcePredicateAst, SubjectVerbActionAst,
+    SubjectVerbEffectAst, SubjectVerbRoleAst, TargetAst, TokenActionAst, ZoneMoveActionAst,
+};
+use crate::effect::Value;
+use crate::grammar::effects::triple_sequence_shapes as triple_grammar;
+use crate::grammar::effects::{
+    self as effect_grammar, generic_sequence_shapes as sequence_grammar,
+};
+use crate::lexer::LexedClause;
+use crate::target::PlayerFilter;
+use crate::util::{helper_tag_for_tokens, trim_commas};
+use crate::zone::Zone;
 
 pub(super) fn destroy_all_then_search_shuffle(
     first: &SentenceInput,
@@ -33,15 +36,14 @@ pub(super) fn destroy_all_then_search_shuffle(
         return Ok(None);
     };
     if !matches!(
-        effect_grammar::followup_shapes::parse_library_shuffle_followup_shape(
-            second.lowered(),
-        ),
+        effect_grammar::followup_shapes::parse_library_shuffle_followup_shape(second.lowered(),),
         Some(effect_grammar::followup_shapes::LibraryShuffleFollowupShape::ThatPlayer)
     ) {
         return Ok(None);
     }
 
-    let destroy_effects = crate::effect_sentences::parse_effect_sentence_lexed(destroy_clause.tokens())?;
+    let destroy_effects =
+        crate::effect_sentences::parse_effect_sentence_lexed(destroy_clause.tokens())?;
     let [
         destroy @ EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { .. }),
@@ -103,7 +105,6 @@ pub(super) fn destroy_all_then_search_shuffle(
         ),
     ]))
 }
-
 
 /// "Search your library for two cards." with its disposition and shuffle sentences, read together.
 pub(super) fn search_two_disposition_then_shuffle(
@@ -204,7 +205,10 @@ pub(super) fn search_two_disposition_then_shuffle(
         EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
             tag: crate::tag::TagRef::of(searched_tag),
             effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-                predicate: PredicateAst::TaggedMatches(crate::tag::TagRef::of(hand_tag), iterated_is_hand_card),
+                predicate: PredicateAst::TaggedMatches(
+                    crate::tag::TagRef::of(hand_tag),
+                    iterated_is_hand_card,
+                ),
                 if_true: Vec::new(),
                 if_false: vec![EffectAst::subject_verb_move_to_zone(
                     TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
@@ -224,13 +228,15 @@ pub(super) fn search_two_disposition_then_shuffle(
     ]))
 }
 
-
 /// The tempting offer: the targeted spell, each opponent's optional copy, and
 /// your copy once plus once per opponent who copied.
 pub(super) fn tempting_offer_copy_effects() -> Vec<EffectAst> {
     let stack_spell_filter = ObjectFilter {
         zone: Some(Zone::Stack),
-        card_types: vec![crate::types::CardType::Instant, crate::types::CardType::Sorcery],
+        card_types: vec![
+            crate::types::CardType::Instant,
+            crate::types::CardType::Sorcery,
+        ],
         has_mana_cost: true,
         ..Default::default()
     };
@@ -302,20 +308,24 @@ pub(super) fn history_counter_source(
         return Ok(None);
     }
 
-    let true_effects = crate::effect_sentences::parse_effect_sentence_lexed(&first.lowered()[..if_index])?;
+    let true_effects =
+        crate::effect_sentences::parse_effect_sentence_lexed(&first.lowered()[..if_index])?;
     let false_effects = crate::effect_sentences::parse_effect_sentence_lexed(
         second.lowered().get(1..).unwrap_or_default(),
     )?;
     if true_effects.is_empty() || false_effects.is_empty() {
         return Ok(None);
     }
-    Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-        predicate: PredicateAst::Source(SourcePredicateAst::SourceBlockedOrBecameBlockedSinceLastUpkeep),
-        if_true: true_effects,
-        if_false: false_effects,
-    })]))
+    Ok(Some(vec![EffectAst::Conditionals(
+        ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::Source(
+                SourcePredicateAst::SourceBlockedOrBecameBlockedSinceLastUpkeep,
+            ),
+            if_true: true_effects,
+            if_false: false_effects,
+        },
+    )]))
 }
-
 
 pub(super) fn history_counter_enchanted(
     first: &SentenceInput,
@@ -342,29 +352,28 @@ pub(super) fn history_counter_enchanted(
         return Ok(None);
     }
 
-    let true_effects = crate::effect_sentences::parse_effect_sentence_lexed(&first.lowered()[..if_index])?;
+    let true_effects =
+        crate::effect_sentences::parse_effect_sentence_lexed(&first.lowered()[..if_index])?;
     let false_effects = crate::effect_sentences::parse_effect_sentence_lexed(
         second.lowered().get(1..).unwrap_or_default(),
     )?;
     if true_effects.is_empty() || false_effects.is_empty() {
         return Ok(None);
     }
-    Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-        predicate: PredicateAst::EnchantedPermanentAttackedOrBlockedSinceLastUpkeep,
-        if_true: true_effects,
-        if_false: false_effects,
-    })]))
+    Ok(Some(vec![EffectAst::Conditionals(
+        ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::EnchantedPermanentAttackedOrBlockedSinceLastUpkeep,
+            if_true: true_effects,
+            if_false: false_effects,
+        },
+    )]))
 }
-
 
 pub(super) fn choose_phase_then_skip(
     first: &SentenceInput,
     second: &SentenceInput,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if !effect_grammar::parse_choose_then_skip_phase_shape(
-        first.lowered(),
-        second.lowered(),
-    ) {
+    if !effect_grammar::parse_choose_then_skip_phase_shape(first.lowered(), second.lowered()) {
         return Ok(None);
     }
 
@@ -378,10 +387,14 @@ pub(super) fn choose_phase_then_skip(
             ],
         ),
         EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-            predicate: PredicateAst::Source(SourcePredicateAst::SourceChosenOption("draw step".to_string())),
+            predicate: PredicateAst::Source(SourcePredicateAst::SourceChosenOption(
+                "draw step".to_string(),
+            )),
             if_true: vec![EffectAst::subject_verb_skip_draw_step(PlayerAst::That)],
             if_false: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-                predicate: PredicateAst::Source(SourcePredicateAst::SourceChosenOption("main phase".to_string())),
+                predicate: PredicateAst::Source(SourcePredicateAst::SourceChosenOption(
+                    "main phase".to_string(),
+                )),
                 if_true: vec![EffectAst::subject_verb_skip_main_phases_this_turn(
                     PlayerAst::That,
                 )],
@@ -392,7 +405,6 @@ pub(super) fn choose_phase_then_skip(
         }),
     ]))
 }
-
 
 pub(super) fn target_opponent_copy_retarget(
     first: &SentenceInput,
@@ -430,7 +442,6 @@ pub(super) fn target_opponent_copy_retarget(
     ]))
 }
 
-
 pub(super) fn starting_each_player_optional_repeat(
     first: &SentenceInput,
     second: &SentenceInput,
@@ -442,8 +453,11 @@ pub(super) fn starting_each_player_optional_repeat(
         return Ok(None);
     };
 
-    let Ok(parsed) = crate::effect_sentences::parse_effect_sentence_lexed(shape.each_player_clause_tokens)
-        .or_else(|_| crate::effect_sentences::parse_effect_chain(shape.each_player_clause_tokens))
+    let Ok(parsed) =
+        crate::effect_sentences::parse_effect_sentence_lexed(shape.each_player_clause_tokens)
+            .or_else(|_| {
+                crate::effect_sentences::parse_effect_chain(shape.each_player_clause_tokens)
+            })
     else {
         return Ok(None);
     };
@@ -457,22 +471,24 @@ pub(super) fn starting_each_player_optional_repeat(
     };
     if !matches!(
         per_player_effects.as_slice(),
-        [EffectAst::Permissions(PermissionEffectAst::May { .. }) | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. })]
+        [EffectAst::Permissions(PermissionEffectAst::May { .. })
+            | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. })]
     ) {
         return Ok(None);
     }
 
-    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
-        effects: vec![EffectAst::SourceSentence {
-            effects: parsed,
-            leading_then: false,
-            starting_with_controller: true,
-        }],
-        continue_effect_index: 0,
-        continue_predicate: IfResultPredicate::Did,
-    })]))
+    Ok(Some(vec![EffectAst::ForEach(
+        ForEachEffectAst::RepeatProcess {
+            effects: vec![EffectAst::SourceSentence {
+                effects: parsed,
+                leading_then: false,
+                starting_with_controller: true,
+            }],
+            continue_effect_index: 0,
+            continue_predicate: IfResultPredicate::Did,
+        },
+    )]))
 }
-
 
 pub(super) fn each_player_pay_life_tokens(
     first: &SentenceInput,
@@ -529,7 +545,6 @@ pub(super) fn each_player_pay_life_tokens(
         }),
     ]))
 }
-
 
 pub(super) fn opponents_sacrifice_or_discard_damage(
     first: &SentenceInput,
@@ -622,4 +637,3 @@ pub(super) fn opponents_sacrifice_or_discard_damage(
 
     Ok(Some(vec![offer, consequence]))
 }
-

@@ -1,4 +1,4 @@
-use crate::cards::builders::{PlayerAst, PredicateAst, PlayerPredicateAst, TurnEventPredicateAst};
+use crate::cards::builders::{PlayerAst, PlayerPredicateAst, PredicateAst, TurnEventPredicateAst};
 use winnow::combinator::{alt, eof};
 use winnow::prelude::*;
 
@@ -303,7 +303,9 @@ fn parse_source_entered_this_turn_condition(tokens: &[OwnedLexToken]) -> Option<
             source_words,
         )?)
     };
-    Some(PredicateAst::TurnEvents(TurnEventPredicateAst::ObjectEnteredBattlefieldThisTurn(filter)))
+    Some(PredicateAst::TurnEvents(
+        TurnEventPredicateAst::ObjectEnteredBattlefieldThisTurn(filter),
+    ))
 }
 
 fn parse_activate_only_timing_marker(tokens: &[OwnedLexToken]) -> Option<ActivateOnlyTimingMarker> {

@@ -405,7 +405,9 @@ mod tests {
             .execute(&mut game, &mut ctx)
             .expect("effect should resolve");
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
-        let tagged = ctx.get_tagged("triggering").expect("departure LKI remains available");
+        let tagged = ctx
+            .get_tagged("triggering")
+            .expect("departure LKI remains available");
         assert_eq!(tagged.object_id, creature_id);
         assert_eq!(tagged.power, Some(1));
         assert_ne!(tagged.object_id, battlefield_id);

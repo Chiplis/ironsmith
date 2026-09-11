@@ -1,6 +1,6 @@
-use crate::cards::builders::PermissionEffectAst;
-use crate::cards::builders::ConditionalEffectAst;
 use super::*;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::PermissionEffectAst;
 use crate::grammar::trigger_subjects as trigger_subject_grammar;
 use crate::grammar::trigger_subjects::SpellOwnerSurface;
 
@@ -818,7 +818,10 @@ pub fn parse_spell_activity_trigger(
         // An ordinal before the X-qualified spell noun counts matching X
         // spells. Keep this distinct from a trailing overall cast-count gate.
         if exact_spells_this_turn == Some(1)
-            && crate::word_primitives::sequence_occurs(&clause_words, &["your", "first", "spell", "with"])
+            && crate::word_primitives::sequence_occurs(
+                &clause_words,
+                &["your", "first", "spell", "with"],
+            )
             && let Some(filter) = filter.as_mut().filter(|filter| filter.has_x_in_cost)
         {
             filter.first_spell_cast_each_turn = true;
@@ -1033,10 +1036,15 @@ pub fn effect_creates_any_token(effect: &EffectAst) -> bool {
         EffectAst::SubjectVerb(subject_verb)
             if matches!(
                 &subject_verb.action,
-                crate::model::ast::SubjectVerbActionAst::KeywordActions(crate::model::ast::KeywordActionAst::Populate { .. })
-                    | crate::model::ast::SubjectVerbActionAst::Tokens(crate::model::ast::TokenActionAst::CreateTokenWithMods { .. })
-                    | crate::model::ast::SubjectVerbActionAst::Tokens(crate::model::ast::TokenActionAst::CreateTokenCopy { .. })
-                    | crate::model::ast::SubjectVerbActionAst::Tokens(crate::model::ast::TokenActionAst::CreateTokenCopyFromSource { .. })
+                crate::model::ast::SubjectVerbActionAst::KeywordActions(
+                    crate::model::ast::KeywordActionAst::Populate { .. }
+                ) | crate::model::ast::SubjectVerbActionAst::Tokens(
+                    crate::model::ast::TokenActionAst::CreateTokenWithMods { .. }
+                ) | crate::model::ast::SubjectVerbActionAst::Tokens(
+                    crate::model::ast::TokenActionAst::CreateTokenCopy { .. }
+                ) | crate::model::ast::SubjectVerbActionAst::Tokens(
+                    crate::model::ast::TokenActionAst::CreateTokenCopyFromSource { .. }
+                )
             ) =>
         {
             true
@@ -1077,12 +1085,14 @@ pub fn created_token_info_from_effect(
 )> {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-            crate::model::ast::SubjectVerbActionAst::Tokens(crate::model::ast::TokenActionAst::CreateTokenWithMods {
-                name,
-                definition,
-                player,
-                ..
-            }) => Some((name.clone(), definition.clone(), *player)),
+            crate::model::ast::SubjectVerbActionAst::Tokens(
+                crate::model::ast::TokenActionAst::CreateTokenWithMods {
+                    name,
+                    definition,
+                    player,
+                    ..
+                },
+            ) => Some((name.clone(), definition.clone(), *player)),
             _ => {
                 let mut found = None;
                 for_each_nested_effects(effect, true, |nested| {
@@ -1126,7 +1136,9 @@ pub fn controller_filter_for_token_player(player: PlayerAst) -> Option<PlayerFil
         PlayerAst::That => Some(PlayerFilter::IteratedPlayer),
         PlayerAst::Defending => Some(PlayerFilter::Defending),
         PlayerAst::TriggeringSourceController => Some(PlayerFilter::ControllerOf(
-            crate::filter::ObjectRef::tagged(crate::tag::CompilerReferenceTag::TriggeringSource.bind()),
+            crate::filter::ObjectRef::tagged(
+                crate::tag::CompilerReferenceTag::TriggeringSource.bind(),
+            ),
         )),
         _ => None,
     }
@@ -1383,12 +1395,14 @@ fn append_token_granted_ability_to_effect(
     };
     match effect {
         EffectAst::SubjectVerb(subject_verb) => {
-            let crate::model::ast::SubjectVerbActionAst::Tokens(crate::model::ast::TokenActionAst::CreateTokenWithMods {
-                definition,
-                granted_abilities,
-                ability_presentation,
-                ..
-            }) = &mut subject_verb.action
+            let crate::model::ast::SubjectVerbActionAst::Tokens(
+                crate::model::ast::TokenActionAst::CreateTokenWithMods {
+                    definition,
+                    granted_abilities,
+                    ability_presentation,
+                    ..
+                },
+            ) = &mut subject_verb.action
             else {
                 return Ok(false);
             };
@@ -1475,14 +1489,16 @@ pub fn append_token_reminder_to_effect(
     };
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
-            crate::model::ast::SubjectVerbActionAst::KeywordActions(crate::model::ast::KeywordActionAst::Populate {
-                has_haste,
-                exile_at_end_of_combat,
-                sacrifice_at_next_end_step,
-                exile_at_next_end_step,
-                next_end_step_player,
-                ..
-            }) => {
+            crate::model::ast::SubjectVerbActionAst::KeywordActions(
+                crate::model::ast::KeywordActionAst::Populate {
+                    has_haste,
+                    exile_at_end_of_combat,
+                    sacrifice_at_next_end_step,
+                    exile_at_next_end_step,
+                    next_end_step_player,
+                    ..
+                },
+            ) => {
                 if reminder.has_haste {
                     *has_haste = true;
                     return true;
@@ -1503,22 +1519,26 @@ pub fn append_token_reminder_to_effect(
                 }
                 false
             }
-            crate::model::ast::SubjectVerbActionAst::Tokens(crate::model::ast::TokenActionAst::CreateTokenCopy {
-                has_haste,
-                exile_at_end_of_combat,
-                sacrifice_at_next_end_step,
-                exile_at_next_end_step,
-                next_end_step_player,
-                ..
-            })
-            | crate::model::ast::SubjectVerbActionAst::Tokens(crate::model::ast::TokenActionAst::CreateTokenCopyFromSource {
-                has_haste,
-                exile_at_end_of_combat,
-                sacrifice_at_next_end_step,
-                exile_at_next_end_step,
-                next_end_step_player,
-                ..
-            }) => {
+            crate::model::ast::SubjectVerbActionAst::Tokens(
+                crate::model::ast::TokenActionAst::CreateTokenCopy {
+                    has_haste,
+                    exile_at_end_of_combat,
+                    sacrifice_at_next_end_step,
+                    exile_at_next_end_step,
+                    next_end_step_player,
+                    ..
+                },
+            )
+            | crate::model::ast::SubjectVerbActionAst::Tokens(
+                crate::model::ast::TokenActionAst::CreateTokenCopyFromSource {
+                    has_haste,
+                    exile_at_end_of_combat,
+                    sacrifice_at_next_end_step,
+                    exile_at_next_end_step,
+                    next_end_step_player,
+                    ..
+                },
+            ) => {
                 if reminder.has_haste {
                     *has_haste = true;
                     return true;
@@ -1539,17 +1559,19 @@ pub fn append_token_reminder_to_effect(
                     || *exile_at_next_end_step
                     || *exile_at_end_of_combat
             }
-            crate::model::ast::SubjectVerbActionAst::Tokens(crate::model::ast::TokenActionAst::CreateTokenWithMods {
-                definition,
-                dynamic_power_toughness,
-                exile_at_end_of_combat,
-                sacrifice_at_end_of_combat,
-                sacrifice_at_next_end_step,
-                exile_at_next_end_step,
-                next_end_step_player,
-                ability_presentation: create_ability_presentation,
-                ..
-            }) => {
+            crate::model::ast::SubjectVerbActionAst::Tokens(
+                crate::model::ast::TokenActionAst::CreateTokenWithMods {
+                    definition,
+                    dynamic_power_toughness,
+                    exile_at_end_of_combat,
+                    sacrifice_at_end_of_combat,
+                    sacrifice_at_next_end_step,
+                    exile_at_next_end_step,
+                    next_end_step_player,
+                    ability_presentation: create_ability_presentation,
+                    ..
+                },
+            ) => {
                 if let Some((power, toughness)) = &reminder.dynamic_power_toughness {
                     *dynamic_power_toughness = Some((power.clone(), toughness.clone()));
                     return true;
@@ -1868,7 +1890,9 @@ mod typed_trigger_subject_migration_tests {
         assert_eq!(
             filter.tagged_constraints[0],
             crate::filter::TaggedObjectConstraint {
-                tag: crate::tag::CompilerReferenceTag::ChosenObjects.bind().into(),
+                tag: crate::tag::CompilerReferenceTag::ChosenObjects
+                    .bind()
+                    .into(),
                 relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
             }
         );

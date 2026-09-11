@@ -489,7 +489,8 @@ pub struct ReplacementEffectManager {
     until_end_of_turn_effects: std::collections::HashSet<ReplacementEffectId>,
 
     /// Resolved replacements ending at a player's actual next turn start.
-    until_next_turn_effects: std::collections::HashMap<ReplacementEffectId, (PlayerId, u32, Option<u32>)>,
+    until_next_turn_effects:
+        std::collections::HashMap<ReplacementEffectId, (PlayerId, u32, Option<u32>)>,
 
     /// Next effect ID to assign
     next_id: u64,
@@ -715,7 +716,8 @@ impl ReplacementEffectManager {
         created_turn: u32,
     ) -> ReplacementEffectId {
         let id = self.add_resolution_effect(effect);
-        self.until_next_turn_effects.insert(id, (player, created_turn, None));
+        self.until_next_turn_effects
+            .insert(id, (player, created_turn, None));
         id
     }
 
@@ -729,14 +731,17 @@ impl ReplacementEffectManager {
 
     /// Called after the next active players are chosen and before their turn begins.
     pub fn expire_at_turn_start(&mut self, turn: u32, active_players: &[PlayerId]) {
-        let expired: Vec<_> = self.until_next_turn_effects.iter()
+        let expired: Vec<_> = self
+            .until_next_turn_effects
+            .iter()
             .filter_map(|(id, (player, created_turn, departure_boundary))| {
                 let expired = departure_boundary.map_or(
                     turn > *created_turn && active_players.contains(player),
                     |boundary| turn >= boundary,
                 );
                 expired.then_some(*id)
-            }).collect();
+            })
+            .collect();
         for id in expired {
             self.remove_effect(id);
         }

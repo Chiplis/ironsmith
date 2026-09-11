@@ -234,7 +234,11 @@ pub fn compiler_granted_abilities_ast_to_object_abilities(
         if let GrantedAbilityAst::KeywordAction(action) = ability
             && let KeywordAction::Vanishing(amount) = action.as_ref()
         {
-            expanded.extend(ironsmith_compiler_semantic::keyword_abilities::vanishing_granted_abilities(*amount));
+            expanded.extend(
+                ironsmith_compiler_semantic::keyword_abilities::vanishing_granted_abilities(
+                    *amount,
+                ),
+            );
         } else {
             expanded.push(compiler_granted_ability_ast_to_object_ability(ability)?);
         }

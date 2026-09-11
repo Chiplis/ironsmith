@@ -67,9 +67,9 @@ use naming_and_reference::*;
 use player_relations::*;
 pub(super) use predicate_phrases::*;
 pub use predicate_phrases::{
-    parse_intrinsic_source_counter_condition,
     WinnowAtom as PermissionAtom, WinnowCaptureKind as PermissionCaptureKind,
     WinnowCaptureRole as PermissionCaptureRole, WinnowSequence as PermissionSequence,
+    parse_intrinsic_source_counter_condition,
     parse_source_keyword_condition_filter as parse_source_keyword_condition_filter_lexed,
 };
 

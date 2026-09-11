@@ -35,12 +35,16 @@ impl EffectExecutor for LookAtObjectsEffect {
         let referenced = self.filter.tagged_constraints.iter().find(|constraint| {
             constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
         });
-        let candidate_ids = if let Some(reference) = referenced.filter(|_| self.filter.zone.is_none()) {
-            ctx.get_tagged_all(&reference.tag)
-                .into_iter().flatten().map(|snapshot| snapshot.object_id).collect()
-        } else {
-            candidate_ids_for_filter(game, &self.filter)
-        };
+        let candidate_ids =
+            if let Some(reference) = referenced.filter(|_| self.filter.zone.is_none()) {
+                ctx.get_tagged_all(&reference.tag)
+                    .into_iter()
+                    .flatten()
+                    .map(|snapshot| snapshot.object_id)
+                    .collect()
+            } else {
+                candidate_ids_for_filter(game, &self.filter)
+            };
         let mut viewed = Vec::new();
         for id in candidate_ids {
             let Some(object) = game.object(id) else {
@@ -69,9 +73,14 @@ impl EffectExecutor for LookAtObjectsEffect {
             for viewer in &viewers {
                 for (zone, cards) in &groups {
                     let view_ctx = ViewCardsContext::new(
-                        *viewer, subject, Some(ctx.source), *zone, description.clone(),
+                        *viewer,
+                        subject,
+                        Some(ctx.source),
+                        *zone,
+                        description.clone(),
                     );
-                    ctx.decision_maker.view_cards(game, *viewer, cards, &view_ctx);
+                    ctx.decision_maker
+                        .view_cards(game, *viewer, cards, &view_ctx);
                 }
             }
         }

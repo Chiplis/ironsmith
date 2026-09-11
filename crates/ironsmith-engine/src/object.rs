@@ -497,7 +497,8 @@ pub struct Object {
     /// Permission constraints captured before the card leaves its casting zone.
     /// The grant itself expires on that zone change, but its cost rules apply
     /// to the proposed spell through total-cost calculation and payment.
-    pub cast_play_from_constraints: Option<Box<(ObjectId, Zone, crate::grant_registry::PlayFromConstraints)>>,
+    pub cast_play_from_constraints:
+        Option<Box<(ObjectId, Zone, crate::grant_registry::PlayFromConstraints)>>,
     /// True if this split card can be cast fused from hand.
     pub has_fuse: bool,
     /// Optional costs (kicker, buyback, etc.)
@@ -2497,7 +2498,8 @@ mod tests {
     #[test]
     fn spell_copy_does_not_inherit_snow_mana_payment() {
         let card = CardBuilder::new(CardId::new(), "Snow-paid Spell")
-            .card_types(vec![CardType::Creature]).build();
+            .card_types(vec![CardType::Creature])
+            .build();
         let alice = PlayerId::from_index(0);
         let mut source = Object::from_card(ObjectId::from_raw(1), &card, alice, Zone::Stack);
         source.snow_mana_spent_to_cast.green = 2;
@@ -2512,20 +2514,42 @@ mod tests {
     fn snow_payment_survives_resolution_but_not_a_later_zone_instance() {
         let mut game = crate::game_state::GameState::new(vec!["Alice".into()], 20);
         let alice = PlayerId::from_index(0);
-        let card = CardBuilder::new(CardId::new(), "Snow-paid Creature").card_types(vec![CardType::Creature]).build();
+        let card = CardBuilder::new(CardId::new(), "Snow-paid Creature")
+            .card_types(vec![CardType::Creature])
+            .build();
         for resolves in [false, true] {
             let spell = game.create_object_from_card(&card, alice, Zone::Stack);
-            game.object_mut(spell).unwrap().snow_mana_spent_to_cast.green = 1;
+            game.object_mut(spell)
+                .unwrap()
+                .snow_mana_spent_to_cast
+                .green = 1;
             let current = if resolves {
-                let entered = game.move_object_by_effect(spell, Zone::Battlefield).unwrap();
-                assert_eq!(game.object(entered).unwrap().snow_mana_spent_to_cast.green, 1);
+                let entered = game
+                    .move_object_by_effect(spell, Zone::Battlefield)
+                    .unwrap();
+                assert_eq!(
+                    game.object(entered).unwrap().snow_mana_spent_to_cast.green,
+                    1
+                );
                 entered
-            } else { spell };
-            let graveyard = game.move_object_by_effect(current, Zone::Graveyard).unwrap();
-            assert_eq!(game.object(graveyard).unwrap().snow_mana_spent_to_cast.total(), 0);
+            } else {
+                spell
+            };
+            let graveyard = game
+                .move_object_by_effect(current, Zone::Graveyard)
+                .unwrap();
+            assert_eq!(
+                game.object(graveyard)
+                    .unwrap()
+                    .snow_mana_spent_to_cast
+                    .total(),
+                0
+            );
             let recast = game.move_object_by_effect(graveyard, Zone::Stack).unwrap();
-            assert_eq!(game.object(recast).unwrap().snow_mana_spent_to_cast.total(), 0);
+            assert_eq!(
+                game.object(recast).unwrap().snow_mana_spent_to_cast.total(),
+                0
+            );
         }
     }
-
 }

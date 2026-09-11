@@ -38,9 +38,9 @@ use io::*;
 pub(crate) use legal_actions::activation_timing_allows;
 #[allow(unused_imports)]
 use legal_actions::*;
-pub(crate) use mana::{can_pay_mana_cost_with_available_sources, AvailableManaSource};
 #[allow(unused_imports)]
 use mana::*;
+pub(crate) use mana::{AvailableManaSource, can_pay_mana_cost_with_available_sources};
 #[allow(unused_imports)]
 use perf::*;
 #[allow(unused_imports)]

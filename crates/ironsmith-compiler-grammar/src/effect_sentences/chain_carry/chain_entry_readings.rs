@@ -6,8 +6,8 @@
 //! `chain_carry`; every reading runs, two different readings of one input are an
 //! ambiguity error.
 
-use crate::cards::builders::PermissionEffectAst;
 use super::*;
+use crate::cards::builders::PermissionEffectAst;
 use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId, RuleMatch};
 use crate::registry::{
     HeadDiscriminator, RegistryCandidate, RegistryRuleMetadata, resolve_registry_candidates,
@@ -280,10 +280,12 @@ fn read_optional_library_placement(
         let placement_tokens =
             grammar::strip_lexed_suffix_phrase(stripped, &["instead"]).unwrap_or(stripped);
         if let Some(effect) = parse_simple_that_creature_owner_library_placement(placement_tokens) {
-            return Ok(Some(vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
-                player,
-                effects: vec![effect],
-            })]));
+            return Ok(Some(vec![EffectAst::Permissions(
+                PermissionEffectAst::MayByPlayer {
+                    player,
+                    effects: vec![effect],
+                },
+            )]));
         }
     }
     Ok(None)

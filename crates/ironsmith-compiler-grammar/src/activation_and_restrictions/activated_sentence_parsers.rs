@@ -274,8 +274,8 @@ pub fn parse_activation_condition_lexed(
 
 #[cfg(test)]
 mod tests {
-    use crate::cards::builders::SourcePredicateAst;
     use super::*;
+    use crate::cards::builders::SourcePredicateAst;
     use crate::lexer::lex_line;
 
     fn lex(text: &str) -> Vec<OwnedLexToken> {
@@ -305,7 +305,9 @@ mod tests {
         assert_eq!(details.timing, ActivationTiming::OncePerTurn);
         assert_eq!(
             details.condition,
-            Some(PredicateAst::Source(SourcePredicateAst::SourceAttackedThisTurn))
+            Some(PredicateAst::Source(
+                SourcePredicateAst::SourceAttackedThisTurn
+            ))
         );
         assert!(!details.once_per_turn_after_other_restrictions);
     }

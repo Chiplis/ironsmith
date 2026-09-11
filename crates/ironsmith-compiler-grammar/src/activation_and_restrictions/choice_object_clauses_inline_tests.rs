@@ -324,7 +324,10 @@ fn typed_choice_sequences_preserve_resolution_choice_ast() {
         .expect("expected choose-then-library sequence");
     assert!(matches!(
         put_on_top.as_slice(),
-        [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { .. }), _]
+        [
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { .. }),
+            _
+        ]
     ));
 }
 
@@ -347,7 +350,10 @@ fn typed_choice_become_and_battlefield_sequences_build_existing_ast() {
             .expect("expected choose-then-battlefield sequence");
     assert!(matches!(
         put_onto_battlefield.as_slice(),
-        [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { .. }), _]
+        [
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { .. }),
+            _
+        ]
     ));
 }
 
@@ -367,12 +373,23 @@ fn parse_cant_restriction_clause_supports_that_player_cant_cast_spells() {
 
 #[test]
 fn chosen_opponent_relative_permanent_count_preserves_comparison() {
-    for (noun, card_type) in [("lands", CardType::Land), ("creatures", CardType::Creature), ("artifacts", CardType::Artifact)] {
-        let tokens = tokenize_line(&format!("Choose an opponent who controls more {noun} than you."), 0);
-        let (chooser, filter, random, previous) = parse_you_choose_player_clause(&tokens).unwrap().unwrap();
+    for (noun, card_type) in [
+        ("lands", CardType::Land),
+        ("creatures", CardType::Creature),
+        ("artifacts", CardType::Artifact),
+    ] {
+        let tokens = tokenize_line(
+            &format!("Choose an opponent who controls more {noun} than you."),
+            0,
+        );
+        let (chooser, filter, random, previous) =
+            parse_you_choose_player_clause(&tokens).unwrap().unwrap();
         assert_eq!(chooser, PlayerAst::You);
-        assert!(!random); assert_eq!(previous, 0);
-        let PlayerFilter::OpponentWithMoreControlledObjectsThan { player, filter } = filter else { panic!("relative opponent filter"); };
+        assert!(!random);
+        assert_eq!(previous, 0);
+        let PlayerFilter::OpponentWithMoreControlledObjectsThan { player, filter } = filter else {
+            panic!("relative opponent filter");
+        };
         assert_eq!(*player, PlayerFilter::You);
         assert_eq!(filter.card_types, vec![card_type]);
     }

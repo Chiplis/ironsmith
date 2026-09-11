@@ -3806,7 +3806,10 @@ impl GameState {
     }
 
     pub(crate) fn mark_continuous_state_dirty(&self) {
-        let counter = &self.runtime_cache.work_counters.continuous_global_invalidations;
+        let counter = &self
+            .runtime_cache
+            .work_counters
+            .continuous_global_invalidations;
         counter.set(counter.get().saturating_add(1));
         self.runtime_cache.payment_restriction_presence.set(None);
         self.runtime_cache.continuous_context_revision.set(
@@ -3838,7 +3841,10 @@ impl GameState {
     fn mark_object_characteristics_dirty(&mut self, id: ObjectId) {
         self.object_store.changes.record(id);
         self.object_store.render_changes.record(id);
-        let counter = &self.runtime_cache.work_counters.continuous_local_invalidations;
+        let counter = &self
+            .runtime_cache
+            .work_counters
+            .continuous_local_invalidations;
         counter.set(counter.get().saturating_add(1));
         let revision = self.bump_mutation_revision();
         self.runtime_cache
@@ -3907,11 +3913,25 @@ impl GameState {
 
     /// Broad derived-view invalidation; object-local changes use the journal.
     pub fn derived_view_revision(&self) -> (u64, u64) {
-        (self.continuous_context_revision(), self.effect_store.continuous_effects.revision())
+        (
+            self.continuous_context_revision(),
+            self.effect_store.continuous_effects.revision(),
+        )
     }
 
-    pub fn zone_view_identity(&self) -> (crate::incremental::ChangeCursor, (crate::incremental::ChangeCursor, crate::incremental::ChangeCursor)) {
-        (self.zone_view_changes.cursor(), self.effect_store.grant_registry.view_identity())
+    pub fn zone_view_identity(
+        &self,
+    ) -> (
+        crate::incremental::ChangeCursor,
+        (
+            crate::incremental::ChangeCursor,
+            crate::incremental::ChangeCursor,
+        ),
+    ) {
+        (
+            self.zone_view_changes.cursor(),
+            self.effect_store.grant_registry.view_identity(),
+        )
     }
 
     pub fn object_changes_since(
@@ -3925,7 +3945,10 @@ impl GameState {
         self.object_store.render_changes.cursor()
     }
 
-    pub fn render_changes_since(&self, cursor: &crate::incremental::ChangeCursor) -> Option<Vec<ObjectId>> {
+    pub fn render_changes_since(
+        &self,
+        cursor: &crate::incremental::ChangeCursor,
+    ) -> Option<Vec<ObjectId>> {
         self.object_store.render_changes.since(cursor)
     }
 
@@ -3953,7 +3976,9 @@ impl GameState {
             .bump_static_ability_regens();
     }
 
-    pub(crate) fn sba_candidate_cache(&self) -> &RefCell<Box<crate::rules::state_based::SbaCandidateCache>> {
+    pub(crate) fn sba_candidate_cache(
+        &self,
+    ) -> &RefCell<Box<crate::rules::state_based::SbaCandidateCache>> {
         &self.runtime_cache.sba_candidates
     }
 
@@ -4470,15 +4495,21 @@ impl GameState {
                     self.players[index].library = localized_after.into();
                 } else {
                     let mut rng = ChaCha12Rng::seed_from_u64(seed);
-                    self.players[index].library.with_vec_mut(|ids| ids.shuffle(&mut rng));
+                    self.players[index]
+                        .library
+                        .with_vec_mut(|ids| ids.shuffle(&mut rng));
                 }
             } else {
                 let mut rng = ChaCha12Rng::seed_from_u64(seed);
-                self.players[index].library.with_vec_mut(|ids| ids.shuffle(&mut rng));
+                self.players[index]
+                    .library
+                    .with_vec_mut(|ids| ids.shuffle(&mut rng));
             }
         } else {
             let mut rng = ChaCha12Rng::seed_from_u64(seed);
-            self.players[index].library.with_vec_mut(|ids| ids.shuffle(&mut rng));
+            self.players[index]
+                .library
+                .with_vec_mut(|ids| ids.shuffle(&mut rng));
         }
         let after_order = self.players[index].library.to_vec();
         if before_order.last() != after_order.last() {
@@ -4829,13 +4860,20 @@ impl GameState {
 
     /// End existing goad effects without preventing a later effect from goading again.
     pub fn clear_goad(&mut self, creature: ObjectId) {
-        if !self.object(creature).is_some_and(|object| object.zone == Zone::Battlefield) {
+        if !self
+            .object(creature)
+            .is_some_and(|object| object.zone == Zone::Battlefield)
+        {
             return;
         }
-        self.effect_store.goad_effects.retain(|effect| effect.creature != creature);
+        self.effect_store
+            .goad_effects
+            .retain(|effect| effect.creature != creature);
         self.effect_store.continuous_effects.advance_timestamp();
         let timestamp = self.effect_store.continuous_effects.current_timestamp();
-        self.effect_store.goad_cleared_at.insert(creature, timestamp);
+        self.effect_store
+            .goad_cleared_at
+            .insert(creature, timestamp);
     }
 
     pub fn add_goad_effect(
@@ -5247,10 +5285,10 @@ impl GameState {
 
     pub fn cleanup_restrictions_end_of_combat(&mut self) {
         let before = self.effect_store.restriction_effects.len();
-        self.effect_store
-            .restriction_effects
-            .retain(|effect| effect.starts_in_added_combat.is_some()
-                || !matches!(effect.duration, crate::effect::Until::EndOfCombat));
+        self.effect_store.restriction_effects.retain(|effect| {
+            effect.starts_in_added_combat.is_some()
+                || !matches!(effect.duration, crate::effect::Until::EndOfCombat)
+        });
         if self.effect_store.restriction_effects.len() != before {
             self.update_cant_effects();
         }

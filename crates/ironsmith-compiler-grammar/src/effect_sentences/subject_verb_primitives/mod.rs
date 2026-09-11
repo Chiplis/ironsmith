@@ -40,9 +40,9 @@ use super::{
     parse_target_player_exiles_creature_and_graveyard_sentence,
 };
 use crate::cards::builders::{
-    CardTextError, ClashOpponentAst, EffectAst, IfResultPredicate, PlayerAst, PredicateAst,
-    ReturnControllerAst, SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst,
-    SubjectVerbRoleAst, TagKey, TargetAst, TextSpan, ConditionalEffectAst,
+    CardTextError, ClashOpponentAst, ConditionalEffectAst, EffectAst, IfResultPredicate, PlayerAst,
+    PredicateAst, ReturnControllerAst, SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst,
+    SubjectVerbRoleAst, TagKey, TargetAst, TextSpan,
 };
 use crate::effect::{ChoiceCount, Until, Value};
 use crate::recognition::RuleId;
@@ -141,11 +141,16 @@ pub fn parse_if_any_tagged_cards_share_card_type_with_triggering_spell(
     });
     let if_true = parse_effect_chain_inner(shape.effect_tokens)?;
 
-    Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-        predicate: PredicateAst::TaggedMatches(crate::tag::CompilerReferenceTag::It.bind(), filter),
-        if_true,
-        if_false: Vec::new(),
-    })]))
+    Ok(Some(vec![EffectAst::Conditionals(
+        ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::TaggedMatches(
+                crate::tag::CompilerReferenceTag::It.bind(),
+                filter,
+            ),
+            if_true,
+            if_false: Vec::new(),
+        },
+    )]))
 }
 
 #[path = "choice_damage_family.rs"]

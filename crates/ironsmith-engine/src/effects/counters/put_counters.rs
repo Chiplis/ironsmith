@@ -138,7 +138,11 @@ impl EffectExecutor for PutCountersEffect {
                 assigned_count
             } else {
                 process_put_counters_with_event(
-                    game, target_id, self.counter_type, assigned_count, ctx.cause.clone(),
+                    game,
+                    target_id,
+                    self.counter_type,
+                    assigned_count,
+                    ctx.cause.clone(),
                 )
             };
             if final_count == 0 {

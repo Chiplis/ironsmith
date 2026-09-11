@@ -191,7 +191,10 @@ pub(super) fn predicate_matches_with_context(
         let mut positive = surface.clone();
         positive.negated = false;
         return !predicate_matches_with_context(
-            &EffectPredicate::PriorEffectResult(positive), outcome, game, ctx,
+            &EffectPredicate::PriorEffectResult(positive),
+            outcome,
+            game,
+            ctx,
         );
     }
     if surface.action == crate::effect::PriorEffectAction::Drawn
@@ -200,13 +203,20 @@ pub(super) fn predicate_matches_with_context(
     {
         let player = match surface.actor {
             crate::effect::PriorEffectResultActor::You => Some(ctx.controller),
-            crate::effect::PriorEffectResultActor::ThatPlayer => match ctx.iteration.iterated_player { Some(player) => Some(player), None => return false },
+            crate::effect::PriorEffectResultActor::ThatPlayer => {
+                match ctx.iteration.iterated_player {
+                    Some(player) => Some(player),
+                    None => return false,
+                }
+            }
             crate::effect::PriorEffectResultActor::Passive => None,
             crate::effect::PriorEffectResultActor::It => return false,
         };
-        let drawn: u32 = outcome.events_of_type::<crate::events::CardsDrawnEvent>()
+        let drawn: u32 = outcome
+            .events_of_type::<crate::events::CardsDrawnEvent>()
             .filter(|event| player.is_none_or(|player| event.player == player))
-            .map(|event| event.amount()).sum();
+            .map(|event| event.amount())
+            .sum();
         return drawn >= surface.required_count.unwrap_or(1);
     }
     if surface.filter == crate::target::ObjectFilter::default()
@@ -294,7 +304,9 @@ impl EffectExecutor for IfEffect {
 
         if matches!(
             self.predicate,
-            EffectPredicate::Happened | EffectPredicate::DidNotHappen | EffectPredicate::SearchedLibrary
+            EffectPredicate::Happened
+                | EffectPredicate::DidNotHappen
+                | EffectPredicate::SearchedLibrary
         ) && (self.per_player_result
             || effect_list_mentions_iterated_player(&self.then)
             || effect_list_mentions_iterated_player(&self.else_))
@@ -305,9 +317,15 @@ impl EffectExecutor for IfEffect {
                 })
         {
             let mut outcomes = Vec::new();
-            let searched_players = outcome.events.iter().filter_map(|event| {
-                event.downcast::<crate::events::SearchLibraryEvent>().map(|event| event.player)
-            }).collect::<Vec<_>>();
+            let searched_players = outcome
+                .events
+                .iter()
+                .filter_map(|event| {
+                    event
+                        .downcast::<crate::events::SearchLibraryEvent>()
+                        .map(|event| event.player)
+                })
+                .collect::<Vec<_>>();
             for (player_id, count) in player_counts {
                 let predicate_matches = match self.predicate {
                     EffectPredicate::Happened => count > 0,
@@ -584,25 +602,48 @@ mod tests {
             (vec![], true),
             (vec![crate::types::CardType::Land], true),
             (vec![crate::types::CardType::Creature], false),
-            (vec![crate::types::CardType::Land, crate::types::CardType::Creature], false),
+            (
+                vec![
+                    crate::types::CardType::Land,
+                    crate::types::CardType::Creature,
+                ],
+                false,
+            ),
         ] {
-            let memories = types.iter().enumerate().map(|(i, ty)| {
-                let id = crate::ids::ObjectId::from_raw(1000 + i as u64);
-                crate::effect::OutcomeObjectMemory {
-                    object_id: id, stable_id: crate::ids::StableId::from(id),
-                    name: "Revealed Probe".into(), controller: alice, owner: alice,
-                    zone: crate::zone::Zone::Library, power: None, toughness: None,
-                    mana_value: 1, card_types: vec![*ty], colors: crate::color::ColorSet::default(),
-                    subtypes: vec![], is_token: false,
-                }
-            }).collect();
-            let outcome = EffectOutcome::count(types.len() as i32).with_affected_object_memory(memories);
+            let memories = types
+                .iter()
+                .enumerate()
+                .map(|(i, ty)| {
+                    let id = crate::ids::ObjectId::from_raw(1000 + i as u64);
+                    crate::effect::OutcomeObjectMemory {
+                        object_id: id,
+                        stable_id: crate::ids::StableId::from(id),
+                        name: "Revealed Probe".into(),
+                        controller: alice,
+                        owner: alice,
+                        zone: crate::zone::Zone::Library,
+                        power: None,
+                        toughness: None,
+                        mana_value: 1,
+                        card_types: vec![*ty],
+                        colors: crate::color::ColorSet::default(),
+                        subtypes: vec![],
+                        is_token: false,
+                    }
+                })
+                .collect();
+            let outcome =
+                EffectOutcome::count(types.len() as i32).with_affected_object_memory(memories);
             assert_eq!(predicate.evaluate_outcome(&outcome), expected);
-            assert_eq!(predicate_matches_with_context(&predicate, &outcome, &game, &ctx), expected);
+            assert_eq!(
+                predicate_matches_with_context(&predicate, &outcome, &game, &ctx),
+                expected
+            );
             ctx.store_outcome(EffectId(0), outcome);
             let life = game.player(alice).unwrap().life;
             IfEffect::if_then(EffectId(0), predicate.clone(), vec![Effect::gain_life(1)])
-                .execute(&mut game, &mut ctx).unwrap();
+                .execute(&mut game, &mut ctx)
+                .unwrap();
             assert_eq!(game.player(alice).unwrap().life, life + i32::from(expected));
         }
     }

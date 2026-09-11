@@ -120,4 +120,7 @@ mod tests;
 
 #[path = "power/core.rs"]
 mod core_programs;
-pub use core_programs::{parse_base_power_or_toughness_clause_shape, parse_base_power_clause_shape, parse_base_power_toughness_clause_shape};
+pub use core_programs::{
+    parse_base_power_clause_shape, parse_base_power_or_toughness_clause_shape,
+    parse_base_power_toughness_clause_shape,
+};

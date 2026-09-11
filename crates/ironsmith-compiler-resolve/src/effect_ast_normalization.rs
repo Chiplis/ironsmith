@@ -1,8 +1,12 @@
-use ironsmith_compiler_semantic::model::ForEachEffectAst;
 use crate::cards::builders::{
-    EffectAst, PredicateAst, SubjectVerbActionAst, SubjectVerbEffectAst, TargetAst, CounterActionAst, GrantActionAst, LibraryActionAst, CharacteristicActionAst, ZoneMoveActionAst, RevealLookActionAst, LifeResourceActionAst, ChoiceActionAst, DamageActionAst, StatChangeActionAst, DelayedEffectAst, ObjectChoiceEffectAst, VoteEffectAst, ConditionalEffectAst, PermissionEffectAst,
+    CharacteristicActionAst, ChoiceActionAst, ConditionalEffectAst, CounterActionAst,
+    DamageActionAst, DelayedEffectAst, EffectAst, GrantActionAst, LibraryActionAst,
+    LifeResourceActionAst, ObjectChoiceEffectAst, PermissionEffectAst, PredicateAst,
+    RevealLookActionAst, StatChangeActionAst, SubjectVerbActionAst, SubjectVerbEffectAst,
+    TargetAst, VoteEffectAst, ZoneMoveActionAst,
 };
 use crate::effect::Value;
+use ironsmith_compiler_semantic::model::ForEachEffectAst;
 use ironsmith_core::ValueSurfaceHint;
 
 fn source_counter_removal(effect: &EffectAst) -> Option<crate::object::CounterType> {
@@ -33,9 +37,16 @@ fn bind_damage_amount_to_removed_counter_count(
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect {
         let amount = match action {
             SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount, .. })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { amount, .. })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { amount, .. })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. }) => Some(amount),
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
+                amount,
+                ..
+            })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage {
+                amount, ..
+            })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. }) => {
+                Some(amount)
+            }
             _ => None,
         };
         if let Some(amount) = amount
@@ -125,7 +136,9 @@ fn typed_where_x_binding(effect: &EffectAst) -> Option<Value> {
     let EffectAst::SubjectVerb(subject_verb) = effect else {
         return None;
     };
-    let SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { count, .. }) = &subject_verb.action else {
+    let SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { count, .. }) =
+        &subject_verb.action
+    else {
         return None;
     };
     let Value::SurfaceHinted { value, hints } = count else {
@@ -199,18 +212,25 @@ fn bind_typed_where_x_references(effects: &mut [EffectAst], inherited: Option<Va
                 bind_typed_where_x_references(if_false, binding.clone());
             }
             EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects })
-            | EffectAst::Conditionals(ConditionalEffectAst::TrailingUnless { predicate, effects }) => {
+            | EffectAst::Conditionals(ConditionalEffectAst::TrailingUnless {
+                predicate,
+                effects,
+            }) => {
                 if let Some(replacement) = binding.as_ref() {
                     replace_bound_x_in_predicate(predicate, replacement);
                 }
                 bind_typed_where_x_references(effects, binding.clone());
             }
-            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes }) | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
                 for mode in modes {
                     bind_typed_where_x_references(&mut mode.effects, binding.clone());
                 }
             }
-            EffectAst::Conditionals(ConditionalEffectAst::IfEffectDidNotHappen { effect, otherwise }) => {
+            EffectAst::Conditionals(ConditionalEffectAst::IfEffectDidNotHappen {
+                effect,
+                otherwise,
+            }) => {
                 bind_typed_where_x_references(
                     std::slice::from_mut(effect.as_mut()),
                     binding.clone(),
@@ -218,7 +238,9 @@ fn bind_typed_where_x_references(effects: &mut [EffectAst], inherited: Option<Va
                 bind_typed_where_x_references(otherwise, binding.clone());
             }
             EffectAst::Conditionals(ConditionalEffectAst::IfEffectResult {
-                effect, if_true, ..
+                effect,
+                if_true,
+                ..
             }) => {
                 bind_typed_where_x_references(
                     std::slice::from_mut(effect.as_mut()),
@@ -226,10 +248,12 @@ fn bind_typed_where_x_references(effects: &mut [EffectAst], inherited: Option<Va
                 );
                 bind_typed_where_x_references(if_true, binding.clone());
             }
-            EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => bind_typed_where_x_references(
-                std::slice::from_mut(effect.as_mut()),
-                binding.clone(),
-            ),
+            EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => {
+                bind_typed_where_x_references(
+                    std::slice::from_mut(effect.as_mut()),
+                    binding.clone(),
+                )
+            }
             _ => super::effect_ast_traversal::for_each_nested_effects_mut(effect, true, |nested| {
                 bind_typed_where_x_references(nested, binding.clone())
             }),
@@ -355,7 +379,9 @@ fn bind_consult_remainder_to_revealed_collection(effects: &mut [EffectAst]) {
 fn bind_choice_remainder_to_choice_domain(effects: &mut [EffectAst]) {
     for index in 1..effects.len() {
         let (before, after) = effects.split_at_mut(index);
-        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, tag, .. }) = &before[index - 1] else {
+        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, tag, .. }) =
+            &before[index - 1]
+        else {
             continue;
         };
         let EffectAst::SubjectVerb(subject_verb) = &mut after[0] else {
@@ -444,7 +470,11 @@ fn bind_until_next_turn_permissions_to_prior_exiled_collection(effects: &mut [Ef
 
     fn rebind_unresolved_permissions(effect: &mut EffectAst, exiled_tag: &crate::tag::TagKey) {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilYourNextTurn { tag, .. }),
+            action:
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilYourNextTurn {
+                    tag,
+                    ..
+                }),
             ..
         }) = effect
             && (tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
@@ -527,7 +557,9 @@ fn single_subtype_choice_family(effect: &EffectAst) -> Option<crate::types::Subt
             single_subtype_choice_family(effect)
         }
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType { family, .. }) => Some(*family),
+            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType {
+                family, ..
+            }) => Some(*family),
             _ => None,
         },
         _ => None,
@@ -626,7 +658,9 @@ fn all_players_return_all_filter_mut(
             };
             match effect {
                 EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
-                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield { filter, .. }) => Some(filter),
+                    SubjectVerbActionAst::ZoneMoves(
+                        ZoneMoveActionAst::ReturnAllToBattlefield { filter, .. },
+                    ) => Some(filter),
                     _ => None,
                 },
                 _ => None,
@@ -669,7 +703,9 @@ fn quantified_player_choice_effects_mut(effect: &mut EffectAst) -> Option<&mut V
     match effect {
         EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })
         | EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })
-        | EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { effects, .. }) => Some(effects),
+        | EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { effects, .. }) => {
+            Some(effects)
+        }
         EffectAst::SourceSentence { effects, .. } => {
             let [effect] = effects.as_mut_slice() else {
                 return None;
@@ -691,7 +727,8 @@ fn retag_quantified_choice_collection(effect: &mut EffectAst) -> bool {
         return false;
     }
     for effect in choice_effects {
-        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. }) = effect else {
+        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. }) = effect
+        else {
             return false;
         };
         *tag = crate::tag::CompilerReferenceTag::ChosenObjects.bind();
@@ -718,24 +755,36 @@ fn choice_collection_producer_is_quantified(effect: &EffectAst) -> Option<bool> 
 
     match effect {
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
+            ..
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
+            ..
+        })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone { .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { .. }) => Some(false),
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { .. }) => {
+            Some(false)
+        }
         EffectAst::ForEach(ForEachEffectAst::RepeatEffects { effects, .. })
         | EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })
         | EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })
         | EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { effects, .. })
-        | EffectAst::ForEach(ForEachEffectAst::ForEachObject { effects, .. }) => sequence_kind(effects).map(|_| true),
+        | EffectAst::ForEach(ForEachEffectAst::ForEachObject { effects, .. }) => {
+            sequence_kind(effects).map(|_| true)
+        }
         EffectAst::Sequence { effects }
         | EffectAst::CommaThen { effects }
         | EffectAst::SourceSentence { effects, .. }
         | EffectAst::Coordinated { effects, .. }
         | EffectAst::ResultBranchLabel { effects, .. }
         | EffectAst::Permissions(PermissionEffectAst::May { effects })
-        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. }) => sequence_kind(effects),
-        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => choice_collection_producer_is_quantified(effect),
+        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. }) => {
+            sequence_kind(effects)
+        }
+        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => {
+            choice_collection_producer_is_quantified(effect)
+        }
         EffectAst::Coordination(coordination) => {
             let mut quantified = false;
             let mut any = false;
@@ -758,13 +807,21 @@ fn choice_collection_tag_can_accumulate(tag: &crate::tag::TagKey) -> bool {
 fn choice_collection_producer_has_accumulating_tags(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { tag, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { tag, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
+            tag,
+            ..
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
+            tag,
+            ..
+        })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone { tag, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { tag, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { tag, .. }) => {
-            choice_collection_tag_can_accumulate(tag)
-        }
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+            tag, ..
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            tag, ..
+        }) => choice_collection_tag_can_accumulate(tag),
         EffectAst::ForEach(ForEachEffectAst::RepeatEffects { effects, .. })
         | EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })
         | EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })
@@ -799,11 +856,21 @@ fn choice_collection_producer_has_accumulating_tags(effect: &EffectAst) -> bool 
 fn retag_choice_collection_producer(effect: &mut EffectAst, durable_tag: &crate::tag::TagKey) {
     match effect {
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { tag, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { tag, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
+            tag,
+            ..
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
+            tag,
+            ..
+        })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone { tag, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { tag, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { tag, .. }) => {
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+            tag, ..
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            tag, ..
+        }) => {
             if choice_collection_tag_can_accumulate(tag) {
                 *tag = ironsmith_compiler_semantic::tag::TagRef::of(durable_tag.clone());
             }
@@ -982,13 +1049,25 @@ fn choice_collection_producer_matches_object_kind(
 ) -> bool {
     match effect {
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { filter, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { filter, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone { filter, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { filter, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { filter, .. }) => {
-            normalized_choice_collection_object_kind(filter) == *expected
-        }
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
+            filter,
+            ..
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
+            filter,
+            ..
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone {
+            filter, ..
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+            filter,
+            ..
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            filter,
+            ..
+        }) => normalized_choice_collection_object_kind(filter) == *expected,
         EffectAst::ForEach(ForEachEffectAst::RepeatEffects { effects, .. })
         | EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })
         | EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })
@@ -1028,9 +1107,13 @@ fn direct_destroy_filter_mut(effect: &mut EffectAst) -> Option<&mut crate::filte
             };
             direct_destroy_filter_mut(effect)
         }
-        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => direct_destroy_filter_mut(effect),
+        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => {
+            direct_destroy_filter_mut(effect)
+        }
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
-            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { filter, .. }) => Some(filter),
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { filter, .. }) => {
+                Some(filter)
+            }
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy {
                 target: TargetAst::Object(filter, _, _),
                 ..
@@ -1049,9 +1132,13 @@ fn direct_destroy_filter(effect: &EffectAst) -> Option<&crate::filter::ObjectFil
             };
             direct_destroy_filter(effect)
         }
-        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => direct_destroy_filter(effect),
+        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => {
+            direct_destroy_filter(effect)
+        }
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { filter, .. }) => Some(filter),
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { filter, .. }) => {
+                Some(filter)
+            }
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy {
                 target: TargetAst::Object(filter, _, _),
                 ..
@@ -1162,7 +1249,10 @@ fn direct_destroy_references_chosen_collection(effect: &EffectAst) -> bool {
             direct_destroy_references_chosen_collection(effect)
         }
         EffectAst::SubjectVerb(subject_verb)
-            if matches!(&subject_verb.action, SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { .. })) =>
+            if matches!(
+                &subject_verb.action,
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { .. })
+            ) =>
         {
             super::compile_support::effect_references_tag(
                 effect,
@@ -1185,7 +1275,9 @@ pub fn correlate_conditional_quantified_choice_followups(effects: &mut Vec<Effec
         let follows_conditional_choice = {
             let (before, after) = effects.split_at_mut(index + 1);
             let EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-                if_true, if_false, ..
+                if_true,
+                if_false,
+                ..
             }) = &mut before[index]
             else {
                 index += 1;
@@ -1202,7 +1294,9 @@ pub fn correlate_conditional_quantified_choice_followups(effects: &mut Vec<Effec
         };
         if follows_conditional_choice {
             let followup = effects.remove(index + 1);
-            let EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, .. }) = &mut effects[index] else {
+            let EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, .. }) =
+                &mut effects[index]
+            else {
                 unreachable!("the checked effect must remain conditional")
             };
             if_true.push(followup);
@@ -1219,7 +1313,9 @@ fn source_sentence_for_each_player_effects_mut(
     match effect {
         EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }) => Some(effects),
         EffectAst::SourceSentence { effects, .. } => {
-            let [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })] = effects.as_mut_slice() else {
+            let [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })] =
+                effects.as_mut_slice()
+            else {
                 return None;
             };
             Some(effects)
@@ -1231,7 +1327,8 @@ fn source_sentence_for_each_player_effects_mut(
 fn common_object_choice_tag(effects: &[EffectAst]) -> Option<crate::tag::TagKey> {
     let mut common = None;
     for effect in effects {
-        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. }) = effect else {
+        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. }) = effect
+        else {
             return None;
         };
         if let Some(expected) = common.as_ref()
@@ -1308,7 +1405,9 @@ fn split_player_complement_filter_mut(
     };
     match &mut subject_verb.action {
         SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { filter, .. })
-        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter }) => Some(filter),
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { filter }) => {
+            Some(filter)
+        }
         _ => None,
     }
 }
@@ -1351,7 +1450,10 @@ fn correlate_split_for_each_player_choice_complements(effects: &mut [EffectAst])
             ironsmith_compiler_semantic::tag::TagRef::of(original_tag.clone())
         };
         for effect in choice_effects {
-            let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, tag, .. }) = effect else {
+            let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                filter, tag, ..
+            }) = effect
+            else {
                 continue;
             };
             replace_correlated_filter_tag(filter, &original_tag, &durable_tag);
@@ -1398,7 +1500,9 @@ fn bind_counted_set_followups(effects: &mut [EffectAst]) {
         let EffectAst::SubjectVerb(draw) = &before[index - 1] else {
             continue;
         };
-        let SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count }) = &draw.action else {
+        let SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count }) =
+            &draw.action
+        else {
             continue;
         };
         let Some(filter) = count_filter(count).cloned() else {
@@ -1465,7 +1569,10 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
         | EffectAst::ForEach(ForEachEffectAst::ForEachTargetPlayers { effects, .. })
         | EffectAst::ForEach(ForEachEffectAst::ForEachObject { effects, .. })
         | EffectAst::ForEach(ForEachEffectAst::ForEachTagged { effects, .. })
-        | EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy { effects, .. })
+        | EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy {
+            effects,
+            ..
+        })
         | EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDoesNot { effects, .. })
         | EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDoesNot { effects, .. })
         | EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDid { effects, .. })
@@ -1483,13 +1590,22 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
         | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep { effects, .. })
         | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextDrawStep { effects, .. })
         | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextMainPhase { effects, .. })
-        | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextFirstMainPhase { effects, .. })
-        | EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextFirstMainPhase {
+            effects, ..
+        })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndStepOfExtraTurn {
+            effects, ..
+        })
         | EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat { effects })
         | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn { effects, .. })
         | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { effects, .. })
-        | EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. })
-        | EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectLeavesBattlefield { effects, .. })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn {
+            effects, ..
+        })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectLeavesBattlefield {
+            effects,
+            ..
+        })
         | EffectAst::Votes(VoteEffectAst::VoteOption { effects, .. })
         | EffectAst::ManaRestricted { effects, .. } => normalize_effects_vec(effects),
         EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
@@ -1505,12 +1621,16 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
         // resizes/replaces the Vec (retain + whole-Vec rewrites), which the
         // slice-exposing helper cannot express. New wrapper variants must be
         // added here and kept in sync with the traversal macro.
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes }) | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
             for mode in modes {
                 normalize_effects_vec(&mut mode.effects);
             }
         }
-        EffectAst::Conditionals(ConditionalEffectAst::IfEffectDidNotHappen { effect, otherwise }) => {
+        EffectAst::Conditionals(ConditionalEffectAst::IfEffectDidNotHappen {
+            effect,
+            otherwise,
+        }) => {
             normalize_nested_effects(effect);
             normalize_singular_source_exiled_move(effect);
             normalize_effects_vec(otherwise);
@@ -1553,7 +1673,10 @@ fn rewrite_repeat_process(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
     else {
         return None;
     };
-    let marker_is_direct = matches!(tail_effects.last(), Some(EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)));
+    let marker_is_direct = matches!(
+        tail_effects.last(),
+        Some(EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess))
+    );
     let marker_is_coordinated = matches!(
         tail_effects.last(),
         Some(EffectAst::Coordinated { effects, .. })
@@ -1585,7 +1708,9 @@ fn rewrite_repeat_process(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
         predicate.clone()
     };
     let mut body = effects.to_vec();
-    let EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. }) = &mut body[last_index] else {
+    let EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. }) =
+        &mut body[last_index]
+    else {
         return None;
     };
     if marker_is_direct {
@@ -1605,7 +1730,12 @@ fn rewrite_repeat_process(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
 }
 
 fn rewrite_repeat_process_once(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
-    if effects.len() < 2 || !matches!(effects.last(), Some(EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce))) {
+    if effects.len() < 2
+        || !matches!(
+            effects.last(),
+            Some(EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce))
+        )
+    {
         return None;
     }
 
@@ -1618,7 +1748,12 @@ fn rewrite_repeat_process_once(effects: &[EffectAst]) -> Option<Vec<EffectAst>> 
 }
 
 fn rewrite_repeat_process_may(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
-    if effects.len() < 2 || !matches!(effects.last(), Some(EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay))) {
+    if effects.len() < 2
+        || !matches!(
+            effects.last(),
+            Some(EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay))
+        )
+    {
         return None;
     }
 
@@ -1642,7 +1777,10 @@ fn rewrite_return_as_aura(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
         };
         matches!(
             &return_subject_verb.action,
-            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { as_aura: None, .. })
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
+                as_aura: None,
+                ..
+            })
         ) && matches!(
             &aura_subject_verb.action,
             SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeAuraEnchantment {
@@ -1664,8 +1802,10 @@ fn rewrite_return_as_aura(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
             index += 1;
             continue;
         };
-        let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { as_aura: None, .. }) =
-            &return_subject_verb.action
+        let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
+            as_aura: None,
+            ..
+        }) = &return_subject_verb.action
         else {
             rewritten.push(effects[index].clone());
             index += 1;
@@ -1705,8 +1845,10 @@ fn rewrite_return_as_aura(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
 
         let mut combined = effects[index].clone();
         if let EffectAst::SubjectVerb(subject_verb) = &mut combined
-            && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { as_aura, .. }) =
-                &mut subject_verb.action
+            && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
+                as_aura,
+                ..
+            }) = &mut subject_verb.action
         {
             *as_aura = Some(ReturnAsAuraAst {
                 attachment_filter: attachment_filter.clone(),
@@ -1746,10 +1888,12 @@ fn is_noop_effect(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
             action:
-                crate::cards::builders::SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll { abilities, .. })
-                | crate::cards::builders::SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceAll {
-                    abilities, ..
-                }),
+                crate::cards::builders::SubjectVerbActionAst::Grants(
+                    GrantActionAst::GrantAbilitiesAll { abilities, .. },
+                )
+                | crate::cards::builders::SubjectVerbActionAst::Grants(
+                    GrantActionAst::GrantAbilitiesChoiceAll { abilities, .. },
+                ),
             ..
         }) => abilities.is_empty(),
         _ => false,
@@ -1758,16 +1902,6 @@ fn is_noop_effect(effect: &EffectAst) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use ironsmith_compiler_semantic::model::PermissionEffectAst;
-    use ironsmith_compiler_semantic::model::ConditionalEffectAst;
-    use ironsmith_compiler_semantic::model::ObjectChoiceEffectAst;
-    use ironsmith_compiler_semantic::model::ForEachEffectAst;
-    use ironsmith_compiler_semantic::model::DelayedEffectAst;
-    use ironsmith_compiler_semantic::model::LifeResourceActionAst;
-    use ironsmith_compiler_semantic::model::RandomActionAst;
-    use ironsmith_compiler_semantic::model::ZoneMoveActionAst;
-    use ironsmith_compiler_semantic::model::LibraryActionAst;
-    use ironsmith_compiler_semantic::model::GrantActionAst;
     use crate::cards::builders::IfResultPredicate;
     use crate::cards::builders::{
         EffectAst, PlayerAst, PredicateAst, SubjectVerbActionAst, TagKey, TargetAst,
@@ -1777,6 +1911,16 @@ mod tests {
         ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation,
     };
     use crate::zone::Zone;
+    use ironsmith_compiler_semantic::model::ConditionalEffectAst;
+    use ironsmith_compiler_semantic::model::DelayedEffectAst;
+    use ironsmith_compiler_semantic::model::ForEachEffectAst;
+    use ironsmith_compiler_semantic::model::GrantActionAst;
+    use ironsmith_compiler_semantic::model::LibraryActionAst;
+    use ironsmith_compiler_semantic::model::LifeResourceActionAst;
+    use ironsmith_compiler_semantic::model::ObjectChoiceEffectAst;
+    use ironsmith_compiler_semantic::model::PermissionEffectAst;
+    use ironsmith_compiler_semantic::model::RandomActionAst;
+    use ironsmith_compiler_semantic::model::ZoneMoveActionAst;
     use ironsmith_core::ValueSurfaceHint;
 
     use super::normalize_effects_ast;
@@ -1805,9 +1949,11 @@ mod tests {
                 EffectAst::subject_verb(
                     crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
                     PlayerAst::You,
-                    crate::cards::builders::SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
-                        count: Value::Fixed(1),
-                    }),
+                    crate::cards::builders::SubjectVerbActionAst::LifeResources(
+                        LifeResourceActionAst::Draw {
+                            count: Value::Fixed(1),
+                        },
+                    ),
                 ),
             ],
         })];
@@ -1820,7 +1966,9 @@ mod tests {
         assert!(matches!(
             effects[0],
             EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { .. }),
+                action: crate::cards::builders::SubjectVerbActionAst::LifeResources(
+                    LifeResourceActionAst::Draw { .. }
+                ),
                 ..
             })
         ));
@@ -1850,13 +1998,15 @@ mod tests {
     #[test]
     fn normalize_keeps_all_players_chosen_object_destroy_procedures_tagged() {
         let choose_object = EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
-            effects: vec![EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-                filter: ObjectFilter::creature(),
-                count: ChoiceCount::exactly(1),
-                count_value: None,
-                player: PlayerAst::That,
-                tag: crate::tag::CompilerReferenceTag::It.bind(),
-            })],
+            effects: vec![EffectAst::ObjectChoices(
+                ObjectChoiceEffectAst::ChooseObjects {
+                    filter: ObjectFilter::creature(),
+                    count: ChoiceCount::exactly(1),
+                    count_value: None,
+                    player: PlayerAst::That,
+                    tag: crate::tag::CompilerReferenceTag::It.bind(),
+                },
+            )],
         });
         let chosen = ObjectFilter::creature().match_tagged(
             crate::tag::CompilerReferenceTag::It.bind(),
@@ -1895,7 +2045,11 @@ mod tests {
         );
 
         let normalized = normalize_effects_ast(&[choose, draw]);
-        let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. }), _] = normalized.as_slice() else {
+        let [
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. }),
+            _,
+        ] = normalized.as_slice()
+        else {
             panic!("expected choice followed by draw: {normalized:#?}");
         };
         assert_eq!(
@@ -1941,10 +2095,16 @@ mod tests {
             panic!("expected one correlated conditional: {normalized:#?}");
         };
         assert!(if_false.is_empty());
-        let [EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }), destroy] = if_true.as_slice() else {
+        let [
+            EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }),
+            destroy,
+        ] = if_true.as_slice()
+        else {
             panic!("expected choice and destroy in the true branch: {if_true:#?}");
         };
-        let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. })] = effects.as_slice() else {
+        let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. })] =
+            effects.as_slice()
+        else {
             panic!("expected one quantified object choice: {effects:#?}");
         };
         assert_eq!(
@@ -1976,10 +2136,16 @@ mod tests {
             EffectAst::subject_verb_destroy_all(complement),
         ]);
 
-        let [EffectAst::ForEach(ForEachEffectAst::RepeatEffects { effects, .. }), destroy] = normalized.as_slice() else {
+        let [
+            EffectAst::ForEach(ForEachEffectAst::RepeatEffects { effects, .. }),
+            destroy,
+        ] = normalized.as_slice()
+        else {
             panic!("expected repeated choice followed by destroy: {normalized:#?}");
         };
-        let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. })] = effects.as_slice() else {
+        let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. })] =
+            effects.as_slice()
+        else {
             panic!("expected repeated object choice: {effects:#?}");
         };
         assert_eq!(
@@ -1995,18 +2161,21 @@ mod tests {
 
     #[test]
     fn normalize_unions_direct_and_per_player_choices_before_destroying_others() {
-        let choice = || EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-            filter: ObjectFilter::permanent(),
-            count: ChoiceCount::exactly(1),
-            count_value: None,
-            player: PlayerAst::You,
-            tag: crate::tag::CompilerReferenceTag::It.bind(),
-        });
+        let choice = || {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                filter: ObjectFilter::permanent(),
+                count: ChoiceCount::exactly(1),
+                count_value: None,
+                player: PlayerAst::You,
+                tag: crate::tag::CompilerReferenceTag::It.bind(),
+            })
+        };
         let mut complement = ObjectFilter::permanent();
         complement.other = true;
         let normalized = normalize_effects_ast(&[
             choice(),
-            EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
+            EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+                sequential: false,
                 filter: PlayerFilter::NotYou,
                 effects: vec![choice()],
             }),
@@ -2021,10 +2190,17 @@ mod tests {
         else {
             panic!("expected two choice producers and a destroy: {normalized:#?}");
         };
-        let EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { effects, .. }) = quantified else {
+        let EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { effects, .. }) =
+            quantified
+        else {
             panic!("expected quantified choice: {quantified:#?}");
         };
-        let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag: repeated, .. })] = effects.as_slice() else {
+        let [
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                tag: repeated, ..
+            }),
+        ] = effects.as_slice()
+        else {
             panic!("expected quantified object choice: {effects:#?}");
         };
         assert_eq!(
@@ -2050,21 +2226,29 @@ mod tests {
         let normalized = normalize_effects_ast(&[
             EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
                 count: Value::Fixed(2),
-                effects: vec![EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-                    filter: ObjectFilter::creature(),
-                    count: ChoiceCount::exactly(1),
-                    count_value: None,
-                    player: PlayerAst::You,
-                    tag: crate::tag::CompilerReferenceTag::It.bind(),
-                })],
+                effects: vec![EffectAst::ObjectChoices(
+                    ObjectChoiceEffectAst::ChooseObjects {
+                        filter: ObjectFilter::creature(),
+                        count: ChoiceCount::exactly(1),
+                        count_value: None,
+                        player: PlayerAst::You,
+                        tag: crate::tag::CompilerReferenceTag::It.bind(),
+                    },
+                )],
             }),
             EffectAst::subject_verb_destroy_all(unrelated_complement),
         ]);
 
-        let [EffectAst::ForEach(ForEachEffectAst::RepeatEffects { effects, .. }), destroy] = normalized.as_slice() else {
+        let [
+            EffectAst::ForEach(ForEachEffectAst::RepeatEffects { effects, .. }),
+            destroy,
+        ] = normalized.as_slice()
+        else {
             panic!("expected unchanged repeated choice: {normalized:#?}");
         };
-        let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. })] = effects.as_slice() else {
+        let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. })] =
+            effects.as_slice()
+        else {
             panic!("expected object choice: {effects:#?}");
         };
         assert_eq!(tag.as_str(), crate::tag::CompilerReferenceTag::It.as_str());
@@ -2081,21 +2265,29 @@ mod tests {
         let normalized = normalize_effects_ast(&[
             EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
                 count: Value::Fixed(2),
-                effects: vec![EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-                    filter: ObjectFilter::creature(),
-                    count: ChoiceCount::exactly(1),
-                    count_value: None,
-                    player: PlayerAst::You,
-                    tag: custom_tag.clone(),
-                })],
+                effects: vec![EffectAst::ObjectChoices(
+                    ObjectChoiceEffectAst::ChooseObjects {
+                        filter: ObjectFilter::creature(),
+                        count: ChoiceCount::exactly(1),
+                        count_value: None,
+                        player: PlayerAst::You,
+                        tag: custom_tag.clone(),
+                    },
+                )],
             }),
             EffectAst::subject_verb_destroy_all(complement),
         ]);
 
-        let [EffectAst::ForEach(ForEachEffectAst::RepeatEffects { effects, .. }), destroy] = normalized.as_slice() else {
+        let [
+            EffectAst::ForEach(ForEachEffectAst::RepeatEffects { effects, .. }),
+            destroy,
+        ] = normalized.as_slice()
+        else {
             panic!("expected unchanged repeated choice: {normalized:#?}");
         };
-        let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. })] = effects.as_slice() else {
+        let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. })] =
+            effects.as_slice()
+        else {
             panic!("expected object choice: {effects:#?}");
         };
         assert_eq!(tag, &custom_tag);
@@ -2184,9 +2376,11 @@ mod tests {
                 effects: vec![EffectAst::subject_verb(
                     crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
                     PlayerAst::You,
-                    crate::cards::builders::SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
-                        count: Value::Fixed(1),
-                    }),
+                    crate::cards::builders::SubjectVerbActionAst::LifeResources(
+                        LifeResourceActionAst::Draw {
+                            count: Value::Fixed(1),
+                        },
+                    ),
                 )],
             }),
             EffectAst::Conditionals(ConditionalEffectAst::IfResult {
@@ -2195,9 +2389,11 @@ mod tests {
                     EffectAst::subject_verb(
                         crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
                         PlayerAst::You,
-                        crate::cards::builders::SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife {
-                            amount: Value::Fixed(1),
-                        }),
+                        crate::cards::builders::SubjectVerbActionAst::LifeResources(
+                            LifeResourceActionAst::GainLife {
+                                amount: Value::Fixed(1),
+                            },
+                        ),
                     ),
                     EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess),
                 ],
@@ -2241,9 +2437,11 @@ mod tests {
                             effects: vec![EffectAst::subject_verb(
                                 crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
                                 PlayerAst::You,
-                                SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife {
-                                    amount: Value::Fixed(1),
-                                }),
+                                SubjectVerbActionAst::LifeResources(
+                                    LifeResourceActionAst::LoseLife {
+                                        amount: Value::Fixed(1),
+                                    },
+                                ),
                             )],
                             player: PlayerAst::You,
                             cost: ironsmith_core::TotalCost::from_cost(
@@ -2322,16 +2520,20 @@ mod tests {
             EffectAst::subject_verb(
                 crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
                 PlayerAst::You,
-                crate::cards::builders::SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
-                    count: Value::Fixed(1),
-                }),
+                crate::cards::builders::SubjectVerbActionAst::LifeResources(
+                    LifeResourceActionAst::Draw {
+                        count: Value::Fixed(1),
+                    },
+                ),
             ),
             EffectAst::subject_verb(
                 crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
                 PlayerAst::You,
-                crate::cards::builders::SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife {
-                    amount: Value::Fixed(1),
-                }),
+                crate::cards::builders::SubjectVerbActionAst::LifeResources(
+                    LifeResourceActionAst::LoseLife {
+                        amount: Value::Fixed(1),
+                    },
+                ),
             ),
             EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay),
         ];
@@ -2353,9 +2555,11 @@ mod tests {
             EffectAst::subject_verb(
                 crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
                 PlayerAst::You,
-                crate::cards::builders::SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
-                    count: Value::Fixed(1),
-                }),
+                crate::cards::builders::SubjectVerbActionAst::LifeResources(
+                    LifeResourceActionAst::Draw {
+                        count: Value::Fixed(1),
+                    },
+                ),
             ),
             EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce),
         ];
@@ -2405,7 +2609,8 @@ mod tests {
             Some(crate::target::PlayerFilter::IteratedPlayer)
         );
         assert!(filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag == tag.key.clone() && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
+            constraint.tag == tag.key.clone()
+                && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
         }));
     }
 
@@ -2493,7 +2698,9 @@ mod tests {
             effects: vec![EffectAst::subject_verb_exile_top_of_library(
                 PlayerAst::You,
                 Value::Fixed(1),
-                vec![ironsmith_compiler_semantic::tag::declared_key("delayed_exiled_cards")],
+                vec![ironsmith_compiler_semantic::tag::declared_key(
+                    "delayed_exiled_cards",
+                )],
                 Vec::new(),
             )],
             one_shot: false,
@@ -2501,7 +2708,8 @@ mod tests {
             either_of_watched_objects: false,
             while_any_tagged_object_in_zone: None,
         });
-        let explicit_tag = ironsmith_compiler_semantic::tag::declared_key("explicit_permission_pool");
+        let explicit_tag =
+            ironsmith_compiler_semantic::tag::declared_key("explicit_permission_pool");
         let grant = EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
             explicit_tag.clone(),
             PlayerAst::You,

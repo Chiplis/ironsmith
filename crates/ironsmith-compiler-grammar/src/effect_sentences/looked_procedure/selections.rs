@@ -7,7 +7,6 @@
 //! them through negated predicates. Here the selection is read once and
 //! spelled when the remainder statement says which spelling applies.
 
-use crate::cards::builders::ForEachEffectAst;
 use super::super::dispatch_entry::{SentenceInput, leading_may_actor_to_player};
 use super::super::sequence_rules::generic_subject_verb_sequences::ordered_control_flow_programs::{
     compose_choose_from_looked_cards_into_hand_rest_into_graveyard,
@@ -16,9 +15,11 @@ use super::super::sequence_rules::generic_subject_verb_sequences::ordered_contro
     parse_counted_from_looked_cards_action,
 };
 use super::{ViewStyle, ViewedGroup, it, remainder_owner};
+use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{
-    CardTextError, ChoiceCount, EffectAst, ObjectFilter, PlayerAst, ReturnControllerAst,
-    SubjectVerbActionAst, SubjectVerbRoleAst, Value, LibraryActionAst, StackActionAst, ObjectChoiceEffectAst,
+    CardTextError, ChoiceCount, EffectAst, LibraryActionAst, ObjectChoiceEffectAst, ObjectFilter,
+    PlayerAst, ReturnControllerAst, StackActionAst, SubjectVerbActionAst, SubjectVerbRoleAst,
+    Value,
 };
 use crate::grammar::effects::triple_sequence_shapes as triple_grammar;
 use crate::grammar::sentence_markers::{self, LeadingMayActor};
@@ -116,7 +117,8 @@ fn hand_selection(
         tag: (helper_tag_for_tokens(
             sentence.lowered(),
             if reveal_chosen { "revealed" } else { "chosen" },
-        )).into(),
+        ))
+        .into(),
     }))
 }
 
@@ -211,13 +213,15 @@ pub(super) fn cast_from_among(
     if group.revealed {
         group.view_style = ViewStyle::LookThenRevealTagged;
     }
-    group.effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
-        filter,
-        count: ChoiceCount::up_to(1),
-        player: chooser,
-        tag: crate::tag::TagRef::of(chosen_tag.clone()),
-        zone: Zone::Library,
-    }));
+    group.effects.push(EffectAst::ObjectChoices(
+        ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+            filter,
+            count: ChoiceCount::up_to(1),
+            player: chooser,
+            tag: crate::tag::TagRef::of(chosen_tag.clone()),
+            zone: Zone::Library,
+        },
+    ));
     group.effects.push(EffectAst::SubjectVerb(
         crate::cards::builders::SubjectVerbEffectAst {
             subject: crate::model::ast::SubjectVerbSubjectAst {
@@ -345,13 +349,15 @@ fn spell_put_from_among(
         group
             .effects
             .push(if let Some(constraint) = aggregate_constraint {
-                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
-                    filter: choose_filter,
-                    count: choice_count,
-                    player: chooser,
-                    tag: crate::tag::TagRef::of(chosen_tag.clone()),
-                    constraint,
-                })
+                EffectAst::ObjectChoices(
+                    ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
+                        filter: choose_filter,
+                        count: choice_count,
+                        player: chooser,
+                        tag: crate::tag::TagRef::of(chosen_tag.clone()),
+                        constraint,
+                    },
+                )
             } else {
                 EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
                     filter: choose_filter,
@@ -384,10 +390,12 @@ fn spell_put_from_among(
             false,
         ));
     }
-    group.effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
-        tag: crate::tag::TagRef::of(chosen_tag.clone()),
-        effects: chosen_effects,
-    }));
+    group
+        .effects
+        .push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+            tag: crate::tag::TagRef::of(chosen_tag.clone()),
+            effects: chosen_effects,
+        }));
     group.selected = Some(chosen_tag);
     group.remainder_player = remainder_owner(group.owner);
     true
@@ -468,43 +476,49 @@ fn spell_hand_selection(group: &mut ViewedGroup, selection: HandSelection) {
                     tag: chosen_tag.clone(),
                     relation: TaggedOpbjectRelation::IsNotTaggedObject,
                 });
-            group.effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
-                filter: choice_filter,
-                count: ChoiceCount::up_to(1),
-                player: chooser,
-                tag: crate::tag::TagRef::of(chosen_tag.clone()),
-                zone: Zone::Library,
-            }));
+            group.effects.push(EffectAst::ObjectChoices(
+                ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+                    filter: choice_filter,
+                    count: ChoiceCount::up_to(1),
+                    player: chooser,
+                    tag: crate::tag::TagRef::of(chosen_tag.clone()),
+                    zone: Zone::Library,
+                },
+            ));
         }
     } else {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: looked_tag,
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
-        group.effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
-            filter,
-            count,
-            player: chooser,
-            tag: crate::tag::TagRef::of(chosen_tag.clone()),
-            zone: Zone::Library,
-        }));
+        group.effects.push(EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+                filter,
+                count,
+                player: chooser,
+                tag: crate::tag::TagRef::of(chosen_tag.clone()),
+                zone: Zone::Library,
+            },
+        ));
     }
     if reveal_chosen {
-        group
-            .effects
-            .push(EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(chosen_tag.clone())));
+        group.effects.push(EffectAst::subject_verb_reveal_tagged(
+            crate::tag::TagRef::of(chosen_tag.clone()),
+        ));
     }
-    group.effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
-        tag: crate::tag::TagRef::of(chosen_tag),
-        effects: vec![EffectAst::subject_verb_move_to_zone(
-            it(),
-            Zone::Hand,
-            false,
-            ReturnControllerAst::Preserve,
-            false,
-            None,
-        )],
-    }));
+    group
+        .effects
+        .push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+            tag: crate::tag::TagRef::of(chosen_tag),
+            effects: vec![EffectAst::subject_verb_move_to_zone(
+                it(),
+                Zone::Hand,
+                false,
+                ReturnControllerAst::Preserve,
+                false,
+                None,
+            )],
+        }));
 }
 
 fn spell_hand_selection_into_graveyard(group: &mut ViewedGroup, selection: HandSelection) {
@@ -541,25 +555,29 @@ fn spell_hand_selection_into_graveyard(group: &mut ViewedGroup, selection: HandS
                     tag: chosen_tag.clone(),
                     relation: TaggedOpbjectRelation::IsNotTaggedObject,
                 });
-            group.effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
-                filter: choice_filter,
-                count: ChoiceCount::up_to(1),
-                player: chooser,
-                tag: crate::tag::TagRef::of(chosen_tag.clone()),
-                zone: Zone::Library,
-            }));
+            group.effects.push(EffectAst::ObjectChoices(
+                ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+                    filter: choice_filter,
+                    count: ChoiceCount::up_to(1),
+                    player: chooser,
+                    tag: crate::tag::TagRef::of(chosen_tag.clone()),
+                    zone: Zone::Library,
+                },
+            ));
         }
-        group.effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
-            tag: crate::tag::TagRef::of(chosen_tag.clone()),
-            effects: vec![EffectAst::subject_verb_move_to_zone(
-                it(),
-                Zone::Hand,
-                false,
-                ReturnControllerAst::Preserve,
-                false,
-                None,
-            )],
-        }));
+        group
+            .effects
+            .push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+                tag: crate::tag::TagRef::of(chosen_tag.clone()),
+                effects: vec![EffectAst::subject_verb_move_to_zone(
+                    it(),
+                    Zone::Hand,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                )],
+            }));
         group.effects.push(EffectAst::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -653,13 +671,15 @@ pub(super) fn select_with_remainder(
         group
             .effects
             .push(if let Some(constraint) = aggregate_constraint {
-                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
-                    filter: choose_filter,
-                    count: choice_count,
-                    player: chooser,
-                    tag: crate::tag::TagRef::of(chosen_tag.clone()),
-                    constraint,
-                })
+                EffectAst::ObjectChoices(
+                    ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
+                        filter: choose_filter,
+                        count: choice_count,
+                        player: chooser,
+                        tag: crate::tag::TagRef::of(chosen_tag.clone()),
+                        constraint,
+                    },
+                )
             } else {
                 EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
                     filter: choose_filter,
@@ -670,20 +690,22 @@ pub(super) fn select_with_remainder(
                 })
             });
     }
-    group.effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
-        tag: crate::tag::TagRef::of(chosen_tag.clone()),
-        effects: vec![EffectAst::subject_verb_move_to_zone_with_attack_target(
-            it(),
-            zone,
-            false,
-            controller,
-            tapped,
-            attacking,
-            attack_target_player,
-            false,
-            None,
-        )],
-    }));
+    group
+        .effects
+        .push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+            tag: crate::tag::TagRef::of(chosen_tag.clone()),
+            effects: vec![EffectAst::subject_verb_move_to_zone_with_attack_target(
+                it(),
+                zone,
+                false,
+                controller,
+                tapped,
+                attacking,
+                attack_target_player,
+                false,
+                None,
+            )],
+        }));
     match remainder {
         LookedRemainderShape::LibraryBottom(order) => group.effects.push(
             EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(

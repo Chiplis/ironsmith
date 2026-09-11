@@ -148,17 +148,21 @@ fn parse_aggregate_metric(
         )
             .value(AggregateValueMetric::Colors),
         alt((
-        (
-            primitives::word_slice_exact("different"),
-            primitives::word_slice_exact("mana"),
-            alt((primitives::word_slice_exact("value"), primitives::word_slice_exact("values"))),
-            primitives::word_slice_exact("among"),
-        ).value(AggregateValueMetric::DistinctManaValues),
-        (
-            primitives::word_slice_exact("differently"),
-            primitives::word_slice_exact("named"),
-        )
-            .value(AggregateValueMetric::DistinctNames),
+            (
+                primitives::word_slice_exact("different"),
+                primitives::word_slice_exact("mana"),
+                alt((
+                    primitives::word_slice_exact("value"),
+                    primitives::word_slice_exact("values"),
+                )),
+                primitives::word_slice_exact("among"),
+            )
+                .value(AggregateValueMetric::DistinctManaValues),
+            (
+                primitives::word_slice_exact("differently"),
+                primitives::word_slice_exact("named"),
+            )
+                .value(AggregateValueMetric::DistinctNames),
         )),
         (
             primitives::word_slice_exact("different"),

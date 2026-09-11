@@ -5254,8 +5254,11 @@ pub(super) fn warp_world_surface_requires_a_type_union_not_an_all_types_intersec
         ],
         ..ObjectFilter::default()
     };
-    assert_ne!(describe_effect(&warp_world_shape(union)), expected,
-        "a per-card conditional does not implement ordered category movement phases");
+    assert_ne!(
+        describe_effect(&warp_world_shape(union)),
+        expected,
+        "a per-card conditional does not implement ordered category movement phases"
+    );
 
     let intersection = ObjectFilter {
         all_card_types: vec![
@@ -7859,17 +7862,27 @@ pub(super) fn typed_removed_counter_metric_draw_keeps_counter_kind() {
 #[test]
 pub(super) fn compact_mana_value_comparison_keeps_its_triggering_spell_operand() {
     let mut filter = ObjectFilter::default().match_tagged(
-        TagKey::from("triggering"), crate::filter::TaggedOpbjectRelation::ManaValueLteTagged,
+        TagKey::from("triggering"),
+        crate::filter::TaggedOpbjectRelation::ManaValueLteTagged,
     );
     filter.union_surface = filter.union_surface.with_equal_or_lesser_mana_value(true);
-    assert!(filter.description().contains("with equal or lesser mana value than that spell"));
+    assert!(
+        filter
+            .description()
+            .contains("with equal or lesser mana value than that spell")
+    );
 }
 
 #[test]
 pub(super) fn triggered_damage_keeps_the_event_creature_as_its_source() {
     let line = "Whenever a creature you control deals combat damage to a player, it deals that much damage to the chosen player.";
-    let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Different Source Probe")
-        .card_types(vec![CardType::Creature])
-        .parse_text(line).expect("triggered source reference should compile");
-    assert_eq!(crate::compiled_text::compiled_text_lines(&definition), [line]);
+    let definition =
+        crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Different Source Probe")
+            .card_types(vec![CardType::Creature])
+            .parse_text(line)
+            .expect("triggered source reference should compile");
+    assert_eq!(
+        crate::compiled_text::compiled_text_lines(&definition),
+        [line]
+    );
 }

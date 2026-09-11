@@ -1,5 +1,5 @@
-use crate::cards::builders::ConditionalEffectAst;
 use super::*;
+use crate::cards::builders::ConditionalEffectAst;
 use crate::effect_sentences::parse_artifact_enchantment_or_token_filter;
 use crate::effect_sentences::subject_verb_primitives::{
     SubjectVerbPrimitiveClause, rewrite_unless_cost_source_values_to_it_tag, try_build_unless,
@@ -38,11 +38,13 @@ fn parse_trailing_discard_unless_predicate(
     let discard =
         EffectAst::subject_verb_discard(player, count, false, any_number, discard_filter, None);
 
-    Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-        predicate: PredicateAst::Not(Box::new(predicate)),
-        if_true: vec![discard],
-        if_false: Vec::new(),
-    })))
+    Ok(Some(EffectAst::Conditionals(
+        ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::Not(Box::new(predicate)),
+            if_true: vec![discard],
+            if_false: Vec::new(),
+        },
+    )))
 }
 
 fn wrap_unless_escaped(effect: EffectAst, unless_escaped: bool) -> EffectAst {

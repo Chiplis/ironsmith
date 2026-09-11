@@ -1,13 +1,13 @@
-use crate::cards::builders::TurnEventPredicateAst;
-use crate::cards::builders::PlayerPredicateAst;
-use crate::cards::builders::PermissionEffectAst;
-use crate::cards::builders::ConditionalEffectAst;
-use crate::cards::builders::ObjectChoiceEffectAst;
-use crate::cards::builders::ForEachEffectAst;
-use crate::cards::builders::DelayedEffectAst;
-use crate::cards::builders::StackActionAst;
-use crate::cards::builders::GrantActionAst;
 use super::*;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::DelayedEffectAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::GrantActionAst;
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::PermissionEffectAst;
+use crate::cards::builders::PlayerPredicateAst;
+use crate::cards::builders::StackActionAst;
+use crate::cards::builders::TurnEventPredicateAst;
 
 pub fn parse_triggered_line(
     info: LineInfo,
@@ -220,14 +220,16 @@ pub(super) fn parse_triggered_line_impl(
         return Ok(LineAst::Triggered {
             trigger: TriggerSpec::BeginningOfCombat(PlayerFilter::Any),
             effects: vec![EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
-                effects: vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
-                    trigger,
-                    effects,
-                    one_shot: false,
-                    duration: Until::EndOfCombat,
-                    either_of_watched_objects: false,
-                    while_any_tagged_object_in_zone: None,
-                })],
+                effects: vec![EffectAst::Delayed(
+                    DelayedEffectAst::DelayedTriggerForDuration {
+                        trigger,
+                        effects,
+                        one_shot: false,
+                        duration: Until::EndOfCombat,
+                        either_of_watched_objects: false,
+                        while_any_tagged_object_in_zone: None,
+                    },
+                )],
                 player: PlayerAst::You,
                 cost,
                 before_delayed_step: false,
@@ -262,54 +264,66 @@ pub(super) fn parse_triggered_line_impl(
     };
 
     let delayed = match schedule.step {
-        DelayedScheduleStep::UntapStep => EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUntapStep {
-            player: schedule.player,
-            effects,
-        }),
-        DelayedScheduleStep::Upkeep => EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep {
-            player: schedule.player,
-            effects,
-        }),
-        DelayedScheduleStep::DrawStep => EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextDrawStep {
-            player: schedule.player,
-            effects,
-        }),
-        DelayedScheduleStep::MainPhase => EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextMainPhase {
-            player: match schedule.player {
-                PlayerAst::You | PlayerAst::Implicit => PlayerFilter::You,
-                PlayerAst::That => PlayerFilter::IteratedPlayer,
-                PlayerAst::Target => PlayerFilter::target_player(),
-                PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
-                _ => PlayerFilter::Any,
-            },
-            effects,
-        }),
-        DelayedScheduleStep::FirstMainPhase => EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextFirstMainPhase {
-            player: match schedule.player {
-                PlayerAst::You | PlayerAst::Implicit => PlayerFilter::You,
-                PlayerAst::That => PlayerFilter::IteratedPlayer,
-                PlayerAst::Target => PlayerFilter::target_player(),
-                PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
-                _ => PlayerFilter::Any,
-            },
-            effects,
-        }),
+        DelayedScheduleStep::UntapStep => {
+            EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUntapStep {
+                player: schedule.player,
+                effects,
+            })
+        }
+        DelayedScheduleStep::Upkeep => {
+            EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep {
+                player: schedule.player,
+                effects,
+            })
+        }
+        DelayedScheduleStep::DrawStep => {
+            EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextDrawStep {
+                player: schedule.player,
+                effects,
+            })
+        }
+        DelayedScheduleStep::MainPhase => {
+            EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextMainPhase {
+                player: match schedule.player {
+                    PlayerAst::You | PlayerAst::Implicit => PlayerFilter::You,
+                    PlayerAst::That => PlayerFilter::IteratedPlayer,
+                    PlayerAst::Target => PlayerFilter::target_player(),
+                    PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
+                    _ => PlayerFilter::Any,
+                },
+                effects,
+            })
+        }
+        DelayedScheduleStep::FirstMainPhase => {
+            EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextFirstMainPhase {
+                player: match schedule.player {
+                    PlayerAst::You | PlayerAst::Implicit => PlayerFilter::You,
+                    PlayerAst::That => PlayerFilter::IteratedPlayer,
+                    PlayerAst::Target => PlayerFilter::target_player(),
+                    PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
+                    _ => PlayerFilter::Any,
+                },
+                effects,
+            })
+        }
         DelayedScheduleStep::EndStep if schedule.start_next_turn => {
             EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndStepOfExtraTurn {
                 player: schedule.player,
                 effects,
             })
         }
-        DelayedScheduleStep::EndStep => EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
-            player: match schedule.player {
-                PlayerAst::You | PlayerAst::Implicit => PlayerFilter::You,
-                PlayerAst::That => PlayerFilter::IteratedPlayer,
-                PlayerAst::Target => PlayerFilter::target_player(),
-                PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
-                _ => PlayerFilter::Any,
-            },
-            effects,
-        }),
+        DelayedScheduleStep::EndStep => {
+            EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
+                player: match schedule.player {
+                    PlayerAst::You | PlayerAst::Implicit => PlayerFilter::You,
+                    PlayerAst::That => PlayerFilter::IteratedPlayer,
+                    PlayerAst::Target => PlayerFilter::target_player(),
+                    PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
+                    _ => PlayerFilter::Any,
+                },
+                effects,
+            })
+        }
     };
     Ok(LineAst::Statement {
         effects: vec![delayed],
@@ -871,7 +885,11 @@ pub(super) fn parse_triggered_ability_line_impl(
     if let Some(effects) = exact_dynamic_exile_permission_bundle(effect_parse_tokens)
         .or(authored_correlated_effects)
         .or_else(|| exact_atomic_return_as_aura_bundle(effect_parse_tokens))
-        .or_else(|| authored_tail.as_ref().and_then(|tokens| exact_atomic_return_as_aura_bundle(tokens)))
+        .or_else(|| {
+            authored_tail
+                .as_ref()
+                .and_then(|tokens| exact_atomic_return_as_aura_bundle(tokens))
+        })
         .or_else(|| exact_looked_hand_optional_cast_bundle(effect_parse_tokens))
         .or(authored_looked_hand_cast)
     {
@@ -1440,7 +1458,8 @@ pub(super) fn created_token_next_turn_sacrifice_stays_inside_the_trigger() {
             ..
         }),
         EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndStepOfExtraTurn {
-            effects: delayed, ..
+            effects: delayed,
+            ..
         }),
     ] = effects.as_slice()
     else {
@@ -1586,12 +1605,14 @@ pub(super) fn dynamic_exile_permission_bundle_reaches_the_public_trigger_route()
                     ..
                 },
             action:
-                SubjectVerbActionAst::Library(crate::cards::builders::LibraryActionAst::ExileTopOfLibrary {
-                    count,
-                    tags,
-                    face_down: false,
-                    ..
-                }),
+                SubjectVerbActionAst::Library(
+                    crate::cards::builders::LibraryActionAst::ExileTopOfLibrary {
+                        count,
+                        tags,
+                        face_down: false,
+                        ..
+                    },
+                ),
             ..
         }),
     ] = exile_effects.as_slice()
@@ -1848,8 +1869,11 @@ pub(super) fn triggered_semantic_split_keeps_effect_backed_static_surfaces_in_re
         if matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::Stack(StackActionAst::CopySpell { .. })
-                    | crate::cards::builders::SubjectVerbActionAst::Stack(StackActionAst::CopySpellForEachTarget { .. }),
+                action: crate::cards::builders::SubjectVerbActionAst::Stack(
+                    StackActionAst::CopySpell { .. }
+                ) | crate::cards::builders::SubjectVerbActionAst::Stack(
+                    StackActionAst::CopySpellForEachTarget { .. }
+                ),
                 ..
             })
         ) {
@@ -1866,10 +1890,12 @@ pub(super) fn triggered_semantic_split_keeps_effect_backed_static_surfaces_in_re
         if matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: crate::cards::builders::SubjectVerbActionAst::Stack(StackActionAst::RetargetStackObject {
-                    copy_reference_plural: true,
-                    ..
-                }),
+                action: crate::cards::builders::SubjectVerbActionAst::Stack(
+                    StackActionAst::RetargetStackObject {
+                        copy_reference_plural: true,
+                        ..
+                    }
+                ),
                 ..
             })
         ) {
@@ -1997,18 +2023,22 @@ pub(super) fn lower_special_rewrite_triggered_head(
         let effects = vec![EffectAst::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::LifeResources(crate::cards::builders::LifeResourceActionAst::Draw {
-                count: Value::Fixed(1),
-            }),
+            SubjectVerbActionAst::LifeResources(
+                crate::cards::builders::LifeResourceActionAst::Draw {
+                    count: Value::Fixed(1),
+                },
+            ),
         )];
         return Ok(Some(LineAst::Triggered {
             trigger,
             effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-                predicate: PredicateAst::TurnEvents(TurnEventPredicateAst::ObjectEnteredBattlefieldLastTurn(
-                    ObjectFilter::creature()
-                        .controlled_by(PlayerFilter::You)
-                        .other(),
-                )),
+                predicate: PredicateAst::TurnEvents(
+                    TurnEventPredicateAst::ObjectEnteredBattlefieldLastTurn(
+                        ObjectFilter::creature()
+                            .controlled_by(PlayerFilter::You)
+                            .other(),
+                    ),
+                ),
                 if_true: effects,
                 if_false: Vec::new(),
             })],
@@ -2159,15 +2189,17 @@ pub(super) fn lower_special_rewrite_triggered_divvy(
             vec![Zone::Library],
             crate::tag::CompilerReferenceTag::DivvySource.bind(),
         ));
-        effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
-            filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
-            count: ChoiceCount::exactly(1),
-            count_value: None,
-            player: PlayerAst::Opponent,
-            tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
-            zones: vec![Zone::Library],
-            search_mode: None,
-        }));
+        effects.push(EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
+                count: ChoiceCount::exactly(1),
+                count_value: None,
+                player: PlayerAst::Opponent,
+                tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
+                zones: vec![Zone::Library],
+                search_mode: None,
+            },
+        ));
         effects.push(EffectAst::subject_verb_move_to_zone(
             TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind(), None),
             Zone::Hand,
@@ -2318,7 +2350,10 @@ pub(super) fn lower_special_rewrite_triggered_oath(
                             predicate: membership_predicate_for_iterated_object(&creature_tag),
                             if_true: Vec::new(),
                             if_false: vec![EffectAst::subject_verb_move_to_zone(
-                                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
+                                TargetAst::Tagged(
+                                    crate::tag::CompilerReferenceTag::It.bind(),
+                                    None,
+                                ),
                                 Zone::Graveyard,
                                 false,
                                 ReturnControllerAst::Preserve,
@@ -2567,9 +2602,11 @@ pub fn try_parse_optional_cost_with_cast_trigger(
                     ..
                 },
             action:
-                SubjectVerbActionAst::ZoneMoves(crate::cards::builders::ZoneMoveActionAst::SacrificeAll {
-                    filter: sacrificed_filter,
-                }),
+                SubjectVerbActionAst::ZoneMoves(
+                    crate::cards::builders::ZoneMoveActionAst::SacrificeAll {
+                        filter: sacrificed_filter,
+                    },
+                ),
         }),
     ] = head_effects.as_slice()
     else {

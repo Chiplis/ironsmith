@@ -1,18 +1,18 @@
-use crate::cards::builders::PermissionEffectAst;
+use super::*;
+use crate::cards::builders::CharacteristicActionAst;
+use crate::cards::builders::ChoiceActionAst;
+use crate::cards::builders::ControlActionAst;
+use crate::cards::builders::CounterActionAst;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::GameActionAst;
-use crate::cards::builders::ControlActionAst;
-use crate::cards::builders::StackActionAst;
-use crate::cards::builders::ChoiceActionAst;
+use crate::cards::builders::GrantActionAst;
+use crate::cards::builders::KeywordActionAst;
+use crate::cards::builders::LibraryActionAst;
+use crate::cards::builders::PermissionEffectAst;
 use crate::cards::builders::RandomActionAst;
 use crate::cards::builders::RevealLookActionAst;
-use crate::cards::builders::KeywordActionAst;
-use crate::cards::builders::CharacteristicActionAst;
+use crate::cards::builders::StackActionAst;
 use crate::cards::builders::TurnStructureActionAst;
-use crate::cards::builders::LibraryActionAst;
-use crate::cards::builders::GrantActionAst;
-use crate::cards::builders::CounterActionAst;
-use super::*;
 
 pub(super) fn target_ast_is_source(target: &TargetAst) -> bool {
     match target {
@@ -293,7 +293,10 @@ pub fn collapse_for_each_object_it_tag_followups(effects: &mut Vec<EffectAst>) {
 
         let followup = effects.remove(idx + 1);
         match (&mut effects[idx], followup) {
-            (EffectAst::ForEach(ForEachEffectAst::ForEachObject { effects: inner, .. }), followup) => {
+            (
+                EffectAst::ForEach(ForEachEffectAst::ForEachObject { effects: inner, .. }),
+                followup,
+            ) => {
                 inner.push(followup);
             }
             _ => {
@@ -332,13 +335,18 @@ pub(super) fn explicit_effect_object_tag(effect: &EffectAst) -> Option<TagKey> {
             action:
                 SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { target, .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MayMoveToZone { target, .. })
-                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { target, .. })
-                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PutOntoBattlefield { target, .. })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
+                    target, ..
+                })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PutOntoBattlefield {
+                    target, ..
+                })
                 | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp { target })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. }),
             ..
         }) => explicit_tagged_target(target),
-        EffectAst::Permissions(PermissionEffectAst::May { effects }) | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. })
+        EffectAst::Permissions(PermissionEffectAst::May { effects })
+        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. })
             if effects.len() == 1 =>
         {
             explicit_effect_object_tag(&effects[0])
@@ -358,13 +366,18 @@ pub(super) fn explicit_effect_object_target(effect: &EffectAst) -> Option<Choose
             action:
                 SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { target, .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MayMoveToZone { target, .. })
-                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { target, .. })
-                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PutOntoBattlefield { target, .. })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
+                    target, ..
+                })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PutOntoBattlefield {
+                    target, ..
+                })
                 | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp { target })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. }),
             ..
         }) => explicit_target_choose_spec(target),
-        EffectAst::Permissions(PermissionEffectAst::May { effects }) | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. })
+        EffectAst::Permissions(PermissionEffectAst::May { effects })
+        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. })
             if effects.len() == 1 =>
         {
             explicit_effect_object_target(&effects[0])
@@ -528,13 +541,19 @@ pub fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryContext> {
     if let EffectAst::Sequence { effects } = effect {
         return effects.iter().find_map(explicit_player_for_carry);
     }
-    if matches!(effect, EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { .. })) {
+    if matches!(
+        effect,
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { .. })
+    ) {
         return Some(CarryContext::ForEachPlayer);
     }
     if let EffectAst::ForEach(ForEachEffectAst::ForEachTargetPlayers { count, .. }) = effect {
         return Some(CarryContext::ForEachTargetPlayers(*count));
     }
-    if matches!(effect, EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { .. })) {
+    if matches!(
+        effect,
+        EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { .. })
+    ) {
         return Some(CarryContext::ForEachOpponent);
     }
     if let EffectAst::SubjectVerb(subject_verb) = effect
@@ -544,13 +563,17 @@ pub fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryContext> {
         return Some(context);
     }
     if let EffectAst::SubjectVerb(subject_verb) = effect
-        && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. }) = &subject_verb.action
+        && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. }) =
+            &subject_verb.action
         && let Some(player) = player_owner_filter_from_target_for_carry(target)
     {
         return Some(CarryContext::Player(player));
     }
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileUntilSourceLeaves { target, .. }),
+        action:
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileUntilSourceLeaves {
+                target, ..
+            }),
         ..
     }) = effect
         && let Some(player) = player_owner_filter_from_target_for_carry(target)
@@ -593,7 +616,9 @@ pub fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryContext> {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
-                    chooser, player, ..
+                    chooser,
+                    player,
+                    ..
                 }),
             ..
         }) => {
@@ -607,7 +632,10 @@ pub fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryContext> {
         }
         EffectAst::SubjectVerb(_) => subject_verb_player_action_player(effect)?,
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { player, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { player, .. }) => *player,
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
+            player,
+            ..
+        }) => *player,
         _ => return None,
     };
 
@@ -623,7 +651,9 @@ pub fn effect_uses_implicit_player(effect: &EffectAst) -> bool {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
-                    chooser, player, ..
+                    chooser,
+                    player,
+                    ..
                 }),
             ..
         }) => matches!(*chooser, PlayerAst::Implicit) || matches!(*player, PlayerAst::Implicit),
@@ -634,7 +664,10 @@ pub fn effect_uses_implicit_player(effect: &EffectAst) -> bool {
             )
         }
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { player, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { player, .. }) => {
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
+            player,
+            ..
+        }) => {
             matches!(*player, PlayerAst::Implicit)
         }
         _ => false,
@@ -646,7 +679,9 @@ pub(super) fn effect_uses_that_player(effect: &EffectAst) -> bool {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
-                    chooser, player, ..
+                    chooser,
+                    player,
+                    ..
                 }),
             ..
         }) => matches!(*chooser, PlayerAst::That) || matches!(*player, PlayerAst::That),
@@ -657,7 +692,10 @@ pub(super) fn effect_uses_that_player(effect: &EffectAst) -> bool {
             )
         }
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { player, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { player, .. }) => {
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
+            player,
+            ..
+        }) => {
             matches!(*player, PlayerAst::That)
         }
         _ => false,
@@ -671,7 +709,9 @@ pub(super) fn subject_verb_player_action_player_mut(
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { player, .. })
-                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { player, .. })
+                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
+                    player, ..
+                })
                 | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { player, .. }),
             ..
         }) => Some(player),
@@ -744,7 +784,9 @@ pub(super) fn subject_verb_player_action_player_mut(
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { .. })
-                | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalLandPlays { .. })
+                | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalLandPlays {
+                    ..
+                })
                 | SubjectVerbActionAst::Game(GameActionAst::ExtraTurnAfterTurn { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { .. })
                 | SubjectVerbActionAst::Control(ControlActionAst::Attach { .. })
@@ -759,7 +801,9 @@ pub(super) fn subject_verb_player_action_player(effect: &EffectAst) -> Option<Pl
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { player, .. })
-                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { player, .. })
+                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
+                    player, ..
+                })
                 | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { player, .. }),
             ..
         }) => Some(*player),
@@ -832,7 +876,9 @@ pub(super) fn subject_verb_player_action_player(effect: &EffectAst) -> Option<Pl
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { .. })
-                | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalLandPlays { .. })
+                | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalLandPlays {
+                    ..
+                })
                 | SubjectVerbActionAst::Game(GameActionAst::ExtraTurnAfterTurn { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { .. })
                 | SubjectVerbActionAst::Control(ControlActionAst::Attach { .. })
@@ -855,7 +901,10 @@ pub fn maybe_apply_carried_player(effect: &mut EffectAst, carried_context: Carry
             };
             match effect {
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary { player, .. }),
+                    action:
+                        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
+                            player, ..
+                        }),
                     ..
                 }) => {
                     // A bare `search` is imperative: its omitted actor is the
@@ -873,8 +922,12 @@ pub fn maybe_apply_carried_player(effect: &mut EffectAst, carried_context: Carry
                         *player = carried_player;
                     }
                 }
-                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { player, .. })
-                | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { player, .. }) => {
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                    player, ..
+                })
+                | EffectAst::ObjectChoices(
+                    ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { player, .. },
+                ) => {
                     if matches!(*player, PlayerAst::Implicit) {
                         *player = carried_player;
                     }
@@ -939,7 +992,9 @@ pub(super) fn maybe_apply_carried_player_with_clause_facts(
         && let CarryContext::Player(carried_player) = carried_context
         && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             subject,
-            action: SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { .. }) | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTop),
+            action:
+                SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { .. })
+                | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTop),
         }) = effect
         && subject.player == PlayerAst::ItsController
     {
@@ -965,9 +1020,11 @@ pub(super) fn maybe_apply_carried_player_with_clause_facts(
                     player: PlayerAst::Implicit,
                     ..
                 },
-                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { .. })
-                    | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield { .. })
-                    | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { .. })
+                action: SubjectVerbActionAst::ZoneMoves(
+                    ZoneMoveActionAst::ReturnToBattlefield { .. }
+                ) | SubjectVerbActionAst::ZoneMoves(
+                    ZoneMoveActionAst::ReturnAllToBattlefield { .. }
+                ) | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { .. })
                     | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand { .. }),
             })
         );
@@ -991,7 +1048,9 @@ pub(super) fn maybe_apply_carried_player_with_clause_facts(
                             player: PlayerAst::Implicit,
                             ..
                         },
-                        action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { .. }),
+                        action: SubjectVerbActionAst::LifeResources(
+                            LifeResourceActionAst::Draw { .. }
+                        ),
                     })
                 ) && facts.head == chain_grammar::CarryClauseHead::Draw)
                     && !facts.explicitly_conjugated_player_action
@@ -1003,7 +1062,9 @@ pub(super) fn maybe_apply_carried_player_with_clause_facts(
                             ..
                         },
                         action: SubjectVerbActionAst::KeywordActions(KeywordActionAst::Scry { .. })
-                            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Surveil { .. }),
+                            | SubjectVerbActionAst::KeywordActions(
+                                KeywordActionAst::Surveil { .. }
+                            ),
                     })
                 ) && matches!(
                     facts.head,

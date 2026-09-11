@@ -20,7 +20,7 @@ mod tests {
             SentenceInput::from_lexed(&second),
         ];
         crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
-        .map(|matched| matched.map(|matched| matched.effects))
+            .map(|matched| matched.map(|matched| matched.effects))
             .expect("pair parser should not error")
     }
 

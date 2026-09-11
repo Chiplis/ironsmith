@@ -210,7 +210,8 @@ impl EffectExecutor for GrantPlayTaggedEffect {
         };
         let snapshots = ctx.get_tagged_all(self.tag.as_str()).cloned().or_else(|| {
             (self.tag.as_str() == "__source_exiled__").then(|| {
-                let linked = game.get_exiled_with_source_links(ctx.source)
+                let linked = game
+                    .get_exiled_with_source_links(ctx.source)
                     .iter()
                     .filter_map(|id| game.object(*id))
                     .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, game))
@@ -500,9 +501,21 @@ mod tests {
             GrantPlayTaggedDuration::UntilEndOfTurn,
             true,
             false,
-        ).execute(&mut game, &mut ctx).unwrap();
-        assert!(game.effect_store.grant_registry.card_can_play_from_zone(&game, linked, Zone::Exile, alice));
-        assert!(!game.effect_store.grant_registry.card_can_play_from_zone(&game, unrelated, Zone::Exile, alice));
+        )
+        .execute(&mut game, &mut ctx)
+        .unwrap();
+        assert!(game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            linked,
+            Zone::Exile,
+            alice
+        ));
+        assert!(!game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            unrelated,
+            Zone::Exile,
+            alice
+        ));
     }
 
     #[test]

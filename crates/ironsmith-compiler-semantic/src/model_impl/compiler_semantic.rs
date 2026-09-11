@@ -88,8 +88,7 @@ pub struct AdditionalCostChoiceOptionAst<Effect = EffectAst> {
     pub effects: Vec<Effect>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ParsedAbility {
     pub ability: Box<CompilerAbilityCore>,
     pub effects_ast: Option<Vec<EffectAst>>,

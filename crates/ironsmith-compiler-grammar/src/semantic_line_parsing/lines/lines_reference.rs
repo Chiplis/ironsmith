@@ -1,6 +1,6 @@
+use super::*;
 use crate::cards::builders::PermissionEffectAst;
 use crate::cards::builders::StackActionAst;
-use super::*;
 
 pub(super) fn membership_predicate_for_iterated_object(tag: &TagKey) -> PredicateAst {
     PredicateAst::TaggedMatches(

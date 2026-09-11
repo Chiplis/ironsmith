@@ -73,7 +73,10 @@ fn parses_all_special_triggered_programs() {
 #[test]
 fn land_majority_search_requires_all_participant_and_search_roles() {
     let text = "At the beginning of each player's upkeep, that player chooses target player who controls more lands than they do and is their opponent. The first player may search their library for a basic land card, put that card onto the battlefield, then shuffle.";
-    assert_eq!(parse(text), Some(SpecialTriggeredProgram::OpponentLandMajoritySearch));
+    assert_eq!(
+        parse(text),
+        Some(SpecialTriggeredProgram::OpponentLandMajoritySearch)
+    );
     for (from, to) in [
         ("that player chooses", "you choose"),
         ("more lands", "fewer lands"),
@@ -85,6 +88,10 @@ fn land_majority_search_requires_all_participant_and_search_roles() {
         ("then shuffle.", "then shuffle. Draw a card."),
     ] {
         let variant = text.replace(from, to);
-        assert_ne!(parse(&variant), Some(SpecialTriggeredProgram::OpponentLandMajoritySearch), "{variant}");
+        assert_ne!(
+            parse(&variant),
+            Some(SpecialTriggeredProgram::OpponentLandMajoritySearch),
+            "{variant}"
+        );
     }
 }

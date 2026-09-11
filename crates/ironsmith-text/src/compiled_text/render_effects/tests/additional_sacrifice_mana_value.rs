@@ -117,7 +117,8 @@ fn sacrificed_draw_characteristics_preserve_each_explicit_noun() {
                     .last()
                     .unwrap()
                     .contains(&format!("sacrificed {noun}'s {characteristic}")),
-                "{text}: {:?}", crate::compiled_text::compiled_text_lines(&definition)
+                "{text}: {:?}",
+                crate::compiled_text::compiled_text_lines(&definition)
             );
         }
     }

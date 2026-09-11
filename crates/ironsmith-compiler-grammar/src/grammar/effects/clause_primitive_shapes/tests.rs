@@ -189,12 +189,19 @@ fn temporal_fight_reference_is_not_a_second_fight() {
 
 #[test]
 fn power_damage_both_word_orders_bind_itself_to_the_actor() {
-    for text in ["Target creature deals damage equal to its power to itself.", "Target creature deals damage to itself equal to its power."] {
+    for text in [
+        "Target creature deals damage equal to its power to itself.",
+        "Target creature deals damage to itself equal to its power.",
+    ] {
         let tokens = lex_line(text, 0).unwrap();
         let shape = parse_power_damage_shape(&tokens).unwrap().unwrap();
         assert!(matches!(shape.target, PowerDamageTargetShape::Source));
     }
-    let tokens = lex_line("That artifact deals damage equal to its power to this creature.", 0).unwrap();
+    let tokens = lex_line(
+        "That artifact deals damage equal to its power to this creature.",
+        0,
+    )
+    .unwrap();
     let shape = parse_power_damage_shape(&tokens).unwrap().unwrap();
     assert!(matches!(shape.target, PowerDamageTargetShape::Tokens(_)));
 }

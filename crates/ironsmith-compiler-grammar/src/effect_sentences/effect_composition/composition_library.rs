@@ -1,7 +1,7 @@
-use crate::cards::builders::PlayerPredicateAst;
+use super::*;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::LifeResourceActionAst;
-use super::*;
+use crate::cards::builders::PlayerPredicateAst;
 
 pub(super) fn parse_look_hand_optional_exile_play_tax_bundle(
     tokens: &[OwnedLexToken],
@@ -34,9 +34,10 @@ pub(super) fn parse_look_hand_optional_exile_play_tax_bundle(
         return None;
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtHand {
-            target: hand_target,
-        }),
+        action:
+            SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtHand {
+                target: hand_target,
+            }),
         ..
     }) = look_effect
     else {
@@ -133,7 +134,10 @@ pub(super) fn parse_look_hand_optional_exile_play_tax_bundle(
                     player: PlayerAst::You,
                     tag: crate::tag::TagRef::of(exiled_tag.clone()),
                 }),
-                EffectAst::subject_verb_exile(TargetAst::Tagged(crate::tag::TagRef::of(exiled_tag.clone()), None), false),
+                EffectAst::subject_verb_exile(
+                    TargetAst::Tagged(crate::tag::TagRef::of(exiled_tag.clone()), None),
+                    false,
+                ),
             ],
         }),
         EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
@@ -197,13 +201,15 @@ pub(super) fn parse_discard_redraw_mana_value_ladder_bundle(
             tag: discarded_tag.clone().into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
-        effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-            filter,
-            count: ChoiceCount::up_to(1),
-            count_value: None,
-            player: PlayerAst::You,
-            tag: crate::tag::TagRef::of(selected_tag.clone()),
-        }));
+        effects.push(EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::ChooseObjects {
+                filter,
+                count: ChoiceCount::up_to(1),
+                count_value: None,
+                player: PlayerAst::You,
+                tag: crate::tag::TagRef::of(selected_tag.clone()),
+            },
+        ));
     }
 
     effects.push(EffectAst::subject_verb_move_to_zone(

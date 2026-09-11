@@ -59,12 +59,14 @@ fn rewrite_item_display_line(item: &RewriteSemanticItem) -> Option<usize> {
         RewriteSemanticItem::Unsupported(line) => Some(line.info.display_line_index),
         RewriteSemanticItem::SagaChapter(saga) => Some(saga.info.display_line_index),
         RewriteSemanticItem::Modal(modal) => Some(modal.header.display_line_index),
-        RewriteSemanticItem::LevelHeader(level) => level.items.iter().find_map(|item| match &item.parsed {
-            crate::model::ParsedLevelAbilityItemAst::ActivatedAbility(activated) => {
-                Some(activated.info.display_line_index)
-            }
-            _ => None,
-        }),
+        RewriteSemanticItem::LevelHeader(level) => {
+            level.items.iter().find_map(|item| match &item.parsed {
+                crate::model::ParsedLevelAbilityItemAst::ActivatedAbility(activated) => {
+                    Some(activated.info.display_line_index)
+                }
+                _ => None,
+            })
+        }
         RewriteSemanticItem::Metadata => None,
     }
 }
@@ -75,10 +77,11 @@ pub(super) fn parse_rewrite_items(
 ) -> Result<Vec<ParsedCardItem>, CardTextError> {
     let mut parsed = Vec::with_capacity(items.len());
     for item in items {
-        let scope = rewrite_item_display_line(&item)
-            .and_then(|line| symbols.borrow().line_scope(line));
-        let _references = scope
-            .map(|scope| ironsmith_compiler_ast::reference_ledger::ReferenceScopeGuard::enter(symbols, scope));
+        let scope =
+            rewrite_item_display_line(&item).and_then(|line| symbols.borrow().line_scope(line));
+        let _references = scope.map(|scope| {
+            ironsmith_compiler_ast::reference_ledger::ReferenceScopeGuard::enter(symbols, scope)
+        });
         if let Some(item) = parse_rewrite_item(item)? {
             parsed.push(item);
         }

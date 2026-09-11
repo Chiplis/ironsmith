@@ -5,9 +5,9 @@
 //! Formerly a first-match ladder in `participant_scopes`; every reading runs;
 //! two different readings of one input are an ambiguity error.
 
+use super::*;
 use crate::cards::builders::ConditionalEffectAst;
 use crate::cards::builders::ForEachEffectAst;
-use super::*;
 use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId, RuleMatch};
 use crate::registry::{
     HeadDiscriminator, RegistryCandidate, RegistryRuleMetadata, resolve_registry_candidates,
@@ -205,10 +205,13 @@ fn read_source_attacked_player(
     {
         let normalized = prepend_that_player_subject(source_attacked.effect_tokens);
         let effects = parse_maybe_effects(&normalized, false, true)?;
-        return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
-            filter: PlayerFilter::AttackedBySourceThisTurn,
-            effects,
-        })));
+        return Ok(Some(EffectAst::ForEach(
+            ForEachEffectAst::ForEachPlayersFiltered {
+                sequential: false,
+                filter: PlayerFilter::AttackedBySourceThisTurn,
+                effects,
+            },
+        )));
     }
     Ok(None)
 }
@@ -241,9 +244,11 @@ fn read_who_clause(input: &ParticipantClause<'_>) -> Result<Option<EffectAst>, C
                 return Ok(Some(wrap_players(
                     &iteration_filter,
                     vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-                        predicate: PredicateAst::Player(PlayerPredicateAst::PlayerTappedLandForManaThisTurn {
-                            player: PlayerAst::That,
-                        }),
+                        predicate: PredicateAst::Player(
+                            PlayerPredicateAst::PlayerTappedLandForManaThisTurn {
+                                player: PlayerAst::That,
+                            },
+                        ),
                         if_true: branch_effects,
                         if_false: Vec::new(),
                     })],
@@ -262,12 +267,14 @@ fn read_who_clause(input: &ParticipantClause<'_>) -> Result<Option<EffectAst>, C
                 }
                 let scoped_effect_tokens =
                     implicit_player_is_iterated.then(|| prepend_that_player_subject(effect_tokens));
-                return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDoesNot {
-                    effects: parse_effect_chain_inner(
-                        scoped_effect_tokens.as_deref().unwrap_or(effect_tokens),
-                    )?,
-                    predicate: tagged_predicate(tagged_filter_tokens),
-                })));
+                return Ok(Some(EffectAst::ForEach(
+                    ForEachEffectAst::ForEachPlayerDoesNot {
+                        effects: parse_effect_chain_inner(
+                            scoped_effect_tokens.as_deref().unwrap_or(effect_tokens),
+                        )?,
+                        predicate: tagged_predicate(tagged_filter_tokens),
+                    },
+                )));
             }
             WhoClauseShape::DidThisWay {
                 result_tokens,
@@ -284,15 +291,25 @@ fn read_who_clause(input: &ParticipantClause<'_>) -> Result<Option<EffectAst>, C
                 if let Some(subject) = result_clause.first_mut() {
                     subject.replace_word("player");
                 }
-                let result_predicate = match crate::grammar::modal_results::parse_if_result_predicate_lexed_tokens(&result_clause) {
-                    Some(IfResultPredicate::SearchedLibrary) => IfResultPredicate::SearchedLibrary,
-                    _ => IfResultPredicate::Did,
-                };
-                return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDid {
-                    effects: parse_effect_chain_inner(effect_tokens)?,
-                    predicate: tagged_past_action_predicate(tagged_filter_tokens, result_tokens),
-                    result_predicate,
-                })));
+                let result_predicate =
+                    match crate::grammar::modal_results::parse_if_result_predicate_lexed_tokens(
+                        &result_clause,
+                    ) {
+                        Some(IfResultPredicate::SearchedLibrary) => {
+                            IfResultPredicate::SearchedLibrary
+                        }
+                        _ => IfResultPredicate::Did,
+                    };
+                return Ok(Some(EffectAst::ForEach(
+                    ForEachEffectAst::ForEachPlayerDid {
+                        effects: parse_effect_chain_inner(effect_tokens)?,
+                        predicate: tagged_past_action_predicate(
+                            tagged_filter_tokens,
+                            result_tokens,
+                        ),
+                        result_predicate,
+                    },
+                )));
             }
             WhoClauseShape::DidAction {
                 effect_tokens,
@@ -313,11 +330,13 @@ fn read_who_clause(input: &ParticipantClause<'_>) -> Result<Option<EffectAst>, C
                 for effect in &mut effects {
                     bind_implicit_player_context(effect, player);
                 }
-                return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDid {
-                    effects,
-                    predicate: None,
-                    result_predicate: IfResultPredicate::AcceptedChoice,
-                })));
+                return Ok(Some(EffectAst::ForEach(
+                    ForEachEffectAst::ForEachPlayerDid {
+                        effects,
+                        predicate: None,
+                        result_predicate: IfResultPredicate::AcceptedChoice,
+                    },
+                )));
             }
         }
     }

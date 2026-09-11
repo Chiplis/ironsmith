@@ -1,9 +1,9 @@
 //! The pair kinds that are not fixed shapes: each reads its opening statement
 //! and the sentence completing it into a [`Pair`].
 
+use super::*;
 use crate::cards::builders::ConditionalEffectAst;
 use crate::cards::builders::DelayedEffectAst;
-use super::*;
 
 pub(super) fn open_copy_for_each_target(
     sentences: &[SentenceInput],
@@ -17,7 +17,8 @@ pub(super) fn open_copy_for_each_target(
     };
     if is_each_copy_targets_different(next)
         && let Some(effect) =
-            parse_copy_for_each_target_sentence(sentences, sentence_idx, sentence.lowered())? {
+            parse_copy_for_each_target_sentence(sentences, sentence_idx, sentence.lowered())?
+    {
         return Ok(Some(Pair::CopyForEachTarget(effect)));
     }
     Ok(None)
@@ -35,13 +36,16 @@ pub(super) fn open_flashback_grant(
     };
     if crate::lexer::token_word_refs(sentence.lowered()).first() == Some(&"target")
         && let Some(shape) =
-            sequence_grammar::parse_flashback_grant_shape(sentence.lowered(), next.lowered()) {
+            sequence_grammar::parse_flashback_grant_shape(sentence.lowered(), next.lowered())
+    {
         let target = crate::effect_sentences::parse_target_phrase(shape.target_tokens)?;
-        return Ok(Some(Pair::FlashbackGrant(EffectAst::subject_verb_grant_to_target(
-            target,
-            crate::model::CompilerGrantableCore::flashback_from_cards_mana_cost(),
-            crate::grant::GrantDuration::UntilEndOfTurn,
-        ))));
+        return Ok(Some(Pair::FlashbackGrant(
+            EffectAst::subject_verb_grant_to_target(
+                target,
+                crate::model::CompilerGrantableCore::flashback_from_cards_mana_cost(),
+                crate::grant::GrantDuration::UntilEndOfTurn,
+            ),
+        )));
     }
     Ok(None)
 }
@@ -61,7 +65,8 @@ pub(super) fn open_chosen_creature_type(
             crate::activation_and_restrictions::parse_choose_creature_type_then_become_type(
                 sentence.lowered(),
                 next.lowered(),
-            )? {
+            )?
+    {
         return Ok(Some(Pair::ChosenCreatureType(effects)));
     }
     Ok(None)
@@ -78,18 +83,21 @@ pub(super) fn open_delayed_upkeep_payment(
         return Ok(None);
     };
     if let Some(shape) =
-        sequence_grammar::parse_delayed_upkeep_payment_shape(sentence.lowered(), next.lowered()) {
-        return Ok(Some(Pair::DelayedUpkeepPayment(EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep {
-            player: crate::cards::builders::PlayerAst::You,
-            effects: vec![EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
-                effects: vec![EffectAst::subject_verb_lose_game(
-                    crate::cards::builders::PlayerAst::You,
-                )],
+        sequence_grammar::parse_delayed_upkeep_payment_shape(sentence.lowered(), next.lowered())
+    {
+        return Ok(Some(Pair::DelayedUpkeepPayment(EffectAst::Delayed(
+            DelayedEffectAst::DelayedUntilNextUpkeep {
                 player: crate::cards::builders::PlayerAst::You,
-                cost: ironsmith_core::TotalCost::mana(shape.mana),
-                before_delayed_step: false,
-            })],
-        }))));
+                effects: vec![EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
+                    effects: vec![EffectAst::subject_verb_lose_game(
+                        crate::cards::builders::PlayerAst::You,
+                    )],
+                    player: crate::cards::builders::PlayerAst::You,
+                    cost: ironsmith_core::TotalCost::mana(shape.mana),
+                    before_delayed_step: false,
+                })],
+            },
+        ))));
     }
     Ok(None)
 }
@@ -141,7 +149,8 @@ pub(super) fn open_target_chooses_cant_block(
             crate::activation_and_restrictions::parse_target_player_chooses_then_other_cant_block(
                 sentence.lowered(),
                 next.lowered(),
-            )? {
+            )?
+    {
         return Ok(Some(Pair::TargetChoosesCantBlock(effects)));
     }
     Ok(None)
@@ -164,37 +173,42 @@ pub(super) fn open_copy_next_spell_retarget(
         && crate::word_primitives::parse_sequence_complete(
             &crate::lexer::token_word_refs(sentence.lowered()),
             &[
-                "copy", "the", "next", "spell", "you", "cast", "this", "turn", "when", "you", "cast",
-                "it",
+                "copy", "the", "next", "spell", "you", "cast", "this", "turn", "when", "you",
+                "cast", "it",
             ],
         )
         && crate::word_primitives::parse_sequence_complete(
             &crate::lexer::token_word_refs(next.lowered()),
-            &["you", "may", "choose", "new", "targets", "for", "the", "copy"],
-        ) {
-        return Ok(Some(Pair::CopyNextSpellRetarget(EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
-            trigger: crate::cards::builders::TriggerSpec::SpellCast {
-                filter: None,
-                mana_source_filter: None,
-                caster: crate::target::PlayerFilter::You,
-                timing: None,
-                during_turn: None,
-                min_spells_this_turn: None,
-                exact_spells_this_turn: None,
-                from_not_hand: false,
+            &[
+                "you", "may", "choose", "new", "targets", "for", "the", "copy",
+            ],
+        )
+    {
+        return Ok(Some(Pair::CopyNextSpellRetarget(EffectAst::Delayed(
+            DelayedEffectAst::DelayedTriggerThisTurn {
+                trigger: crate::cards::builders::TriggerSpec::SpellCast {
+                    filter: None,
+                    mana_source_filter: None,
+                    caster: crate::target::PlayerFilter::You,
+                    timing: None,
+                    during_turn: None,
+                    min_spells_this_turn: None,
+                    exact_spells_this_turn: None,
+                    from_not_hand: false,
+                },
+                effects: vec![EffectAst::subject_verb_copy_spell(
+                    TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None),
+                    crate::effect::Value::Fixed(1),
+                    PlayerAst::You,
+                    true,
+                    false,
+                    Vec::new(),
+                )],
+                one_shot: true,
+                until_end_of_combat: false,
+                attach_to_previous_ability: false,
             },
-            effects: vec![EffectAst::subject_verb_copy_spell(
-                TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None),
-                crate::effect::Value::Fixed(1),
-                PlayerAst::You,
-                true,
-                false,
-                Vec::new(),
-            )],
-            one_shot: true,
-            until_end_of_combat: false,
-            attach_to_previous_ability: false,
-        }))));
+        ))));
     }
     Ok(None)
 }
@@ -213,7 +227,8 @@ pub(super) fn open_destroy_then_search_shuffle(
         .first()
         .copied();
     if first_word == Some("destroy")
-        && let Some(effects) = destroy_all_then_search_shuffle(sentence, next)? {
+        && let Some(effects) = destroy_all_then_search_shuffle(sentence, next)?
+    {
         return Ok(Some(Pair::DestroyThenSearchShuffle(effects)));
     }
     Ok(None)
@@ -234,7 +249,8 @@ pub(super) fn open_search_two_disposition(
         .copied();
     if first_word == Some("search")
         && let Some(third) = sentences.get(sentence_idx + 2)
-        && let Some(effects) = search_two_disposition_then_shuffle(sentence, next, third)? {
+        && let Some(effects) = search_two_disposition_then_shuffle(sentence, next, third)?
+    {
         return Ok(Some(Pair::SearchTwoDisposition(effects)));
     }
     Ok(None)
@@ -260,7 +276,8 @@ pub(super) fn open_tempting_offer_copy(
             next.lowered(),
             third.lowered(),
             fourth.lowered(),
-        ) {
+        )
+    {
         return Ok(Some(Pair::TemptingOfferCopy(tempting_offer_copy_effects())));
     }
     Ok(None)
@@ -322,7 +339,8 @@ pub(super) fn open_choose_phase_then_skip(
         .first()
         .copied();
     if matches!(first_word, Some("that" | "the"))
-        && let Some(effects) = choose_phase_then_skip(sentence, next)? {
+        && let Some(effects) = choose_phase_then_skip(sentence, next)?
+    {
         return Ok(Some(Pair::ChoosePhaseThenSkip(effects)));
     }
     Ok(None)
@@ -386,7 +404,8 @@ pub(super) fn open_target_opponent_copy_retarget(
         .first()
         .copied();
     if first_word == Some("up")
-        && let Some(effects) = target_opponent_copy_retarget(sentence, next)? {
+        && let Some(effects) = target_opponent_copy_retarget(sentence, next)?
+    {
         return Ok(Some(Pair::TargetOpponentCopyRetarget(effects)));
     }
     Ok(None)
@@ -406,7 +425,8 @@ pub(super) fn open_opponents_sacrifice_or_discard_damage(
         .first()
         .copied();
     if first_word == Some("each")
-        && let Some(effects) = opponents_sacrifice_or_discard_damage(sentence, next)? {
+        && let Some(effects) = opponents_sacrifice_or_discard_damage(sentence, next)?
+    {
         return Ok(Some(Pair::OpponentsSacrificeOrDiscardDamage(effects)));
     }
     Ok(None)

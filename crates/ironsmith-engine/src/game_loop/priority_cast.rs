@@ -2121,18 +2121,33 @@ pub(super) fn continue_to_targets_or_mana_payment(
     if let Some(types) = pending_spell_creature_type_options(game, &pending) {
         if types.is_empty() {
             state.rollback_action(game);
-            return Err(GameLoopError::ActionCancelled("No creature type permits the required targets".into()));
+            return Err(GameLoopError::ActionCancelled(
+                "No creature type permits the required targets".into(),
+            ));
         }
-        let options = crate::types::SubtypeFamily::Creature.all_subtypes().iter().enumerate()
+        let options = crate::types::SubtypeFamily::Creature
+            .all_subtypes()
+            .iter()
+            .enumerate()
             .filter(|(_, subtype)| types.contains(subtype))
-            .map(|(index, subtype)| crate::decisions::context::SelectableOption::new(index, subtype.to_string()))
+            .map(|(index, subtype)| {
+                crate::decisions::context::SelectableOption::new(index, subtype.to_string())
+            })
             .collect();
         let context = crate::decisions::context::SelectOptionsContext::new(
-            pending.caster, Some(pending.spell_id), "Choose a creature type", options, 1, 1);
+            pending.caster,
+            Some(pending.spell_id),
+            "Choose a creature type",
+            options,
+            1,
+            1,
+        );
         let mut pending = pending;
         pending.stage = CastStage::ChoosingCreatureType;
         state.pending_cast = Some(pending);
-        return Ok(GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::SelectOptions(context)));
+        return Ok(GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectOptions(context),
+        ));
     }
 
     // Validate that we can still pay the cost after hybrid choices

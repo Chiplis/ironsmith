@@ -1,5 +1,5 @@
-use crate::cards::builders::ForEachEffectAst;
 use super::*;
+use crate::cards::builders::ForEachEffectAst;
 
 pub(super) fn parse_choose_each_graveyard_then_owner_shuffle_bundle(
     choice_sentence: &[OwnedLexToken],
@@ -35,19 +35,21 @@ pub(super) fn parse_choose_each_graveyard_then_owner_shuffle_bundle(
     let chosen_tag = crate::tag::CompilerReferenceTag::EachGraveyardChosen.bind();
     let chosen_target = TargetAst::Tagged(chosen_tag.clone(), span_from_tokens(shuffle_sentence));
 
-    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
-        effects: vec![
-            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-                filter,
-                count,
-                count_value,
-                player: PlayerAst::You,
-                tag: chosen_tag,
-            }),
-            EffectAst::subject_verb_shuffle_objects_into_library(
-                PlayerAst::ItsOwner,
-                chosen_target,
-            ),
-        ],
-    })]))
+    Ok(Some(vec![EffectAst::ForEach(
+        ForEachEffectAst::ForEachPlayer {
+            effects: vec![
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                    filter,
+                    count,
+                    count_value,
+                    player: PlayerAst::You,
+                    tag: chosen_tag,
+                }),
+                EffectAst::subject_verb_shuffle_objects_into_library(
+                    PlayerAst::ItsOwner,
+                    chosen_target,
+                ),
+            ],
+        },
+    )]))
 }

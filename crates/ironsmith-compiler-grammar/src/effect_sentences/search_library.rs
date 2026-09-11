@@ -1,4 +1,3 @@
-use crate::cards::builders::ForEachEffectAst;
 use super::super::grammar::effects as search_grammar;
 use super::super::grammar::primitives as grammar;
 use super::super::lexer::{OwnedLexToken, split_lexed_sentences, token_word_refs};
@@ -9,10 +8,12 @@ use super::super::util::{
 };
 use super::parse_effect_chain;
 use super::sentence_helpers::*;
+use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{
-    CardTextError, CarryContext, ChoiceCount, EffectAst, LibraryBottomOrderAst,
-    LibraryConsultModeAst, LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst,
-    SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst, LibraryActionAst, RevealLookActionAst, ObjectChoiceEffectAst, ConditionalEffectAst, PermissionEffectAst,
+    CardTextError, CarryContext, ChoiceCount, ConditionalEffectAst, EffectAst, LibraryActionAst,
+    LibraryBottomOrderAst, LibraryConsultModeAst, LibraryConsultStopRuleAst, ObjectChoiceEffectAst,
+    PermissionEffectAst, PlayerAst, PredicateAst, ReturnControllerAst, RevealLookActionAst,
+    SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst,
 };
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::{CardType, Subtype};
@@ -47,7 +48,9 @@ fn bind_owner_subject_same_sentence_tail(
         && refers_to_their_library
         && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             subject,
-            action: SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { .. }) | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTop),
+            action:
+                SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { .. })
+                | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTop),
         }) = effect
         && subject.player == PlayerAst::ItsController
     {
@@ -237,7 +240,10 @@ pub fn parse_shuffle_graveyard_into_library_sentence(
         };
     let wrap_optional = |effects: Vec<EffectAst>| -> Vec<EffectAst> {
         if optional_shuffle {
-            vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, effects })]
+            vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
+                player,
+                effects,
+            })]
         } else {
             effects
         }
@@ -284,7 +290,9 @@ pub fn parse_shuffle_graveyard_into_library_sentence(
             graveyard.zone = Some(Zone::Graveyard);
             let mut graveyard_target = TargetAst::Object(graveyard, None, None);
             apply_shuffle_subject_graveyard_owner_context(&mut graveyard_target, subject);
-            let TargetAst::Object(graveyard, _, _) = graveyard_target else { unreachable!() };
+            let TargetAst::Object(graveyard, _, _) = graveyard_target else {
+                unreachable!()
+            };
             let filter = ObjectFilter {
                 any_of: vec![ObjectFilter::source(), graveyard],
                 ..Default::default()
@@ -579,33 +587,35 @@ pub fn parse_for_each_exiled_this_way_sentence(
         let revealed_tag = helper_tag_for_tokens(tokens, "revealed");
         let matched_tag = helper_tag_for_tokens(tokens, "chosen");
 
-        return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
-            tag: crate::tag::CompilerReferenceTag::It.bind(),
-            effects: vec![
-                EffectAst::subject_verb_consult_top_of_library(
-                    PlayerAst::Implicit,
-                    LibraryConsultModeAst::Reveal,
-                    filter,
-                    LibraryConsultStopRuleAst::FirstMatch,
-                    crate::tag::TagRef::of(revealed_tag.clone()),
-                    crate::tag::TagRef::of(matched_tag.clone()),
-                ),
-                EffectAst::subject_verb_move_to_zone(
-                    TargetAst::Tagged(crate::tag::TagRef::of(matched_tag.clone()), None),
-                    Zone::Battlefield,
-                    false,
-                    ReturnControllerAst::Preserve,
-                    false,
-                    None,
-                ),
-                EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-                    crate::tag::TagRef::of(revealed_tag),
-                    Some(crate::tag::TagRef::of(matched_tag)),
-                    LibraryBottomOrderAst::Random,
-                    PlayerAst::Implicit,
-                ),
-            ],
-        })]));
+        return Ok(Some(vec![EffectAst::ForEach(
+            ForEachEffectAst::ForEachTagged {
+                tag: crate::tag::CompilerReferenceTag::It.bind(),
+                effects: vec![
+                    EffectAst::subject_verb_consult_top_of_library(
+                        PlayerAst::Implicit,
+                        LibraryConsultModeAst::Reveal,
+                        filter,
+                        LibraryConsultStopRuleAst::FirstMatch,
+                        crate::tag::TagRef::of(revealed_tag.clone()),
+                        crate::tag::TagRef::of(matched_tag.clone()),
+                    ),
+                    EffectAst::subject_verb_move_to_zone(
+                        TargetAst::Tagged(crate::tag::TagRef::of(matched_tag.clone()), None),
+                        Zone::Battlefield,
+                        false,
+                        ReturnControllerAst::Preserve,
+                        false,
+                        None,
+                    ),
+                    EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+                        crate::tag::TagRef::of(revealed_tag),
+                        Some(crate::tag::TagRef::of(matched_tag)),
+                        LibraryBottomOrderAst::Random,
+                        PlayerAst::Implicit,
+                    ),
+                ],
+            },
+        )]));
     }
 
     let effect_tokens = shape.effect_tokens.ok_or_else(|| {
@@ -639,28 +649,30 @@ pub fn parse_for_each_exiled_this_way_sentence(
                 )
             }
         };
-        return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
-            tag: crate::tag::CompilerReferenceTag::SourceExiled.bind(),
-            effects: vec![
-                EffectAst::subject_verb_consult_top_of_library(
-                    PlayerAst::ItsController,
-                    LibraryConsultModeAst::Reveal,
-                    filter,
-                    LibraryConsultStopRuleAst::FirstMatch,
-                    crate::tag::TagRef::of(revealed_tag),
-                    crate::tag::TagRef::of(matched_tag.clone()),
-                ),
-                EffectAst::subject_verb_move_to_zone(
-                    TargetAst::Tagged(crate::tag::TagRef::of(matched_tag), None),
-                    Zone::Battlefield,
-                    false,
-                    ReturnControllerAst::Preserve,
-                    false,
-                    None,
-                ),
-                finish,
-            ],
-        })]));
+        return Ok(Some(vec![EffectAst::ForEach(
+            ForEachEffectAst::ForEachTagged {
+                tag: crate::tag::CompilerReferenceTag::SourceExiled.bind(),
+                effects: vec![
+                    EffectAst::subject_verb_consult_top_of_library(
+                        PlayerAst::ItsController,
+                        LibraryConsultModeAst::Reveal,
+                        filter,
+                        LibraryConsultStopRuleAst::FirstMatch,
+                        crate::tag::TagRef::of(revealed_tag),
+                        crate::tag::TagRef::of(matched_tag.clone()),
+                    ),
+                    EffectAst::subject_verb_move_to_zone(
+                        TargetAst::Tagged(crate::tag::TagRef::of(matched_tag), None),
+                        Zone::Battlefield,
+                        false,
+                        ReturnControllerAst::Preserve,
+                        false,
+                        None,
+                    ),
+                    finish,
+                ],
+            },
+        )]));
     }
     let effects = parse_effect_chain(effect_tokens)?;
     if effects.is_empty() {
@@ -680,10 +692,12 @@ pub fn parse_for_each_exiled_this_way_sentence(
         effects
     };
 
-    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
-        tag: crate::tag::CompilerReferenceTag::It.bind(),
-        effects,
-    })]))
+    Ok(Some(vec![EffectAst::ForEach(
+        ForEachEffectAst::ForEachTagged {
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
+            effects,
+        },
+    )]))
 }
 
 #[cfg(test)]
@@ -712,14 +726,16 @@ pub fn parse_each_player_put_permanent_cards_exiled_with_source_sentence(
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
 
-    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
-        effects: vec![EffectAst::subject_verb_put_all_onto_battlefield(
-            filter,
-            false,
-            false,
-            ReturnControllerAst::Owner,
-        )],
-    })]))
+    Ok(Some(vec![EffectAst::ForEach(
+        ForEachEffectAst::ForEachPlayer {
+            effects: vec![EffectAst::subject_verb_put_all_onto_battlefield(
+                filter,
+                false,
+                false,
+                ReturnControllerAst::Owner,
+            )],
+        },
+    )]))
 }
 
 pub fn parse_for_each_destroyed_this_way_sentence(
@@ -770,14 +786,16 @@ pub fn parse_for_each_destroyed_this_way_sentence(
         )));
     }
 
-    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
-        tag: crate::tag::CompilerReferenceTag::It.bind(),
-        effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-            predicate: PredicateAst::ItMatchedLastKnown(filter),
-            if_true: effects,
-            if_false: Vec::new(),
-        })],
-    })]))
+    Ok(Some(vec![EffectAst::ForEach(
+        ForEachEffectAst::ForEachTagged {
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
+            effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate: PredicateAst::ItMatchedLastKnown(filter),
+                if_true: effects,
+                if_false: Vec::new(),
+            })],
+        },
+    )]))
 }
 
 #[cfg(test)]
@@ -792,7 +810,9 @@ mod core_programs;
 pub use core_programs::{parse_earthbend_sentence, parse_enchant_sentence};
 #[path = "search_library/zone.rs"]
 mod zone_programs;
-pub use zone_programs::{parse_for_each_put_into_graveyard_this_way_sentence, parse_for_each_revealed_this_way_sentence};
+pub use zone_programs::{
+    parse_for_each_put_into_graveyard_this_way_sentence, parse_for_each_revealed_this_way_sentence,
+};
 #[path = "search_library/resource.rs"]
 mod resource_programs;
 use resource_programs::bind_sacrificed_snapshot_controller;

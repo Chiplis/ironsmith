@@ -1086,6 +1086,43 @@ fn snapshot_chosen_objects(game: &GameState, chosen: &[ObjectId]) -> Vec<ObjectS
         .collect()
 }
 
+/// Whether this choice asks for a fixed number of objects that the chooser
+/// cannot supply.
+///
+/// A mandatory instruction does as much as it can — "each player sacrifices two
+/// creatures" takes the only creature a player controls (CR 608.2). An
+/// *optional* one is all-or-nothing: "any player may sacrifice two creatures of
+/// their choice" is simply not an option for a player who controls fewer than
+/// two, so the offer is withheld rather than partially performed.
+///
+/// Only fixed counts are judged here. Searches may legally fail to find, and
+/// their candidate set includes hidden library cards this function does not
+/// collect; X-based and "up to" counts have no hard floor to miss.
+pub(crate) fn fixed_choice_requirement_is_unmet(
+    effect: &ChooseObjectsEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Result<bool, ExecutionError> {
+    if effect.is_search
+        || effect.count.dynamic_x
+        || effect.count.up_to_x
+        || effect.count_value.is_some()
+        || effect.count.min == 0
+    {
+        return Ok(false);
+    }
+
+    let chooser_id =
+        crate::effects::helpers::resolve_player_filter_as_chooser(game, &effect.chooser, ctx)?;
+    let mut candidates = collect_candidates(effect, game, ctx, chooser_id)?;
+    if !game.source_snapshot_is_exempt_from_range(Some(ctx.source), ctx.source_snapshot.as_ref()) {
+        candidates
+            .retain(|object| game.object_is_within_range(chooser_id, *object, Some(ctx.source)));
+    }
+
+    Ok(candidates.len() < effect.count.min)
+}
+
 pub(crate) fn run_choose_objects(
     effect: &ChooseObjectsEffect,
     game: &mut GameState,
@@ -1150,8 +1187,10 @@ pub(crate) fn run_choose_objects(
                 return Ok(EffectOutcome::count(0));
             }
         }
-        let search_event = (effect.is_search && search_zones.contains(&Zone::Library)
-            && game.can_search_library(chooser_id)).then(|| {
+        let search_event = (effect.is_search
+            && search_zones.contains(&Zone::Library)
+            && game.can_search_library(chooser_id))
+        .then(|| {
             TriggerEvent::new_with_provenance(
                 SearchLibraryEvent::new(chooser_id, library_owner),
                 ctx.provenance,

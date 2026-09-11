@@ -2,7 +2,9 @@
 jobs = 8
 
 [env]
-RUST_MIN_STACK = "4194304"
+# Large native session/checkpoint fixtures exceed the default debug test stack.
+# This does not configure the wasm32 runtime stack.
+RUST_MIN_STACK = "16777216"
 
 [target.wasm32-unknown-unknown]
 rustflags = ['--cfg', 'getrandom_backend="wasm_js"']

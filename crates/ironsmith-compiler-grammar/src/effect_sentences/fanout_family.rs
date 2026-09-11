@@ -1,4 +1,3 @@
-use crate::cards::builders::ForEachEffectAst;
 use super::super::grammar::effects::fanout_shapes as fanout_grammar;
 use super::super::grammar::effects::parse_serial_damage_fanout_tokens;
 use super::super::keyword_static::{parse_pt_modifier, parse_pt_modifier_values};
@@ -12,9 +11,11 @@ use super::sentence_helpers::parse_predicate_lexed;
 use super::zone_counter_helpers::{split_until_source_leaves_tail, target_object_filter_mut};
 use super::zone_handlers::collapse_leading_signed_pt_modifier_tokens;
 use super::{apply_where_x_to_damage_amounts, find_verb, parse_simple_gain_ability_clause};
+use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{
-    CardTextError, EffectAst, PlayerAst, PredicateAst, SubjectVerbActionAst, SubjectVerbEffectAst,
-    TagKey, TargetAst, Verb, CounterActionAst, GrantActionAst, DamageActionAst, ConditionalEffectAst,
+    CardTextError, ConditionalEffectAst, CounterActionAst, DamageActionAst, EffectAst,
+    GrantActionAst, PlayerAst, PredicateAst, SubjectVerbActionAst, SubjectVerbEffectAst, TagKey,
+    TargetAst, Verb,
 };
 use crate::effect::{EventValueSpec, Until, Value};
 use crate::model::visit::for_each_nested_effects_mut;
@@ -688,7 +689,8 @@ fn lower_damage_part_shape(
             {
                 return Ok(Some(CompoundDamagePart::OpponentChosenTarget {
                     target: parse_target_phrase(&choice.object_tokens)?,
-                    tag: crate::util::helper_tag_for_tokens(&tokens, "opponent_chosen_target").into(),
+                    tag: crate::util::helper_tag_for_tokens(&tokens, "opponent_chosen_target")
+                        .into(),
                 }));
             }
             let mut target = parse_target_phrase(&tokens)?;
@@ -765,7 +767,8 @@ fn damage_player_iteration_effect(filter: PlayerFilter, effects: Vec<EffectAst>)
     match filter {
         PlayerFilter::Opponent => EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }),
         PlayerFilter::Any => EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }),
-        other => EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
+        other => EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+            sequential: false,
             filter: other,
             effects,
         }),
@@ -784,7 +787,10 @@ fn compound_damage_part_to_effect(part: CompoundDamagePart, amount: Value) -> Ef
                     )),
                     tag: crate::tag::TagRef::of(tag.clone()),
                 },
-                EffectAst::subject_verb_damage(amount, TargetAst::Tagged(crate::tag::TagRef::of(tag), None)),
+                EffectAst::subject_verb_damage(
+                    amount,
+                    TargetAst::Tagged(crate::tag::TagRef::of(tag), None),
+                ),
             ],
         },
         CompoundDamagePart::EachObject(filter) => {
@@ -1009,9 +1015,16 @@ fn bind_damage_amount_to_removed_counter_count(
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect {
         let amount = match action {
             SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount, .. })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { amount, .. })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { amount, .. })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. }) => Some(amount),
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
+                amount,
+                ..
+            })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage {
+                amount, ..
+            })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. }) => {
+                Some(amount)
+            }
             _ => None,
         };
         if let Some(amount) = amount
@@ -1282,10 +1295,10 @@ pub fn parse_same_name_gets_fanout_sentence(
 
 #[cfg(test)]
 mod coordinated_target_tests {
-    use crate::cards::builders::TurnEventPredicateAst;
-    use crate::cards::builders::StatChangeActionAst;
-    use crate::cards::builders::LifeResourceActionAst;
     use super::*;
+    use crate::cards::builders::LifeResourceActionAst;
+    use crate::cards::builders::StatChangeActionAst;
+    use crate::cards::builders::TurnEventPredicateAst;
     use crate::lexer::lex_line;
     use crate::model::ast::SubjectVerbRoleAst;
 

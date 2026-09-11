@@ -1,8 +1,7 @@
 use crate::tag::TagKeyWalk;
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum ThisSpellCastTiming {
     DuringDeclareAttackersStep,
     DuringCombat,

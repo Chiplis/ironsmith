@@ -9,8 +9,7 @@ use crate::parse_context::ParseContextView;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum CompilerFilterAst {
     Object(ObjectFilter),
     Player(PlayerFilter),
@@ -29,8 +28,7 @@ impl CompilerFilterAst {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum ArithmeticOperatorAst {
     Add,
     Subtract,
@@ -40,8 +38,7 @@ pub enum ArithmeticOperatorAst {
     Maximum,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum CompilerValueAst {
     Fixed(i32),
     X,
@@ -57,15 +54,13 @@ pub enum CompilerValueAst {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum SelectionKindAst {
     Target,
     Choose,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum SelectionDomainAst {
     Source,
     AnyTarget,
@@ -95,16 +90,14 @@ impl SelectionDomainAst {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct SelectionCardinalityAst {
     pub min: CompilerValueAst,
     pub max: Option<CompilerValueAst>,
     pub reference_cardinality: Cardinality,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub struct SelectionLegalityAst {
     pub targetable: bool,
     pub zones: Vec<Zone>,
@@ -114,8 +107,7 @@ pub struct SelectionLegalityAst {
     pub random: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CompilerSelectionAst {
     pub kind: SelectionKindAst,
     pub domain: SelectionDomainAst,

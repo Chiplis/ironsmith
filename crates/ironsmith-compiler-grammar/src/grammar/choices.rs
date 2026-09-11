@@ -663,7 +663,8 @@ fn parse_opponent_controlled_count_tail_lexed(input: &mut LexStream<'_>) -> WRes
         primitives::kw("enchantments").value(CardType::Enchantment),
         primitives::kw("planeswalkers").value(CardType::Planeswalker),
         primitives::kw("battles").value(CardType::Battle),
-    )).parse_next(input)?;
+    ))
+    .parse_next(input)?;
     primitives::phrase(&["than", "you"]).parse_next(input)?;
     eof.parse_next(input)?;
     Ok(PlayerFilter::OpponentWithMoreControlledObjectsThan {

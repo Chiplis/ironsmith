@@ -3,8 +3,7 @@ use crate::tag::TagKeyWalk;
 use crate::{ChoiceCount, ObjectFilter, ObjectId, PlayerFilter, PlayerId, TagKey, Zone};
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub enum SourceReferenceSurface {
     FullName(String),
     ShortName(String),
@@ -17,8 +16,7 @@ pub enum SourceReferenceSurface {
 /// This is presentation metadata only. Object identity is still carried by a
 /// tagged snapshot so runtime characteristic and controller lookups use LKI.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
 pub enum SacrificedObjectKind {
     Creature,
     Artifact,
@@ -48,8 +46,7 @@ impl SourceReferenceSurface {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub enum ChooseSpecSurfaceHint {
     SourceReference(SourceReferenceSurface),
     SacrificedObject(SacrificedObjectKind),
@@ -57,8 +54,7 @@ pub enum ChooseSpecSurfaceHint {
 
 /// Specifies what can be chosen or targeted by an effect.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum ChooseSpec {
     SurfaceHinted {
         spec: Box<ChooseSpec>,

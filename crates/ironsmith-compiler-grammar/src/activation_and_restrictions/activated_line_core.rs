@@ -8,10 +8,10 @@ use crate::grammar::activated_lines::{
 };
 use crate::grammar::leaf::parse_leaf_fixed_mana_output_tokens;
 use crate::lexer::render_token_slice;
-use crate::model::ast::SubjectVerbActionAst;
-use crate::model::ast::StatChangeActionAst;
 use crate::model::ast::LifeResourceActionAst;
 use crate::model::ast::ManaActionAst;
+use crate::model::ast::StatChangeActionAst;
+use crate::model::ast::SubjectVerbActionAst;
 use crate::util::SubjectAst;
 
 pub type ActivationRestrictionCompatWords<'a> = grammar::TokenWordView<'a>;
@@ -712,8 +712,13 @@ fn replace_removed_counter_metric_with_x(effect: &mut EffectAst) {
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { amount, .. })
-            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce { amount, .. })
-            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { amount }) => replace_value(amount),
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce {
+                amount,
+                ..
+            })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { amount }) => {
+                replace_value(amount)
+            }
             _ => {}
         }
     }
@@ -786,7 +791,10 @@ pub fn mana_effect_contains_unbound_x(effect: &EffectAst) -> bool {
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { amount, .. })
-            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce {
+                amount,
+                ..
+            })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { amount }) => {
                 value_contains_unbound_x(amount)
             }

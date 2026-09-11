@@ -86,17 +86,35 @@ mod tests {
 
     #[test]
     fn land_play_origin_is_checked_before_matching_the_battlefield_object() {
-        use crate::{card::CardBuilder, ids::{CardId, ObjectId, PlayerId}, game_state::GameState, types::CardType, zone::Zone};
+        use crate::{
+            card::CardBuilder,
+            game_state::GameState,
+            ids::{CardId, ObjectId, PlayerId},
+            types::CardType,
+            zone::Zone,
+        };
         let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
         let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
-        let card = CardBuilder::new(CardId::from_raw(1), "Land Probe").card_types(vec![CardType::Land]).build();
+        let card = CardBuilder::new(CardId::from_raw(1), "Land Probe")
+            .card_types(vec![CardType::Land])
+            .build();
         let land = game.create_object_from_card(&card, alice, Zone::Battlefield);
-        let trigger = PlayerPlaysLandTrigger::new(PlayerFilter::You, ObjectFilter::land().in_zone(Zone::Exile));
+        let trigger = PlayerPlaysLandTrigger::new(
+            PlayerFilter::You,
+            ObjectFilter::land().in_zone(Zone::Exile),
+        );
         assert_eq!(trigger.display(), "Whenever you play a land from exile");
         let ctx = TriggerContext::for_source(ObjectId::from_raw(99), alice, &game);
-        for (player, origin, expected) in [(alice, Zone::Exile, true), (alice, Zone::Hand, false), (bob, Zone::Exile, false)] {
-            let event = TriggerEvent::new_with_provenance(LandPlayedEvent::new(land, player, origin), crate::provenance::ProvNodeId::default());
+        for (player, origin, expected) in [
+            (alice, Zone::Exile, true),
+            (alice, Zone::Hand, false),
+            (bob, Zone::Exile, false),
+        ] {
+            let event = TriggerEvent::new_with_provenance(
+                LandPlayedEvent::new(land, player, origin),
+                crate::provenance::ProvNodeId::default(),
+            );
             assert_eq!(trigger.matches(&event, &ctx), expected);
         }
     }

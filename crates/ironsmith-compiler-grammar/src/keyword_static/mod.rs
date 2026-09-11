@@ -1,7 +1,7 @@
-use crate::cards::builders::PredicateAst;
-use crate::cards::builders::TurnEventPredicateAst;
-use crate::cards::builders::SourcePredicateAst;
 use crate::cards::builders::PlayerPredicateAst;
+use crate::cards::builders::PredicateAst;
+use crate::cards::builders::SourcePredicateAst;
+use crate::cards::builders::TurnEventPredicateAst;
 mod costs_replacements_and_permissions;
 mod leading_conditional_sentence_chain;
 pub use costs_replacements_and_permissions::*;
@@ -834,9 +834,17 @@ mod registry_head_hint_tests {
         let tokens = crate::lexer::lex_line(
             "All Forests and all Saprolings are 2/2 green Saproling creatures and Forest lands in addition to their other types.", 0,
         ).unwrap();
-        assert!(parse_all_are_pt_color_type_addition_line(&tokens).unwrap().is_some());
+        assert!(
+            parse_all_are_pt_color_type_addition_line(&tokens)
+                .unwrap()
+                .is_some()
+        );
         assert!(registry_result(&tokens).unwrap().is_some());
-        assert!(parse_static_ability_ast_line_lexed(&tokens).unwrap().is_some());
+        assert!(
+            parse_static_ability_ast_line_lexed(&tokens)
+                .unwrap()
+                .is_some()
+        );
     }
 
     fn registry_result(
@@ -2465,7 +2473,9 @@ fn static_condition_references_source_outside_battlefield(condition: &PredicateA
                     .as_ref()
                     .is_some_and(|zone| *zone != Zone::Battlefield)
         }
-        PredicateAst::Source(SourcePredicateAst::SourceIsInZone(zone)) => *zone != Zone::Battlefield,
+        PredicateAst::Source(SourcePredicateAst::SourceIsInZone(zone)) => {
+            *zone != Zone::Battlefield
+        }
         PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
             static_condition_references_source_outside_battlefield(left)
                 || static_condition_references_source_outside_battlefield(right)
@@ -3059,18 +3069,46 @@ fn comma_separated_anthem_subject_is_not_split_into_sibling_abilities() {
 
 pub fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<StaticAbility> {
     let words = crate::lexer::token_word_refs(tokens);
-    let normalized = words.iter().map(|word| if matches!(*word, "can't" | "cannot") { "cant" } else { *word }).collect::<Vec<_>>();
-    if normalized == ["spells", "and", "abilities", "your", "opponents", "control", "cant", "cause", "you", "to", "sacrifice", "permanents"] {
+    let normalized = words
+        .iter()
+        .map(|word| {
+            if matches!(*word, "can't" | "cannot") {
+                "cant"
+            } else {
+                *word
+            }
+        })
+        .collect::<Vec<_>>();
+    if normalized
+        == [
+            "spells",
+            "and",
+            "abilities",
+            "your",
+            "opponents",
+            "control",
+            "cant",
+            "cause",
+            "you",
+            "to",
+            "sacrifice",
+            "permanents",
+        ]
+    {
         return Some(StaticAbility::restriction(
             crate::effect::Restriction::BeSacrificedByCause {
                 filter: ObjectFilter::permanent().you_control(),
                 cause: ironsmith_core::CauseFilter {
-                    cause_type: Some(ironsmith_core::CauseTypeFilter::OneOf(vec![ironsmith_core::CauseType::Effect, ironsmith_core::CauseType::Cost])),
+                    cause_type: Some(ironsmith_core::CauseTypeFilter::OneOf(vec![
+                        ironsmith_core::CauseType::Effect,
+                        ironsmith_core::CauseType::Cost,
+                    ])),
                     source_filter: None,
                     controller_filter: Some(ironsmith_core::ControllerFilter::Opponent),
                 },
             },
-            "Spells and abilities your opponents control can't cause you to sacrifice permanents.".to_string(),
+            "Spells and abilities your opponents control can't cause you to sacrifice permanents."
+                .to_string(),
         ));
     }
     if tokens.is_empty() {
@@ -3160,9 +3198,9 @@ pub fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<StaticA
     }
 
     if is_attack_as_haste_unless_entered_this_turn_marker_line_lexed(tokens) {
-        let condition = PredicateAst::Not(Box::new(
-            PredicateAst::TurnEvents(TurnEventPredicateAst::ObjectEnteredBattlefieldThisTurn(ObjectFilter::source())),
-        ));
+        let condition = PredicateAst::Not(Box::new(PredicateAst::TurnEvents(
+            TurnEventPredicateAst::ObjectEnteredBattlefieldThisTurn(ObjectFilter::source()),
+        )));
         return Some(StaticAbility::new(
             GrantAbility::source(StaticAbility::can_attack_as_though_haste())
                 .with_condition(condition),
@@ -4419,12 +4457,30 @@ pub fn parse_enter_as_copy_as_enters_line(
                             }
                         }
                     }
-                    keyword_static_lines::CopyExceptionShape::Abilities { ability_tokens, source_filter_tokens } => {
+                    keyword_static_lines::CopyExceptionShape::Abilities {
+                        ability_tokens,
+                        source_filter_tokens,
+                    } => {
                         added_abilities_source_filter = if let Some(tokens) = source_filter_tokens {
-                            let (subject, missing) = keyword_static_lines::split_copy_source_missing_ability_tokens(tokens)
-                                .ok_or_else(|| CardTextError::ParseError("unsupported conditional copy ability predicate".into()))?;
-                            let actions = parse_ability_line(missing).ok_or_else(|| CardTextError::ParseError("unsupported copy source keyword predicate".into()))?;
-                            let [action] = actions.as_slice() else { return Err(CardTextError::ParseError("copy source predicate requires one keyword".into())); };
+                            let (subject, missing) =
+                                keyword_static_lines::split_copy_source_missing_ability_tokens(
+                                    tokens,
+                                )
+                                .ok_or_else(|| {
+                                    CardTextError::ParseError(
+                                        "unsupported conditional copy ability predicate".into(),
+                                    )
+                                })?;
+                            let actions = parse_ability_line(missing).ok_or_else(|| {
+                                CardTextError::ParseError(
+                                    "unsupported copy source keyword predicate".into(),
+                                )
+                            })?;
+                            let [action] = actions.as_slice() else {
+                                return Err(CardTextError::ParseError(
+                                    "copy source predicate requires one keyword".into(),
+                                ));
+                            };
                             let mut filter = parse_object_filter(subject, false)?;
                             let marker = match action {
                                 KeywordAction::Vanishing(_) => "vanishing".to_string(),
@@ -4432,7 +4488,9 @@ pub fn parse_enter_as_copy_as_enters_line(
                             };
                             filter.excluded_ability_markers.push(marker);
                             Some(filter)
-                        } else { None };
+                        } else {
+                            None
+                        };
                         added_abilities =
                             parse_added_copy_abilities(ability_tokens, &clause_words)?;
                     }
@@ -4805,6 +4863,22 @@ pub fn parse_characteristic_defining_pt_line(
         .any(|word| matches!(*word, "target" | "targets" | "become" | "becomes" | "until"))
     {
         return Ok(None);
+    }
+
+    // "This token's power and toughness are each equal to the number of fade
+    // counters on Saproling Burst" reaches this line parser when a token's
+    // characteristic-defining ability is authored as its own sentence. The
+    // proper name is the creating permanent, so it must stay a named source
+    // reference; the generic value reading would otherwise take the leading
+    // word of the name as a creature type and count every such permanent.
+    if let Some((power, toughness)) =
+        crate::grammar::token_definitions::parse_named_source_counter_dynamic_power_toughness_tokens(
+            &sentence_tokens,
+        )
+    {
+        return Ok(Some(StaticAbility::characteristic_defining_pt(
+            power, toughness,
+        )));
     }
 
     if let Some(tail_tokens) =

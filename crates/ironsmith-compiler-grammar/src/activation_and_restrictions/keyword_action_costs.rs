@@ -1,5 +1,5 @@
-use crate::cards::builders::ConditionalEffectAst;
 use super::*;
+use crate::cards::builders::ConditionalEffectAst;
 use crate::grammar::keyword_action_costs::{
     KeywordAbilityHead, KeywordCumulativeUpkeepCostSurface, KeywordDamageSubjectKind,
     KeywordDynamicManaTail, KeywordDynamicPaymentShape, KeywordGraveyardBottomPaymentScope,
@@ -432,11 +432,13 @@ fn parse_payment_clause_as_effects(
                 words(&trimmed[or_idx + 1..]).join(" ")
             ))
         })?;
-        return Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
-            effects: left,
-            alternative: right,
-            player: PlayerAst::You,
-        })]));
+        return Ok(Some(vec![EffectAst::Conditionals(
+            ConditionalEffectAst::UnlessAction {
+                effects: left,
+                alternative: right,
+                player: PlayerAst::You,
+            },
+        )]));
     }
 
     let ast = match parse_effect_sentences_lexed(&trimmed) {

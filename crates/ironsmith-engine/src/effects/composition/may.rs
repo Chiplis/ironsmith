@@ -271,6 +271,19 @@ impl MayEffect {
         game: &GameState,
         ctx: &ExecutionContext,
     ) -> Result<bool, ExecutionError> {
+        // "Any player may sacrifice two creatures of their choice" is not an
+        // option for a player who controls one: an optional action has to be
+        // performed in full, so a leading fixed-count choice the deciding
+        // player cannot satisfy withdraws the offer instead of shrinking it.
+        if let Some(choose) = self
+            .effects
+            .first()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+            && super::choose_objects_runtime::fixed_choice_requirement_is_unmet(choose, game, ctx)?
+        {
+            return Ok(true);
+        }
+
         if self.effects.len() != 1 {
             return Ok(false);
         }
@@ -465,6 +478,125 @@ mod tests {
             game.player(alice).expect("alice should exist").life,
             initial_life
         );
+    }
+
+    fn create_battlefield_creature(
+        game: &mut GameState,
+        name: &str,
+        controller: PlayerId,
+    ) -> crate::ids::ObjectId {
+        let definition = crate::cards::CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        game.create_object_from_definition(&definition, controller, Zone::Battlefield)
+    }
+
+    fn sacrifice_two_effects(chooser: PlayerFilter) -> Vec<Effect> {
+        let mut chosen = crate::filter::ObjectFilter::creature();
+        chosen.controller = Some(chooser.clone());
+        let mut sacrificed = crate::filter::ObjectFilter::creature();
+        sacrificed
+            .tagged_constraints
+            .push(crate::filter::TaggedObjectConstraint {
+                tag: crate::TagKey::from("sacrificed_0"),
+                relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            });
+        vec![
+            Effect::choose_objects(chosen, 2, chooser.clone(), "sacrificed_0"),
+            Effect::sacrifice_player(sacrificed, 2, chooser),
+        ]
+    }
+
+    /// "Any player may sacrifice two creatures of their choice" (Prowling
+    /// Pangolin): a player who controls only one creature can't sacrifice two,
+    /// so the option is never offered to them.
+    #[test]
+    fn may_sacrifice_two_is_not_offered_when_only_one_creature_is_available() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let lone_creature = create_battlefield_creature(&mut game, "Lone Bear", alice);
+
+        let mut dm = PanicOnBooleanDecisionMaker;
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+
+        let effect = MayEffect::new(sacrifice_two_effects(PlayerFilter::You))
+            .with_fallback(FallbackStrategy::Accept);
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("effect should execute");
+
+        assert_eq!(result.status, crate::effect::OutcomeStatus::Declined);
+        assert!(
+            !result.execution_facts().contains(&ExecutionFact::Accepted),
+            "an unperformable optional action must not count as taken"
+        );
+        assert!(
+            game.battlefield.contains(&lone_creature),
+            "the lone creature must not be sacrificed"
+        );
+    }
+
+    #[test]
+    fn may_sacrifice_two_is_offered_when_two_creatures_are_available() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let first = create_battlefield_creature(&mut game, "Bear One", alice);
+        let second = create_battlefield_creature(&mut game, "Bear Two", alice);
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let effect = MayEffect::new(sacrifice_two_effects(PlayerFilter::You))
+            .with_fallback(FallbackStrategy::Accept);
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("effect should execute");
+
+        assert!(result.execution_facts().contains(&ExecutionFact::Accepted));
+        assert!(!game.battlefield.contains(&first));
+        assert!(!game.battlefield.contains(&second));
+    }
+
+    /// The whole card: "any player may sacrifice two creatures of their choice.
+    /// If a player does, sacrifice this creature." The controller, holding one
+    /// creature, is skipped rather than allowed to half-pay, so the offer
+    /// passes on to the next player in turn order.
+    #[test]
+    fn any_player_may_sacrifice_two_skips_players_who_control_only_one() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let alice_creature = create_battlefield_creature(&mut game, "Alice Bear", alice);
+        let bob_first = create_battlefield_creature(&mut game, "Bob Bear One", bob);
+        let bob_second = create_battlefield_creature(&mut game, "Bob Bear Two", bob);
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let each_player = Effect::new(
+            super::super::ForPlayersEffect::new_starting_with_controller(
+                PlayerFilter::Any,
+                vec![Effect::new(
+                    MayEffect::new_for_player(
+                        sacrifice_two_effects(PlayerFilter::IteratedPlayer),
+                        PlayerFilter::IteratedPlayer,
+                    )
+                    .with_fallback(FallbackStrategy::Accept),
+                )],
+            )
+            .stop_after_first_happened(),
+        );
+
+        execute_effect(&mut game, &each_player, &mut ctx).expect("effect should resolve");
+
+        assert!(
+            game.battlefield.contains(&alice_creature),
+            "a player controlling one creature can't sacrifice two"
+        );
+        assert!(!game.battlefield.contains(&bob_first));
+        assert!(!game.battlefield.contains(&bob_second));
     }
 
     #[test]

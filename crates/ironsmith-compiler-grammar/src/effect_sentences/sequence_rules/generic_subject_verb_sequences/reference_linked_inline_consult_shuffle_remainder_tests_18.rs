@@ -1,6 +1,6 @@
-use crate::cards::builders::ZoneMoveActionAst;
-use crate::cards::builders::LibraryActionAst;
 use super::*;
+use crate::cards::builders::LibraryActionAst;
+use crate::cards::builders::ZoneMoveActionAst;
 use crate::lexer::lex_line;
 
 fn parse_pair(first: &str, second: &str) -> Vec<EffectAst> {
@@ -62,7 +62,9 @@ fn counted_chosen_type_consult_shuffles_only_the_revealed_complement() {
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
             SubjectVerbActionAst::Library(LibraryActionAst::ShuffleObjectsIntoLibrary {
-                target, all: false, ..
+                target,
+                all: false,
+                ..
             }),
         ..
     }) = shuffle_remainder
@@ -112,13 +114,29 @@ fn explicit_revealed_other_cards_keep_quantifier_and_action_on_exact_remainder()
         "Its controller reveals cards from the top of their library until they reveal a creature card",
         "The player puts that card onto the battlefield, then shuffles all other cards revealed this way into their library",
     );
-    let [_, _, EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::Library(LibraryActionAst::ShuffleObjectsIntoLibrary {
-            target: TargetAst::Object(filter, _, _), ..
-        }), ..
-    })] = effects.as_slice() else { panic!("expected collection shuffle: {effects:#?}"); };
+    let [
+        _,
+        _,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Library(LibraryActionAst::ShuffleObjectsIntoLibrary {
+                    target: TargetAst::Object(filter, _, _),
+                    ..
+                }),
+            ..
+        }),
+    ] = effects.as_slice()
+    else {
+        panic!("expected collection shuffle: {effects:#?}");
+    };
     assert_eq!(filter.zone, Some(Zone::Library));
-    assert_eq!(filter.set_quantifier_surface(), Some(ironsmith_core::SetQuantifierSurface::All));
-    assert_eq!(filter.union_surface.prior_effect_action(), Some(ironsmith_core::PriorEffectAction::Revealed));
+    assert_eq!(
+        filter.set_quantifier_surface(),
+        Some(ironsmith_core::SetQuantifierSurface::All)
+    );
+    assert_eq!(
+        filter.union_surface.prior_effect_action(),
+        Some(ironsmith_core::PriorEffectAction::Revealed)
+    );
     assert_eq!(filter.tagged_constraints.len(), 2);
 }

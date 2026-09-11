@@ -281,10 +281,18 @@ impl EffectExecutor for CantEffect {
             // immediate restriction on an unrelated combat.
             if let Some(order) = ctx.combat.last_added_combat_order {
                 game.add_restriction_effect_with_start_and_tagged_objects(
-                    restriction, self.duration.clone(), ctx.source, ctx.controller,
-                    ctx.iteration.iterated_player, None, ctx.tagged_objects.clone(),
+                    restriction,
+                    self.duration.clone(),
+                    ctx.source,
+                    ctx.controller,
+                    ctx.iteration.iterated_player,
+                    None,
+                    ctx.tagged_objects.clone(),
                 );
-                game.effect_store.restriction_effects.last_mut().unwrap()
+                game.effect_store
+                    .restriction_effects
+                    .last_mut()
+                    .unwrap()
                     .starts_in_added_combat = Some(order);
                 game.update_cant_effects();
             }
@@ -374,7 +382,8 @@ mod tests {
             let alice = PlayerId::from_index(0);
             let mut ctx = ExecutionContext::new_default(game.new_object_id(), alice);
             let restriction = CantEffect::starting(
-                Restriction::gain_life(PlayerFilter::Any), Until::EndOfCombat,
+                Restriction::gain_life(PlayerFilter::Any),
+                Until::EndOfCombat,
                 RestrictionStart::LastAddedCombatPhase,
             );
             // No preceding phase must not accidentally register a global rule.
@@ -383,7 +392,9 @@ mod tests {
             crate::effects::AdditionalPhasesEffect {
                 phases: vec![crate::effects::AdditionalPhase::Combat],
                 after_main_phase: false,
-            }.execute(&mut game, &mut ctx).unwrap();
+            }
+            .execute(&mut game, &mut ctx)
+            .unwrap();
             restriction.execute(&mut game, &mut ctx).unwrap();
             assert!(game.can_gain_life(alice));
             game.add_additional_phase_group([Phase::Combat]);

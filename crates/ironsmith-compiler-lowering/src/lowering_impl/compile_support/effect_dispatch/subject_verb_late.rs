@@ -1,19 +1,19 @@
-use crate::cards::builders::GameActionAst;
-use crate::cards::builders::ControlActionAst;
-use crate::cards::builders::TokenActionAst;
-use crate::cards::builders::StackActionAst;
-use crate::cards::builders::DamageActionAst;
-use crate::cards::builders::LifeResourceActionAst;
-use crate::cards::builders::RevealLookActionAst;
-use crate::cards::builders::PermanentStateActionAst;
-use crate::cards::builders::KeywordActionAst;
-use crate::cards::builders::CharacteristicActionAst;
-use crate::cards::builders::TurnStructureActionAst;
-use crate::cards::builders::LibraryActionAst;
-use crate::cards::builders::ManaActionAst;
-use crate::cards::builders::GrantActionAst;
-use crate::cards::builders::CounterActionAst;
 use super::*;
+use crate::cards::builders::CharacteristicActionAst;
+use crate::cards::builders::ControlActionAst;
+use crate::cards::builders::CounterActionAst;
+use crate::cards::builders::DamageActionAst;
+use crate::cards::builders::GameActionAst;
+use crate::cards::builders::GrantActionAst;
+use crate::cards::builders::KeywordActionAst;
+use crate::cards::builders::LibraryActionAst;
+use crate::cards::builders::LifeResourceActionAst;
+use crate::cards::builders::ManaActionAst;
+use crate::cards::builders::PermanentStateActionAst;
+use crate::cards::builders::RevealLookActionAst;
+use crate::cards::builders::StackActionAst;
+use crate::cards::builders::TokenActionAst;
+use crate::cards::builders::TurnStructureActionAst;
 
 pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
     matches!(
@@ -50,7 +50,9 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAllAttachedTo { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::ExperienceCounters { .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Flip { .. })
-            | SubjectVerbActionAst::Counters(CounterActionAst::ForEachCounterKindPutOrRemove { .. })
+            | SubjectVerbActionAst::Counters(
+                CounterActionAst::ForEachCounterKindPutOrRemove { .. }
+            )
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilityToSource { .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantNextSpellAbilityThisTurn { .. })
@@ -80,25 +82,35 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Regenerate { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RegenerateAll { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::RemoveCountersAll { .. })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat { .. })
+            | SubjectVerbActionAst::PermanentState(
+                PermanentStateActionAst::RemoveFromCombat { .. }
+            )
             | SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand { .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHandOfChosenColor { .. })
+            | SubjectVerbActionAst::ZoneMoves(
+                ZoneMoveActionAst::ReturnAllToHandOfChosenColor { .. }
+            )
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { .. })
             | SubjectVerbActionAst::Game(GameActionAst::ReverseTurnOrder)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RingTemptsYou)
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { .. })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ScalePowerToughnessAll { .. })
+            | SubjectVerbActionAst::PermanentState(
+                PermanentStateActionAst::ScalePowerToughnessAll { .. }
+            )
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetLifeTotal { .. })
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhases)
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhasesThisTurn)
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipDrawStep)
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipMainPhasesThisTurn)
-            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipNextCombatPhaseThisTurn)
+            | SubjectVerbActionAst::TurnStructure(
+                TurnStructureActionAst::SkipNextCombatPhaseThisTurn
+            )
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipTurn)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { .. })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::SwitchPowerToughness { .. })
+            | SubjectVerbActionAst::PermanentState(
+                PermanentStateActionAst::SwitchPowerToughness { .. }
+            )
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::TakeInitiative)
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap { .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapAll { .. })
@@ -332,7 +344,10 @@ pub(super) fn compile_subject_verb_late(
     let role = subject_verb_role(subject_verb.subject.role);
     let player = subject_verb.subject.player;
     let result = match &subject_verb.action {
-        SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilityToSource { ability, duration }) => {
+        SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilityToSource {
+            ability,
+            duration,
+        }) => {
             let lowered = lower_parsed_ability(ability.as_ref().clone())?;
             Ok((
                 vec![Effect::new(
@@ -498,15 +513,19 @@ pub(super) fn compile_subject_verb_late(
             {
                 let original_source = ctx.next_tag("damage_recipient_source");
                 effects.push(Effect::new(crate::effects::TagMatchingObjectsEffect::new(
-                    ObjectFilter::source(), original_source.clone(),
+                    ObjectFilter::source(),
+                    original_source.clone(),
                 )));
                 let mut hints = damage_target_spec.surface_hints().to_vec();
                 if hints.is_empty() {
                     hints.push(crate::target::ChooseSpecSurfaceHint::SourceReference(
-                        crate::target::SourceReferenceSurface::ThisPermanentType("this source".into()),
+                        crate::target::SourceReferenceSurface::ThisPermanentType(
+                            "this source".into(),
+                        ),
                     ));
                 }
-                damage_target_spec = ChooseSpec::Tagged(original_source.into()).with_surface_hints(hints);
+                damage_target_spec =
+                    ChooseSpec::Tagged(original_source.into()).with_surface_hints(hints);
             }
             let per_target_source_spec = if source == target {
                 ChooseSpec::Iterated
@@ -887,7 +906,10 @@ pub(super) fn compile_subject_verb_late(
             prelude.push(Effect::choose_one(modes));
             Ok((prelude, choices))
         }
-        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAllAttachedTo { filter, target }) => {
+        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAllAttachedTo {
+            filter,
+            target,
+        }) => {
             let (target_spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             let mut prelude = Vec::new();
@@ -1042,7 +1064,8 @@ pub(super) fn compile_subject_verb_late(
                 player,
                 PlayerAst::Implicit | PlayerAst::Target | PlayerAst::TargetOpponent
             );
-            let mut effect = if spec.count().is_single() && !*face_down
+            let mut effect = if spec.count().is_single()
+                && !*face_down
                 && (has_explicit_actor || *target_plural_surface)
             {
                 let mut move_effect =
@@ -1172,7 +1195,9 @@ pub(super) fn compile_subject_verb_late(
             }
             Ok(compiled)
         }
-        SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { .. }) => compile_put_counters_action(subject_verb, ctx),
+        SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { .. }) => {
+            compile_put_counters_action(subject_verb, ctx)
+        }
         SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice {
             counter_types,
             count,
@@ -1415,7 +1440,9 @@ pub(super) fn compile_subject_verb_late(
                 choices,
             ))
         }
-        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { .. }) => compile_return_to_hand(subject_verb, ctx),
+        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { .. }) => {
+            compile_return_to_hand(subject_verb, ctx)
+        }
         SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand {
             filter,
             destination_player_surface,
@@ -1434,7 +1461,9 @@ pub(super) fn compile_subject_verb_late(
             }
             Ok((vec![Effect::new(effect)], Vec::new()))
         }
-        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHandOfChosenColor { filter }) => {
+        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHandOfChosenColor {
+            filter,
+        }) => {
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
             let (mut prelude, choices) = target_context_prelude_for_filter(&resolved_filter);
             let mut modes = Vec::new();
@@ -1465,7 +1494,10 @@ pub(super) fn compile_subject_verb_late(
             prelude.push(Effect::choose_one(modes));
             Ok((prelude, choices))
         }
-        SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryNthFromTop { target, position }) => {
+        SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryNthFromTop {
+            target,
+            position,
+        }) => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             let mut effect = Effect::new(crate::effects::MoveToLibraryNthFromTopEffect::new(
@@ -1557,18 +1589,19 @@ pub(super) fn compile_subject_verb_late(
                 subject.into_choices(),
             ))
         }
-        SubjectVerbActionAst::PermanentState(PermanentStateActionAst::SwitchPowerToughness { target, duration }) => {
-            compile_tagged_effect_for_target(target, ctx, "switched_pt", |spec| {
-                Effect::new(
-                    crate::effects::ApplyContinuousEffect::with_spec(
-                        spec,
-                        crate::continuous::Modification::SwitchPowerToughness,
-                        duration.clone(),
-                    )
-                    .require_creature_target(),
+        SubjectVerbActionAst::PermanentState(PermanentStateActionAst::SwitchPowerToughness {
+            target,
+            duration,
+        }) => compile_tagged_effect_for_target(target, ctx, "switched_pt", |spec| {
+            Effect::new(
+                crate::effects::ApplyContinuousEffect::with_spec(
+                    spec,
+                    crate::continuous::Modification::SwitchPowerToughness,
+                    duration.clone(),
                 )
-            })
-        }
+                .require_creature_target(),
+            )
+        }),
         SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ScalePowerToughnessAll {
             filter,
             power,
@@ -1705,7 +1738,9 @@ pub(super) fn compile_subject_verb_late(
             if count_names_complete_discard_set && let Some(filter) = resolved_filter.as_ref() {
                 replace_complete_discard_count_filter(&mut resolved_count, filter);
             }
-            let tag = tag.clone().unwrap_or_else(|| crate::tag::TagRef::of(ctx.next_tag("discarded")));
+            let tag = tag
+                .clone()
+                .unwrap_or_else(|| crate::tag::TagRef::of(ctx.next_tag("discarded")));
             ctx.last_object_tag = Some(tag.clone().into());
             let effect = Effect::new(
                 crate::effects::DiscardEffect::new_with_filter(
@@ -1729,30 +1764,34 @@ pub(super) fn compile_subject_verb_late(
                 Effect::discard_hand_player,
             )
         }
-        SubjectVerbActionAst::Counters(CounterActionAst::PoisonCounters { count }) => compile_subject_verb_player_value_effect(
-            role,
-            player,
-            count,
-            ctx,
-            true,
-            true,
-            true,
-            false,
-            Effect::poison_counters,
-            Effect::poison_counters_player,
-        ),
-        SubjectVerbActionAst::Counters(CounterActionAst::EnergyCounters { count }) => compile_subject_verb_player_value_effect(
-            role,
-            player,
-            count,
-            ctx,
-            true,
-            true,
-            true,
-            false,
-            Effect::energy_counters,
-            Effect::energy_counters_player,
-        ),
+        SubjectVerbActionAst::Counters(CounterActionAst::PoisonCounters { count }) => {
+            compile_subject_verb_player_value_effect(
+                role,
+                player,
+                count,
+                ctx,
+                true,
+                true,
+                true,
+                false,
+                Effect::poison_counters,
+                Effect::poison_counters_player,
+            )
+        }
+        SubjectVerbActionAst::Counters(CounterActionAst::EnergyCounters { count }) => {
+            compile_subject_verb_player_value_effect(
+                role,
+                player,
+                count,
+                ctx,
+                true,
+                true,
+                true,
+                false,
+                Effect::energy_counters,
+                Effect::energy_counters_player,
+            )
+        }
         SubjectVerbActionAst::Counters(CounterActionAst::ExperienceCounters { count }) => {
             compile_subject_verb_player_value_effect(
                 role,
@@ -1767,18 +1806,20 @@ pub(super) fn compile_subject_verb_late(
                 Effect::experience_counters_player,
             )
         }
-        SubjectVerbActionAst::Counters(CounterActionAst::TicketCounters { count }) => compile_subject_verb_player_value_effect(
-            role,
-            player,
-            count,
-            ctx,
-            true,
-            true,
-            true,
-            false,
-            Effect::ticket_counters,
-            Effect::ticket_counters_player,
-        ),
+        SubjectVerbActionAst::Counters(CounterActionAst::TicketCounters { count }) => {
+            compile_subject_verb_player_value_effect(
+                role,
+                player,
+                count,
+                ctx,
+                true,
+                true,
+                true,
+                false,
+                Effect::ticket_counters,
+                Effect::ticket_counters_player,
+            )
+        }
         SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayEnergy { amount }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, false, false, true)?;
             let amount = subject.bind_player_refs_in_value(amount, ctx)?;
@@ -1892,18 +1933,20 @@ pub(super) fn compile_subject_verb_late(
                 Effect::empty_mana_pool_player(subject.into_player_filter())
             })
         }
-        SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetLifeTotal { amount }) => compile_subject_verb_player_value_effect(
-            role,
-            player,
-            amount,
-            ctx,
-            true,
-            true,
-            true,
-            false,
-            |value| Effect::set_life_total_player(value, PlayerFilter::You),
-            Effect::set_life_total_player,
-        ),
+        SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetLifeTotal { amount }) => {
+            compile_subject_verb_player_value_effect(
+                role,
+                player,
+                amount,
+                ctx,
+                true,
+                true,
+                true,
+                false,
+                |value| Effect::set_life_total_player(value, PlayerFilter::You),
+                Effect::set_life_total_player,
+            )
+        }
         SubjectVerbActionAst::Game(GameActionAst::ReverseTurnOrder) => Ok((
             vec![Effect::new(crate::effects::ReverseTurnOrderEffect::new())],
             Vec::new(),
@@ -1913,7 +1956,9 @@ pub(super) fn compile_subject_verb_late(
                 Effect::end_turn_player(subject.into_player_filter())
             })
         }
-        SubjectVerbActionAst::Game(GameActionAst::EndCombatPhase) => Ok((vec![Effect::end_combat_phase()], Vec::new())),
+        SubjectVerbActionAst::Game(GameActionAst::EndCombatPhase) => {
+            Ok((vec![Effect::end_combat_phase()], Vec::new()))
+        }
         SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipTurn) => {
             compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
                 Effect::skip_turn_player(subject.into_player_filter())
@@ -1924,11 +1969,11 @@ pub(super) fn compile_subject_verb_late(
                 Effect::skip_combat_phases_player(subject.into_player_filter())
             })
         }
-        SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipNextCombatPhaseThisTurn) => {
-            compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
-                Effect::skip_next_combat_phase_this_turn_player(subject.into_player_filter())
-            })
-        }
+        SubjectVerbActionAst::TurnStructure(
+            TurnStructureActionAst::SkipNextCombatPhaseThisTurn,
+        ) => compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
+            Effect::skip_next_combat_phase_this_turn_player(subject.into_player_filter())
+        }),
         SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipMainPhasesThisTurn) => {
             compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
                 Effect::skip_main_phases_this_turn_player(subject.into_player_filter())
@@ -1944,7 +1989,10 @@ pub(super) fn compile_subject_verb_late(
                 Effect::skip_draw_step_player(subject.into_player_filter())
             })
         }
-        SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalPhases { phases, after_main_phase }) => {
+        SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalPhases {
+            phases,
+            after_main_phase,
+        }) => {
             let mut effect = crate::effects::AdditionalPhasesEffect::new(phases.clone());
             effect.after_main_phase = *after_main_phase;
             Ok((vec![Effect::new(effect)], Vec::new()))
@@ -1994,7 +2042,10 @@ pub(super) fn compile_subject_verb_late(
             let effect = Effect::control_player(target_player.clone(), start, duration);
             Ok((vec![effect], choices))
         }
-        SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn { filter, reduction }) => {
+        SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn {
+            filter,
+            reduction,
+        }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, false, false, true)?;
             let mut player_filter = subject.into_player_filter();
             let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
@@ -2048,7 +2099,10 @@ pub(super) fn compile_subject_verb_late(
             };
             Ok((vec![Effect::new(reduction_effect)], Vec::new()))
         }
-        SubjectVerbActionAst::Grants(GrantActionAst::GrantNextSpellAbilityThisTurn { filter, ability }) => {
+        SubjectVerbActionAst::Grants(GrantActionAst::GrantNextSpellAbilityThisTurn {
+            filter,
+            ability,
+        }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let mut player_filter = subject.clone_player_filter();
             let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
@@ -2240,7 +2294,9 @@ pub(super) fn compile_subject_verb_late(
                 None => Effect::heal_all_damage(spec),
             })
         }
-        SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat { target }) => {
+        SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
+            target,
+        }) => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             let effect = tag_object_target_effect(
@@ -2314,9 +2370,12 @@ pub(super) fn compile_subject_verb_late(
             let chooser = subject.clone_player_filter();
             let target_prelude = subject.target_prelude();
             let refs = current_reference_env(ctx);
-            let bare_it_with_source_antecedent = crate::reference_helpers::sacrifice_filter_uses_source_antecedent(
-                filter, *one_of_referenced_set, &refs,
-            );
+            let bare_it_with_source_antecedent =
+                crate::reference_helpers::sacrifice_filter_uses_source_antecedent(
+                    filter,
+                    *one_of_referenced_set,
+                    &refs,
+                );
             let mut resolved_filter = if bare_it_with_source_antecedent {
                 ObjectFilter::source()
             } else {

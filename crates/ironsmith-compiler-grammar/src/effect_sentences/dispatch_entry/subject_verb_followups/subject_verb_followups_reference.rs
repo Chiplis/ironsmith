@@ -1,13 +1,14 @@
-use crate::cards::builders::SourcePredicateAst;
-use crate::cards::builders::ForEachEffectAst;
 use super::*;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::SourcePredicateAst;
 
 pub(super) fn append_moved_object_entry_followup_to_optional_move(
     previous: &mut EffectAst,
     grant: EffectAst,
 ) -> bool {
     let effects = match previous {
-        EffectAst::Permissions(PermissionEffectAst::May { effects }) | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. }) => effects,
+        EffectAst::Permissions(PermissionEffectAst::May { effects })
+        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. }) => effects,
         _ => return false,
     };
     let [move_effect] = effects.as_mut_slice() else {
@@ -159,7 +160,8 @@ pub(super) fn tagged_may_battlefield_move(effect: &EffectAst) -> Option<TagKey> 
             .iter()
             .find(|constraint| constraint.relation == TaggedOpbjectRelation::IsTaggedObject)
             .map(|constraint| constraint.tag.clone()),
-        EffectAst::Permissions(PermissionEffectAst::May { effects }) | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. })
+        EffectAst::Permissions(PermissionEffectAst::May { effects })
+        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. })
             if effects.len() == 1 =>
         {
             tagged_may_battlefield_move(&effects[0])
@@ -204,7 +206,9 @@ pub(super) fn pre_rule_declined_tagged_battlefield_move_followup(
         EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             if_true, if_false, ..
         }) if if_false.is_empty() && if_true.len() == 1 => tagged_may_battlefield_move(&if_true[0]),
-        EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { effects, .. }) if effects.len() == 1 => {
+        EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { effects, .. })
+            if effects.len() == 1 =>
+        {
             tagged_may_battlefield_move(&effects[0])
         }
         _ => None,
@@ -217,17 +221,23 @@ pub(super) fn pre_rule_declined_tagged_battlefield_move_followup(
     if fallback.is_empty() {
         return Ok(None);
     }
-    let explicit_target = TargetAst::Tagged(crate::tag::TagRef::of(tag), span_from_tokens(condition_tokens));
+    let explicit_target = TargetAst::Tagged(
+        crate::tag::TagRef::of(tag),
+        span_from_tokens(condition_tokens),
+    );
     replace_it_target_in_effects(&mut fallback, &explicit_target);
 
-    if let Some(EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects })) = state.effects.last_mut() {
+    if let Some(EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects })) =
+        state.effects.last_mut()
+    {
         let predicate = predicate.clone();
         let if_true = std::mem::take(effects);
-        *state.effects.last_mut().expect("trailing-if still present") = EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-            predicate,
-            if_true,
-            if_false: Vec::new(),
-        });
+        *state.effects.last_mut().expect("trailing-if still present") =
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate,
+                if_true,
+                if_false: Vec::new(),
+            });
     }
     let Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
         if_true, if_false, ..
@@ -253,7 +263,11 @@ pub(super) fn pre_rule_declined_tagged_battlefield_move_followup(
 pub(super) fn last_remove_abilities_all_filter(effects: &[EffectAst]) -> Option<ObjectFilter> {
     effects.iter().rev().find_map(|effect| match effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll { filter, .. }),
+            action:
+                SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll {
+                    filter,
+                    ..
+                }),
             ..
         }) => Some(filter.clone()),
         _ => None,
@@ -262,9 +276,8 @@ pub(super) fn last_remove_abilities_all_filter(effects: &[EffectAst]) -> Option<
 
 pub(super) fn rebind_source_match_to_target(predicate: PredicateAst) -> PredicateAst {
     match predicate {
-        PredicateAst::Source(SourcePredicateAst::SourceMatches(filter)) | PredicateAst::ItMatches(filter) => {
-            PredicateAst::TargetMatches(filter)
-        }
+        PredicateAst::Source(SourcePredicateAst::SourceMatches(filter))
+        | PredicateAst::ItMatches(filter) => PredicateAst::TargetMatches(filter),
         PredicateAst::Not(inner) => {
             PredicateAst::Not(Box::new(rebind_source_match_to_target(*inner)))
         }
@@ -367,7 +380,8 @@ pub(super) fn bind_nested_self_replacement_condition_to_previous_target(
                 }) => {
                     if matches!(
                         predicate,
-                        PredicateAst::Source(SourcePredicateAst::SourceMatches(_)) | PredicateAst::ItMatches(_)
+                        PredicateAst::Source(SourcePredicateAst::SourceMatches(_))
+                            | PredicateAst::ItMatches(_)
                     ) && !if_true.is_empty()
                     {
                         *predicate = rebind_source_match_to_target(predicate.clone());
@@ -377,10 +391,14 @@ pub(super) fn bind_nested_self_replacement_condition_to_previous_target(
                         return true;
                     }
                 }
-                EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects }) => {
+                EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
+                    predicate,
+                    effects,
+                }) => {
                     if matches!(
                         predicate,
-                        PredicateAst::Source(SourcePredicateAst::SourceMatches(_)) | PredicateAst::ItMatches(_)
+                        PredicateAst::Source(SourcePredicateAst::SourceMatches(_))
+                            | PredicateAst::ItMatches(_)
                     ) && !effects.is_empty()
                     {
                         *predicate = rebind_source_match_to_target(predicate.clone());
@@ -399,7 +417,8 @@ pub(super) fn bind_nested_self_replacement_condition_to_previous_target(
                             &mut condition.predicate
                         && matches!(
                             predicate,
-                            PredicateAst::Source(SourcePredicateAst::SourceMatches(_)) | PredicateAst::ItMatches(_)
+                            PredicateAst::Source(SourcePredicateAst::SourceMatches(_))
+                                | PredicateAst::ItMatches(_)
                         )
                     {
                         *predicate = rebind_source_match_to_target(predicate.clone());
@@ -465,7 +484,10 @@ pub(super) fn post_rule_each_player_coin_face_followup(
     else {
         return Ok(None);
     };
-    if !matches!(action, SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)) {
+    if !matches!(
+        action,
+        SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)
+    ) {
         return Ok(None);
     }
 

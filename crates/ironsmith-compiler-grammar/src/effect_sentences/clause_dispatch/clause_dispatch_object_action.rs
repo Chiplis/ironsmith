@@ -1,5 +1,5 @@
-use crate::cards::builders::ConditionalEffectAst;
 use super::*;
+use crate::cards::builders::ConditionalEffectAst;
 
 /// Parse the coordinated conditional animation used by effects such as
 /// "that permanent becomes saddled if it's a Mount and becomes an artifact

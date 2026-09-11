@@ -1,10 +1,4 @@
 #![allow(unused_imports)]
-use crate::cards::builders::SourcePredicateAst;
-use crate::cards::builders::PlayerPredicateAst;
-use crate::cards::builders::ConditionalEffectAst;
-use crate::cards::builders::ForEachEffectAst;
-use crate::cards::builders::GameActionAst;
-use crate::cards::builders::TokenActionAst;
 use super::shard_00::*;
 use super::shard_01::*;
 use super::shard_02::*;
@@ -12,6 +6,12 @@ use super::shard_04::*;
 use super::shard_05::*;
 use super::shard_06::*;
 use super::*;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::GameActionAst;
+use crate::cards::builders::PlayerPredicateAst;
+use crate::cards::builders::SourcePredicateAst;
+use crate::cards::builders::TokenActionAst;
 use crate::target::PlayerFilter;
 #[cfg(test)]
 use ironsmith_compiler::ParseCardText;
@@ -749,12 +749,16 @@ pub(super) fn rewrite_typed_replacement_predicate_regression_shapes_preserve_sem
     assert!(
         matches!(
             predicate,
-            crate::cards::builders::PredicateAst::Player(PlayerPredicateAst::PlayerHasCitysBlessing { .. })
+            crate::cards::builders::PredicateAst::Player(
+                PlayerPredicateAst::PlayerHasCitysBlessing { .. }
+            )
         ),
         "conditional token-copy clause must retain its city-blessing predicate: {parsed:#?}"
     );
     assert!(if_false.is_empty());
-    let [EffectAst::ForEach(ForEachEffectAst::ForEachObject { filter, effects })] = if_true.as_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachObject { filter, effects })] =
+        if_true.as_slice()
+    else {
         panic!("expected object iteration under city-blessing predicate: {parsed:#?}");
     };
     assert!(filter.token);
@@ -3952,7 +3956,9 @@ pub(super) fn rewrite_lexed_effect_sentence_routes_then_if_conditional_through_g
     assert_eq!(format!("{parsed:?}"), format!("{grammar:?}"));
     assert!(matches!(
         parsed.as_slice(),
-        [crate::cards::builders::EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. })]
+        [crate::cards::builders::EffectAst::Conditionals(
+            ConditionalEffectAst::Conditional { .. }
+        )]
     ));
 }
 
@@ -3988,7 +3994,9 @@ pub(super) fn rewrite_lexed_conditional_parser_routes_comma_clause_through_struc
                 if_true.as_slice(),
                 [crate::cards::builders::EffectAst::SubjectVerb(
                     crate::cards::builders::SubjectVerbEffectAst {
-                        action: crate::cards::builders::SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { .. }),
+                        action: crate::cards::builders::SubjectVerbActionAst::Tokens(
+                            TokenActionAst::CreateTokenWithMods { .. }
+                        ),
                         ..
                     }
                 )]
@@ -4087,7 +4095,11 @@ fn entry_or_damage_trigger_preserves_both_events() {
         "Whenever this creature enters the battlefield or deals combat damage to a player",
     ] {
         let tokens = lex_line(text, 0).unwrap();
-        let trigger = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).unwrap();
-        assert!(matches!(trigger, crate::cards::builders::TriggerSpec::Either(_, _)), "{trigger:?}");
+        let trigger =
+            crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).unwrap();
+        assert!(
+            matches!(trigger, crate::cards::builders::TriggerSpec::Either(_, _)),
+            "{trigger:?}"
+        );
     }
 }

@@ -1,5 +1,5 @@
-use crate::cards::builders::ConditionalEffectAst;
 use super::*;
+use crate::cards::builders::ConditionalEffectAst;
 
 pub(in super::super) fn parse_escalate(
     _line: &PreprocessedLine,

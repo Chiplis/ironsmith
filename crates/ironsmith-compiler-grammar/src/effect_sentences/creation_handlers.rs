@@ -1,8 +1,9 @@
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{
-    CardTextError, ChooseOneModeAst, EffectAst, GrantedAbilityAst, KeywordAction, ObjectRefAst,
+    CardTextError, ChooseOneModeAst, ConditionalEffectAst, DelayedEffectAst, EffectAst,
+    GrantActionAst, GrantedAbilityAst, KeywordAction, ObjectChoiceEffectAst, ObjectRefAst,
     OwnedLexToken, PlayerAst, PredicateAst, StaticAbilityAst, SubjectAst, SubjectVerbActionAst,
-    SubjectVerbRoleAst, TagKey, TargetAst, GrantActionAst, TokenActionAst, DelayedEffectAst, ObjectChoiceEffectAst, ConditionalEffectAst,
+    SubjectVerbRoleAst, TagKey, TargetAst, TokenActionAst,
 };
 use crate::color::ColorSet;
 use crate::effect::Value;
@@ -375,7 +376,9 @@ fn append_inline_token_embedded_rule(
             (&creature.name, &mut creature.rules.token_rules)
         }
         TokenDefinitionSpec::Artifact(artifact) => (&artifact.name, &mut artifact.token_rules),
-        TokenDefinitionSpec::Enchantment(enchantment) => (&enchantment.name, &mut enchantment.token_rules),
+        TokenDefinitionSpec::Enchantment(enchantment) => {
+            (&enchantment.name, &mut enchantment.token_rules)
+        }
         _ => return false,
     };
     let Some(rule) = crate::grammar::token_definitions::parse_embedded_token_rule_tokens(
@@ -942,10 +945,12 @@ pub fn recognize_inline_copy_self_replacement_grants(
         let direct = match effect {
             EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
                 SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
-                    granted_abilities, ..
+                    granted_abilities,
+                    ..
                 })
                 | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
-                    granted_abilities, ..
+                    granted_abilities,
+                    ..
                 }) => granted_abilities == expected,
                 _ => false,
             },
@@ -968,10 +973,12 @@ pub fn recognize_inline_copy_self_replacement_grants(
             if let EffectAst::SubjectVerb(subject_verb) = effect {
                 match &mut subject_verb.action {
                     SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
-                        granted_abilities, ..
+                        granted_abilities,
+                        ..
                     })
                     | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
-                        granted_abilities, ..
+                        granted_abilities,
+                        ..
                     }) if granted_abilities == expected => granted_abilities.clear(),
                     _ => {}
                 }
@@ -1233,7 +1240,12 @@ pub fn parse_create(
 ) -> Result<EffectAst, CardTextError> {
     // Capture the authored actor before imperative/chain normalization can
     // turn an implicit create action into the same semantic `PlayerAst::You`.
-    let actor_surface_explicit = matches!(subject, Some(SubjectAst::Player(PlayerAst::You | PlayerAst::ItsOwner | PlayerAst::ItsController)));
+    let actor_surface_explicit = matches!(
+        subject,
+        Some(SubjectAst::Player(
+            PlayerAst::You | PlayerAst::ItsOwner | PlayerAst::ItsController
+        ))
+    );
     let authored_dynamic_count = if let Some(binding) =
         crate::grammar::effects::dispatch_entry_shapes::parse_where_x_usage_shape_tokens(tokens)
     {
@@ -1390,9 +1402,14 @@ pub fn parse_create(
                 if_false: Vec::new(),
             })];
             match filter {
-                PlayerFilter::Opponent => EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }),
-                PlayerFilter::Any => EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }),
-                other => EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
+                PlayerFilter::Opponent => {
+                    EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })
+                }
+                PlayerFilter::Any => {
+                    EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })
+                }
+                other => EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+                    sequential: false,
                     filter: other.clone(),
                     effects,
                 }),
@@ -1509,7 +1526,11 @@ pub fn parse_create(
             let outside_quotes = tokens_outside_double_quoted_rules(&tail_tokens);
             let (_, exile_at_next_end_step, exile_player) =
                 parse_next_end_step_token_delay_flags(&token_word_refs(&outside_quotes));
-            let next_end_step_player = if sacrifice_at_next_end_step { sacrifice_player } else { exile_player };
+            let next_end_step_player = if sacrifice_at_next_end_step {
+                sacrifice_player
+            } else {
+                exile_player
+            };
             let sacrifice_at_next_end_step_ability_surface = sacrifice_at_next_end_step
                 .then(|| quoted_copy_sacrifice_ability_surface(&tail_tokens))
                 .flatten();
@@ -1956,19 +1977,29 @@ fn direct_token_creation_conjunction_separator(tokens: &[OwnedLexToken]) -> Opti
     }
     let mut inside_quotes = false;
     for (idx, token) in tokens.iter().enumerate() {
-        if token.kind == TokenKind::Quote { inside_quotes = !inside_quotes; continue; }
-        if inside_quotes || !(token.kind == TokenKind::Comma || token.is_word("and")) { continue; }
+        if token.kind == TokenKind::Quote {
+            inside_quotes = !inside_quotes;
+            continue;
+        }
+        if inside_quotes || !(token.kind == TokenKind::Comma || token.is_word("and")) {
+            continue;
+        }
         let mut next = idx + 1;
-        if tokens.get(next).is_some_and(|token| token.is_word("and")) { next += 1; }
+        if tokens.get(next).is_some_and(|token| token.is_word("and")) {
+            next += 1;
+        }
         let left = trim_commas(&tokens[..idx]);
         let right = trim_commas(&tokens[next..]);
         // A new creation operand starts with its own count, article, or
         // creation verb. A color conjunction belongs to the current blueprint.
-        let starts_operand = right.first().is_some_and(|token|
-            token.is_any_word(&["a", "an", "x", "that", "twice", "create", "creates"]))
-            || crate::grammar::leaf::parse_leaf_number_prefix_tokens(&right).is_some();
-        if starts_operand && creation_grammar::parse_create_head_tokens(&left).is_some()
-            && creation_grammar::parse_create_head_tokens(&right).is_some() {
+        let starts_operand = right.first().is_some_and(|token| {
+            token.is_any_word(&["a", "an", "x", "that", "twice", "create", "creates"])
+        }) || crate::grammar::leaf::parse_leaf_number_prefix_tokens(&right)
+            .is_some();
+        if starts_operand
+            && creation_grammar::parse_create_head_tokens(&left).is_some()
+            && creation_grammar::parse_create_head_tokens(&right).is_some()
+        {
             return Some((idx, next));
         }
     }
@@ -1986,8 +2017,15 @@ fn parse_direct_token_creation_conjunction(
     let second = crate::grammar::primitives::probe_shape(parse_create(&right_tokens, subject))?;
     let mut effects = vec![first];
     match second {
-        EffectAst::Coordination(program) if program.kind == crate::model::CoordinationKindAst::Conjunction => {
-            effects.extend(program.members.into_iter().flat_map(|member| member.effects));
+        EffectAst::Coordination(program)
+            if program.kind == crate::model::CoordinationKindAst::Conjunction =>
+        {
+            effects.extend(
+                program
+                    .members
+                    .into_iter()
+                    .flat_map(|member| member.effects),
+            );
         }
         other => effects.push(other),
     }
@@ -2028,18 +2066,20 @@ fn parse_direct_token_creation_alternative(
     let first = parse_branch(&left_tokens)?;
     let second = parse_branch(&right_tokens)?;
 
-    Some(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf {
-        modes: vec![
-            ChooseOneModeAst {
-                description: String::new(),
-                effects: vec![first],
-            },
-            ChooseOneModeAst {
-                description: String::new(),
-                effects: vec![second],
-            },
-        ],
-    }))
+    Some(EffectAst::ObjectChoices(
+        ObjectChoiceEffectAst::ChooseOneOf {
+            modes: vec![
+                ChooseOneModeAst {
+                    description: String::new(),
+                    effects: vec![first],
+                },
+                ChooseOneModeAst {
+                    description: String::new(),
+                    effects: vec![second],
+                },
+            ],
+        },
+    ))
 }
 
 fn parse_create_for_each_player_condition(
@@ -2251,7 +2291,9 @@ mod tests {
         let EffectAst::SubjectVerb(effect) = effect else {
             panic!("expected a subject-verb token creation");
         };
-        let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { count, .. }) = effect.action else {
+        let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { count, .. }) =
+            effect.action
+        else {
             panic!("expected a token creation with modifiers");
         };
         count
@@ -2419,7 +2461,10 @@ mod tests {
                 let [EffectAst::SubjectVerb(effect)] = mode.effects.as_slice() else {
                     panic!("expected one direct create effect per mode: {mode:#?}");
                 };
-                let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { name, .. }) = &effect.action else {
+                let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
+                    name, ..
+                }) = &effect.action
+                else {
                     panic!("expected a named token creation: {effect:#?}");
                 };
                 name.as_str()
@@ -2435,14 +2480,22 @@ mod tests {
             match effect {
                 EffectAst::Coordination(program) => {
                     for member in &program.members {
-                        for effect in &member.effects { collect(effect, result); }
+                        for effect in &member.effects {
+                            collect(effect, result);
+                        }
                     }
                 }
                 EffectAst::SubjectVerb(effect) => {
-                    let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { definition, .. }) = &effect.action else {
+                    let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
+                        definition,
+                        ..
+                    }) = &effect.action
+                    else {
                         panic!("expected token creation: {effect:#?}");
                     };
-                    let crate::model::token_definition::TokenDefinitionSpec::Creature(creature) = definition else {
+                    let crate::model::token_definition::TokenDefinitionSpec::Creature(creature) =
+                        definition
+                    else {
                         panic!("expected creature blueprint: {definition:#?}");
                     };
                     assert_eq!(creature.colors.count(), 2);
@@ -2479,7 +2532,10 @@ mod tests {
         let EffectAst::SubjectVerb(effect) = effect else {
             panic!("expected a subject-verb token creation");
         };
-        let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { definition, .. }) = effect.action else {
+        let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
+            definition, ..
+        }) = effect.action
+        else {
             panic!("expected a token creation with modifiers");
         };
         let crate::model::token_definition::TokenDefinitionSpec::Creature(creature) = definition
@@ -2505,7 +2561,10 @@ mod tests {
         let EffectAst::SubjectVerb(effect) = effect else {
             panic!("expected a subject-verb token creation");
         };
-        let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { definition, .. }) = effect.action else {
+        let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
+            definition, ..
+        }) = effect.action
+        else {
             panic!("expected a token creation with modifiers");
         };
         let crate::model::token_definition::TokenDefinitionSpec::Creature(creature) = definition
@@ -2554,7 +2613,8 @@ mod tests {
             panic!("expected subject-verb create AST");
         };
         let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
-            granted_abilities, ..
+            granted_abilities,
+            ..
         }) = &effect.action
         else {
             panic!("expected create-token AST");
@@ -3254,14 +3314,32 @@ mod tests {
     fn quoted_copy_exception_exile_is_an_intrinsic_trigger() {
         let tokens = lex_line("Create a token that's a copy of target creature, except it has haste and \"At the beginning of the end step, exile this token.\"", 0).unwrap();
         let abilities = parse_inline_copy_granted_abilities(&tokens);
-        assert!(!abilities.is_empty(), "the quoted end-step ability must parse: {abilities:#?}");
+        assert!(
+            !abilities.is_empty(),
+            "the quoted end-step ability must parse: {abilities:#?}"
+        );
         let parsed = parse_create(&tokens, None).unwrap();
-        let EffectAst::SubjectVerb(subject_verb) = parsed else { panic!("expected token creation"); };
+        let EffectAst::SubjectVerb(subject_verb) = parsed else {
+            panic!("expected token creation");
+        };
         let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
-            granted_abilities, exile_at_next_end_step, ..
-        }) = subject_verb.action else { panic!("expected explicit-source copy"); };
-        assert!(!exile_at_next_end_step, "an intrinsic trigger must not also become a delayed trigger");
-        assert!(granted_abilities.iter().any(|ability| abilities.contains(ability)), "{granted_abilities:#?}");
+            granted_abilities,
+            exile_at_next_end_step,
+            ..
+        }) = subject_verb.action
+        else {
+            panic!("expected explicit-source copy");
+        };
+        assert!(
+            !exile_at_next_end_step,
+            "an intrinsic trigger must not also become a delayed trigger"
+        );
+        assert!(
+            granted_abilities
+                .iter()
+                .any(|ability| abilities.contains(ability)),
+            "{granted_abilities:#?}"
+        );
     }
 
     #[test]
@@ -3345,7 +3423,8 @@ mod tests {
                 panic!("expected token creation: {effect:#?}");
             };
             let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
-                granted_abilities, ..
+                granted_abilities,
+                ..
             }) = subject_verb.action
             else {
                 panic!("expected token creation modifiers: {subject_verb:#?}");

@@ -1,17 +1,21 @@
+use super::*;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::ZoneMoveActionAst;
-use super::*;
 
 pub(super) fn bind_sacrificed_snapshot_controller(effect: &mut EffectAst) {
     match effect {
-        EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, .. }) if *player == PlayerAst::ItsController => {
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, .. })
+            if *player == PlayerAst::ItsController =>
+        {
             *player = PlayerAst::That;
         }
         EffectAst::SubjectVerb(subject_verb) => {
             if subject_verb.subject.player == PlayerAst::ItsController {
                 subject_verb.subject.player = PlayerAst::That;
             }
-            if let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary { player, .. }) = &mut subject_verb.action
+            if let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
+                player, ..
+            }) = &mut subject_verb.action
                 && *player == PlayerAst::ItsController
             {
                 *player = PlayerAst::That;
@@ -80,12 +84,14 @@ pub fn parse_for_each_sacrificed_this_way_sentence(
         bind_sacrificed_snapshot_controller(effect);
     }
 
-    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
-        tag: crate::tag::CompilerReferenceTag::It.bind(),
-        effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-            predicate: PredicateAst::ItMatchedLastKnown(filter),
-            if_true: effects,
-            if_false: Vec::new(),
-        })],
-    })]))
+    Ok(Some(vec![EffectAst::ForEach(
+        ForEachEffectAst::ForEachTagged {
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
+            effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate: PredicateAst::ItMatchedLastKnown(filter),
+                if_true: effects,
+                if_false: Vec::new(),
+            })],
+        },
+    )]))
 }

@@ -1,12 +1,12 @@
 #![allow(unused_imports)]
 
-#[cfg(test)]
-use crate::cards::builders::TurnEventPredicateAst;
-use crate::cards::builders::PlayerPredicateAst;
 use crate::cards::builders::ConditionalEffectAst;
 use crate::cards::builders::DelayedEffectAst;
-use crate::cards::builders::TokenActionAst;
+use crate::cards::builders::PlayerPredicateAst;
 use crate::cards::builders::StatChangeActionAst;
+use crate::cards::builders::TokenActionAst;
+#[cfg(test)]
+use crate::cards::builders::TurnEventPredicateAst;
 use ironsmith_compiler::ParseCardText;
 /// Lower a token definition named by its printed shape text.
 ///
@@ -1959,10 +1959,12 @@ pub(super) fn rewrite_lowered_nonattacking_nonblocking_target_pump_keeps_target(
         crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
                 action:
-                    crate::cards::builders::SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
-                        target: sentence_target,
-                        ..
-                    }),
+                    crate::cards::builders::SubjectVerbActionAst::StatChanges(
+                        StatChangeActionAst::Pump {
+                            target: sentence_target,
+                            ..
+                        },
+                    ),
                 ..
             },
         ),
@@ -2055,13 +2057,15 @@ pub(super) fn rewrite_hyphenated_broad_pump_subjects_stay_filter_targets()
         crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
                 action:
-                    crate::cards::builders::SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
-                        filter,
-                        power,
-                        toughness,
-                        duration,
-                        ..
-                    }),
+                    crate::cards::builders::SubjectVerbActionAst::StatChanges(
+                        StatChangeActionAst::PumpAll {
+                            filter,
+                            power,
+                            toughness,
+                            duration,
+                            ..
+                        },
+                    ),
                 ..
             },
         ),
@@ -2083,13 +2087,15 @@ pub(super) fn rewrite_hyphenated_broad_pump_subjects_stay_filter_targets()
         crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
                 action:
-                    crate::cards::builders::SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
-                        filter,
-                        power,
-                        toughness,
-                        duration,
-                        ..
-                    }),
+                    crate::cards::builders::SubjectVerbActionAst::StatChanges(
+                        StatChangeActionAst::PumpAll {
+                            filter,
+                            power,
+                            toughness,
+                            duration,
+                            ..
+                        },
+                    ),
                 ..
             },
         ),
@@ -2119,13 +2125,15 @@ pub(super) fn rewrite_negated_chosen_type_pump_subject_uses_exclusion_filter()
         crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
                 action:
-                    crate::cards::builders::SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
-                        filter,
-                        power,
-                        toughness,
-                        duration,
-                        ..
-                    }),
+                    crate::cards::builders::SubjectVerbActionAst::StatChanges(
+                        StatChangeActionAst::PumpAll {
+                            filter,
+                            power,
+                            toughness,
+                            duration,
+                            ..
+                        },
+                    ),
                 ..
             },
         ),
@@ -2237,10 +2245,7 @@ pub(super) fn rewrite_lowered_nested_mana_effect_marks_activated_mana_ability()
             );
             let debug = format!("{:#?}", activated.effects);
             assert!(debug.contains("ForPlayersEffect"), "{debug}");
-            assert!(
-                debug.contains("ForEachTaggedEffect"),
-                "{debug}"
-            );
+            assert!(debug.contains("ForEachTaggedEffect"), "{debug}");
             assert!(debug.contains("AddManaEffect"), "{debug}");
             assert!(debug.contains("AddManaEffect"), "{debug}");
             assert!(debug.contains("GainLifeEffect"), "{debug}");
@@ -2764,11 +2769,11 @@ pub(super) fn rewrite_semantic_parse_keeps_toggo_rock_token_rules_tail() -> Resu
             crate::cards::builders::EffectAst::SubjectVerb(
                 crate::cards::builders::SubjectVerbEffectAst {
                     action:
-                        crate::cards::builders::SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
-                            name,
-                            definition,
-                            ..
-                        }),
+                        crate::cards::builders::SubjectVerbActionAst::Tokens(
+                            TokenActionAst::CreateTokenWithMods {
+                                name, definition, ..
+                            },
+                        ),
                     ..
                 },
             ),
@@ -3364,9 +3369,11 @@ pub(super) fn rewrite_grammar_unique_hand_leader_predicate_parses() {
     assert_eq!(
         crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens)
             .expect("predicate should parse"),
-        crate::cards::builders::PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreCardsInHandThanEachOtherPlayer {
-            player: crate::cards::builders::PlayerAst::Any,
-        })
+        crate::cards::builders::PredicateAst::Player(
+            PlayerPredicateAst::PlayerHasMoreCardsInHandThanEachOtherPlayer {
+                player: crate::cards::builders::PlayerAst::Any,
+            }
+        )
     );
 }
 
@@ -3378,9 +3385,11 @@ pub(super) fn rewrite_grammar_unique_life_leader_predicate_parses() {
     assert_eq!(
         crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens)
             .expect("predicate should parse"),
-        crate::cards::builders::PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreLifeThanEachOtherPlayer {
-            player: crate::cards::builders::PlayerAst::Any,
-        })
+        crate::cards::builders::PredicateAst::Player(
+            PlayerPredicateAst::PlayerHasMoreLifeThanEachOtherPlayer {
+                player: crate::cards::builders::PlayerAst::Any,
+            }
+        )
     );
 }
 
@@ -3411,9 +3420,11 @@ pub(super) fn rewrite_grammar_no_opponent_has_more_life_than_that_player_predica
     assert_eq!(
         crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens)
             .expect("predicate should parse"),
-        crate::cards::builders::PredicateAst::Player(PlayerPredicateAst::PlayerHasNoOpponentWithMoreLifeThan {
-            player: crate::cards::builders::PlayerAst::That,
-        })
+        crate::cards::builders::PredicateAst::Player(
+            PlayerPredicateAst::PlayerHasNoOpponentWithMoreLifeThan {
+                player: crate::cards::builders::PlayerAst::That,
+            }
+        )
     );
 }
 
@@ -3512,9 +3523,11 @@ pub(super) fn rewrite_grammar_permanent_you_controlled_left_battlefield_predicat
     assert_eq!(
         crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens)
             .expect("predicate should parse"),
-        crate::cards::builders::PredicateAst::TurnEvents(TurnEventPredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn {
-            surface: crate::PermanentLeftBattlefieldControlSurface::YouControlledLeft,
-        })
+        crate::cards::builders::PredicateAst::TurnEvents(
+            TurnEventPredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn {
+                surface: crate::PermanentLeftBattlefieldControlSurface::YouControlledLeft,
+            }
+        )
     );
 }
 
@@ -3550,7 +3563,9 @@ pub(super) fn rewrite_grammar_creature_card_put_into_your_graveyard_from_anywher
     assert_eq!(
         crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens)
             .expect("predicate should parse"),
-        crate::cards::builders::PredicateAst::TurnEvents(TurnEventPredicateAst::CreatureCardPutIntoYourGraveyardThisTurn)
+        crate::cards::builders::PredicateAst::TurnEvents(
+            TurnEventPredicateAst::CreatureCardPutIntoYourGraveyardThisTurn
+        )
     );
 }
 
@@ -3616,7 +3631,9 @@ pub(super) fn rewrite_grammar_no_permanents_left_battlefield_this_turn_predicate
         crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens)
             .expect("predicate should parse"),
         crate::cards::builders::PredicateAst::Not(Box::new(
-            crate::cards::builders::PredicateAst::TurnEvents(TurnEventPredicateAst::PermanentLeftBattlefieldThisTurn),
+            crate::cards::builders::PredicateAst::TurnEvents(
+                TurnEventPredicateAst::PermanentLeftBattlefieldThisTurn
+            ),
         ))
     );
 }
@@ -3844,7 +3861,8 @@ pub(super) fn rewrite_lexed_static_grant_line_ignores_inner_has_in_quoted_trigge
     assert!(debug.contains("ThisAttacks"), "{debug}");
     assert!(
         debug.contains("intervening_if: Some")
-            || debug.contains("Conditional { predicate: Player(PlayerHasNoOpponentWithMoreLifeThan"),
+            || debug
+                .contains("Conditional { predicate: Player(PlayerHasNoOpponentWithMoreLifeThan"),
         "{debug}"
     );
 }

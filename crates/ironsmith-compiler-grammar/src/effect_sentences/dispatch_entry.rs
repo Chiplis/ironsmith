@@ -1,5 +1,3 @@
-use crate::cards::builders::ForEachEffectAst;
-use crate::cards::builders::DamagePreventionActionAst;
 use self::subject_verb_followups::{
     PostParseFollowupResult, PreParseFollowupResult, is_conditional_token_entry_followup_sentence,
     run_post_parse_followup_registry, run_pre_parse_followup_registry,
@@ -34,12 +32,20 @@ use super::{
     SubjectVerbPrimitiveClause, parse_effect_sentence_lexed, parse_token_copy_modifier_sentence,
     trim_edge_punctuation, try_build_unless,
 };
+use crate::cards::builders::DamagePreventionActionAst;
+use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{
-    CardTextError, CarryContext, EffectAst, GrantedAbilityAst, IfResultPredicate, InsteadSemantics,
-    KeywordAction, LibraryBottomOrderAst, LibraryConsultModeAst, LibraryConsultStopRuleAst,
-    PlayerAst, PredicateAst, PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst,
-    ReturnControllerAst, SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst,
-    SubjectVerbRoleAst, TagKey, TargetAst, TokenCopyFollowup, ZoneReplacementDurationAst, CounterActionAst, GrantActionAst, ManaActionAst, LibraryActionAst, ReplacementActionAst, ExchangeActionAst, TurnStructureActionAst, CharacteristicActionAst, KeywordActionAst, ZoneMoveActionAst, PermanentStateActionAst, RevealLookActionAst, RandomActionAst, LifeResourceActionAst, ChoiceActionAst, DamageActionAst, StatChangeActionAst, StackActionAst, TokenActionAst, ControlActionAst, GameActionAst, DelayedEffectAst, ObjectChoiceEffectAst, VoteEffectAst, ConditionalEffectAst, PermissionEffectAst,
+    CardTextError, CarryContext, CharacteristicActionAst, ChoiceActionAst, ConditionalEffectAst,
+    ControlActionAst, CounterActionAst, DamageActionAst, DelayedEffectAst, EffectAst,
+    ExchangeActionAst, GameActionAst, GrantActionAst, GrantedAbilityAst, IfResultPredicate,
+    InsteadSemantics, KeywordAction, KeywordActionAst, LibraryActionAst, LibraryBottomOrderAst,
+    LibraryConsultModeAst, LibraryConsultStopRuleAst, LifeResourceActionAst, ManaActionAst,
+    ObjectChoiceEffectAst, PermanentStateActionAst, PermissionEffectAst, PlayerAst, PredicateAst,
+    PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, RandomActionAst,
+    ReplacementActionAst, ReturnControllerAst, RevealLookActionAst, StackActionAst,
+    StatChangeActionAst, SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst,
+    SubjectVerbRoleAst, TagKey, TargetAst, TokenActionAst, TokenCopyFollowup,
+    TurnStructureActionAst, VoteEffectAst, ZoneMoveActionAst, ZoneReplacementDurationAst,
 };
 use crate::effect::{ChoiceCount, EventValueSpec, Until, Value};
 use crate::model::CompilerStaticAbilityCore as StaticAbility;
@@ -118,7 +124,8 @@ pub fn parse_quantified_token_creation_with_embedded_rules(
 pub(crate) fn last_unconditional_reveal_tag(effects: &[EffectAst]) -> Option<crate::tag::TagRef> {
     effects.iter().rev().find_map(|effect| match effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTagged { tag }), ..
+            action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTagged { tag }),
+            ..
         }) => Some(tag.clone()),
         EffectAst::Sequence { effects } => last_unconditional_reveal_tag(effects),
         _ => None,
@@ -264,32 +271,42 @@ const ENTERS_UNDER_YOUR_CONTROL_INSTEAD_PHRASE: &[&str] =
 pub fn apply_leading_duration_to_become_effect(effect: &mut EffectAst, duration: &Until) -> bool {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
-            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
-                duration: effect_duration,
-                animation_duration_surface,
-                ..
-            }) => {
+            SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeBasePtCreature {
+                    duration: effect_duration,
+                    animation_duration_surface,
+                    ..
+                },
+            ) => {
                 *effect_duration = duration.clone();
                 *animation_duration_surface =
                     Some(ironsmith_core::AnimationDurationSurface::Leading);
                 true
             }
-            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness {
-                duration: effect_duration,
-                ..
-            })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasicLandType {
-                duration: effect_duration,
-                ..
-            })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasicLandTypeChoice {
-                duration: effect_duration,
-                ..
-            })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCreatureTypeChoice {
-                duration: effect_duration,
-                ..
-            })
+            SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::SetBasePowerToughness {
+                    duration: effect_duration,
+                    ..
+                },
+            )
+            | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeBasicLandType {
+                    duration: effect_duration,
+                    ..
+                },
+            )
+            | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeBasicLandTypeChoice {
+                    duration: effect_duration,
+                    ..
+                },
+            )
+            | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeCreatureTypeChoice {
+                    duration: effect_duration,
+                    ..
+                },
+            )
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
                 duration: effect_duration,
                 ..
@@ -298,10 +315,12 @@ pub fn apply_leading_duration_to_become_effect(effect: &mut EffectAst, duration:
                 duration: effect_duration,
                 ..
             })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeAuraEnchantment {
-                duration: effect_duration,
-                ..
-            })
+            | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeAuraEnchantment {
+                    duration: effect_duration,
+                    ..
+                },
+            )
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::MakeColorless {
                 duration: effect_duration,
                 ..
@@ -492,12 +511,13 @@ fn bind_that_object_power_damage_subject(
                 }) if matches!(amount, Value::PowerOf(spec) if matches!(spec.as_ref(), ChooseSpec::Source))
                     && matches!(target, TargetAst::Source(_)) =>
                 {
-                    subject_verb.action = SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
-                        source: source_target.clone(),
-                        amount: Value::PowerOf(Box::new(ChooseSpec::Source)),
-                        target: target.clone(),
-                        unpreventable: *unpreventable,
-                    });
+                    subject_verb.action =
+                        SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
+                            source: source_target.clone(),
+                            amount: Value::PowerOf(Box::new(ChooseSpec::Source)),
+                            target: target.clone(),
+                            unpreventable: *unpreventable,
+                        });
                 }
                 SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
                     source,
@@ -508,12 +528,13 @@ fn bind_that_object_power_damage_subject(
                     || matches!(source, TargetAst::Tagged(tag, _) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()))
                     && matches!(target, TargetAst::Source(_)) =>
                 {
-                    subject_verb.action = SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
-                        source: source_target.clone(),
-                        amount: amount.clone(),
-                        target: target.clone(),
-                        unpreventable: *unpreventable,
-                    });
+                    subject_verb.action =
+                        SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
+                            source: source_target.clone(),
+                            amount: amount.clone(),
+                            target: target.clone(),
+                            unpreventable: *unpreventable,
+                        });
                 }
                 _ => {}
             }
@@ -543,8 +564,11 @@ fn bind_target_controlled_source_damage_to_that_player(
         let EffectAst::SubjectVerb(subject_verb) = effect else {
             continue;
         };
-        let SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { source, target, .. }) =
-            &mut subject_verb.action
+        let SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
+            source,
+            target,
+            ..
+        }) = &mut subject_verb.action
         else {
             continue;
         };
@@ -891,10 +915,12 @@ fn preserve_leading_result_prefix_for_sequence(
             predicate: prefix.predicate,
             effects: nested,
         }),
-        LeadingResultPrefixKind::When => EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
-            predicate: prefix.predicate,
-            effects: nested,
-        }),
+        LeadingResultPrefixKind::When => {
+            EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
+                predicate: prefix.predicate,
+                effects: nested,
+            })
+        }
     });
 }
 
@@ -1202,11 +1228,13 @@ fn damage_regeneration_exile_followup_from_sentence_tokens(
         }
     };
 
-    Some(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-        predicate,
-        if_true: vec![cant_regenerate, replacement],
-        if_false: Vec::new(),
-    })])
+    Some(vec![EffectAst::Conditionals(
+        ConditionalEffectAst::Conditional {
+            predicate,
+            if_true: vec![cant_regenerate, replacement],
+            if_false: Vec::new(),
+        },
+    )])
 }
 
 fn secondary_fight_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
@@ -1309,7 +1337,9 @@ fn maybe_rewrite_future_zone_replacement_sentence(
     }
 
     if sentence_effects.len() == 1 {
-        if let Some(EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. })) = sentence_effects.first_mut() {
+        if let Some(EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. })) =
+            sentence_effects.first_mut()
+        {
             *effects = vec![replacement];
             return;
         }
@@ -1334,19 +1364,25 @@ fn try_merge_otherwise_into_previous_conditional(
         return false;
     };
     let conditional = match previous {
-        conditional @ EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. }) => conditional,
+        conditional @ EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. }) => {
+            conditional
+        }
         EffectAst::Conditionals(ConditionalEffectAst::IfResult {
             predicate: IfResultPredicate::Value(_),
             effects,
         }) => {
-            let Some(conditional @ EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. })) = effects.last_mut() else {
+            let Some(
+                conditional @ EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. }),
+            ) = effects.last_mut()
+            else {
                 return false;
             };
             conditional
         }
         _ => return false,
     };
-    let EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_false, .. }) = conditional else {
+    let EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_false, .. }) = conditional
+    else {
         unreachable!("conditional shape was proven above")
     };
     if !if_false.is_empty() {
@@ -1361,8 +1397,8 @@ fn try_merge_otherwise_into_previous_conditional(
 
 #[cfg(test)]
 mod nested_numeric_otherwise_tests {
-    use crate::cards::builders::SourcePredicateAst;
     use super::*;
+    use crate::cards::builders::SourcePredicateAst;
 
     fn conditional(if_false: Vec<EffectAst>) -> EffectAst {
         EffectAst::Conditionals(ConditionalEffectAst::Conditional {
@@ -1392,10 +1428,14 @@ mod nested_numeric_otherwise_tests {
             &mut prior,
             &otherwise()
         ));
-        let [EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. })] = prior.as_slice() else {
+        let [EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. })] =
+            prior.as_slice()
+        else {
             panic!("numeric branch changed shape: {prior:#?}");
         };
-        let Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_false, .. })) = effects.last() else {
+        let Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_false, .. })) =
+            effects.last()
+        else {
             panic!("conditional tail changed shape: {effects:#?}");
         };
         assert!(matches!(
@@ -1471,7 +1511,9 @@ fn maybe_append_trailing_that_much_life_loss(
             amount: Value::EventValue(EventValueSpec::Amount),
         }),
     );
-    if let [EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. })] = sentence_effects.as_mut_slice() {
+    if let [EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. })] =
+        sentence_effects.as_mut_slice()
+    {
         if !effects.iter().any(effect_is_life_loss) {
             effects.push(life_loss);
         }
@@ -1490,7 +1532,9 @@ fn maybe_append_reexile_returned_objects(
         return;
     }
 
-    if let [EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. })] = sentence_effects.as_mut_slice() {
+    if let [EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. })] =
+        sentence_effects.as_mut_slice()
+    {
         append_reexile_returned_objects_if_missing(effects);
         return;
     }
@@ -1502,7 +1546,8 @@ fn append_reexile_returned_objects_if_missing(effects: &mut Vec<EffectAst>) {
         matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. }) | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { .. }),
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. })
+                    | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { .. }),
                 ..
             })
         )
@@ -1654,7 +1699,9 @@ pub(super) fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Optio
     looked_cards_family::parse_looked_card_reveal_filter(tokens)
 }
 
-pub(super) fn if_you_dont_result_predicate(tokens: &[OwnedLexToken]) -> crate::cards::builders::IfResultPredicate {
+pub(super) fn if_you_dont_result_predicate(
+    tokens: &[OwnedLexToken],
+) -> crate::cards::builders::IfResultPredicate {
     consult_family::if_you_dont_result_predicate(tokens)
 }
 
@@ -1727,7 +1774,8 @@ pub fn with_where_x_surface_hints(mut value: Value, binding_tokens: &[OwnedLexTo
         value.unhinted(),
         Value::TotalPower(_) | Value::TotalToughness(_) | Value::TotalManaValue(_)
     );
-    value = value.without_surface_hint(ValueSurfaceHint::EqualTo)
+    value = value
+        .without_surface_hint(ValueSurfaceHint::EqualTo)
         .with_surface_hint(ValueSurfaceHint::WhereXIs);
     if counts_objects_with_an_ability
         && words
@@ -1772,7 +1820,9 @@ fn into_exact_single_conditional(mut parsed: Vec<EffectAst>) -> Option<EffectAst
         return None;
     }
     match parsed.pop()? {
-        conditional @ EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. }) => Some(conditional),
+        conditional @ EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. }) => {
+            Some(conditional)
+        }
         EffectAst::Sequence { effects } | EffectAst::Coordinated { effects, .. } => {
             into_exact_single_conditional(effects)
         }
@@ -1840,7 +1890,9 @@ fn parse_effect_sentences_from_sentence_inputs(
         {
             return;
         }
-        let [EffectAst::ForEach(ForEachEffectAst::RepeatEffects { count, .. })] = sentence_effects.as_mut_slice() else {
+        let [EffectAst::ForEach(ForEachEffectAst::RepeatEffects { count, .. })] =
+            sentence_effects.as_mut_slice()
+        else {
             return;
         };
         let Some(query) = pending_prior_metric_query_mut(count) else {
@@ -2039,7 +2091,9 @@ fn parse_effect_sentences_from_sentence_inputs(
             return Ok(None);
         };
         let effects = parse_effect_sentences_lexed(rest_tokens)?;
-        Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::IfResult { predicate, effects })]))
+        Ok(Some(vec![EffectAst::Conditionals(
+            ConditionalEffectAst::IfResult { predicate, effects },
+        )]))
     }
 
     fn parse_tagged_characteristics_and_keyword_sentence(
@@ -2451,7 +2505,8 @@ fn parse_effect_sentences_from_sentence_inputs(
             continue;
         }
 
-        if effect_grammar::emblem_shapes::parse_damaged_player_emblem_payload_tokens(sentence).is_some()
+        if effect_grammar::emblem_shapes::parse_damaged_player_emblem_payload_tokens(sentence)
+            .is_some()
             && let Some(mut effect) = super::zone_handlers::parse_emblem_action(sentence, None)
             && let Some(prior) = effects.last_mut()
         {
@@ -2460,7 +2515,11 @@ fn parse_effect_sentences_from_sentence_inputs(
                 effect: Box::new(prior.clone()),
                 tag: crate::tag::TagRef::of(tag.clone()),
             };
-            if let EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer { tag: recipient_tag, .. }) = &mut effect {
+            if let EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer {
+                tag: recipient_tag,
+                ..
+            }) = &mut effect
+            {
                 *recipient_tag = crate::tag::TagRef::of(tag);
             }
             effects.push(effect);
@@ -2561,7 +2620,12 @@ fn parse_effect_sentences_from_sentence_inputs(
         };
         if joint_object_result_boundary {
             let mut result_effects = super::parse_effect_chain_lexed(authored_sentence)?;
-            if !matches!(result_effects.as_slice(), [EffectAst::Conditionals(ConditionalEffectAst::IfResult { .. })]) {
+            if !matches!(
+                result_effects.as_slice(),
+                [EffectAst::Conditionals(
+                    ConditionalEffectAst::IfResult { .. }
+                )]
+            ) {
                 return Err(CardTextError::ParseError(format!(
                     "joint-object result followup lost its result gate (clause: '{}')",
                     LexedClause::new(authored_sentence).text()
@@ -2653,7 +2717,8 @@ fn parse_effect_sentences_from_sentence_inputs(
             // characteristic-setting sentence inside the successful-result
             // branch and binds "it" to the object returned by that branch.
             if let Some(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-                effects: branch, ..
+                effects: branch,
+                ..
             })) = effects.last_mut()
             {
                 branch.append(&mut exact_type_effects);
@@ -2828,7 +2893,11 @@ fn parse_effect_sentences_from_sentence_inputs(
                 summarize_effects(&direct_effects)
             ));
             direct_effects
-        } else if let Some(delayed) = super::dispatch_inner::parse_delayed_when_that_leaves_battlefield_sentence(sentences[sentence_idx].lexed())? {
+        } else if let Some(delayed) =
+            super::dispatch_inner::parse_delayed_when_that_leaves_battlefield_sentence(
+                sentences[sentence_idx].lexed(),
+            )?
+        {
             delayed
         } else if parse_plan.tokens.as_slice() == sentences[sentence_idx].lexed() {
             parse_effect_sentence_lexed(sentences[sentence_idx].lexed())?
@@ -2841,14 +2910,20 @@ fn parse_effect_sentences_from_sentence_inputs(
         );
         preserve_plural_counter_antecedent(&parse_plan.tokens, &mut sentence_effects);
         let sentence_words = crate::lexer::token_word_refs(&parse_plan.tokens);
-        let counter_verb = sentence_words.iter().position(|word| matches!(*word, "put" | "distribute"));
+        let counter_verb = sentence_words
+            .iter()
+            .position(|word| matches!(*word, "put" | "distribute"));
         let counter_follows_then = counter_verb.map_or_else(
             || sentence_words.contains(&"then"),
-            |verb| sentence_words[..verb].iter().rev()
-                .find(|word| matches!(**word, "then" | "and"))
-                // With no preceding connector, retain a trailing "then"
-                // joining the counter placement to its following action.
-                .map_or_else(|| sentence_words.contains(&"then"), |word| *word == "then"),
+            |verb| {
+                sentence_words[..verb]
+                    .iter()
+                    .rev()
+                    .find(|word| matches!(**word, "then" | "and"))
+                    // With no preceding connector, retain a trailing "then"
+                    // joining the counter placement to its following action.
+                    .map_or_else(|| sentence_words.contains(&"then"), |word| *word == "then")
+            },
         );
         if counter_follows_then {
             annotate_counter_followup_surface(
@@ -2963,7 +3038,9 @@ fn parse_effect_sentences_from_sentence_inputs(
                 previous_effect,
                 EffectAst::Conditionals(ConditionalEffectAst::UnlessPays { .. })
                     | EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                        action: SubjectVerbActionAst::Stack(StackActionAst::CounterUnlessPays { .. }),
+                        action: SubjectVerbActionAst::Stack(
+                            StackActionAst::CounterUnlessPays { .. }
+                        ),
                         ..
                     })
             ) {
@@ -3000,7 +3077,10 @@ fn parse_effect_sentences_from_sentence_inputs(
             &["if", "a", "player", "does"],
         );
         if is_if_player_does
-            && matches!(effects.last(), Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { .. })))
+            && matches!(
+                effects.last(),
+                Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { .. }))
+            )
             && let [effect] = sentence_effects.as_mut_slice()
             && let EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                 predicate,
@@ -3118,10 +3198,12 @@ fn parse_outside_game_art_rating_sentence(
                 ));
             }
             let result_effects = parse_effect_sentences_lexed(&result_tokens)?;
-            Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
-                predicate: IfResultPredicate::Did,
-                effects: result_effects,
-            })]))
+            Ok(Some(vec![EffectAst::Conditionals(
+                ConditionalEffectAst::WhenResult {
+                    predicate: IfResultPredicate::Did,
+                    effects: result_effects,
+                },
+            )]))
         }
     }
 }
@@ -3233,13 +3315,15 @@ fn parse_delegated_categorical_library_choice(tokens: &[OwnedLexToken]) -> Optio
             .in_zone(Zone::Library)
             .match_tagged(pool.clone(), TaggedOpbjectRelation::IsTaggedObject)
     };
-    let choice = |filter| EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-        filter: tagged_pool(filter),
-        count: ChoiceCount::exactly(1),
-        count_value: None,
-        player: PlayerAst::That,
-        tag: result.clone(),
-    });
+    let choice = |filter| {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+            filter: tagged_pool(filter),
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player: PlayerAst::That,
+            tag: result.clone(),
+        })
+    };
     let delegated_choices = vec![
         EffectAst::subject_verb_choose_player(
             PlayerAst::You,
@@ -3372,13 +3456,15 @@ fn parse_complete_delegated_search_partition(
         false,
         0,
     ));
-    effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-        filter: ObjectFilter::tagged(pool.clone()),
-        count: ChoiceCount::exactly(2),
-        count_value: None,
-        player: PlayerAst::That,
-        tag: chosen.clone(),
-    }));
+    effects.push(EffectAst::ObjectChoices(
+        ObjectChoiceEffectAst::ChooseObjects {
+            filter: ObjectFilter::tagged(pool.clone()),
+            count: ChoiceCount::exactly(2),
+            count_value: None,
+            player: PlayerAst::That,
+            tag: chosen.clone(),
+        },
+    ));
 
     let rest = TargetAst::Object(
         ObjectFilter::tagged(pool).not_tagged(chosen.clone()),
@@ -3467,14 +3553,19 @@ pub(super) fn parse_each_player_coin_face_sequence(
     normalized_followup.extend_from_slice(&followup_sentence[tail_start..]);
     let followup = parse_effect_sentences_lexed_inner(&normalized_followup)?;
 
-    let [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects: flip_body })] = flip.as_mut_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects: flip_body })] =
+        flip.as_mut_slice()
+    else {
         return Ok(None);
     };
     let [EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. })] = flip_body.as_mut_slice()
     else {
         return Ok(None);
     };
-    if !matches!(action, SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)) {
+    if !matches!(
+        action,
+        SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)
+    ) {
         return Ok(None);
     }
     let [
@@ -3524,9 +3615,10 @@ fn parse_complete_simple_draw_sentence(
     }) else {
         return Ok(None);
     };
-    if tokens[..draw_idx].iter().any(|token| token.kind == TokenKind::Comma
-        || token.is_any_word(&["if", "unless", "when", "whenever", "until", "then", "may"]))
-    {
+    if tokens[..draw_idx].iter().any(|token| {
+        token.kind == TokenKind::Comma
+            || token.is_any_word(&["if", "unless", "when", "whenever", "until", "then", "may"])
+    }) {
         return Ok(None);
     }
     let subject = if draw_idx == 0 {
@@ -3567,18 +3659,25 @@ pub(crate) fn parse_complete_simple_subject_verb_sentence(
     // Select the current leader at resolution instead of discarding the
     // qualifier and falling back to the ability controller.
     if let Some((_, relative_tokens)) = crate::grammar::primitives::parse_prefix(
-        tokens, crate::grammar::primitives::phrase(&["the", "player"]),
-    )
-        && let Some(relative) = effect_grammar::for_each_shapes::parse_relative_control_clause_shape(relative_tokens)
+        tokens,
+        crate::grammar::primitives::phrase(&["the", "player"]),
+    ) && let Some(relative) =
+        effect_grammar::for_each_shapes::parse_relative_control_clause_shape(relative_tokens)
         && relative.controls_most
-        && let Some(mut effect) = parse_complete_simple_subject_verb_sentence(relative.effect_tokens)?
+        && let Some(mut effect) =
+            parse_complete_simple_subject_verb_sentence(relative.effect_tokens)?
     {
         let filter = crate::object_filters::parse_object_filter(relative.filter_tokens, false)?;
         super::chain_carry::bind_implicit_player_context(&mut effect, PlayerAst::That);
-        return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
-            filter: PlayerFilter::ControlsMost { filter: Box::new(filter) },
-            effects: vec![effect], sequential: false,
-        })));
+        return Ok(Some(EffectAst::ForEach(
+            ForEachEffectAst::ForEachPlayersFiltered {
+                filter: PlayerFilter::ControlsMost {
+                    filter: Box::new(filter),
+                },
+                effects: vec![effect],
+                sequential: false,
+            },
+        )));
     }
     // A sentence with a trailing condition is the conditional statement's.
     if crate::grammar::structure::split_trailing_if_clause_lexed(tokens).is_some() {
@@ -3700,7 +3799,8 @@ pub(super) fn parse_complete_simple_mill_sentence(
     if super::lex_chain_helpers::has_authored_comma_then_surface_lexed(tokens)
         || super::lex_chain_helpers::split_segments_on_comma_then_lexed(vec![tokens]).len() > 1
         || super::lex_chain_helpers::split_effect_chain_on_and_lexed(tokens).len() > 1
-        || super::lex_chain_helpers::split_segments_on_comma_effect_head_lexed(vec![tokens]).len() > 1
+        || super::lex_chain_helpers::split_segments_on_comma_effect_head_lexed(vec![tokens]).len()
+            > 1
     {
         return Ok(None);
     }
@@ -3710,9 +3810,10 @@ pub(super) fn parse_complete_simple_mill_sentence(
     }) else {
         return Ok(None);
     };
-    if tokens[..mill_idx].iter().any(|token| token.kind == TokenKind::Comma
-        || token.is_any_word(&["may", "if", "unless", "when", "whenever", "then"]))
-    {
+    if tokens[..mill_idx].iter().any(|token| {
+        token.kind == TokenKind::Comma
+            || token.is_any_word(&["may", "if", "unless", "when", "whenever", "then"])
+    }) {
         return Ok(None);
     }
     let subject = if mill_idx == 0 {
@@ -3749,13 +3850,15 @@ fn push_simple_controlled_object_choice(effects: &mut Vec<EffectAst>, card_type:
     let mut filter = ObjectFilter::default();
     filter.card_types.push(card_type);
     filter.controller = Some(PlayerFilter::You);
-    effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-        filter,
-        count: ChoiceCount::exactly(1),
-        count_value: None,
-        player: PlayerAst::You,
-        tag: crate::tag::CompilerReferenceTag::ChosenObjects.bind(),
-    }));
+    effects.push(EffectAst::ObjectChoices(
+        ObjectChoiceEffectAst::ChooseObjects {
+            filter,
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: crate::tag::CompilerReferenceTag::ChosenObjects.bind(),
+        },
+    ));
 }
 
 fn push_plain_iterated_copy_of_it(effects: &mut Vec<EffectAst>) {
@@ -3923,7 +4026,9 @@ fn push_complete_simple_face_down_exile_top(
         SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
             count: Value::Fixed(count),
             surface: None,
-            tags: vec![crate::tag::TagRef::of(crate::util::helper_tag_for_tokens(tokens, "exiled"))],
+            tags: vec![crate::tag::TagRef::of(crate::util::helper_tag_for_tokens(
+                tokens, "exiled",
+            ))],
             accumulated_tags: Vec::new(),
             face_down: true,
         }),
@@ -4141,9 +4246,19 @@ pub(crate) fn parse_complete_create_statement(
     }
     // A verb inside a granted ability belongs to the quoted rule, not to
     // this statement's actor. Keep the enclosing grant intact.
-    if let Some(create_idx) = sentence.iter().position(|token| token.is_any_word(&["create", "creates"]))
-        && (sentence[..create_idx].iter().filter(|token| token.kind == TokenKind::Quote).count() % 2 == 1
-            || sentence[..create_idx].iter().any(|token| token.is_any_word(&["choose", "chooses"]))) {
+    if let Some(create_idx) = sentence
+        .iter()
+        .position(|token| token.is_any_word(&["create", "creates"]))
+        && (sentence[..create_idx]
+            .iter()
+            .filter(|token| token.kind == TokenKind::Quote)
+            .count()
+            % 2
+            == 1
+            || sentence[..create_idx]
+                .iter()
+                .any(|token| token.is_any_word(&["choose", "chooses"])))
+    {
         return Ok(None);
     }
     // A die-roll row ("10—20 | Create ...") is the result-prefix statement's; read alone, the range was lost.
@@ -4308,16 +4423,24 @@ pub(crate) fn parse_complete_create_statement(
         } else {
             crate::util::parse_subject(&parse_tokens[..verb_idx])
         };
-        let created = super::creation_handlers::parse_create(&parse_tokens[verb_idx..], Some(subject))?;
+        let created =
+            super::creation_handlers::parse_create(&parse_tokens[verb_idx..], Some(subject))?;
         let created = if !quantified_opponents
-            && let Some(owner) = crate::grammar::effects::become_shapes::parse_controller_owner_subject_tokens(&parse_tokens[..verb_idx])
+            && let Some(owner) =
+                crate::grammar::effects::become_shapes::parse_controller_owner_subject_tokens(
+                    &parse_tokens[..verb_idx],
+                )
             && !matches!(&owner.target, TargetAst::Tagged(tag, _) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
             && !matches!(&owner.target, TargetAst::Object(filter, ..) if filter.tagged_constraints.iter().any(|constraint|
                 constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                     || constraint.tag.as_str() == crate::tag::CompilerReferenceTag::Triggering.as_str()))
         {
-            EffectAst::Sequence { effects: vec![EffectAst::subject_verb_target_only(owner.target), created] }
-        } else { created };
+            EffectAst::Sequence {
+                effects: vec![EffectAst::subject_verb_target_only(owner.target), created],
+            }
+        } else {
+            created
+        };
         (created, quantified_opponents)
     };
 
@@ -4333,7 +4456,9 @@ pub(crate) fn parse_complete_create_statement(
         ));
     }
     if quantified_opponents {
-        effects = vec![EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })];
+        effects = vec![EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
+            effects,
+        })];
     }
     Ok(Some(effects))
 }
@@ -4349,7 +4474,9 @@ pub(super) fn parse_complete_quantified_discard_statement(
     let Some((verb, verb_word_idx)) = super::find_verb(sentence) else {
         return Ok(None);
     };
-    let Some(verb_idx) = crate::lexer::TokenWordView::new(sentence).map_word_to_token_start(verb_word_idx) else {
+    let Some(verb_idx) =
+        crate::lexer::TokenWordView::new(sentence).map_word_to_token_start(verb_word_idx)
+    else {
         return Ok(None);
     };
     if verb_idx == 0 || !matches!(verb, super::chain_carry::Verb::Discard) {
@@ -4364,12 +4491,16 @@ pub(super) fn parse_complete_quantified_discard_statement(
         Some(SubjectAst::Player(PlayerAst::That)),
     )?;
     let quantified = match scope {
-        effect_grammar::chain_carry::ChainPlayerScope::EachOpponent => EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
-            effects: vec![discard],
-        }),
-        effect_grammar::chain_carry::ChainPlayerScope::EachPlayer => EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
-            effects: vec![discard],
-        }),
+        effect_grammar::chain_carry::ChainPlayerScope::EachOpponent => {
+            EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
+                effects: vec![discard],
+            })
+        }
+        effect_grammar::chain_carry::ChainPlayerScope::EachPlayer => {
+            EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+                effects: vec![discard],
+            })
+        }
     };
     Ok(Some(vec![quantified]))
 }
@@ -4378,7 +4509,10 @@ pub(super) fn parse_complete_quantified_discard_statement(
 pub(crate) fn parse_complete_get_pump_statement(
     sentence: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    if sentence.first().is_some_and(|token| token.is_any_word(&["if", "unless", "instead"])) {
+    if sentence
+        .first()
+        .is_some_and(|token| token.is_any_word(&["if", "unless", "instead"]))
+    {
         return Ok(None);
     }
     if effect_grammar::clause_primitive_shapes::parse_combat_requirement_shape(sentence).is_some() {
@@ -4408,7 +4542,9 @@ pub(crate) fn parse_complete_get_pump_statement(
     let Some((verb, verb_word_idx)) = super::find_verb(sentence) else {
         return Ok(None);
     };
-    let Some(verb_idx) = crate::lexer::TokenWordView::new(sentence).map_word_to_token_start(verb_word_idx) else {
+    let Some(verb_idx) =
+        crate::lexer::TokenWordView::new(sentence).map_word_to_token_start(verb_word_idx)
+    else {
         return Ok(None);
     };
     if verb_idx == 0
@@ -4435,7 +4571,8 @@ pub(crate) fn parse_complete_get_pump_statement(
     {
         return super::subject_verb_primitives::parse_sentence_pump_creature_type_of_choice(
             super::subject_verb_primitives::SubjectVerbPrimitiveClause::new(sentence),
-        ).map(|effects| effects.map(|effects| EffectAst::Sequence { effects }));
+        )
+        .map(|effects| effects.map(|effects| EffectAst::Sequence { effects }));
     }
     super::clause_dispatch::parse_get_pump_clause(
         &sentence[..verb_idx],
@@ -4474,7 +4611,9 @@ pub(super) fn parse_complete_become_statement(
     let Some((verb, verb_word_idx)) = super::find_verb(sentence) else {
         return Ok(None);
     };
-    let Some(verb_idx) = crate::lexer::TokenWordView::new(sentence).map_word_to_token_start(verb_word_idx) else {
+    let Some(verb_idx) =
+        crate::lexer::TokenWordView::new(sentence).map_word_to_token_start(verb_word_idx)
+    else {
         return Ok(None);
     };
     if verb_idx == 0
@@ -4499,32 +4638,48 @@ pub(super) fn parse_complete_compound_gain_statement(
     if crate::grammar::structure::split_leading_numeric_result_prefix_lexed(sentence).is_some() {
         return Ok(None);
     }
-    if sentence.first().is_some_and(|token| token.is_word("instead"))
-        || effect_grammar::split_conditional_sentence_family_head_lexed(sentence).is_some() {
+    if sentence
+        .first()
+        .is_some_and(|token| token.is_word("instead"))
+        || effect_grammar::split_conditional_sentence_family_head_lexed(sentence).is_some()
+    {
         return Ok(None);
     }
     // Independently conditioned modifiers retain one predicate per member.
     // Taking the final trailing-if as the whole sentence's envelope would
     // accidentally require both conditions for the first modifier.
     if sentence.iter().filter(|token| token.is_word("if")).count() > 1
-        && let ParseOutcome::Match(matched) = effect_grammar::coordination::recognize_coordination(sentence)
+        && let ParseOutcome::Match(matched) =
+            effect_grammar::coordination::recognize_coordination(sentence)
         && matched.value.members.len() > 1
     {
         let plan = matched.value;
         let mut members = Vec::new();
         for member in &plan.members {
-            let Some(trailing) = crate::grammar::structure::split_trailing_if_clause_lexed(member.tokens) else {
+            let Some(trailing) =
+                crate::grammar::structure::split_trailing_if_clause_lexed(member.tokens)
+            else {
                 return Ok(None);
             };
-            if !super::find_verb(trailing.leading_tokens).is_some_and(|(verb, _)| matches!(verb,
-                crate::cards::builders::Verb::Get | crate::cards::builders::Verb::Gain | crate::cards::builders::Verb::Lose
-            )) { return Ok(None); }
+            if !super::find_verb(trailing.leading_tokens).is_some_and(|(verb, _)| {
+                matches!(
+                    verb,
+                    crate::cards::builders::Verb::Get
+                        | crate::cards::builders::Verb::Gain
+                        | crate::cards::builders::Verb::Lose
+                )
+            }) {
+                return Ok(None);
+            }
             let effects = super::parse_effect_sentence_lexed(trailing.leading_tokens)?;
             members.push(EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
-                predicate: trailing.predicate, effects,
+                predicate: trailing.predicate,
+                effects,
             }));
         }
-        return Ok(plan.into_ast(members).map(|coordination| vec![EffectAst::Coordination(coordination)]));
+        return Ok(plan
+            .into_ast(members)
+            .map(|coordination| vec![EffectAst::Coordination(coordination)]));
     }
     if let Some(trailing_if) = crate::grammar::structure::split_trailing_if_clause_lexed(sentence)
         && (effect_grammar::gain_ability_shapes::parse_get_then_ability_shape(
@@ -4538,16 +4693,21 @@ pub(super) fn parse_complete_compound_gain_statement(
         && let Some(effects) =
             super::gain_ability::parse_gain_ability_sentence(trailing_if.leading_tokens)?
     {
-        return Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
-            predicate: trailing_if.predicate,
-            effects,
-        })]));
+        return Ok(Some(vec![EffectAst::Conditionals(
+            ConditionalEffectAst::TrailingIf {
+                predicate: trailing_if.predicate,
+                effects,
+            },
+        )]));
     }
     if effect_grammar::gain_ability_shapes::parse_get_then_ability_shape(sentence).is_none()
         && effect_grammar::gain_ability_shapes::parse_gain_then_get_shape(sentence).is_none()
         && !effect_grammar::gain_ability_shapes::parse_simple_gain_ability_shape(sentence)
-            .is_some_and(|shape| effect_grammar::gain_ability_shapes::subject_contains_gain_base_pt(
-                &crate::lexer::parser_token_word_refs(shape.subject_tokens)))
+            .is_some_and(|shape| {
+                effect_grammar::gain_ability_shapes::subject_contains_gain_base_pt(
+                    &crate::lexer::parser_token_word_refs(shape.subject_tokens),
+                )
+            })
     {
         return Ok(None);
     }
@@ -5012,8 +5172,10 @@ fn parse_composable_typed_statements(
                         let created_tag =
                             crate::util::helper_tag_for_tokens(full_tokens, "created_token");
                         if tag_first_created_token_result(&mut effects, &created_tag) {
-                            *target =
-                                TargetAst::Tagged(crate::tag::TagRef::of(created_tag), span_from_tokens(head.tokens()));
+                            *target = TargetAst::Tagged(
+                                crate::tag::TagRef::of(created_tag),
+                                span_from_tokens(head.tokens()),
+                            );
                         }
                     }
                     plan.value
@@ -5232,7 +5394,9 @@ fn parse_direct_typed_coordination(
         let Some((verb, verb_word_idx)) = super::find_verb(member_tokens) else {
             return Ok(None);
         };
-        let Some(verb_idx) = crate::lexer::TokenWordView::new(member_tokens).map_word_to_token_start(verb_word_idx) else {
+        let Some(verb_idx) =
+            crate::lexer::TokenWordView::new(member_tokens).map_word_to_token_start(verb_word_idx)
+        else {
             return Ok(None);
         };
         let subject =
@@ -5288,7 +5452,9 @@ fn parse_effect_sentences_lexed_unfinalized(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
     // A demonstrative leave watcher in resolving instructions retains its event header.
-    if let Some(effects) = super::dispatch_inner::parse_delayed_when_that_leaves_battlefield_sentence(tokens)? {
+    if let Some(effects) =
+        super::dispatch_inner::parse_delayed_when_that_leaves_battlefield_sentence(tokens)?
+    {
         return Ok(effects);
     }
     let document = super::document_readings::Document::new(tokens);
@@ -5393,7 +5559,9 @@ fn dynamic_base_pt_where_x_effect(effect: &EffectAst) -> bool {
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
             SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness {
-                power, toughness, ..
+                power,
+                toughness,
+                ..
             }),
         ..
     }) = effect
@@ -5416,7 +5584,9 @@ fn tag_first_created_token_result(effects: &mut [EffectAst], tag: &TagKey) -> bo
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { .. })
                     | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. })
-                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { .. }),
+                    | SubjectVerbActionAst::Tokens(
+                        TokenActionAst::CreateTokenCopyFromSource { .. }
+                    ),
                 ..
             })
         ) {
@@ -5443,7 +5613,8 @@ fn tag_first_created_token_result(effects: &mut [EffectAst], tag: &TagKey) -> bo
 fn set_first_put_counter_target(effects: &mut [EffectAst], target: &TargetAst) -> bool {
     for effect in effects {
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target: found, .. }),
+            action:
+                SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target: found, .. }),
             ..
         }) = effect
         {
@@ -5500,7 +5671,10 @@ fn parse_created_token_counter_kind_distribution_followup(
     effects.push(
         EffectAst::subject_verb_put_each_counter_kind_from_on_one_of(
             TargetAst::Object(counter_source, None, None),
-            TargetAst::Tagged(crate::tag::TagRef::of(created_tag), span_from_tokens(shape.target_tokens)),
+            TargetAst::Tagged(
+                crate::tag::TagRef::of(created_tag),
+                span_from_tokens(shape.target_tokens),
+            ),
         ),
     );
     Ok(Some(effects))
@@ -5545,7 +5719,10 @@ fn parse_created_token_mill_counter_followup(
     }
 
     let mut followup = parse_effect_sentences_lexed_inner(consumer)?;
-    let created_target = TargetAst::Tagged(crate::tag::TagRef::of(created_tag), span_from_tokens(consumer));
+    let created_target = TargetAst::Tagged(
+        crate::tag::TagRef::of(created_tag),
+        span_from_tokens(consumer),
+    );
     if !set_first_put_counter_target(&mut followup, &created_target) {
         return Ok(None);
     }
@@ -5646,7 +5823,10 @@ fn parse_quoted_token_rule_then_linked_counter_followup(
         return Ok(None);
     }
     let created_tag = crate::util::helper_tag_for_tokens(tokens, "created_token");
-    *first_target = TargetAst::Tagged(crate::tag::TagRef::of(created_tag.clone()), span_from_tokens(first_counter_tokens));
+    *first_target = TargetAst::Tagged(
+        crate::tag::TagRef::of(created_tag.clone()),
+        span_from_tokens(first_counter_tokens),
+    );
 
     Ok(Some(vec![
         EffectAst::TagAffected {
@@ -6024,7 +6204,10 @@ fn parse_reveal_hand_then_put_same_name_as_permanent(
             crate::tag::TagRef::of(comparison_tag),
         ),
         EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-            predicate: PredicateAst::TaggedMatches(crate::tag::TagRef::of(selected_tag.clone()), same_name_filter),
+            predicate: PredicateAst::TaggedMatches(
+                crate::tag::TagRef::of(selected_tag.clone()),
+                same_name_filter,
+            ),
             if_true: vec![EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
                 tag: crate::tag::TagRef::of(selected_tag),
                 effects: vec![EffectAst::subject_verb_move_to_zone(
@@ -6067,7 +6250,8 @@ fn append_effects_to_optional_search(
         return false;
     };
     let body = match optional {
-        EffectAst::Permissions(PermissionEffectAst::May { effects }) | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. }) => effects,
+        EffectAst::Permissions(PermissionEffectAst::May { effects })
+        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. }) => effects,
         _ => return false,
     };
     body.append(&mut followups);
@@ -6131,7 +6315,8 @@ fn is_direct_coin_flip(effect: &EffectAst) -> bool {
     matches!(
         effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Random(RandomActionAst::FlipCoin) | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly),
+            action: SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)
+                | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly),
             ..
         })
     )
@@ -6149,11 +6334,17 @@ fn coin_flip_owner_body_mut(effect: &mut EffectAst) -> Option<&mut Vec<EffectAst
         | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep { effects, .. })
         | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextDrawStep { effects, .. })
         | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextMainPhase { effects, .. })
-        | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextFirstMainPhase { effects, .. })
-        | EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextFirstMainPhase {
+            effects, ..
+        })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndStepOfExtraTurn {
+            effects, ..
+        })
         | EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat { effects })
         | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn { effects, .. })
-        | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { effects, .. }) => effects,
+        | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { effects, .. }) => {
+            effects
+        }
         _ => return None,
     };
     if !effects.last().is_some_and(is_direct_coin_flip) {
@@ -6212,7 +6403,9 @@ fn direct_all_object_filter(effect: &EffectAst) -> Option<&ObjectFilter> {
         | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand { filter, .. })
         | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::UntapAll { filter })
         | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll { filter, .. })
-        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll { filter, .. }) => Some(filter),
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll { filter, .. }) => {
+            Some(filter)
+        }
         _ => None,
     }
 }
@@ -6227,7 +6420,9 @@ fn direct_all_object_filter_mut(effect: &mut EffectAst) -> Option<&mut ObjectFil
         | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand { filter, .. })
         | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::UntapAll { filter })
         | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll { filter, .. })
-        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll { filter, .. }) => Some(filter),
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll { filter, .. }) => {
+            Some(filter)
+        }
         _ => None,
     }
 }
@@ -6355,7 +6550,8 @@ fn preserve_linked_target_fanout_group(tokens: &[OwnedLexToken], effects: &mut V
 
         let primary_alias = crate::tag::CompilerIndexedTag::LinkedFanoutPrimary.key(first_idx);
         let group_alias = crate::tag::CompilerIndexedTag::LinkedFanoutGroup.key(first_idx);
-        let primary_affected = crate::tag::CompilerIndexedTag::LinkedFanoutPrimaryAffected.key(first_idx);
+        let primary_affected =
+            crate::tag::CompilerIndexedTag::LinkedFanoutPrimaryAffected.key(first_idx);
 
         // Keep the target reference separate from its affected result. A
         // replaced primary action still supplies the name and controller for
@@ -6540,7 +6736,8 @@ fn preserve_linked_target_fanout_group_across_coordination(
         let primary_alias =
             crate::tag::CompilerIndexedTag::LinkedFanoutPrimary.key(first_member_idx);
         let group_alias = crate::tag::CompilerIndexedTag::LinkedFanoutGroup.key(first_member_idx);
-        let primary_affected = crate::tag::CompilerIndexedTag::LinkedFanoutPrimaryAffected.key(first_member_idx);
+        let primary_affected =
+            crate::tag::CompilerIndexedTag::LinkedFanoutPrimaryAffected.key(first_member_idx);
 
         let primary = coordination.members[first_member_idx]
             .effects
@@ -6632,7 +6829,9 @@ fn preserve_tapped_this_way_group_for_later_distribution(
         matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapAll { .. }),
+                action: SubjectVerbActionAst::PermanentState(
+                    PermanentStateActionAst::TapAll { .. }
+                ),
                 ..
             })
         )
@@ -6825,11 +7024,13 @@ mod next_batch_enter_with_counters_tests {
             .expect("next-batch entry replacement should parse");
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterNextBatchEnterWithCounters {
-                    filter,
-                    counter_type: crate::object::CounterType::PlusOnePlusOne,
-                    count: Value::Fixed(2),
-                }),
+                SubjectVerbActionAst::Replacements(
+                    ReplacementActionAst::RegisterNextBatchEnterWithCounters {
+                        filter,
+                        counter_type: crate::object::CounterType::PlusOnePlusOne,
+                        count: Value::Fixed(2),
+                    },
+                ),
             ..
         }) = effect
         else {
@@ -7051,7 +7252,9 @@ fn dispatch_effect_sentences_lexed_inner_remaining(
 fn parse_turn_scoped_entry_counter_replacement(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let Some((duration, body)) = crate::search_library_support::parse_restriction_duration_lexed(tokens)? else {
+    let Some((duration, body)) =
+        crate::search_library_support::parse_restriction_duration_lexed(tokens)?
+    else {
         return Ok(None);
     };
     let mode = match duration {
@@ -7062,20 +7265,37 @@ fn parse_turn_scoped_entry_counter_replacement(
     // Demonstratives and source subjects describe a particular entrant;
     // those retain their existing entry-modifier lowering.
     if body.first().is_some_and(|token| {
-        token.is_word("that") || token.is_word("those") || token.is_word("this") || token.is_word("it")
+        token.is_word("that")
+            || token.is_word("those")
+            || token.is_word("this")
+            || token.is_word("it")
     }) {
         return Ok(None);
     }
-    let Some(ability) = crate::keyword_static::parse_enters_with_additional_counter_for_filter_line(&body)? else {
+    let Some(ability) =
+        crate::keyword_static::parse_enters_with_additional_counter_for_filter_line(&body)?
+    else {
         return Ok(None);
     };
     let ironsmith_core::StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
-        filter, counter, count, count_condition: None, otherwise_count: None, subtypes,
-    } = ability.payload else { return Ok(None); };
-    if !subtypes.is_empty() { return Ok(None); }
-    Ok(Some(EffectAst::subject_verb_register_enter_with_counters_replacement(
-        filter, counter, count, mode,
-    )))
+        filter,
+        counter,
+        count,
+        count_condition: None,
+        otherwise_count: None,
+        subtypes,
+    } = ability.payload
+    else {
+        return Ok(None);
+    };
+    if !subtypes.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(
+        EffectAst::subject_verb_register_enter_with_counters_replacement(
+            filter, counter, count, mode,
+        ),
+    ))
 }
 
 /// Parse a resolving rule such as "Permanents enter tapped this turn."
@@ -7124,13 +7344,15 @@ fn parse_tapped_land_mana_replacement(tokens: &[OwnedLexToken]) -> Option<Effect
                 role: SubjectVerbRoleAst::Actor,
                 player: PlayerAst::Implicit,
             },
-            action: SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaReplacement {
-                source_filter: crate::target::ObjectFilter::default()
-                    .with_type(crate::types::CardType::Land)
-                    .you_control(),
-                replacement_mana: vec![spec.replacement_mana],
-                mode: crate::effects::ReplacementApplyMode::UntilEndOfTurn,
-            }),
+            action: SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterManaReplacement {
+                    source_filter: crate::target::ObjectFilter::default()
+                        .with_type(crate::types::CardType::Land)
+                        .you_control(),
+                    replacement_mana: vec![spec.replacement_mana],
+                    mode: crate::effects::ReplacementApplyMode::UntilEndOfTurn,
+                },
+            ),
         },
     ))
 }
@@ -7502,7 +7724,8 @@ pub fn mark_last_destroy_creature_destroyed_this_way_surface(effects: &mut [Effe
             EffectAst::Coordinated { effects, .. } => effects
                 .iter_mut()
                 .fold(false, |found, effect| mark(effect) || found),
-            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes }) | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
                 modes.iter_mut().fold(false, |found, mode| {
                     mode.effects.last_mut().is_some_and(mark) || found
                 })
@@ -7526,10 +7749,16 @@ pub fn mark_last_destroy_creature_destroyed_this_way_surface(effects: &mut [Effe
 mod tests {
     #[test]
     fn participant_actions_keep_the_opponent_iteration() {
-        for text in ["Each opponent draws a card.", "Each opponent discards a card and loses 2 life."] {
+        for text in [
+            "Each opponent draws a card.",
+            "Each opponent discards a card and loses 2 life.",
+        ] {
             let tokens = crate::lexer::lex_line(text, 0).unwrap();
             let effects = super::parse_effect_sentences_lexed(&tokens).unwrap();
-            assert!(format!("{effects:?}").contains("ForEachOpponent"), "{text}: {effects:#?}");
+            assert!(
+                format!("{effects:?}").contains("ForEachOpponent"),
+                "{text}: {effects:#?}"
+            );
         }
     }
 
@@ -7541,7 +7770,13 @@ mod tests {
         ] {
             let tokens = crate::lexer::lex_line(text, 0).unwrap();
             let effects = super::parse_effect_sentences_lexed(&tokens).unwrap();
-            assert!(matches!(effects.as_slice(), [crate::cards::builders::EffectAst::Coordination(_)]), "{effects:#?}");
+            assert!(
+                matches!(
+                    effects.as_slice(),
+                    [crate::cards::builders::EffectAst::Coordination(_)]
+                ),
+                "{effects:#?}"
+            );
         }
     }
 
@@ -7556,12 +7791,20 @@ mod tests {
 
     #[test]
     fn optional_viewed_card_fallback_preserves_remainder_order() {
-        for (order, expected) in [("in a random order", "Random"), ("in any order", "ChooserChooses")] {
-            let text = format!("Look at the top five cards of your library. You may put a creature card from among them onto the battlefield tapped. If you don't, put a card from among them into your hand. Put the rest on the bottom of your library {order}.");
+        for (order, expected) in [
+            ("in a random order", "Random"),
+            ("in any order", "ChooserChooses"),
+        ] {
+            let text = format!(
+                "Look at the top five cards of your library. You may put a creature card from among them onto the battlefield tapped. If you don't, put a card from among them into your hand. Put the rest on the bottom of your library {order}."
+            );
             let tokens = crate::lexer::lex_line(&text, 0).unwrap();
             let effects = super::parse_effect_sentences_lexed(&tokens).unwrap();
             let debug = format!("{effects:#?}");
-            assert!(debug.contains("PutTaggedRemainderOnBottomOfLibrary"), "{debug}");
+            assert!(
+                debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+                "{debug}"
+            );
             assert!(debug.contains(expected), "{debug}");
         }
     }
@@ -7572,21 +7815,21 @@ mod tests {
             "Return target permanent to its owner's hand, then that player discards two cards.",
             "Return target creature card from your graveyard to your hand, then discard a card.",
         ] {
-        let tokens = crate::lexer::lex_line(
-            text, 0,
-        ).unwrap();
-        let effects = super::parse_effect_sentences_lexed(&tokens).unwrap();
-        let debug = format!("{effects:#?}");
-        assert!(debug.contains("Return"), "{debug}");
-        assert!(debug.contains("Discard"), "{debug}");
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let effects = super::parse_effect_sentences_lexed(&tokens).unwrap();
+            let debug = format!("{effects:#?}");
+            assert!(debug.contains("Return"), "{debug}");
+            assert!(debug.contains("Discard"), "{debug}");
         }
     }
 
     #[test]
     fn conditional_counter_document_keeps_the_otherwise_branch() {
         let tokens = crate::lexer::lex_line(
-            "If this creature is suspected, put two +1/+1 counters on it. Otherwise, suspect it.", 0,
-        ).unwrap();
+            "If this creature is suspected, put two +1/+1 counters on it. Otherwise, suspect it.",
+            0,
+        )
+        .unwrap();
         let effects = super::parse_effect_sentences_lexed(&tokens).unwrap();
         let debug = format!("{effects:#?}");
         assert!(debug.contains("PutCounters"), "{debug}");
@@ -7597,7 +7840,10 @@ mod tests {
     fn shared_pump_targets_survive_the_document_reader() {
         let tokens = crate::lexer::lex_line("Target creature you control gets +X/+0 until end of turn and up to one target creature an opponent controls gets -0/-X until end of turn, where X is the number of Elves you control plus the number of Elf cards in your graveyard.", 0).unwrap();
         let shortcut = super::parse_complete_get_pump_statement(&tokens).unwrap();
-        assert!(shortcut.is_none(), "single pump shortcut consumed the compound: {shortcut:#?}");
+        assert!(
+            shortcut.is_none(),
+            "single pump shortcut consumed the compound: {shortcut:#?}"
+        );
         let effects = super::parse_effect_sentences_lexed(&tokens).unwrap();
         let debug = format!("{effects:#?}");
         assert_eq!(debug.matches("action: Pump {").count(), 2, "{debug}");
@@ -7606,35 +7852,41 @@ mod tests {
     #[test]
     fn complete_pump_defers_to_a_following_action() {
         let tokens = crate::lexer::lex_line(
-            "This creature gets +2/+1 until end of turn, then scry 2.", 0,
-        ).unwrap();
-        assert!(super::parse_complete_get_pump_statement(&tokens).unwrap().is_none());
+            "This creature gets +2/+1 until end of turn, then scry 2.",
+            0,
+        )
+        .unwrap();
+        assert!(
+            super::parse_complete_get_pump_statement(&tokens)
+                .unwrap()
+                .is_none()
+        );
         let effects = super::parse_effect_sentences_lexed(&tokens).unwrap();
         let debug = format!("{effects:#?}");
         assert!(debug.contains("Pump"), "{debug}");
         assert!(debug.contains("Scry"), "{debug}");
     }
 
-    use crate::cards::builders::TurnEventPredicateAst;
-    use crate::cards::builders::SourcePredicateAst;
-    use crate::cards::builders::PermissionEffectAst;
-    use crate::cards::builders::ConditionalEffectAst;
-    use crate::cards::builders::VoteEffectAst;
-    use crate::cards::builders::ObjectChoiceEffectAst;
-    use crate::cards::builders::ForEachEffectAst;
-    use crate::cards::builders::DelayedEffectAst;
-    use crate::cards::builders::TokenActionAst;
-    use crate::cards::builders::StatChangeActionAst;
-    use crate::cards::builders::LifeResourceActionAst;
-    use crate::cards::builders::RevealLookActionAst;
-    use crate::cards::builders::PermanentStateActionAst;
-    use crate::cards::builders::ZoneMoveActionAst;
-    use crate::cards::builders::KeywordActionAst;
     use crate::cards::builders::CharacteristicActionAst;
-    use crate::cards::builders::ReplacementActionAst;
-    use crate::cards::builders::LibraryActionAst;
-    use crate::cards::builders::ManaActionAst;
+    use crate::cards::builders::ConditionalEffectAst;
+    use crate::cards::builders::DelayedEffectAst;
+    use crate::cards::builders::ForEachEffectAst;
     use crate::cards::builders::GrantActionAst;
+    use crate::cards::builders::KeywordActionAst;
+    use crate::cards::builders::LibraryActionAst;
+    use crate::cards::builders::LifeResourceActionAst;
+    use crate::cards::builders::ManaActionAst;
+    use crate::cards::builders::ObjectChoiceEffectAst;
+    use crate::cards::builders::PermanentStateActionAst;
+    use crate::cards::builders::PermissionEffectAst;
+    use crate::cards::builders::ReplacementActionAst;
+    use crate::cards::builders::RevealLookActionAst;
+    use crate::cards::builders::SourcePredicateAst;
+    use crate::cards::builders::StatChangeActionAst;
+    use crate::cards::builders::TokenActionAst;
+    use crate::cards::builders::TurnEventPredicateAst;
+    use crate::cards::builders::VoteEffectAst;
+    use crate::cards::builders::ZoneMoveActionAst;
     use crate::cards::builders::{
         EffectAst, IfResultPredicate, PlayerAst, PredicateAst, SubjectVerbActionAst, find_verb,
     };
@@ -7812,7 +8064,8 @@ mod tests {
         .expect("quantified token creation should lex");
         let parsed = parse_effect_sentences_lexed(&tokens)
             .expect("quantified token creation should parse through document dispatch");
-        let [EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })] = parsed.as_slice() else {
+        let [EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })] = parsed.as_slice()
+        else {
             panic!("expected one opponent iteration, got {parsed:#?}");
         };
         let [EffectAst::SubjectVerb(effect)] = effects.as_slice() else {
@@ -7868,20 +8121,22 @@ mod tests {
         let public_token_rules = public_dispatch
             .iter()
             .find_map(|effect| match effect {
-                EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }) => effects.iter().find_map(|effect| {
-                    let EffectAst::SubjectVerb(effect) = effect else {
-                        return None;
-                    };
-                    let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
-                        definition,
-                        granted_abilities,
-                        ..
-                    }) = &effect.action
-                    else {
-                        return None;
-                    };
-                    Some(format!("{definition:#?}\n{granted_abilities:#?}"))
-                }),
+                EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }) => {
+                    effects.iter().find_map(|effect| {
+                        let EffectAst::SubjectVerb(effect) = effect else {
+                            return None;
+                        };
+                        let SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
+                            definition,
+                            granted_abilities,
+                            ..
+                        }) = &effect.action
+                        else {
+                            return None;
+                        };
+                        Some(format!("{definition:#?}\n{granted_abilities:#?}"))
+                    })
+                }
                 _ => None,
             })
             .unwrap_or_else(|| panic!("public route lost token semantics: {public_dispatch:#?}"));
@@ -7905,7 +8160,9 @@ mod tests {
         .expect("single-rule token creation should lex");
         let near_miss = parse_effect_sentences_lexed(&near_miss)
             .expect("single-rule token creation should still parse");
-        let [EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })] = near_miss.as_slice() else {
+        let [EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })] =
+            near_miss.as_slice()
+        else {
             panic!("single-rule route lost opponent iteration: {near_miss:#?}");
         };
         let [EffectAst::SubjectVerb(effect)] = effects.as_slice() else {
@@ -7957,7 +8214,8 @@ mod tests {
         assert!(
             matches!(
                 cast_effects.as_slice(),
-                [EffectAst::Permissions(PermissionEffectAst::May { .. }) | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. })]
+                [EffectAst::Permissions(PermissionEffectAst::May { .. })
+                    | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. })]
             ),
             "standalone optional cast lost optionality: {cast_effects:#?}"
         );
@@ -7981,14 +8239,16 @@ mod tests {
         assert!(
             matches!(
                 if_true.as_slice(),
-                [EffectAst::Permissions(PermissionEffectAst::May { .. }) | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. })]
+                [EffectAst::Permissions(PermissionEffectAst::May { .. })
+                    | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. })]
             ),
             "true arm lost optionality: {effects:#?}"
         );
         assert!(
             matches!(
                 if_false.as_slice(),
-                [EffectAst::Permissions(PermissionEffectAst::May { .. }) | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. })]
+                [EffectAst::Permissions(PermissionEffectAst::May { .. })
+                    | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. })]
             ),
             "false arm lost optionality: {effects:#?}"
         );
@@ -7996,7 +8256,10 @@ mod tests {
 
     fn empty_mana_pool_player(effect: &EffectAst) -> Option<PlayerAst> {
         if let EffectAst::SubjectVerb(subject_verb) = effect
-            && matches!(subject_verb.action, SubjectVerbActionAst::Mana(ManaActionAst::EmptyManaPool))
+            && matches!(
+                subject_verb.action,
+                SubjectVerbActionAst::Mana(ManaActionAst::EmptyManaPool)
+            )
         {
             return Some(subject_verb.subject.player);
         }
@@ -8071,7 +8334,9 @@ mod tests {
                         ..
                     }),
                     EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-                        action: SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { .. }),
+                        action: SubjectVerbActionAst::Grants(
+                            GrantActionAst::GrantAbilitiesToTarget { .. }
+                        ),
                         ..
                     }),
                 ]
@@ -8368,7 +8633,10 @@ mod tests {
                 ..
             }),
             EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count: draw_count }),
+                action:
+                    SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
+                        count: draw_count,
+                    }),
                 ..
             }),
         ] = effects.as_slice()
@@ -8412,7 +8680,8 @@ mod tests {
             .expect("ability aggregate creation should parse");
         let [
             EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { count, .. }),
+                action:
+                    SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { count, .. }),
                 ..
             }),
         ] = effects.as_slice()
@@ -8526,17 +8795,21 @@ mod tests {
             .expect("parse creature insertion and delayed sacrifice");
         let debug = format!("{effects:#?}");
 
-        let Some(crate::cards::builders::EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
-            effects: delayed,
-            ..
-        })) = effects.last()
+        let Some(crate::cards::builders::EffectAst::Delayed(
+            DelayedEffectAst::DelayedUntilNextEndStep {
+                effects: delayed, ..
+            },
+        )) = effects.last()
         else {
             panic!("expected delayed sacrifice as the final effect\n{debug}");
         };
         let [
             crate::cards::builders::EffectAst::SubjectVerb(
                 crate::cards::builders::SubjectVerbEffectAst {
-                    action: crate::cards::builders::SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { filter, .. }),
+                    action:
+                        crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
+                            ZoneMoveActionAst::Sacrifice { filter, .. },
+                        ),
                     ..
                 },
             ),
@@ -8570,7 +8843,9 @@ mod tests {
         assert!(
             effects.iter().any(|effect| matches!(
                 effect,
-                crate::cards::builders::EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn { .. })
+                crate::cards::builders::EffectAst::Delayed(
+                    DelayedEffectAst::DelayedTriggerThisTurn { .. }
+                )
             )),
             "delayed trigger wrapper was lost\n{debug}\ntrace:\n{}",
             trace.render()
@@ -8660,11 +8935,13 @@ mod tests {
             if let crate::cards::builders::EffectAst::SubjectVerb(
                 crate::cards::builders::SubjectVerbEffectAst {
                     action:
-                        crate::cards::builders::SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
-                            preserve_other_types,
-                            type_retention_surface,
-                            ..
-                        }),
+                        crate::cards::builders::SubjectVerbActionAst::Characteristics(
+                            CharacteristicActionAst::BecomeBasePtCreature {
+                                preserve_other_types,
+                                type_retention_surface,
+                                ..
+                            },
+                        ),
                     ..
                 },
             ) = effect
@@ -8715,13 +8992,15 @@ mod tests {
                 if let crate::cards::builders::EffectAst::SubjectVerb(
                     crate::cards::builders::SubjectVerbEffectAst {
                         action:
-                            crate::cards::builders::SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
-                                animation_pt_surface,
-                                animation_duration_surface,
-                                type_retention_surface,
-                                duration,
-                                ..
-                            }),
+                            crate::cards::builders::SubjectVerbActionAst::Characteristics(
+                                CharacteristicActionAst::BecomeBasePtCreature {
+                                    animation_pt_surface,
+                                    animation_duration_surface,
+                                    type_retention_surface,
+                                    duration,
+                                    ..
+                                },
+                            ),
                         ..
                     },
                 ) = effect
@@ -8764,11 +9043,13 @@ mod tests {
                 crate::cards::builders::EffectAst::SubjectVerb(
                     crate::cards::builders::SubjectVerbEffectAst {
                         action:
-                            crate::cards::builders::SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
-                                animation_duration_surface,
-                                duration,
-                                ..
-                            }),
+                            crate::cards::builders::SubjectVerbActionAst::Characteristics(
+                                CharacteristicActionAst::BecomeBasePtCreature {
+                                    animation_duration_surface,
+                                    duration,
+                                    ..
+                                },
+                            ),
                         ..
                     },
                 ) => Some((animation_duration_surface, duration)),
@@ -8830,12 +9111,14 @@ mod tests {
                 crate::cards::builders::EffectAst::SubjectVerb(
                     crate::cards::builders::SubjectVerbEffectAst {
                         action:
-                            crate::cards::builders::SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
-                                animation_pt_surface,
-                                animation_duration_surface,
-                                duration,
-                                ..
-                            }),
+                            crate::cards::builders::SubjectVerbActionAst::Characteristics(
+                                CharacteristicActionAst::BecomeBasePtCreature {
+                                    animation_pt_surface,
+                                    animation_duration_surface,
+                                    duration,
+                                    ..
+                                },
+                            ),
                         ..
                     },
                 ) => Some((animation_pt_surface, animation_duration_surface, duration)),
@@ -8858,8 +9141,9 @@ mod tests {
             effect,
             crate::cards::builders::EffectAst::SubjectVerb(
                 crate::cards::builders::SubjectVerbEffectAst {
-                    action:
-                        crate::cards::builders::SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { .. }),
+                    action: crate::cards::builders::SubjectVerbActionAst::Grants(
+                        GrantActionAst::GrantAbilitiesToTarget { .. }
+                    ),
                     ..
                 }
             )
@@ -8869,7 +9153,9 @@ mod tests {
                 effect,
                 crate::cards::builders::EffectAst::SubjectVerb(
                     crate::cards::builders::SubjectVerbEffectAst {
-                        action: crate::cards::builders::SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { .. }),
+                        action: crate::cards::builders::SubjectVerbActionAst::LifeResources(
+                            LifeResourceActionAst::Draw { .. }
+                        ),
                         ..
                     }
                 )
@@ -9030,7 +9316,9 @@ mod tests {
                         player: crate::cards::builders::PlayerAst::You,
                         ..
                     },
-                    action: crate::cards::builders::SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { .. }),
+                    action: crate::cards::builders::SubjectVerbActionAst::RevealLook(
+                        RevealLookActionAst::LookAtTopCards { .. }
+                    ),
                 },
             ))
         ));
@@ -9066,7 +9354,9 @@ mod tests {
                         player: crate::cards::builders::PlayerAst::You,
                         ..
                     },
-                    action: crate::cards::builders::SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { .. }),
+                    action: crate::cards::builders::SubjectVerbActionAst::RevealLook(
+                        RevealLookActionAst::LookAtTopCards { .. }
+                    ),
                 },
             ))
         ));
@@ -9074,11 +9364,12 @@ mod tests {
             effect,
             crate::cards::builders::EffectAst::SubjectVerb(
                 crate::cards::builders::SubjectVerbEffectAst {
-                    action:
-                        crate::cards::builders::SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                    action: crate::cards::builders::SubjectVerbActionAst::Library(
+                        LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
                             order: crate::cards::builders::LibraryBottomOrderAst::ChooserChooses,
                             ..
-                        }),
+                        }
+                    ),
                     ..
                 },
             )
@@ -9100,10 +9391,12 @@ mod tests {
         else {
             panic!("expected shared tap-or-untap-all ast, got {parsed:?}");
         };
-        let crate::cards::builders::SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapOrUntapAll {
-            tap_filter,
-            untap_filter,
-        }) = &subject_verb.action
+        let crate::cards::builders::SubjectVerbActionAst::PermanentState(
+            PermanentStateActionAst::TapOrUntapAll {
+                tap_filter,
+                untap_filter,
+            },
+        ) = &subject_verb.action
         else {
             panic!("expected shared tap-or-untap-all action, got {parsed:?}");
         };
@@ -9128,7 +9421,9 @@ mod tests {
         assert!(matches!(
             parsed.as_slice(),
             [
-                crate::cards::builders::EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { .. }),
+                crate::cards::builders::EffectAst::ObjectChoices(
+                    ObjectChoiceEffectAst::ChooseObjects { .. }
+                ),
                 crate::cards::builders::EffectAst::ForEach(ForEachEffectAst::ForEachTagged { .. }),
                 ..,
             ]
@@ -9239,10 +9534,9 @@ mod tests {
             parsed.first(),
             Some(crate::cards::builders::EffectAst::SubjectVerb(
                 crate::cards::builders::SubjectVerbEffectAst {
-                    action: crate::cards::builders::SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
-                        reveal: true,
-                        ..
-                    }),
+                    action: crate::cards::builders::SubjectVerbActionAst::RevealLook(
+                        RevealLookActionAst::LookAtTopCards { reveal: true, .. }
+                    ),
                     ..
                 }
             ))
@@ -9251,7 +9545,9 @@ mod tests {
             effect,
             crate::cards::builders::EffectAst::SubjectVerb(
                 crate::cards::builders::SubjectVerbEffectAst {
-                    action: crate::cards::builders::SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTagged { .. }),
+                    action: crate::cards::builders::SubjectVerbActionAst::RevealLook(
+                        RevealLookActionAst::RevealTagged { .. }
+                    ),
                     ..
                 }
             )
@@ -9267,8 +9563,9 @@ mod tests {
             effect,
             crate::cards::builders::EffectAst::SubjectVerb(
                 crate::cards::builders::SubjectVerbEffectAst {
-                    action:
-                        crate::cards::builders::SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary { .. }),
+                    action: crate::cards::builders::SubjectVerbActionAst::Library(
+                        LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary { .. }
+                    ),
                     ..
                 }
             )
@@ -9300,10 +9597,9 @@ mod tests {
             parsed.first(),
             Some(crate::cards::builders::EffectAst::SubjectVerb(
                 crate::cards::builders::SubjectVerbEffectAst {
-                    action: crate::cards::builders::SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
-                        reveal: true,
-                        ..
-                    }),
+                    action: crate::cards::builders::SubjectVerbActionAst::RevealLook(
+                        RevealLookActionAst::LookAtTopCards { reveal: true, .. }
+                    ),
                     ..
                 }
             ))
@@ -9312,14 +9608,18 @@ mod tests {
             effect,
             crate::cards::builders::EffectAst::SubjectVerb(
                 crate::cards::builders::SubjectVerbEffectAst {
-                    action: crate::cards::builders::SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTagged { .. }),
+                    action: crate::cards::builders::SubjectVerbActionAst::RevealLook(
+                        RevealLookActionAst::RevealTagged { .. }
+                    ),
                     ..
                 }
             )
         )));
         assert!(parsed.iter().any(|effect| matches!(
             effect,
-            crate::cards::builders::EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { .. })
+            crate::cards::builders::EffectAst::ObjectChoices(
+                ObjectChoiceEffectAst::ChooseObjectsAcrossZones { .. }
+            )
         )));
         assert!(parsed.iter().any(|effect| matches!(
             effect,
@@ -9330,8 +9630,9 @@ mod tests {
             effect,
             crate::cards::builders::EffectAst::SubjectVerb(
                 crate::cards::builders::SubjectVerbEffectAst {
-                    action:
-                        crate::cards::builders::SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary { .. }),
+                    action: crate::cards::builders::SubjectVerbActionAst::Library(
+                        LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary { .. }
+                    ),
                     ..
                 }
             )
@@ -9365,13 +9666,18 @@ mod tests {
         let parsed = super::parse_effect_sentences_lexed(&tokens)
             .expect("typed chosen-player search sequence should parse");
 
-        let Some(crate::cards::builders::EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { filter, effects, .. })) =
-            parsed.iter().find(|effect| {
-                matches!(
-                    effect,
-                    crate::cards::builders::EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { .. })
+        let Some(crate::cards::builders::EffectAst::ForEach(
+            ForEachEffectAst::ForEachPlayersFiltered {
+                filter, effects, ..
+            },
+        )) = parsed.iter().find(|effect| {
+            matches!(
+                effect,
+                crate::cards::builders::EffectAst::ForEach(
+                    ForEachEffectAst::ForEachPlayersFiltered { .. }
                 )
-            })
+            )
+        })
         else {
             panic!("expected filtered player iteration, got {parsed:#?}");
         };
@@ -9380,7 +9686,9 @@ mod tests {
             effects.as_slice(),
             [crate::cards::builders::EffectAst::SubjectVerb(
                 crate::cards::builders::SubjectVerbEffectAst {
-                    action: crate::cards::builders::SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary { .. }),
+                    action: crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
+                        ZoneMoveActionAst::SearchLibrary { .. }
+                    ),
                     ..
                 }
             )]
@@ -9401,7 +9709,9 @@ mod tests {
             parsed.get(1),
             Some(crate::cards::builders::EffectAst::SubjectVerb(
                 crate::cards::builders::SubjectVerbEffectAst {
-                    action: crate::cards::builders::SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash { .. }),
+                    action: crate::cards::builders::SubjectVerbActionAst::KeywordActions(
+                        KeywordActionAst::Clash { .. }
+                    ),
                     ..
                 }
             ))
@@ -9431,7 +9741,9 @@ mod tests {
             effect,
             crate::cards::builders::EffectAst::SubjectVerb(
                 crate::cards::builders::SubjectVerbEffectAst {
-                    action: crate::cards::builders::SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { .. }),
+                    action: crate::cards::builders::SubjectVerbActionAst::StatChanges(
+                        StatChangeActionAst::Pump { .. }
+                    ),
                     ..
                 }
             )
@@ -9440,10 +9752,9 @@ mod tests {
             effect,
             crate::cards::builders::EffectAst::SubjectVerb(
                 crate::cards::builders::SubjectVerbEffectAst {
-                    action:
-                        crate::cards::builders::SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
-                            ..
-                        }),
+                    action: crate::cards::builders::SubjectVerbActionAst::Grants(
+                        GrantActionAst::GrantAbilitiesToTarget { .. }
+                    ),
                     ..
                 }
             )
@@ -9470,7 +9781,11 @@ mod tests {
 
         let parsed = super::parse_effect_sentences_lexed(&tokens)
             .expect("Hoarder's Greed should parse as a typed clash loop");
-        let [antecedent, EffectAst::Conditionals(ConditionalEffectAst::IfResult { predicate, .. })] = parsed.as_slice() else {
+        let [
+            antecedent,
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult { predicate, .. }),
+        ] = parsed.as_slice()
+        else {
             panic!("expected a wrapped antecedent and result follow-up: {parsed:#?}");
         };
         assert_eq!(
@@ -9593,7 +9908,12 @@ mod tests {
 
         let parsed = super::parse_effect_sentences_lexed(&tokens)
             .expect("Gamekeeper-style result sequence should parse");
-        let [crate::cards::builders::EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. }), gated] = parsed.as_slice()
+        let [
+            crate::cards::builders::EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
+                ..
+            }),
+            gated,
+        ] = parsed.as_slice()
         else {
             panic!("expected an optional antecedent followed by one gated sequence: {parsed:#?}");
         };
@@ -9608,8 +9928,9 @@ mod tests {
             effect,
             crate::cards::builders::EffectAst::SubjectVerb(
                 crate::cards::builders::SubjectVerbEffectAst {
-                    action:
-                        crate::cards::builders::SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary { .. }),
+                    action: crate::cards::builders::SubjectVerbActionAst::Library(
+                        LibraryActionAst::ConsultTopOfLibrary { .. }
+                    ),
                     ..
                 }
             )
@@ -9618,10 +9939,12 @@ mod tests {
             effect,
             crate::cards::builders::EffectAst::SubjectVerb(
                 crate::cards::builders::SubjectVerbEffectAst {
-                    action: crate::cards::builders::SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
-                        zone: crate::zone::Zone::Battlefield,
-                        ..
-                    }),
+                    action: crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
+                        ZoneMoveActionAst::MoveToZone {
+                            zone: crate::zone::Zone::Battlefield,
+                            ..
+                        }
+                    ),
                     ..
                 }
             )
@@ -9668,7 +9991,9 @@ mod tests {
         };
         assert!(matches!(
             predicate,
-            crate::cards::builders::PredicateAst::TurnEvents(TurnEventPredicateAst::CreatureDiedThisTurn)
+            crate::cards::builders::PredicateAst::TurnEvents(
+                TurnEventPredicateAst::CreatureDiedThisTurn
+            )
         ));
         assert_eq!(if_true.len(), 1, "{if_true:#?}");
         assert_eq!(if_false.len(), 1, "{if_false:#?}");
@@ -9713,7 +10038,9 @@ mod tests {
                 fight_effects.as_slice(),
                 [crate::cards::builders::EffectAst::SubjectVerb(
                     crate::cards::builders::SubjectVerbEffectAst {
-                        action: crate::cards::builders::SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fight { .. }),
+                        action: crate::cards::builders::SubjectVerbActionAst::KeywordActions(
+                            KeywordActionAst::Fight { .. }
+                        ),
                         ..
                     }
                 )]
@@ -9787,13 +10114,17 @@ mod tests {
                 [
                     crate::cards::builders::EffectAst::SubjectVerb(
                         crate::cards::builders::SubjectVerbEffectAst {
-                            action: crate::cards::builders::SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { .. }),
+                            action: crate::cards::builders::SubjectVerbActionAst::StatChanges(
+                                StatChangeActionAst::Pump { .. }
+                            ),
                             ..
                         }
                     ),
                     crate::cards::builders::EffectAst::SubjectVerb(
                         crate::cards::builders::SubjectVerbEffectAst {
-                            action: crate::cards::builders::SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fight { .. }),
+                            action: crate::cards::builders::SubjectVerbActionAst::KeywordActions(
+                                KeywordActionAst::Fight { .. }
+                            ),
                             ..
                         }
                     )
@@ -9876,10 +10207,9 @@ mod tests {
                 let crate::cards::builders::EffectAst::SubjectVerb(
                     crate::cards::builders::SubjectVerbEffectAst {
                         action:
-                            crate::cards::builders::SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterZoneReplacement {
-                                target,
-                                ..
-                            }),
+                            crate::cards::builders::SubjectVerbActionAst::Replacements(
+                                ReplacementActionAst::RegisterZoneReplacement { target, .. },
+                            ),
                         ..
                     },
                 ) = effect
@@ -9920,11 +10250,13 @@ mod tests {
             let parsed = super::damage_regeneration_exile_followup_from_sentence_tokens(&tokens)
                 .expect("parse compound regeneration/exile rider");
             let [
-                crate::cards::builders::EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-                    predicate,
-                    if_true,
-                    if_false,
-                }),
+                crate::cards::builders::EffectAst::Conditionals(
+                    ConditionalEffectAst::Conditional {
+                        predicate,
+                        if_true,
+                        if_false,
+                    },
+                ),
             ] = parsed.as_slice()
             else {
                 panic!("expected one gated compound rider for {text:?}: {parsed:#?}");
@@ -9985,10 +10317,12 @@ mod tests {
         assert!(
             matches!(
                 parsed.get(1),
-                Some(crate::cards::builders::EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-                    player: crate::cards::builders::PlayerAst::You,
-                    ..
-                }))
+                Some(crate::cards::builders::EffectAst::ObjectChoices(
+                    ObjectChoiceEffectAst::ChooseObjects {
+                        player: crate::cards::builders::PlayerAst::You,
+                        ..
+                    }
+                ))
             ),
             "{parsed:#?}"
         );
@@ -10004,15 +10338,23 @@ mod tests {
         let parsed = super::parse_effect_sentences_lexed(&tokens)
             .expect("vote option with a voter-owned choice should parse");
         let vote_option = match parsed.get(1) {
-            Some(crate::cards::builders::EffectAst::Votes(VoteEffectAst::VoteOption { .. })) => parsed.get(1),
+            Some(crate::cards::builders::EffectAst::Votes(VoteEffectAst::VoteOption {
+                ..
+            })) => parsed.get(1),
             Some(crate::cards::builders::EffectAst::Coordinated { effects, .. }) => {
                 effects.iter().find(|effect| {
-                    matches!(effect, crate::cards::builders::EffectAst::Votes(VoteEffectAst::VoteOption { .. }))
+                    matches!(
+                        effect,
+                        crate::cards::builders::EffectAst::Votes(VoteEffectAst::VoteOption { .. })
+                    )
                 })
             }
             _ => None,
         };
-        let Some(crate::cards::builders::EffectAst::Votes(VoteEffectAst::VoteOption { effects, .. })) = vote_option
+        let Some(crate::cards::builders::EffectAst::Votes(VoteEffectAst::VoteOption {
+            effects,
+            ..
+        })) = vote_option
         else {
             panic!("expected a typed vote option, got {parsed:#?}");
         };
@@ -10020,14 +10362,17 @@ mod tests {
             effect: &crate::cards::builders::EffectAst,
         ) -> Option<&crate::filter::ObjectFilter> {
             match effect {
-                crate::cards::builders::EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, .. }) => Some(filter),
+                crate::cards::builders::EffectAst::ObjectChoices(
+                    ObjectChoiceEffectAst::ChooseObjects { filter, .. },
+                ) => Some(filter),
                 crate::cards::builders::EffectAst::Coordination(coordination) => {
                     coordination.effects().find_map(find_choice_filter)
                 }
                 crate::cards::builders::EffectAst::Coordinated { effects, .. }
-                | crate::cards::builders::EffectAst::Votes(VoteEffectAst::VoteOption { effects, .. }) => {
-                    effects.iter().find_map(find_choice_filter)
-                }
+                | crate::cards::builders::EffectAst::Votes(VoteEffectAst::VoteOption {
+                    effects,
+                    ..
+                }) => effects.iter().find_map(find_choice_filter),
                 _ => None,
             }
         }
@@ -10077,28 +10422,32 @@ mod tests {
 
     #[test]
     fn cant_be_regenerated_followup_applies_to_every_choice_mode() {
-        let mut effects = vec![EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf {
-            modes: vec![
-                crate::cards::builders::ChooseOneModeAst {
-                    description: String::new(),
-                    effects: vec![EffectAst::subject_verb_destroy_all(
-                        crate::target::ObjectFilter::default()
-                            .with_type(crate::types::CardType::Land),
-                    )],
-                },
-                crate::cards::builders::ChooseOneModeAst {
-                    description: String::new(),
-                    effects: vec![EffectAst::subject_verb_destroy_all(
-                        crate::target::ObjectFilter::creature(),
-                    )],
-                },
-            ],
-        })];
+        let mut effects = vec![EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::ChooseOneOf {
+                modes: vec![
+                    crate::cards::builders::ChooseOneModeAst {
+                        description: String::new(),
+                        effects: vec![EffectAst::subject_verb_destroy_all(
+                            crate::target::ObjectFilter::default()
+                                .with_type(crate::types::CardType::Land),
+                        )],
+                    },
+                    crate::cards::builders::ChooseOneModeAst {
+                        description: String::new(),
+                        effects: vec![EffectAst::subject_verb_destroy_all(
+                            crate::target::ObjectFilter::creature(),
+                        )],
+                    },
+                ],
+            },
+        )];
 
         assert!(super::apply_cant_be_regenerated_to_last_destroy_effect(
             &mut effects
         ));
-        let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })] = effects.as_slice() else {
+        let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })] =
+            effects.as_slice()
+        else {
             panic!("expected modal destroy");
         };
         assert!(modes.iter().all(|mode| {
@@ -10193,7 +10542,8 @@ fn replace_definite_prior_damage_recipient_in_effects(effects: &mut [EffectAst])
     for effect in effects {
         match effect {
             EffectAst::SubjectVerb(subject_verb) => {
-                let SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { target, .. }) = &mut subject_verb.action
+                let SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { target, .. }) =
+                    &mut subject_verb.action
                 else {
                     continue;
                 };
@@ -10278,7 +10628,9 @@ pub fn replace_unbound_x_in_damage_effect(
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount })
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayLife { amount })
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount, .. })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { amount, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage {
+                amount, ..
+            })
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. }) => {
                 if value_contains_unbound_x(amount) {
                     *amount = replace_unbound_x_with_value(amount.clone(), replacement, clause)?;
@@ -10575,8 +10927,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
 
     match effect {
         EffectAst::Conditionals(ConditionalEffectAst::UnlessPays { effects, cost, .. }) => {
-            let consequence_references_it =
-                crate::tag_support::effects_reference_it_tag(effects);
+            let consequence_references_it = crate::tag_support::effects_reference_it_tag(effects);
             replace_values_in_total_cost(cost, replacement, clause)?;
             replace_unbound_x_in_effects_anywhere(effects, replacement, clause)?;
             if consequence_references_it {
@@ -10614,57 +10965,113 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 *count_value = Some(replacement.clone());
             }
         }
-        EffectAst::Permissions(PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost { filter, .. }) => {
+        EffectAst::Permissions(
+            PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost { filter, .. },
+        ) => {
             replace_in_filter(filter, replacement, clause)?;
         }
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
             SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count: amount })
-            | SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { count: amount, .. })
+            | SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
+                count: amount,
+                ..
+            })
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount })
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayLife { amount })
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount })
             | SubjectVerbActionAst::Library(LibraryActionAst::Mill { count: amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Scry { count: amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Surveil { count: amount })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Proliferate { count: amount })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Investigate { count: amount })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Proliferate {
+                count: amount,
+            })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Investigate {
+                count: amount,
+            })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { amount, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Discover { count: amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fateseal { count: amount })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Populate { count: amount, .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Connive { count: amount, .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Populate {
+                count: amount,
+                ..
+            })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Connive {
+                count: amount,
+                ..
+            })
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount, .. })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { amount, .. })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { amount, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
+                amount,
+                ..
+            })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage {
+                amount, ..
+            })
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. })
-            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage { amount, .. })
-            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamageEach { amount, .. })
+            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage {
+                amount,
+                ..
+            })
+            | SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventDamageEach { amount, .. },
+            )
             | SubjectVerbActionAst::Stack(StackActionAst::CopySpell { count: amount, .. })
-            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { count: amount, .. })
-            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice { count: amount, .. })
-            | SubjectVerbActionAst::Counters(CounterActionAst::PutCountersAll { count: amount, .. })
-            | SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters { amount, .. })
-            | SubjectVerbActionAst::Counters(CounterActionAst::RemoveCountersAll { amount, .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { count: amount, .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
+                count: amount, ..
+            })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice {
+                count: amount,
+                ..
+            })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCountersAll {
+                count: amount,
+                ..
+            })
+            | SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters {
+                amount,
+                ..
+            })
+            | SubjectVerbActionAst::Counters(CounterActionAst::RemoveCountersAll {
+                amount, ..
+            })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard {
+                count: amount, ..
+            })
             | SubjectVerbActionAst::Counters(CounterActionAst::PoisonCounters { count: amount })
             | SubjectVerbActionAst::Counters(CounterActionAst::EnergyCounters { count: amount })
-            | SubjectVerbActionAst::Counters(CounterActionAst::ExperienceCounters { count: amount })
+            | SubjectVerbActionAst::Counters(CounterActionAst::ExperienceCounters {
+                count: amount,
+            })
             | SubjectVerbActionAst::Counters(CounterActionAst::TicketCounters { count: amount })
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayEnergy { amount })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetLifeTotal { amount })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetLifeTotal {
+                amount,
+            })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { amount, .. })
-            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce { amount, .. })
-            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { amount })
-            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectNextDamageFromSourceToTarget { amount, .. })
-            | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { count: amount, .. })
-            | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryNthFromTop {
-                position: amount, ..
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce {
+                amount,
+                ..
             })
-            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalLandPlays { count: amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { amount })
+            | SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::RedirectNextDamageFromSourceToTarget { amount, .. },
+            )
+            | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
+                count: amount,
+                ..
+            })
+            | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryNthFromTop {
+                position: amount,
+                ..
+            })
+            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalLandPlays {
+                count: amount,
+                ..
+            })
             | SubjectVerbActionAst::Damage(DamageActionAst::HealDamage {
                 amount: Some(amount),
                 ..
@@ -10694,10 +11101,12 @@ pub fn replace_unbound_x_in_effect_anywhere(
                     }
                 }
             }
-            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamageToTargetPutCounters {
-                amount: Some(amount),
-                ..
-            }) => {
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventDamageToTargetPutCounters {
+                    amount: Some(amount),
+                    ..
+                },
+            ) => {
                 replace_value(amount, replacement, clause)?;
             }
             SubjectVerbActionAst::Counters(CounterActionAst::PutOrRemoveCounters {
@@ -10709,28 +11118,47 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 replace_value(remove_count, replacement, clause)?;
             }
             SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
-                power, toughness, ..
+                power,
+                toughness,
+                ..
             })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness {
-                power, toughness, ..
-            })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
-                power, toughness, ..
-            })
+            | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::SetBasePowerToughness {
+                    power, toughness, ..
+                },
+            )
+            | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeBasePtCreature {
+                    power, toughness, ..
+                },
+            )
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
-                power, toughness, ..
+                power,
+                toughness,
+                ..
             }) => {
                 replace_value(power, replacement, clause)?;
                 replace_value(toughness, replacement, clause)?;
             }
-            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { power, .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness { toughness: power, .. }) => {
+            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower {
+                power,
+                ..
+            })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness {
+                toughness: power,
+                ..
+            }) => {
                 replace_value(power, replacement, clause)?;
             }
-            SubjectVerbActionAst::Stack(StackActionAst::ReduceMatchingSpellCostThisTurn { reduction, .. }) => {
+            SubjectVerbActionAst::Stack(StackActionAst::ReduceMatchingSpellCostThisTurn {
+                reduction,
+                ..
+            }) => {
                 replace_value(reduction, replacement, clause)?;
             }
-            SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach { count, .. }) => {
+            SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach {
+                count, ..
+            }) => {
                 replace_value(count, replacement, clause)?;
             }
             SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
@@ -10747,9 +11175,15 @@ pub fn replace_unbound_x_in_effect_anywhere(
                     replace_value(max_exposed, replacement, clause)?;
                 }
             }
-            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { target, count_value, .. }) => {
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
+                target,
+                count_value,
+                ..
+            }) => {
                 replace_in_target(target, replacement, clause)?;
-                if let Some(value) = count_value.as_mut() { replace_value(value, replacement, clause)?; }
+                if let Some(value) = count_value.as_mut() {
+                    replace_value(value, replacement, clause)?;
+                }
             }
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { target, .. })
@@ -10758,18 +11192,27 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Untap { target }) => {
                 replace_in_target(target, replacement, clause)?;
             }
-            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::ReplaceNextDamageToTarget {
-                target,
-                replacement_effects,
-                ..
-            }) => {
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::ReplaceNextDamageToTarget {
+                    target,
+                    replacement_effects,
+                    ..
+                },
+            ) => {
                 replace_in_target(target, replacement, clause)?;
                 replace_unbound_x_in_effects_anywhere(replacement_effects, replacement, clause)?;
             }
-            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand { filter, .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHandOfChosenColor { filter })
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand {
+                filter, ..
+            })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHandOfChosenColor {
+                filter,
+            })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { filter, .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAllOfChosenColor { filter, .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAllOfChosenColor {
+                filter,
+                ..
+            })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { filter, .. }) => {
                 replace_in_filter(filter, replacement, clause)?;
             }
@@ -10786,13 +11229,17 @@ pub fn replace_unbound_x_in_effect_anywhere(
                     }
                 }
             }
-            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::DrawForEachTaggedMatching { .. })
+            SubjectVerbActionAst::LifeResources(
+                LifeResourceActionAst::DrawForEachTaggedMatching { .. },
+            )
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealHand)
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTagged { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PutOntoBattlefield { .. })
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects { .. })
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTarget { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction {
+                ..
+            })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Bolster { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Support { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Adapt { .. })
@@ -10816,8 +11263,12 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary)
-            | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary)
-            | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleGraveyardIntoLibrary { .. })
+            | SubjectVerbActionAst::Library(
+                LibraryActionAst::ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary,
+            )
+            | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleGraveyardIntoLibrary {
+                ..
+            })
             | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyard)
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { .. })
@@ -10832,10 +11283,14 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeTextBoxes { .. })
             | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeZones { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::PutRestOnBottomOfLibrary)
-            | SubjectVerbActionAst::Mana(ManaActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn)
+            | SubjectVerbActionAst::Mana(
+                ManaActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn,
+            )
             | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeValues { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileInsteadOfGraveyardThisTurn)
-            | SubjectVerbActionAst::Control(ControlActionAst::ControlCombatChoicesThisTurn { .. })
+            | SubjectVerbActionAst::Control(ControlActionAst::ControlCombatChoicesThisTurn {
+                ..
+            })
             | SubjectVerbActionAst::Control(ControlActionAst::GainControl { .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaColorsAmong { .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddOneManaAnyColorAmong { .. })
@@ -10846,22 +11301,30 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Game(GameActionAst::EndCombatPhase)
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipTurn)
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhases)
-            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipNextCombatPhaseThisTurn)
+            | SubjectVerbActionAst::TurnStructure(
+                TurnStructureActionAst::SkipNextCombatPhaseThisTurn,
+            )
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipMainPhasesThisTurn)
-            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhasesThisTurn)
+            | SubjectVerbActionAst::TurnStructure(
+                TurnStructureActionAst::SkipCombatPhasesThisTurn,
+            )
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipDrawStep)
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PlayFromGraveyardUntilEot)
             | SubjectVerbActionAst::Control(ControlActionAst::ControlPlayer { .. })
             | SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RingTemptsYou)
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::VentureIntoDungeon { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::VentureIntoDungeon {
+                ..
+            })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeMonarch)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::TakeInitiative)
             | SubjectVerbActionAst::Tokens(TokenActionAst::CreateEmblem { .. })
             | SubjectVerbActionAst::Game(GameActionAst::LoseGame)
             | SubjectVerbActionAst::Game(GameActionAst::WinGame)
             | SubjectVerbActionAst::ReorderTopPlanarDeck { .. }
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnSourceTransformedFromExile)
+            | SubjectVerbActionAst::ZoneMoves(
+                ZoneMoveActionAst::ReturnSourceTransformedFromExile,
+            )
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Reconfigure { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CumulativeUpkeep { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Casualty { .. })
@@ -10873,18 +11336,28 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearSuspected { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearGoad { .. })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat { .. })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
+                ..
+            })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Flip { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Regenerate { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RegenerateAll { .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapAll { .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::UntapAll { .. })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapOrUntap { .. })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapOrUntapAll { .. })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapOrUntap {
+                ..
+            })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapOrUntapAll {
+                ..
+            })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseOut { .. })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseOutAll { .. })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseOutAll {
+                ..
+            })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseIn { .. })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll { .. })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll {
+                ..
+            })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Transform { .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Convert { .. })
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtHand { .. })
@@ -10892,91 +11365,205 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnEach { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::MoveAllCounters { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::MoveOneCounter { .. })
-            | SubjectVerbActionAst::Counters(CounterActionAst::ForEachCounterKindPutOrRemove { .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::ForEachCounterKindPutOrRemove {
+                ..
+            })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll { .. })
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTop)
             | SubjectVerbActionAst::Game(GameActionAst::ExtraTurnAfterTurn { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::ReorderTopOfLibrary { .. })
-            | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleObjectsIntoLibrary { .. })
+            | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleObjectsIntoLibrary {
+                ..
+            })
             | SubjectVerbActionAst::PutSticker { .. }
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::SwitchPowerToughness { .. })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ScalePowerToughnessAll { .. })
+            | SubjectVerbActionAst::PermanentState(
+                PermanentStateActionAst::SwitchPowerToughness { .. },
+            )
+            | SubjectVerbActionAst::PermanentState(
+                PermanentStateActionAst::ScalePowerToughnessAll { .. },
+            )
             | SubjectVerbActionAst::Stack(StackActionAst::ScaleXValue { .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantProtectionChoice { .. })
-            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllCombatDamage { .. })
-            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::AssignNoCombatDamage { .. })
-            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllCombatDamageFromSource { .. })
-            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllCombatDamageFromSourceFilter { .. })
-            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllCombatDamageToPlayers { .. })
-            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllCombatDamageToYou { .. })
-            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventNextTimeDamage { .. })
-            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectNextTimeDamageToSource { .. })
-            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectAllDamageThisTurnBySourceToSourceController { .. })
-            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectAllDamageThisTurnToTarget { .. })
-            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllDamageToTarget { .. })
-            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter { .. })
-            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllDamageFromSourceFilter { .. })
-            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamageToTargetPutCounters { amount: None, .. })
+            | SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllCombatDamage { .. },
+            )
+            | SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::AssignNoCombatDamage { .. },
+            )
+            | SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllCombatDamageFromSource { .. },
+            )
+            | SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllCombatDamageFromSourceFilter { .. },
+            )
+            | SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllCombatDamageToPlayers { .. },
+            )
+            | SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllCombatDamageToYou { .. },
+            )
+            | SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventNextTimeDamage { .. },
+            )
+            | SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::RedirectNextTimeDamageToSource { .. },
+            )
+            | SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
+                    ..
+                },
+            )
+            | SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::RedirectAllDamageThisTurnToTarget { .. },
+            )
+            | SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllDamageToTarget { .. },
+            )
+            | SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter { .. },
+            )
+            | SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllDamageFromSourceFilter { .. },
+            )
+            | SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventDamageToTargetPutCounters {
+                    amount: None, ..
+                },
+            )
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Meld { .. })
             | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenChoice { .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrarySlotsToHand { .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrarySlotsToHand {
+                ..
+            })
             | SubjectVerbActionAst::Stack(StackActionAst::RetargetStackObject { .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilityToSource { .. })
             | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeControl { .. })
-            | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeControlHeterogeneous { .. })
+            | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeControlHeterogeneous {
+                ..
+            })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAllAttachedTo { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAllAttachedTo { .. })
             | SubjectVerbActionAst::Control(ControlActionAst::Attach { .. })
             | SubjectVerbActionAst::Control(ControlActionAst::Unattach { .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileWhenSourceLeaves { .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeSourceWhenLeaves { .. })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileWhenSourceLeaves {
+                ..
+            })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeSourceWhenLeaves {
+                ..
+            })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MayMoveToZone { .. })
-            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterZoneReplacement { .. })
-            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterFutureZoneReplacement { .. })
-            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDrawReplacement { .. })
-            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaReplacement { .. })
-            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamagedBySourceZoneReplacement { .. })
+            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterZoneReplacement {
+                ..
+            })
+            | SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterFutureZoneReplacement { .. },
+            )
+            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDrawReplacement {
+                ..
+            })
+            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaReplacement {
+                ..
+            })
+            | SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterDamagedBySourceZoneReplacement { .. },
+            )
             | SubjectVerbActionAst::Control(ControlActionAst::Enchant { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseSpellCastHistory { .. })
             | SubjectVerbActionAst::Stack(StackActionAst::CopySpellForEachTarget { .. })
-            | SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary { .. })
-            | SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderInZone { .. })
+            | SubjectVerbActionAst::Library(
+                LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary { .. },
+            )
+            | SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderInZone {
+                ..
+            })
             | SubjectVerbActionAst::Stack(StackActionAst::CastTagged { .. })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn { .. })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn { .. })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilYourNextTurn { .. })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled { .. })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield { .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileUntilSourceLeaves { .. })
-            | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice { .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+                ..
+            })
+            | SubjectVerbActionAst::Grants(
+                GrantActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
+                    ..
+                },
+            )
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilYourNextTurn {
+                ..
+            })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
+                ..
+            })
+            | SubjectVerbActionAst::Grants(
+                GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { .. },
+            )
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield {
+                ..
+            })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileUntilSourceLeaves {
+                ..
+            })
+            | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice {
+                ..
+            })
             | SubjectVerbActionAst::TargetOnly { .. }
             | SubjectVerbActionAst::TagMatchingObjects { .. }
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpByLastEffect { .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddCardTypes { .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCardTypes { .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddCardTypes {
+                ..
+            })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCardTypes {
+                ..
+            })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveCardTypes { .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes { .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes {
+                ..
+            })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSubtypes { .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCreatureSubtypes { .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeSaddledUntilEndOfTurn { .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddColors { .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddAllSubtypesOfFamily { .. })
-            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAllSubtypesOfFamily { .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasicLandType { .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetColors { .. })
+            | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::SetCreatureSubtypes { .. },
+            )
+            | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeSaddledUntilEndOfTurn { .. },
+            )
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddColors {
+                ..
+            })
+            | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::AddAllSubtypesOfFamily { .. },
+            )
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAllSubtypesOfFamily {
+                ..
+            })
+            | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeBasicLandType { .. },
+            )
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetColors {
+                ..
+            })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::MakeColorless { .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasicLandTypeChoice { .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCreatureTypeChoice { .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice { .. })
-            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll { .. })
+            | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeBasicLandTypeChoice { .. },
+            )
+            | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeCreatureTypeChoice { .. },
+            )
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
+                ..
+            })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll {
+                ..
+            })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantBySpec { .. })
-            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget { .. })
-            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalPhases { .. })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp { .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget {
+                ..
+            })
+            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalPhases {
+                ..
+            })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp {
+                ..
+            })
             | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary) => {}
             SubjectVerbActionAst::Cant { .. } => {}
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
@@ -11007,7 +11594,10 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 }
             }
             SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { count, .. })
-            | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { count, .. }) => {
+            | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
+                count,
+                ..
+            }) => {
                 replace_value(count, replacement, clause)?;
             }
             SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods {
@@ -11021,26 +11611,36 @@ pub fn replace_unbound_x_in_effect_anywhere(
                     replace_value(toughness, replacement, clause)?;
                 }
             }
-            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeAuraEnchantment {
-                granted_abilities: abilities,
-                ..
-            })
+            SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeAuraEnchantment {
+                    granted_abilities: abilities,
+                    ..
+                },
+            )
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCopy {
                 granted_abilities: abilities,
                 ..
             })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll { abilities, .. })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceAll { abilities, .. }) => {
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll {
+                abilities, ..
+            })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceAll {
+                abilities,
+                ..
+            }) => {
                 replace_values_in_granted_abilities(abilities, replacement, clause, false)?;
             }
             SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
-                target, abilities, ..
+                target,
+                abilities,
+                ..
             })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceToTarget {
-                target, abilities, ..
+                target,
+                abilities,
+                ..
             }) => {
-                let rebase_it_to_ability_source =
-                    matches!(target, TargetAst::Tagged(tag, _) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str());
+                let rebase_it_to_ability_source = matches!(target, TargetAst::Tagged(tag, _) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str());
                 replace_values_in_granted_abilities(
                     abilities,
                     replacement,
@@ -11048,7 +11648,10 @@ pub fn replace_unbound_x_in_effect_anywhere(
                     rebase_it_to_ability_source,
                 )?;
             }
-            SubjectVerbActionAst::Grants(GrantActionAst::GrantNextSpellAbilityThisTurn { ability, .. }) => {
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantNextSpellAbilityThisTurn {
+                ability,
+                ..
+            }) => {
                 replace_values_in_granted_abilities(
                     std::slice::from_mut(ability.as_mut()),
                     replacement,
@@ -11056,16 +11659,24 @@ pub fn replace_unbound_x_in_effect_anywhere(
                     false,
                 )?;
             }
-            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterEnterWithCountersReplacement { count, .. })
-            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterNextBatchEnterWithCounters { count, .. }) => {
+            SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterEnterWithCountersReplacement { count, .. },
+            )
+            | SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterNextBatchEnterWithCounters { count, .. },
+            ) => {
                 replace_value(count, replacement, clause)?;
             }
             SubjectVerbActionAst::KeywordActions(KeywordActionAst::Learn)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::UnlockRoomDoor)
             | SubjectVerbActionAst::Game(GameActionAst::ReverseTurnOrder)
             | SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnTarget { .. })
-            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterEnterUnderControlReplacement { .. })
-            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterEnterTappedReplacement { .. }) => {}
+            | SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterEnterUnderControlReplacement { .. },
+            )
+            | SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterEnterTappedReplacement { .. },
+            ) => {}
         },
         _ => {
             try_for_each_nested_effects_mut(effect, true, |nested| {
@@ -11238,10 +11849,11 @@ pub fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
                         && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
                 })
             {
-                subject_verb.action = SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnTarget {
-                    counter_type: *counter_type,
-                    target: target.clone(),
-                });
+                subject_verb.action =
+                    SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnTarget {
+                        counter_type: *counter_type,
+                        target: target.clone(),
+                    });
                 return;
             }
             match &mut subject_verb.action {
@@ -11646,7 +12258,10 @@ fn token_copy_followup_container_effects_mut(
         | EffectAst::ForEach(ForEachEffectAst::ForEachTargetPlayers { effects, .. })
         | EffectAst::ForEach(ForEachEffectAst::ForEachObject { effects, .. })
         | EffectAst::ForEach(ForEachEffectAst::ForEachTagged { effects, .. })
-        | EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy { effects, .. })
+        | EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy {
+            effects,
+            ..
+        })
         | EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDoesNot { effects, .. })
         | EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDoesNot { effects, .. })
         | EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDid { effects, .. })
@@ -11659,13 +12274,22 @@ fn token_copy_followup_container_effects_mut(
         | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep { effects, .. })
         | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextDrawStep { effects, .. })
         | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextMainPhase { effects, .. })
-        | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextFirstMainPhase { effects, .. })
-        | EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextFirstMainPhase {
+            effects, ..
+        })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndStepOfExtraTurn {
+            effects, ..
+        })
         | EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat { effects })
         | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn { effects, .. })
         | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { effects, .. })
-        | EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. })
-        | EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectLeavesBattlefield { effects, .. })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn {
+            effects, ..
+        })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectLeavesBattlefield {
+            effects,
+            ..
+        })
         | EffectAst::Votes(VoteEffectAst::VoteOption { effects, .. }) => Some(effects),
         _ => None,
     }
@@ -11879,11 +12503,16 @@ fn apply_unapplied_token_copy_followup(
     };
     let token_reference_target = |surface: crate::effect::TokenCopyReferenceSurface| {
         use crate::effect::TokenCopyReferenceSurface as Surface;
-        if surface == Surface::It { return fallback_target(); }
+        if surface == Surface::It {
+            return fallback_target();
+        }
         let text = match surface {
-            Surface::It => "it", Surface::They => "they",
-            Surface::ThatToken => "that token", Surface::ThoseTokens => "those tokens",
-            Surface::TheToken => "the token", Surface::TheTokens => "the tokens",
+            Surface::It => "it",
+            Surface::They => "they",
+            Surface::ThatToken => "that token",
+            Surface::ThoseTokens => "those tokens",
+            Surface::TheToken => "the token",
+            Surface::TheTokens => "the tokens",
             Surface::TokenCreatedThisWay => "the token created this way",
             Surface::TokensCreatedThisWay => "the tokens created this way",
         };
@@ -11925,54 +12554,64 @@ fn apply_unapplied_token_copy_followup(
             ));
         }
         TokenCopyFollowup::SacrificeAtNextEndStep(_) => {
-            vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
-                player: PlayerFilter::Any,
+            vec![EffectAst::Delayed(
+                DelayedEffectAst::DelayedUntilNextEndStep {
+                    player: PlayerFilter::Any,
+                    effects: vec![EffectAst::subject_verb_sacrifice(
+                        PlayerAst::Implicit,
+                        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
+                        1,
+                        None,
+                    )],
+                },
+            )]
+        }
+        TokenCopyFollowup::SacrificeAtNextUpkeep => vec![EffectAst::Delayed(
+            DelayedEffectAst::DelayedUntilNextUpkeep {
+                player: PlayerAst::Any,
                 effects: vec![EffectAst::subject_verb_sacrifice(
                     PlayerAst::Implicit,
                     ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
                     1,
                     None,
                 )],
-            })]
-        }
-        TokenCopyFollowup::SacrificeAtNextUpkeep => vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep {
-            player: PlayerAst::Any,
-            effects: vec![EffectAst::subject_verb_sacrifice(
-                PlayerAst::Implicit,
-                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
-                1,
-                None,
-            )],
-        })],
-        TokenCopyFollowup::ExileAtNextEndStep(_) => vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
-            player: PlayerFilter::Any,
-            effects: vec![EffectAst::subject_verb_exile(
-                TargetAst::Object(
+            },
+        )],
+        TokenCopyFollowup::ExileAtNextEndStep(_) => vec![EffectAst::Delayed(
+            DelayedEffectAst::DelayedUntilNextEndStep {
+                player: PlayerFilter::Any,
+                effects: vec![EffectAst::subject_verb_exile(
+                    TargetAst::Object(
+                        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
+                        span,
+                        None,
+                    ),
+                    false,
+                )],
+            },
+        )],
+        TokenCopyFollowup::ExileAtEndOfCombat(_) => vec![EffectAst::Delayed(
+            DelayedEffectAst::DelayedUntilEndOfCombat {
+                effects: vec![EffectAst::subject_verb_exile(
+                    TargetAst::Object(
+                        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
+                        span,
+                        None,
+                    ),
+                    false,
+                )],
+            },
+        )],
+        TokenCopyFollowup::SacrificeAtEndOfCombat => vec![EffectAst::Delayed(
+            DelayedEffectAst::DelayedUntilEndOfCombat {
+                effects: vec![EffectAst::subject_verb_sacrifice(
+                    PlayerAst::Implicit,
                     ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
-                    span,
+                    1,
                     None,
-                ),
-                false,
-            )],
-        })],
-        TokenCopyFollowup::ExileAtEndOfCombat(_) => vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat {
-            effects: vec![EffectAst::subject_verb_exile(
-                TargetAst::Object(
-                    ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
-                    span,
-                    None,
-                ),
-                false,
-            )],
-        })],
-        TokenCopyFollowup::SacrificeAtEndOfCombat => vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat {
-            effects: vec![EffectAst::subject_verb_sacrifice(
-                PlayerAst::Implicit,
-                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
-                1,
-                None,
-            )],
-        })],
+                )],
+            },
+        )],
     };
     Ok(effects)
 }
@@ -12042,11 +12681,13 @@ pub fn try_apply_token_granted_ability_followup(
             }
             Ok(false)
         }
-        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => try_apply_token_granted_ability_followup(
-            std::slice::from_mut(effect.as_mut()),
-            abilities,
-            presentation,
-        ),
+        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => {
+            try_apply_token_granted_ability_followup(
+                std::slice::from_mut(effect.as_mut()),
+                abilities,
+                presentation,
+            )
+        }
         _ => {
             let Some(nested_effects) = token_copy_followup_container_effects_mut(last) else {
                 return Ok(false);

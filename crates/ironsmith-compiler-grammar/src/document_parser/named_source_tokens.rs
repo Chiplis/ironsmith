@@ -17,7 +17,10 @@ use super::*;
 fn lowercased(tokens: Vec<OwnedLexToken>) -> Vec<OwnedLexToken> {
     tokens
         .into_iter()
-        .map(|mut token| { token.lowercase_word(); token })
+        .map(|mut token| {
+            token.lowercase_word();
+            token
+        })
         .collect()
 }
 

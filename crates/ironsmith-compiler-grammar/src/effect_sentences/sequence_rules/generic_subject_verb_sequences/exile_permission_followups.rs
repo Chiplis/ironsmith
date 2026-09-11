@@ -1,7 +1,7 @@
 use super::super::SentenceInput;
 use crate::cards::builders::{
-    CardTextError, EffectAst, IfResultPredicate, ObjectFilter, SubjectVerbActionAst,
-    SubjectVerbEffectAst, TriggerSpec, GrantActionAst,
+    CardTextError, EffectAst, GrantActionAst, IfResultPredicate, ObjectFilter,
+    SubjectVerbActionAst, SubjectVerbEffectAst, TriggerSpec,
 };
 use crate::effect_sentences;
 use crate::grammar::effects::{
@@ -80,7 +80,9 @@ pub fn parse_dynamic_exile_top_then_play_for_as_long_as_exiled(
     if !matches!(
         &permission,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled { .. }),
+            action: SubjectVerbActionAst::Grants(
+                GrantActionAst::GrantPlayTaggedForAsLongAsExiled { .. }
+            ),
             ..
         })
     ) {
@@ -88,17 +90,22 @@ pub fn parse_dynamic_exile_top_then_play_for_as_long_as_exiled(
     }
 
     Ok(Some(vec![
-        EffectAst::subject_verb_exile_top_of_library(player, shape.count, vec![crate::tag::TagRef::of(tag)], Vec::new()),
+        EffectAst::subject_verb_exile_top_of_library(
+            player,
+            shape.count,
+            vec![crate::tag::TagRef::of(tag)],
+            Vec::new(),
+        ),
         permission,
     ]))
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::cards::builders::ConditionalEffectAst;
     use crate::cards::builders::DelayedEffectAst;
     use crate::cards::builders::LibraryActionAst;
-    use super::*;
     use crate::lexer::{lex_line, split_lexed_sentences};
 
     fn parse(text: &str) -> Vec<EffectAst> {
@@ -139,10 +146,12 @@ mod tests {
         );
         assert!(matches!(
             delayed.last(),
-            Some(EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
-                trigger: TriggerSpec::Either(_, _),
-                ..
-            }))
+            Some(EffectAst::Delayed(
+                DelayedEffectAst::DelayedTriggerThisTurn {
+                    trigger: TriggerSpec::Either(_, _),
+                    ..
+                }
+            ))
         ));
     }
 

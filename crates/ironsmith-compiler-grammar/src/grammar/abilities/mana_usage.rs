@@ -7,7 +7,7 @@ use crate::ability::{
     ManaSpendBonusCondition, ManaSpendGrantedKeyword, ManaUsageSubtypeRequirement,
 };
 use crate::cards::builders::{
-    EffectAst, PlayerAst, SubjectVerbActionAst, SubjectVerbRoleAst, TargetAst, KeywordActionAst,
+    EffectAst, KeywordActionAst, PlayerAst, SubjectVerbActionAst, SubjectVerbRoleAst, TargetAst,
 };
 use crate::effect::Value;
 use crate::model::CompilerManaUsageRestriction as ManaUsageRestriction;
@@ -452,7 +452,10 @@ fn parse_generic_mana_transaction(tokens: &[OwnedLexToken]) -> Option<ManaUsageR
         )
     } else if crate::word_primitives::sequence_occurs(&words, &["copy", "that", "spell"]) {
         EffectAst::subject_verb_copy_spell(
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::ManaPaidObject.bind(), None),
+            TargetAst::Tagged(
+                crate::tag::CompilerReferenceTag::ManaPaidObject.bind(),
+                None,
+            ),
             Value::Fixed(1),
             PlayerAst::You,
             false,

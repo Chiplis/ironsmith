@@ -1,5 +1,5 @@
-use crate::cards::builders::LifeResourceActionAst;
 use super::*;
+use crate::cards::builders::LifeResourceActionAst;
 use crate::model::ast::SubjectVerbEffectAst;
 
 #[test]

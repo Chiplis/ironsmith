@@ -352,8 +352,10 @@ pub fn lower_normalized_card_ast_with_facts(
             .map(|scope| scope.id)
             .unwrap_or(table.root_scope())
     };
-    let _document_references =
-        ironsmith_compiler_ast::reference_ledger::ReferenceScopeGuard::enter(&symbols, document_scope);
+    let _document_references = ironsmith_compiler_ast::reference_ledger::ReferenceScopeGuard::enter(
+        &symbols,
+        document_scope,
+    );
     let overload_ast = overload_branch.map(|branch| NormalizedCardAst {
         builder: builder.clone(),
         annotations: ParseAnnotations::default(),

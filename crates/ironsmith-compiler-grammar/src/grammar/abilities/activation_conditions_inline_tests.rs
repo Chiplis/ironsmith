@@ -1,7 +1,7 @@
-use crate::cards::builders::SourcePredicateAst;
 use super::super::super::super::lexer::lex_line;
 use super::*;
 use crate::cards::builders::PredicateAst;
+use crate::cards::builders::SourcePredicateAst;
 
 fn lex(raw: &str) -> Vec<OwnedLexToken> {
     lex_line(raw, 0).unwrap()
@@ -49,7 +49,9 @@ fn activation_conditions_preserve_existing_semantics() {
     ));
     assert_eq!(
         parse_activation_condition_lexed(&lex("Activate only if this permanent is a creature.")),
-        Some(PredicateAst::Source(SourcePredicateAst::SourceMatches(ObjectFilter::creature())))
+        Some(PredicateAst::Source(SourcePredicateAst::SourceMatches(
+            ObjectFilter::creature()
+        )))
     );
 }
 
@@ -114,7 +116,10 @@ fn activation_condition_composes_repeated_or_if_with_typed_source_and_basic_land
     let PredicateAst::Or(left, right) = parsed else {
         panic!("expected a typed disjunction");
     };
-    let PredicateAst::TurnEvents(TurnEventPredicateAst::ObjectEnteredBattlefieldThisTurn(source_filter)) = left.as_ref() else {
+    let PredicateAst::TurnEvents(TurnEventPredicateAst::ObjectEnteredBattlefieldThisTurn(
+        source_filter,
+    )) = left.as_ref()
+    else {
         panic!("expected source-entered-this-turn left branch, got {left:?}");
     };
     assert!(source_filter.source);
@@ -150,6 +155,8 @@ fn activation_condition_or_if_composition_reuses_existing_branch_parsers() {
     assert!(matches!(parsed, PredicateAst::Or(_, _)));
     assert!(matches!(
         parse_activation_condition_lexed(&lex("Activate only if you control a Plains or a Swamp.")),
-        Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast { .. })) | Some(PredicateAst::Or(_, _))
+        Some(PredicateAst::Player(
+            PlayerPredicateAst::PlayerHasAtLeast { .. }
+        )) | Some(PredicateAst::Or(_, _))
     ));
 }

@@ -28,9 +28,10 @@ use super::sentence_helpers::*;
 use super::subject_verb_primitives::SubjectVerbPrimitiveClause;
 use super::{Verb, find_verb, parse_effect_chain, parse_effect_sentence_lexed};
 use crate::cards::builders::{
-    CardTextError, EffectAst, GrantedAbilityAst, GrantActionAst, StatChangeActionAst, IfResultPredicate, KeywordAction, LineAst,
-    ParsedAbility, PlayerAst, PredicateAst, ReferenceImports, StaticAbilityAst, SubjectAst,
-    SubjectVerbActionAst, SubjectVerbEffectAst, TagKey, TargetAst, TextSpan, TriggerSpec, PermissionEffectAst, PlayerPredicateAst,
+    CardTextError, EffectAst, GrantActionAst, GrantedAbilityAst, IfResultPredicate, KeywordAction,
+    LineAst, ParsedAbility, PermissionEffectAst, PlayerAst, PlayerPredicateAst, PredicateAst,
+    ReferenceImports, StatChangeActionAst, StaticAbilityAst, SubjectAst, SubjectVerbActionAst,
+    SubjectVerbEffectAst, TagKey, TargetAst, TextSpan, TriggerSpec,
 };
 use crate::effect::{Until, Value};
 use crate::grammar::clause_support as clause_grammar;
@@ -907,7 +908,9 @@ fn token_definition_source_identity(
             creature.subtypes.clone(),
         ),
         TokenDefinitionSpec::Enchantment(enchantment) => (
-            enchantment.name.clone(), vec![CardType::Enchantment], enchantment.subtypes.clone(),
+            enchantment.name.clone(),
+            vec![CardType::Enchantment],
+            enchantment.subtypes.clone(),
         ),
         TokenDefinitionSpec::Artifact(artifact) => (
             artifact.name.clone(),
@@ -1117,9 +1120,7 @@ fn parse_temporary_escape_grant(
         Until::Forever => crate::grant::GrantDuration::Forever,
         Until::EndOfTurn => crate::grant::GrantDuration::UntilEndOfTurn,
         Until::YourNextTurn => crate::grant::GrantDuration::UntilYourNextTurn,
-        Until::YourNextTurnEnd => {
-            crate::grant::GrantDuration::UntilYourNextTurnEnd
-        }
+        Until::YourNextTurnEnd => crate::grant::GrantDuration::UntilYourNextTurnEnd,
         _ => return Ok(None),
     };
     let mut filter = parse_object_filter_lexed(subject_tokens, false).map_err(|_| {
@@ -1160,10 +1161,12 @@ fn player_filter_for_gain_condition(player: PlayerAst) -> Option<PlayerAst> {
 
 fn condition_from_gain_trailing_predicate(predicate: PredicateAst) -> Option<PredicateAst> {
     Some(match predicate {
-        PredicateAst::Player(PlayerPredicateAst::PlayerControls { player, filter }) => PredicateAst::Player(PlayerPredicateAst::PlayerControls {
-            player: player_filter_for_gain_condition(player)?,
-            filter,
-        }),
+        PredicateAst::Player(PlayerPredicateAst::PlayerControls { player, filter }) => {
+            PredicateAst::Player(PlayerPredicateAst::PlayerControls {
+                player: player_filter_for_gain_condition(player)?,
+                filter,
+            })
+        }
         PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast {
             player,
             filter,
@@ -1249,12 +1252,17 @@ fn tagged_subject_target(tokens: &[OwnedLexToken]) -> TargetAst {
         filter.source_surface = Some(SourceReferenceSurface::ThisPermanentType(words.join(" ")));
         TargetAst::Object(filter, None, span_from_tokens(tokens))
     } else {
-        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span_from_tokens(tokens))
+        TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.bind(),
+            span_from_tokens(tokens),
+        )
     }
 }
 
 fn pronoun_set_quantifier_surface(words: &[&str]) -> Option<ironsmith_core::SetQuantifierSurface> {
-    if words.last() == Some(&"each") { return Some(ironsmith_core::SetQuantifierSurface::Each); }
+    if words.last() == Some(&"each") {
+        return Some(ironsmith_core::SetQuantifierSurface::Each);
+    }
     match words.first().copied() {
         Some("they" | "theyre" | "they're" | "they’re" | "them") => {
             Some(ironsmith_core::SetQuantifierSurface::They)
@@ -1482,7 +1490,10 @@ fn parse_simple_ability_modifier_clause_lexed(
     tokens: &[OwnedLexToken],
     losing: bool,
 ) -> Result<Option<EffectAst>, CardTextError> {
-    if tokens.first().is_some_and(|token| token.is_any_word(&["if", "unless", "instead"])) {
+    if tokens
+        .first()
+        .is_some_and(|token| token.is_any_word(&["if", "unless", "instead"]))
+    {
         return Ok(None);
     }
     if losing
@@ -1810,9 +1821,14 @@ fn patch_creature_type_choice_effect(effect: &mut EffectAst) -> bool {
     };
     match action {
         SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll { filter, .. })
-        | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll { filter, .. })
+        | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll {
+            filter,
+            ..
+        })
         | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll { filter, .. })
-        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceAll { filter, .. }) => {
+        | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceAll {
+            filter, ..
+        }) => {
             filter.chosen_creature_type = true;
             true
         }
@@ -1845,9 +1861,15 @@ pub(super) fn patch_creature_type_choice_effects(effects: &mut Vec<EffectAst>) -
     patched
 }
 
-fn with_inline_creature_type_choice(tokens: &[OwnedLexToken], mut effects: Vec<EffectAst>) -> Vec<EffectAst> {
-    let subject = gain_shapes::parse_get_then_ability_shape(tokens).map(|shape| shape.subject_tokens)
-        .or_else(|| gain_shapes::parse_gain_then_get_shape(tokens).map(|shape| shape.subject_tokens));
+fn with_inline_creature_type_choice(
+    tokens: &[OwnedLexToken],
+    mut effects: Vec<EffectAst>,
+) -> Vec<EffectAst> {
+    let subject = gain_shapes::parse_get_then_ability_shape(tokens)
+        .map(|shape| shape.subject_tokens)
+        .or_else(|| {
+            gain_shapes::parse_gain_then_get_shape(tokens).map(|shape| shape.subject_tokens)
+        });
     if subject.is_some_and(subject_has_creature_type_choice) {
         patch_creature_type_choice_effects(&mut effects);
     }
@@ -1863,7 +1885,10 @@ pub fn parse_gain_ability_sentence(
 fn parse_complete_simple_source_gain_ability_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if tokens.first().is_some_and(|token| token.is_any_word(&["if", "unless", "instead"])) {
+    if tokens
+        .first()
+        .is_some_and(|token| token.is_any_word(&["if", "unless", "instead"]))
+    {
         return Ok(None);
     }
     if gain_shapes::parse_gain_then_get_shape(tokens).is_some()
@@ -1972,11 +1997,16 @@ fn parse_gain_ability_sentence_inner(
         for effect in &mut effects {
             super::chain_carry::bind_implicit_player_context(effect, player);
         }
-        return Ok(Some(vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, effects })]));
+        return Ok(Some(vec![EffectAst::Permissions(
+            PermissionEffectAst::MayByPlayer { player, effects },
+        )]));
     }
 
-    Ok(parse_gain_ability_sentence_with_subject(tokens, None)?
-        .map(|effects| with_inline_creature_type_choice(tokens, coordinated_gain_surface(tokens, effects))))
+    Ok(
+        parse_gain_ability_sentence_with_subject(tokens, None)?.map(|effects| {
+            with_inline_creature_type_choice(tokens, coordinated_gain_surface(tokens, effects))
+        }),
+    )
 }
 
 pub fn parse_gain_ability_sentence_with_typed_subject(
@@ -1984,8 +2014,9 @@ pub fn parse_gain_ability_sentence_with_typed_subject(
     subject_tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     Ok(
-        parse_gain_ability_sentence_with_subject(tokens, Some(subject_tokens))?
-            .map(|effects| with_inline_creature_type_choice(tokens, coordinated_gain_surface(tokens, effects))),
+        parse_gain_ability_sentence_with_subject(tokens, Some(subject_tokens))?.map(|effects| {
+            with_inline_creature_type_choice(tokens, coordinated_gain_surface(tokens, effects))
+        }),
     )
 }
 

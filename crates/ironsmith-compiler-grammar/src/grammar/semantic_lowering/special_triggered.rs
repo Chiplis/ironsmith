@@ -201,11 +201,20 @@ fn parse_opponent_land_majority_search(
 ) -> WResult<SpecialTriggeredProgram> {
     // Every participant and comparison is required: skipping words here can
     // silently turn a different chooser, threshold, or destination into this program.
-    primitives::phrase(&["at", "the", "beginning", "of", "each", "player's", "upkeep"]).parse_next(input)?;
+    primitives::phrase(&["at", "the", "beginning", "of", "each", "player's", "upkeep"])
+        .parse_next(input)?;
     primitives::comma().parse_next(input)?;
-    primitives::phrase(&["that", "player", "chooses", "target", "player", "who", "controls", "more", "lands", "than", "they", "do", "and", "is", "their", "opponent"]).parse_next(input)?;
+    primitives::phrase(&[
+        "that", "player", "chooses", "target", "player", "who", "controls", "more", "lands",
+        "than", "they", "do", "and", "is", "their", "opponent",
+    ])
+    .parse_next(input)?;
     primitives::period().parse_next(input)?;
-    primitives::phrase(&["the", "first", "player", "may", "search", "their", "library", "for", "a", "basic", "land", "card"]).parse_next(input)?;
+    primitives::phrase(&[
+        "the", "first", "player", "may", "search", "their", "library", "for", "a", "basic", "land",
+        "card",
+    ])
+    .parse_next(input)?;
     primitives::comma().parse_next(input)?;
     primitives::phrase(&["put", "that", "card", "onto", "the", "battlefield"]).parse_next(input)?;
     primitives::comma().parse_next(input)?;

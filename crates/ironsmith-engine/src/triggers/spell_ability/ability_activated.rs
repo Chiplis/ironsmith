@@ -257,12 +257,15 @@ impl TriggerMatcher for AbilityActivatedTrigger {
             text.push_str(" with an activation cost that contains {X}");
         }
         if self.non_mana_only && !self.loyalty_only {
-            text.push_str(if source_filter.zone == Some(Zone::Battlefield)
-            && source_filter.has_activation_source_battlefield_surface() {
-                ", if it isn't a mana ability"
-            } else {
-                " that isn't a mana ability"
-            });
+            text.push_str(
+                if source_filter.zone == Some(Zone::Battlefield)
+                    && source_filter.has_activation_source_battlefield_surface()
+                {
+                    ", if it isn't a mana ability"
+                } else {
+                    " that isn't a mana ability"
+                },
+            );
         }
         match self.activation_cost_has_tap {
             Some(true) => text.push_str(" with {T} in its activation cost"),
@@ -288,8 +291,13 @@ mod tests {
                 filter.card_types = vec![kind];
                 filter.zone = zone;
                 filter.set_activation_source_battlefield_surface(zone == Some(Zone::Battlefield));
-                let text = AbilityActivatedTrigger::new(PlayerFilter::Opponent, filter, true).display();
-                assert_eq!(text.contains("on the battlefield"), zone == Some(Zone::Battlefield), "{text}");
+                let text =
+                    AbilityActivatedTrigger::new(PlayerFilter::Opponent, filter, true).display();
+                assert_eq!(
+                    text.contains("on the battlefield"),
+                    zone == Some(Zone::Battlefield),
+                    "{text}"
+                );
                 assert!(text.contains("isn't a mana ability"), "{text}");
                 if zone == Some(Zone::Graveyard) {
                     assert!(text.contains("graveyard"), "{text}");

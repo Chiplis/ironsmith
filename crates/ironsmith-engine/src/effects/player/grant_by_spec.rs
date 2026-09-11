@@ -31,7 +31,9 @@ fn grant_duration_source(
             source_id: source,
             expires_end_of_turn: u32::MAX,
         },
-        GrantDuration::UntilYourNextTurn => GrantSource::until_player_next_turn_start(source, player, game.turn.turn_number),
+        GrantDuration::UntilYourNextTurn => {
+            GrantSource::until_player_next_turn_start(source, player, game.turn.turn_number)
+        }
         GrantDuration::UntilYourNextTurnEnd => GrantSource::until_player_next_turn_end(
             source,
             player,

@@ -320,11 +320,19 @@ fn push_enter_as_copy_effects_for_spec(
     });
 
     let added_abilities_for_source = |candidate| {
-        let matches = spec.added_abilities_source_filter.as_ref().is_none_or(|filter| {
-            let ctx = game.filter_context_for(controller, Some(entering_object));
-            game.object(candidate).is_some_and(|object| filter.matches(object, &ctx, game))
-        });
-        if matches { spec.added_abilities.clone() } else { Vec::new() }
+        let matches = spec
+            .added_abilities_source_filter
+            .as_ref()
+            .is_none_or(|filter| {
+                let ctx = game.filter_context_for(controller, Some(entering_object));
+                game.object(candidate)
+                    .is_some_and(|object| filter.matches(object, &ctx, game))
+            });
+        if matches {
+            spec.added_abilities.clone()
+        } else {
+            Vec::new()
+        }
     };
 
     if let Some(linked_pair) = spec.linked_exile_pair {
@@ -1510,10 +1518,17 @@ fn trait_effect_matches_event(
 ) -> Option<ReplacementPriority> {
     use crate::events::ReplacementPriority as TraitPriority;
 
-    if let ReplacementAction::EnterWithCounters { count, otherwise_count, .. } = &effect.replacement
+    if let ReplacementAction::EnterWithCounters {
+        count,
+        otherwise_count,
+        ..
+    } = &effect.replacement
         && (application::etb_value_uses_revealed_choice(count)
-            || otherwise_count.as_ref().is_some_and(application::etb_value_uses_revealed_choice))
-        && let Some(etb) = crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner())
+            || otherwise_count
+                .as_ref()
+                .is_some_and(application::etb_value_uses_revealed_choice))
+        && let Some(etb) =
+            crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner())
         && effect.source == etb.object
         && etb.prepared_choices.is_none()
     {
@@ -1521,8 +1536,11 @@ fn trait_effect_matches_event(
     }
     // Entry programs may add counters while preparing the object. Apply
     // counter-placement modifiers once, after all entry counter proposals exist.
-    if matches!(effect.replacement, ReplacementAction::DoubleCounters { .. } | ReplacementAction::AddCountersToPlacement { .. })
-        && let Some(etb) = crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner())
+    if matches!(
+        effect.replacement,
+        ReplacementAction::DoubleCounters { .. } | ReplacementAction::AddCountersToPlacement { .. }
+    ) && let Some(etb) =
+        crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner())
         && etb.prepared_choices.is_none()
     {
         return None;
@@ -4237,10 +4255,14 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
                         };
                         let mut prepared_event = etb.clone();
                         let mut choices = prepared.choices;
-                        prepared_event.enters_with_counters.append(&mut choices.as_enters_counters);
+                        prepared_event
+                            .enters_with_counters
+                            .append(&mut choices.as_enters_counters);
                         let mut combined: Vec<(CounterType, u32)> = Vec::new();
                         for (counter, count) in prepared_event.enters_with_counters.drain(..) {
-                            if let Some((_, total)) = combined.iter_mut().find(|(kind, _)| *kind == counter) {
+                            if let Some((_, total)) =
+                                combined.iter_mut().find(|(kind, _)| *kind == counter)
+                            {
                                 *total = total.saturating_add(count);
                             } else {
                                 combined.push((counter, count));
@@ -4605,13 +4627,28 @@ fn pay_madness_cost(
     const MAX_MANA_ACTIVATIONS: usize = 32;
 
     let non_mana = crate::cost::TotalCost::from_costs(cost.non_mana_costs().cloned().collect());
-    if crate::cost::can_pay_cost_with_reason(game, source, player, &non_mana, crate::costs::PaymentReason::CastSpell).is_err() {
+    if crate::cost::can_pay_cost_with_reason(
+        game,
+        source,
+        player,
+        &non_mana,
+        crate::costs::PaymentReason::CastSpell,
+    )
+    .is_err()
+    {
         return false;
     }
     for _ in 0..MAX_MANA_ACTIVATIONS {
         if crate::special_actions::pay_total_cost_with_choice(
-            game, player, source, cost, crate::costs::PaymentReason::CastSpell, decision_maker,
-        ).is_ok() {
+            game,
+            player,
+            source,
+            cost,
+            crate::costs::PaymentReason::CastSpell,
+            decision_maker,
+        )
+        .is_ok()
+        {
             return true;
         }
 
@@ -4673,8 +4710,14 @@ fn pay_madness_cost(
     }
 
     crate::special_actions::pay_total_cost_with_choice(
-        game, player, source, cost, crate::costs::PaymentReason::CastSpell, decision_maker,
-    ).is_ok()
+        game,
+        player,
+        source,
+        cost,
+        crate::costs::PaymentReason::CastSpell,
+        decision_maker,
+    )
+    .is_ok()
 }
 
 /// Result of processing a zone change event with full replacement effect handling.

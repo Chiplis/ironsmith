@@ -9,7 +9,6 @@
 //! three cards"), an unconditional follow-up joins that branch, as the registry
 //! program it replaces had it.
 
-use crate::cards::builders::ForEachEffectAst;
 use super::dispatch_entry::{
     SentenceInput, parse_if_you_cant_sentence, parse_if_you_dont_sentence,
 };
@@ -20,15 +19,17 @@ use super::sequence_rules::generic_subject_verb_sequences::reference_linked_prog
     append_to_outer_if_result, parse_may_put_filtered_card_from_among_into_hand,
     parse_put_from_milled_cards_followup, tag_single_mill_effect,
 };
+use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{
-    CardTextError, ChoiceCount, EffectAst, IfResultPredicate, ObjectFilter, PlayerAst,
-    SubjectVerbActionAst, SubjectVerbEffectAst, Value, LibraryActionAst, CharacteristicActionAst, ObjectChoiceEffectAst, ConditionalEffectAst, PermissionEffectAst,
+    CardTextError, CharacteristicActionAst, ChoiceCount, ConditionalEffectAst, EffectAst,
+    IfResultPredicate, LibraryActionAst, ObjectChoiceEffectAst, ObjectFilter, PermissionEffectAst,
+    PlayerAst, SubjectVerbActionAst, SubjectVerbEffectAst, Value,
 };
-use ironsmith_core::CardType;
-use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::tag::TagKey;
+use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::util::helper_tag_for_tokens;
 use crate::zone::Zone;
+use ironsmith_core::CardType;
 
 /// The milled cards a mill statement bound, and the statements made over them.
 pub(super) struct MilledGroup {
@@ -90,13 +91,14 @@ fn mill_effect(
     let mut effect = effect.clone();
     // "Each player mills three cards." mills once per player; the group is
     // every card milled, tagged on the mill inside the iteration.
-    let (player, per_player) = if let EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }) = &mut effect
-        && let [inner] = effects.as_mut_slice()
-    {
-        (tag_single_mill_effect(inner, tag)?, true)
-    } else {
-        (tag_single_mill_effect(&mut effect, tag)?, false)
-    };
+    let (player, per_player) =
+        if let EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }) = &mut effect
+            && let [inner] = effects.as_mut_slice()
+        {
+            (tag_single_mill_effect(inner, tag)?, true)
+        } else {
+            (tag_single_mill_effect(&mut effect, tag)?, false)
+        };
     Some((effect, plain, player, bare_mill, per_player))
 }
 
@@ -128,7 +130,11 @@ fn may_cast_from_among(sentence: &SentenceInput) -> Option<Option<Value>> {
 
 /// Choose an instant or sorcery card among the milled cards and cast it
 /// without paying its mana cost.
-fn cast_from_among(group: &MilledGroup, sentence: &SentenceInput, maximum: Option<Value>) -> Vec<EffectAst> {
+fn cast_from_among(
+    group: &MilledGroup,
+    sentence: &SentenceInput,
+    maximum: Option<Value>,
+) -> Vec<EffectAst> {
     let chosen_tag = helper_tag_for_tokens(sentence.lowered(), "chosen_milled_castable");
     let mut filter = ObjectFilter::default().in_zone(Zone::Graveyard);
     if let Some(maximum) = maximum {
@@ -155,7 +161,14 @@ fn cast_from_among(group: &MilledGroup, sentence: &SentenceInput, maximum: Optio
             tag: crate::tag::TagRef::of(chosen_tag.clone()),
             zone: Zone::Graveyard,
         }),
-        EffectAst::subject_verb_cast_tagged(crate::tag::TagRef::of(chosen_tag), PlayerAst::You, false, false, true, None),
+        EffectAst::subject_verb_cast_tagged(
+            crate::tag::TagRef::of(chosen_tag),
+            PlayerAst::You,
+            false,
+            false,
+            true,
+            None,
+        ),
     ]
 }
 
@@ -164,7 +177,8 @@ fn if_you_do_put_from_among_into_hand(
     sentence: &SentenceInput,
     player: PlayerAst,
 ) -> Option<(PlayerAst, ObjectFilter, Vec<OwnedTokens>)> {
-    let followup = crate::grammar::sentence_markers::parse_conditional_followup_tokens(sentence.lowered())?;
+    let followup =
+        crate::grammar::sentence_markers::parse_conditional_followup_tokens(sentence.lowered())?;
     if followup.actor != crate::grammar::sentence_markers::ConditionalFollowupActor::You {
         return None;
     }
@@ -188,7 +202,8 @@ pub(super) fn open(
         return Ok(None);
     };
     let tag = helper_tag_for_tokens(sentence.lowered(), "milled");
-    let Some((mill, plain_mill, player, bare_mill, per_player)) = mill_effect(sentence, &tag) else {
+    let Some((mill, plain_mill, player, bare_mill, per_player)) = mill_effect(sentence, &tag)
+    else {
         return Ok(None);
     };
     let exiles_milled_creatures =
@@ -198,25 +213,25 @@ pub(super) fn open(
     if per_player && !exiles_milled_creatures {
         return Ok(None);
     }
-    let continues = parse_put_from_milled_cards_followup(next.lowered(), player, tag.clone().into())?
-        .is_some()
-        || may_cast_from_among(next).is_some()
-        || exiles_milled_creatures
-        || (parse_optional_payment_sentence(next.lowered(), player)?.is_some()
-            && sentences
-                .get(sentence_idx + 2)
-                .is_some_and(|third| if_you_do_put_from_among_into_hand(third, player).is_some()))
-        || (bare_mill
-            && parse_may_put_filtered_card_from_among_into_hand(
-                next.lowered(),
-                player,
-                Zone::Graveyard,
-            )?
-            .is_some()
-            && sentences.get(sentence_idx + 2).is_some_and(|third| {
-                matches!(parse_if_you_dont_sentence(third.lowered()), Ok(Some(_)))
-                    || matches!(parse_if_you_cant_sentence(third.lowered()), Ok(Some(_)))
-            }));
+    let continues =
+        parse_put_from_milled_cards_followup(next.lowered(), player, tag.clone().into())?.is_some()
+            || may_cast_from_among(next).is_some()
+            || exiles_milled_creatures
+            || (parse_optional_payment_sentence(next.lowered(), player)?.is_some()
+                && sentences.get(sentence_idx + 2).is_some_and(|third| {
+                    if_you_do_put_from_among_into_hand(third, player).is_some()
+                }))
+            || (bare_mill
+                && parse_may_put_filtered_card_from_among_into_hand(
+                    next.lowered(),
+                    player,
+                    Zone::Graveyard,
+                )?
+                .is_some()
+                && sentences.get(sentence_idx + 2).is_some_and(|third| {
+                    matches!(parse_if_you_dont_sentence(third.lowered()), Ok(Some(_)))
+                        || matches!(parse_if_you_cant_sentence(third.lowered()), Ok(Some(_)))
+                }));
     if !continues {
         return Ok(None);
     }
@@ -298,15 +313,20 @@ pub(super) fn continue_with(
         milled_creature_filter
             .card_types
             .push(crate::types::CardType::Creature);
-        group.followups.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
-            filter: milled_creature_filter,
-            count: ChoiceCount::up_to(2),
-            player: PlayerAst::You,
-            tag: crate::tag::TagRef::of(exiled_tag.clone()),
-            zone: Zone::Graveyard,
-        }));
+        group.followups.push(EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+                filter: milled_creature_filter,
+                count: ChoiceCount::up_to(2),
+                player: PlayerAst::You,
+                tag: crate::tag::TagRef::of(exiled_tag.clone()),
+                zone: Zone::Graveyard,
+            },
+        ));
         group.followups.push(EffectAst::subject_verb_exile(
-            crate::cards::builders::TargetAst::Tagged(crate::tag::TagRef::of(exiled_tag.clone()), None),
+            crate::cards::builders::TargetAst::Tagged(
+                crate::tag::TagRef::of(exiled_tag.clone()),
+                None,
+            ),
             false,
         ));
         group.exiled_creatures = Some(exiled_tag.key.clone());
@@ -314,24 +334,27 @@ pub(super) fn continue_with(
         return Ok(true);
     }
     if group.payment_made {
-        let Some((chooser, filter, tail)) = if_you_do_put_from_among_into_hand(sentence, group.player)
+        let Some((chooser, filter, tail)) =
+            if_you_do_put_from_among_into_hand(sentence, group.player)
         else {
             return Ok(false);
         };
         let chosen_tag = helper_tag_for_tokens(&tail, "chosen");
-        group.followups.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-            predicate: IfResultPredicate::Did,
-            effects: compose_choose_from_looked_cards_into_hand_rest_into_graveyard(
-                chooser,
-                filter,
-                (crate::tag::CompilerReferenceTag::It.bind()).into(),
-                chosen_tag.key.clone(),
-                Zone::Graveyard,
-                false,
-                Vec::new(),
-                ChoiceCount::exactly(1),
-            ),
-        }));
+        group
+            .followups
+            .push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                predicate: IfResultPredicate::Did,
+                effects: compose_choose_from_looked_cards_into_hand_rest_into_graveyard(
+                    chooser,
+                    filter,
+                    (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                    chosen_tag.key.clone(),
+                    Zone::Graveyard,
+                    false,
+                    Vec::new(),
+                    ChoiceCount::exactly(1),
+                ),
+            }));
         // The selection reads the milled cards through the prior-object
         // reference, as its program did; the mill is spelled as written.
         group.hand_with_if_not = true;
@@ -366,9 +389,14 @@ pub(super) fn continue_with(
     }
     if group.followups.is_empty()
         && let Some(payment) = parse_optional_payment_sentence(sentence.lowered(), group.player)?
-        && following.is_some_and(|third| if_you_do_put_from_among_into_hand(third, group.player).is_some())
+        && following
+            .is_some_and(|third| if_you_do_put_from_among_into_hand(third, group.player).is_some())
     {
-        group.followups.push(EffectAst::Permissions(PermissionEffectAst::May { effects: payment }));
+        group
+            .followups
+            .push(EffectAst::Permissions(PermissionEffectAst::May {
+                effects: payment,
+            }));
         group.payment_made = true;
         group.consumed += 1;
         return Ok(true);
@@ -443,7 +471,9 @@ fn rewrite_total_power_effect(effect: &mut EffectAst, tag: &TagKey) {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness {
-                    power, toughness, ..
+                    power,
+                    toughness,
+                    ..
                 }),
             ..
         }) => {
@@ -456,7 +486,10 @@ fn rewrite_total_power_effect(effect: &mut EffectAst, tag: &TagKey) {
         | EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })
         | EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })
         | EffectAst::ForEach(ForEachEffectAst::ForEachTagged { effects, .. })
-        | EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy { effects, .. })
+        | EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy {
+            effects,
+            ..
+        })
         | EffectAst::ForEach(ForEachEffectAst::ForEachObject { effects, .. }) => {
             for effect in effects {
                 rewrite_total_power_effect(effect, tag);

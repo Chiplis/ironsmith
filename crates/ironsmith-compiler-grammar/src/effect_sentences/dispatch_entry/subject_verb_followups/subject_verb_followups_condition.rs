@@ -1,6 +1,6 @@
-use crate::cards::builders::SourcePredicateAst;
-use crate::cards::builders::ForEachEffectAst;
 use super::*;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::SourcePredicateAst;
 
 pub(super) fn pre_rule_if_no_one_does_followup(
     _state: &mut SentenceDispatchState<'_>,
@@ -61,7 +61,9 @@ pub(super) fn take_self_replacement_condition(
         // typed `TrailingIf`. Once an `instead` follow-up has been classified
         // as a self-replacement, both surfaces carry the same semantic branch
         // and must be normalized before ordinary object-reference lowering.
-        EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects }) => Some((predicate, effects, Vec::new())),
+        EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects }) => {
+            Some((predicate, effects, Vec::new()))
+        }
         EffectAst::ControlFlow(control) => {
             let crate::model::control_flow::ControlFlowNodeAst::Condition {
                 condition,
@@ -203,7 +205,8 @@ pub(in super::super) fn post_rule_future_zone_and_self_replacement(
         && sentence_effects.first().is_some_and(|effect| {
             matches!(
                 effect,
-                EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. }) | EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { .. })
+                EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. })
+                    | EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { .. })
             ) || matches!(
                 effect,
                 EffectAst::ControlFlow(control)

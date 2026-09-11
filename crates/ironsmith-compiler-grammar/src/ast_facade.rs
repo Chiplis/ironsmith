@@ -63,10 +63,16 @@ pub use ironsmith_compiler_semantic::cards::builders::GrantedAbilityAst;
 pub use crate::lexer::OwnedLexToken;
 
 pub use crate::model::ast::{
-    ChooseOneModeAst, EffectAst, PredicateAst, StaticAbilityAst, SubjectVerbActionAst,
-    SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst, TriggerFrequencyPredicateAst,
-    TriggerSpec, TurnHistoryPredicateAst,
-    CounterActionAst, DamagePreventionActionAst, GrantActionAst, ManaActionAst, LibraryActionAst, ReplacementActionAst, ExchangeActionAst, TurnStructureActionAst, CharacteristicActionAst, KeywordActionAst, ZoneMoveActionAst, PermanentStateActionAst, RevealLookActionAst, RandomActionAst, LifeResourceActionAst, ChoiceActionAst, DamageActionAst, StatChangeActionAst, StackActionAst, TokenActionAst, ControlActionAst, GameActionAst, DelayedEffectAst, ForEachEffectAst, ObjectChoiceEffectAst, VoteEffectAst, ConditionalEffectAst, PermissionEffectAst, PlayerPredicateAst, SourcePredicateAst, TriggeringPredicateAst, TurnEventPredicateAst,
+    CharacteristicActionAst, ChoiceActionAst, ChooseOneModeAst, ConditionalEffectAst,
+    ControlActionAst, CounterActionAst, DamageActionAst, DamagePreventionActionAst,
+    DelayedEffectAst, EffectAst, ExchangeActionAst, ForEachEffectAst, GameActionAst,
+    GrantActionAst, KeywordActionAst, LibraryActionAst, LifeResourceActionAst, ManaActionAst,
+    ObjectChoiceEffectAst, PermanentStateActionAst, PermissionEffectAst, PlayerPredicateAst,
+    PredicateAst, RandomActionAst, ReplacementActionAst, RevealLookActionAst, SourcePredicateAst,
+    StackActionAst, StatChangeActionAst, StaticAbilityAst, SubjectVerbActionAst,
+    SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst, TokenActionAst,
+    TriggerFrequencyPredicateAst, TriggerSpec, TriggeringPredicateAst, TurnEventPredicateAst,
+    TurnHistoryPredicateAst, TurnStructureActionAst, VoteEffectAst, ZoneMoveActionAst,
 };
 
 pub use ironsmith_compiler_semantic::cards::builders::InsteadSemantics;

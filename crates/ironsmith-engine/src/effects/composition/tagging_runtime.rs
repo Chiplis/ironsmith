@@ -34,7 +34,9 @@ pub(crate) fn capture_target_object_snapshots(
         if let ResolvedTarget::Object(object_id) = target
             && let Some(obj) = game.object(*object_id)
         {
-            snapshots.push(ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
+            snapshots.push(ObjectSnapshot::from_object_with_calculated_characteristics(
+                obj, game,
+            ));
         }
     }
     snapshots
@@ -96,7 +98,9 @@ pub(crate) fn capture_tagged_runtime_state(
         && let Some(object_id) = ctx.iteration.iterated_object
         && let Some(obj) = game.object(object_id)
     {
-        pre_snapshots.push(ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
+        pre_snapshots.push(ObjectSnapshot::from_object_with_calculated_characteristics(
+            obj, game,
+        ));
     }
     if pre_snapshots.is_empty()
         && let Some(snapshot) = capture_effect_target_snapshot(game, effect, ctx)
@@ -183,11 +187,17 @@ pub(crate) fn apply_tagged_runtime_state(
         // accessor returns only the first fact, so collect all successful
         // affected-object memories before exposing the group's result set.
         let mut seen = HashSet::new();
-        let snapshots = outcome.execution_facts.iter().filter_map(|fact| match fact {
-            crate::effect::ExecutionFact::AffectedObjectMemory(memory) => Some(memory),
-            _ => None,
-        }).flatten().filter(|memory| seen.insert(memory.object_id))
-            .map(|memory| memory.to_snapshot(game)).collect::<Vec<_>>();
+        let snapshots = outcome
+            .execution_facts
+            .iter()
+            .filter_map(|fact| match fact {
+                crate::effect::ExecutionFact::AffectedObjectMemory(memory) => Some(memory),
+                _ => None,
+            })
+            .flatten()
+            .filter(|memory| seen.insert(memory.object_id))
+            .map(|memory| memory.to_snapshot(game))
+            .collect::<Vec<_>>();
         if !snapshots.is_empty() {
             ctx.set_tagged_objects(tag, snapshots);
             return;
@@ -205,9 +215,9 @@ pub(crate) fn apply_tagged_runtime_state(
             .iter()
             .filter_map(|id| {
                 game.object(*id).and_then(|obj| {
-                    expected_zone
-                        .is_none_or(|zone| obj.zone == zone)
-                        .then(|| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game))
+                    expected_zone.is_none_or(|zone| obj.zone == zone).then(|| {
+                        ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
+                    })
                 })
             })
             .collect::<Vec<_>>();
@@ -227,7 +237,9 @@ pub(crate) fn apply_tagged_runtime_state(
             .filter_map(|stable_id| game.find_object_by_stable_id(stable_id))
             .filter_map(|id| {
                 game.object(id).and_then(|obj| {
-                    (obj.zone == fallback.zone).then(|| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game))
+                    (obj.zone == fallback.zone).then(|| {
+                        ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
+                    })
                 })
             })
             .collect::<Vec<_>>();
@@ -333,7 +345,9 @@ fn snapshot_for_object_reference(
     object_id: crate::ids::ObjectId,
 ) -> Option<ObjectSnapshot> {
     if let Some(obj) = game.object(object_id) {
-        return Some(ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
+        return Some(ObjectSnapshot::from_object_with_calculated_characteristics(
+            obj, game,
+        ));
     }
     if let Some(snapshot) = ctx.target_snapshots.get(&object_id) {
         return Some(snapshot.clone());
@@ -480,19 +494,36 @@ mod tests {
         let bob = PlayerId::from_index(1);
         let a = create_creature(&mut game, alice);
         let b = create_creature(&mut game, bob);
-        let memories = [a,b].map(|id| crate::effect::OutcomeObjectMemory::from_snapshot(
-            &ObjectSnapshot::from_object_with_calculated_characteristics(game.object(id).unwrap(), &game)));
-        game.move_object_by_effect(a,Zone::Graveyard).unwrap();
-        game.move_object_by_effect(b,Zone::Graveyard).unwrap();
+        let memories = [a, b].map(|id| {
+            crate::effect::OutcomeObjectMemory::from_snapshot(
+                &ObjectSnapshot::from_object_with_calculated_characteristics(
+                    game.object(id).unwrap(),
+                    &game,
+                ),
+            )
+        });
+        game.move_object_by_effect(a, Zone::Graveyard).unwrap();
+        game.move_object_by_effect(b, Zone::Graveyard).unwrap();
         let outcome = EffectOutcome::count(2)
             .with_affected_object_memory(vec![memories[0].clone()])
             .with_affected_object_memory(vec![memories[1].clone()]);
         let source = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(source, alice);
-        apply_tagged_runtime_state(&game,&mut ctx,TagKey::new("group"),&outcome,TaggedRuntimeState::default());
+        apply_tagged_runtime_state(
+            &game,
+            &mut ctx,
+            TagKey::new("group"),
+            &outcome,
+            TaggedRuntimeState::default(),
+        );
         let snapshots = ctx.get_tagged_all("group").unwrap();
-        assert_eq!(snapshots.iter().map(|s|(s.object_id,s.controller,s.zone)).collect::<Vec<_>>(),
-            vec![(a,alice,Zone::Battlefield),(b,bob,Zone::Battlefield)]);
+        assert_eq!(
+            snapshots
+                .iter()
+                .map(|s| (s.object_id, s.controller, s.zone))
+                .collect::<Vec<_>>(),
+            vec![(a, alice, Zone::Battlefield), (b, bob, Zone::Battlefield)]
+        );
     }
 
     #[test]

@@ -1,9 +1,9 @@
 //! Readings shard 4 of 4, in rank order.
 
-use crate::cards::builders::ConditionalEffectAst;
-use crate::cards::builders::StackActionAst;
 use super::super::*;
 use super::Clause;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::StackActionAst;
 
 pub(super) fn read_restriction_duration_cant(
     input: &Clause<'_>,
@@ -263,11 +263,13 @@ pub(super) fn read_trailing_if_fallback(
         && !head_effects.is_empty()
     {
         parser_trace("parse_effect_clause:trailing-if-fallback", tokens);
-        return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-            predicate: shape.predicate,
-            if_true: head_effects,
-            if_false: Vec::new(),
-        })));
+        return Ok(Some(EffectAst::Conditionals(
+            ConditionalEffectAst::Conditional {
+                predicate: shape.predicate,
+                if_true: head_effects,
+                if_false: Vec::new(),
+            },
+        )));
     }
     Ok(None)
 }

@@ -1,5 +1,5 @@
-use crate::cards::builders::StatChangeActionAst;
 use super::*;
+use crate::cards::builders::StatChangeActionAst;
 
 #[cfg(test)]
 #[test]
@@ -87,7 +87,9 @@ pub(super) fn protected_battle_surface_binds_the_pre_lowering_damage_target_insi
         effects: vec![battle_damage()],
     })];
     bind_protected_battle_iteration_in_effects(&mut effects, false);
-    let [EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects: nested })] = effects.as_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects: nested })] =
+        effects.as_slice()
+    else {
         panic!("expected the opponent loop to remain intact: {effects:#?}");
     };
     assert_eq!(

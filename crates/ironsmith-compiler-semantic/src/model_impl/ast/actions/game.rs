@@ -2,12 +2,9 @@
 
 use super::*;
 
-#[derive(Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Clone, PartialEq, TagKeyWalk)]
 pub enum GameActionAst {
-    ExtraTurnAfterTurn {
-        anchor: ExtraTurnAnchorAst,
-    },
+    ExtraTurnAfterTurn { anchor: ExtraTurnAnchorAst },
     ReverseTurnOrder,
     EndTurn,
     EndCombatPhase,

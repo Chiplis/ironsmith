@@ -468,9 +468,11 @@ pub(super) fn describe_exiled_collection_program(effects: &[Effect]) -> Option<S
         // naturally "the rest". Multi-card casting keeps the explicit set.
         if choice.count.max == Some(1)
             && !choice.count.dynamic_x
-            && remainder_surface == "Put the exiled cards not cast this way on the bottom of your library in a random order"
+            && remainder_surface
+                == "Put the exiled cards not cast this way on the bottom of your library in a random order"
         {
-            remainder_surface = "Then put the rest on the bottom of your library in a random order".to_string();
+            remainder_surface =
+                "Then put the rest on the bottom of your library in a random order".to_string();
         }
         parts.push(remainder_surface);
     }

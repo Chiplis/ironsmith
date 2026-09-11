@@ -12,8 +12,7 @@ use crate::model::selections::{CompilerFilterAst, CompilerSelectionAst, Compiler
 use crate::model::symbols::SymbolReference;
 use crate::zone::Zone;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
 pub enum ClauseVerbAst {
     Add,
     Attach,
@@ -53,22 +52,19 @@ pub enum ClauseVerbAst {
     Untap,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
 pub enum ClausePolarityAst {
     Positive,
     Negative,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ClauseActionAst {
     pub verb: ClauseVerbAst,
     pub polarity: ClausePolarityAst,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum ClauseActorAst {
     SourceController,
     ActivePlayer,
@@ -79,8 +75,7 @@ pub enum ClauseActorAst {
     Player(CompilerPlayerAst),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
 pub enum CompilerPlayerAst {
     Any,
     Chosen,
@@ -97,8 +92,7 @@ pub enum CompilerPlayerAst {
     ReferencedObjectOwner,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum ClauseSubjectAst {
     Source,
     Actor(ClauseActorAst),
@@ -107,8 +101,7 @@ pub enum ClauseSubjectAst {
     Reference(SymbolReference),
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum ClauseObjectAst {
     Subject(ClauseSubjectAst),
     Selection(CompilerSelectionAst),
@@ -172,8 +165,7 @@ pub struct ClauseDestinationAst {
     pub controller: Option<ClauseActorAst>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum ClausePredicateAst {
     Constant(bool),
     Matches {
@@ -191,8 +183,7 @@ pub enum ClausePredicateAst {
     Any(Vec<ClausePredicateAst>),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
 pub enum ClauseConditionKindAst {
     If,
     Unless,
@@ -200,15 +191,13 @@ pub enum ClauseConditionKindAst {
     While,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ClauseConditionAst {
     pub kind: ClauseConditionKindAst,
     pub predicate: ClausePredicateAst,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum ClauseDurationAst {
     Permanent,
     ThisTurn,

@@ -13,10 +13,11 @@ fn opponent_revealed_choice_tags_the_filtered_selection_and_exact_remainder() {
         .iter()
         .map(|sentence| SentenceInput::from_lexed(sentence))
         .collect::<Vec<_>>();
-    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
-        .map(|matched| matched.map(|matched| matched.effects))
-        .expect("parse")
-        .expect("typed opponent partition");
+    let effects =
+        crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+            .map(|matched| matched.map(|matched| matched.effects))
+            .expect("parse")
+            .expect("typed opponent partition");
 
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -96,10 +97,11 @@ fn opponent_exile_partition_reuses_one_explicit_player_choice_for_cast_permissio
         .iter()
         .map(|sentence| SentenceInput::from_lexed(sentence))
         .collect::<Vec<_>>();
-    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
-        .map(|matched| matched.map(|matched| matched.effects))
-        .expect("opponent exile partition should parse")
-        .expect("opponent exile partition should match");
+    let effects =
+        crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+            .map(|matched| matched.map(|matched| matched.effects))
+            .expect("opponent exile partition should parse")
+            .expect("opponent exile partition should match");
 
     assert!(
         matches!(
@@ -245,7 +247,9 @@ fn historical_block_reanimation_keeps_target_success_and_controller_provenance()
             [
                 EffectAst::TagAffected { .. },
                 EffectAst::TagAffected { .. },
-                EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy { .. })
+                EffectAst::ForEach(
+                    ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy { .. }
+                )
             ]
         ),
         "public dispatch bypassed the exact three-sentence rule: {public_effects:#?}"
@@ -285,16 +289,20 @@ fn looked_any_number_battlefield_then_shuffle_keeps_one_tagged_pool() {
         .iter()
         .map(|sentence| SentenceInput::from_lexed(sentence))
         .collect::<Vec<_>>();
-    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
-        .map(|matched| matched.map(|matched| matched.effects))
-        .expect("parse")
-        .expect("looked battlefield/shuffle program");
+    let effects =
+        crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+            .map(|matched| matched.map(|matched| matched.effects))
+            .expect("parse")
+            .expect("looked battlefield/shuffle program");
 
     let [look, choose, move_each, shuffle] = effects.as_slice() else {
         panic!("expected look/choose/move/shuffle program: {effects:#?}");
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { tag: looked, .. }),
+        action:
+            SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
+                tag: looked, ..
+            }),
         ..
     }) = look
     else {
@@ -360,7 +368,9 @@ fn looked_reveal_to_hand_preserves_the_authored_singular_reference() {
         let effects = parse_look_at_top_reveal_match_put_rest_bottom(&sentences, 0)
             .expect("parse")
             .expect("typed looked partition");
-        let EffectAst::ForEach(ForEachEffectAst::ForEachTagged { effects: moved, .. }) = &effects[3] else {
+        let EffectAst::ForEach(ForEachEffectAst::ForEachTagged { effects: moved, .. }) =
+            &effects[3]
+        else {
             panic!("expected tagged selected-card move: {effects:#?}");
         };
         let [
@@ -392,10 +402,11 @@ fn optional_top_selection_and_separate_remainder_share_one_looked_pool() {
         .iter()
         .map(|sentence| SentenceInput::from_lexed(sentence))
         .collect::<Vec<_>>();
-    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
-        .map(|matched| matched.map(|matched| matched.effects))
-        .expect("parse")
-        .expect("optional top/remainder partition");
+    let effects =
+        crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+            .map(|matched| matched.map(|matched| matched.effects))
+            .expect("parse")
+            .expect("optional top/remainder partition");
 
     let [look_effect, may_effect, remainder_effect] = effects.as_slice() else {
         panic!("expected look/may/remainder program: {effects:#?}");
@@ -480,10 +491,11 @@ fn same_name_permanent_selection_has_two_explicit_candidate_domains() {
         .iter()
         .map(|sentence| SentenceInput::from_lexed(sentence))
         .collect::<Vec<_>>();
-    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
-        .map(|matched| matched.map(|matched| matched.effects))
-        .expect("parse")
-        .expect("same-name looked-card program");
+    let effects =
+        crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+            .map(|matched| matched.map(|matched| matched.effects))
+            .expect("parse")
+            .expect("same-name looked-card program");
     let debug = format!("{effects:#?}");
     let [_, tag_comparison, _, _] = effects.as_slice() else {
         panic!("expected look/comparison/optional move/remainder: {debug}");
@@ -533,7 +545,10 @@ fn composes_compound_looked_exile_remainder_and_cast_sequence() {
         })
     ));
     let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
-        filter, count, tag, ..
+        filter,
+        count,
+        tag,
+        ..
     }) = &effects[1]
     else {
         panic!("expected typed looked-card choice: {:#?}", effects[1]);
@@ -547,7 +562,9 @@ fn composes_compound_looked_exile_remainder_and_cast_sequence() {
     assert!(matches!(
         &effects[3],
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary { .. }),
+            action: SubjectVerbActionAst::Library(
+                LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary { .. }
+            ),
             ..
         })
     ));
@@ -576,15 +593,18 @@ fn consult_cleanup_reflexive_keeps_variable_damage_and_full_set_cleanup() {
         .map(|sentence| SentenceInput::from_lexed(sentence))
         .collect::<Vec<_>>();
 
-    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
-        .map(|matched| matched.map(|matched| matched.effects))
-        .expect("parse")
-        .expect("consult/cleanup/reflexive shape");
+    let effects =
+        crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+            .map(|matched| matched.map(|matched| matched.effects))
+            .expect("parse")
+            .expect("consult/cleanup/reflexive shape");
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
-                    all_tag, match_tag, ..
+                    all_tag,
+                    match_tag,
+                    ..
                 }),
             ..
         }),
@@ -594,7 +614,9 @@ fn consult_cleanup_reflexive_keeps_variable_damage_and_full_set_cleanup() {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary {
-                    tag, keep_tagged, ..
+                    tag,
+                    keep_tagged,
+                    ..
                 }),
             ..
         }),

@@ -1,10 +1,10 @@
-use crate::cards::builders::PermissionEffectAst;
+use super::*;
 use crate::cards::builders::ConditionalEffectAst;
 use crate::cards::builders::ForEachEffectAst;
-use crate::cards::builders::ZoneMoveActionAst;
 use crate::cards::builders::KeywordActionAst;
+use crate::cards::builders::PermissionEffectAst;
 use crate::cards::builders::ReplacementActionAst;
-use super::*;
+use crate::cards::builders::ZoneMoveActionAst;
 
 pub(super) fn first_for_each_object_filter(effects: &[EffectAst]) -> Option<ObjectFilter> {
     for effect in effects {
@@ -241,10 +241,12 @@ fn parse_effect_sentences_preserving_source_boundaries_general(
             effect,
             EffectAst::SelfReplacement { .. }
                 | EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterZoneReplacement {
-                        duration: crate::cards::builders::ZoneReplacementDurationAst::OneShot,
-                        ..
-                    }),
+                    action: SubjectVerbActionAst::Replacements(
+                        ReplacementActionAst::RegisterZoneReplacement {
+                            duration: crate::cards::builders::ZoneReplacementDurationAst::OneShot,
+                            ..
+                        }
+                    ),
                     ..
                 })
         ) {
@@ -385,8 +387,7 @@ fn parse_effect_sentences_preserving_source_boundaries_general(
                     ),
                 });
             }
-            if independent_groups.len() == sentences.len()
-                && independent_effects == program_effects
+            if independent_groups.len() == sentences.len() && independent_effects == program_effects
             {
                 return Ok(independent_groups);
             }

@@ -1,8 +1,8 @@
-use crate::cards::builders::ForEachEffectAst;
-use crate::cards::builders::ControlActionAst;
-use crate::cards::builders::CharacteristicActionAst;
-use crate::cards::builders::GrantActionAst;
 use super::*;
+use crate::cards::builders::CharacteristicActionAst;
+use crate::cards::builders::ControlActionAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::GrantActionAst;
 
 pub fn parse_each_prior_affected_object_controller_mana_value_life(
     tokens: &[OwnedLexToken],
@@ -285,91 +285,149 @@ fn continuous_effect_scope_and_duration(
             target, duration, ..
         })
         | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach {
-            target, duration, ..
+            target,
+            duration,
+            ..
         })
         | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpByLastEffect {
-            target, duration, ..
+            target,
+            duration,
+            ..
         })
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness {
-            target, duration, ..
+            target,
+            duration,
+            ..
         })
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower {
-            target, duration, ..
+            target,
+            duration,
+            ..
         })
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
-            target, duration, ..
+            target,
+            duration,
+            ..
         })
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddCardTypes {
-            target, duration, ..
+            target,
+            duration,
+            ..
         })
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCardTypes {
-            target, duration, ..
+            target,
+            duration,
+            ..
         })
         | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveCardTypes {
-            target, duration, ..
+            target,
+            duration,
+            ..
         })
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes {
-            target, duration, ..
+            target,
+            duration,
+            ..
         })
         | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSubtypes {
-            target, duration, ..
+            target,
+            duration,
+            ..
         })
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCreatureSubtypes {
-            target, duration, ..
+            target,
+            duration,
+            ..
         })
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddColors {
-            target, duration, ..
+            target,
+            duration,
+            ..
         })
-        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddAllSubtypesOfFamily {
-            target, duration, ..
-        })
+        | SubjectVerbActionAst::Characteristics(
+            CharacteristicActionAst::AddAllSubtypesOfFamily {
+                target, duration, ..
+            },
+        )
         | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAllSubtypesOfFamily {
-            target, duration, ..
+            target,
+            duration,
+            ..
         })
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeAuraEnchantment {
-            target, duration, ..
+            target,
+            duration,
+            ..
         })
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasicLandType {
-            target, duration, ..
+            target,
+            duration,
+            ..
         })
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetColors {
-            target, duration, ..
+            target,
+            duration,
+            ..
         })
         | SubjectVerbActionAst::StatChanges(StatChangeActionAst::MakeColorless {
-            target, duration, ..
+            target,
+            duration,
+            ..
         })
-        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasicLandTypeChoice {
-            target, duration, ..
-        })
-        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCreatureTypeChoice {
-            target, duration, ..
-        })
+        | SubjectVerbActionAst::Characteristics(
+            CharacteristicActionAst::BecomeBasicLandTypeChoice {
+                target, duration, ..
+            },
+        )
+        | SubjectVerbActionAst::Characteristics(
+            CharacteristicActionAst::BecomeCreatureTypeChoice {
+                target, duration, ..
+            },
+        )
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
-            target, duration, ..
+            target,
+            duration,
+            ..
         })
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCopy {
-            target, duration, ..
+            target,
+            duration,
+            ..
         })
         | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
-            target, duration, ..
+            target,
+            duration,
+            ..
         })
         | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget {
-            target, duration, ..
+            target,
+            duration,
+            ..
         })
         | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceToTarget {
-            target, duration, ..
+            target,
+            duration,
+            ..
         }) => Some((ContinuousEffectScope::Target(target), duration)),
         SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpAll {
-            filter, duration, ..
+            filter,
+            duration,
+            ..
         })
         | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll {
-            filter, duration, ..
+            filter,
+            duration,
+            ..
         })
         | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll {
-            filter, duration, ..
+            filter,
+            duration,
+            ..
         })
         | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceAll {
-            filter, duration, ..
+            filter,
+            duration,
+            ..
         }) => Some((ContinuousEffectScope::Filter(filter), duration)),
         _ => None,
     }

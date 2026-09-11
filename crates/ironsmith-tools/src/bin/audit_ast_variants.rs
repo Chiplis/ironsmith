@@ -10,9 +10,18 @@ use std::path::Path;
 mod tooling_paths;
 
 const ENUMS: &[(&str, &str)] = &[
-    ("SubjectVerbActionAst", "crates/ironsmith-compiler-semantic/src/model_impl/ast/actions.rs"),
-    ("EffectAst", "crates/ironsmith-compiler-semantic/src/model_impl/ast/effects.rs"),
-    ("PredicateAst", "crates/ironsmith-compiler-semantic/src/model_impl/ast/predicates.rs"),
+    (
+        "SubjectVerbActionAst",
+        "crates/ironsmith-compiler-semantic/src/model_impl/ast/actions.rs",
+    ),
+    (
+        "EffectAst",
+        "crates/ironsmith-compiler-semantic/src/model_impl/ast/effects.rs",
+    ),
+    (
+        "PredicateAst",
+        "crates/ironsmith-compiler-semantic/src/model_impl/ast/predicates.rs",
+    ),
 ];
 
 fn main() {
@@ -51,7 +60,10 @@ fn report_family(path: &Path) {
     let source = fs::read_to_string(path).unwrap_or_default();
     for line in source.lines() {
         if let Some(rest) = line.strip_prefix("pub enum ") {
-            let name = rest.split(|c: char| !c.is_alphanumeric() && c != '_').next().unwrap_or("");
+            let name = rest
+                .split(|c: char| !c.is_alphanumeric() && c != '_')
+                .next()
+                .unwrap_or("");
             println!("  {name} variants: {}", enum_variants(&source, name).len());
         }
     }
@@ -64,7 +76,10 @@ fn enum_variants(source: &str, name: &str) -> Vec<String> {
     let Some(start) = source.find(&header) else {
         return Vec::new();
     };
-    let body_start = source[start..].find('{').map(|i| start + i + 1).unwrap_or(start);
+    let body_start = source[start..]
+        .find('{')
+        .map(|i| start + i + 1)
+        .unwrap_or(start);
     let mut depth = 1usize;
     let mut end = body_start;
     for (offset, c) in source[body_start..].char_indices() {

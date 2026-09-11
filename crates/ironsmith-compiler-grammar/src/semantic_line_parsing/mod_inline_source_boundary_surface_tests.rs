@@ -1,7 +1,7 @@
+use super::*;
+use crate::cards::builders::GrantActionAst;
 use crate::cards::builders::PermissionEffectAst;
 use crate::cards::builders::ZoneMoveActionAst;
-use crate::cards::builders::GrantActionAst;
-use super::*;
 
 #[test]
 fn returned_object_characteristic_followups_share_one_semantic_slice() {

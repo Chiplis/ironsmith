@@ -1,5 +1,5 @@
-use crate::cards::builders::ForEachEffectAst;
 use super::SentenceInput;
+use crate::cards::builders::ForEachEffectAst;
 
 #[path = "branching_selection.rs"]
 pub mod branching_selection_programs;
@@ -13,9 +13,9 @@ pub mod ordered_control_flow_programs;
 pub mod reference_linked_programs;
 
 use crate::cards::builders::{
-    CardTextError, EffectAst, IfResultPredicate, ObjectFilter, PlayerAst, PredicateAst,
-    ReturnControllerAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey,
-    TargetAst, LibraryActionAst, ZoneMoveActionAst, ConditionalEffectAst,
+    CardTextError, ConditionalEffectAst, EffectAst, IfResultPredicate, LibraryActionAst,
+    ObjectFilter, PlayerAst, PredicateAst, ReturnControllerAst, SubjectVerbActionAst,
+    SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst, ZoneMoveActionAst,
 };
 use crate::effect::{EventValueSpec, Value};
 use crate::effect_sentences;
@@ -66,7 +66,8 @@ fn effect_ast_is_destroy(effect: &EffectAst) -> bool {
     matches!(
         effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { .. }) | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { .. }),
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { .. })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { .. }),
             ..
         })
     )
@@ -160,37 +161,39 @@ pub fn parse_iterative_library_procedure_sequence(
     let current_tag = crate::tag::CompilerReferenceTag::IterativeLibraryCurrent.bind();
     let exiled_tag = crate::tag::CompilerReferenceTag::IterativeLibraryExiled.bind();
     let all_exiled_filter = ObjectFilter::tagged(exiled_tag.clone()).in_zone(Zone::Exile);
-    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
-        effects: vec![
-            EffectAst::subject_verb_exile_top_of_library(
-                PlayerAst::You,
-                Value::Fixed(1),
-                vec![current_tag.clone()],
-                vec![exiled_tag.clone()],
-            ),
-            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-                predicate: PredicateAst::And(
-                    Box::new(PredicateAst::TaggedMatches(
-                        current_tag.clone(),
-                        ObjectFilter::default().in_zone(Zone::Exile),
-                    )),
-                    Box::new(PredicateAst::ValueComparison {
-                        left: Value::Count(all_exiled_filter.clone()),
-                        operator: crate::effect::ValueComparisonOperator::Equal,
-                        right: Value::DistinctNames(all_exiled_filter),
-                    }),
-                ),
-                if_true: vec![EffectAst::subject_verb_may_move_to_zone(
+    Ok(Some(vec![EffectAst::ForEach(
+        ForEachEffectAst::RepeatProcess {
+            effects: vec![
+                EffectAst::subject_verb_exile_top_of_library(
                     PlayerAst::You,
-                    TargetAst::Tagged(current_tag.clone(), None),
-                    Zone::Hand,
-                )],
-                if_false: Vec::new(),
-            }),
-        ],
-        continue_effect_index: 1,
-        continue_predicate: IfResultPredicate::WasDeclined,
-    })]))
+                    Value::Fixed(1),
+                    vec![current_tag.clone()],
+                    vec![exiled_tag.clone()],
+                ),
+                EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                    predicate: PredicateAst::And(
+                        Box::new(PredicateAst::TaggedMatches(
+                            current_tag.clone(),
+                            ObjectFilter::default().in_zone(Zone::Exile),
+                        )),
+                        Box::new(PredicateAst::ValueComparison {
+                            left: Value::Count(all_exiled_filter.clone()),
+                            operator: crate::effect::ValueComparisonOperator::Equal,
+                            right: Value::DistinctNames(all_exiled_filter),
+                        }),
+                    ),
+                    if_true: vec![EffectAst::subject_verb_may_move_to_zone(
+                        PlayerAst::You,
+                        TargetAst::Tagged(current_tag.clone(), None),
+                        Zone::Hand,
+                    )],
+                    if_false: Vec::new(),
+                }),
+            ],
+            continue_effect_index: 1,
+            continue_predicate: IfResultPredicate::WasDeclined,
+        },
+    )]))
 }
 
 pub fn parse_each_player_shuffle_reveal_then_put_revealed_types_bottom(
@@ -203,11 +206,17 @@ pub fn parse_each_player_shuffle_reveal_then_put_revealed_types_bottom(
     ) else {
         return Ok(None);
     };
-    let mut battlefield_filters = vec![parse_object_filter_lexed(shape.battlefield_filter_tokens, false)?];
+    let mut battlefield_filters = vec![parse_object_filter_lexed(
+        shape.battlefield_filter_tokens,
+        false,
+    )?];
     if let Some(extra) = shape.extra_filter_tokens {
         battlefield_filters.push(parse_object_filter_lexed(extra, false)?);
     }
-    if battlefield_filters.iter().any(|filter| filter.card_types.is_empty() && filter.subtypes.is_empty()) {
+    if battlefield_filters
+        .iter()
+        .any(|filter| filter.card_types.is_empty() && filter.subtypes.is_empty())
+    {
         return Ok(None);
     }
     let revealed_tag = crate::tag::CompilerReferenceTag::EachPlayerRevealedThisWay.bind();
@@ -216,14 +225,16 @@ pub fn parse_each_player_shuffle_reveal_then_put_revealed_types_bottom(
     shuffled_filter.owner = Some(PlayerFilter::IteratedPlayer);
     let mut effects = vec![
         EffectAst::subject_verb_shuffle_all_objects_into_library(
-            PlayerAst::That, TargetAst::Object(shuffled_filter, None, None),
+            PlayerAst::That,
+            TargetAst::Object(shuffled_filter, None, None),
         ),
         EffectAst::subject_verb_reveal_top_cards(
             PlayerAst::That,
             Value::PendingEffectMetric {
                 source: ironsmith_core::EffectMetricSource::Outcome,
                 metric: ironsmith_core::EffectMetric::Count,
-            }, revealed_tag.clone(),
+            },
+            revealed_tag.clone(),
         ),
     ];
     // Each category is a separate printed action. A later category sees
@@ -231,22 +242,34 @@ pub fn parse_each_player_shuffle_reveal_then_put_revealed_types_bottom(
     // permanent again and enchantments enter after the earlier group.
     for mut filter in battlefield_filters {
         filter.zone = Some(Zone::Library);
-        filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
-            tag: revealed_tag.key.clone(),
-            relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
-        });
+        filter
+            .tagged_constraints
+            .push(crate::filter::TaggedObjectConstraint {
+                tag: revealed_tag.key.clone(),
+                relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            });
         effects.push(EffectAst::subject_verb_move_all_to_zone(
-            TargetAst::Object(filter, None, None), Zone::Battlefield, false,
-            ReturnControllerAst::Owner, false, None,
+            TargetAst::Object(filter, None, None),
+            Zone::Battlefield,
+            false,
+            ReturnControllerAst::Owner,
+            false,
+            None,
         ));
     }
     let mut remainder = ObjectFilter::tagged(revealed_tag.key.clone());
     remainder.zone = Some(Zone::Library);
     effects.push(EffectAst::subject_verb_move_all_to_zone(
-        TargetAst::Object(remainder, None, None), Zone::Library, false,
-        ReturnControllerAst::Preserve, false, None,
+        TargetAst::Object(remainder, None, None),
+        Zone::Library,
+        false,
+        ReturnControllerAst::Preserve,
+        false,
+        None,
     ));
-    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })]))
+    Ok(Some(vec![EffectAst::ForEach(
+        ForEachEffectAst::ForEachPlayer { effects },
+    )]))
 }
 
 /// Keep a destroy set and its authored no-regeneration rider as one action.
@@ -308,7 +331,8 @@ pub fn parse_destroy_then_no_regeneration_sequence(
             no_regeneration, ..
         })
         | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAllOfChosenColor {
-            no_regeneration, ..
+            no_regeneration,
+            ..
         }) if !singular_followup => *no_regeneration = true,
         _ => return Ok(None),
     }
@@ -335,15 +359,14 @@ pub fn parse_destroy_then_no_regeneration_sequence(
     Ok(Some(vec![first]))
 }
 
-#[path = "trigger.rs"]
-mod trigger_programs;
-#[path = "library.rs"]
-mod library_programs;
-#[path = "core.rs"]
-mod core_programs;
 #[path = "combat.rs"]
 mod combat_programs;
-
+#[path = "core.rs"]
+mod core_programs;
+#[path = "library.rs"]
+mod library_programs;
+#[path = "trigger.rs"]
+mod trigger_programs;
 
 /// The closed-form "1/1 black Rat creature" definition, spelled as the shape
 /// its text parses to rather than as text to tokenize; a test keeps the two

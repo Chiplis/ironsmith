@@ -331,7 +331,9 @@ fn parse_counter_prohibition_subject<'a>(input: &mut LexStream<'a>) -> WResult<(
             &["planeswalker"],
             &["token"],
         ])),
-    ).void().parse_next(input)
+    )
+        .void()
+        .parse_next(input)
 }
 
 fn parse_source_subject<'a>(input: &mut LexStream<'a>) -> WResult<()> {

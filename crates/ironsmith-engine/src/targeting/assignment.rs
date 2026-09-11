@@ -515,11 +515,14 @@ pub(crate) fn target_spec_matches_chooser_assignment(
     if declared.count() != assigned.count() || declared.count_value() != assigned.count_value() {
         return false;
     }
-    let (ChooseSpec::Object(declared), ChooseSpec::Object(assigned)) = (declared.base(), assigned.base()) else {
+    let (ChooseSpec::Object(declared), ChooseSpec::Object(assigned)) =
+        (declared.base(), assigned.base())
+    else {
         return false;
     };
     if declared.controller != Some(PlayerFilter::IteratedPlayer)
-        || !matches!(assigned.controller, Some(PlayerFilter::Specific(_))) {
+        || !matches!(assigned.controller, Some(PlayerFilter::Specific(_)))
+    {
         return false;
     }
     let mut restored = assigned.clone();
@@ -533,15 +536,39 @@ mod chooser_assignment_tests {
     use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
     #[test]
     fn chooser_assignment_requires_same_filter_and_count() {
-        let declared=ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer)));
-        let assigned=ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature().controlled_by(PlayerFilter::Specific(crate::ids::PlayerId::from_index(2)))));
-        assert!(target_spec_matches_chooser_assignment(&declared,&assigned));
-        let different_kind=ChooseSpec::target(ChooseSpec::Object(ObjectFilter::artifact().controlled_by(PlayerFilter::Specific(crate::ids::PlayerId::from_index(2)))));
-        assert!(!target_spec_matches_chooser_assignment(&declared,&different_kind));
-        let different_count=ChooseSpec::WithCount(Box::new(assigned.clone()),crate::effect::ChoiceCount::exactly(2));
-        assert!(!target_spec_matches_chooser_assignment(&declared,&different_count));
-        let unspecified=ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature().controlled_by(PlayerFilter::Opponent)));
-        assert!(!target_spec_matches_chooser_assignment(&declared,&unspecified));
-        assert!(!target_spec_matches_chooser_assignment(&assigned,&declared));
+        let declared = ChooseSpec::target(ChooseSpec::Object(
+            ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer),
+        ));
+        let assigned = ChooseSpec::target(ChooseSpec::Object(
+            ObjectFilter::creature()
+                .controlled_by(PlayerFilter::Specific(crate::ids::PlayerId::from_index(2))),
+        ));
+        assert!(target_spec_matches_chooser_assignment(&declared, &assigned));
+        let different_kind = ChooseSpec::target(ChooseSpec::Object(
+            ObjectFilter::artifact()
+                .controlled_by(PlayerFilter::Specific(crate::ids::PlayerId::from_index(2))),
+        ));
+        assert!(!target_spec_matches_chooser_assignment(
+            &declared,
+            &different_kind
+        ));
+        let different_count = ChooseSpec::WithCount(
+            Box::new(assigned.clone()),
+            crate::effect::ChoiceCount::exactly(2),
+        );
+        assert!(!target_spec_matches_chooser_assignment(
+            &declared,
+            &different_count
+        ));
+        let unspecified = ChooseSpec::target(ChooseSpec::Object(
+            ObjectFilter::creature().controlled_by(PlayerFilter::Opponent),
+        ));
+        assert!(!target_spec_matches_chooser_assignment(
+            &declared,
+            &unspecified
+        ));
+        assert!(!target_spec_matches_chooser_assignment(
+            &assigned, &declared
+        ));
     }
 }

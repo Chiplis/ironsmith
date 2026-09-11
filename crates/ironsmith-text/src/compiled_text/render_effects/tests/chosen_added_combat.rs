@@ -188,6 +188,11 @@ fn chosen_added_combat_preserves_compiled_text() {
 fn untapped_antecedent_condition_preserves_current_creature_type() {
     let text = "Untap target creature you control. It gets +2/+2 until end of turn. If it's a Dwarf, you may attach an Equipment you control to it.";
     let definition = CardDefinitionBuilder::new(CardId::new(), "Vow to Erebor")
-        .card_types(vec![CardType::Instant]).parse_text(text).unwrap();
-    assert_eq!(crate::compiled_text::compiled_text_lines(&definition).join(" "), text);
+        .card_types(vec![CardType::Instant])
+        .parse_text(text)
+        .unwrap();
+    assert_eq!(
+        crate::compiled_text::compiled_text_lines(&definition).join(" "),
+        text
+    );
 }

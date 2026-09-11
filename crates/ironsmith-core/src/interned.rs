@@ -10,8 +10,7 @@ use crate::tag::TagKeyWalk;
 use std::fmt;
 use std::ops::Deref;
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(TagKeyWalk)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
 pub struct InternedStr(&'static str);
 
 impl InternedStr {
@@ -83,8 +82,7 @@ impl<'de> serde::Deserialize<'de> for InternedStr {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(TagKeyWalk)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
 pub struct InternedI32Slice(&'static [i32]);
 
 impl InternedI32Slice {

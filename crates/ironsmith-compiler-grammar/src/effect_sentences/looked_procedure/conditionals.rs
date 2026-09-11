@@ -10,16 +10,17 @@
 //! cards revealed this way into your hand" splits the selection by type. Each
 //! reads the sentence that follows it as part of the statement.
 
-use crate::cards::builders::ForEachEffectAst;
 use super::super::dispatch_entry::SentenceInput;
 use super::super::looked_cards_family::{
     is_put_rest_on_bottom_of_library_sentence, parse_counted_looked_cards_into_your_hand_tokens,
     parse_looked_card_choice_filter,
 };
 use super::{ViewedGroup, it};
+use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{
-    ChoiceCount, EffectAst, ObjectFilter, PlayerAst, PredicateAst, ReturnControllerAst,
-    SubjectVerbActionAst, SubjectVerbRoleAst, LibraryActionAst, ObjectChoiceEffectAst, ConditionalEffectAst,
+    ChoiceCount, ConditionalEffectAst, EffectAst, LibraryActionAst, ObjectChoiceEffectAst,
+    ObjectFilter, PlayerAst, PredicateAst, ReturnControllerAst, SubjectVerbActionAst,
+    SubjectVerbRoleAst,
 };
 use crate::grammar::effects::triple_sequence_shapes as triple_grammar;
 use crate::grammar::sentence_markers;
@@ -40,7 +41,9 @@ fn none_pending(count: usize) -> std::collections::VecDeque<Vec<EffectAst>> {
 fn single_conditional_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let parsed =
         crate::grammar::primitives::probe_shape(super::super::parse_effect_sentence_lexed(tokens))?;
-    let [EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. })] = parsed.as_slice() else {
+    let [EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. })] =
+        parsed.as_slice()
+    else {
         return None;
     };
     Some(predicate.clone())
@@ -107,11 +110,13 @@ pub(super) fn conditional_remainder(
         order,
         group.remainder_player,
     );
-    group.effects.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-        predicate,
-        if_true: vec![hand_remainder],
-        if_false: vec![bottom_remainder],
-    }));
+    group
+        .effects
+        .push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate,
+            if_true: vec![hand_remainder],
+            if_false: vec![bottom_remainder],
+        }));
     group.pending_statements = none_pending(1);
     true
 }
@@ -124,7 +129,12 @@ pub(super) fn conditional_hand_counts_shape(
     sentence: &SentenceInput,
     rest: &[SentenceInput],
     revealed: bool,
-) -> Option<(PredicateAst, u32, u32, crate::cards::builders::LibraryBottomOrderAst)> {
+) -> Option<(
+    PredicateAst,
+    u32,
+    u32,
+    crate::cards::builders::LibraryBottomOrderAst,
+)> {
     let [otherwise, remainder, ..] = rest else {
         return None;
     };
@@ -142,7 +152,8 @@ pub(super) fn conditional_hand_counts_shape(
     let if_true_count = parse_counted_looked_cards_into_your_hand_tokens(
         crate::lexer::trim_lexed_commas(&conditional_tokens[if_true_start..]),
     )?;
-    let if_false_tokens = crate::util::strip_leading_token_words_any(trimmed(otherwise), &["otherwise"]);
+    let if_false_tokens =
+        crate::util::strip_leading_token_words_any(trimmed(otherwise), &["otherwise"]);
     let if_false_count = parse_counted_looked_cards_into_your_hand_tokens(if_false_tokens)?;
     let remainder_tokens =
         crate::util::strip_leading_token_words_any(trimmed(remainder), &["then", "and"]);
@@ -167,7 +178,8 @@ pub(super) fn conditional_hand_counts(
     group.tag = (helper_tag_for_tokens(
         crate::lexer::trim_lexed_commas(&group.view_tokens),
         "looked_conditional_partition",
-    )).into();
+    ))
+    .into();
     let selected_tag = helper_tag_for_tokens(trimmed(sentence), "conditional_selected");
     let choice = |count: u32| {
         let mut filter = ObjectFilter::tagged(group.tag.clone());
@@ -186,19 +198,23 @@ pub(super) fn conditional_hand_counts(
             },
         ]
     };
-    group.effects.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-        predicate,
-        if_true: choice(if_true_count),
-        if_false: choice(if_false_count),
-    }));
+    group
+        .effects
+        .push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate,
+            if_true: choice(if_true_count),
+            if_false: choice(if_false_count),
+        }));
     group.pending_statements = std::collections::VecDeque::from([
         Vec::new(),
-        vec![EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-            crate::tag::TagRef::of(group.tag.clone()),
-            Some(crate::tag::TagRef::of(selected_tag.clone())),
-            order,
-            group.owner,
-        )],
+        vec![
+            EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+                crate::tag::TagRef::of(group.tag.clone()),
+                Some(crate::tag::TagRef::of(selected_tag.clone())),
+                order,
+                group.owner,
+            ),
+        ],
     ]);
     group.selected = Some(selected_tag.key.clone());
     true
@@ -206,7 +222,10 @@ pub(super) fn conditional_hand_counts(
 
 fn filter_mentions_card_type(filter: &ObjectFilter, card_type: CardType) -> bool {
     filter.card_types.contains(&card_type)
-        || filter.any_of.iter().any(|arm| arm.card_types.contains(&card_type))
+        || filter
+            .any_of
+            .iter()
+            .any(|arm| arm.card_types.contains(&card_type))
 }
 
 fn filter_only_mentions_creature_or_land_types(filter: &ObjectFilter) -> bool {
@@ -238,7 +257,8 @@ pub(super) fn reveal_selection_land_creature_split_shape(
     else {
         return false;
     };
-    let Some(shape) = triple_grammar::parse_looked_reveal_selection_shape(reveal_action.tail_tokens)
+    let Some(shape) =
+        triple_grammar::parse_looked_reveal_selection_shape(reveal_action.tail_tokens)
     else {
         return false;
     };
@@ -267,64 +287,73 @@ pub(super) fn reveal_selection_land_creature_split(
     let reveal_action =
         sentence_markers::parse_leading_may_action_tokens(second_tokens, &["reveal"], false)
             .expect("checked");
-    let shape =
-        triple_grammar::parse_looked_reveal_selection_shape(reveal_action.tail_tokens).expect("checked");
+    let shape = triple_grammar::parse_looked_reveal_selection_shape(reveal_action.tail_tokens)
+        .expect("checked");
     let mut selection_filter = parse_looked_card_choice_filter(crate::lexer::trim_lexed_commas(
         &reveal_action.tail_tokens[shape.filter],
     ))
     .expect("checked");
     super::super::search_library::normalize_search_library_filter(&mut selection_filter);
     let player = group.owner;
-    let chooser = super::super::dispatch_entry::leading_may_actor_to_player(reveal_action.actor, player);
+    let chooser =
+        super::super::dispatch_entry::leading_may_actor_to_player(reveal_action.actor, player);
     let selected_tag = helper_tag_for_tokens(second_tokens, "revealed_selection");
     selection_filter.zone = Some(Zone::Library);
-    selection_filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: group.tag.clone(),
-        relation: TaggedOpbjectRelation::IsTaggedObject,
-    });
+    selection_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: group.tag.clone(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
     let mut land_filter = ObjectFilter::default();
     land_filter.card_types.push(CardType::Land);
-    group.effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
-        filter: selection_filter,
-        count: shape.count,
-        player: chooser,
-        tag: crate::tag::TagRef::of(selected_tag.clone()),
-        zone: Zone::Library,
-    }));
-    group
-        .effects
-        .push(EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(selected_tag.clone())));
-    group.effects.push(EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-        crate::tag::TagRef::of(group.tag.clone()),
-        Some(crate::tag::TagRef::of(selected_tag.clone())),
-        shape.remainder_order,
-        player,
+    group.effects.push(EffectAst::ObjectChoices(
+        ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+            filter: selection_filter,
+            count: shape.count,
+            player: chooser,
+            tag: crate::tag::TagRef::of(selected_tag.clone()),
+            zone: Zone::Library,
+        },
     ));
-    group.pending_statements = std::collections::VecDeque::from([vec![EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
-        tag: crate::tag::TagRef::of(selected_tag.clone()),
-        effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-            predicate: PredicateAst::TaggedMatches(
-                crate::tag::CompilerReferenceTag::It.bind(),
-                land_filter,
-            ),
-            if_true: vec![EffectAst::subject_verb_move_to_zone(
-                it(),
-                Zone::Battlefield,
-                false,
-                ReturnControllerAst::Preserve,
-                true,
-                None,
-            )],
-            if_false: vec![EffectAst::subject_verb_move_to_zone(
-                it(),
-                Zone::Hand,
-                false,
-                ReturnControllerAst::Preserve,
-                false,
-                None,
-            )],
-        })],
-    })]]);
+    group.effects.push(EffectAst::subject_verb_reveal_tagged(
+        crate::tag::TagRef::of(selected_tag.clone()),
+    ));
+    group.effects.push(
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            crate::tag::TagRef::of(group.tag.clone()),
+            Some(crate::tag::TagRef::of(selected_tag.clone())),
+            shape.remainder_order,
+            player,
+        ),
+    );
+    group.pending_statements = std::collections::VecDeque::from([vec![EffectAst::ForEach(
+        ForEachEffectAst::ForEachTagged {
+            tag: crate::tag::TagRef::of(selected_tag.clone()),
+            effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate: PredicateAst::TaggedMatches(
+                    crate::tag::CompilerReferenceTag::It.bind(),
+                    land_filter,
+                ),
+                if_true: vec![EffectAst::subject_verb_move_to_zone(
+                    it(),
+                    Zone::Battlefield,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    true,
+                    None,
+                )],
+                if_false: vec![EffectAst::subject_verb_move_to_zone(
+                    it(),
+                    Zone::Hand,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                )],
+            })],
+        },
+    )]]);
     group.selected = Some(selected_tag.key.clone());
     true
 }

@@ -1,8 +1,8 @@
-use crate::cards::builders::SourcePredicateAst;
-use crate::cards::builders::StatChangeActionAst;
-use crate::cards::builders::GrantActionAst;
 use super::super::super::util::tokenize_line;
 use super::*;
+use crate::cards::builders::GrantActionAst;
+use crate::cards::builders::SourcePredicateAst;
+use crate::cards::builders::StatChangeActionAst;
 
 #[test]
 fn source_tapped_keyword_grants_keep_typed_duration_and_condition() {
@@ -30,7 +30,10 @@ fn source_tapped_keyword_grants_keep_typed_duration_and_condition() {
         panic!("expected one targeted grant, got {effects:#?}");
     };
     assert_eq!(*duration, Until::SourceUntaps);
-    assert_eq!(*condition, Some(PredicateAst::Source(SourcePredicateAst::SourceIsTapped)));
+    assert_eq!(
+        *condition,
+        Some(PredicateAst::Source(SourcePredicateAst::SourceIsTapped))
+    );
     assert_eq!(filter.controller, Some(PlayerFilter::You));
     assert!(filter.other);
 
@@ -81,7 +84,10 @@ fn source_tapped_compound_pump_and_hexproof_share_the_typed_duration() {
         };
         match action {
             SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { duration, .. })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { duration, .. }) => {
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
+                duration,
+                ..
+            }) => {
                 assert_eq!(*duration, Until::SourceUntaps)
             }
             _ => panic!("unexpected compound effect: {effect:#?}"),

@@ -1,5 +1,5 @@
-use crate::cards::builders::ForEachEffectAst;
 use super::*;
+use crate::cards::builders::ForEachEffectAst;
 
 pub(super) fn is_if_card_put_into_exile_this_way_sentence(tokens: &[OwnedLexToken]) -> bool {
     grammar::match_word_prefix(
@@ -178,7 +178,9 @@ pub(super) fn post_rule_revealed_same_mana_value_as_another_iterator(
         return Ok(None);
     }
 
-    let Some(revealed_tag) = crate::effect_sentences::dispatch_entry::last_unconditional_reveal_tag(&state.effects) else {
+    let Some(revealed_tag) =
+        crate::effect_sentences::dispatch_entry::last_unconditional_reveal_tag(&state.effects)
+    else {
         return Ok(None);
     };
 
@@ -335,7 +337,8 @@ pub(super) fn chosen_card_tag_from_hand_choice_branch(effects: &[EffectAst]) -> 
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action:
                         SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealCardsFromHand {
-                            tag: revealed_tag, ..
+                            tag: revealed_tag,
+                            ..
                         }),
                     ..
                 }),
@@ -365,7 +368,10 @@ pub(super) fn chosen_card_tag_from_hand_choice_branch(effects: &[EffectAst]) -> 
         for effect in effects {
             match effect {
                 EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-                    filter, count, tag, ..
+                    filter,
+                    count,
+                    tag,
+                    ..
                 }) if filter.zone == Some(Zone::Hand)
                     && count.min == 1
                     && count.max == Some(1)
@@ -481,9 +487,10 @@ pub(super) fn effect_references_prior_exiled_card(effect: &EffectAst) -> bool {
 
 pub(super) fn bind_cast_tag_to_prior_exiled_card(effect: &mut EffectAst) {
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::Stack(StackActionAst::CastTagged {
-            tag, as_copy: true, ..
-        }),
+        action:
+            SubjectVerbActionAst::Stack(StackActionAst::CastTagged {
+                tag, as_copy: true, ..
+            }),
         ..
     }) = effect
         && tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()

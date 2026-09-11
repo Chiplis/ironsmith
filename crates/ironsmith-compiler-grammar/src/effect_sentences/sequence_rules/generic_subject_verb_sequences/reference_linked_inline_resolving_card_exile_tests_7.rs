@@ -1,5 +1,5 @@
-use crate::cards::builders::ReplacementActionAst;
 use super::*;
+use crate::cards::builders::ReplacementActionAst;
 use crate::lexer::lex_line;
 
 #[test]

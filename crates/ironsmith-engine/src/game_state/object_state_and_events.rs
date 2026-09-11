@@ -71,7 +71,12 @@ impl GameState {
 
     /// Clears the transient deathtouch-damage tracker used by SBA evaluation.
     pub fn clear_deathtouch_damage_since_sba(&mut self) {
-        for id in self.battlefield_flags.dealt_deathtouch_damage_since_sba.iter().copied() {
+        for id in self
+            .battlefield_flags
+            .dealt_deathtouch_damage_since_sba
+            .iter()
+            .copied()
+        {
             self.object_store.changes.record(id);
         }
         self.battlefield_flags_mut()
@@ -1400,7 +1405,13 @@ impl GameState {
     }
 
     pub fn clear_soulbond_pair(&mut self, object_id: ObjectId) {
-        if !self.combat_transients.soulbond_pairs.contains_key(&object_id) { return; }
+        if !self
+            .combat_transients
+            .soulbond_pairs
+            .contains_key(&object_id)
+        {
+            return;
+        }
         let transients = self.combat_transients_mut();
         let partner = transients.soulbond_pairs.remove(&object_id);
         if let Some(partner_id) = partner {
@@ -1413,7 +1424,10 @@ impl GameState {
             return;
         }
         if self.combat_transients.soulbond_pairs.get(&left) == Some(&right)
-            && self.combat_transients.soulbond_pairs.get(&right) == Some(&left) { return; }
+            && self.combat_transients.soulbond_pairs.get(&right) == Some(&left)
+        {
+            return;
+        }
         self.clear_soulbond_pair(left);
         self.clear_soulbond_pair(right);
         let transients = self.combat_transients_mut();

@@ -33,7 +33,7 @@ pub use assign_no_combat_damage::AssignNoCombatDamageEffect;
 pub use enter_attacking::EnterAttackingEffect;
 pub use exchange_values::{ExchangeValueKind, ExchangeValueOperand, ExchangeValuesEffect};
 pub use fight::FightEffect;
-pub use goad::{GoadEffect, ClearGoadEffect};
+pub use goad::{ClearGoadEffect, GoadEffect};
 pub use grant_abilities_all::GrantAbilitiesAllEffect;
 pub use grant_abilities_target::GrantAbilitiesTargetEffect;
 pub use melee::MeleeEffect;

@@ -134,13 +134,21 @@ fn hand_remainder_shuffle_renderer_rejects_a_different_remainder() {
         .unwrap()
         .flattened_default_effects()
         .iter()
-        .find_map(|effect| crate::compiled_text::render_effects::effect_lists::structural_unwrap_render_wrappers(effect).downcast_ref::<crate::effects::ForPlayersEffect>())
+        .find_map(|effect| {
+            crate::compiled_text::render_effects::effect_lists::structural_unwrap_render_wrappers(
+                effect,
+            )
+            .downcast_ref::<crate::effects::ForPlayersEffect>()
+        })
         .unwrap();
     let render = super::super::player_and_zone_effects::describe_for_players_keep_hand_then_shuffle_remainder;
     assert!(render(players).unwrap().contains("up to three"));
     for change_owner in [false, true] {
         let mut broken = players.clone();
-        let mut shuffle = crate::compiled_text::render_effects::effect_lists::structural_unwrap_render_wrappers(&broken.effects[1])
+        let mut shuffle =
+            crate::compiled_text::render_effects::effect_lists::structural_unwrap_render_wrappers(
+                &broken.effects[1],
+            )
             .downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()
             .unwrap()
             .clone();

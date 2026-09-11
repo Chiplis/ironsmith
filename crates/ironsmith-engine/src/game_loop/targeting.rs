@@ -2708,30 +2708,54 @@ pub(crate) fn target_spec_uses_chosen_creature_type(spec: &ChooseSpec) -> bool {
     }
 }
 
-fn effect_uses_chosen_creature_type_target(effect: &Effect, chosen_modes: Option<&[usize]>, consumed_modal: &mut bool) -> bool {
+fn effect_uses_chosen_creature_type_target(
+    effect: &Effect,
+    chosen_modes: Option<&[usize]>,
+    consumed_modal: &mut bool,
+) -> bool {
     if let Some(modal) = effect.modal_effect_spec() {
-        let modes = if !*consumed_modal { *consumed_modal = true; chosen_modes } else { None };
+        let modes = if !*consumed_modal {
+            *consumed_modal = true;
+            chosen_modes
+        } else {
+            None
+        };
         return modal.modes.iter().enumerate().any(|(index, mode)| {
             modes.is_none_or(|selected| selected.contains(&index))
-                && mode.effects.iter().any(|child| effect_uses_chosen_creature_type_target(child, None, consumed_modal))
+                && mode.effects.iter().any(|child| {
+                    effect_uses_chosen_creature_type_target(child, None, consumed_modal)
+                })
         });
     }
-    if effect.target_selection_profile().is_some_and(|profile| target_spec_uses_chosen_creature_type(profile.spec)) {
+    if effect
+        .target_selection_profile()
+        .is_some_and(|profile| target_spec_uses_chosen_creature_type(profile.spec))
+    {
         return true;
     }
     let mut found = false;
-    effect.visit_child_effects(&mut |child| { found |= effect_uses_chosen_creature_type_target(child, chosen_modes, consumed_modal); });
+    effect.visit_child_effects(&mut |child| {
+        found |= effect_uses_chosen_creature_type_target(child, chosen_modes, consumed_modal);
+    });
     found
 }
 
-fn effects_use_chosen_creature_type_target(effects: &[Effect], chosen_modes: Option<&[usize]>) -> bool {
+fn effects_use_chosen_creature_type_target(
+    effects: &[Effect],
+    chosen_modes: Option<&[usize]>,
+) -> bool {
     let mut consumed_modal = false;
-    effects.iter().any(|effect| effect_uses_chosen_creature_type_target(effect, chosen_modes, &mut consumed_modal))
+    effects.iter().any(|effect| {
+        effect_uses_chosen_creature_type_target(effect, chosen_modes, &mut consumed_modal)
+    })
 }
 
 pub(crate) fn spell_program_uses_chosen_creature_type_target(
-    game: &GameState, program: &crate::resolution::ResolutionProgram, caster: PlayerId,
-    source_id: Option<ObjectId>, chosen_modes: Option<&[usize]>,
+    game: &GameState,
+    program: &crate::resolution::ResolutionProgram,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    chosen_modes: Option<&[usize]>,
 ) -> bool {
     let effects = cast_time_selected_effects_from_program(game, program, caster, source_id);
     effects_use_chosen_creature_type_target(&effects, chosen_modes)
@@ -2740,14 +2764,19 @@ pub(crate) fn spell_program_uses_chosen_creature_type_target(
 /// Enumerate legal completions of a subtype announcement before targets exist.
 /// Each candidate uses the ordinary target legality checks with one fixed type.
 pub(super) fn creature_type_announcement_options(
-    game: &GameState, effects: &[Effect], caster: PlayerId,
-    source_id: Option<ObjectId>, chosen_modes: Option<&[usize]>,
+    game: &GameState,
+    effects: &[Effect],
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    chosen_modes: Option<&[usize]>,
 ) -> Option<Vec<crate::types::Subtype>> {
     let source = source_id?;
     if game.chosen_subtype(source).is_some()
         || game.chosen_card_type(source).is_some()
         || !effects_use_chosen_creature_type_target(effects, chosen_modes)
-    { return None; }
+    {
+        return None;
+    }
     let mut preview = game.clone();
     let mut options = Vec::new();
     for subtype in crate::types::SubtypeFamily::Creature.all_subtypes() {
@@ -2759,10 +2788,24 @@ pub(super) fn creature_type_announcement_options(
     Some(options)
 }
 
-pub(super) fn pending_spell_creature_type_options(game: &GameState, pending: &PendingCast) -> Option<Vec<crate::types::Subtype>> {
+pub(super) fn pending_spell_creature_type_options(
+    game: &GameState,
+    pending: &PendingCast,
+) -> Option<Vec<crate::types::Subtype>> {
     let program = game.object(pending.spell_id)?.spell_effect.as_ref()?;
-    let effects = cast_time_selected_effects_from_program(game, program, pending.caster, Some(pending.spell_id));
-    creature_type_announcement_options(game, &effects, pending.caster, Some(pending.spell_id), pending.chosen_modes.as_deref())
+    let effects = cast_time_selected_effects_from_program(
+        game,
+        program,
+        pending.caster,
+        Some(pending.spell_id),
+    );
+    creature_type_announcement_options(
+        game,
+        &effects,
+        pending.caster,
+        Some(pending.spell_id),
+        pending.chosen_modes.as_deref(),
+    )
 }
 
 pub(crate) fn spell_has_legal_targets_with_modes_and_view(
@@ -2773,7 +2816,9 @@ pub(crate) fn spell_has_legal_targets_with_modes_and_view(
     chosen_modes: Option<&[usize]>,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> bool {
-    if let Some(options) = creature_type_announcement_options(game, effects, caster, source_id, chosen_modes) {
+    if let Some(options) =
+        creature_type_announcement_options(game, effects, caster, source_id, chosen_modes)
+    {
         return !options.is_empty();
     }
     let mut consumed_modal_selection = false;

@@ -965,13 +965,17 @@ fn describe_plural_observation_branch(effects: &[Effect]) -> Option<String> {
         for effect in effects {
             let unwrapped = structural_unwrap_render_wrappers(effect);
             if let Some(sequence) = unwrapped.downcast_ref::<crate::effects::SequenceEffect>() {
-                if sequence.surface != ironsmith_core::SequenceSurface::Coordinated { return None; }
+                if sequence.surface != ironsmith_core::SequenceSurface::Coordinated {
+                    return None;
+                }
                 collect(&sequence.effects, actions)?;
             } else {
                 let mut action = describe_branch_member(effect)?;
-                if unwrapped.downcast_ref::<crate::effects::DrawCardsEffect>()
+                if unwrapped
+                    .downcast_ref::<crate::effects::DrawCardsEffect>()
                     .is_some_and(|draw| draw.player == PlayerFilter::You)
-                    && !action.starts_with("you ") {
+                    && !action.starts_with("you ")
+                {
                     action = format!("you {action}");
                 }
                 actions.push(action);
@@ -987,18 +991,34 @@ fn describe_plural_observation_branch(effects: &[Effect]) -> Option<String> {
 fn describe_plural_reveal_observation_conditional(effects: &[&Effect]) -> Option<(String, usize)> {
     let observation = structural_unwrap_render_wrappers(effects.first()?);
     let players = observation.downcast_ref::<crate::effects::ForPlayersEffect>()?;
-    let [reveal] = players.effects.as_slice() else { return None; };
+    let [reveal] = players.effects.as_slice() else {
+        return None;
+    };
     let reveal = reveal.downcast_ref::<crate::effects::RevealTopEffect>()?;
-    if reveal.player != PlayerFilter::IteratedPlayer { return None; }
+    if reveal.player != PlayerFilter::IteratedPlayer {
+        return None;
+    }
     let tag = reveal.tag.as_ref()?;
-    let conditional = effects.get(1)?.downcast_ref::<crate::effects::ConditionalEffect>()?;
-    let Condition::TaggedObjectMatches(condition_tag, _) = &conditional.condition else { return None; };
-    if condition_tag != tag { return None; }
+    let conditional = effects
+        .get(1)?
+        .downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let Condition::TaggedObjectMatches(condition_tag, _) = &conditional.condition else {
+        return None;
+    };
+    if condition_tag != tag {
+        return None;
+    }
     let condition = describe_condition(&conditional.condition);
     let primary = describe_plural_observation_branch(&conditional.if_true)?;
-    let mut text = format!("{}. If {condition}, {primary}", describe_effect(observation).trim_end_matches('.'));
+    let mut text = format!(
+        "{}. If {condition}, {primary}",
+        describe_effect(observation).trim_end_matches('.')
+    );
     if !conditional.if_false.is_empty() {
-        text.push_str(&format!(". Otherwise, {}", describe_plural_observation_branch(&conditional.if_false)?));
+        text.push_str(&format!(
+            ". Otherwise, {}",
+            describe_plural_observation_branch(&conditional.if_false)?
+        ));
     }
     Some((text, 2))
 }

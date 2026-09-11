@@ -1,10 +1,9 @@
 //! The objectchoices actions of `EffectAst`.
 
-use ironsmith_compiler_ast::TagRef;
 use super::*;
+use ironsmith_compiler_ast::TagRef;
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum ObjectChoiceEffectAst {
     ChooseObjects {
         filter: ObjectFilter,
@@ -64,9 +63,7 @@ pub enum ObjectChoiceEffectAst {
     },
     /// A player-facing modal choice: the player picks one mode, and only that
     /// mode's effects resolve. Lowers to `Effect::choose_one`.
-    ChooseOneOf {
-        modes: Vec<ChooseOneModeAst>,
-    },
+    ChooseOneOf { modes: Vec<ChooseOneModeAst> },
     /// A resolution-time villainous choice made by the specified player.
     VillainousChoice {
         player: PlayerFilter,

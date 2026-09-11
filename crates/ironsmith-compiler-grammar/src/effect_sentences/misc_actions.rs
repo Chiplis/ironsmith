@@ -1,9 +1,9 @@
-use crate::cards::builders::ObjectChoiceEffectAst;
-use crate::cards::builders::DelayedEffectAst;
 use super::*;
+use crate::cards::builders::DelayedEffectAst;
+use crate::cards::builders::ObjectChoiceEffectAst;
 use crate::cards::builders::{
-    ChooseOneModeAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst,
-    SubjectVerbSubjectAst, LibraryActionAst, KeywordActionAst,
+    ChooseOneModeAst, KeywordActionAst, LibraryActionAst, SubjectVerbActionAst,
+    SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst,
 };
 use crate::grammar::effects::for_each_shapes::parse_fixed_pt_alternative_shape;
 use crate::grammar::effects::misc_action_shapes::{
@@ -398,18 +398,20 @@ pub fn parse_get(
         };
         let first = parse_get(&branch_tokens(&alternative.first_modifier), subject)?;
         let second = parse_get(&branch_tokens(&alternative.second_modifier), subject)?;
-        return Ok(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf {
-            modes: vec![
-                ChooseOneModeAst {
-                    description: String::new(),
-                    effects: vec![first],
-                },
-                ChooseOneModeAst {
-                    description: String::new(),
-                    effects: vec![second],
-                },
-            ],
-        }));
+        return Ok(EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::ChooseOneOf {
+                modes: vec![
+                    ChooseOneModeAst {
+                        description: String::new(),
+                        effects: vec![first],
+                    },
+                    ChooseOneModeAst {
+                        description: String::new(),
+                        effects: vec![second],
+                    },
+                ],
+            },
+        ));
     }
 
     if grammar::contains_word(tokens, "poison")

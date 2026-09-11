@@ -19,6 +19,7 @@ import { partitionBattlefieldCards } from "@/lib/battlefield-layout";
 import { normalizePhaseStep } from "@/lib/constants";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 import { samePlayerId } from "@/lib/player-display";
+import { requestObjectSelection } from "@/lib/object-selection";
 
 import MobileOpponentHud from "@/components/board/mobile/MobileOpponentHud";
 import MobileSelfHud from "@/components/board/mobile/MobileSelfHud";
@@ -435,13 +436,13 @@ export default function MobileBattleScene({
     if (canPickBattlefieldObjects) {
       const matched = candidateIds.find((id) => legalSelectableObjectIds.has(id));
       if (matched != null) {
-        const eventName = state?.decision?.kind === "select_objects"
-          ? "ironsmith:select-object-choice"
-          : "ironsmith:target-choice";
-        const detail = state?.decision?.kind === "select_objects"
-          ? { objectId: matched }
-          : { target: { kind: "object", object: matched } };
-        window.dispatchEvent(new CustomEvent(eventName, { detail }));
+        if (state?.decision?.kind === "select_objects") {
+          requestObjectSelection(matched, "add");
+          return;
+        }
+        window.dispatchEvent(new CustomEvent("ironsmith:target-choice", {
+          detail: { target: { kind: "object", object: matched } },
+        }));
         return;
       }
     }
@@ -456,13 +457,13 @@ export default function MobileBattleScene({
     if (matched == null) return;
     event.preventDefault();
     event.stopPropagation();
-    const eventName = state?.decision?.kind === "select_objects"
-      ? "ironsmith:select-object-choice"
-      : "ironsmith:target-choice";
-    const detail = state?.decision?.kind === "select_objects"
-      ? { objectId: matched }
-      : { target: { kind: "object", object: matched } };
-    window.dispatchEvent(new CustomEvent(eventName, { detail }));
+    if (state?.decision?.kind === "select_objects") {
+      requestObjectSelection(matched, "add");
+      return;
+    }
+    window.dispatchEvent(new CustomEvent("ironsmith:target-choice", {
+      detail: { target: { kind: "object", object: matched } },
+    }));
   }, [canPickBattlefieldObjects, legalSelectableObjectIds, registerPointerDown, state?.decision?.kind]);
 
   // --- Opponent-band pointer / click capture (salvaged) --------------------

@@ -1,11 +1,12 @@
-use crate::cards::builders::ForEachEffectAst;
 use super::*;
+use crate::cards::builders::ForEachEffectAst;
 
 pub(super) fn wrap_opponents(filter: &PlayerFilter, effects: Vec<EffectAst>) -> EffectAst {
     if *filter == PlayerFilter::Opponent {
         EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })
     } else {
-        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+            sequential: false,
             filter: filter.clone(),
             effects,
         })
@@ -19,7 +20,9 @@ mod for_each_opponent_readings;
 pub fn parse_for_each_opponent_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    if has_independent_participant_continuation(tokens) { return Ok(None); }
+    if has_independent_participant_continuation(tokens) {
+        return Ok(None);
+    }
     // Voter-relative opponent sets are already represented by an event-
     // populated player tag. Recognize that typed set before the ordinary
     // quantified-opponent path wraps it in a second loop, which would apply
@@ -56,11 +59,13 @@ pub fn parse_for_each_opponent_clause(
         read_by_cache: Default::default(),
     };
     match for_each_opponent_readings::read(&input) {
-        ParseOutcome::Match(matched) => return Ok(Some(if outer.participant_is_actor {
-            matched.value.value
-        } else {
-            sequential_participant_body(matched.value.value)
-        })),
+        ParseOutcome::Match(matched) => {
+            return Ok(Some(if outer.participant_is_actor {
+                matched.value.value
+            } else {
+                sequential_participant_body(matched.value.value)
+            }));
+        }
         ParseOutcome::NoMatch => {}
         ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
@@ -126,7 +131,9 @@ pub fn parse_for_each_opponent_clause(
         wrap_opponents(&iteration_filter, effects)
     } else {
         EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
-            filter: iteration_filter, effects, sequential: true,
+            filter: iteration_filter,
+            effects,
+            sequential: true,
         })
     }))
 }

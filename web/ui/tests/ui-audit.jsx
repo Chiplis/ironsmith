@@ -4,6 +4,7 @@ import { GameContext } from "../src/context/GameContext.shared";
 import { I18nProvider } from "../src/i18n/I18nContext";
 import { HoverProvider } from "../src/context/HoverContext";
 import { DragProvider } from "../src/context/DragContext";
+import { ObjectSelectionProvider } from "../src/context/ObjectSelectionContext";
 import { CombatArrowProvider } from "../src/context/CombatArrowContext";
 import { TooltipProvider } from "../src/components/ui/tooltip";
 import { Button } from "../src/components/ui/button";
@@ -57,7 +58,7 @@ export default function Audit() {
     dispatchInBackground: () => Promise.resolve(),
     game: {isKnownCardName: async (name) => ["island", "lightning bolt"].includes(name.toLowerCase())},
   }), [decision, kind]);
-  return <GameContext.Provider value={context}><HoverProvider><DragProvider><CombatArrowProvider><TooltipProvider>
+  return <GameContext.Provider value={context}><ObjectSelectionProvider><HoverProvider><DragProvider><CombatArrowProvider><TooltipProvider>
     <main className="audit-page setup-screen">
       <header><p className="audit-eyebrow">Ironsmith · component review</p><h1>Interface workshop</h1><p>Isolated fixtures use the production components and styles. Actions are recorded below; no real game is changed.</p></header>
       <section className="audit-section"><h2>Controls & states</h2>
@@ -73,6 +74,6 @@ export default function Audit() {
       <section className="audit-section"><h2>Dialogs & long content</h2><Button onClick={()=>setDeckOpen(true)}>Open sample decklist</Button></section>
       <OpenDecklistModal decklist={deckOpen ? {playerName: "Alexandria, Keeper of the Very Long Player Name", deck: ["Island", "Island", "The Ultimate Nightmare of Wizards of the Coast® Customer Service", "Lightning Bolt"], sideboard: []} : null} onClose={()=>setDeckOpen(false)}/>
     </main>
-  </TooltipProvider></CombatArrowProvider></DragProvider></HoverProvider></GameContext.Provider>;
+  </TooltipProvider></CombatArrowProvider></DragProvider></HoverProvider></ObjectSelectionProvider></GameContext.Provider>;
 }
 createRoot(document.getElementById("root")).render(<I18nProvider><Audit/></I18nProvider>);

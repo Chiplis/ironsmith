@@ -30,7 +30,8 @@ fn still_land_followup_reaches_animation_inside_conditional_may() {
     })];
 
     assert!(mark_last_animation_as_still_a_land(&mut effects));
-    let EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, .. }) = &effects[0] else {
+    let EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, .. }) = &effects[0]
+    else {
         panic!("expected conditional wrapper");
     };
     let [EffectAst::Permissions(PermissionEffectAst::May { effects })] = if_true.as_slice() else {

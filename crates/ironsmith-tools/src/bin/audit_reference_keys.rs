@@ -67,7 +67,10 @@ fn main() {
         }
     }
     per_file.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
-    println!("grammar modules covered: {}", modules.iter().filter(|m| is_grammar_module(m)).count());
+    println!(
+        "grammar modules covered: {}",
+        modules.iter().filter(|m| is_grammar_module(m)).count()
+    );
     println!("modules with key sites: {}", per_file.len());
     println!("reference key sites: {total}");
     if by_file {
@@ -82,7 +85,6 @@ fn is_grammar_module(path: &Path) -> bool {
     normalized.starts_with("crates/ironsmith-compiler-grammar/")
         || normalized.starts_with("crates/ironsmith-grammar-common/")
 }
-
 
 /// Replace comments and string/char literal contents with spaces, keeping
 /// every byte offset and newline where it was.
@@ -124,7 +126,13 @@ fn blank_comments_and_literals(source: &str) -> String {
                     }
                     if bytes[i] == b'"' {
                         let closes = match raw_hashes {
-                            Some(hashes) => bytes[i + 1..].iter().take_while(|byte| **byte == b'#').count() >= hashes,
+                            Some(hashes) => {
+                                bytes[i + 1..]
+                                    .iter()
+                                    .take_while(|byte| **byte == b'#')
+                                    .count()
+                                    >= hashes
+                            }
                             None => true,
                         };
                         if closes {
@@ -195,7 +203,14 @@ fn blank_test_modules(text: &str) -> String {
 fn tracked_production_modules(repo_root: &Path) -> Result<Vec<PathBuf>, String> {
     let output = Command::new("git")
         .current_dir(repo_root)
-        .args(["ls-files", "--cached", "--others", "--exclude-standard", "--", "*.rs"])
+        .args([
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "--",
+            "*.rs",
+        ])
         .output()
         .map_err(|error| format!("failed to run git ls-files: {error}"))?;
     if !output.status.success() {
@@ -228,8 +243,6 @@ fn is_test_only(path: &Path) -> bool {
         || normalized.contains("_tests_")
 }
 
-
-
 /// For a `"` at `quote`, the number of hashes if it opens a raw string.
 fn raw_string_hashes(bytes: &[u8], quote: usize) -> Option<usize> {
     let mut i = quote;
@@ -238,7 +251,9 @@ fn raw_string_hashes(bytes: &[u8], quote: usize) -> Option<usize> {
         hashes += 1;
         i -= 1;
     }
-    (i > 0 && bytes[i - 1] == b'r' && (i == 1 || !(bytes[i - 2].is_ascii_alphanumeric() || bytes[i - 2] == b'_')))
+    (i > 0
+        && bytes[i - 1] == b'r'
+        && (i == 1 || !(bytes[i - 2].is_ascii_alphanumeric() || bytes[i - 2] == b'_')))
         .then_some(hashes)
 }
 

@@ -1,5 +1,5 @@
-use crate::cards::builders::TurnEventPredicateAst;
 use super::*;
+use crate::cards::builders::TurnEventPredicateAst;
 use crate::cards::builders::TurnHistoryPredicateAst;
 
 fn assert_it_characteristic_threshold(predicate: &PredicateAst, toughness: bool) {
@@ -60,7 +60,9 @@ fn trailing_instead_if_rebinds_the_nested_it_threshold_but_not_the_revolt_gate()
     assert!(
         matches!(
             predicate,
-            PredicateAst::TurnEvents(TurnEventPredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn { .. })
+            PredicateAst::TurnEvents(
+                TurnEventPredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn { .. }
+            )
         ),
         "the outer replacement gate must remain the turn-history predicate: {predicate:#?}"
     );

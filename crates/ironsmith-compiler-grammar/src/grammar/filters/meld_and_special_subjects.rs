@@ -1,6 +1,6 @@
-use crate::cards::builders::PlayerPredicateAst;
 use super::super::super::lexer::{LexStream, LexedClause, OwnedLexToken};
 use super::*;
+use crate::cards::builders::PlayerPredicateAst;
 use winnow::combinator::{alt, eof, opt, peek, repeat, repeat_till};
 use winnow::error::ModalResult as WResult;
 use winnow::token::any;
@@ -225,11 +225,13 @@ pub(super) fn parse_graveyard_threshold_predicate(
         }));
     }
 
-    Ok(Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasAtLeast {
-        player,
-        filter,
-        count,
-    })))
+    Ok(Some(PredicateAst::Player(
+        PlayerPredicateAst::PlayerHasAtLeast {
+            player,
+            filter,
+            count,
+        },
+    )))
 }
 
 pub(super) fn parse_mana_spent_to_cast_predicate(
@@ -1029,7 +1031,9 @@ mod tests {
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             *constraint
                 == TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::AdditionalCostObject.bind().into(),
+                    tag: crate::tag::CompilerReferenceTag::AdditionalCostObject
+                        .bind()
+                        .into(),
                     relation: TaggedOpbjectRelation::SameManaValueAsTagged,
                 }
         }));
@@ -1197,7 +1201,9 @@ mod tests {
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             *constraint
                 == TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::ConvokedThisSpell.bind().into(),
+                    tag: crate::tag::CompilerReferenceTag::ConvokedThisSpell
+                        .bind()
+                        .into(),
                     relation: TaggedOpbjectRelation::IsTaggedObject,
                 }
         }));

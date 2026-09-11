@@ -161,11 +161,14 @@ fn describe_phase_step_value_comparison(
         ));
     }
 
-    if let (Value::LifeTotal(player), GreaterThanOrEqual, Value::StartingLifeTotal(starting_player)) = (left, operator, right)
+    if let (Value::LifeTotal(player), GreaterThanOrEqual, Value::StartingLifeTotal(starting_player)) =
+        (left, operator, right)
         && player == starting_player
     {
         let owner = describe_possessive_player_filter(player);
-        return Some(format!("{owner} life total is greater than or equal to {owner} starting life total"));
+        return Some(format!(
+            "{owner} life total is greater than or equal to {owner} starting life total"
+        ));
     }
 
     if let (Value::LifeTotal(player), GreaterThanOrEqual, Value::Add(starting_total, offset)) =
@@ -440,7 +443,9 @@ fn describe_turn_history_value_comparison(
             Equal => format!("exactly {count}"),
             _ => return None,
         };
-        return Some(format!("this permanent has dealt {quantity} damage this turn"));
+        return Some(format!(
+            "this permanent has dealt {quantity} damage this turn"
+        ));
     }
     let is_present = matches!(operator, GreaterThan) && count == 0
         || matches!(operator, GreaterThanOrEqual) && count == 1;
@@ -616,9 +621,20 @@ fn describe_turn_history_value_comparison(
                 .unwrap_or_else(|| "counter".to_string());
             if let Some(player) = source_controller {
                 let actor = describe_history_player_subject(player);
-                let action = if player == &PlayerFilter::You { "you've put".to_string() } else { format!("{actor} has put") };
-                let quantity = if is_absent { "no".to_string() } else { format!("{count_text} or more") };
-                return Some(format!("{action} {quantity} {counter}s on {} this turn", with_indefinite_article(&subject)));
+                let action = if player == &PlayerFilter::You {
+                    "you've put".to_string()
+                } else {
+                    format!("{actor} has put")
+                };
+                let quantity = if is_absent {
+                    "no".to_string()
+                } else {
+                    format!("{count_text} or more")
+                };
+                return Some(format!(
+                    "{action} {quantity} {counter}s on {} this turn",
+                    with_indefinite_article(&subject)
+                ));
             }
             if is_present {
                 Some(format!(
@@ -921,7 +937,10 @@ fn describe_turn_history_condition(condition: &ironsmith_core::TurnHistoryCondit
             format!("{} entered this turn", surface.display_text())
         }
         TurnHistoryCondition::ObjectAttackedDuringControllersLastTurn(filter) => {
-            format!("{} attacked during its controller's last turn", filter.description())
+            format!(
+                "{} attacked during its controller's last turn",
+                filter.description()
+            )
         }
         TurnHistoryCondition::SourceAttackedThisTurn { surface } => {
             format!("{} attacked this turn", surface.display_text())
@@ -4650,7 +4669,10 @@ fn describe_demonstrative_object_property(
         let mut remainder = filter.clone();
         remainder.attacking = false;
         if remainder == ObjectFilter::default() {
-            return Some(format!("{subject} {} attacking", if past { "was" } else { "is" }));
+            return Some(format!(
+                "{subject} {} attacking",
+                if past { "was" } else { "is" }
+            ));
         }
     }
 
@@ -4658,7 +4680,10 @@ fn describe_demonstrative_object_property(
         let mut remainder = filter.clone();
         remainder.excluded_supertypes.clear();
         if remainder == ObjectFilter::default() {
-            return Some(format!("{subject} {} nonbasic", if past { "was" } else { "is" }));
+            return Some(format!(
+                "{subject} {} nonbasic",
+                if past { "was" } else { "is" }
+            ));
         }
     }
 
@@ -5836,10 +5861,16 @@ mod greatest_power_control_tests {
                 Box::new(Condition::SourceIsTapped),
             )),
         );
-        assert_eq!(describe_condition(&states), "this permanent is enchanted or equipped or tapped");
+        assert_eq!(
+            describe_condition(&states),
+            "this permanent is enchanted or equipped or tapped"
+        );
         let mixed = Condition::Or(
             Box::new(Condition::SourceIsEnchanted),
-            Box::new(Condition::TaggedObjectMatches(TagKey::from("other"), ObjectFilter::default())),
+            Box::new(Condition::TaggedObjectMatches(
+                TagKey::from("other"),
+                ObjectFilter::default(),
+            )),
         );
         assert!(source_status_alternatives(&mixed).is_none());
         let conjunction = Condition::Or(
@@ -5851,7 +5882,6 @@ mod greatest_power_control_tests {
         );
         assert!(source_status_alternatives(&conjunction).is_none());
     }
-
 }
 
 #[cfg(test)]

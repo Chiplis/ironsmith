@@ -161,13 +161,27 @@ export function legalTargetForDropCandidates(decision, candidates) {
   return null;
 }
 
+/**
+ * "Up to X target(s)" can be cast with none of them, so releasing the drag
+ * over nothing legal is a choice rather than a cancelled cast: the targeting
+ * decision stays open and Submit reads as choosing no targets.
+ */
+export function targetDecisionAllowsNoTargets(decision) {
+  if (decision?.kind !== "targets") return false;
+  const requirements = decision.requirements || [];
+  if (requirements.length === 0) return false;
+  return requirements.every((requirement) => Number(requirement?.min_targets ?? 1) === 0);
+}
+
 export function targetDropCompletesDecision(decision, target) {
   const requirements = decision?.kind === "targets" ? (decision.requirements || []) : [];
   if (requirements.length !== 1 || !target) return false;
   const requirement = requirements[0];
   const min = Number(requirement?.min_targets ?? 1);
   const max = Number(requirement?.max_targets ?? requirement?.legal_targets?.length ?? 1);
-  if (min !== 1 || max !== 1) return false;
+  // An optional single target is complete once the drag names it; the player
+  // asked for that target by releasing on it.
+  if (min > 1 || max !== 1) return false;
   return (requirement?.legal_targets || []).some((candidate) => (
     candidate?.kind === target.kind
     && (target.kind === "player"

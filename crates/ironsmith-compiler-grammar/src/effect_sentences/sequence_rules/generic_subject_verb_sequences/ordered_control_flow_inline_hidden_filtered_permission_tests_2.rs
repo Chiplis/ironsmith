@@ -24,9 +24,10 @@ fn exact_three_sentence_shape_shares_selected_tag_and_creature_filter() {
         parse("For as long as it remains exiled, you may cast it if it's a creature spell.")
             .expect("three-sentence hidden-card permission");
     let selected_tag = match &effects[1] {
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { tag, .. }) | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. }) => {
-            tag
-        }
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+            tag, ..
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. }) => tag,
         _ => panic!("expected selected-card tag: {effects:#?}"),
     };
     assert!(matches!(

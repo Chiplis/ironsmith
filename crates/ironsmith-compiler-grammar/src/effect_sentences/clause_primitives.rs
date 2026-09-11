@@ -1,4 +1,3 @@
-use crate::cards::builders::ForEachEffectAst;
 use super::super::clause_support::parse_triggered_line_lexed;
 use super::super::grammar::effects::{
     clause_primitive_shapes as clause_shapes, parse_unless_pays_shape_tokens,
@@ -19,9 +18,11 @@ use super::super::util::{
 use super::parse_restriction_duration;
 use super::sentence_helpers::*;
 use super::subject_verb_primitives::SubjectVerbPrimitiveClause;
+use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{
-    CardTextError, EffectAst, GrantedAbilityAst, LineAst, OwnedLexToken, PlayerAst,
-    RetargetModeAst, SubjectAst, SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst, LifeResourceActionAst, DamageActionAst, DelayedEffectAst, ConditionalEffectAst,
+    CardTextError, ConditionalEffectAst, DamageActionAst, DelayedEffectAst, EffectAst,
+    GrantedAbilityAst, LifeResourceActionAst, LineAst, OwnedLexToken, PlayerAst, RetargetModeAst,
+    SubjectAst, SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst,
 };
 use crate::effect::Value;
 use crate::grammar::effects::typed_clause_heads::classify_typed_clause_head;
@@ -229,12 +230,14 @@ pub fn parse_change_target_clause(
             return Ok(None);
         };
         let (player, cost) = parse_unless_pays_clause(unless_tokens)?;
-        return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
-            effects: vec![inner],
-            player,
-            cost,
-            before_delayed_step: false,
-        })));
+        return Ok(Some(EffectAst::Conditionals(
+            ConditionalEffectAst::UnlessPays {
+                effects: vec![inner],
+                player,
+                cost,
+                before_delayed_step: false,
+            },
+        )));
     }
 
     parse_change_target_clause_inner(tokens)
@@ -632,9 +635,15 @@ pub fn parse_repeat_this_process_clause(
 ) -> Result<Option<EffectAst>, CardTextError> {
     Ok(
         clause_shapes::parse_repeat_process_shape(tokens).map(|shape| match shape {
-            clause_shapes::RepeatProcessShape::Required => EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess),
-            clause_shapes::RepeatProcessShape::Once => EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce),
-            clause_shapes::RepeatProcessShape::May => EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay),
+            clause_shapes::RepeatProcessShape::Required => {
+                EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)
+            }
+            clause_shapes::RepeatProcessShape::Once => {
+                EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce)
+            }
+            clause_shapes::RepeatProcessShape::May => {
+                EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay)
+            }
         }),
     )
 }
@@ -1218,14 +1227,16 @@ pub fn parse_until_duration_triggered_clause(
     let either_of_watched_objects =
         crate::word_primitives::sequence_occurs(&trigger_words, &["either", "of", "those"]);
 
-    Ok(Some(EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
-        trigger,
-        effects,
-        one_shot: false,
-        duration,
-        either_of_watched_objects,
-        while_any_tagged_object_in_zone: None,
-    })))
+    Ok(Some(EffectAst::Delayed(
+        DelayedEffectAst::DelayedTriggerForDuration {
+            trigger,
+            effects,
+            one_shot: false,
+            duration,
+            either_of_watched_objects,
+            while_any_tagged_object_in_zone: None,
+        },
+    )))
 }
 
 pub fn is_damage_source_target(target: &TargetAst) -> bool {
@@ -1305,10 +1316,13 @@ pub fn parse_anaphoric_object_deals_damage_clause(
     } else {
         let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
         if crate::word_primitives::parse_sequence_complete(source_words, &["it"]) {
-            filter.source_surface = Some(crate::target::SourceReferenceSurface::ThisPermanentType("it".to_string()));
+            filter.source_surface = Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+                "it".to_string(),
+            ));
         }
         if crate::word_primitives::parse_any_sequence_complete(
-            source_words, &[&["that", "land"], &["that", "artifact"]],
+            source_words,
+            &[&["that", "land"], &["that", "artifact"]],
         ) {
             // Identity remains the typed trigger-object constraint while the
             // authored demonstrative is explicit rendering provenance.
@@ -1440,32 +1454,35 @@ pub fn parse_deal_damage_equal_to_power_clause(
         shape.amount
     };
     let effect = match shape.target {
-        clause_shapes::PowerDamageTargetShape::EachPlayer => Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
-            effects: vec![EffectAst::subject_verb_damage_with_source(
-                source,
-                amount,
-                TargetAst::Player(PlayerFilter::IteratedPlayer, None),
-            )],
-        }))),
-        clause_shapes::PowerDamageTargetShape::EachOtherPlayer => {
-            Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
+        clause_shapes::PowerDamageTargetShape::EachPlayer => {
+            Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+                effects: vec![EffectAst::subject_verb_damage_with_source(
+                    source,
+                    amount,
+                    TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+                )],
+            })))
+        }
+        clause_shapes::PowerDamageTargetShape::EachOtherPlayer => Ok(Some(EffectAst::ForEach(
+            ForEachEffectAst::ForEachPlayersFiltered {
+                sequential: false,
                 filter: PlayerFilter::NotYou,
                 effects: vec![EffectAst::subject_verb_damage_with_source(
                     source,
                     amount,
                     TargetAst::Player(PlayerFilter::IteratedPlayer, None),
                 )],
-            })))
-        }
-        clause_shapes::PowerDamageTargetShape::EachOpponent => {
-            Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
+            },
+        ))),
+        clause_shapes::PowerDamageTargetShape::EachOpponent => Ok(Some(EffectAst::ForEach(
+            ForEachEffectAst::ForEachOpponent {
                 effects: vec![EffectAst::subject_verb_damage_with_source(
                     source,
                     amount,
                     TargetAst::Player(PlayerFilter::IteratedPlayer, None),
                 )],
-            })))
-        }
+            },
+        ))),
         clause_shapes::PowerDamageTargetShape::Source => Ok(Some(
             EffectAst::subject_verb_damage_with_source(source.clone(), amount, source),
         )),
@@ -1477,10 +1494,12 @@ pub fn parse_deal_damage_equal_to_power_clause(
         }
     }?;
     if let Some(filter) = iterated_source_filter {
-        Ok(effect.map(|effect| EffectAst::ForEach(ForEachEffectAst::ForEachObject {
-            filter,
-            effects: vec![effect],
-        })))
+        Ok(effect.map(|effect| {
+            EffectAst::ForEach(ForEachEffectAst::ForEachObject {
+                filter,
+                effects: vec![effect],
+            })
+        }))
     } else {
         Ok(effect)
     }
@@ -1529,7 +1548,10 @@ pub fn parse_fight_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,
     let Some(shape) = clause_shapes::parse_fight_shape(tokens) else {
         return Ok(None);
     };
-    if shape.left_tokens.is_some_and(|left| left.iter().any(|token| token.is_word("may"))) {
+    if shape
+        .left_tokens
+        .is_some_and(|left| left.iter().any(|token| token.is_word("may")))
+    {
         return Ok(None);
     }
     let clause_text = LexedClause::new(tokens).text();
@@ -1625,10 +1647,10 @@ pub fn parse_clash_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,
 
 #[cfg(test)]
 mod result_subject_tests {
+    use super::*;
+    use crate::cards::builders::LibraryActionAst;
     use crate::cards::builders::PermissionEffectAst;
     use crate::cards::builders::StackActionAst;
-    use crate::cards::builders::LibraryActionAst;
-    use super::*;
     use crate::model::ast::SubjectVerbEffectAst;
     use crate::types::CardType;
 
@@ -1718,10 +1740,12 @@ mod result_subject_tests {
 
         assert!(matches!(
             effects.as_slice(),
-            [EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
-                filter: PlayerFilter::NotYou,
-                ..
-            })]
+            [EffectAst::ForEach(
+                ForEachEffectAst::ForEachPlayersFiltered {
+                    filter: PlayerFilter::NotYou,
+                    ..
+                }
+            )]
         ));
     }
 
@@ -1844,7 +1868,8 @@ mod result_subject_tests {
             .expect("match personal-pronoun damage");
 
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { source, .. }),
+            action:
+                SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { source, .. }),
             ..
         }) = effect
         else {

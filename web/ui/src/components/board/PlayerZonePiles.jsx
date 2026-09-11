@@ -9,6 +9,9 @@ import { samePlayerId } from "@/lib/player-display";
 import { isFaceUpZoneCard, PILE_ZONES, zonePileCards } from "@/lib/zone-piles";
 import { cardArtCropUrl } from "@/lib/card-image-variants";
 import { prepareCardFrame } from "@/lib/card-frame-preparation";
+import { isObjectChosen, requestObjectSelection } from "@/lib/object-selection";
+import { useChosenObjectIds } from "@/context/ObjectSelectionContext";
+import SelectionCheckBadge from "@/components/cards/SelectionCheckBadge";
 
 function ZoneArt({ card }) {
   const imageRef = useRef(null);
@@ -29,6 +32,7 @@ function ZoneArt({ card }) {
 
 function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverride, fading = false, onOpenChange }) {
   const { state } = useGame();
+  const chosenObjectIds = useChosenObjectIds();
   const { hoverCard, clearHover, showAnchoredCardPreview } = useHover();
   const castIntent = useCastTargeting();
   const castHover = useCastTargetHover();
@@ -106,62 +110,67 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
   const renderCard = (card) => {
     const legal = canChoose && isLegal(card);
     const disabled = (choosingTarget || choosingObject) && !legal;
-    return <button type="button" key={card.id} className="zone-pile-card-row"
-      aria-label={card.name || "Face-down card"}
-      data-object-id={String(card.id).startsWith("look-top-") ? undefined : card.id} data-zone-card={zone}
-      data-target-legal={legal ? "true" : undefined} disabled={disabled}
-      onPointerEnter={(event) => {
-        if (event.pointerType === "touch" || disabled || !isFaceUpZoneCard(card) || String(card.id).startsWith("look-top-")) return;
-        hoverCard(card.id);
-      }}
-      onPointerLeave={(event) => {
-        if (event.pointerType !== "touch") clearHover();
-      }}
-      onFocus={() => {
-        if (!disabled && isFaceUpZoneCard(card) && !String(card.id).startsWith("look-top-")) hoverCard(card.id);
-      }}
-      onBlur={() => clearHover()}
-      onClick={(event) => {
-        if (castIntent && state?.decision?.kind !== "targets") return;
-        if (choosingObject && legal) {
-          window.dispatchEvent(new CustomEvent("ironsmith:select-object-choice", {
-            detail: { objectId: card.id },
-          }));
-          changeOpen(false);
-          return;
-        }
-        if (choosingTarget && legal) {
-          window.dispatchEvent(new CustomEvent("ironsmith:target-choice", {
-            detail: { target: { kind: "object", object: Number(card.id) } },
-          }));
-          changeOpen(false);
-          return;
-        }
-        if (choosingOption && legal) {
-          const option = (decision.options || []).find((candidate) =>
-            candidate.object_id != null && String(candidate.object_id) === String(card.id)
-          );
-          if (option) {
-            window.dispatchEvent(new CustomEvent("ironsmith:select-option-choice", {
-              detail: { optionIndex: option.index },
+    const chosen = choosingObject && isObjectChosen(chosenObjectIds, card.id);
+    // The check has to sit outside the row button to stay clickable, so the
+    // row gets a wrapper of its own strip width.
+    return <span key={card.id} className="zone-pile-card-slot">
+      <button type="button" className={`zone-pile-card-row${chosen ? " is-chosen" : ""}`}
+        aria-label={card.name || "Face-down card"}
+        data-object-id={String(card.id).startsWith("look-top-") ? undefined : card.id} data-zone-card={zone}
+        data-target-legal={legal ? "true" : undefined} disabled={disabled}
+        onPointerEnter={(event) => {
+          if (event.pointerType === "touch" || disabled || !isFaceUpZoneCard(card) || String(card.id).startsWith("look-top-")) return;
+          hoverCard(card.id);
+        }}
+        onPointerLeave={(event) => {
+          if (event.pointerType !== "touch") clearHover();
+        }}
+        onFocus={() => {
+          if (!disabled && isFaceUpZoneCard(card) && !String(card.id).startsWith("look-top-")) hoverCard(card.id);
+        }}
+        onBlur={() => clearHover()}
+        onClick={(event) => {
+          if (castIntent && state?.decision?.kind !== "targets") return;
+          if (choosingObject && legal) {
+            // Searches take several picks: leave the zone open, add the card,
+            // and let its check be the only way back out.
+            requestObjectSelection(card.id, "add");
+            return;
+          }
+          if (choosingTarget && legal) {
+            window.dispatchEvent(new CustomEvent("ironsmith:target-choice", {
+              detail: { target: { kind: "object", object: Number(card.id) } },
             }));
             changeOpen(false);
             return;
           }
-        }
-        const anchor = event.currentTarget;
-        onCardClick?.(event, card);
-        // A zone card is an explicit selection, so show its full frame
-        // immediately while keeping the normal inspector selection in sync.
-        // Do this after onCardClick because that callback clears any previous
-        // anchored preview as part of changing the selected object.
-        if (isFaceUpZoneCard(card) && !String(card.id).startsWith("look-top-")) {
-          showAnchoredCardPreview(card.id, anchor, { placement: "zone" });
-        }
-        if (choosingTarget || choosingObject) changeOpen(false);
-      }}>
-      <ZoneArt card={card} />
-    </button>;
+          if (choosingOption && legal) {
+            const option = (decision.options || []).find((candidate) =>
+              candidate.object_id != null && String(candidate.object_id) === String(card.id)
+            );
+            if (option) {
+              window.dispatchEvent(new CustomEvent("ironsmith:select-option-choice", {
+                detail: { optionIndex: option.index },
+              }));
+              changeOpen(false);
+              return;
+            }
+          }
+          const anchor = event.currentTarget;
+          onCardClick?.(event, card);
+          // A zone card is an explicit selection, so show its full frame
+          // immediately while keeping the normal inspector selection in sync.
+          // Do this after onCardClick because that callback clears any previous
+          // anchored preview as part of changing the selected object.
+          if (isFaceUpZoneCard(card) && !String(card.id).startsWith("look-top-")) {
+            showAnchoredCardPreview(card.id, anchor, { placement: "zone" });
+          }
+          if (choosingTarget || choosingObject) changeOpen(false);
+        }}>
+        <ZoneArt card={card} />
+      </button>
+      {chosen && <SelectionCheckBadge objectId={card.id} />}
+    </span>;
   };
 
   return (

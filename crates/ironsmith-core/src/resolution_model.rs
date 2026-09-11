@@ -3,16 +3,14 @@ use crate::tag::TagKeyWalk;
 use crate::{Condition, PresentationLabel};
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Clone, PartialEq, TagKeyWalk)]
 pub struct ResolutionProgram<E> {
     pub segments: Vec<ResolutionSegment<E>>,
     flattened_default_effects: Vec<E>,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Default, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Default, PartialEq, TagKeyWalk)]
 pub struct ResolutionSegment<E> {
     pub default_effects: Vec<E>,
     pub self_replacements: Vec<SelfReplacementBranch<E>>,
@@ -23,8 +21,7 @@ pub struct ResolutionSegment<E> {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct SelfReplacementBranch<E> {
     pub condition: Condition,
     pub replacement_effects: Vec<E>,

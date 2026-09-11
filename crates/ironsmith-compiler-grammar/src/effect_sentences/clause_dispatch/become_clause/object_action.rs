@@ -1,5 +1,5 @@
-use crate::cards::builders::ConditionalEffectAst;
 use super::*;
+use crate::cards::builders::ConditionalEffectAst;
 use winnow::Parser;
 
 pub fn parse_become_clause(
@@ -129,7 +129,12 @@ pub fn parse_become_clause(
         if become_grammar::become_subject_has_life_total(subject_tokens) {
             let amount = parse_value(&become_tokens)
                 .map(|(value, _)| value)
-                .or_else(|| crate::effect_sentences::zone_counter_helpers::parse_starting_life_total_value(&become_tokens, player))
+                .or_else(|| {
+                    crate::effect_sentences::zone_counter_helpers::parse_starting_life_total_value(
+                        &become_tokens,
+                        player,
+                    )
+                })
                 .ok_or_else(|| {
                     CardTextError::ParseError(format!(
                         "missing life total amount (clause: '{}')",
@@ -361,17 +366,35 @@ pub fn parse_become_clause(
         ));
     }
 
-    if subject_targets_base_pt && become_words.len() == 3 && become_words[1] == "or"
-        && let Ok((first_power, first_toughness)) = crate::keyword_static::parse_pt_modifier_values(become_words[0])
-        && let Ok((second_power, second_toughness)) = crate::keyword_static::parse_pt_modifier_values(become_words[2])
+    if subject_targets_base_pt
+        && become_words.len() == 3
+        && become_words[1] == "or"
+        && let Ok((first_power, first_toughness)) =
+            crate::keyword_static::parse_pt_modifier_values(become_words[0])
+        && let Ok((second_power, second_toughness)) =
+            crate::keyword_static::parse_pt_modifier_values(become_words[2])
     {
-        return Ok(EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseOneOf {
-            modes: vec![(first_power, first_toughness, become_words[0]), (second_power, second_toughness, become_words[2])]
-                .into_iter().map(|(power, toughness, _label)| crate::cards::builders::ChooseOneModeAst {
-                    description: String::new(),
-                    effects: vec![EffectAst::subject_verb_set_base_power_toughness(power, toughness, target.clone(), duration.clone())],
-                }).collect(),
-        }));
+        return Ok(EffectAst::ObjectChoices(
+            crate::cards::builders::ObjectChoiceEffectAst::ChooseOneOf {
+                modes: vec![
+                    (first_power, first_toughness, become_words[0]),
+                    (second_power, second_toughness, become_words[2]),
+                ]
+                .into_iter()
+                .map(
+                    |(power, toughness, _label)| crate::cards::builders::ChooseOneModeAst {
+                        description: String::new(),
+                        effects: vec![EffectAst::subject_verb_set_base_power_toughness(
+                            power,
+                            toughness,
+                            target.clone(),
+                            duration.clone(),
+                        )],
+                    },
+                )
+                .collect(),
+            },
+        ));
     }
 
     if let Some(leading_pt) =
@@ -391,25 +414,44 @@ pub fn parse_become_clause(
         }
         if let Some(creature_idx) = creature_word_index {
             let prefix_words = &become_words[value_word_count..creature_idx];
-            let add_supertypes = prefix_words.iter().filter_map(|word| crate::util::parse_supertype_word(word)).collect::<Vec<_>>();
-            let descriptor_words = prefix_words.iter().copied().filter(|word| crate::util::parse_supertype_word(word).is_none()).collect::<Vec<_>>();
+            let add_supertypes = prefix_words
+                .iter()
+                .filter_map(|word| crate::util::parse_supertype_word(word))
+                .collect::<Vec<_>>();
+            let descriptor_words = prefix_words
+                .iter()
+                .copied()
+                .filter(|word| crate::util::parse_supertype_word(word).is_none())
+                .collect::<Vec<_>>();
             let prefix = become_grammar::parse_become_leading_creature_prefix(&descriptor_words);
             let mut suffix_tokens = suffix_tokens;
             let mut remove_all_abilities = false;
-            if let Some(index) = suffix_tokens.windows(4).position(|window|
-                window[0].is_word("and") && window[1].is_any_word(&["lose", "loses"])
-                    && window[2].is_word("all") && window[3].is_word("abilities"))
-                && crate::util::trim_edge_punctuation_tokens(&suffix_tokens[index + 4..]).is_empty()
+            if let Some(index) = suffix_tokens.windows(4).position(|window| {
+                window[0].is_word("and")
+                    && window[1].is_any_word(&["lose", "loses"])
+                    && window[2].is_word("all")
+                    && window[3].is_word("abilities")
+            }) && crate::util::trim_edge_punctuation_tokens(&suffix_tokens[index + 4..])
+                .is_empty()
             {
                 remove_all_abilities = true;
                 suffix_tokens = &suffix_tokens[..index];
             }
-            let name_override = if suffix_tokens.first().is_some_and(|token| token.is_word("named")) {
+            let name_override = if suffix_tokens
+                .first()
+                .is_some_and(|token| token.is_word("named"))
+            {
                 let name = crate::lexer::parser_token_word_refs(&suffix_tokens[1..]).join(" ");
-                if name.is_empty() { return Err(CardTextError::ParseError("missing transformation name".into())); }
+                if name.is_empty() {
+                    return Err(CardTextError::ParseError(
+                        "missing transformation name".into(),
+                    ));
+                }
                 suffix_tokens = &[];
                 Some(name)
-            } else { None };
+            } else {
+                None
+            };
             let mut abilities = Vec::new();
             let mut granted_abilities = Vec::<GrantedAbilityAst>::new();
             let mut subtype_families = Vec::<SubtypeFamily>::new();
@@ -502,10 +544,16 @@ pub fn parse_become_clause(
             if let EffectAst::SubjectVerb(subject) = &mut effect
                 && let crate::cards::builders::SubjectVerbActionAst::Characteristics(
                     crate::cards::builders::CharacteristicActionAst::BecomeBasePtCreature {
-                        name_override: name, add_supertypes: supertypes, remove_all_abilities: remove, ..
-                    }) = &mut subject.action
+                        name_override: name,
+                        add_supertypes: supertypes,
+                        remove_all_abilities: remove,
+                        ..
+                    },
+                ) = &mut subject.action
             {
-                *name = name_override; *supertypes = add_supertypes; *remove = remove_all_abilities;
+                *name = name_override;
+                *supertypes = add_supertypes;
+                *remove = remove_all_abilities;
             }
             return Ok(effect);
         }
@@ -588,23 +636,44 @@ pub fn parse_become_clause(
     let (descriptor_words, preserve_other_types) =
         become_grammar::strip_become_addition_tail_words(become_words);
     if descriptor_words.contains(&"creature")
-        && let Some(descriptor) = become_grammar::parse_become_creature_descriptor_words(descriptor_words)
+        && let Some(descriptor) =
+            become_grammar::parse_become_creature_descriptor_words(descriptor_words)
         && !descriptor.subtypes.is_empty()
     {
         let mut effects = vec![if preserve_other_types {
-            EffectAst::subject_verb_add_card_types(target.clone(), descriptor.card_types, duration.clone())
+            EffectAst::subject_verb_add_card_types(
+                target.clone(),
+                descriptor.card_types,
+                duration.clone(),
+            )
         } else {
-            EffectAst::subject_verb_set_card_types(target.clone(), descriptor.card_types, duration.clone())
+            EffectAst::subject_verb_set_card_types(
+                target.clone(),
+                descriptor.card_types,
+                duration.clone(),
+            )
         }];
         effects.push(if preserve_other_types {
-            EffectAst::subject_verb_add_subtypes(target.clone(), descriptor.subtypes, duration.clone())
+            EffectAst::subject_verb_add_subtypes(
+                target.clone(),
+                descriptor.subtypes,
+                duration.clone(),
+            )
         } else {
-            EffectAst::subject_verb_set_creature_subtypes(target.clone(), descriptor.subtypes, duration.clone())
+            EffectAst::subject_verb_set_creature_subtypes(
+                target.clone(),
+                descriptor.subtypes,
+                duration.clone(),
+            )
         });
         if let Some(colors) = descriptor.colors {
             effects.push(EffectAst::subject_verb_set_colors(target, colors, duration));
         }
-        return Ok(EffectAst::Coordinated { effects, leading_duration: false, result_conjunction: false });
+        return Ok(EffectAst::Coordinated {
+            effects,
+            leading_duration: false,
+            result_conjunction: false,
+        });
     }
 
     match become_grammar::parse_become_simple_descriptor_words(become_words) {

@@ -1,6 +1,6 @@
+use super::*;
 use crate::cards::builders::ConditionalEffectAst;
 use crate::cards::builders::ForEachEffectAst;
-use super::*;
 
 fn parse_required_fight_effect(tokens: &[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError> {
     let Some(effect) = super::super::clause_primitives::parse_fight_clause(tokens)? else {
@@ -188,7 +188,10 @@ fn parse_granted_trigger_pump_if_monarch_otherwise(
     else {
         return Ok(None);
     };
-    if !matches!(trailing_if.predicate, PredicateAst::Player(PlayerPredicateAst::PlayerIsMonarch { .. })) {
+    if !matches!(
+        trailing_if.predicate,
+        PredicateAst::Player(PlayerPredicateAst::PlayerIsMonarch { .. })
+    ) {
         return Ok(None);
     }
     let Some(shape) =
@@ -219,11 +222,13 @@ fn parse_granted_trigger_pump_if_monarch_otherwise(
     ) {
         return Ok(None);
     }
-    Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-        predicate: trailing_if.predicate,
-        if_true: vec![pump],
-        if_false: vec![EffectAst::subject_verb_become_monarch(PlayerAst::You)],
-    })]))
+    Ok(Some(vec![EffectAst::Conditionals(
+        ConditionalEffectAst::Conditional {
+            predicate: trailing_if.predicate,
+            if_true: vec![pump],
+            if_false: vec![EffectAst::subject_verb_become_monarch(PlayerAst::You)],
+        },
+    )]))
 }
 
 pub(super) fn parse_granted_trigger_with_nested_token_rule(
@@ -423,7 +428,9 @@ fn recognize_granted_trigger_ability(
             // The specialized reader proves the otherwise clause belongs to
             // the preceding condition. The generic sentence reader can leave
             // it as a separate effect, so it must not compete on that input.
-            if joined_otherwise { return Ok(None); }
+            if joined_otherwise {
+                return Ok(None);
+            }
             let LineAst::Triggered {
                 trigger,
                 effects,
@@ -662,17 +669,26 @@ pub(super) fn parse_granted_triggered_otherwise_ability(
     // This older repair is needed only when sentence parsing has not joined
     // the trailing otherwise clause; emitting a second legacy Conditional
     // would conflict with the canonical postcondition solely by AST shape.
-    if let Ok(effects) = crate::effect_sentences::parse_effect_sentences_lexed(&ability_tokens[comma_idx + 1..])
+    if let Ok(effects) =
+        crate::effect_sentences::parse_effect_sentences_lexed(&ability_tokens[comma_idx + 1..])
         && let [EffectAst::ControlFlow(control)] = effects.as_slice()
-        && matches!(control.node, crate::model::control_flow::ControlFlowNodeAst::Condition {
-            alternative_program: Some(_), ..
-        })
+        && matches!(
+            control.node,
+            crate::model::control_flow::ControlFlowNodeAst::Condition {
+                alternative_program: Some(_),
+                ..
+            }
+        )
     {
         return Ok(None);
     }
 
     let true_effect = match crate::effect_sentences::parse_effect_sentences_lexed(&true_tokens) {
-        Ok(mut effects) if effects.len() == 1 && matches!(&effects[0], EffectAst::ControlFlow(_)) => effects.remove(0),
+        Ok(mut effects)
+            if effects.len() == 1 && matches!(&effects[0], EffectAst::ControlFlow(_)) =>
+        {
+            effects.remove(0)
+        }
         _ => parse_single_effect_sentence_for_granted_otherwise(&true_tokens)?,
     };
     let mut false_effect = Some(parse_single_effect_sentence_for_granted_otherwise(
@@ -689,7 +705,10 @@ pub(super) fn parse_granted_triggered_otherwise_ability(
             if_false,
         }),
         EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects }) => {
-            use crate::model::control_flow::{ConditionPositionAst, ControlConditionAst, ControlFlowNodeAst, ControlFlowSemanticAst, ControlPredicateAst};
+            use crate::model::control_flow::{
+                ConditionPositionAst, ControlConditionAst, ControlFlowNodeAst,
+                ControlFlowSemanticAst, ControlPredicateAst,
+            };
             let control = crate::model::CompilerControlFlowAst::new(
                 ControlFlowSemanticAst::ControlFlow,
                 ControlFlowNodeAst::Condition {
@@ -704,14 +723,24 @@ pub(super) fn parse_granted_triggered_otherwise_ability(
                     reflexive: false,
                 },
                 vec![
-                    crate::model::NestedProgramAst::new(crate::model::NestedProgramKindAst::Consequence, effects),
-                    crate::model::NestedProgramAst::new(crate::model::NestedProgramKindAst::Alternative,
-                        vec![false_effect.take().expect("otherwise branch effect")]),
+                    crate::model::NestedProgramAst::new(
+                        crate::model::NestedProgramKindAst::Consequence,
+                        effects,
+                    ),
+                    crate::model::NestedProgramAst::new(
+                        crate::model::NestedProgramKindAst::Alternative,
+                        vec![false_effect.take().expect("otherwise branch effect")],
+                    ),
                 ],
                 None,
-            ).map_err(|error| CardTextError::InvariantViolation(format!("invalid trailing otherwise control flow: {error:?}")))?;
+            )
+            .map_err(|error| {
+                CardTextError::InvariantViolation(format!(
+                    "invalid trailing otherwise control flow: {error:?}"
+                ))
+            })?;
             EffectAst::ControlFlow(Box::new(control))
-        },
+        }
         EffectAst::ControlFlow(control) => {
             let crate::model::CompilerControlFlowAst {
                 semantic,
@@ -754,7 +783,9 @@ pub(super) fn parse_granted_triggered_otherwise_ability(
         }
         _ => return Ok(None),
     };
-    if let EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_false, .. }) = &mut conditional {
+    if let EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_false, .. }) =
+        &mut conditional
+    {
         *if_false = vec![false_effect.take().expect("otherwise branch effect")];
     }
 

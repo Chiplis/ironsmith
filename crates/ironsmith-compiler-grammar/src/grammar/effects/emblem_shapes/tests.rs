@@ -17,8 +17,15 @@ fn damaged_player_emblem_shape_keeps_only_the_quoted_payload() {
     let shape = parse_damaged_player_emblem_payload_tokens(&tokens).unwrap();
     assert_eq!(shape.ability_groups.len(), 1);
     assert!(shape.ability_groups[0].first().unwrap().is_word("at"));
-    assert!(!shape.ability_groups[0].iter().any(|token| token.kind == TokenKind::Quote));
-    for text in [r#"Each player gets an emblem with "Draw a card.""#, r#"Each player dealt combat damage this turn gets an emblem with "Draw a card.""#] {
+    assert!(
+        !shape.ability_groups[0]
+            .iter()
+            .any(|token| token.kind == TokenKind::Quote)
+    );
+    for text in [
+        r#"Each player gets an emblem with "Draw a card.""#,
+        r#"Each player dealt combat damage this turn gets an emblem with "Draw a card.""#,
+    ] {
         assert!(parse_damaged_player_emblem_payload_tokens(&lex_line(text, 0).unwrap()).is_none());
     }
 }

@@ -1,11 +1,11 @@
-use crate::cards::builders::ConditionalEffectAst;
-use crate::cards::builders::ChoiceActionAst;
-use crate::cards::builders::LifeResourceActionAst;
-use crate::cards::builders::ZoneMoveActionAst;
-use crate::cards::builders::LibraryActionAst;
-use crate::cards::builders::GrantActionAst;
 use super::*;
 use crate::CardType;
+use crate::cards::builders::ChoiceActionAst;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::GrantActionAst;
+use crate::cards::builders::LibraryActionAst;
+use crate::cards::builders::LifeResourceActionAst;
+use crate::cards::builders::ZoneMoveActionAst;
 use crate::lexer::lex_line;
 use crate::model::ast::SubjectVerbEffectAst;
 
@@ -267,7 +267,8 @@ fn any_player_sacrifice_offer_keeps_sequential_player_semantics() {
         .expect("lex any-player sacrifice offer");
     let effect = parse_effect_clause(&tokens).expect("parse any-player sacrifice offer");
 
-    let EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay { players, effects }) = effect else {
+    let EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay { players, effects }) = effect
+    else {
         panic!("expected typed any-player offer, got {effect:#?}");
     };
     assert_eq!(players, PlayerFilter::Any);
@@ -275,10 +276,16 @@ fn any_player_sacrifice_offer_keeps_sequential_player_semantics() {
         [EffectAst::Sequence { effects }] => effects.as_slice(),
         effects => effects,
     };
-    let [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        subject,
-        action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { filter, count: 2, .. }),
-    })] = effects else {
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject,
+            action:
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice {
+                    filter, count: 2, ..
+                }),
+        }),
+    ] = effects
+    else {
         panic!("expected a fixed-count sacrifice inside the sequential offer");
     };
     assert_eq!(subject.player, PlayerAst::That);
@@ -291,7 +298,8 @@ fn any_opponent_sacrifice_offer_keeps_filtered_sequential_semantics() {
         .expect("lex any-opponent sacrifice offer");
     let effect = parse_effect_clause(&tokens).expect("parse any-opponent sacrifice offer");
 
-    let EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay { players, effects }) = effect else {
+    let EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay { players, effects }) = effect
+    else {
         panic!("expected typed filtered offer, got {effect:#?}");
     };
     assert_eq!(players, PlayerFilter::Opponent);
@@ -313,7 +321,8 @@ fn any_player_half_life_payment_keeps_sequential_payer_relative_semantics() {
         .expect("lex any-player half-life offer");
     let effect = parse_effect_clause(&tokens).expect("parse any-player half-life offer");
 
-    let EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay { players, effects }) = effect else {
+    let EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay { players, effects }) = effect
+    else {
         panic!("expected typed any-player offer, got {effect:#?}");
     };
     assert_eq!(players, PlayerFilter::Any);
@@ -512,7 +521,9 @@ fn leading_may_chain_reaches_targeted_graveyard_cast_permission() {
                 ..
             }),
             EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn { .. }),
+                action: SubjectVerbActionAst::Grants(
+                    GrantActionAst::GrantPlayTaggedUntilEndOfTurn { .. }
+                ),
                 ..
             }),
         ]
@@ -571,7 +582,10 @@ fn each_other_player_subject_lowers_to_filtered_player_iteration() {
     let tokens = lex_line("Each other player loses X life.", 0).expect("lex clause");
     let effect = parse_effect_clause(&tokens).expect("each-other-player clause should parse");
 
-    let EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { filter, effects, .. }) = effect else {
+    let EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+        filter, effects, ..
+    }) = effect
+    else {
         panic!("expected filtered player iteration");
     };
     assert_eq!(filter, PlayerFilter::NotYou);
@@ -805,7 +819,8 @@ fn face_down_return_if_permanent_then_turn_stays_a_resolution_condition() {
         )
         .unwrap();
     let effect = parse_effect_clause(&tokens).expect("typed conditional return-turn clause");
-    let EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects }) = effect else {
+    let EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects }) = effect
+    else {
         panic!("expected non-promotable trailing condition, got {effect:#?}");
     };
     assert_eq!(effects.len(), 2);
@@ -823,7 +838,9 @@ fn face_down_return_if_permanent_then_turn_stays_a_resolution_condition() {
     assert!(matches!(
         &effects[1],
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp { .. }),
+            action: SubjectVerbActionAst::PermanentState(
+                PermanentStateActionAst::TurnFaceUp { .. }
+            ),
             ..
         })
     ));

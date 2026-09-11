@@ -1,8 +1,8 @@
-use crate::cards::builders::ConditionalEffectAst;
-use crate::cards::builders::StatChangeActionAst;
-use crate::cards::builders::CharacteristicActionAst;
-use crate::cards::builders::GrantActionAst;
 use super::*;
+use crate::cards::builders::CharacteristicActionAst;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::GrantActionAst;
+use crate::cards::builders::StatChangeActionAst;
 
 pub(super) fn apply_gain_clause_duration_to_leading_effect(
     effect: &mut EffectAst,
@@ -88,14 +88,18 @@ pub(super) fn apply_gain_clause_duration_to_leading_effect(
                     duration: effect_duration,
                     ..
                 })
-                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasicLandTypeChoice {
-                    duration: effect_duration,
-                    ..
-                })
-                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCreatureTypeChoice {
-                    duration: effect_duration,
-                    ..
-                })
+                | SubjectVerbActionAst::Characteristics(
+                    CharacteristicActionAst::BecomeBasicLandTypeChoice {
+                        duration: effect_duration,
+                        ..
+                    },
+                )
+                | SubjectVerbActionAst::Characteristics(
+                    CharacteristicActionAst::BecomeCreatureTypeChoice {
+                        duration: effect_duration,
+                        ..
+                    },
+                )
                 | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
                     duration: effect_duration,
                     ..
@@ -186,11 +190,13 @@ pub fn append_gain_ability_trailing_effects(
 
     let trimmed = trim_commas(trailing_tokens);
     if let Some(predicate) = parse_trailing_if_predicate_lexed(&trimmed) {
-        return Ok(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-            predicate,
-            if_true: effects,
-            if_false: Vec::new(),
-        })]);
+        return Ok(vec![EffectAst::Conditionals(
+            ConditionalEffectAst::Conditional {
+                predicate,
+                if_true: effects,
+                if_false: Vec::new(),
+            },
+        )]);
     }
 
     if token_slice_first_is(&trimmed, "unless") {

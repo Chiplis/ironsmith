@@ -21,9 +21,12 @@ use super::sequence_rules::generic_subject_verb_sequences::graveyard_copy_cast::
     normalize_shared_graveyard_union_exile, retag_single_card_copy, take_binary_coordination,
 };
 use crate::activation_and_restrictions::trigger_subject_filters::MayCastTaggedSpec;
-use crate::activation_and_restrictions::{build_may_cast_tagged_effect, parse_may_cast_it_sentence};
+use crate::activation_and_restrictions::{
+    build_may_cast_tagged_effect, parse_may_cast_it_sentence,
+};
 use crate::cards::builders::{
-    CardTextError, ChoiceCount, EffectAst, IfResultPredicate, ObjectFilter, PlayerAst, ObjectChoiceEffectAst, ConditionalEffectAst, PermissionEffectAst,
+    CardTextError, ChoiceCount, ConditionalEffectAst, EffectAst, IfResultPredicate,
+    ObjectChoiceEffectAst, ObjectFilter, PermissionEffectAst, PlayerAst,
 };
 use crate::grammar::effects::{CopyCardReferenceShape, parse_copy_card_reference_shape};
 use crate::tag::{CompilerReferenceTag, TagKey};
@@ -52,7 +55,9 @@ enum Exiled {
     /// One card exiled from a graveyard.
     Card { copy: Option<CopyStatement> },
     /// Several cards exiled at random; one chosen from among them is copied.
-    Collection { chosen: Option<(ObjectFilter, TagKey)> },
+    Collection {
+        chosen: Option<(ObjectFilter, TagKey)>,
+    },
 }
 
 /// The exiled card (or cards) an exile statement bound, and the statements
@@ -95,8 +100,9 @@ fn copy_then_cast(sentence: &SentenceInput) -> Option<MayCastTaggedSpec> {
 
 /// "Copy it." / "Copy that card." over the exiled card.
 fn separate_copy(sentence: &SentenceInput, exiled: &TagKey) -> Option<CopyInstructionSurface> {
-    let effects =
-        crate::grammar::primitives::probe_shape(super::parse_effect_sentence_lexed(sentence.lowered()))?;
+    let effects = crate::grammar::primitives::probe_shape(super::parse_effect_sentence_lexed(
+        sentence.lowered(),
+    ))?;
     let [copy_effect] = effects.as_slice() else {
         return None;
     };
@@ -116,9 +122,9 @@ fn separate_copy(sentence: &SentenceInput, exiled: &TagKey) -> Option<CopyInstru
 
 /// "If you do, copy it."
 fn gated_copy(sentence: &SentenceInput, exiled: &TagKey) -> bool {
-    let Some(effects) =
-        crate::grammar::primitives::probe_shape(super::parse_effect_sentence_lexed(sentence.lowered()))
-    else {
+    let Some(effects) = crate::grammar::primitives::probe_shape(
+        super::parse_effect_sentence_lexed(sentence.lowered()),
+    ) else {
         return false;
     };
     let [
@@ -167,7 +173,10 @@ fn choose_and_copy(sentence: &SentenceInput, exiled: &TagKey) -> Option<(ObjectF
         tag: exiled.clone(),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
-    Some((filter, helper_tag_for_tokens(tokens, "chosen_exiled").into()))
+    Some((
+        filter,
+        helper_tag_for_tokens(tokens, "chosen_exiled").into(),
+    ))
 }
 
 /// Tag the exile of one card from a graveyard, minting a tag when the
@@ -202,9 +211,9 @@ pub(super) fn open(
         return Ok(None);
     };
     let following = sentences.get(sentence_idx + 2);
-    let Some(effects) =
-        crate::grammar::primitives::probe_shape(super::parse_effect_sentence_lexed(sentence.lowered()))
-    else {
+    let Some(effects) = crate::grammar::primitives::probe_shape(
+        super::parse_effect_sentence_lexed(sentence.lowered()),
+    ) else {
         return Ok(None);
     };
     let group = |exile, tag, exiled| CopyCastGroup {
@@ -239,7 +248,10 @@ pub(super) fn open(
         let bound = if let Some(tag) = exact_terminal_card_copy_tag(&copy)
             && is_exact_tagged_graveyard_exile(&exile, &tag)
         {
-            Some((crate::tag::TagRef::of(tag), Some(CopyInstructionSurface::SeparateThatCard)))
+            Some((
+                crate::tag::TagRef::of(tag),
+                Some(CopyInstructionSurface::SeparateThatCard),
+            ))
         } else if let Some(copy_tag) = exact_single_card_copy_tag(&copy)
             && (copy_tag.as_str() == CompilerReferenceTag::It.as_str()
                 || copy_tag.as_str() == CompilerReferenceTag::PriorExiledCard.as_str())
@@ -283,7 +295,11 @@ pub(super) fn open(
             cast_statement(third).is_some_and(|cast| cast.without_paying_mana_cost)
         })
     {
-        return Ok(Some(group(collection, tag.key.clone(), Exiled::Collection { chosen: None })));
+        return Ok(Some(group(
+            collection,
+            tag.key.clone(),
+            Exiled::Collection { chosen: None },
+        )));
     }
     Ok(None)
 }
@@ -378,10 +394,12 @@ pub(super) fn finish(group: CopyCastGroup) -> Vec<EffectAst> {
                     cast.copy_instruction_surface = Some(CopyInstructionSurface::SeparateItThen);
                     effects.push(build_may_cast_tagged_effect(&cast));
                 }
-                Some(CopyStatement::Gated) => effects.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-                    predicate: IfResultPredicate::Did,
-                    effects: vec![build_may_cast_tagged_effect(&cast)],
-                })),
+                Some(CopyStatement::Gated) => {
+                    effects.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                        predicate: IfResultPredicate::Did,
+                        effects: vec![build_may_cast_tagged_effect(&cast)],
+                    }))
+                }
                 None => effects.push(build_may_cast_tagged_effect(&cast)),
             }
         }
@@ -389,13 +407,15 @@ pub(super) fn finish(group: CopyCastGroup) -> Vec<EffectAst> {
             let Some((filter, chosen_tag)) = chosen else {
                 return effects;
             };
-            effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
-                filter,
-                count: ChoiceCount::exactly(1),
-                player: PlayerAst::You,
-                tag: crate::tag::TagRef::of(chosen_tag.clone()),
-                zone: Zone::Exile,
-            }));
+            effects.push(EffectAst::ObjectChoices(
+                ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+                    filter,
+                    count: ChoiceCount::exactly(1),
+                    player: PlayerAst::You,
+                    tag: crate::tag::TagRef::of(chosen_tag.clone()),
+                    zone: Zone::Exile,
+                },
+            ));
             effects.push(EffectAst::Permissions(PermissionEffectAst::May {
                 effects: vec![EffectAst::subject_verb_cast_tagged(
                     crate::tag::TagRef::of(chosen_tag),

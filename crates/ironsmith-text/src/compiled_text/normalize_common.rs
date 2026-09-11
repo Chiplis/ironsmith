@@ -1166,7 +1166,10 @@ pub(super) fn describe_token_blueprint_with_presentation(
     }
     let mut keyword_texts = Vec::new();
     if let Some(filter) = &token.aura_attach_filter {
-        keyword_texts.push(format!("enchant {}", render_effects::describe_enchant_filter(filter)));
+        keyword_texts.push(format!(
+            "enchant {}",
+            render_effects::describe_enchant_filter(filter)
+        ));
     }
     let mut extra_ability_texts = Vec::new();
     let mut standalone_ability_texts = Vec::new();

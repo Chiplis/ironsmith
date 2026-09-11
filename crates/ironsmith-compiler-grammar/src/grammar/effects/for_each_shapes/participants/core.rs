@@ -38,7 +38,8 @@ pub(super) fn negated_shape(tokens: &[OwnedLexToken]) -> Option<WhoClauseShape<'
     Some(WhoClauseShape::Negated {
         effect_tokens,
         tagged_filter_tokens: tagged_filter_after_negation(tokens),
-        implicit_player_is_iterated: is_cant_failure && !matches!(
+        implicit_player_is_iterated: is_cant_failure
+            && !matches!(
             crate::grammar::effects::typed_clause_heads::classify_typed_clause_head(effect_tokens),
             crate::recognition::ParseOutcome::Match(head) if matches!(head.value.actor,
                 crate::grammar::effects::typed_clause_heads::ClauseActorHeadAst::Controller

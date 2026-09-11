@@ -8,16 +8,21 @@ use super::*;
 pub(super) fn describe_targeted_opponent_consult_may_cast_remainder(
     effects: &[&Effect],
 ) -> Option<String> {
-    let (declaration_effect, consult_effect, may_effect, repeated, remainder_effect) = match effects {
+    let (declaration_effect, consult_effect, may_effect, repeated, remainder_effect) = match effects
+    {
         [declaration, consult, may, remainder] => (*declaration, *consult, *may, None, *remainder),
-        [declaration, consult, may, repeated, remainder] => (*declaration, *consult, *may, Some(*repeated), *remainder),
+        [declaration, consult, may, repeated, remainder] => {
+            (*declaration, *consult, *may, Some(*repeated), *remainder)
+        }
         _ => return None,
     };
     let declaration = declaration_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
     let consult = consult_effect.downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
     if let Some(repeated) = repeated {
         let repeated = repeated.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
-        if repeated != declaration { return None; }
+        if repeated != declaration {
+            return None;
+        }
     }
     let targeted_opponent = PlayerFilter::target_opponent();
     if declaration.chooser.is_some()

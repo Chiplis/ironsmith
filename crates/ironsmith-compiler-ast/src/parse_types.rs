@@ -3,16 +3,14 @@ use ironsmith_core::tag::TagKeyWalk;
 use crate::diagnostics::TextSpan;
 use ironsmith_core::{ChoiceCount, TagKey, Value};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum DamageBySpec {
     ThisCreature,
     EquippedCreature,
     EnchantedCreature,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum PlayerAst {
     You,
     Active,
@@ -42,58 +40,50 @@ pub enum PlayerAst {
     Implicit,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum ReturnControllerAst {
     Preserve,
     Owner,
     You,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum LibraryConsultModeAst {
     Reveal,
     Exile,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub enum LibraryConsultStopRuleAst<Value = crate::effect::Value> {
     FirstMatch,
     MatchCount(Value),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum LibraryBottomOrderAst {
     Random,
     ChooserChooses,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub enum ObjectRefAst<Tag = crate::TagRef> {
     Tagged(Tag),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub struct SearchLibrarySlotAst<Filter = crate::target::ObjectFilter> {
     pub filter: Filter,
     pub optional: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum ZoneReplacementDurationAst {
     OneShot,
     UntilEndOfTurn,
     Persistent,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum FutureZoneReplacementCausePolicyAst {
     /// Match zone changes regardless of what caused them.
     Any,
@@ -101,8 +91,7 @@ pub enum FutureZoneReplacementCausePolicyAst {
     ChangedObjectIsCause,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum ControlDurationAst {
     UntilEndOfTurn,
     UntilYourNextTurnEnd,
@@ -111,29 +100,25 @@ pub enum ControlDurationAst {
     Forever,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum ExtraTurnAnchorAst {
     CurrentTurn,
     ReferencedTurn,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum SharedTypeConstraintAst {
     CardType,
     PermanentType,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum ExchangeValueKindAst {
     Power,
     Toughness,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub enum ExchangeValueAst<
     Player = PlayerAst,
     Target = TargetAst<crate::target::PlayerFilter, crate::target::ObjectFilter>,
@@ -159,12 +144,20 @@ pub enum TargetAst<
     Source(#[tag_walk(skip)] Option<TextSpan>),
     AnyTarget(#[tag_walk(skip)] Option<TextSpan>),
     AnyOtherTarget(#[tag_walk(skip)] Option<TextSpan>),
-    ObjectOrPlayer(ObjectFilter, PlayerFilter, #[tag_walk(skip)] Option<TextSpan>),
+    ObjectOrPlayer(
+        ObjectFilter,
+        PlayerFilter,
+        #[tag_walk(skip)] Option<TextSpan>,
+    ),
     PlayerOrPlaneswalker(PlayerFilter, #[tag_walk(skip)] Option<TextSpan>),
     AttackedPlayerOrPlaneswalker(#[tag_walk(skip)] Option<TextSpan>),
     Spell(#[tag_walk(skip)] Option<TextSpan>),
     Player(PlayerFilter, #[tag_walk(skip)] Option<TextSpan>),
-    Object(ObjectFilter, #[tag_walk(skip)] Option<TextSpan>, #[tag_walk(skip)] Option<TextSpan>),
+    Object(
+        ObjectFilter,
+        #[tag_walk(skip)] Option<TextSpan>,
+        #[tag_walk(skip)] Option<TextSpan>,
+    ),
     Tagged(Tag, #[tag_walk(skip)] Option<TextSpan>),
     WithCount(Box<TargetAst<PlayerFilter, ObjectFilter, Tag>>, ChoiceCount),
     WithCountValue(
@@ -174,8 +167,7 @@ pub enum TargetAst<
     ),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub enum RetargetModeAst<
     Target = TargetAst<crate::target::PlayerFilter, crate::target::ObjectFilter>,
 > {
@@ -183,8 +175,7 @@ pub enum RetargetModeAst<
     OneToFixed { target: Target },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub enum PreventNextTimeDamageSourceAst<
     Filter = crate::target::ObjectFilter,
     Target = TargetAst<crate::target::PlayerFilter, crate::target::ObjectFilter>,
@@ -194,8 +185,7 @@ pub enum PreventNextTimeDamageSourceAst<
     Filter(Filter),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum RedirectNextTimeDamageDestinationAst {
     SourceObject,
     Controller,
@@ -215,8 +205,7 @@ pub enum PreventNextTimeDamageTargetAst {
     Target(TargetAst),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum ClashOpponentAst {
     Opponent,
     TargetOpponent,

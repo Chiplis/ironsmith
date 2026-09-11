@@ -2547,9 +2547,10 @@ pub(crate) fn propose_spell_cast(
     let play_from_constraints = match casting_method {
         CastingMethod::PlayFrom { source, zone, .. }
         | CastingMethod::SplitOtherHalfPlayFrom { source, zone, .. } => {
-            let constraints = game.effect_store.grant_registry.play_from_constraints_for_card(
-                game, spell_id, *zone, caster, *source,
-            );
+            let constraints = game
+                .effect_store
+                .grant_registry
+                .play_from_constraints_for_card(game, spell_id, *zone, caster, *source);
             Some(Box::new((*source, *zone, constraints)))
         }
         _ => None,
@@ -3630,9 +3631,21 @@ pub fn apply_decision_context_with_dm<D: DecisionMaker>(
         DecisionContext::SelectOptions(options_ctx) => {
             let result = decision_maker.decide_options(game, options_ctx);
 
-            if state.pending_cast.as_ref().is_some_and(|pending| pending.stage == CastStage::ChoosingCreatureType) {
-                let choice = result.first().copied().ok_or_else(|| GameLoopError::InvalidState("Creature type selection requires one type".into()))?;
-                return apply_creature_type_announcement_response(game, trigger_queue, state, choice, decision_maker);
+            if state
+                .pending_cast
+                .as_ref()
+                .is_some_and(|pending| pending.stage == CastStage::ChoosingCreatureType)
+            {
+                let choice = result.first().copied().ok_or_else(|| {
+                    GameLoopError::InvalidState("Creature type selection requires one type".into())
+                })?;
+                return apply_creature_type_announcement_response(
+                    game,
+                    trigger_queue,
+                    state,
+                    choice,
+                    decision_maker,
+                );
             }
 
             if state
@@ -3923,7 +3936,9 @@ pub(super) fn apply_priority_action_with_dm(
 /// Returns true if this is a Priority decision with only PassPriority available.
 pub(super) fn should_auto_pass_ctx(ctx: &crate::decisions::context::DecisionContext) -> bool {
     if let crate::decisions::context::DecisionContext::Priority(pctx) = ctx {
-        pctx.analysis_complete && pctx.actions.len() == 1 && matches!(pctx.actions[0], LegalAction::PassPriority)
+        pctx.analysis_complete
+            && pctx.actions.len() == 1
+            && matches!(pctx.actions[0], LegalAction::PassPriority)
     } else {
         false
     }

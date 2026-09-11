@@ -18,10 +18,11 @@ fn looked_players_hand_optional_free_cast_keeps_zone_owner_and_may_semantics() {
         SentenceInput::from_lexed(&lexed[0]),
         SentenceInput::from_lexed(&lexed[1]),
     ];
-    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
-        .map(|matched| matched.map(|matched| matched.effects))
-        .expect("pair parser should not error")
-        .expect("looked-hand optional cast should match");
+    let effects =
+        crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+            .map(|matched| matched.map(|matched| matched.effects))
+            .expect("pair parser should not error")
+            .expect("looked-hand optional cast should match");
 
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -97,7 +98,7 @@ fn looked_hand_pair_does_not_claim_unrelated_or_nonoptional_casts() {
     ];
     assert!(
         crate::effect_sentences::sequence_rules::try_parse_document_program(&wrong_reference, 0)
-        .map(|matched| matched.map(|matched| matched.effects))
+            .map(|matched| matched.map(|matched| matched.effects))
             .unwrap()
             .is_none()
     );
@@ -112,7 +113,7 @@ fn looked_hand_pair_does_not_claim_unrelated_or_nonoptional_casts() {
     ];
     assert!(
         crate::effect_sentences::sequence_rules::try_parse_document_program(&mandatory, 0)
-        .map(|matched| matched.map(|matched| matched.effects))
+            .map(|matched| matched.map(|matched| matched.effects))
             .unwrap()
             .is_none()
     );

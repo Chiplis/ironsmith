@@ -16,20 +16,21 @@
 //! depending on what followed it, the selection is read when its sentence
 //! arrives and spelled when the remainder does ([`selections`]).
 
+#[path = "looked_procedure/conditionals.rs"]
+mod conditionals;
 #[path = "looked_procedure/partitions.rs"]
 mod partitions;
 #[path = "looked_procedure/revealed.rs"]
 mod revealed;
-#[path = "looked_procedure/conditionals.rs"]
-mod conditionals;
-#[path = "looked_procedure/singles.rs"]
-mod singles;
 #[path = "looked_procedure/selections.rs"]
 mod selections;
+#[path = "looked_procedure/singles.rs"]
+mod singles;
 
 use super::dispatch_entry::SentenceInput;
 use crate::cards::builders::{
-    CardTextError, EffectAst, IfResultPredicate, PlayerAst, TargetAst, Value, ConditionalEffectAst, PermissionEffectAst,
+    CardTextError, ConditionalEffectAst, EffectAst, IfResultPredicate, PermissionEffectAst,
+    PlayerAst, TargetAst, Value,
 };
 use crate::grammar::effects::triple_sequence_shapes as triple_grammar;
 use crate::grammar::sentence_markers;
@@ -363,7 +364,11 @@ pub(super) fn finish(mut group: ViewedGroup) -> Vec<EffectAst> {
             crate::tag::TagRef::of(group.tag.clone()),
         )],
         ViewStyle::LookThenRevealTagged => vec![
-            EffectAst::subject_verb_look_at_top_cards(group.owner, group.count, crate::tag::TagRef::of(group.tag.clone())),
+            EffectAst::subject_verb_look_at_top_cards(
+                group.owner,
+                group.count,
+                crate::tag::TagRef::of(group.tag.clone()),
+            ),
             EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(group.tag.clone())),
         ],
         ViewStyle::Absorbed => Vec::new(),

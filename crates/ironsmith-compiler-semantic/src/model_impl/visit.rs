@@ -2,7 +2,11 @@ use std::ops::ControlFlow;
 
 use crate::cost::TotalCost;
 use crate::effect::Value;
-use crate::model::ast::{EffectAst, PredicateAst, SubjectVerbActionAst, KeywordActionAst, RandomActionAst, DelayedEffectAst, ForEachEffectAst, ObjectChoiceEffectAst, VoteEffectAst, ConditionalEffectAst, PermissionEffectAst};
+use crate::model::ast::{
+    ConditionalEffectAst, DelayedEffectAst, EffectAst, ForEachEffectAst, KeywordActionAst,
+    ObjectChoiceEffectAst, PermissionEffectAst, PredicateAst, RandomActionAst,
+    SubjectVerbActionAst, VoteEffectAst,
+};
 use crate::model::clauses::{
     ClauseActorAst, ClauseConditionAst, ClauseDurationAst, ClauseObjectAst, ClausePredicateAst,
     ClauseSubjectAst,
@@ -39,8 +43,11 @@ pub enum TerminalResultProducer {
 pub fn terminal_result_producer(effect: &EffectAst) -> Option<TerminalResultProducer> {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash { .. }) => Some(TerminalResultProducer::Clash),
-            SubjectVerbActionAst::Random(RandomActionAst::FlipCoin) | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly) => {
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash { .. }) => {
+                Some(TerminalResultProducer::Clash)
+            }
+            SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)
+            | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly) => {
                 Some(TerminalResultProducer::FlipCoin)
             }
             _ => None,
@@ -148,10 +155,12 @@ macro_rules! nested_effects_variants {
                 effects: $effects,
                 ..
             })
-            | EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy {
-                effects: $effects,
-                ..
-            })
+            | EffectAst::ForEach(
+                ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy {
+                    effects: $effects,
+                    ..
+                },
+            )
             | EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDoesNot {
                 effects: $effects,
                 ..
@@ -281,8 +290,12 @@ pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ManaRestricted { .. } => {}
         EffectAst::SelfReplacement { .. } => {}
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { .. }) => {}
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { .. }) => {}
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { .. }) => {}
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
+            ..
+        }) => {}
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
+            ..
+        }) => {}
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone { .. }) => {}
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { .. }) => {}
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { .. }) => {}
@@ -292,7 +305,9 @@ pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::Conditionals(ConditionalEffectAst::IfEffectResult { .. }) => {}
         EffectAst::TagAffected { .. } | EffectAst::TagReferenced { .. } => {}
         EffectAst::DirectionalAdjacentPlayerControl { .. } => {}
-        EffectAst::Permissions(PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. }) => {}
+        EffectAst::Permissions(
+            PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. },
+        ) => {}
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess) => {}
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay) => {}
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce) => {}
@@ -310,7 +325,9 @@ pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ForEach(ForEachEffectAst::ForEachTargetPlayers { .. }) => {}
         EffectAst::ForEach(ForEachEffectAst::ForEachObject { .. }) => {}
         EffectAst::ForEach(ForEachEffectAst::ForEachTagged { .. }) => {}
-        EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy { .. }) => {}
+        EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy {
+            ..
+        }) => {}
         EffectAst::MoveTaggedGroupToZone { .. } => {}
         EffectAst::SnapshotLastObjectTag { .. } => {}
         EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDoesNot { .. }) => {}
@@ -346,12 +363,16 @@ pub fn for_each_nested_effects(
             visit(if_true);
             visit(if_false);
         }
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes }) | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
             for mode in modes {
                 visit(&mode.effects);
             }
         }
-        EffectAst::Conditionals(ConditionalEffectAst::IfEffectDidNotHappen { effect, otherwise }) => {
+        EffectAst::Conditionals(ConditionalEffectAst::IfEffectDidNotHappen {
+            effect,
+            otherwise,
+        }) => {
             visit(std::slice::from_ref(effect.as_ref()));
             visit(otherwise);
         }
@@ -413,12 +434,16 @@ pub fn for_each_nested_effects_mut(
             visit(if_true);
             visit(if_false);
         }
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes }) | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
             for mode in modes {
                 visit(&mut mode.effects);
             }
         }
-        EffectAst::Conditionals(ConditionalEffectAst::IfEffectDidNotHappen { effect, otherwise }) => {
+        EffectAst::Conditionals(ConditionalEffectAst::IfEffectDidNotHappen {
+            effect,
+            otherwise,
+        }) => {
             visit(std::slice::from_mut(effect.as_mut()));
             visit(otherwise);
         }
@@ -483,7 +508,9 @@ pub fn for_each_nested_effect_vec_mut(
         assert_effect_ast_variant_coverage(effect);
         match effect {
             EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-                if_true, if_false, ..
+                if_true,
+                if_false,
+                ..
             })
             | EffectAst::SelfReplacement {
                 if_true, if_false, ..
@@ -491,17 +518,23 @@ pub fn for_each_nested_effect_vec_mut(
                 visit(if_true);
                 visit(if_false);
             }
-            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes }) | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
                 for mode in modes {
                     visit(&mut mode.effects);
                 }
             }
-            EffectAst::Conditionals(ConditionalEffectAst::IfEffectDidNotHappen { effect, otherwise }) => {
+            EffectAst::Conditionals(ConditionalEffectAst::IfEffectDidNotHappen {
+                effect,
+                otherwise,
+            }) => {
                 walk(effect.as_mut(), include_unless_action_alternative, visit);
                 visit(otherwise);
             }
             EffectAst::Conditionals(ConditionalEffectAst::IfEffectResult {
-                effect, if_true, ..
+                effect,
+                if_true,
+                ..
             }) => {
                 walk(effect.as_mut(), include_unless_action_alternative, visit);
                 visit(if_true);
@@ -561,12 +594,16 @@ pub fn try_for_each_nested_effects_mut<E>(
             visit(if_true)?;
             visit(if_false)?;
         }
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes }) | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
             for mode in modes {
                 visit(&mut mode.effects)?;
             }
         }
-        EffectAst::Conditionals(ConditionalEffectAst::IfEffectDidNotHappen { effect, otherwise }) => {
+        EffectAst::Conditionals(ConditionalEffectAst::IfEffectDidNotHappen {
+            effect,
+            otherwise,
+        }) => {
             visit(std::slice::from_mut(effect.as_mut()))?;
             visit(otherwise)?;
         }

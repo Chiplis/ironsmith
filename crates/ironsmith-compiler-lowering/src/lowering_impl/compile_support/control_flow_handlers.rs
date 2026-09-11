@@ -1,18 +1,19 @@
-use crate::cards::builders::PlayerPredicateAst;
-use crate::cards::builders::PermissionEffectAst;
-use crate::cards::builders::ConditionalEffectAst;
-use crate::cards::builders::VoteEffectAst;
-use crate::cards::builders::ObjectChoiceEffectAst;
-use crate::cards::builders::ForEachEffectAst;
-use crate::cards::builders::TokenActionAst;
-use crate::cards::builders::RandomActionAst;
 use super::*;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::PermissionEffectAst;
+use crate::cards::builders::PlayerPredicateAst;
+use crate::cards::builders::RandomActionAst;
+use crate::cards::builders::TokenActionAst;
+use crate::cards::builders::VoteEffectAst;
 
 fn tag_last_discard_in_effects(effects: &mut [EffectAst], tag: &TagKey) -> bool {
     for effect in effects.iter_mut().rev() {
         if let EffectAst::SubjectVerb(subject_verb) = effect
             && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard {
-                tag: discard_tag, ..
+                tag: discard_tag,
+                ..
             }) = &mut subject_verb.action
         {
             *discard_tag = Some(crate::tag::TagRef::of(tag.clone()));
@@ -28,7 +29,8 @@ fn bind_explicit_tag_to_player_tagged_predicate(
 ) -> PredicateAst {
     let mut bound = predicate.clone();
     if let PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches {
-        tag: predicate_tag, ..
+        tag: predicate_tag,
+        ..
     }) = &mut bound
         && predicate_tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     {
@@ -398,7 +400,8 @@ fn correlated_choice_result_predicate(
         && antecedent_effects.last().is_some_and(|effect| {
             matches!(
                 effect,
-                EffectAst::Permissions(PermissionEffectAst::May { .. }) | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. })
+                EffectAst::Permissions(PermissionEffectAst::May { .. })
+                    | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. })
             )
         })
     {
@@ -599,7 +602,8 @@ pub fn compile_if_do_with_player_did(
             })]
         );
         if (is_face_only_coin_flip || *result_predicate == IfResultPredicate::SearchedLibrary)
-            && predicate.is_none() {
+            && predicate.is_none()
+        {
             // Complete the first instruction for every player before applying
             // the separately authored follow-up to matching participants.
             // Coin flips retain per-player counts; searches retain events even
@@ -679,7 +683,8 @@ pub fn compile_if_do_with_player_did(
 
     if !matches!(
         first,
-        EffectAst::Conditionals(ConditionalEffectAst::IfResult { .. }) | EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult { .. })
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult { .. })
+            | EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult { .. })
     ) {
         let (mut first_effects, mut choices) = compile_effect(first, ctx)?;
         let id = if let Some(last) = first_effects.pop() {
@@ -697,14 +702,17 @@ pub fn compile_if_do_with_player_did(
         for choice in inner_choices {
             push_choice(&mut choices, choice);
         }
-        first_effects.push(Effect::new(crate::effects::IfEffect::if_then(
-            id,
-            effect_predicate_from_if_result(correlated_choice_result_predicate(
-                result_predicate.clone(),
-                std::slice::from_ref(first),
-            )),
-            inner_effects,
-        ).with_per_player_result(true)));
+        first_effects.push(Effect::new(
+            crate::effects::IfEffect::if_then(
+                id,
+                effect_predicate_from_if_result(correlated_choice_result_predicate(
+                    result_predicate.clone(),
+                    std::slice::from_ref(first),
+                )),
+                inner_effects,
+            )
+            .with_per_player_result(true),
+        ));
         return Ok(Some((first_effects, choices)));
     }
 
@@ -909,8 +917,12 @@ pub fn compile_result_followup(
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let (predicate, followup_effects, reflexive) = match second {
-        EffectAst::Conditionals(ConditionalEffectAst::IfResult { predicate, effects }) => (predicate.clone(), effects, false),
-        EffectAst::Conditionals(ConditionalEffectAst::WhenResult { predicate, effects }) => (predicate.clone(), effects, true),
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult { predicate, effects }) => {
+            (predicate.clone(), effects, false)
+        }
+        EffectAst::Conditionals(ConditionalEffectAst::WhenResult { predicate, effects }) => {
+            (predicate.clone(), effects, true)
+        }
         _ => return Ok(None),
     };
     if matches!(
@@ -1055,7 +1067,8 @@ pub fn effect_predicate_from_if_result(predicate: IfResultPredicate) -> EffectPr
             EffectPredicate::AffectedObjectMatchesCardType { card_type, negated }
         }
         IfResultPredicate::PriorEffectResult(surface)
-            if !surface.negated && surface.action == ironsmith_core::PriorEffectAction::Searched
+            if !surface.negated
+                && surface.action == ironsmith_core::PriorEffectAction::Searched
                 && surface.actor == ironsmith_core::PriorEffectResultActor::You
                 && surface.quantifier
                     == ironsmith_core::PriorEffectResultQuantifier::ActionOnly
@@ -1189,7 +1202,8 @@ fn starting_with_controller_each_player_effects(effect: &EffectAst) -> Option<&[
     else {
         return None;
     };
-    let [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })] = effects.as_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })] = effects.as_slice()
+    else {
         return None;
     };
     Some(effects)
@@ -1296,7 +1310,10 @@ pub fn force_implicit_vote_token_controller_you(effects: &mut [EffectAst]) {
                 action:
                     SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { player, .. })
                     | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { player, .. })
-                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { player, .. }),
+                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
+                        player,
+                        ..
+                    }),
                 ..
             }) => {
                 if matches!(*player, PlayerAst::Implicit) {
@@ -1431,12 +1448,36 @@ fn vote_option_ast_uses_iterated_player_in_scope(
     let mut found = false;
     for effect in effects {
         if !iterated_player_bound
-            && let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, player, .. })
-            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { filter, player, .. })
-            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { filter, player, .. })
-            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone { filter, player, .. })
-            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { filter, player, .. })
-            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { filter, player, .. }) = effect
+            && let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                filter,
+                player,
+                ..
+            })
+            | EffectAst::ObjectChoices(
+                ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
+                    filter, player, ..
+                },
+            )
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
+                filter,
+                player,
+                ..
+            })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone {
+                filter,
+                player,
+                ..
+            })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+                filter,
+                player,
+                ..
+            })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                filter,
+                player,
+                ..
+            }) = effect
             && (matches!(*player, PlayerAst::That)
                 || object_filter_mentions_iterated_player(filter))
         {
@@ -1455,7 +1496,9 @@ fn vote_option_ast_uses_iterated_player_in_scope(
                     | EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDid { .. })
                     | EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer { .. })
                     | EffectAst::ForEach(ForEachEffectAst::ForEachTagged { .. })
-                    | EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy { .. })
+                    | EffectAst::ForEach(
+                        ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy { .. }
+                    )
                     | EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay { .. })
             );
         for_each_nested_effects(effect, true, |nested| {
@@ -1533,11 +1576,9 @@ pub fn compile_vote_sequence(
             .enumerate()
             .skip(1)
             .filter_map(|(idx, annotated)| match &annotated.effect {
-                EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. })
-                    if is_secret_choice_related_predicate(predicate) =>
-                {
-                    Some(idx + 1)
-                }
+                EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                    predicate, ..
+                }) if is_secret_choice_related_predicate(predicate) => Some(idx + 1),
                 _ => None,
             })
             .next_back()
@@ -1615,20 +1656,21 @@ pub fn compile_vote_sequence(
 
     let mut extra_mandatory: u32 = 0;
     let mut extra_optional: u32 = 0;
-    let consumed = effects
-        .iter()
-        .enumerate()
-        .skip(1)
-        .filter_map(|(idx, annotated)| match &annotated.effect {
-            EffectAst::Votes(VoteEffectAst::VoteOption { .. }) => Some(idx + 1),
-            EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. }) if is_vote_related_predicate(predicate) => {
-                Some(idx + 1)
-            }
-            effect if vote_extra_amount(effect).is_some() => Some(idx + 1),
-            _ => None,
-        })
-        .next_back()
-        .unwrap_or(1);
+    let consumed =
+        effects
+            .iter()
+            .enumerate()
+            .skip(1)
+            .filter_map(|(idx, annotated)| match &annotated.effect {
+                EffectAst::Votes(VoteEffectAst::VoteOption { .. }) => Some(idx + 1),
+                EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                    predicate, ..
+                }) if is_vote_related_predicate(predicate) => Some(idx + 1),
+                effect if vote_extra_amount(effect).is_some() => Some(idx + 1),
+                _ => None,
+            })
+            .next_back()
+            .unwrap_or(1);
 
     for annotated in effects.iter().take(consumed).skip(1) {
         if let Some((count, optional)) = vote_extra_amount(&annotated.effect) {
@@ -1857,8 +1899,8 @@ pub fn target_context_prelude_for_filter(filter: &ObjectFilter) -> (Vec<Effect>,
 
 #[cfg(test)]
 mod typed_search_predicate_tests {
-    use crate::cards::builders::LifeResourceActionAst;
     use super::*;
+    use crate::cards::builders::LifeResourceActionAst;
 
     #[test]
     fn removed_counter_metric_survives_runtime_player_and_object_fanout_lowering() {

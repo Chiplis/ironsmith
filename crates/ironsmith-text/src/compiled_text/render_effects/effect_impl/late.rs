@@ -5339,8 +5339,13 @@
                         plural_spell_text
                     };
                 return format!(
-                    "{} {} casts cost {} less to cast {}{}",
-                    plural_spell_text, caster_text, reduction, duration_text, where_suffix,
+                    "{} {} {} cost {} less to cast {}{}",
+                    plural_spell_text,
+                    caster_text,
+                    player_verb(&caster_text, "cast", "casts"),
+                    reduction,
+                    duration_text,
+                    where_suffix,
                 );
             }
             if grant_next_spell_cost_reduction.filter.cast_by.is_none()

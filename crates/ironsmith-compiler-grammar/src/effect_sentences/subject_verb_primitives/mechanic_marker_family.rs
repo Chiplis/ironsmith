@@ -889,11 +889,11 @@ pub static POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX: LazyLock<LexRuleHintIn
 
 #[cfg(test)]
 mod tests {
-    use crate::cards::builders::TokenActionAst;
-    use crate::cards::builders::StatChangeActionAst;
+    use super::*;
     use crate::cards::builders::CharacteristicActionAst;
     use crate::cards::builders::LibraryActionAst;
-    use super::*;
+    use crate::cards::builders::StatChangeActionAst;
+    use crate::cards::builders::TokenActionAst;
     use crate::model::ast::SubjectVerbSubjectAst;
     use crate::util::tokenize_line;
 
@@ -1076,9 +1076,10 @@ mod tests {
 
         assert_eq!(effects.len(), 2, "{effects:#?}");
         assert!(
-            effects
-                .iter()
-                .all(|effect| matches!(effect, EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. }))),
+            effects.iter().all(|effect| matches!(
+                effect,
+                EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. })
+            )),
             "{effects:#?}"
         );
 
@@ -1086,9 +1087,10 @@ mod tests {
             .expect("the public effect-chain route should preserve both sibling arms");
         assert_eq!(public_effects.len(), 2, "{public_effects:#?}");
         assert!(
-            public_effects
-                .iter()
-                .all(|effect| matches!(effect, EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. }))),
+            public_effects.iter().all(|effect| matches!(
+                effect,
+                EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. })
+            )),
             "{public_effects:#?}"
         );
     }
@@ -1113,7 +1115,9 @@ mod tests {
                 matches!(
                     effects.first(),
                     Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                        action: SubjectVerbActionAst::Library(LibraryActionAst::ShuffleObjectsIntoLibrary { .. }),
+                        action: SubjectVerbActionAst::Library(
+                            LibraryActionAst::ShuffleObjectsIntoLibrary { .. }
+                        ),
                         ..
                     }))
                 ),
@@ -1152,7 +1156,9 @@ mod tests {
                         player: PlayerAst::ItsOwner,
                         ..
                     },
-                    action: SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { .. }),
+                    action: SubjectVerbActionAst::Library(
+                        LibraryActionAst::ExileTopOfLibrary { .. }
+                    ),
                 }))
             ),
             "the same-sentence `their library` follow-up must remain owner-correlated: {effects:#?}"

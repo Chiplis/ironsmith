@@ -957,11 +957,12 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
                 {
                     return false;
                 }
-                if outcome
-                    .execution_facts
-                    .iter()
-                    .any(|fact| matches!(fact, ExecutionFact::ManaPaid { .. } | ExecutionFact::Accepted))
-                {
+                if outcome.execution_facts.iter().any(|fact| {
+                    matches!(
+                        fact,
+                        ExecutionFact::ManaPaid { .. } | ExecutionFact::Accepted
+                    )
+                }) {
                     return true;
                 }
                 if let Some(coin_flip) = outcome.execution_facts.iter().find_map(|fact| {
@@ -982,7 +983,9 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
             }
             Self::DidNotHappen => !Self::Happened.evaluate_outcome(outcome),
             Self::SearchedLibrary => outcome.events.iter().any(|event| {
-                event.downcast::<crate::events::SearchLibraryEvent>().is_some()
+                event
+                    .downcast::<crate::events::SearchLibraryEvent>()
+                    .is_some()
             }),
             Self::HappenedNotReplaced => {
                 Self::Happened.evaluate_outcome(outcome)
@@ -1017,8 +1020,10 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
                 }
                 if !prior_result_filter_has_lki_constraints(&surface.filter) {
                     if surface.action == crate::effect::PriorEffectAction::Drawn {
-                        let drawn: u32 = outcome.events_of_type::<crate::events::CardsDrawnEvent>()
-                            .map(|event| event.amount()).sum();
+                        let drawn: u32 = outcome
+                            .events_of_type::<crate::events::CardsDrawnEvent>()
+                            .map(|event| event.amount())
+                            .sum();
                         return drawn >= surface.required_count.unwrap_or(1);
                     }
                     return Self::Happened.evaluate_outcome(outcome);
@@ -5011,10 +5016,19 @@ mod tests {
         assert!(!EffectPredicate::SearchedLibrary.evaluate_outcome(&library_choice));
         assert!(!EffectPredicate::SearchedLibrary.evaluate_outcome(&graveyard_choice));
         let search = crate::triggers::TriggerEvent::new_with_provenance(
-            crate::events::SearchLibraryEvent::new(PlayerId::from_index(0), Some(PlayerId::from_index(0))),
-            crate::provenance::ProvNodeId::default());
-        assert!(EffectPredicate::SearchedLibrary.evaluate_outcome(&EffectOutcome::count(0).with_event(search.clone())));
-        assert!(EffectPredicate::SearchedLibrary.evaluate_outcome(&graveyard_choice.with_event(search)));
+            crate::events::SearchLibraryEvent::new(
+                PlayerId::from_index(0),
+                Some(PlayerId::from_index(0)),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(
+            EffectPredicate::SearchedLibrary
+                .evaluate_outcome(&EffectOutcome::count(0).with_event(search.clone()))
+        );
+        assert!(
+            EffectPredicate::SearchedLibrary.evaluate_outcome(&graveyard_choice.with_event(search))
+        );
         assert!(!EffectPredicate::SearchedLibrary.evaluate_outcome(&EffectOutcome::resolved()));
     }
 

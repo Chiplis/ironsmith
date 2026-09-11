@@ -1,16 +1,18 @@
-use crate::cards::builders::ForEachEffectAst;
 use super::super::super::dispatch_entry::{
     ConsultSentenceParts, consult_cast_effects, consult_stop_rule_is_single_match,
     leading_may_actor_to_player, parse_consult_cast_clause, parse_consult_traversal_sentence,
     parse_looked_card_choice_filter, parse_looked_card_reveal_filter,
     parse_top_cards_view_sentence, target_references_it,
 };
+use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{
-    CardTextError, ChoiceCount, EffectAst, GrantedAbilityAst, IfResultPredicate,
-    LibraryBottomOrderAst, ObjectFilter, OwnedLexToken, PlayerAst, PredicateAst,
-    ReturnControllerAst, SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst,
-    SubjectVerbRoleAst, SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan, TriggerSpec,
-    ZoneReplacementDurationAst, CounterActionAst, DamagePreventionActionAst, GrantActionAst, RevealLookActionAst, LifeResourceActionAst, StatChangeActionAst, StackActionAst, DelayedEffectAst, ObjectChoiceEffectAst, VoteEffectAst, ConditionalEffectAst, PermissionEffectAst,
+    CardTextError, ChoiceCount, ConditionalEffectAst, CounterActionAst, DamagePreventionActionAst,
+    DelayedEffectAst, EffectAst, GrantActionAst, GrantedAbilityAst, IfResultPredicate,
+    LibraryBottomOrderAst, LifeResourceActionAst, ObjectChoiceEffectAst, ObjectFilter,
+    OwnedLexToken, PermissionEffectAst, PlayerAst, PredicateAst, ReturnControllerAst,
+    RevealLookActionAst, StackActionAst, StatChangeActionAst, SubjectAst, SubjectVerbActionAst,
+    SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan,
+    TriggerSpec, VoteEffectAst, ZoneReplacementDurationAst,
 };
 use crate::effect::{EffectPredicate, Value};
 use crate::effect_sentences;
@@ -268,7 +270,8 @@ pub fn parse_controller_defending_loot_then_greatest_mana_value_followup(
         PlayerFilter::Any,
         PlayerFilter::excluding(PlayerFilter::NotYou, PlayerFilter::Defending),
     );
-    let loot = EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
+    let loot = EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+        sequential: false,
         filter: participants,
         effects: vec![
             EffectAst::subject_verb(
@@ -288,13 +291,15 @@ pub fn parse_controller_defending_loot_then_greatest_mana_value_followup(
             ),
         ],
     });
-    Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::IfEffectResult {
-        effect: Box::new(loot),
-        predicate: EffectPredicate::PlayerAffectedObjectHasGreatestManaValue {
-            player: PlayerFilter::You,
+    Ok(Some(vec![EffectAst::Conditionals(
+        ConditionalEffectAst::IfEffectResult {
+            effect: Box::new(loot),
+            predicate: EffectPredicate::PlayerAffectedObjectHasGreatestManaValue {
+                player: PlayerFilter::You,
+            },
+            if_true: followup,
         },
-        if_true: followup,
-    })]))
+    )]))
 }
 
 #[cfg(test)]
@@ -438,7 +443,10 @@ fn look_at_top_cards_parts(effect: &EffectAst) -> Option<(PlayerAst, Value)> {
 fn top_cards_parts_with_reveal(effect: &EffectAst) -> Option<(PlayerAst, Value, bool)> {
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         subject: SubjectVerbSubjectAst { player, .. },
-        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { count, reveal, .. }),
+        action:
+            SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
+                count, reveal, ..
+            }),
     }) = effect
     else {
         return None;
@@ -541,7 +549,11 @@ fn compose_singleton_hand_partition(
         tagged_library_candidate_filter(&looked_tag, std::slice::from_ref(&hand_tag));
 
     vec![
-        EffectAst::subject_verb_look_at_top_cards(player, count, crate::tag::TagRef::of(looked_tag)),
+        EffectAst::subject_verb_look_at_top_cards(
+            player,
+            count,
+            crate::tag::TagRef::of(looked_tag),
+        ),
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter: hand_filter,
             count: ChoiceCount::exactly(1),
@@ -610,16 +622,21 @@ fn compose_distinct_three_way_looked_disposition(
         crate::tag::TagRef::of(candidate_tag.clone()),
     )];
     for (index, tag) in chosen_tags.iter().enumerate() {
-        effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
-            filter: tagged_library_candidate_filter(&candidate_tag, &chosen_tags[..index]),
-            count: ChoiceCount::exactly(1),
-            player,
-            tag: crate::tag::TagRef::of(tag.clone()),
-            zone: Zone::Library,
-        }));
+        effects.push(EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+                filter: tagged_library_candidate_filter(&candidate_tag, &chosen_tags[..index]),
+                count: ChoiceCount::exactly(1),
+                player,
+                tag: crate::tag::TagRef::of(tag.clone()),
+                zone: Zone::Library,
+            },
+        ));
     }
     for (tag, destination) in chosen_tags.into_iter().zip(destinations) {
-        effects.push(move_tagged_to_looked_destination(tag.key.clone(), destination));
+        effects.push(move_tagged_to_looked_destination(
+            tag.key.clone(),
+            destination,
+        ));
     }
     effects
 }
@@ -939,7 +956,11 @@ pub fn parse_look_at_top_then_put_counted_hand_rest_bottom(
     let selected_filter = tagged_library_candidate_filter(&looked_tag, &[]);
 
     Ok(Some(vec![
-        EffectAst::subject_verb_look_at_top_cards(PlayerAst::You, count, crate::tag::TagRef::of(looked_tag.clone())),
+        EffectAst::subject_verb_look_at_top_cards(
+            PlayerAst::You,
+            count,
+            crate::tag::TagRef::of(looked_tag.clone()),
+        ),
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter: selected_filter,
             count: shape.count,
@@ -1023,7 +1044,11 @@ pub fn parse_look_at_top_then_partition_selected_and_remainder(
     ) = (shape.selected_destination, shape.remainder_destination)
     {
         let effects = vec![
-            EffectAst::subject_verb_look_at_top_cards(library_owner, count, crate::tag::TagRef::of(looked_tag.clone())),
+            EffectAst::subject_verb_look_at_top_cards(
+                library_owner,
+                count,
+                crate::tag::TagRef::of(looked_tag.clone()),
+            ),
             EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
                 filter: selected_filter,
                 count: shape.selected_count,
@@ -1053,10 +1078,12 @@ pub fn parse_look_at_top_then_partition_selected_and_remainder(
             ),
         ];
         return if gate_on_previous_result {
-            Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-                predicate: IfResultPredicate::Did,
-                effects,
-            })]))
+            Ok(Some(vec![EffectAst::Conditionals(
+                ConditionalEffectAst::IfResult {
+                    predicate: IfResultPredicate::Did,
+                    effects,
+                },
+            )]))
         } else {
             Ok(Some(effects))
         };
@@ -1068,7 +1095,11 @@ pub fn parse_look_at_top_then_partition_selected_and_remainder(
         tagged_library_candidate_filter(&looked_tag, std::slice::from_ref(&selected_tag));
 
     let effects = vec![
-        EffectAst::subject_verb_look_at_top_cards(library_owner, count, crate::tag::TagRef::of(looked_tag.clone())),
+        EffectAst::subject_verb_look_at_top_cards(
+            library_owner,
+            count,
+            crate::tag::TagRef::of(looked_tag.clone()),
+        ),
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter: selected_filter,
             count: shape.selected_count,
@@ -1081,14 +1112,24 @@ pub fn parse_look_at_top_then_partition_selected_and_remainder(
             vec![Zone::Library],
             crate::tag::TagRef::of(remainder_tag.clone()),
         ),
-        move_looked_partition_group(selected_tag.key.clone(), shape.selected_destination, library_owner),
-        move_looked_partition_group(remainder_tag.key.clone(), shape.remainder_destination, library_owner),
+        move_looked_partition_group(
+            selected_tag.key.clone(),
+            shape.selected_destination,
+            library_owner,
+        ),
+        move_looked_partition_group(
+            remainder_tag.key.clone(),
+            shape.remainder_destination,
+            library_owner,
+        ),
     ];
     if gate_on_previous_result {
-        Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-            predicate: IfResultPredicate::Did,
-            effects,
-        })]))
+        Ok(Some(vec![EffectAst::Conditionals(
+            ConditionalEffectAst::IfResult {
+                predicate: IfResultPredicate::Did,
+                effects,
+            },
+        )]))
     } else {
         Ok(Some(effects))
     }
@@ -1306,18 +1347,20 @@ pub(crate) fn append_rest_action_after_choice(
                 return None;
             };
             let rest_filter = filter.clone().not_tagged(tag.clone());
-            Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
-                effects: vec![
-                    EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-                        filter,
-                        tag,
-                        count,
-                        count_value,
-                        player,
-                    }),
-                    rest_action_effect(action, rest_filter, player),
-                ],
-            })])
+            Some(vec![EffectAst::ForEach(
+                ForEachEffectAst::ForEachOpponent {
+                    effects: vec![
+                        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                            filter,
+                            tag,
+                            count,
+                            count_value,
+                            player,
+                        }),
+                        rest_action_effect(action, rest_filter, player),
+                    ],
+                },
+            )])
         }
         _ => None,
     }
@@ -1532,26 +1575,25 @@ pub use reference_linked_library_programs::{
     parse_may_put_filtered_card_from_among_into_hand, parse_mill_then_may_put_from_among_into_hand,
     parse_mill_then_may_put_from_among_into_hand_with_if_not_chosen,
     parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard,
-    };
+};
 #[path = "reference_linked_programs/reference_linked_choice.rs"]
 mod reference_linked_choice_programs;
 pub use reference_linked_choice_programs::parse_choose_then_do_same_for_filter_then_return_to_battlefield;
 #[path = "reference_linked_programs/reference_linked_combat.rs"]
 mod reference_linked_combat_programs;
-#[path = "reference_linked_programs/reference_linked_counter.rs"]
-mod reference_linked_counter_programs;
 #[path = "reference_linked_programs/reference_linked_condition.rs"]
 mod reference_linked_condition_programs;
+#[path = "reference_linked_programs/reference_linked_counter.rs"]
+mod reference_linked_counter_programs;
 pub(crate) use reference_linked_condition_programs::append_to_outer_if_result;
 #[path = "reference_linked_programs/reference_linked_reference.rs"]
 mod reference_linked_reference_programs;
-use reference_linked_reference_programs::{
-    contains_tagged_source_animation,
-    parse_copy_for_each_candidate_filter,
-};
-pub(crate) use reference_linked_reference_programs::retarget_source_self_animate_effect;
-pub use reference_linked_reference_programs::parse_for_each_tagged_copy_then_copy_targets_it;
 pub(crate) use reference_linked_reference_programs::parse_copy_for_each_target_sentence;
+pub use reference_linked_reference_programs::parse_for_each_tagged_copy_then_copy_targets_it;
+pub(crate) use reference_linked_reference_programs::retarget_source_self_animate_effect;
+use reference_linked_reference_programs::{
+    contains_tagged_source_animation, parse_copy_for_each_candidate_filter,
+};
 #[path = "reference_linked_programs/reference_linked_trigger.rs"]
 mod reference_linked_trigger_programs;
 pub(crate) use reference_linked_trigger_programs::contains_triggered_life_gain_effect;

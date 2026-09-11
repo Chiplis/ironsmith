@@ -1,9 +1,4 @@
 #![allow(unused_imports)]
-use crate::cards::builders::PermissionEffectAst;
-use crate::cards::builders::ConditionalEffectAst;
-use crate::cards::builders::DamageActionAst;
-use crate::cards::builders::LifeResourceActionAst;
-use crate::cards::builders::ManaActionAst;
 use super::shard_00::*;
 use super::shard_01::*;
 use super::shard_02::*;
@@ -11,6 +6,11 @@ use super::shard_03::*;
 use super::shard_04::*;
 use super::shard_05::*;
 use super::*;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::DamageActionAst;
+use crate::cards::builders::LifeResourceActionAst;
+use crate::cards::builders::ManaActionAst;
+use crate::cards::builders::PermissionEffectAst;
 #[cfg(test)]
 use ironsmith_compiler::ParseCardText;
 #[cfg(test)]
@@ -420,7 +420,8 @@ pub(super) fn dragonspark_reactor_reuses_first_damage_amount_for_second_target()
         "{debug}"
     );
     assert_eq!(
-        compact.replace("SurfaceHinted{spec:", "")
+        compact
+            .replace("SurfaceHinted{spec:", "")
             .matches("ExecuteWithSourceEffect{source:Source")
             .count(),
         2,

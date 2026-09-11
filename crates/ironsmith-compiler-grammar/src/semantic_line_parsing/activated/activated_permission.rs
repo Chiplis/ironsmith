@@ -1,7 +1,7 @@
-use crate::cards::builders::StatChangeActionAst;
-use crate::cards::builders::GrantActionAst;
 use super::*;
+use crate::cards::builders::GrantActionAst;
 use crate::cards::builders::PredicateAst;
+use crate::cards::builders::StatChangeActionAst;
 
 fn contains_compound_pump_and_grant(effects: &[EffectAst]) -> bool {
     let mut pump = false;
@@ -9,7 +9,10 @@ fn contains_compound_pump_and_grant(effects: &[EffectAst]) -> bool {
     fn inspect(effects: &[EffectAst], pump: &mut bool, grant: &mut bool) {
         for effect in effects {
             if let EffectAst::SubjectVerb(subject_verb) = effect {
-                *pump |= matches!(subject_verb.action, SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { .. }));
+                *pump |= matches!(
+                    subject_verb.action,
+                    SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { .. })
+                );
                 *grant |= matches!(
                     subject_verb.action,
                     SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { .. })

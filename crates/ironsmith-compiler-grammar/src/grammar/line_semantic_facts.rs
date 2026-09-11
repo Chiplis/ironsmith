@@ -56,10 +56,14 @@ fn parse_as_enters_effect_program_facts(
         })
         .is_some();
     let body_words = super::super::lexer::token_word_refs(&tokens[comma_idx + 1..])
-        .into_iter().map(str::to_ascii_lowercase).collect::<Vec<_>>();
+        .into_iter()
+        .map(str::to_ascii_lowercase)
+        .collect::<Vec<_>>();
     let body_word_refs = body_words.iter().map(String::as_str).collect::<Vec<_>>();
     let source_words = super::super::lexer::token_word_refs(&tokens[1..subject_end_idx])
-        .into_iter().map(str::to_ascii_lowercase).collect::<Vec<_>>();
+        .into_iter()
+        .map(str::to_ascii_lowercase)
+        .collect::<Vec<_>>();
     let mut explicit_source_entry = source_words.iter().map(String::as_str).collect::<Vec<_>>();
     explicit_source_entry.extend(["enters", "with"]);
     let source_reference_enters_with_counter_surface =
@@ -67,7 +71,11 @@ fn parse_as_enters_effect_program_facts(
             primitives::phrase(&["it", "enters", "with"])
         })
         .is_some()
-        || crate::word_primitives::parse_sequence_start(&body_word_refs, &explicit_source_entry).is_some();
+            || crate::word_primitives::parse_sequence_start(
+                &body_word_refs,
+                &explicit_source_entry,
+            )
+            .is_some();
     Some(AsEntersEffectProgramFacts {
         subject: super::super::lexer::render_token_slice(&tokens[1..subject_end_idx]),
         also_turns_face_up,

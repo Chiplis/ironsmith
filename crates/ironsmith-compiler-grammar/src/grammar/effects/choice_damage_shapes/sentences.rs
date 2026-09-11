@@ -87,17 +87,26 @@ pub fn parse_opponent_drain_sentence_shape(
 fn hand_suffix<'a>(input: &mut crate::lexer::LexStream<'a>) -> winnow::error::ModalResult<bool> {
     alt((
         primitives::any_phrase(&[
-            &["in", "your", "hand"], &["in", "your", "hands"],
-            &["from", "your", "hand"], &["from", "your", "hands"],
-        ]).value(true),
+            &["in", "your", "hand"],
+            &["in", "your", "hands"],
+            &["from", "your", "hand"],
+            &["from", "your", "hands"],
+        ])
+        .value(true),
         primitives::any_phrase(&[
-            &["in", "their", "hand"], &["in", "their", "hands"],
-            &["from", "their", "hand"], &["from", "their", "hands"],
-        ]).value(false),
-    )).parse_next(input)
+            &["in", "their", "hand"],
+            &["in", "their", "hands"],
+            &["from", "their", "hand"],
+            &["from", "their", "hands"],
+        ])
+        .value(false),
+    ))
+    .parse_next(input)
 }
 
-fn each_player_may_prefix<'a>(input: &mut crate::lexer::LexStream<'a>) -> winnow::error::ModalResult<()> {
+fn each_player_may_prefix<'a>(
+    input: &mut crate::lexer::LexStream<'a>,
+) -> winnow::error::ModalResult<()> {
     primitives::phrase(&["each", "player", "may"]).parse_next(input)
 }
 
@@ -116,13 +125,18 @@ pub fn parse_reveal_selected_hand_shape(
     parse_reveal_selected_hand_tail_shape(body)
 }
 
-pub fn parse_reveal_selected_hand_tail_shape(body: &[OwnedLexToken]) -> Option<RevealSelectedHandShape<'_>> {
+pub fn parse_reveal_selected_hand_tail_shape(
+    body: &[OwnedLexToken],
+) -> Option<RevealSelectedHandShape<'_>> {
     let (suffix_offset, your_hand, rest) = primitives::find_prefix(body, || hand_suffix)?;
     if !crate::util::trim_edge_punctuation_tokens(rest).is_empty() {
         return None;
     }
     let descriptor_tokens = trim_lexed_commas(body.get(..suffix_offset)?);
-    (!descriptor_tokens.is_empty()).then_some(RevealSelectedHandShape { descriptor_tokens, your_hand })
+    (!descriptor_tokens.is_empty()).then_some(RevealSelectedHandShape {
+        descriptor_tokens,
+        your_hand,
+    })
 }
 
 fn reveal_verb<'a>(input: &mut crate::lexer::LexStream<'a>) -> winnow::error::ModalResult<()> {

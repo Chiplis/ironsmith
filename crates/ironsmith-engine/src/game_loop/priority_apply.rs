@@ -1515,18 +1515,42 @@ fn finish_special_action_response(
 
 /// Record a target-dependent type choice before constructing the target menu.
 pub(super) fn apply_creature_type_announcement_response(
-    game: &mut GameState, trigger_queue: &mut TriggerQueue, state: &mut PriorityLoopState,
-    choice: usize, decision_maker: &mut impl DecisionMaker,
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    state: &mut PriorityLoopState,
+    choice: usize,
+    decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
-    let pending = state.pending_cast.as_ref().filter(|pending| pending.stage == CastStage::ChoosingCreatureType)
-        .ok_or_else(|| GameLoopError::InvalidState("No pending creature-type announcement".into()))?;
-    let subtype = crate::types::SubtypeFamily::Creature.all_subtypes().get(choice).copied()
-        .filter(|subtype| pending_spell_creature_type_options(game, pending).is_some_and(|options| options.contains(subtype)))
+    let pending = state
+        .pending_cast
+        .as_ref()
+        .filter(|pending| pending.stage == CastStage::ChoosingCreatureType)
+        .ok_or_else(|| {
+            GameLoopError::InvalidState("No pending creature-type announcement".into())
+        })?;
+    let subtype = crate::types::SubtypeFamily::Creature
+        .all_subtypes()
+        .get(choice)
+        .copied()
+        .filter(|subtype| {
+            pending_spell_creature_type_options(game, pending)
+                .is_some_and(|options| options.contains(subtype))
+        })
         .ok_or_else(|| GameLoopError::InvalidState("Invalid creature-type announcement".into()))?;
     let mut pending = state.pending_cast.take().expect("validated pending cast");
     game.set_chosen_subtype(pending.spell_id, subtype);
-    pending.remaining_requirements = game.object(pending.spell_id).and_then(|spell| spell.spell_effect.as_ref())
-        .map(|program| extract_target_requirements_from_program_with_modes(game, program, pending.caster, Some(pending.spell_id), pending.chosen_modes.as_deref()))
+    pending.remaining_requirements = game
+        .object(pending.spell_id)
+        .and_then(|spell| spell.spell_effect.as_ref())
+        .map(|program| {
+            extract_target_requirements_from_program_with_modes(
+                game,
+                program,
+                pending.caster,
+                Some(pending.spell_id),
+                pending.chosen_modes.as_deref(),
+            )
+        })
         .unwrap_or_default();
     pending.stage = CastStage::ChoosingTargets;
     continue_to_targets_or_mana_payment(game, trigger_queue, state, pending, decision_maker)

@@ -133,8 +133,12 @@ pub fn parse_emblem_payload_tokens(tokens: &[OwnedLexToken]) -> Option<EmblemPay
 mod tests;
 
 /// An emblem awarded to the recipients of a preceding damage action.
-pub fn parse_damaged_player_emblem_payload_tokens(tokens: &[OwnedLexToken]) -> Option<EmblemPayloadShape<'_>> {
+pub fn parse_damaged_player_emblem_payload_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<EmblemPayloadShape<'_>> {
     let mut input = LexStream::new(tokens);
-    primitives::phrase(&["each", "player", "dealt", "damage", "this", "way"]).parse_next(&mut input).ok()?;
+    primitives::phrase(&["each", "player", "dealt", "damage", "this", "way"])
+        .parse_next(&mut input)
+        .ok()?;
     parse_emblem_payload_tokens(&tokens[tokens.len() - input.len()..])
 }

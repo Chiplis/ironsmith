@@ -14,7 +14,10 @@ use std::fmt;
 /// The keys `value` carries, in serialization order, duplicates kept.
 pub fn tag_keys_of_serializable<T: Serialize + ?Sized>(value: &T) -> Vec<String> {
     let mut keys = Vec::new();
-    let _ = value.serialize(Collector { keys: &mut keys, in_key: false });
+    let _ = value.serialize(Collector {
+        keys: &mut keys,
+        in_key: false,
+    });
     keys
 }
 
@@ -43,7 +46,10 @@ struct Collector<'a> {
 
 impl<'a> Collector<'a> {
     fn child(&mut self) -> Collector<'_> {
-        Collector { keys: self.keys, in_key: false }
+        Collector {
+            keys: self.keys,
+            in_key: false,
+        }
     }
 }
 
@@ -89,7 +95,12 @@ impl<'a> ser::Serializer for Collector<'a> {
     fn serialize_unit_struct(self, _name: &'static str) -> Result<(), Never> {
         Ok(())
     }
-    fn serialize_unit_variant(self, _n: &'static str, _i: u32, _v: &'static str) -> Result<(), Never> {
+    fn serialize_unit_variant(
+        self,
+        _n: &'static str,
+        _i: u32,
+        _v: &'static str,
+    ) -> Result<(), Never> {
         Ok(())
     }
     fn serialize_newtype_struct<T: Serialize + ?Sized>(
@@ -98,7 +109,10 @@ impl<'a> ser::Serializer for Collector<'a> {
         value: &T,
     ) -> Result<(), Never> {
         let in_key = name == "TagKey";
-        value.serialize(Collector { keys: self.keys, in_key })
+        value.serialize(Collector {
+            keys: self.keys,
+            in_key,
+        })
     }
     fn serialize_newtype_variant<T: Serialize + ?Sized>(
         mut self,

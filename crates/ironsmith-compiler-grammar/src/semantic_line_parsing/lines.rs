@@ -1,10 +1,10 @@
-use crate::cards::builders::ConditionalEffectAst;
-use crate::cards::builders::ObjectChoiceEffectAst;
-use crate::cards::builders::ForEachEffectAst;
-use crate::cards::builders::DelayedEffectAst;
 use super::*;
 use crate::ZoneReplacementDurationAst;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::DelayedEffectAst;
+use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::GrantedAbilityAst;
+use crate::cards::builders::ObjectChoiceEffectAst;
 use crate::grammar::abilities::{
     is_minimum_spell_total_mana_three_line_lexed, is_players_cant_pay_life_or_sacrifice_line_lexed,
 };
@@ -12,7 +12,9 @@ use crate::grammar::keyword_special_lines as keyword_special_grammar;
 use crate::grammar::semantic_lowering as semantic_grammar;
 use crate::grammar::structure::{StatementLineFamily, classify_statement_line_family_lexed};
 use crate::model::ast::{
-    ChooseOneModeAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbSubjectAst, CharacteristicActionAst, KeywordActionAst, ZoneMoveActionAst, LifeResourceActionAst, DamageActionAst, TokenActionAst,
+    CharacteristicActionAst, ChooseOneModeAst, DamageActionAst, KeywordActionAst,
+    LifeResourceActionAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbSubjectAst,
+    TokenActionAst, ZoneMoveActionAst,
 };
 use crate::{KeywordAction, Value};
 
@@ -157,9 +159,9 @@ use trigger_reconciliation::{
     recognize_dynamic_zone_change_group_token_creation, recognize_serial_target_pt_modifiers,
 };
 pub use trigger_reconciliation::{
-    spell_or_activated_ability_x_cost_trigger_spec,
     dynamic_zone_change_group_token_creation_from_authored_trigger,
     end_of_combat_destroy_then_next_end_step_counter_program,
+    spell_or_activated_ability_x_cost_trigger_spec,
 };
 
 fn recognize_open_attraction_reminder(line: &mut LineAst, raw_line: &str) {
@@ -169,7 +171,9 @@ fn recognize_open_attraction_reminder(line: &mut LineAst, raw_line: &str) {
     fn mark(effects: &mut [EffectAst]) {
         for effect in effects {
             if let EffectAst::SubjectVerb(subject_verb) = effect
-                && let SubjectVerbActionAst::KeywordActions(KeywordActionAst::OpenAttraction { reminder }) = &mut subject_verb.action
+                && let SubjectVerbActionAst::KeywordActions(KeywordActionAst::OpenAttraction {
+                    reminder,
+                }) = &mut subject_verb.action
             {
                 *reminder = true;
             }
@@ -260,15 +264,17 @@ pub fn linked_created_token_next_turn_sacrifice_effects(
     else {
         return Ok(None);
     };
-    created.push(EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndStepOfExtraTurn {
-        player: PlayerAst::You,
-        effects: vec![EffectAst::subject_verb_sacrifice(
-            PlayerAst::You,
-            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
-            1,
-            None,
-        )],
-    }));
+    created.push(EffectAst::Delayed(
+        DelayedEffectAst::DelayedUntilEndStepOfExtraTurn {
+            player: PlayerAst::You,
+            effects: vec![EffectAst::subject_verb_sacrifice(
+                PlayerAst::You,
+                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
+                1,
+                None,
+            )],
+        },
+    ));
     Ok(Some(created))
 }
 
@@ -664,7 +670,9 @@ fn bind_protected_battle_iteration_in_effects(effects: &mut [EffectAst], in_oppo
         );
         if in_opponent_loop {
             match effect {
-                EffectAst::ForEach(ForEachEffectAst::ForEachObject { filter, .. }) => bind_filter(filter),
+                EffectAst::ForEach(ForEachEffectAst::ForEachObject { filter, .. }) => {
+                    bind_filter(filter)
+                }
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action:
                         SubjectVerbActionAst::Damage(DamageActionAst::DealDamage {
@@ -898,7 +906,9 @@ fn recognize_named_source_exile_surface(chunk: &mut LineAst, source: &[OwnedLexT
         for effect in effects {
             if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect {
                 let target = match action {
-                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. })
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
+                        target, ..
+                    })
                     | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                         target,
                         zone: Zone::Exile,
@@ -920,7 +930,9 @@ fn recognize_named_source_exile_surface(chunk: &mut LineAst, source: &[OwnedLexT
         for effect in effects {
             if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect {
                 let target = match action {
-                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. })
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
+                        target, ..
+                    })
                     | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                         target,
                         zone: Zone::Exile,
@@ -1257,16 +1269,15 @@ fn exact_registered_statement_sequence(tokens: &[OwnedLexToken]) -> Option<Vec<E
     // leading sentences read one by one and then the program, as one block:
     // the program's statements refer to what the leading sentences bound.
     for start in 0..sentences.len() {
-        let matched = match crate::effect_sentences::try_parse_document_program(&sentences, start)
-        {
+        let matched = match crate::effect_sentences::try_parse_document_program(&sentences, start) {
             Ok(Some(matched)) => matched,
             Ok(None) | Err(_) => continue,
         };
         if start == 0 && matched.consumed_sentences == sentences.len() {
             return Some(matched.effects);
         }
-        let ridden_opening = start == 0
-            && matched.name == crate::effect_sentences::RIDDEN_STATEMENT;
+        let ridden_opening =
+            start == 0 && matched.name == crate::effect_sentences::RIDDEN_STATEMENT;
         if start + matched.consumed_sentences != sentences.len() && !ridden_opening {
             continue;
         }
@@ -1780,7 +1791,9 @@ fn parse_villainous_choice_statement_chunk(
                 } else {
                     vec![choice]
                 };
-                vec![EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects: body })]
+                vec![EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
+                    effects: body,
+                })]
             }
             semantic_grammar::VillainousChoicePlayerIteration::TargetOpponent => vec![
                 EffectAst::subject_verb_target_only(TargetAst::Player(
@@ -1841,20 +1854,22 @@ fn parse_villainous_choice_statement_chunk(
     };
     effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
         tag: iteration_tag,
-        effects: vec![EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice {
-            player,
-            player_surface: Some(render_token_slice(shape.chooser_tokens)),
-            modes: vec![
-                ChooseOneModeAst {
-                    description: render_statement_source_tokens(line, shape.first_mode_tokens),
-                    effects: first_mode_effects,
-                },
-                ChooseOneModeAst {
-                    description: render_statement_source_tokens(line, shape.second_mode_tokens),
-                    effects: second_mode_effects,
-                },
-            ],
-        })],
+        effects: vec![EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::VillainousChoice {
+                player,
+                player_surface: Some(render_token_slice(shape.chooser_tokens)),
+                modes: vec![
+                    ChooseOneModeAst {
+                        description: render_statement_source_tokens(line, shape.first_mode_tokens),
+                        effects: first_mode_effects,
+                    },
+                    ChooseOneModeAst {
+                        description: render_statement_source_tokens(line, shape.second_mode_tokens),
+                        effects: second_mode_effects,
+                    },
+                ],
+            },
+        )],
     }));
 
     Ok(Some(LineAst::Statement { effects }))
@@ -2187,7 +2202,10 @@ fn sentence_is_conditional_self_replacement_effect(sentence: &[OwnedLexToken]) -
         .is_ok_and(|effects| {
             matches!(
                 effects.as_slice(),
-                [EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. }) | EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { .. })]
+                [
+                    EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. })
+                        | EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { .. })
+                ]
             )
         })
 }

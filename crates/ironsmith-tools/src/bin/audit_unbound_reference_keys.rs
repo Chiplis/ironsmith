@@ -70,8 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             totals.lock().unwrap().3 += 1;
             return;
         };
-        let (bound, unbound): (Vec<_>, Vec<_>) =
-            keyed.into_iter().partition(|(_, bound)| *bound);
+        let (bound, unbound): (Vec<_>, Vec<_>) = keyed.into_iter().partition(|(_, bound)| *bound);
         {
             let mut totals = totals.lock().unwrap();
             totals.0 += 1;
@@ -85,7 +84,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for (key, _) in &unbound {
             *by_key.entry(key.clone()).or_default() += 1;
         }
-        by_card.lock().unwrap().push((payload.name.clone(), unbound.len()));
+        by_card
+            .lock()
+            .unwrap()
+            .push((payload.name.clone(), unbound.len()));
     });
     let (parsed, bound, unbound, unparsed) = *totals.lock().unwrap();
     println!("cards parsed: {parsed} (not parsed: {unparsed})");
@@ -114,7 +116,11 @@ fn keyed_references(payload: &CardPayload) -> Option<Vec<(String, bool)>> {
         let mut context =
             ironsmith_compiler::parse_context_for_builder(&builder.card_builder, &text, false);
         let (card, _seed) = builder.split_face();
-        ironsmith_compiler::canonical_pipeline::parse_card_ast_with_context(&mut context, card, text)
+        ironsmith_compiler::canonical_pipeline::parse_card_ast_with_context(
+            &mut context,
+            card,
+            text,
+        )
     }));
     let ast = result.ok()?.ok()?;
     Some(
@@ -151,12 +157,21 @@ fn explain_card(payload: &CardPayload, dump: bool) {
     }
     println!("--- scopes");
     for scope in ast.symbols.scopes() {
-        println!("{:?} parent={:?} kind={:?}", scope.id, scope.parent, scope.kind);
+        println!(
+            "{:?} parent={:?} kind={:?}",
+            scope.id, scope.parent, scope.kind
+        );
     }
     println!("--- keyed bindings");
     for binding in ast.symbols.bindings() {
         if let Some(key) = &binding.key {
-            println!("{:?} scope={:?} key={} role={:?}", binding.id, binding.scope, key.as_str(), binding.role);
+            println!(
+                "{:?} scope={:?} key={} role={:?}",
+                binding.id,
+                binding.scope,
+                key.as_str(),
+                binding.role
+            );
         }
     }
     println!("--- keyed references");

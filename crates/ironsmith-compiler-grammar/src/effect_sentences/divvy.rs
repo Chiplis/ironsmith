@@ -1,13 +1,14 @@
-use crate::cards::builders::ForEachEffectAst;
 use super::super::front_end::grammar::effects::divvy_shapes::{
     self, DivvyChooserShape, DivvyRestDestinationShape, DivvySequenceShape,
 };
 use super::super::lexer::{OwnedLexToken, split_lexed_sentences};
 use super::dispatch_entry::SentenceInput;
 use super::dispatch_inner::parse_effect_sentence_lexed;
+use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{
-    CardTextError, EffectAst, PlayerAst, PredicateAst, ReturnControllerAst, SubjectVerbActionAst,
-    SubjectVerbRoleAst, TagKey, TargetAst, LibraryActionAst, ObjectChoiceEffectAst, ConditionalEffectAst,
+    CardTextError, ConditionalEffectAst, EffectAst, LibraryActionAst, ObjectChoiceEffectAst,
+    PlayerAst, PredicateAst, ReturnControllerAst, SubjectVerbActionAst, SubjectVerbRoleAst, TagKey,
+    TargetAst,
 };
 use crate::effect::{ChoiceCount, Until, Value};
 use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
@@ -184,10 +185,9 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 filter: ObjectFilter::creature()
                     .controlled_by(PlayerFilter::TaggedPlayer(first_player_tag.clone().into())),
                 count: ChoiceCount::up_to_dynamic_x(),
-                count_value: Some(Value::Count(
-                    ObjectFilter::creature()
-                        .controlled_by(PlayerFilter::TaggedPlayer(second_player_tag.clone().into())),
-                )),
+                count_value: Some(Value::Count(ObjectFilter::creature().controlled_by(
+                    PlayerFilter::TaggedPlayer(second_player_tag.clone().into()),
+                ))),
                 player: PlayerAst::You,
                 tag: first_creatures_tag.clone(),
             }),
@@ -276,29 +276,36 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             .not_tagged(crate::tag::CompilerReferenceTag::DivvyPile.bind());
 
         return Ok(Some(vec![
-            EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
+            EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+                sequential: false,
                 filter: PlayerFilter::Opponent,
-                effects: vec![EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-                    filter: ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer),
-                    count: ChoiceCount::any_number(),
-                    count_value: None,
-                    player: PlayerAst::That,
-                    tag: crate::tag::CompilerReferenceTag::DivvyPile.bind(),
-                })],
+                effects: vec![EffectAst::ObjectChoices(
+                    ObjectChoiceEffectAst::ChooseObjects {
+                        filter: ObjectFilter::creature()
+                            .controlled_by(PlayerFilter::IteratedPlayer),
+                        count: ChoiceCount::any_number(),
+                        count_value: None,
+                        player: PlayerAst::That,
+                        tag: crate::tag::CompilerReferenceTag::DivvyPile.bind(),
+                    },
+                )],
             }),
-            EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
+            EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+                sequential: false,
                 filter: PlayerFilter::Opponent,
-                effects: vec![EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
-                    player: PlayerAst::You,
-                    effects: vec![EffectAst::subject_verb_sacrifice_all(
-                        PlayerAst::Implicit,
-                        chosen_pile_filter,
-                    )],
-                    alternative: vec![EffectAst::subject_verb_sacrifice_all(
-                        PlayerAst::Implicit,
-                        other_pile_filter,
-                    )],
-                })],
+                effects: vec![EffectAst::Conditionals(
+                    ConditionalEffectAst::UnlessAction {
+                        player: PlayerAst::You,
+                        effects: vec![EffectAst::subject_verb_sacrifice_all(
+                            PlayerAst::Implicit,
+                            chosen_pile_filter,
+                        )],
+                        alternative: vec![EffectAst::subject_verb_sacrifice_all(
+                            PlayerAst::Implicit,
+                            other_pile_filter,
+                        )],
+                    },
+                )],
             }),
         ]));
     }
@@ -320,27 +327,31 @@ pub(super) fn try_parse_divvy_sentence_sequence(
     }
 
     if shape == DivvySequenceShape::DefendingCreaturePilesBlock {
-        return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
-            filter: PlayerFilter::Defending,
-            effects: vec![
-                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-                    filter: ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer),
-                    count: ChoiceCount::any_number(),
-                    count_value: None,
-                    player: PlayerAst::That,
-                    tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
-                }),
-                EffectAst::subject_verb_cant(
-                    crate::effect::Restriction::block(
-                        ObjectFilter::creature()
-                            .controlled_by(PlayerFilter::IteratedPlayer)
-                            .not_tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind()),
+        return Ok(Some(vec![EffectAst::ForEach(
+            ForEachEffectAst::ForEachPlayersFiltered {
+                sequential: false,
+                filter: PlayerFilter::Defending,
+                effects: vec![
+                    EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                        filter: ObjectFilter::creature()
+                            .controlled_by(PlayerFilter::IteratedPlayer),
+                        count: ChoiceCount::any_number(),
+                        count_value: None,
+                        player: PlayerAst::That,
+                        tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
+                    }),
+                    EffectAst::subject_verb_cant(
+                        crate::effect::Restriction::block(
+                            ObjectFilter::creature()
+                                .controlled_by(PlayerFilter::IteratedPlayer)
+                                .not_tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind()),
+                        ),
+                        Until::EndOfTurn,
+                        None,
                     ),
-                    Until::EndOfTurn,
-                    None,
-                ),
-            ],
-        })]));
+                ],
+            },
+        )]));
     }
 
     if shape == DivvySequenceShape::CreaturePilesAttack {
@@ -365,36 +376,38 @@ pub(super) fn try_parse_divvy_sentence_sequence(
     }
 
     if shape == DivvySequenceShape::LandPiles {
-        return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
-            effects: vec![
-                EffectAst::subject_verb_choose_player(
-                    PlayerAst::Implicit,
-                    PlayerFilter::Opponent,
-                    crate::tag::CompilerReferenceTag::DivvyOpponent.bind(),
-                    false,
-                    0,
-                ),
-                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-                    filter: ObjectFilter::land()
-                        .nontoken()
-                        .controlled_by(PlayerFilter::IteratedPlayer),
-                    count: ChoiceCount::any_number(),
-                    count_value: None,
-                    player: PlayerAst::That,
-                    tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
-                }),
-                EffectAst::subject_verb_destroy(TargetAst::Tagged(
-                    crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
-                    None,
-                )),
-                EffectAst::subject_verb_tap_all(
-                    ObjectFilter::land()
-                        .nontoken()
-                        .controlled_by(PlayerFilter::IteratedPlayer)
-                        .not_tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind()),
-                ),
-            ],
-        })]));
+        return Ok(Some(vec![EffectAst::ForEach(
+            ForEachEffectAst::ForEachPlayer {
+                effects: vec![
+                    EffectAst::subject_verb_choose_player(
+                        PlayerAst::Implicit,
+                        PlayerFilter::Opponent,
+                        crate::tag::CompilerReferenceTag::DivvyOpponent.bind(),
+                        false,
+                        0,
+                    ),
+                    EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                        filter: ObjectFilter::land()
+                            .nontoken()
+                            .controlled_by(PlayerFilter::IteratedPlayer),
+                        count: ChoiceCount::any_number(),
+                        count_value: None,
+                        player: PlayerAst::That,
+                        tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
+                    }),
+                    EffectAst::subject_verb_destroy(TargetAst::Tagged(
+                        crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
+                        None,
+                    )),
+                    EffectAst::subject_verb_tap_all(
+                        ObjectFilter::land()
+                            .nontoken()
+                            .controlled_by(PlayerFilter::IteratedPlayer)
+                            .not_tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind()),
+                    ),
+                ],
+            },
+        )]));
     }
 
     if shape == DivvySequenceShape::ExilePermanentCardsPile {
@@ -444,7 +457,10 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                             ),
                             if_true: Vec::new(),
                             if_false: vec![EffectAst::subject_verb_move_to_zone(
-                                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
+                                TargetAst::Tagged(
+                                    crate::tag::CompilerReferenceTag::It.bind(),
+                                    None,
+                                ),
                                 Zone::Hand,
                                 false,
                                 ReturnControllerAst::Preserve,
@@ -467,7 +483,10 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                             ),
                             if_true: Vec::new(),
                             if_false: vec![EffectAst::subject_verb_move_to_zone(
-                                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
+                                TargetAst::Tagged(
+                                    crate::tag::CompilerReferenceTag::It.bind(),
+                                    None,
+                                ),
                                 Zone::Graveyard,
                                 false,
                                 ReturnControllerAst::Preserve,
@@ -518,7 +537,10 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                             ),
                             if_true: Vec::new(),
                             if_false: vec![EffectAst::subject_verb_move_to_zone(
-                                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
+                                TargetAst::Tagged(
+                                    crate::tag::CompilerReferenceTag::It.bind(),
+                                    None,
+                                ),
                                 Zone::Graveyard,
                                 false,
                                 ReturnControllerAst::Preserve,
@@ -545,7 +567,10 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                             ),
                             if_true: Vec::new(),
                             if_false: vec![EffectAst::subject_verb_move_to_zone(
-                                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
+                                TargetAst::Tagged(
+                                    crate::tag::CompilerReferenceTag::It.bind(),
+                                    None,
+                                ),
                                 Zone::Hand,
                                 false,
                                 ReturnControllerAst::Preserve,
@@ -620,15 +645,17 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             vec![Zone::Library],
             crate::tag::CompilerReferenceTag::DivvySource.bind(),
         ));
-        effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
-            filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
-            count: ChoiceCount::exactly(1),
-            count_value: None,
-            player: PlayerAst::Opponent,
-            tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
-            zones: vec![Zone::Library],
-            search_mode: None,
-        }));
+        effects.push(EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
+                count: ChoiceCount::exactly(1),
+                count_value: None,
+                player: PlayerAst::Opponent,
+                tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
+                zones: vec![Zone::Library],
+                search_mode: None,
+            },
+        ));
         effects.push(EffectAst::subject_verb_move_to_zone(
             TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind(), None),
             Zone::Hand,
@@ -678,15 +705,17 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             vec![Zone::Library],
             crate::tag::CompilerReferenceTag::DivvySource.bind(),
         ));
-        effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
-            filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
-            count: ChoiceCount::exactly(2),
-            count_value: None,
-            player: choose_player,
-            tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
-            zones: vec![Zone::Library],
-            search_mode: None,
-        }));
+        effects.push(EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
+                count: ChoiceCount::exactly(2),
+                count_value: None,
+                player: choose_player,
+                tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
+                zones: vec![Zone::Library],
+                search_mode: None,
+            },
+        ));
         effects.push(EffectAst::subject_verb_move_to_zone(
             TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind(), None),
             Zone::Graveyard,
@@ -724,15 +753,17 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         let source_tag = crate::tag::CompilerReferenceTag::Searched.bind();
         let chosen_tag = crate::tag::CompilerReferenceTag::DivvyChosen.bind();
         let mut effects = parse_effect_sentence_lexed(sentences[0].lowered())?;
-        effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
-            filter: ObjectFilter::tagged(source_tag.clone()),
-            count: ChoiceCount::exactly(2),
-            count_value: None,
-            player: PlayerAst::Opponent,
-            tag: chosen_tag.clone(),
-            zones: vec![Zone::Library],
-            search_mode: None,
-        }));
+        effects.push(EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                filter: ObjectFilter::tagged(source_tag.clone()),
+                count: ChoiceCount::exactly(2),
+                count_value: None,
+                player: PlayerAst::Opponent,
+                tag: chosen_tag.clone(),
+                zones: vec![Zone::Library],
+                search_mode: None,
+            },
+        ));
         effects.push(EffectAst::Coordinated {
             effects: vec![
                 EffectAst::subject_verb_shuffle_objects_into_library(
@@ -766,15 +797,17 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             vec![Zone::Library],
             crate::tag::CompilerReferenceTag::DivvySource.bind(),
         ));
-        effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
-            filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
-            count: ChoiceCount::exactly(1),
-            count_value: None,
-            player: PlayerAst::TargetOpponent,
-            tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
-            zones: vec![Zone::Library],
-            search_mode: None,
-        }));
+        effects.push(EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
+                count: ChoiceCount::exactly(1),
+                count_value: None,
+                player: PlayerAst::TargetOpponent,
+                tag: crate::tag::CompilerReferenceTag::DivvyChosen.bind(),
+                zones: vec![Zone::Library],
+                search_mode: None,
+            },
+        ));
         effects.push(EffectAst::subject_verb_move_to_zone(
             TargetAst::Tagged(crate::tag::CompilerReferenceTag::DivvyChosen.bind(), None),
             Zone::Hand,

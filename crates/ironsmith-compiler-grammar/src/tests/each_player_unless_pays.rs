@@ -1,6 +1,6 @@
+use super::*;
 use crate::cards::builders::ConditionalEffectAst;
 use crate::cards::builders::ForEachEffectAst;
-use super::*;
 #[cfg(test)]
 use ironsmith_compiler_lowering::CardDefinitionBuilder;
 
@@ -33,7 +33,10 @@ fn trailing_they_pay_keeps_the_each_player_ast_and_payer_reference() {
         "expected the two authored alternative payments, got {cost:#?}"
     );
     assert!(
-        matches!(effects.as_slice(), [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { .. })]),
+        matches!(
+            effects.as_slice(),
+            [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { .. })]
+        ),
         "expected the consequence to retain its each-player loop, got {effects:#?}"
     );
 }

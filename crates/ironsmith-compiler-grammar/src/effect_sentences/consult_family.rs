@@ -14,8 +14,8 @@ use super::dispatch_entry::{
 use super::search_library::normalize_search_library_filter;
 use super::{find_verb, parse_effect_chain, parse_effect_sentence_lexed};
 use crate::cards::builders::{
-    CardTextError, EffectAst, LibraryBottomOrderAst, LibraryConsultModeAst, ObjectFilter,
-    PlayerAst, PredicateAst, SubjectAst, TagKey, TargetAst, ConditionalEffectAst, PermissionEffectAst,
+    CardTextError, ConditionalEffectAst, EffectAst, LibraryBottomOrderAst, LibraryConsultModeAst,
+    ObjectFilter, PermissionEffectAst, PlayerAst, PredicateAst, SubjectAst, TagKey, TargetAst,
 };
 use crate::effect::Value;
 use crate::grammar::effects as effect_grammar;
@@ -189,7 +189,12 @@ pub fn parse_consult_traversal_with_inline_followup(
             if let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
                 subject,
                 action:
-                    crate::cards::builders::SubjectVerbActionAst::Library(crate::cards::builders::LibraryActionAst::ConsultTopOfLibrary { player, .. }),
+                    crate::cards::builders::SubjectVerbActionAst::Library(
+                        crate::cards::builders::LibraryActionAst::ConsultTopOfLibrary {
+                            player,
+                            ..
+                        },
+                    ),
             }) = effect
             {
                 // The consult action carries its library owner separately
@@ -200,7 +205,9 @@ pub fn parse_consult_traversal_with_inline_followup(
                 *player = PlayerAst::That;
             }
         }
-        effects = vec![EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })];
+        effects = vec![EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
+            effects,
+        })];
     }
     Ok(Some(effects))
 }
@@ -298,8 +305,11 @@ fn bind_consult_it_relation_to_prefix_affected_object(
     if !matches!(
         prefix_effect,
         EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-            action: crate::cards::builders::SubjectVerbActionAst::ZoneMoves(crate::cards::builders::ZoneMoveActionAst::Exile { .. })
-                | crate::cards::builders::SubjectVerbActionAst::ZoneMoves(crate::cards::builders::ZoneMoveActionAst::MoveToZone { .. }),
+            action: crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
+                crate::cards::builders::ZoneMoveActionAst::Exile { .. }
+            ) | crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
+                crate::cards::builders::ZoneMoveActionAst::MoveToZone { .. }
+            ),
             ..
         })
     ) {
@@ -341,8 +351,11 @@ fn apply_consult_prefix_player_surface(effects: &mut [EffectAst], player: Player
                 if subject_verb.subject.player == PlayerAst::Implicit
                     && matches!(
                         &subject_verb.action,
-                        crate::cards::builders::SubjectVerbActionAst::ZoneMoves(crate::cards::builders::ZoneMoveActionAst::Exile { .. })
-                            | crate::cards::builders::SubjectVerbActionAst::ZoneMoves(crate::cards::builders::ZoneMoveActionAst::MoveToZone { .. })
+                        crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
+                            crate::cards::builders::ZoneMoveActionAst::Exile { .. }
+                        ) | crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
+                            crate::cards::builders::ZoneMoveActionAst::MoveToZone { .. }
+                        )
                     ) =>
             {
                 subject_verb.subject.player = player;
@@ -633,15 +646,21 @@ pub fn consult_cast_effects(
     Ok(cast_effects)
 }
 
-pub fn if_you_dont_result_predicate(tokens: &[OwnedLexToken]) -> crate::cards::builders::IfResultPredicate {
+pub fn if_you_dont_result_predicate(
+    tokens: &[OwnedLexToken],
+) -> crate::cards::builders::IfResultPredicate {
     use crate::cards::builders::IfResultPredicate;
     if let Some(prefix) = if_you_dont_prefix_len(tokens)
         && let Some(comma) = tokens.iter().position(|token| token.is_comma())
         && prefix <= comma
-        && crate::lexer::token_word_refs(&tokens[prefix..comma]) == ["draw", "a", "card", "this", "way"] {
+        && crate::lexer::token_word_refs(&tokens[prefix..comma])
+            == ["draw", "a", "card", "this", "way"]
+    {
         let mut result = ironsmith_core::PriorEffectResultSurface::new(
-            ironsmith_core::PriorEffectAction::Drawn, ObjectFilter::default(),
-            ironsmith_core::PriorEffectResultActor::You, ironsmith_core::PriorEffectResultQuantifier::One,
+            ironsmith_core::PriorEffectAction::Drawn,
+            ObjectFilter::default(),
+            ironsmith_core::PriorEffectResultActor::You,
+            ironsmith_core::PriorEffectResultQuantifier::One,
         );
         result.negated = true;
         return IfResultPredicate::PriorEffectResult(result);
@@ -769,9 +788,9 @@ pub fn parse_if_you_cant_sentence(
 
 #[cfg(test)]
 mod tests {
-    use crate::cards::builders::StackActionAst;
     use super::*;
     use crate::Subtype;
+    use crate::cards::builders::StackActionAst;
     use crate::lexer::lex_line;
 
     #[test]
@@ -804,8 +823,9 @@ mod tests {
                 parsed.effects
             );
         };
-        let crate::cards::builders::SubjectVerbActionAst::Library(crate::cards::builders::LibraryActionAst::ConsultTopOfLibrary { filter, .. }) =
-            &subject_verb.action
+        let crate::cards::builders::SubjectVerbActionAst::Library(
+            crate::cards::builders::LibraryActionAst::ConsultTopOfLibrary { filter, .. },
+        ) = &subject_verb.action
         else {
             panic!("expected consult action: {subject_verb:#?}");
         };
@@ -841,8 +861,9 @@ mod tests {
                 parsed.effects
             );
         };
-        let crate::cards::builders::SubjectVerbActionAst::Library(crate::cards::builders::LibraryActionAst::ConsultTopOfLibrary { filter, .. }) =
-            &subject_verb.action
+        let crate::cards::builders::SubjectVerbActionAst::Library(
+            crate::cards::builders::LibraryActionAst::ConsultTopOfLibrary { filter, .. },
+        ) = &subject_verb.action
         else {
             panic!("expected consult action: {subject_verb:#?}");
         };
@@ -869,7 +890,12 @@ mod tests {
             },
             EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
                 action:
-                    crate::cards::builders::SubjectVerbActionAst::Library(crate::cards::builders::LibraryActionAst::ConsultTopOfLibrary { filter, .. }),
+                    crate::cards::builders::SubjectVerbActionAst::Library(
+                        crate::cards::builders::LibraryActionAst::ConsultTopOfLibrary {
+                            filter,
+                            ..
+                        },
+                    ),
                 ..
             }),
         ] = parsed.effects.as_slice()
@@ -907,8 +933,9 @@ mod tests {
         )
         .expect("consult cast clause should lex");
         let clause = parse_consult_cast_clause(&tokens).expect("consult cast clause should parse");
-        let effects = consult_cast_effects(&clause, crate::tag::declared_key("consult_match").into())
-            .expect("consult cast clause should lower");
+        let effects =
+            consult_cast_effects(&clause, crate::tag::declared_key("consult_match").into())
+                .expect("consult cast clause should lower");
 
         assert!(matches!(
             effects.as_slice(),
@@ -936,12 +963,19 @@ mod tests {
             .expect("each-opponent consult should parse")
             .expect("each-opponent consult traversal");
 
-        let [EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })] = effects.as_slice() else {
+        let [EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })] =
+            effects.as_slice()
+        else {
             panic!("expected one each-opponent loop: {effects:#?}");
         };
         let Some(EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
             subject,
-            action: crate::cards::builders::SubjectVerbActionAst::Library(crate::cards::builders::LibraryActionAst::ConsultTopOfLibrary { player, .. }),
+            action:
+                crate::cards::builders::SubjectVerbActionAst::Library(
+                    crate::cards::builders::LibraryActionAst::ConsultTopOfLibrary {
+                        player, ..
+                    },
+                ),
         })) = effects.first()
         else {
             panic!("expected consult as the first loop action: {effects:#?}");
@@ -959,10 +993,19 @@ mod vote_counted_tests {
         let tokens = crate::lexer::lex_line("Reveal cards from the top of your library until you reveal a creature card for each wild vote", 0).unwrap();
         let parsed = super::parse_consult_traversal_sentence(&tokens).unwrap();
         assert!(parsed.is_some());
-        let builder = ironsmith_compiler_lowering::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Council Probe")
-            .card_types(vec![crate::types::CardType::Sorcery]);
-        let (definition, trace) = crate::parse_trace::capture(|| builder.parse_text("Starting with you, each player votes for wild or free. Reveal cards from the top of your library until you reveal a creature card for each wild vote. Put those creature cards onto the battlefield, then shuffle the rest into your library. You may put a permanent card from your hand onto the battlefield for each free vote."));
+        let builder = ironsmith_compiler_lowering::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Council Probe",
+        )
+        .card_types(vec![crate::types::CardType::Sorcery]);
+        let (definition, trace) = crate::parse_trace::capture(|| {
+            builder.parse_text("Starting with you, each player votes for wild or free. Reveal cards from the top of your library until you reveal a creature card for each wild vote. Put those creature cards onto the battlefield, then shuffle the rest into your library. You may put a permanent card from your hand onto the battlefield for each free vote.")
+        });
         let definition = definition.unwrap();
-        assert!(format!("{definition:#?}").contains("ConsultTopOfLibrary"), "{}", trace.render());
+        assert!(
+            format!("{definition:#?}").contains("ConsultTopOfLibrary"),
+            "{}",
+            trace.render()
+        );
     }
 }

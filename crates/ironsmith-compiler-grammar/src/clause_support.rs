@@ -1,7 +1,8 @@
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{
-    CardTextError, EffectAst, KeywordAction, LineAst, PredicateAst, StaticAbilityAst,
-    SubjectVerbActionAst, TargetAst, TriggerSpec, CounterActionAst, LifeResourceActionAst, DelayedEffectAst, ConditionalEffectAst, TurnEventPredicateAst,
+    CardTextError, ConditionalEffectAst, CounterActionAst, DelayedEffectAst, EffectAst,
+    KeywordAction, LifeResourceActionAst, LineAst, PredicateAst, StaticAbilityAst,
+    SubjectVerbActionAst, TargetAst, TriggerSpec, TurnEventPredicateAst,
 };
 use crate::effect::{ChoiceAggregateMetric, EventValueSpec, Value};
 use crate::target::{ObjectFilter, PlayerFilter};
@@ -49,7 +50,8 @@ const TWO_WORD_KEYWORD_ACTIONS: &[(&[&str], KeywordAction)] = &[
 fn predicate_counts_creatures_died_this_turn(predicate: &PredicateAst) -> bool {
     matches!(
         predicate,
-        PredicateAst::TurnEvents(TurnEventPredicateAst::CreatureDiedThisTurn) | PredicateAst::TurnEvents(TurnEventPredicateAst::CreatureDiedThisTurnOrMore(_))
+        PredicateAst::TurnEvents(TurnEventPredicateAst::CreatureDiedThisTurn)
+            | PredicateAst::TurnEvents(TurnEventPredicateAst::CreatureDiedThisTurnOrMore(_))
     )
 }
 
@@ -85,13 +87,18 @@ fn bind_creatures_died_condition_amounts(effects: &mut [EffectAst]) {
         match effect {
             EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
                 SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount })
-                | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { count: amount, .. }) => {
+                | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
+                    count: amount,
+                    ..
+                }) => {
                     bind_event_amount_to_creatures_died_this_turn(amount);
                 }
                 _ => {}
             },
             EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-                if_true, if_false, ..
+                if_true,
+                if_false,
+                ..
             }) => {
                 bind_creatures_died_condition_amounts(if_true);
                 bind_creatures_died_condition_amounts(if_false);
@@ -297,7 +304,9 @@ fn attacked_player_filter_from_words(words: &[&str]) -> Option<(PlayerFilter, bo
             AttackedPlayerFilterKind::Any => (PlayerFilter::Any, true),
             AttackedPlayerFilterKind::AnyPlayerOrPlaneswalker => (PlayerFilter::Any, false),
             AttackedPlayerFilterKind::Enchanted => (
-                PlayerFilter::TaggedPlayer((crate::tag::CompilerReferenceTag::Enchanted.bind()).into()),
+                PlayerFilter::TaggedPlayer(
+                    (crate::tag::CompilerReferenceTag::Enchanted.bind()).into(),
+                ),
                 true,
             ),
             AttackedPlayerFilterKind::Opponent => (PlayerFilter::Opponent, true),
@@ -837,16 +846,18 @@ pub fn parse_linked_attack_group_combat_triggered_line_lexed(
             group_tag.clone(),
         ),
     );
-    effects.push(EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
-        trigger: TriggerSpec::DealsCombatDamageToPlayer {
-            source: ObjectFilter::tagged(group_tag),
-            player,
+    effects.push(EffectAst::Delayed(
+        DelayedEffectAst::DelayedTriggerThisTurn {
+            trigger: TriggerSpec::DealsCombatDamageToPlayer {
+                source: ObjectFilter::tagged(group_tag),
+                player,
+            },
+            effects: damage_effects,
+            one_shot: false,
+            until_end_of_combat: true,
+            attach_to_previous_ability: false,
         },
-        effects: damage_effects,
-        one_shot: false,
-        until_end_of_combat: true,
-        attach_to_previous_ability: false,
-    }));
+    ));
 
     Ok(Some(LineAst::Triggered {
         trigger,
@@ -1488,9 +1499,9 @@ pub fn parse_static_ability_ast_line_lexed(
 
 #[cfg(test)]
 mod tests {
-    use crate::cards::builders::LibraryActionAst;
     use super::super::lexer::lex_line;
     use super::*;
+    use crate::cards::builders::LibraryActionAst;
 
     #[test]
     fn typed_protection_chain_preserves_keyword_actions() {

@@ -18,11 +18,20 @@ pub fn lift_total_mana_value_choice_constraint(
         .filter_map(OwnedLexToken::as_word)
         .collect::<Vec<_>>();
     for (phrase, metric) in [
-        (&["total", "power"][..], crate::effect::ChoiceAggregateMetric::Power),
-        (&["total", "toughness"][..], crate::effect::ChoiceAggregateMetric::Toughness),
+        (
+            &["total", "power"][..],
+            crate::effect::ChoiceAggregateMetric::Power,
+        ),
+        (
+            &["total", "toughness"][..],
+            crate::effect::ChoiceAggregateMetric::Toughness,
+        ),
     ] {
         if crate::word_primitives::sequence_occurs(&words, phrase)
-            && !crate::word_primitives::sequence_occurs(&words, &["total", "power", "and", "toughness"])
+            && !crate::word_primitives::sequence_occurs(
+                &words,
+                &["total", "power", "and", "toughness"],
+            )
         {
             let comparison = match metric {
                 crate::effect::ChoiceAggregateMetric::Power => &mut filter.power,
@@ -31,7 +40,10 @@ pub fn lift_total_mana_value_choice_constraint(
             let maximum = match comparison.take()? {
                 crate::filter::Comparison::LessThanOrEqual(n) => Value::Fixed(n),
                 crate::filter::Comparison::LessThanOrEqualExpr(n) => *n,
-                other => { *comparison = Some(other); return None; }
+                other => {
+                    *comparison = Some(other);
+                    return None;
+                }
             };
             return Some(ChoiceAggregateConstraint::at_most(metric, maximum));
         }

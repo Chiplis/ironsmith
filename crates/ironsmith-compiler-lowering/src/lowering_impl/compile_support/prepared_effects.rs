@@ -1,6 +1,6 @@
 use crate::cards::builders::{
-    CardTextError, EffectAst, EffectLoweringContext, PlayerAst, PredicateAst, SubjectVerbActionAst,
-    TagKey, TargetAst, CounterActionAst, ZoneMoveActionAst, ConditionalEffectAst,
+    CardTextError, ConditionalEffectAst, CounterActionAst, EffectAst, EffectLoweringContext,
+    PlayerAst, PredicateAst, SubjectVerbActionAst, TagKey, TargetAst, ZoneMoveActionAst,
 };
 use crate::effect::{ChoiceCount, Condition, Effect, EffectPredicate, SearchSelectionMode, Value};
 use crate::filter::ObjectRef;
@@ -128,7 +128,9 @@ fn normalize_compiled_effects(mut compiled: Vec<Effect>) -> Vec<Effect> {
 
 fn with_wrapped_damage_target(effect: &Effect, target: ChooseSpec) -> Option<Effect> {
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
-        return Some(Effect::new(tagged.with_effect(with_wrapped_damage_target(&tagged.effect, target)?)));
+        return Some(Effect::new(
+            tagged.with_effect(with_wrapped_damage_target(&tagged.effect, target)?),
+        ));
     }
     let mut damage = effect
         .downcast_ref::<crate::effects::DealDamageEffect>()?
@@ -360,7 +362,11 @@ fn with_plural_result_reference(
     type_noun: Option<crate::types::CardType>,
 ) -> Effect {
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
-        return Effect::new(tagged.with_effect(with_plural_result_reference(&tagged.effect, tags, type_noun)));
+        return Effect::new(tagged.with_effect(with_plural_result_reference(
+            &tagged.effect,
+            tags,
+            type_noun,
+        )));
     }
     let Some(apply) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>() else {
         return effect.clone();
@@ -1538,7 +1544,10 @@ fn bind_implicit_discard_after_you_draw(annotated_effects: &mut [AnnotatedEffect
         return;
     };
     if !if_false.is_empty()
-        || !matches!(discard.action, SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { .. }))
+        || !matches!(
+            discard.action,
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { .. })
+        )
         || discard.subject.player != PlayerAst::Implicit
     {
         return;
@@ -1576,7 +1585,8 @@ fn target_has_explicit_declaration_span(target: &TargetAst) -> bool {
 fn primary_put_counters_target(effects: &[EffectAst]) -> Option<TargetAst> {
     for effect in effects {
         if let EffectAst::SubjectVerb(subject_verb) = effect
-            && let SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target, .. }) = &subject_verb.action
+            && let SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target, .. }) =
+                &subject_verb.action
         {
             return Some(target.clone());
         }
@@ -1596,8 +1606,10 @@ fn primary_put_counters_target(effects: &[EffectAst]) -> Option<TargetAst> {
 fn primary_double_counters_target(effects: &[EffectAst]) -> Option<TargetAst> {
     for effect in effects {
         if let EffectAst::SubjectVerb(subject_verb) = effect
-            && let SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnTarget { target, .. }) =
-                &subject_verb.action
+            && let SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnTarget {
+                target,
+                ..
+            }) = &subject_verb.action
         {
             return Some(target.clone());
         }
@@ -1634,8 +1646,13 @@ fn bind_shared_counter_target_to_it(effects: &mut [EffectAst], shared_target: &T
     for effect in effects {
         if let EffectAst::SubjectVerb(subject_verb) = effect {
             let counter_target = match &mut subject_verb.action {
-                SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target, .. })
-                | SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnTarget { target, .. }) => Some(target),
+                SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
+                    target, ..
+                })
+                | SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnTarget {
+                    target,
+                    ..
+                }) => Some(target),
                 _ => None,
             };
             if let Some(target) = counter_target

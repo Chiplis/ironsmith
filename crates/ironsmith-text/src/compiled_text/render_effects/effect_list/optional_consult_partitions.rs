@@ -49,7 +49,10 @@ fn describe_optional_consult_then_battlefield_partition(
     {
         let (consult_text, disposition) = compact.rsplit_once(". ")?;
         let reveal = consult_text.strip_prefix("Reveal ")?;
-        return Some(format!("You may reveal {reveal}. If you do, {}", lowercase_first(disposition)));
+        return Some(format!(
+            "You may reveal {reveal}. If you do, {}",
+            lowercase_first(disposition)
+        ));
     }
     let [move_effect, remainder_effect] = followups else {
         return None;

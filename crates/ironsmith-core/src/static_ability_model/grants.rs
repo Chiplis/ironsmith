@@ -4,8 +4,7 @@ use super::*;
 use crate::ConditionConjunction;
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum LandwalkKind {
     Subtype { subtype: Subtype, snow: bool },
     AnyLand,
@@ -44,8 +43,7 @@ pub struct Anthem<Cond = Condition> {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub struct AnthemReplacementSurface {
     pub power: i32,
     pub toughness: i32,
@@ -133,8 +131,7 @@ impl<Cond: ConditionConjunction> Anthem<Cond> {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct AttachedAbilityGrant<T, E, C, Cond, ICond = Condition> {
     pub ability: AbilityModel<T, E, C, Cond, ICond>,
     pub additional_abilities: Vec<AbilityModel<T, E, C, Cond, ICond>>,
@@ -171,8 +168,7 @@ impl<T, E, C, Cond, ICond> AttachedAbilityGrant<T, E, C, Cond, ICond> {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct AttachedChosenLandwalkGrant {
     pub display: String,
     pub snow: bool,
@@ -191,8 +187,7 @@ impl AttachedChosenLandwalkGrant {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct GrantAbility<T, E, C, Cond, ICond = Condition> {
     pub filter: ObjectFilter,
     pub ability: AbilityModel<T, E, C, Cond, ICond>,
@@ -229,8 +224,7 @@ impl<T, E, C, Cond, ICond> GrantAbility<T, E, C, Cond, ICond> {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Clone, PartialEq, TagKeyWalk)]
 pub struct GrantObjectAbilityForFilter<T, E, C, Cond, ICond = Condition> {
     pub filter: ObjectFilter,
     pub ability: AbilityModel<T, E, C, Cond, ICond>,
@@ -297,8 +291,7 @@ impl<T, E, C, Cond, ICond> GrantObjectAbilityForFilter<T, E, C, Cond, ICond> {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CopyActivatedAbilities {
     pub filter: ObjectFilter,
     pub counter: Option<CounterType>,
@@ -357,8 +350,7 @@ impl CopyActivatedAbilities {
 /// narrower "protection from any color" category without treating unrelated
 /// protection qualities as colors.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum StaticAbilityVariantSelector {
     Any(StaticAbilityId),
     ProtectionFromColor,
@@ -382,8 +374,7 @@ impl StaticAbilityVariantSelector {
 /// Unlike a fixed ability grant, this preserves payloads such as a protection
 /// quality, a landwalk kind, or a qualified-hexproof filter.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CopyStaticAbilityVariants {
     pub filter: ObjectFilter,
     pub selectors: Vec<StaticAbilityVariantSelector>,
@@ -412,8 +403,7 @@ impl CopyStaticAbilityVariants {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CopyTriggeredAbilities {
     pub filter: ObjectFilter,
     pub exclude_source_name: bool,
@@ -439,8 +429,7 @@ impl CopyTriggeredAbilities {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CostReductionCharacteristicIntersection {
     pub characteristic: crate::ObjectCharacteristic,
     pub comparison: ObjectFilter,
@@ -537,8 +526,7 @@ impl<Cond: ConditionConjunction> CostReduction<Cond> {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct OptionalLifeAdditionalCost {
     pub label: String,
     pub life_cost: u32,
@@ -739,8 +727,7 @@ impl<Cond: ConditionConjunction> CostIncreaseManaCost<Cond> {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ThisSpellCostReduction<Cond> {
     pub amount: Value,
     pub condition: Cond,
@@ -775,8 +762,7 @@ impl<Cond> ThisSpellCostReduction<Cond> {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ThisSpellCostReductionManaCost<Cond> {
     pub cost: ManaCost,
     pub repetitions: Option<Value>,
@@ -799,8 +785,7 @@ impl<Cond> ThisSpellCostReductionManaCost<Cond> {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct SetColorsForFilter {
     pub filter: ObjectFilter,
     pub color: ColorSet,
@@ -861,15 +846,13 @@ impl<Cond: ConditionConjunction> RemoveCardTypesForFilter<Cond> {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum ActivatedAbilityCostCondition {
     TargetsExactly { count: usize, filter: ObjectFilter },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum AttackCostCondition {
     PayGenericPerSourceCounter {
         counter_type: CounterType,
@@ -886,8 +869,7 @@ pub enum AttackCostCondition {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum AttackingGroupAttackCondition {
     AtLeastNOtherCreaturesAttack(u32),
     BlackOrGreenCreatureAlsoAttacks,
@@ -953,8 +935,7 @@ impl<Cond> CantAttackUnlessConditionSpec<Cond> {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct EnterAsCopyAsEntersSpec<T, E, C, Cond, ICond = Condition> {
     pub filter: ObjectFilter,
     pub affected_filter: Option<ObjectFilter>,
@@ -980,8 +961,7 @@ pub struct EnterAsCopyAsEntersSpec<T, E, C, Cond, ICond = Condition> {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub struct EnterAsCopyLinkedExilePairSpec {
     pub counter_type: CounterType,
 }

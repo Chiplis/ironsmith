@@ -17,8 +17,7 @@ pub use turn_events::*;
 use super::*;
 
 /// A stated limit on how often a triggered ability may fire.
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum TriggerFrequencyPredicateAst {
     /// "for the first time this turn"
     FirstTimeThisTurn,
@@ -30,8 +29,7 @@ pub enum TriggerFrequencyPredicateAst {
     DoThisMaxTimesEachTurn(u32),
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum PredicateAst {
     /// TurnEvents: see [`TurnEventPredicateAst`].
     TurnEvents(TurnEventPredicateAst),
@@ -191,8 +189,7 @@ pub enum PredicateAst {
     Or(Box<PredicateAst>, Box<PredicateAst>),
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum TurnHistoryPredicateAst {
     SpellsCastLastTurnAtLeast(u32),
     SourceCrewedByAtLeast {
@@ -254,8 +251,7 @@ pub enum TurnHistoryPredicateAst {
     TriggeringAbilityIsManaAbility,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum PredicateReferenceAntecedent {
     SourceObject,
 }
@@ -298,7 +294,9 @@ impl PredicateAst {
             | PredicateAst::Source(SourcePredicateAst::SourceSuspected)
             | PredicateAst::Source(SourcePredicateAst::SourceCameUnderYourControlThisTurn)
             | PredicateAst::Source(SourcePredicateAst::SourceAttackedOrBlockedThisTurn)
-            | PredicateAst::Source(SourcePredicateAst::SourceInGraveyardWithCardsAbove { .. })
+            | PredicateAst::Source(SourcePredicateAst::SourceInGraveyardWithCardsAbove {
+                ..
+            })
             | PredicateAst::Source(SourcePredicateAst::SourceIsInZone(_))
             | PredicateAst::Source(SourcePredicateAst::SourceWasCast)
             | PredicateAst::ThisSpellWasCastAtSorceryTiming

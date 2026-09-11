@@ -1399,7 +1399,8 @@ fn parse_attached_doesnt_untap_during_controller_untap_step_line<'a>(
                     (primitives::kw("does"), primitives::kw("not")).void(),
                 )),
                 primitives::phrase(&["untap", "during", "your", "untap", "step"]),
-            ).value(true),
+            )
+                .value(true),
         )),
     )
         .map(|(_, during_your_untap_step)| during_your_untap_step)

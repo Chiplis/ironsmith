@@ -239,7 +239,8 @@ fn quoted_token_copy_replacement_stays_grouped_with_its_granted_ability() {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
                     SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
-                        granted_abilities, ..
+                        granted_abilities,
+                        ..
                     }),
                 ..
             }) => Some(granted_abilities),

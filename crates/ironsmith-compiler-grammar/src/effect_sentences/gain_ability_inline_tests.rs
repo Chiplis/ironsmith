@@ -1,10 +1,10 @@
-use crate::cards::builders::ConditionalEffectAst;
-use crate::cards::builders::StatChangeActionAst;
-use crate::cards::builders::CharacteristicActionAst;
-use crate::cards::builders::GrantActionAst;
 use super::super::super::lexer::lex_line;
 use super::super::super::util::tokenize_line;
 use super::*;
+use crate::cards::builders::CharacteristicActionAst;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::GrantActionAst;
+use crate::cards::builders::StatChangeActionAst;
 use crate::model::CompilerAbilityKindCore as AbilityKind;
 use crate::{CardId, ChoiceCount};
 #[cfg(test)]
@@ -629,7 +629,8 @@ fn shared_target_where_x_possessive_binds_only_the_bare_pronoun() {
             .effects()
             .find_map(|effect| match effect {
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { power, .. }),
+                    action:
+                        SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { power, .. }),
                     ..
                 }) => Some(power.clone()),
                 _ => None,
@@ -709,16 +710,31 @@ fn leading_duration_demonstrative_base_pt_then_gains_keyword_parses() {
         .expect("leading-duration base-pt then gains clause should parse")
         .expect("leading-duration base-pt then gains clause should produce effects");
 
-    let full = crate::effect_sentences::parse_effect_sentences_lexed(&tokens).expect("full sentence route");
-    assert!(format!("{full:?}").contains("SetBasePowerToughness"), "{full:#?}");
-    let document = tokenize_line("Untap another target creature you control. Until end of turn, that creature has base power and toughness 4/4 and gains indestructible.", 0);
+    let full = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
+        .expect("full sentence route");
+    assert!(
+        format!("{full:?}").contains("SetBasePowerToughness"),
+        "{full:#?}"
+    );
+    let document = tokenize_line(
+        "Untap another target creature you control. Until end of turn, that creature has base power and toughness 4/4 and gains indestructible.",
+        0,
+    );
     let parts = crate::lexer::split_lexed_sentences(&document);
     let isolated = parse_gain_ability_sentence(parts[1]).unwrap().unwrap();
-    assert!(format!("{isolated:?}").contains("SetBasePowerToughness"), "isolated: {isolated:#?}");
-    let complete = crate::effect_sentences::dispatch_entry::parse_complete_compound_gain_statement(parts[1]).unwrap();
+    assert!(
+        format!("{isolated:?}").contains("SetBasePowerToughness"),
+        "isolated: {isolated:#?}"
+    );
+    let complete =
+        crate::effect_sentences::dispatch_entry::parse_complete_compound_gain_statement(parts[1])
+            .unwrap();
     assert!(complete.is_some(), "compound shape rejected");
     let full_document = crate::effect_sentences::parse_effect_sentences_lexed(&document).unwrap();
-    assert!(format!("{full_document:?}").contains("SetBasePowerToughness"), "{full_document:#?}");
+    assert!(
+        format!("{full_document:?}").contains("SetBasePowerToughness"),
+        "{full_document:#?}"
+    );
     let debug = format!("{effects:?}").to_ascii_lowercase();
     assert!(
         string_contains(&debug, "setbasepowertoughness")
@@ -899,7 +915,9 @@ fn mass_ability_loss_keeps_spent_mana_condition_through_lowering() {
     assert!(matches!(
         if_true.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll { .. }),
+            action: SubjectVerbActionAst::StatChanges(
+                StatChangeActionAst::RemoveAbilitiesAll { .. }
+            ),
             ..
         })]
     ));
@@ -924,7 +942,11 @@ fn bare_card_type_and_subtype_mass_loss_uses_union_filter() {
 
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll { filter, .. }),
+            action:
+                SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll {
+                    filter,
+                    ..
+                }),
             ..
         }),
     ] = effects.as_slice()
@@ -1068,7 +1090,10 @@ fn quoted_granted_trigger_keeps_trailing_if_otherwise_branch() {
         .iter()
         .find_map(|effect| match effect {
             EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-                SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll { abilities, .. }) => Some(abilities),
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll {
+                    abilities,
+                    ..
+                }) => Some(abilities),
                 _ => None,
             },
             _ => None,
@@ -1104,9 +1129,9 @@ fn quoted_granted_trigger_keeps_trailing_if_otherwise_branch() {
                 };
                 if !matches!(
                     &condition.predicate,
-                    crate::model::control_flow::ControlPredicateAst::State(
-                        PredicateAst::Player(PlayerPredicateAst::PlayerIsMonarch { .. })
-                    )
+                    crate::model::control_flow::ControlPredicateAst::State(PredicateAst::Player(
+                        PlayerPredicateAst::PlayerIsMonarch { .. }
+                    ))
                 ) {
                     return None;
                 }
@@ -1320,15 +1345,21 @@ fn sentence_dispatch_preserves_loss_become_and_base_pt_coordination() {
             coordinated.as_slice(),
             [
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll { .. }),
+                    action: SubjectVerbActionAst::StatChanges(
+                        StatChangeActionAst::RemoveAbilitiesAll { .. }
+                    ),
                     ..
                 }),
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes { .. }),
+                    action: SubjectVerbActionAst::Characteristics(
+                        CharacteristicActionAst::AddSubtypes { .. }
+                    ),
                     ..
                 }),
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness { .. }),
+                    action: SubjectVerbActionAst::Characteristics(
+                        CharacteristicActionAst::SetBasePowerToughness { .. }
+                    ),
                     ..
                 }),
             ]
@@ -1355,11 +1386,15 @@ fn target_controller_qualifier_does_not_hide_an_explicit_object_target() {
             coordinated.as_slice(),
             [
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget { .. }),
+                    action: SubjectVerbActionAst::StatChanges(
+                        StatChangeActionAst::RemoveAbilitiesFromTarget { .. }
+                    ),
                     ..
                 }),
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness { .. }),
+                    action: SubjectVerbActionAst::Characteristics(
+                        CharacteristicActionAst::SetBasePowerToughness { .. }
+                    ),
                     ..
                 })
             ]
@@ -1468,9 +1503,20 @@ fn conditional_instead_grant_preserves_the_target_count() {
 
 #[test]
 fn size_free_animation_and_characteristic_grant_keep_both_actions() {
-    let tokens=tokenize_line("This enchantment becomes a Bear creature in addition to its other types and gains \"This creature's power and toughness are each equal to the number of lands you control.\"",0);
-    let direct=parse_gain_ability_sentence(&tokens).unwrap().expect("compound gain");
-    assert!(format!("{direct:?}").contains("AddCardTypes"),"direct {direct:?}");
-    let effects=super::super::parse_effect_sentences_lexed(&tokens).unwrap();
-    assert!(format!("{effects:?}").contains("AddCardTypes"),"pipeline {effects:?}");
+    let tokens = tokenize_line(
+        "This enchantment becomes a Bear creature in addition to its other types and gains \"This creature's power and toughness are each equal to the number of lands you control.\"",
+        0,
+    );
+    let direct = parse_gain_ability_sentence(&tokens)
+        .unwrap()
+        .expect("compound gain");
+    assert!(
+        format!("{direct:?}").contains("AddCardTypes"),
+        "direct {direct:?}"
+    );
+    let effects = super::super::parse_effect_sentences_lexed(&tokens).unwrap();
+    assert!(
+        format!("{effects:?}").contains("AddCardTypes"),
+        "pipeline {effects:?}"
+    );
 }

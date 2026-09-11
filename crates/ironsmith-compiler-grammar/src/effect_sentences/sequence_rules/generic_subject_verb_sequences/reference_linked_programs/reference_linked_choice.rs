@@ -30,4 +30,3 @@ pub fn parse_choose_then_do_same_for_filter_then_return_to_battlefield(
     ));
     Ok(Some(effects))
 }
-

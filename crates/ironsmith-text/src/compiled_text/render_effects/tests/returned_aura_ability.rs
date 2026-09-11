@@ -51,11 +51,19 @@ fn returned_aura_ability_belongs_to_aura_and_protects_attachment() {
                 .then(|| game.create_object_from_definition(&host_def, alice, Zone::Battlefield));
             let other = game.create_object_from_definition(&host_def, bob, Zone::Battlefield);
             let entry_rule = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Entry Rule")
-                .card_types(vec![CardType::Enchantment]).build();
+                .card_types(vec![CardType::Enchantment])
+                .build();
             let rule = game.create_object_from_card(&entry_rule, bob, Zone::Battlefield);
-            let filter = if enters_tapped { ObjectFilter::enchantment() } else { ObjectFilter::creature() };
-            game.object_mut(rule).unwrap().abilities_mut().push(crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::enters_tapped_for_filter(filter)));
+            let filter = if enters_tapped {
+                ObjectFilter::enchantment()
+            } else {
+                ObjectFilter::creature()
+            };
+            game.object_mut(rule).unwrap().abilities_mut().push(
+                crate::ability::Ability::static_ability(
+                    crate::static_abilities::StaticAbility::enters_tapped_for_filter(filter),
+                ),
+            );
             game.refresh_continuous_state();
             let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
             let snapshot =

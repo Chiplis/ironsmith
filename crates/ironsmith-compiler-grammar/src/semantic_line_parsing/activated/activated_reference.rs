@@ -1,6 +1,6 @@
-use crate::cards::builders::ZoneMoveActionAst;
-use crate::cards::builders::CounterActionAst;
 use super::*;
+use crate::cards::builders::CounterActionAst;
+use crate::cards::builders::ZoneMoveActionAst;
 
 /// How far the authored line was indented: `source_tokens` are lexed from the
 /// trimmed line, while the source map speaks in untrimmed offsets.
@@ -135,10 +135,13 @@ pub(super) fn recognize_named_source_action_surfaces(info: &LineInfo, effects: &
         for effect in effects {
             if let EffectAst::SubjectVerb(subject_verb) = effect {
                 match &mut subject_verb.action {
-                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { target, .. }) => apply_target(info, target),
-                    SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target, .. }) => {
-                        apply_counter_target(info, target)
-                    }
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
+                        target, ..
+                    }) => apply_target(info, target),
+                    SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
+                        target,
+                        ..
+                    }) => apply_counter_target(info, target),
                     SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                         target,
                         zone: Zone::Exile,

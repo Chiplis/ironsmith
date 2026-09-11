@@ -1,12 +1,19 @@
-use crate::cards::builders::ForEachEffectAst;
 use super::*;
+use crate::cards::builders::ForEachEffectAst;
 
 pub(super) fn primary_damage_source_from_effect(effect: &EffectAst) -> Option<TargetAst> {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-            SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { .. }) => Some(TargetAst::Source(None)),
-            SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { source, .. })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { source, .. }) => Some(source.clone()),
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { .. }) => {
+                Some(TargetAst::Source(None))
+            }
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
+                source,
+                ..
+            })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage {
+                source, ..
+            }) => Some(source.clone()),
             _ => None,
         },
         _ => {

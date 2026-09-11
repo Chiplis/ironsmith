@@ -8,7 +8,9 @@ use crate::cards::builders::SourcePredicateAst;
 /// option implies at resolution is not.
 pub fn condition_for_chosen_option(context: &ChosenOptionContext) -> PredicateAst {
     match context {
-        ChosenOptionContext::SourceOption(label) => PredicateAst::Source(SourcePredicateAst::SourceChosenOption(label.clone())),
+        ChosenOptionContext::SourceOption(label) => {
+            PredicateAst::Source(SourcePredicateAst::SourceChosenOption(label.clone()))
+        }
         ChosenOptionContext::MaxSpeed => PredicateAst::ValueComparison {
             left: crate::effect::Value::Speed(PlayerFilter::You),
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,

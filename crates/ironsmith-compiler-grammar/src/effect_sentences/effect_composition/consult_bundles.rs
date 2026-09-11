@@ -1,5 +1,5 @@
-use crate::cards::builders::ForEachEffectAst;
 use super::*;
+use crate::cards::builders::ForEachEffectAst;
 
 pub(super) fn parse_reveal_until_land_put_all_graveyard_bundle(
     tokens: &[OwnedLexToken],
@@ -243,13 +243,15 @@ pub fn parse_consult_disposition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<
                 let chosen_tag = helper_tag_for_tokens(&shape.consult_tokens, "consult_chosen");
                 let mut filter = ObjectFilter::tagged(parts.match_tag.clone());
                 filter.zone = Some(Zone::Library);
-                effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-                    filter,
-                    count: ChoiceCount::any_number(),
-                    count_value: None,
-                    player: PlayerAst::You,
-                    tag: crate::tag::TagRef::of(chosen_tag.clone()),
-                }));
+                effects.push(EffectAst::ObjectChoices(
+                    ObjectChoiceEffectAst::ChooseObjects {
+                        filter,
+                        count: ChoiceCount::any_number(),
+                        count_value: None,
+                        player: PlayerAst::You,
+                        tag: crate::tag::TagRef::of(chosen_tag.clone()),
+                    },
+                ));
                 effects.push(move_consult_tagged_group(
                     chosen_tag.clone().into(),
                     matched.zone,
@@ -270,10 +272,22 @@ pub fn parse_consult_disposition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<
         bundle_grammar::ConsultMiddleShape::Generic(clauses) => {
             fn bind_revealed_origin(effect: &mut EffectAst, revealed: &TagKey) {
                 if let EffectAst::SubjectVerb(subject_verb) = effect
-                    && let SubjectVerbActionAst::ZoneMoves(crate::cards::builders::ZoneMoveActionAst::MoveToZone { target: TargetAst::Object(filter, _, _), all: true, .. }) = &mut subject_verb.action
-                    && let Some(constraint) = filter.tagged_constraints.iter_mut().find(|constraint|
-                        constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-                        && [crate::tag::CompilerReferenceTag::RevealedThisWay.as_str(), crate::tag::CompilerReferenceTag::It.as_str()].contains(&constraint.tag.as_str()))
+                    && let SubjectVerbActionAst::ZoneMoves(
+                        crate::cards::builders::ZoneMoveActionAst::MoveToZone {
+                            target: TargetAst::Object(filter, _, _),
+                            all: true,
+                            ..
+                        },
+                    ) = &mut subject_verb.action
+                    && let Some(constraint) =
+                        filter.tagged_constraints.iter_mut().find(|constraint| {
+                            constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                                && [
+                                    crate::tag::CompilerReferenceTag::RevealedThisWay.as_str(),
+                                    crate::tag::CompilerReferenceTag::It.as_str(),
+                                ]
+                                .contains(&constraint.tag.as_str())
+                        })
                 {
                     // Revealing during a consult leaves these cards in the library.
                     // A creature-card noun must not add a battlefield restriction.
@@ -281,15 +295,22 @@ pub fn parse_consult_disposition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<
                     constraint.tag = revealed.clone();
                 }
                 crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
-                    for effect in nested { bind_revealed_origin(effect, revealed); }
+                    for effect in nested {
+                        bind_revealed_origin(effect, revealed);
+                    }
                 });
             }
             for clause in clauses {
                 let mut clause_effects = crate::grammar::primitives::probe_shape(
                     effect_sentences::parse_effect_sentence_lexed(&clause),
                 )?;
-                if crate::word_primitives::sequence_occurs(&crate::lexer::token_word_refs(&clause), &["revealed", "this", "way"]) {
-                    for effect in &mut clause_effects { bind_revealed_origin(effect, &parts.all_tag); }
+                if crate::word_primitives::sequence_occurs(
+                    &crate::lexer::token_word_refs(&clause),
+                    &["revealed", "this", "way"],
+                ) {
+                    for effect in &mut clause_effects {
+                        bind_revealed_origin(effect, &parts.all_tag);
+                    }
                 }
                 effects.append(&mut clause_effects);
             }
@@ -305,14 +326,18 @@ pub fn parse_consult_disposition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<
     );
     match leading_result {
         Some(prefix) => Some(vec![match prefix.kind {
-            crate::grammar::structure::LeadingResultPrefixKind::If => EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-                predicate: prefix.predicate,
-                effects,
-            }),
-            crate::grammar::structure::LeadingResultPrefixKind::When => EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
-                predicate: prefix.predicate,
-                effects,
-            }),
+            crate::grammar::structure::LeadingResultPrefixKind::If => {
+                EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                    predicate: prefix.predicate,
+                    effects,
+                })
+            }
+            crate::grammar::structure::LeadingResultPrefixKind::When => {
+                EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
+                    predicate: prefix.predicate,
+                    effects,
+                })
+            }
         }]),
         None => Some(effects),
     }
@@ -326,7 +351,9 @@ pub(super) fn parse_reveal_repeated_disposition_bundle(
             if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
                     SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
-                        tag, reveal: true, ..
+                        tag,
+                        reveal: true,
+                        ..
                     }),
                 ..
             }) = effect

@@ -8,8 +8,9 @@ use super::super::grammar::structure::{
 use super::super::lexer::OwnedLexToken;
 use super::parse_effect_sentence_lexed;
 use crate::cards::builders::{
-    CardTextError, ChooseOneModeAst, EffectAst, GrantedAbilityAst, SubjectVerbActionAst,
-    SubjectVerbEffectAst, TargetAst, TextSpan, GrantActionAst, ObjectChoiceEffectAst, ConditionalEffectAst,
+    CardTextError, ChooseOneModeAst, ConditionalEffectAst, EffectAst, GrantActionAst,
+    GrantedAbilityAst, ObjectChoiceEffectAst, SubjectVerbActionAst, SubjectVerbEffectAst,
+    TargetAst, TextSpan,
 };
 use crate::effect::Until;
 
@@ -137,7 +138,9 @@ fn combine_shared_keyword_choice(
             }],
         })
         .collect();
-    Ok(Some(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })))
+    Ok(Some(EffectAst::ObjectChoices(
+        ObjectChoiceEffectAst::ChooseOneOf { modes },
+    )))
 }
 
 fn parse_optional_companion_fanout_body(
@@ -195,20 +198,22 @@ pub fn parse_optional_companion_fanout_sentence(
             predicate: prefix.predicate,
             effects,
         }),
-        LeadingResultPrefixKind::When => EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
-            predicate: prefix.predicate,
-            effects,
-        }),
+        LeadingResultPrefixKind::When => {
+            EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
+                predicate: prefix.predicate,
+                effects,
+            })
+        }
     }]))
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::cards::builders::StatChangeActionAst;
-    use crate::cards::builders::PermanentStateActionAst;
-    use crate::cards::builders::ZoneMoveActionAst;
     use super::*;
     use crate::cards::builders::ChoiceCount;
+    use crate::cards::builders::PermanentStateActionAst;
+    use crate::cards::builders::StatChangeActionAst;
+    use crate::cards::builders::ZoneMoveActionAst;
     use crate::lexer::lex_line;
 
     fn optional_target(target: &TargetAst) -> Option<(&TargetAst, ChoiceCount)> {
@@ -233,11 +238,17 @@ mod tests {
         };
         let [
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target: first, .. }),
+                action:
+                    SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
+                        target: first, ..
+                    }),
                 ..
             }),
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target: second, .. }),
+                action:
+                    SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
+                        target: second, ..
+                    }),
                 ..
             }),
         ] = effects.as_slice()
@@ -267,7 +278,9 @@ mod tests {
         let parsed = parse_optional_companion_fanout_sentence(&tokens)
             .unwrap()
             .unwrap();
-        let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })] = parsed.as_slice() else {
+        let [EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })] =
+            parsed.as_slice()
+        else {
             panic!("expected one shared keyword choice: {parsed:#?}");
         };
         assert_eq!(modes.len(), 2);
@@ -277,7 +290,10 @@ mod tests {
             };
             assert_eq!(effects.len(), 2);
             let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { target, .. }),
+                action:
+                    SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
+                        target, ..
+                    }),
                 ..
             }) = &effects[1]
             else {
@@ -303,7 +319,8 @@ mod tests {
         };
         assert_eq!(effects.len(), 2);
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap { target, .. }),
+            action:
+                SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap { target, .. }),
             ..
         }) = &effects[1]
         else {

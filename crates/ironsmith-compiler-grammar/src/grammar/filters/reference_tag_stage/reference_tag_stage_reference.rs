@@ -571,7 +571,9 @@ pub(in super::super) fn parse_object_filter_inner(
     )
     .is_some()
     {
-        return Ok(ObjectFilter::tagged(crate::tag::CompilerReferenceTag::Rest.bind()));
+        return Ok(ObjectFilter::tagged(
+            crate::tag::CompilerReferenceTag::Rest.bind(),
+        ));
     }
     if let Some(filter) = parse_permanent_or_suspended_card_disjunction(&base_tokens) {
         return Ok(filter);

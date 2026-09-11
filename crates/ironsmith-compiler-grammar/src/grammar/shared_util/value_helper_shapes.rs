@@ -193,8 +193,14 @@ pub fn parse_prior_effect_action(words: &[&str]) -> Option<(PriorEffectAction, u
             PriorEffectAction::PutOntoBattlefield,
         ),
         (&["put", "into", "exile"], PriorEffectAction::Exiled),
-        (&["put", "into", "a", "graveyard"], PriorEffectAction::PutIntoGraveyard),
-        (&["put", "into", "graveyards"], PriorEffectAction::PutIntoGraveyard),
+        (
+            &["put", "into", "a", "graveyard"],
+            PriorEffectAction::PutIntoGraveyard,
+        ),
+        (
+            &["put", "into", "graveyards"],
+            PriorEffectAction::PutIntoGraveyard,
+        ),
         (&["dealt", "damage"], PriorEffectAction::DealtDamage),
         (
             &["counters", "put", "on", "it"],

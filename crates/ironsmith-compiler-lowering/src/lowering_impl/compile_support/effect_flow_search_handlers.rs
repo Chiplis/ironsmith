@@ -1,12 +1,12 @@
-use crate::cards::builders::PermissionEffectAst;
-use crate::cards::builders::ConditionalEffectAst;
-use crate::cards::builders::VoteEffectAst;
-use crate::cards::builders::ForEachEffectAst;
-use crate::cards::builders::StackActionAst;
-use crate::cards::builders::DamageActionAst;
-use crate::cards::builders::LifeResourceActionAst;
-use crate::cards::builders::CharacteristicActionAst;
 use super::*;
+use crate::cards::builders::CharacteristicActionAst;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::DamageActionAst;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::LifeResourceActionAst;
+use crate::cards::builders::PermissionEffectAst;
+use crate::cards::builders::StackActionAst;
+use crate::cards::builders::VoteEffectAst;
 
 fn normalize_unless_cost_for_payer(cost: crate::cost::TotalCost) -> crate::cost::TotalCost {
     cost.try_map(|component| {
@@ -266,7 +266,11 @@ fn scope_may_decider_search_effect(
     }
 
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
-        return Effect::new(tagged.with_effect(scope_may_decider_search_effect(&tagged.effect, decider, force_search_scope)));
+        return Effect::new(tagged.with_effect(scope_may_decider_search_effect(
+            &tagged.effect,
+            decider,
+            force_search_scope,
+        )));
     }
 
     // Unlabeled inline alternatives are actions offered to the may-decider.
@@ -401,7 +405,10 @@ fn try_compile_for_each_object_become_copy_of_prior_choice(
 
     let rewritten = EffectAst::subject_verb_become_copy(
         TargetAst::Object(target_filter, None, None),
-        TargetAst::Tagged(crate::tag::TagRef::of(prior_choice_tag), source_reference_span),
+        TargetAst::Tagged(
+            crate::tag::TagRef::of(prior_choice_tag),
+            source_reference_span,
+        ),
         duration.clone(),
         *preserve_source_abilities,
         name_override.clone(),
@@ -728,18 +735,24 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                             before_delayed_step: *before_delayed_step,
                         })],
                     })),
-                    EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
+                    EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+                        sequential: false,
                         filter,
                         effects: per_player_effects,
-                    }) => Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
-                        filter: filter.clone(),
-                        effects: vec![EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
-                            effects: per_player_effects.clone(),
-                            player: *player,
-                            cost: cost.clone(),
-                            before_delayed_step: *before_delayed_step,
-                        })],
-                    })),
+                    }) => Some(EffectAst::ForEach(
+                        ForEachEffectAst::ForEachPlayersFiltered {
+                            sequential: false,
+                            filter: filter.clone(),
+                            effects: vec![EffectAst::Conditionals(
+                                ConditionalEffectAst::UnlessPays {
+                                    effects: per_player_effects.clone(),
+                                    player: *player,
+                                    cost: cost.clone(),
+                                    before_delayed_step: *before_delayed_step,
+                                },
+                            )],
+                        },
+                    )),
                     _ => None,
                 };
                 if let Some(rewritten) = rewritten {
@@ -831,11 +844,13 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             {
                 let rewritten = EffectAst::ForEach(ForEachEffectAst::ForEachObject {
                     filter: filter.clone(),
-                    effects: vec![EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
-                        effects: per_object_effects.clone(),
-                        alternative: alternative.clone(),
-                        player: *player,
-                    })],
+                    effects: vec![EffectAst::Conditionals(
+                        ConditionalEffectAst::UnlessAction {
+                            effects: per_object_effects.clone(),
+                            alternative: alternative.clone(),
+                            player: *player,
+                        },
+                    )],
                 });
                 return Ok(Some(compile_effect(&rewritten, ctx)?));
             }
@@ -928,13 +943,19 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             let effect = Effect::for_each_opponent(inner_effects);
             (vec![effect], inner_choices)
         }
-        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { filter, effects, sequential }) => {
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+            filter,
+            effects,
+            sequential,
+        }) => {
             let (inner_effects, inner_choices) =
                 compile_effects_in_iterated_player_context(effects, ctx, None)?;
             let effect = if *sequential {
                 Effect::new(crate::effects::ForPlayersEffect {
-                    filter: filter.clone(), effects: inner_effects,
-                    sequential: true, starting_with_controller: false,
+                    filter: filter.clone(),
+                    effects: inner_effects,
+                    sequential: true,
+                    starting_with_controller: false,
                     stop_after_first_happened: false,
                 })
             } else {
@@ -969,7 +990,10 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 && let Some((followup_member, antecedent_members)) =
                     coordination.members.split_last()
                 && let [followup] = followup_member.effects.as_slice()
-                && matches!(followup, EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDoesNot { .. }))
+                && matches!(
+                    followup,
+                    EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDoesNot { .. })
+                )
             {
                 let antecedent_may_effects = antecedent_members
                     .iter()
@@ -1000,7 +1024,10 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 ] = may_effects.as_slice()
                 && let Some((followup, antecedent_may_effects)) = comma_then_effects.split_last()
                 && !antecedent_may_effects.is_empty()
-                && matches!(followup, EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDoesNot { .. }))
+                && matches!(
+                    followup,
+                    EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDoesNot { .. })
+                )
             {
                 let antecedent = EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
                     effects: vec![EffectAst::Permissions(PermissionEffectAst::May {
@@ -1020,7 +1047,10 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             ] = effects.as_slice()
                 && let Some((followup, antecedent_may_effects)) = may_effects.split_last()
                 && !antecedent_may_effects.is_empty()
-                && matches!(followup, EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDoesNot { .. }))
+                && matches!(
+                    followup,
+                    EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDoesNot { .. })
+                )
             {
                 let antecedent = EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
                     effects: vec![EffectAst::Permissions(PermissionEffectAst::May {
@@ -1035,7 +1065,10 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             }
             if let Some((followup, antecedent_effects)) = effects.split_last()
                 && !antecedent_effects.is_empty()
-                && matches!(followup, EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDoesNot { .. }))
+                && matches!(
+                    followup,
+                    EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDoesNot { .. })
+                )
             {
                 let antecedent = EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
                     effects: antecedent_effects.to_vec(),
@@ -1183,8 +1216,10 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             // earlier looked-at pool even after an intervening `ChooseObjects`
             // clobbers `last_object_tag`. Emits no runtime effect.
             if let Some(concrete) = ctx.last_object_tag.clone() {
-                ctx.snapshot_tag_aliases.retain(|(alias, _)| *alias != into.key);
-                ctx.snapshot_tag_aliases.push((into.clone().into(), concrete));
+                ctx.snapshot_tag_aliases
+                    .retain(|(alias, _)| *alias != into.key);
+                ctx.snapshot_tag_aliases
+                    .push((into.clone().into(), concrete));
             }
             (Vec::new(), Vec::new())
         }

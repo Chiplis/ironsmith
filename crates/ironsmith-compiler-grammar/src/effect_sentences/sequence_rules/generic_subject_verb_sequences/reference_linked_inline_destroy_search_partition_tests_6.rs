@@ -1,6 +1,6 @@
-use crate::cards::builders::ZoneMoveActionAst;
-use crate::cards::builders::LibraryActionAst;
 use super::*;
+use crate::cards::builders::LibraryActionAst;
+use crate::cards::builders::ZoneMoveActionAst;
 use crate::{lex_line, split_lexed_sentences};
 
 #[test]
@@ -17,7 +17,7 @@ fn global_destroy_keeps_targeted_search_owner_chooser_and_destination_separate()
         .collect::<Vec<_>>();
     let effects =
         crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
-        .map(|matched| matched.map(|matched| matched.effects))
+            .map(|matched| matched.map(|matched| matched.effects))
             .expect("destroy/search parser should not error")
             .expect("destroy/search shape should match");
 

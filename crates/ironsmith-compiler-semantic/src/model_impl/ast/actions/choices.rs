@@ -1,10 +1,9 @@
 //! The choices actions of `SubjectVerbActionAst`.
 
-use ironsmith_compiler_ast::TagRef;
 use super::*;
+use ironsmith_compiler_ast::TagRef;
 
-#[derive(Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Clone, PartialEq, TagKeyWalk)]
 pub enum ChoiceActionAst {
     ChooseColor,
     ChooseCardType {

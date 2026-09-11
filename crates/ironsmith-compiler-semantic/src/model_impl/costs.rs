@@ -9,8 +9,7 @@ use crate::object::CounterType;
 use crate::target::{ObjectFilter, SourceReferenceSurface};
 use crate::types::{CardType, Subtype, Supertype};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum CostRelationship {
     Ordinary,
     Additional,
@@ -19,8 +18,7 @@ pub enum CostRelationship {
     RatherThan,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CompilerTotalCost {
     pub branches: Vec<Vec<CompilerCost>>,
     pub relationship: CostRelationship,
@@ -220,8 +218,7 @@ impl ironsmith_core::CoreCostComponent for CompilerCost {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum CompilerCost {
     Mana(ManaCost),
     DynamicMana(ironsmith_core::DynamicManaCost),

@@ -1,5 +1,5 @@
-use crate::cards::builders::ConditionalEffectAst;
 use super::*;
+use crate::cards::builders::ConditionalEffectAst;
 
 pub(super) fn rewrite_self_replacements_as_conditionals(effect: EffectAst) -> EffectAst {
     match effect {

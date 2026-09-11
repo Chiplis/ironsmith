@@ -1,5 +1,5 @@
-use crate::cards::builders::DelayedEffectAst;
 use super::*;
+use crate::cards::builders::DelayedEffectAst;
 
 pub(super) fn parse_exile_collection_each_upkeep_return_bundle(
     exile_sentence: &[OwnedLexToken],

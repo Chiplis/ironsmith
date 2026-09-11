@@ -69,7 +69,8 @@ pub(crate) struct DerivedGameView<'a> {
     activated_ability_cost_modifier_sources: RefCell<Option<Vec<ObjectId>>>,
     has_battlefield_spell_cost_modifiers: RefCell<Option<bool>>,
     has_activated_ability_cost_modifiers: RefCell<Option<bool>>,
-    pub(crate) available_payment_sources: RefCell<FxMap<PlayerId, Rc<Vec<crate::decision::AvailableManaSource>>>>,
+    pub(crate) available_payment_sources:
+        RefCell<FxMap<PlayerId, Rc<Vec<crate::decision::AvailableManaSource>>>>,
     simple_battlefield_mana_analysis: RefCell<FxMap<PlayerId, Rc<SimpleBattlefieldManaAnalysis>>>,
     spell_target_legality: RefCell<FxMap<SpellTargetLegalityKey, bool>>,
 }

@@ -318,19 +318,27 @@ fn read_activate_only_if_predicate(input: &ActivationCondition<'_>) -> Option<Pr
         && let Ok(predicate) = super::super::super::filters::parse_predicate(condition_tokens)
     {
         match predicate {
-            crate::cards::builders::PredicateAst::Source(crate::cards::builders::SourcePredicateAst::SourceHasCounterAtLeast {
-                counter_type,
-                count,
-                surface,
-            }) => {
-                return Some(PredicateAst::Source(crate::cards::builders::SourcePredicateAst::SourceHasCounterAtLeast {
+            crate::cards::builders::PredicateAst::Source(
+                crate::cards::builders::SourcePredicateAst::SourceHasCounterAtLeast {
                     counter_type,
                     count,
                     surface,
-                }));
+                },
+            ) => {
+                return Some(PredicateAst::Source(
+                    crate::cards::builders::SourcePredicateAst::SourceHasCounterAtLeast {
+                        counter_type,
+                        count,
+                        surface,
+                    },
+                ));
             }
-            crate::cards::builders::PredicateAst::Source(crate::cards::builders::SourcePredicateAst::SourceMatches(filter)) => {
-                return Some(PredicateAst::Source(crate::cards::builders::SourcePredicateAst::SourceMatches(filter)));
+            crate::cards::builders::PredicateAst::Source(
+                crate::cards::builders::SourcePredicateAst::SourceMatches(filter),
+            ) => {
+                return Some(PredicateAst::Source(
+                    crate::cards::builders::SourcePredicateAst::SourceMatches(filter),
+                ));
             }
             _ => {}
         }

@@ -1,7 +1,7 @@
-use crate::cards::builders::ForEachEffectAst;
-use crate::cards::builders::ZoneMoveActionAst;
-use crate::cards::builders::LibraryActionAst;
 use super::*;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::LibraryActionAst;
+use crate::cards::builders::ZoneMoveActionAst;
 
 use crate::recognition::ParseOutcome;
 #[path = "clause_dispatch_core/clause_readings.rs"]
@@ -22,7 +22,8 @@ pub(super) fn parse_effect_clause_unstacked(
     };
     if let Some(shape) = crate::grammar::effects::parse_shuffle_object_shape_lexed(tokens)
         && shape.owner_subject_target_tokens.is_some()
-        && let Some(effects) = super::super::search_library::parse_shuffle_object_into_library_sentence(tokens)?
+        && let Some(effects) =
+            super::super::search_library::parse_shuffle_object_into_library_sentence(tokens)?
     {
         return Ok(EffectAst::Sequence { effects });
     }
@@ -105,13 +106,19 @@ pub(super) fn parse_effect_clause_unstacked(
     // the general verb dispatch below.
     match verb {
         Verb::Counter => {
-            if let Some(entry) = tokens.windows(2).position(|pair| pair[0].is_word("enters") && pair[1].is_word("with"))
-                && crate::util::is_source_reference_words(&crate::lexer::token_word_refs(&tokens[..entry]))
+            if let Some(entry) = tokens
+                .windows(2)
+                .position(|pair| pair[0].is_word("enters") && pair[1].is_word("with"))
+                && crate::util::is_source_reference_words(&crate::lexer::token_word_refs(
+                    &tokens[..entry],
+                ))
             {
                 return parse_put_counters(&tokens[entry + 2..]);
             }
             if !subject_tokens.is_empty()
-                && !tokens.first().is_some_and(|token| token.is_any_word(&["if", "unless", "when", "whenever"]))
+                && !tokens
+                    .first()
+                    .is_some_and(|token| token.is_any_word(&["if", "unless", "when", "whenever"]))
                 && contains_token_word(tokens, "on")
                 && let Ok(effect) = parse_put_counters(tokens)
             {
@@ -139,7 +146,9 @@ pub(super) fn parse_effect_clause_unstacked(
                 return Ok(EffectAst::subject_verb(
                     SubjectVerbRoleAst::Actor,
                     PlayerAst::ItsOwner,
-                    SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice { target }),
+                    SubjectVerbActionAst::Library(
+                        LibraryActionAst::MoveToLibraryTopOrBottomChoice { target },
+                    ),
                 ));
             }
         }
@@ -387,7 +396,8 @@ pub(super) fn parse_effect_clause_unstacked(
         && (crate::word_primitives::parse_sequence_complete(&subject_words, &["they"])
             || authored_control_pronoun)
         && let EffectAst::SubjectVerb(subject_verb) = &mut effect
-        && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. }) = &mut subject_verb.action
+        && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. }) =
+            &mut subject_verb.action
     {
         fn mark_iterated_actor_pronoun(target: &mut TargetAst) {
             match target {
@@ -409,7 +419,8 @@ pub(super) fn parse_effect_clause_unstacked(
         });
     }
     if each_other_player {
-        effect = EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
+        effect = EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+            sequential: false,
             filter: PlayerFilter::NotYou,
             effects: vec![effect],
         });

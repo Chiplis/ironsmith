@@ -10,6 +10,7 @@ import {
   legalTargetForDropCandidates,
   rectBoundaryPointToward,
   shouldBeginTargetCastIntent,
+  targetDecisionAllowsNoTargets,
   targetDropCompletesDecision,
 } from "../src/lib/hand-drag-intent.js";
 
@@ -131,6 +132,48 @@ test("a drag target does not auto-submit while optional extra targets remain", (
     targetDropCompletesDecision(decision, { kind: "player", player: 1 }),
     false,
   );
+});
+
+test("an optional single target completes the decision when the drag names it", () => {
+  const decision = {
+    kind: "targets",
+    requirements: [{
+      min_targets: 0,
+      max_targets: 1,
+      legal_targets: [{ kind: "object", object: 7, name: "Grizzly Bears" }],
+    }],
+  };
+  assert.equal(
+    targetDropCompletesDecision(decision, { kind: "object", object: 7 }),
+    true,
+  );
+});
+
+test("only all-optional target requirements can be submitted with no targets", () => {
+  const optional = {
+    kind: "targets",
+    requirements: [{
+      min_targets: 0,
+      max_targets: 2,
+      legal_targets: [{ kind: "object", object: 7 }],
+    }],
+  };
+  assert.equal(targetDecisionAllowsNoTargets(optional), true);
+  assert.equal(targetDecisionAllowsNoTargets({
+    ...optional,
+    requirements: [
+      optional.requirements[0],
+      { min_targets: 1, max_targets: 1, legal_targets: [{ kind: "player", player: 1 }] },
+    ],
+  }), false);
+  // A requirement without an explicit minimum still needs one target.
+  assert.equal(targetDecisionAllowsNoTargets({
+    kind: "targets",
+    requirements: [{ max_targets: 1, legal_targets: [{ kind: "player", player: 1 }] }],
+  }), false);
+  assert.equal(targetDecisionAllowsNoTargets({ kind: "targets", requirements: [] }), false);
+  assert.equal(targetDecisionAllowsNoTargets({ kind: "select_objects", requirements: [] }), false);
+  assert.equal(targetDecisionAllowsNoTargets(null), false);
 });
 
 test("targeted casts require an explicit self player box but allow opponent dead zones", () => {

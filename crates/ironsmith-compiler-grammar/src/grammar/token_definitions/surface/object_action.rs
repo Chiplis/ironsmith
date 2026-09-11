@@ -67,12 +67,24 @@ pub fn parse_token_definition_shape_tokens(
         }));
     }
 
-    if has("enchantment") && pt.is_none() && !["creature", "artifact", "land", "planeswalker", "battle"].iter().any(|kind| has(kind)) {
+    if has("enchantment")
+        && pt.is_none()
+        && !["creature", "artifact", "land", "planeswalker", "battle"]
+            .iter()
+            .any(|kind| has(kind))
+    {
         return Some(TokenDefinitionSpec::Enchantment(EnchantmentTokenShape {
             name: named_card.clone().unwrap_or_else(|| "Enchantment".into()),
-            subtypes: words.iter().take_while(|word| **word != "named")
+            subtypes: words
+                .iter()
+                .take_while(|word| **word != "named")
                 .filter_map(|word| leaf::parse_leaf_subtype_complete(word).ok())
-                .filter(|subtype| ironsmith_core::SubtypeFamily::Enchantment.all_subtypes().contains(subtype)).collect(),
+                .filter(|subtype| {
+                    ironsmith_core::SubtypeFamily::Enchantment
+                        .all_subtypes()
+                        .contains(subtype)
+                })
+                .collect(),
             legendary: has("legendary"),
             colors: token_colors(&words),
             token_rules: rules::parse_token_rules_surfaces_tokens(tokens),

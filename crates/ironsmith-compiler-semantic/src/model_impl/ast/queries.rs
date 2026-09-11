@@ -15,7 +15,12 @@ use crate::target::{
 use crate::zone::Zone;
 
 use super::super::super::TargetAst;
-use super::{EffectAst, SubjectVerbActionAst, CounterActionAst, DamagePreventionActionAst, GrantActionAst, LibraryActionAst, CharacteristicActionAst, KeywordActionAst, ZoneMoveActionAst, PermanentStateActionAst, RevealLookActionAst, DamageActionAst, StatChangeActionAst, StackActionAst, ControlActionAst, ObjectChoiceEffectAst};
+use super::{
+    CharacteristicActionAst, ControlActionAst, CounterActionAst, DamageActionAst,
+    DamagePreventionActionAst, EffectAst, GrantActionAst, KeywordActionAst, LibraryActionAst,
+    ObjectChoiceEffectAst, PermanentStateActionAst, RevealLookActionAst, StackActionAst,
+    StatChangeActionAst, SubjectVerbActionAst, ZoneMoveActionAst,
+};
 
 /// The object a source reference denotes, carrying the authored surface.
 pub fn source_choose_spec_for_surface(surface: SourceReferenceSurface) -> ChooseSpec {
@@ -41,8 +46,13 @@ pub fn primary_damage_target_from_effect(effect: &EffectAst) -> Option<TargetAst
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
             SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { target, .. })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { target, .. })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { target, .. }) => Some(target.clone()),
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage {
+                target, ..
+            })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
+                target,
+                ..
+            }) => Some(target.clone()),
             _ => None,
         },
         _ => {
@@ -61,8 +71,13 @@ pub fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
             SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { target, .. })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { target, .. })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { target, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage {
+                target, ..
+            })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
+                target,
+                ..
+            })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap { target })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Untap { target })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { target, .. })
@@ -71,65 +86,144 @@ pub fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
             | SubjectVerbActionAst::Stack(StackActionAst::Counter { target })
             | SubjectVerbActionAst::Stack(StackActionAst::CounterUnlessPays { target, .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target, .. })
-            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice { target, .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice {
+                target, ..
+            })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Detain { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { target })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat { target })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
+                target,
+            })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Flip { target })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Regenerate { target, .. })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapOrUntap { target })
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseOut { target, .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Regenerate {
+                target, ..
+            })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TapOrUntap {
+                target,
+            })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseOut {
+                target,
+                ..
+            })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseIn { target })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Transform { target })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Convert { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Connive { target, .. })
-            | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryNthFromTop { target, .. })
-            | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice { target })
-            | SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters { target, .. })
-            | SubjectVerbActionAst::Counters(CounterActionAst::ForEachCounterKindPutOrRemove { target, .. })
+            | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryNthFromTop {
+                target,
+                ..
+            })
+            | SubjectVerbActionAst::Library(LibraryActionAst::MoveToLibraryTopOrBottomChoice {
+                target,
+            })
+            | SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters {
+                target,
+                ..
+            })
+            | SubjectVerbActionAst::Counters(CounterActionAst::ForEachCounterKindPutOrRemove {
+                target,
+                ..
+            })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { target })
             | SubjectVerbActionAst::PutSticker { target, .. }
-            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::SwitchPowerToughness { target, .. })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantProtectionChoice { target, .. })
-            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::AssignNoCombatDamage { source: target, .. })
-            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllCombatDamageFromSource { source: target, .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileWhenSourceLeaves { target })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeSourceWhenLeaves { target })
-            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectNextTimeDamageToSource { target, .. })
-            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
-                source: target,
+            | SubjectVerbActionAst::PermanentState(
+                PermanentStateActionAst::SwitchPowerToughness { target, .. },
+            )
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantProtectionChoice {
+                target, ..
             })
-            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage { target, .. })
-            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllDamageToTarget { target, .. })
-            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamageToTargetPutCounters { target, .. })
-            | SubjectVerbActionAst::Counters(CounterActionAst::PutOrRemoveCounters { target, .. })
-            | SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnTarget { target, .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileUntilSourceLeaves { target, .. })
-            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { target, .. })
+            | SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::AssignNoCombatDamage { source: target, .. },
+            )
+            | SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllCombatDamageFromSource {
+                    source: target, ..
+                },
+            )
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileWhenSourceLeaves {
+                target,
+            })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeSourceWhenLeaves {
+                target,
+            })
+            | SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::RedirectNextTimeDamageToSource { target, .. },
+            )
+            | SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
+                    source: target,
+                },
+            )
+            | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage {
+                target,
+                ..
+            })
+            | SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllDamageToTarget { target, .. },
+            )
+            | SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventDamageToTargetPutCounters { target, .. },
+            )
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutOrRemoveCounters {
+                target,
+                ..
+            })
+            | SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnTarget {
+                target,
+                ..
+            })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileUntilSourceLeaves {
+                target,
+                ..
+            })
+            | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
+                target,
+                ..
+            })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { target, .. })
             | SubjectVerbActionAst::TargetOnly { target, .. }
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness { target, .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature { target, .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { target, .. })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness { target, .. })
-            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach { target, .. })
-            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpByLastEffect { target, .. })
-            | SubjectVerbActionAst::Control(ControlActionAst::GainControl { target, .. })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { target, .. })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { target, .. })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceToTarget { target, .. }) => {
-                Some(target.clone())
-            }
-            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectNextDamageFromSourceToTarget {
-                protected_target,
-                destination_target,
+            | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::SetBasePowerToughness { target, .. },
+            )
+            | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeBasePtCreature { target, .. },
+            )
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower {
+                target,
                 ..
-            }) => protected_target
+            })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness {
+                target,
+                ..
+            })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach {
+                target, ..
+            })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpByLastEffect {
+                target,
+                ..
+            })
+            | SubjectVerbActionAst::Control(ControlActionAst::GainControl { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
+                target, ..
+            })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceToTarget {
+                target,
+                ..
+            }) => Some(target.clone()),
+            SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::RedirectNextDamageFromSourceToTarget {
+                    protected_target,
+                    destination_target,
+                    ..
+                },
+            ) => protected_target
                 .as_ref()
                 .or(destination_target.as_ref())
                 .cloned(),
@@ -180,17 +274,20 @@ pub fn apply_cant_be_regenerated_to_effect(effect: &mut EffectAst) -> bool {
                 no_regeneration, ..
             })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll {
-                no_regeneration, ..
+                no_regeneration,
+                ..
             })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAllOfChosenColor {
-                no_regeneration, ..
+                no_regeneration,
+                ..
             }) => {
                 *no_regeneration = true;
                 true
             }
             _ => false,
         },
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes }) | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
             let mut applied = false;
             for mode in modes {
                 applied |= apply_cant_be_regenerated_to_effects_tail(&mut mode.effects);

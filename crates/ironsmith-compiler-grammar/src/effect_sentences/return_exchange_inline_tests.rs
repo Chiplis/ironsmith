@@ -1,8 +1,8 @@
+use super::*;
 use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::ExchangeActionAst;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::ZoneMoveActionAst;
-use crate::cards::builders::ExchangeActionAst;
-use super::*;
 use crate::effect_sentences::parse_effect_sentence_lexed;
 use crate::lexer::lex_line;
 use crate::model::ast::{SubjectVerbActionAst, SubjectVerbEffectAst};
@@ -32,7 +32,8 @@ fn plural_return_back_reference_preserves_its_authored_pronoun() {
         .expect("lex plural return back-reference");
     let effect = parse_return(&tokens).expect("parse plural return back-reference");
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { target, .. }),
+        action:
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { target, .. }),
         ..
     }) = effect
     else {
@@ -96,7 +97,9 @@ fn parses_top_graveyard_card_as_a_top_only_return_choice() {
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
-                target, top_only, ..
+                target,
+                top_only,
+                ..
             }),
         ..
     }) = effect
@@ -121,7 +124,9 @@ fn preserves_explicit_controller_and_source_link_for_exiled_card_returns() {
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield {
-                filter, controller, ..
+                filter,
+                controller,
+                ..
             }),
         ..
     }) = effect
@@ -215,9 +220,10 @@ fn exchange_target_preserves_different_controller_set_constraint() {
     .expect("lex homogeneous exchange clause");
     let effect = parse_exchange(&tokens, None).expect("parse homogeneous exchange clause");
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeControl {
-            filter, count: 2, ..
-        }),
+        action:
+            SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeControl {
+                filter, count: 2, ..
+            }),
         ..
     }) = effect
     else {
@@ -286,7 +292,8 @@ fn full_return_sentence_preserves_branch_scoped_collection() {
         parse_effect_sentence_lexed(&tokens).expect("parse full branch-scoped return sentence");
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand { filter, .. }),
+            action:
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand { filter, .. }),
             ..
         }),
     ] = effects.as_slice()
@@ -308,12 +315,17 @@ fn each_player_destination_first_return_keeps_graveyard_history() {
         .expect("lex each-player historical return sentence");
     let effects =
         parse_effect_sentence_lexed(&tokens).expect("parse each-player historical return");
-    let [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })] = effects.as_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })] = effects.as_slice()
+    else {
         panic!("expected an each-player return, got {effects:#?}");
     };
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield { filter, .. }),
+            action:
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield {
+                    filter,
+                    ..
+                }),
             ..
         }),
     ] = effects.as_slice()
@@ -366,11 +378,21 @@ fn return_for_each_discarded_card_repeats_from_exact_prior_effect() {
 
 #[test]
 fn targeted_return_keeps_announced_creature_type_and_x_count() {
-    let tokens = lex_line("Return X target creatures of the creature type of your choice to their owner's hand.", 0).unwrap();
+    let tokens = lex_line(
+        "Return X target creatures of the creature type of your choice to their owner's hand.",
+        0,
+    )
+    .unwrap();
     let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens).unwrap();
     let rendered = format!("{effects:#?}");
-    assert!(rendered.contains("chosen_creature_type: true"), "{rendered}");
+    assert!(
+        rendered.contains("chosen_creature_type: true"),
+        "{rendered}"
+    );
     assert!(rendered.contains("dynamic_x: true"), "{rendered}");
     assert!(rendered.contains("ReturnToHand"), "{rendered}");
-    assert!(!rendered.contains("ChooseCreatureType"), "type choice must occur during casting");
+    assert!(
+        !rendered.contains("ChooseCreatureType"),
+        "type choice must occur during casting"
+    );
 }

@@ -2,8 +2,7 @@
 
 use super::*;
 
-#[derive(Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Clone, PartialEq, TagKeyWalk)]
 pub enum ManaActionAst {
     AddMana {
         mana: Vec<ManaSymbol>,

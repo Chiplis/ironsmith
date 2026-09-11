@@ -1134,9 +1134,9 @@ pub(super) fn parse_colon_nonactivation_statement_fallback(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::cards::builders::ConditionalEffectAst;
     use crate::cards::builders::DelayedEffectAst;
-    use super::*;
 
     #[test]
     fn target_bound_conditional_animation_stays_in_one_statement_group() {

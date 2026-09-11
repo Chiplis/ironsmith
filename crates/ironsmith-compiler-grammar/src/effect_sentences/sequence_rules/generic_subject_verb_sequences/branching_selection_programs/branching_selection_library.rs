@@ -1,5 +1,5 @@
-use crate::cards::builders::ForEachEffectAst;
 use super::*;
+use crate::cards::builders::ForEachEffectAst;
 
 /// Keeps the original looked-card pool authoritative when an intervening
 /// optional sacrifice establishes a newer last-object reference:
@@ -297,7 +297,11 @@ pub fn parse_reveal_top_optional_battlefield_then_hand_rest_graveyard(
     }
 
     Ok(Some(vec![
-        EffectAst::subject_verb_reveal_top_cards(player, count, crate::tag::TagRef::of(looked_tag.clone())),
+        EffectAst::subject_verb_reveal_top_cards(
+            player,
+            count,
+            crate::tag::TagRef::of(looked_tag.clone()),
+        ),
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter: battlefield_filter,
             count: battlefield_count,
@@ -381,10 +385,14 @@ pub(crate) fn compose_look_at_top_may_put_onto_battlefield_or_into_hand_rest_bot
     hand_filter.zone = Some(Zone::Library);
 
     let it = || TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None);
-    let mut look =
-        EffectAst::subject_verb_look_at_top_cards(look_player, count, crate::tag::TagRef::of(looked_tag.clone()));
+    let mut look = EffectAst::subject_verb_look_at_top_cards(
+        look_player,
+        count,
+        crate::tag::TagRef::of(looked_tag.clone()),
+    );
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { reveal: r, .. }),
+        action:
+            SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { reveal: r, .. }),
         ..
     }) = &mut look
     {
@@ -467,4 +475,3 @@ pub(crate) fn parse_may_exile_filtered_looked_card(
     filter.zone = Some(Zone::Library);
     Ok(Some(filter))
 }
-

@@ -2403,12 +2403,15 @@ pub(super) fn describe_lose_life_then_create_shared_dynamic_branch(
     effects: &[Effect],
 ) -> Option<String> {
     let effects = if let [only] = effects {
-        let sequence = unwrap_basic_tag_wrappers(only)
-            .downcast_ref::<crate::effects::SequenceEffect>()?;
-        if !matches!(sequence.surface,
+        let sequence =
+            unwrap_basic_tag_wrappers(only).downcast_ref::<crate::effects::SequenceEffect>()?;
+        if !matches!(
+            sequence.surface,
             ironsmith_core::SequenceSurface::Coordinated
-                | ironsmith_core::SequenceSurface::ResultConjunction { leading_duration: false })
-        {
+                | ironsmith_core::SequenceSurface::ResultConjunction {
+                    leading_duration: false
+                }
+        ) {
             return None;
         }
         sequence.effects.as_slice()
@@ -2433,10 +2436,16 @@ pub(super) fn describe_lose_life_then_create_shared_dynamic_branch(
     let lose_clause = lose_text.strip_suffix(&suffix)?;
     let create_clause = create_text.strip_suffix(&suffix)?;
     let create_clause = if lose.player == ChooseSpec::Player(PlayerFilter::You)
-        && create.controller == PlayerFilter::You && create.controller_target.is_none()
+        && create.controller == PlayerFilter::You
+        && create.controller_target.is_none()
     {
-        create_clause.strip_prefix("You ").or_else(|| create_clause.strip_prefix("you ")).unwrap_or(create_clause)
-    } else { create_clause };
+        create_clause
+            .strip_prefix("You ")
+            .or_else(|| create_clause.strip_prefix("you "))
+            .unwrap_or(create_clause)
+    } else {
+        create_clause
+    };
 
     Some(format!(
         "{lose_clause} and {}{suffix}",
@@ -2468,7 +2477,11 @@ pub(super) fn describe_inline_token_creation_choice(
         || choose.mode_point_costs.iter().any(|cost| *cost != 1)
         || !choose.common_prefix_effects.is_empty()
         || choose.common_suffix_effect_count != 0
-        || (choose.chooser.is_none() && choose.modes.iter().any(|mode| !mode.source_text.trim().is_empty()))
+        || (choose.chooser.is_none()
+            && choose
+                .modes
+                .iter()
+                .any(|mode| !mode.source_text.trim().is_empty()))
     {
         return None;
     }
@@ -2488,13 +2501,18 @@ pub(super) fn describe_inline_token_creation_choice(
         })
         .collect::<Option<Vec<_>>>()?;
     ["Create ", "You create "].into_iter().find_map(|prefix| {
-        let items = clauses.iter().map(|clause| clause.strip_prefix(prefix))
+        let items = clauses
+            .iter()
+            .map(|clause| clause.strip_prefix(prefix))
             .collect::<Option<Vec<_>>>()?;
         if let [first, second] = items.as_slice() {
             Some(format!("{prefix}{first} or {second}"))
         } else {
             let (last, preceding) = items.split_last()?;
-            Some(format!("{prefix}your choice of {}, or {last}", preceding.join(", ")))
+            Some(format!(
+                "{prefix}your choice of {}, or {last}",
+                preceding.join(", ")
+            ))
         }
     })
 }
@@ -5493,7 +5511,9 @@ pub(super) fn describe_owned_exile_card_target(spec: &ChooseSpec) -> Option<Stri
         match spec {
             ChooseSpec::Object(filter) if filter.zone == Some(Zone::Exile) => {
                 let owner = filter.owner.clone()?;
-                if !matches!(owner, PlayerFilter::You | PlayerFilter::Opponent) { return None; }
+                if !matches!(owner, PlayerFilter::You | PlayerFilter::Opponent) {
+                    return None;
+                }
                 let mut noun = filter.clone();
                 noun.zone = None;
                 noun.owner = None;
@@ -5510,7 +5530,10 @@ pub(super) fn describe_owned_exile_card_target(spec: &ChooseSpec) -> Option<Stri
             }
             ChooseSpec::WithCountValue(inner, count, value) => {
                 let (noun, owner) = separate_origin(inner)?;
-                Some((ChooseSpec::WithCountValue(Box::new(noun), *count, value.clone()), owner))
+                Some((
+                    ChooseSpec::WithCountValue(Box::new(noun), *count, value.clone()),
+                    owner,
+                ))
             }
             ChooseSpec::SurfaceHinted { spec, hints } => {
                 let (noun, owner) = separate_origin(spec)?;
@@ -5520,8 +5543,15 @@ pub(super) fn describe_owned_exile_card_target(spec: &ChooseSpec) -> Option<Stri
         }
     }
     let (noun, owner) = separate_origin(spec)?;
-    let ownership = if owner == PlayerFilter::You { "you own" } else { "your opponents own" };
-    Some(format!("{} {ownership} from exile", describe_choose_spec(&noun)))
+    let ownership = if owner == PlayerFilter::You {
+        "you own"
+    } else {
+        "your opponents own"
+    };
+    Some(format!(
+        "{} {ownership} from exile",
+        describe_choose_spec(&noun)
+    ))
 }
 
 pub(super) fn describe_simple_exiled_card_target(spec: &ChooseSpec) -> Option<String> {
@@ -5922,16 +5952,24 @@ pub(super) fn describe_inline_pt_modifier_choice(
         return None;
     }
 
-    if let ([left], [right]) = (choose_mode.modes[0].effects.as_slice(), choose_mode.modes[1].effects.as_slice())
-        && let (Some(left), Some(right)) = (
-            left.downcast_ref::<crate::effects::SetBasePowerToughnessEffect>(),
-            right.downcast_ref::<crate::effects::SetBasePowerToughnessEffect>(),
-        )
-        && left.target == right.target && left.duration == right.duration
+    if let ([left], [right]) = (
+        choose_mode.modes[0].effects.as_slice(),
+        choose_mode.modes[1].effects.as_slice(),
+    ) && let (Some(left), Some(right)) = (
+        left.downcast_ref::<crate::effects::SetBasePowerToughnessEffect>(),
+        right.downcast_ref::<crate::effects::SetBasePowerToughnessEffect>(),
+    ) && left.target == right.target
+        && left.duration == right.duration
     {
-        return Some(format!("have {}'s base power and toughness become {}/{} or {}/{} {}",
-            describe_choose_spec(&left.target), describe_value(&left.power), describe_value(&left.toughness),
-            describe_value(&right.power), describe_value(&right.toughness), describe_until(&left.duration)));
+        return Some(format!(
+            "have {}'s base power and toughness become {}/{} or {}/{} {}",
+            describe_choose_spec(&left.target),
+            describe_value(&left.power),
+            describe_value(&left.toughness),
+            describe_value(&right.power),
+            describe_value(&right.toughness),
+            describe_until(&left.duration)
+        ));
     }
 
     fn extract(
@@ -5942,9 +5980,16 @@ pub(super) fn describe_inline_pt_modifier_choice(
         };
         let apply = unwrap_basic_tag_wrappers(effect)
             .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
-        if let Some(crate::continuous::Modification::SetPowerToughness { power, toughness, sublayer: crate::continuous::PtSublayer::Setting }) = apply.modification.as_ref()
-            && apply.additional_modifications.is_empty() && apply.runtime_modifications.is_empty()
-        { return Some((apply, power, toughness, true)); }
+        if let Some(crate::continuous::Modification::SetPowerToughness {
+            power,
+            toughness,
+            sublayer: crate::continuous::PtSublayer::Setting,
+        }) = apply.modification.as_ref()
+            && apply.additional_modifications.is_empty()
+            && apply.runtime_modifications.is_empty()
+        {
+            return Some((apply, power, toughness, true));
+        }
         let [
             crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
                 power,
@@ -5961,8 +6006,13 @@ pub(super) fn describe_inline_pt_modifier_choice(
     let (second, second_power, second_toughness, second_sets) = extract(&choose_mode.modes[1])?;
     let mut first_shape = first.clone();
     let mut second_shape = second.clone();
-    if first_sets != second_sets { return None; }
-    if first_sets { first_shape.modification = None; second_shape.modification = None; }
+    if first_sets != second_sets {
+        return None;
+    }
+    if first_sets {
+        first_shape.modification = None;
+        second_shape.modification = None;
+    }
     first_shape.runtime_modifications.clear();
     second_shape.runtime_modifications.clear();
     if first_shape != second_shape {
@@ -5971,9 +6021,16 @@ pub(super) fn describe_inline_pt_modifier_choice(
 
     let (target, plural) = describe_apply_continuous_target(first);
     if first_sets {
-        let tail = describe_apply_continuous_tail(first).map(|tail| format!(" {tail}")).unwrap_or_default();
-        return Some(format!("have {target}'s base power and toughness become {}/{} or {}/{}{tail}",
-            describe_value(first_power), describe_value(first_toughness), describe_value(second_power), describe_value(second_toughness)));
+        let tail = describe_apply_continuous_tail(first)
+            .map(|tail| format!(" {tail}"))
+            .unwrap_or_default();
+        return Some(format!(
+            "have {target}'s base power and toughness become {}/{} or {}/{}{tail}",
+            describe_value(first_power),
+            describe_value(first_toughness),
+            describe_value(second_power),
+            describe_value(second_toughness)
+        ));
     }
     let verb = if plural { "get" } else { "gets" };
     let first_pt = format!(

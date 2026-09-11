@@ -185,7 +185,9 @@ pub fn extract_search_library_mana_constraint(
         None
     };
     let parse_exact_mana_cost_clause = |tokens: &[OwnedLexToken]| -> Option<crate::mana::ManaCost> {
-        if is_mana_value { return None; }
+        if is_mana_value {
+            return None;
+        }
         let mana = super::grammar::leaf::parse_leaf_mana_cost_prefix_tokens(tokens)?;
         if mana.consumed != tokens.len() {
             return None;
@@ -238,13 +240,22 @@ pub fn extract_search_library_mana_constraint(
         use crate::filter::Comparison;
         let comparisons = match constraint {
             SearchLibraryManaConstraint::Equal(value) => vec![Comparison::Equal(value as i32)],
-            SearchLibraryManaConstraint::LessThanOrEqual(value) => vec![Comparison::LessThanOrEqual(value as i32)],
-            SearchLibraryManaConstraint::GreaterThanOrEqual(value) => vec![Comparison::GreaterThanOrEqual(value as i32)],
-            SearchLibraryManaConstraint::OneOf(values) => values.into_iter().map(|value| Comparison::Equal(value as i32)).collect(),
+            SearchLibraryManaConstraint::LessThanOrEqual(value) => {
+                vec![Comparison::LessThanOrEqual(value as i32)]
+            }
+            SearchLibraryManaConstraint::GreaterThanOrEqual(value) => {
+                vec![Comparison::GreaterThanOrEqual(value as i32)]
+            }
+            SearchLibraryManaConstraint::OneOf(values) => values
+                .into_iter()
+                .map(|value| Comparison::Equal(value as i32))
+                .collect(),
             _ => return None,
         };
         SearchLibraryManaConstraint::ManaValues(comparisons)
-    } else { constraint };
+    } else {
+        constraint
+    };
     Some((base_filter_tokens, constraint))
 }
 
@@ -274,11 +285,14 @@ pub fn apply_search_library_mana_constraint(
             } else {
                 let base = filter.clone();
                 *filter = ObjectFilter::default();
-                filter.any_of = comparisons.into_iter().map(|comparison| {
-                    let mut branch = base.clone();
-                    branch.mana_value = Some(comparison);
-                    branch
-                }).collect();
+                filter.any_of = comparisons
+                    .into_iter()
+                    .map(|comparison| {
+                        let mut branch = base.clone();
+                        branch.mana_value = Some(comparison);
+                        branch
+                    })
+                    .collect();
             }
         }
         SearchLibraryManaConstraint::Equal(value) => {

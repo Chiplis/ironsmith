@@ -9,10 +9,11 @@ fn revealed_target_hand_scopes_shared_terminal_union_count() {
         SentenceInput::from_lexed(&first),
         SentenceInput::from_lexed(&second),
     ];
-    let effects = crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
-        .map(|matched| matched.map(|matched| matched.effects))
-        .expect("pair parser")
-        .expect("revealed-hand union pair");
+    let effects =
+        crate::effect_sentences::sequence_rules::try_parse_document_program(&sentences, 0)
+            .map(|matched| matched.map(|matched| matched.effects))
+            .expect("pair parser")
+            .expect("revealed-hand union pair");
 
     let [
         _,

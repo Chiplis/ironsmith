@@ -50,9 +50,10 @@ fn anaphor_and_singular_return_guards_reject_near_misses() {
         let lexed = crate::lexer::lex_line(text, 0).expect("near miss should lex");
         let parsed = parse_effect_sentences_lexed(&lexed).expect("near miss should still parse");
         assert!(
-            !parsed
-                .iter()
-                .any(|effect| matches!(effect, EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { .. }))),
+            !parsed.iter().any(|effect| matches!(
+                effect,
+                EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { .. })
+            )),
             "near miss must not acquire linked delayed semantics: {parsed:#?}"
         );
     }

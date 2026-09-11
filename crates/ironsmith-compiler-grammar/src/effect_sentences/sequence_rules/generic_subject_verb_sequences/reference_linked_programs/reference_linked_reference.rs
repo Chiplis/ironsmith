@@ -1,6 +1,6 @@
-use crate::cards::builders::ForEachEffectAst;
-use crate::cards::builders::CharacteristicActionAst;
 use super::*;
+use crate::cards::builders::CharacteristicActionAst;
+use crate::cards::builders::ForEachEffectAst;
 
 pub(super) fn parse_copy_for_each_candidate_filter(
     tokens: &[OwnedLexToken],
@@ -142,7 +142,9 @@ pub fn parse_for_each_tagged_copy_then_copy_targets_it(
 pub(crate) fn retarget_source_self_animate_effect(effect: EffectAst) -> EffectAst {
     match effect {
         EffectAst::SubjectVerb(mut subject) => {
-            if let SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature { target, .. }) = &mut subject.action
+            if let SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::BecomeBasePtCreature { target, .. },
+            ) = &mut subject.action
                 && let TargetAst::Tagged(tag, span) = target
                 && tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             {
@@ -165,13 +167,15 @@ pub(crate) fn retarget_source_self_animate_effect(effect: EffectAst) -> EffectAs
                 .map(retarget_source_self_animate_effect)
                 .collect(),
         }),
-        EffectAst::Conditionals(ConditionalEffectAst::IfResult { predicate, effects }) => EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-            predicate,
-            effects: effects
-                .into_iter()
-                .map(retarget_source_self_animate_effect)
-                .collect(),
-        }),
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult { predicate, effects }) => {
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                predicate,
+                effects: effects
+                    .into_iter()
+                    .map(retarget_source_self_animate_effect)
+                    .collect(),
+            })
+        }
         other => other,
     }
 }
@@ -181,7 +185,9 @@ pub(super) fn contains_tagged_source_animation(effect: &EffectAst) -> bool {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
-                    target, duration, ..
+                    target,
+                    duration,
+                    ..
                 }),
             ..
         }) => {
@@ -197,8 +203,9 @@ pub(super) fn contains_tagged_source_animation(effect: &EffectAst) -> bool {
             if_true.iter().any(contains_tagged_source_animation)
                 || if_false.iter().any(contains_tagged_source_animation)
         }
-        EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. }) => effects.iter().any(contains_tagged_source_animation),
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. }) => {
+            effects.iter().any(contains_tagged_source_animation)
+        }
         _ => false,
     }
 }
-

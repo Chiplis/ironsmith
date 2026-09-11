@@ -248,28 +248,43 @@ fn resolve_runtime_modification(
             add_supertypes,
             copy_exception_surface: _,
         } => {
-            let sacrificed_snapshot =
-                source
-                    .sacrificed_object_kind()
-                    .and_then(|_| match source.base() {
-                        ChooseSpec::Tagged(tag) => ctx.get_tagged(tag.as_str()).cloned(),
-                        _ => None,
-                    })
-                    .or_else(|| {
-                        // A non-targeted reference to a specific departed
-                        // permanent (for example a death-trigger subject)
-                        // copies its last known copiable characteristics.
-                        if source.is_target() { return None; }
-                        let ChooseSpec::Object(filter) = source.base() else { return None; };
-                        if filter.zone != Some(crate::zone::Zone::Battlefield) { return None; }
-                        let [constraint] = filter.tagged_constraints.as_slice() else { return None; };
-                        if constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject { return None; }
-                        let [snapshot] = ctx.get_tagged_all(constraint.tag.as_str())?.as_slice() else { return None; };
-                        if game.object(snapshot.object_id).is_some_and(|object| object.zone == snapshot.zone)
-                            || !filter.matches_snapshot(snapshot, &ctx.filter_context(game), game)
-                        { return None; }
-                        Some(snapshot.clone())
-                    });
+            let sacrificed_snapshot = source
+                .sacrificed_object_kind()
+                .and_then(|_| match source.base() {
+                    ChooseSpec::Tagged(tag) => ctx.get_tagged(tag.as_str()).cloned(),
+                    _ => None,
+                })
+                .or_else(|| {
+                    // A non-targeted reference to a specific departed
+                    // permanent (for example a death-trigger subject)
+                    // copies its last known copiable characteristics.
+                    if source.is_target() {
+                        return None;
+                    }
+                    let ChooseSpec::Object(filter) = source.base() else {
+                        return None;
+                    };
+                    if filter.zone != Some(crate::zone::Zone::Battlefield) {
+                        return None;
+                    }
+                    let [constraint] = filter.tagged_constraints.as_slice() else {
+                        return None;
+                    };
+                    if constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject {
+                        return None;
+                    }
+                    let [snapshot] = ctx.get_tagged_all(constraint.tag.as_str())?.as_slice() else {
+                        return None;
+                    };
+                    if game
+                        .object(snapshot.object_id)
+                        .is_some_and(|object| object.zone == snapshot.zone)
+                        || !filter.matches_snapshot(snapshot, &ctx.filter_context(game), game)
+                    {
+                        return None;
+                    }
+                    Some(snapshot.clone())
+                });
             let source_id = if let Some(snapshot) = sacrificed_snapshot.as_ref() {
                 snapshot.object_id
             } else {
@@ -297,14 +312,18 @@ fn resolve_runtime_modification(
                 // "This ability" refers to the resolving ability, not every
                 // ability printed on the permanent. Freeze that one ability
                 // in the copiable values so later copies retain the exception.
-                let source_abilities = ctx.source_snapshot.as_ref()
+                let source_abilities = ctx
+                    .source_snapshot
+                    .as_ref()
                     .map(|snapshot| snapshot.abilities.as_ref().clone())
                     .or_else(|| game.current_abilities(ctx.source));
                 let resolving = source_abilities.as_ref().and_then(|abilities| {
                     if let Some(identity) = ctx.trigger_identity {
-                        abilities.iter().find(|ability| matches!(&ability.kind,
+                        abilities.iter().find(|ability| {
+                            matches!(&ability.kind,
                             crate::ability::AbilityKind::Triggered(triggered)
-                                if crate::triggers::compute_trigger_identity(triggered) == identity))
+                                if crate::triggers::compute_trigger_identity(triggered) == identity)
+                        })
                     } else {
                         ctx.ability_index.and_then(|index| abilities.get(index))
                     }
@@ -841,7 +860,9 @@ impl EffectExecutor for ApplyContinuousEffect {
             }
 
             registered_active_modification |=
-                crate::continuous::continuous_effect_duration_and_condition_are_active(&effect, game);
+                crate::continuous::continuous_effect_duration_and_condition_are_active(
+                    &effect, game,
+                );
             game.effect_store.continuous_effects.add_effect(effect);
         }
 
@@ -1059,15 +1080,20 @@ mod tests {
                 let first = create_creature(&mut game, "First", alice);
                 let second = create_creature(&mut game, "Second", alice);
                 let opponent = create_creature(&mut game, "Opponent", bob);
-                if active { game.tap(source); }
+                if active {
+                    game.tap(source);
+                }
                 let mut ctx = ExecutionContext::new_default(source, alice)
                     .with_targets(vec![ResolvedTarget::Object(opponent)]);
                 let effect = ApplyContinuousEffect::new_runtime(
                     EffectTarget::Filter(ObjectFilter::creature().controlled_by(PlayerFilter::You)),
                     RuntimeModification::ModifyPowerToughness {
-                        power: Value::Fixed(amount), toughness: Value::Fixed(amount),
-                    }, Until::EndOfTurn,
-                ).with_condition(crate::ConditionExpr::SourceIsTapped);
+                        power: Value::Fixed(amount),
+                        toughness: Value::Fixed(amount),
+                    },
+                    Until::EndOfTurn,
+                )
+                .with_condition(crate::ConditionExpr::SourceIsTapped);
                 let outcome = effect.execute(&mut game, &mut ctx).unwrap();
                 let affected = outcome.affected_objects().unwrap_or_default();
                 if active {

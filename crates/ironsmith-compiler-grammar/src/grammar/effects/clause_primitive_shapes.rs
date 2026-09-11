@@ -354,7 +354,12 @@ fn target_shape(tokens: &[OwnedLexToken], allow_self: bool) -> PowerDamageTarget
 pub fn parse_power_damage_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PowerDamageShape<'_>>, CardTextError> {
-    if tokens.iter().filter(|token| token.is_any_word(&["deal", "deals"])).count() > 1 {
+    if tokens
+        .iter()
+        .filter(|token| token.is_any_word(&["deal", "deals"]))
+        .count()
+        > 1
+    {
         return Ok(None);
     }
     if primitives::find_prefix(tokens, || primitives::kw("divided").void()).is_some() {
@@ -471,7 +476,10 @@ pub fn parse_fight_shape(tokens: &[OwnedLexToken]) -> Option<FightShape<'_>> {
     let right = trim_shape_edges(right);
     // A temporal adjunct refers to an earlier fight; it is not another
     // independent fight with the trailing condition as its opponent.
-    if left.windows(2).any(|pair| pair[0].is_word("before") && pair[1].is_word("it")) {
+    if left
+        .windows(2)
+        .any(|pair| pair[0].is_word("before") && pair[1].is_word("it"))
+    {
         return None;
     }
     Some(FightShape {

@@ -1,5 +1,5 @@
-use crate::cards::builders::ForEachEffectAst;
 use super::*;
+use crate::cards::builders::ForEachEffectAst;
 
 pub(super) fn pre_rule_draw_count_demonstrative_gain_followup(
     state: &mut SentenceDispatchState<'_>,
@@ -81,11 +81,16 @@ pub(super) fn post_rule_correlated_plural_sacrifice_result(
             &["those", "players", "sacrifice", "those", "creatures"],
             &["those", "players", "sacrifice", "those", "tokens"],
         ],
-    ) || !matches!(state.effects.last(), Some(EffectAst::ForEach(
-        ForEachEffectAst::ForEachPlayer { .. }
-        | ForEachEffectAst::ForEachPlayersFiltered { filter: PlayerFilter::Any, .. }
-    )))
-    {
+    ) || !matches!(
+        state.effects.last(),
+        Some(EffectAst::ForEach(
+            ForEachEffectAst::ForEachPlayer { .. }
+                | ForEachEffectAst::ForEachPlayersFiltered {
+                    filter: PlayerFilter::Any,
+                    ..
+                }
+        ))
+    ) {
         return Ok(None);
     }
 
@@ -149,7 +154,9 @@ pub(super) fn post_rule_typed_sacrificed_result_iterator(
         return Ok(None);
     }
 
-    let [EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, .. })] = sentence_effects.as_mut_slice() else {
+    let [EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, .. })] =
+        sentence_effects.as_mut_slice()
+    else {
         return Ok(None);
     };
     if tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str() {
@@ -206,7 +213,9 @@ pub(super) fn bind_prior_exiled_mana_value(value: &mut Value) {
         Value::SurfaceHinted { value, .. } => bind_prior_exiled_mana_value(value),
         Value::ManaValueOf(spec) if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()) =>
         {
-            **spec = ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::PriorExiledCard.bind()).into());
+            **spec = ChooseSpec::Tagged(
+                (crate::tag::CompilerReferenceTag::PriorExiledCard.bind()).into(),
+            );
         }
         _ => {}
     }
@@ -219,7 +228,9 @@ fn last_effect_creates_tokens(effects: &[EffectAst]) -> bool {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { .. })
                     | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. })
-                    | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { .. })
+                    | SubjectVerbActionAst::Tokens(
+                        TokenActionAst::CreateTokenCopyFromSource { .. }
+                    )
                     | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenChoice { .. }),
                 ..
             })

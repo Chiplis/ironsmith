@@ -1,6 +1,6 @@
-use crate::cards::builders::PermissionEffectAst;
-use crate::cards::builders::ForEachEffectAst;
 use super::*;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::PermissionEffectAst;
 
 pub(super) fn bind_adjacent_life_stat_pronouns(
     effects: &mut [EffectAst],
@@ -26,7 +26,9 @@ pub(super) fn bind_adjacent_life_stat_pronouns(
         match action {
             SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount })
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount })
-            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayLife { amount }) => Some(amount),
+            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayLife { amount }) => {
+                Some(amount)
+            }
             _ => None,
         }
     }
@@ -65,7 +67,9 @@ pub(super) fn bind_adjacent_life_stat_pronouns(
         let amount = match action {
             SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount })
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount })
-            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayLife { amount }) => amount,
+            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayLife { amount }) => {
+                amount
+            }
             _ => continue,
         };
         retarget_source_stat(amount, &antecedent);
@@ -109,7 +113,9 @@ pub fn bind_adjacent_shared_x_life_stat_values(
         match action {
             SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount })
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount })
-            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayLife { amount }) => Some(amount),
+            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayLife { amount }) => {
+                Some(amount)
+            }
             _ => None,
         }
     }
@@ -121,7 +127,9 @@ pub fn bind_adjacent_shared_x_life_stat_values(
         match action {
             SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount })
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount })
-            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayLife { amount }) => Some(amount),
+            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayLife { amount }) => {
+                Some(amount)
+            }
             _ => None,
         }
     }
@@ -184,7 +192,10 @@ pub(super) fn effect_uses_half_life_total_value(effect: &EffectAst) -> bool {
         | EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })
         | EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })
         | EffectAst::ForEach(ForEachEffectAst::ForEachTagged { effects, .. })
-        | EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy { effects, .. })
+        | EffectAst::ForEach(ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy {
+            effects,
+            ..
+        })
         | EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { effects, .. })
         | EffectAst::Permissions(PermissionEffectAst::May { effects })
         | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. })
@@ -233,11 +244,18 @@ pub fn collapse_token_copy_next_end_step_sacrifice_followup_lexed(
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action:
                         SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. })
-                        | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { .. }),
+                        | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
+                            ..
+                        }),
                     ..
                 }),
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { filter, count, .. }),
+                    action:
+                        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice {
+                            filter,
+                            count,
+                            ..
+                        }),
                     ..
                 }),
             ) => *count == 1 && filter.token,

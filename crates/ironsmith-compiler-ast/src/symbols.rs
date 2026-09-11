@@ -5,16 +5,13 @@ use std::collections::HashMap;
 use crate::model::provenance::{ProvenanceId, SemanticProvenance};
 use ironsmith_core::TagKey;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, TagKeyWalk)]
 pub struct SymbolId(pub u32);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, TagKeyWalk)]
 pub struct SymbolScopeId(pub u32);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, TagKeyWalk)]
 pub enum ReferenceRole {
     Source,
     Target,
@@ -33,8 +30,7 @@ pub enum ReferenceRole {
     Iteration,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
 pub enum Cardinality {
     ExactlyOne,
     ZeroOrOne,
@@ -82,8 +78,7 @@ impl Cardinality {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, TagKeyWalk)]
 pub enum ObjectDomain {
     Object,
     Card,
@@ -95,13 +90,14 @@ pub enum ObjectDomain {
     Value,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
 pub enum SymbolScopeKind {
     Root,
     Document,
     /// One physical line of the card text, by its display index.
-    Line { source_line: usize },
+    Line {
+        source_line: usize,
+    },
     NestedAbility,
     ModalMode,
     TokenDefinition,
@@ -234,7 +230,7 @@ impl SymbolTable {
                 primary,
                 related: Vec::new(),
             }),
-                    key: None,
+            key: None,
         });
         self.by_scope.entry(scope).or_default().push(id);
         Ok(id)
@@ -250,11 +246,10 @@ impl SymbolTable {
         cardinality: Cardinality,
         domain: ObjectDomain,
     ) -> Result<SymbolId, SymbolResolutionError> {
-        if let Some(existing) = self
-            .by_scope
-            .get(&scope)
-            .and_then(|ids| ids.iter().find(|id| self.bindings[id.0 as usize].key.as_ref() == Some(&key)))
-        {
+        if let Some(existing) = self.by_scope.get(&scope).and_then(|ids| {
+            ids.iter()
+                .find(|id| self.bindings[id.0 as usize].key.as_ref() == Some(&key))
+        }) {
             return Ok(*existing);
         }
         let id = self.bind(scope, role, cardinality, domain, None)?;
@@ -269,7 +264,10 @@ impl SymbolTable {
     pub fn line_scope(&self, source_line: usize) -> Option<SymbolScopeId> {
         let mut nearest: Option<(usize, SymbolScopeId)> = None;
         for scope in &self.scopes {
-            let SymbolScopeKind::Line { source_line: opened } = scope.kind else {
+            let SymbolScopeKind::Line {
+                source_line: opened,
+            } = scope.kind
+            else {
                 continue;
             };
             if opened == source_line {
@@ -304,7 +302,9 @@ impl SymbolTable {
         let mut current = Some(scope);
         while let Some(scope) = current {
             if let Some(found) = self.by_scope.get(&scope).and_then(|ids| {
-                ids.iter().copied().find(|id| self.bindings[id.0 as usize].key.as_ref() == Some(key))
+                ids.iter()
+                    .copied()
+                    .find(|id| self.bindings[id.0 as usize].key.as_ref() == Some(key))
             }) {
                 return Some(found);
             }
@@ -312,7 +312,6 @@ impl SymbolTable {
         }
         None
     }
-
 
     pub fn binding(&self, id: SymbolId) -> Option<&SymbolBinding> {
         self.bindings
@@ -429,8 +428,7 @@ impl SymbolTable {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
 pub struct SymbolReference {
     pub symbol: SymbolId,
     pub role: ReferenceRole,

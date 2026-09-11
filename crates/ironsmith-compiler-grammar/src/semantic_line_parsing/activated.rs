@@ -1,10 +1,3 @@
-use crate::cards::builders::ConditionalEffectAst;
-use crate::cards::builders::StatChangeActionAst;
-use crate::cards::builders::DamageActionAst;
-use crate::cards::builders::LifeResourceActionAst;
-use crate::cards::builders::LibraryActionAst;
-use crate::cards::builders::ManaActionAst;
-use crate::cards::builders::GrantActionAst;
 use super::super::effect_ast_traversal::for_each_nested_effects_mut;
 use super::super::grammar::activated_lowering as activated_grammar;
 use super::super::grammar::activated_lowering::{
@@ -17,6 +10,13 @@ use super::super::grammar::restriction_facts::{
 };
 use super::super::ir::RewriteActivatedLine;
 use super::*;
+use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::DamageActionAst;
+use crate::cards::builders::GrantActionAst;
+use crate::cards::builders::LibraryActionAst;
+use crate::cards::builders::LifeResourceActionAst;
+use crate::cards::builders::ManaActionAst;
+use crate::cards::builders::StatChangeActionAst;
 use crate::effect::{Effect, Value};
 use crate::model::compiler_semantic::ParsedManaRestriction;
 use crate::object::CounterType;
@@ -197,8 +197,13 @@ fn bind_event_amounts_to_cost_x_in_effect(effect: &mut EffectAst) {
     if let EffectAst::SubjectVerb(subject_verb) = effect {
         match &mut subject_verb.action {
             SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount, .. })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { amount, .. })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { amount, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
+                amount,
+                ..
+            })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage {
+                amount, ..
+            })
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::Mill { count: amount })
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count: amount })
@@ -206,7 +211,10 @@ fn bind_event_amounts_to_cost_x_in_effect(effect: &mut EffectAst) {
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { amount, .. })
-            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce {
+                amount,
+                ..
+            })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { amount }) => {
                 bind_event_amount_to_cost_x(amount);
             }
@@ -609,9 +617,17 @@ fn parse_named_source_leading_gain_activated(
         for effect in effects {
             if let EffectAst::SubjectVerb(subject_verb) = effect {
                 match &mut subject_verb.action {
-                    SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. })
-                    | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach { target, .. })
-                    | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { target, .. }) => {
+                    SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
+                        target, ..
+                    })
+                    | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach {
+                        target,
+                        ..
+                    })
+                    | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
+                        target,
+                        ..
+                    }) => {
                         apply_surface(target, surface);
                     }
                     _ => {}

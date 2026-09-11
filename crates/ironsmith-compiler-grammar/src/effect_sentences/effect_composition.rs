@@ -21,10 +21,12 @@ use super::zone_handlers::{
     parse_exile, parse_exile_top_library_clause, split_exile_face_down_suffix,
 };
 use crate::cards::builders::{
-    CardTextError, ChoiceCount, EffectAst, IfResultPredicate, LibraryConsultModeAst,
-    LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst, SubjectVerbActionAst,
-    SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst, TextSpan, Verb,
-    ZoneReplacementDurationAst, GrantActionAst, LibraryActionAst, ZoneMoveActionAst, PermanentStateActionAst, RevealLookActionAst, DamageActionAst, ObjectChoiceEffectAst, ConditionalEffectAst, PermissionEffectAst,
+    CardTextError, ChoiceCount, ConditionalEffectAst, DamageActionAst, EffectAst, GrantActionAst,
+    IfResultPredicate, LibraryActionAst, LibraryConsultModeAst, LibraryConsultStopRuleAst,
+    ObjectChoiceEffectAst, PermanentStateActionAst, PermissionEffectAst, PlayerAst, PredicateAst,
+    ReturnControllerAst, RevealLookActionAst, SubjectVerbActionAst, SubjectVerbEffectAst,
+    SubjectVerbRoleAst, TagKey, TargetAst, TextSpan, Verb, ZoneMoveActionAst,
+    ZoneReplacementDurationAst,
 };
 use crate::effect::Value;
 use crate::effect_sentences;
@@ -216,7 +218,10 @@ fn parse_inline_look_exile_face_down_permission_bundle(
     };
 
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { tag: look_tag, .. }),
+        action:
+            SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
+                tag: look_tag, ..
+            }),
         ..
     }) = &mut look_effect
     else {
@@ -412,7 +417,8 @@ fn parse_exile_top_library_then_play_bundle(
             };
             let EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 subject,
-                action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects { filter }),
+                action:
+                    SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects { filter }),
             }) = look
             else {
                 return Ok(None);
@@ -442,15 +448,20 @@ fn parse_exile_top_library_then_play_bundle(
 
     let Some(tag) = (match &exile_effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-            SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { tags, .. }) => tags.first().cloned(),
+            SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { tags, .. }) => {
+                tags.first().cloned()
+            }
             _ => None,
         },
-        EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }) => match effects.as_slice() {
+        EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }) => match effects
+            .as_slice()
+        {
             [
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action:
                         SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
-                            accumulated_tags, ..
+                            accumulated_tags,
+                            ..
                         }),
                     ..
                 }),
@@ -476,13 +487,15 @@ fn parse_exile_top_library_then_play_bundle(
         });
         (
             chosen_tag.clone(),
-            Some(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
-                filter,
-                count: ChoiceCount::exactly(1),
-                player: PlayerAst::You,
-                tag: crate::tag::TagRef::of(chosen_tag),
-                zone: Zone::Exile,
-            })),
+            Some(EffectAst::ObjectChoices(
+                ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+                    filter,
+                    count: ChoiceCount::exactly(1),
+                    player: PlayerAst::You,
+                    tag: crate::tag::TagRef::of(chosen_tag),
+                    zone: Zone::Exile,
+                },
+            )),
         )
     } else {
         (crate::tag::TagRef::of(tag), None)
@@ -795,7 +808,10 @@ fn parse_choose_type_then_phase_out_bundle(
     let mut effects = effect_sentences::parse_effect_sentence_lexed(second_sentence)?;
     let [
         EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-            action: crate::cards::builders::SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseOutAll { filter, .. }),
+            action:
+                crate::cards::builders::SubjectVerbActionAst::PermanentState(
+                    PermanentStateActionAst::PhaseOutAll { filter, .. },
+                ),
             ..
         }),
     ] = effects.as_mut_slice()
@@ -845,13 +861,15 @@ fn promote_exile_effect_to_source_leaves(effect: EffectAst) -> Option<EffectAst>
                 EffectAst::subject_verb_exile_until_source_leaves(target, face_down)
                     .with_explicit_exile_return_surface(),
             ),
-            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { filter, face_down }) => Some(
-                EffectAst::subject_verb_exile_until_source_leaves(
-                    TargetAst::Object(filter, None, None),
-                    face_down,
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { filter, face_down }) => {
+                Some(
+                    EffectAst::subject_verb_exile_until_source_leaves(
+                        TargetAst::Object(filter, None, None),
+                        face_down,
+                    )
+                    .with_explicit_exile_return_surface(),
                 )
-                .with_explicit_exile_return_surface(),
-            ),
+            }
             _ => None,
         },
         EffectAst::Conditionals(ConditionalEffectAst::Conditional {
@@ -879,7 +897,9 @@ fn parse_exile_then_source_leaves_return_bundle(
     }
 
     let mut effects = effect_sentences::parse_effect_sentence_lexed(first_sentence)?;
-    let Some(delayed) = crate::effect_sentences::zone_handlers::parse_return_with_event_timing(second_sentence)? else {
+    let Some(delayed) =
+        crate::effect_sentences::zone_handlers::parse_return_with_event_timing(second_sentence)?
+    else {
         return Ok(None);
     };
     effects.extend(delayed);
@@ -944,7 +964,9 @@ fn parse_reveal_from_outside_game_or_choose_face_up_exile_to_hand(
         ),
     ];
 
-    Ok(Some(vec![EffectAst::Permissions(PermissionEffectAst::May { effects })]))
+    Ok(Some(vec![EffectAst::Permissions(
+        PermissionEffectAst::May { effects },
+    )]))
 }
 
 fn parse_reveal_from_outside_game_to_hand(
@@ -1024,13 +1046,15 @@ fn parse_choose_objects_then_for_each_of_those_bundle(
         return Ok(None);
     }
 
-    let mut combined = vec![EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-        filter,
-        count,
-        count_value: None,
-        player,
-        tag: choose_tag.clone(),
-    })];
+    let mut combined = vec![EffectAst::ObjectChoices(
+        ObjectChoiceEffectAst::ChooseObjects {
+            filter,
+            count,
+            count_value: None,
+            player,
+            tag: choose_tag.clone(),
+        },
+    )];
     combined.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
         tag: choose_tag,
         effects: loop_body_effects,
@@ -1173,13 +1197,16 @@ fn parse_choose_mixed_targets_then_for_each_bundle(
     } else {
         declaration
     }];
-    combined.push(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false,
-        // The mixed declaration above already made the target choice. This
-        // is an anaphoric view over its player members, not a second target
-        // declaration.
-        filter: PlayerFilter::AliasedTarget(Box::new(player_filter)),
-        effects: player_body,
-    }));
+    combined.push(EffectAst::ForEach(
+        ForEachEffectAst::ForEachPlayersFiltered {
+            sequential: false,
+            // The mixed declaration above already made the target choice. This
+            // is an anaphoric view over its player members, not a second target
+            // declaration.
+            filter: PlayerFilter::AliasedTarget(Box::new(player_filter)),
+            effects: player_body,
+        },
+    ));
     if includes_objects {
         combined.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
             tag: crate::tag::TagRef::of(object_targets_tag),

@@ -11,16 +11,17 @@
 //! tag to the sentences that follow, as [`super::looked_procedure`] carries a
 //! viewed group.
 
-use crate::cards::builders::ForEachEffectAst;
 use super::dispatch_entry::SentenceInput;
 use super::sequence_rules::generic_subject_verb_sequences::exile_permission_followups::rebind_permission_tag;
 use super::sequence_rules::generic_subject_verb_sequences::exiled_collections::{
     find_exiled_top_collection_tag, parse_collection_cast_filter,
     parse_exile_top_then_put_from_among_tokens, parse_remaining_exiled_partition,
 };
+use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{
-    CardTextError, EffectAst, IfResultPredicate, ObjectFilter, PlayerAst, SubjectVerbActionAst,
-    SubjectVerbEffectAst, TriggerSpec, GrantActionAst, DelayedEffectAst, ObjectChoiceEffectAst, ConditionalEffectAst,
+    CardTextError, ConditionalEffectAst, DelayedEffectAst, EffectAst, GrantActionAst,
+    IfResultPredicate, ObjectChoiceEffectAst, ObjectFilter, PlayerAst, SubjectVerbActionAst,
+    SubjectVerbEffectAst, TriggerSpec,
 };
 use crate::grammar::effects::{
     ExilePermissionFollowupKind, clause_dispatch_shapes, parse_exile_permission_followup_shape,
@@ -67,7 +68,8 @@ fn cast_collection(
     sentence: &SentenceInput,
     exiled: &TagKey,
 ) -> Result<Option<(Vec<EffectAst>, TagKey)>, CardTextError> {
-    let Some(shape) = clause_dispatch_shapes::parse_cast_tagged_collection_shape(sentence.lowered())
+    let Some(shape) =
+        clause_dispatch_shapes::parse_cast_tagged_collection_shape(sentence.lowered())
     else {
         return Ok(None);
     };
@@ -119,7 +121,9 @@ fn play_this_turn_permission(
     Ok(matches!(
         &permission,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn { .. }),
+            action: SubjectVerbActionAst::Grants(
+                GrantActionAst::GrantPlayTaggedUntilEndOfTurn { .. }
+            ),
             ..
         })
     )
@@ -150,16 +154,17 @@ pub(super) fn open(
     let Some(next) = sentences.get(sentence_idx + 1) else {
         return Ok(None);
     };
-    let Some(effects) =
-        crate::grammar::primitives::probe_shape(super::parse_effect_sentence_lexed(sentence.lowered()))
-    else {
+    let Some(effects) = crate::grammar::primitives::probe_shape(
+        super::parse_effect_sentence_lexed(sentence.lowered()),
+    ) else {
         return Ok(None);
     };
     let Some(tag) = find_exiled_top_collection_tag(&effects) else {
         return Ok(None);
     };
     let continues = cast_collection(next, &tag)?.is_some()
-        || parse_exile_top_then_put_from_among_tokens(sentence.lowered(), next.lowered())?.is_some()
+        || parse_exile_top_then_put_from_among_tokens(sentence.lowered(), next.lowered())?
+            .is_some()
         || (effects.len() == 1
             && sentences
                 .get(sentence_idx + 2)
@@ -202,11 +207,10 @@ pub(super) fn continue_with(
                 group.effects = effects;
                 group.statements = Statements::Battlefield;
             } else if group.effects.len() == 1
-                && let Some(permission) =
-                    crate::grammar::primitives::probe_shape(play_this_turn_permission(
-                        sentence, &group.tag,
-                    ))
-                    .flatten()
+                && let Some(permission) = crate::grammar::primitives::probe_shape(
+                    play_this_turn_permission(sentence, &group.tag),
+                )
+                .flatten()
             {
                 group.statements = Statements::Permission(permission);
             } else {
@@ -223,8 +227,16 @@ pub(super) fn continue_with(
                 return Ok(false);
             };
             let chosen = chosen.clone();
-            if sentence.lowered().first().is_some_and(|token| token.is_word("then")) {
-                group.effects.push(EffectAst::SourceSentence { effects: partition, leading_then: true, starting_with_controller: false });
+            if sentence
+                .lowered()
+                .first()
+                .is_some_and(|token| token.is_word("then"))
+            {
+                group.effects.push(EffectAst::SourceSentence {
+                    effects: partition,
+                    leading_then: true,
+                    starting_with_controller: false,
+                });
             } else {
                 group.effects.extend(partition);
             }
@@ -244,13 +256,15 @@ pub(super) fn continue_with(
             };
             match kind {
                 ExilePermissionFollowupKind::ReflexiveExileNonland => {
-                    group.effects.push(EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
-                        predicate: IfResultPredicate::AffectedObjectMatchesCardType {
-                            card_type: CardType::Land,
-                            negated: true,
-                        },
-                        effects: followup_effects,
-                    }));
+                    group
+                        .effects
+                        .push(EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
+                            predicate: IfResultPredicate::AffectedObjectMatchesCardType {
+                                card_type: CardType::Land,
+                                negated: true,
+                            },
+                            effects: followup_effects,
+                        }));
                     group.effects.push(permission);
                 }
                 ExilePermissionFollowupKind::DelayedPlayCard => {
@@ -272,13 +286,15 @@ pub(super) fn continue_with(
                             filter: tagged,
                         }),
                     );
-                    group.effects.push(EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
-                        trigger,
-                        effects: followup_effects,
-                        one_shot: true,
-                        until_end_of_combat: false,
-                        attach_to_previous_ability: false,
-                    }));
+                    group.effects.push(EffectAst::Delayed(
+                        DelayedEffectAst::DelayedTriggerThisTurn {
+                            trigger,
+                            effects: followup_effects,
+                            one_shot: true,
+                            until_end_of_combat: false,
+                            attach_to_previous_ability: false,
+                        },
+                    ));
                 }
             }
         }

@@ -3249,8 +3249,13 @@ fn pay_component_without_execution_context(
             );
         }
         return crate::costs::pay_mana_cost_with_choices(
-            game, cost_ctx.payer, Some(cost_ctx.source), &adjusted_cost, 0,
-            cost_ctx.reason, cost_ctx.decision_maker,
+            game,
+            cost_ctx.payer,
+            Some(cost_ctx.source),
+            &adjusted_cost,
+            0,
+            cost_ctx.reason,
+            cost_ctx.decision_maker,
         );
     }
     if let Some(dynamic_mana) = component.dynamic_mana_cost_ref() {
@@ -3273,8 +3278,13 @@ fn pay_component_without_execution_context(
                 );
             }
             return crate::costs::pay_mana_cost_with_choices(
-                game, cost_ctx.payer, Some(cost_ctx.source), &adjusted_cost, 0,
-                cost_ctx.reason, cost_ctx.decision_maker,
+                game,
+                cost_ctx.payer,
+                Some(cost_ctx.source),
+                &adjusted_cost,
+                0,
+                cost_ctx.reason,
+                cost_ctx.decision_maker,
             );
         }
         return Err(CostPaymentError::Other(
@@ -3298,7 +3308,13 @@ fn pay_component_in_context(
         let adjusted_cost =
             game.adjust_mana_cost_for_payment_reason(payer, Some(source), &resolved, reason);
         return crate::costs::pay_mana_cost_with_choices(
-            game, payer, Some(source), &adjusted_cost, 0, reason, execution_ctx.decision_maker,
+            game,
+            payer,
+            Some(source),
+            &adjusted_cost,
+            0,
+            reason,
+            execution_ctx.decision_maker,
         );
     }
     let mut cost_ctx = CostContext::new(source, payer, execution_ctx.decision_maker)
@@ -4905,11 +4921,23 @@ fn can_turn_face_up_with_method(
 #[cfg(test)]
 mod phyrexian_component_choice_tests {
     use super::*;
-    struct ChooseLife { prompts: usize }
+    struct ChooseLife {
+        prompts: usize,
+    }
     impl DecisionMaker for ChooseLife {
-        fn decide_options(&mut self, _game: &GameState, ctx: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
             self.prompts += 1;
-            vec![ctx.options.iter().find(|o| o.description == "Pay 2 life").expect("life must be offered").index]
+            vec![
+                ctx.options
+                    .iter()
+                    .find(|o| o.description == "Pay 2 life")
+                    .expect("life must be offered")
+                    .index,
+            ]
         }
     }
     #[test]
@@ -4919,15 +4947,31 @@ mod phyrexian_component_choice_tests {
             let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
             let alice = game.players[0].id;
             game.player_mut(alice).unwrap().life = life;
-            game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::White, 1);
+            game.player_mut(alice)
+                .unwrap()
+                .mana_pool
+                .add(ManaSymbol::White, 1);
             let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Cost source")
-                .card_types(vec![crate::types::CardType::Artifact]).build();
+                .card_types(vec![crate::types::CardType::Artifact])
+                .build();
             let source = game.create_object_from_card(&card, alice, crate::zone::Zone::Battlefield);
-            let cost = crate::cost::TotalCost::mana(ManaCost::from_pips(
-                vec![vec![ManaSymbol::White, ManaSymbol::Life(2)]; pips]
-            ));
+            let cost = crate::cost::TotalCost::mana(ManaCost::from_pips(vec![
+                vec![
+                    ManaSymbol::White,
+                    ManaSymbol::Life(2)
+                ];
+                pips
+            ]));
             let mut dm = ChooseLife { prompts: 0 };
-            pay_total_cost_with_choice(&mut game, alice, source, &cost, crate::costs::PaymentReason::Other, &mut dm).unwrap();
+            pay_total_cost_with_choice(
+                &mut game,
+                alice,
+                source,
+                &cost,
+                crate::costs::PaymentReason::Other,
+                &mut dm,
+            )
+            .unwrap();
             assert_eq!(dm.prompts, 1, "a forced final pip needs no second choice");
             assert_eq!(game.player(alice).unwrap().life, expected_life);
             assert_eq!(game.player(alice).unwrap().mana_pool.white, expected_white);

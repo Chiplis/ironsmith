@@ -80,7 +80,11 @@ fn manifest_dread_counter_bundle_room_renders_the_shared_target() {
 fn manifest_dread_counter_bundle_requires_a_shared_recipient() {
     let first = Effect::new(crate::effects::TaggedEffect {
         tag: "counter_recipient".into(),
-        effect: Box::new(Effect::put_counters(CounterType::PlusOnePlusOne, 2, ChooseSpec::Source)),
+        effect: Box::new(Effect::put_counters(
+            CounterType::PlusOnePlusOne,
+            2,
+            ChooseSpec::Source,
+        )),
         outcome_only: false,
     });
     let second = crate::effects::PutCountersEffect {

@@ -34,7 +34,9 @@ fn optional_copy_retarget_stays_inside_repeating_delayed_trigger() {
     };
     let delayed_effects = match delayed {
         EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn { effects, .. })
-        | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { effects, .. }) => effects,
+        | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { effects, .. }) => {
+            effects
+        }
         _ => panic!("expected a repeating delayed trigger: {delayed:#?}"),
     };
     assert!(effects_copy_a_stack_object(delayed_effects));
@@ -53,7 +55,9 @@ fn retarget_does_not_attach_to_a_delayed_trigger_that_creates_no_copy() {
     assert_eq!(parsed.len(), 2, "{parsed:#?}");
     let delayed_effects = match &parsed[0] {
         EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn { effects, .. })
-        | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { effects, .. }) => effects,
+        | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { effects, .. }) => {
+            effects
+        }
         effect => panic!("expected delayed near miss: {effect:#?}"),
     };
     assert!(!delayed_effects.iter().any(contains_plural_retarget));
@@ -92,6 +96,7 @@ fn unconditional_copy_does_not_acquire_an_optional_owner() {
     assert_eq!(parsed.len(), 2, "{parsed:#?}");
     assert!(!matches!(
         parsed[0],
-        EffectAst::Permissions(PermissionEffectAst::May { .. }) | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. })
+        EffectAst::Permissions(PermissionEffectAst::May { .. })
+            | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. })
     ));
 }

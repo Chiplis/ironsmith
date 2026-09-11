@@ -93,16 +93,14 @@ pub struct CompilerResourceClauseAst {
     pub result: SymbolReference,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
 pub enum CompilerChoiceVisibilityAst {
     Public,
     Secret,
     HiddenUntilReveal,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum CompilerChoiceDomainAst {
     Color,
     CardType(Vec<CardType>),
@@ -161,15 +159,13 @@ pub enum CompilerResourceChoiceClauseAst {
     Choice(CompilerChoiceClauseAst),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
 pub enum CompilerVoteOrderAst {
     Simultaneous,
     TurnOrder,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CompilerVoteAst {
     pub voters: PlayerFilter,
     pub exclude_voter: bool,
@@ -183,8 +179,7 @@ pub struct CompilerVoteAst {
     pub tally: SymbolReference,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum CompilerIterationSourceAst {
     Opponents,
     Players(PlayerFilter),
@@ -197,8 +192,7 @@ pub enum CompilerIterationSourceAst {
     Count(CompilerValueAst),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
 pub enum CompilerRepetitionKindAst {
     ForEach,
     Exactly,
@@ -206,8 +200,7 @@ pub enum CompilerRepetitionKindAst {
     Optional,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CompilerIterationAst {
     pub kind: CompilerRepetitionKindAst,
     pub source: CompilerIterationSourceAst,

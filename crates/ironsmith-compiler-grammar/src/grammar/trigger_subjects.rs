@@ -314,7 +314,8 @@ pub fn parse_possessive_player_reference(words: &[&str]) -> PossessivePlayerRefe
         return PossessivePlayerReference::You;
     }
     if normalized_phrase_occurs(words, &["opponent"])
-        || normalized_phrase_occurs(words, &["opponents"]) {
+        || normalized_phrase_occurs(words, &["opponents"])
+    {
         return PossessivePlayerReference::Opponent;
     }
     PossessivePlayerReference::Any

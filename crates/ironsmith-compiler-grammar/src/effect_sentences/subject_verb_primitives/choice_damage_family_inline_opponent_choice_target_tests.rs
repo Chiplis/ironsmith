@@ -26,7 +26,12 @@ fn damage_unless_participant_places_counter_stays_one_typed_choice() {
         .expect("damage-unless clause should parse")
         .expect("unless parser should claim the complete clause");
     assert!(
-        matches!(parsed.as_slice(), [EffectAst::Conditionals(ConditionalEffectAst::UnlessPays { .. })]),
+        matches!(
+            parsed.as_slice(),
+            [EffectAst::Conditionals(
+                ConditionalEffectAst::UnlessPays { .. }
+            )]
+        ),
         "expected one typed unless-payment around the damage: {parsed:#?}"
     );
 }
@@ -41,7 +46,12 @@ fn public_effect_route_keeps_trailing_unless_payment_on_tap_actions() {
         let parsed = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
             .expect("public effect route should parse the complete choice");
         assert!(
-            matches!(parsed.as_slice(), [EffectAst::Conditionals(ConditionalEffectAst::UnlessPays { .. })]),
+            matches!(
+                parsed.as_slice(),
+                [EffectAst::Conditionals(
+                    ConditionalEffectAst::UnlessPays { .. }
+                )]
+            ),
             "expected one typed unless-payment for {text}: {parsed:#?}"
         );
     }

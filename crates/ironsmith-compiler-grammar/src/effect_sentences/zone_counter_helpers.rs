@@ -1,8 +1,8 @@
-use crate::cards::builders::ForEachEffectAst;
 use crate::cards::TextSpan;
+use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::{
-    CardTextError, ChoiceCount, EffectAst, OwnedLexToken, PlayerAst, PredicateAst, SubjectAst,
-    SubjectVerbActionAst, SubjectVerbEffectAst, TargetAst, CounterActionAst, ConditionalEffectAst,
+    CardTextError, ChoiceCount, ConditionalEffectAst, CounterActionAst, EffectAst, OwnedLexToken,
+    PlayerAst, PredicateAst, SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst, TargetAst,
 };
 use crate::effect::EventValueSpec;
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
@@ -223,7 +223,9 @@ fn parse_named_source_power_value(tokens: &[OwnedLexToken]) -> Option<Value> {
 fn target_from_counter_source_spec(spec: &ChooseSpec, span: Option<TextSpan>) -> Option<TargetAst> {
     match spec {
         ChooseSpec::Source => Some(TargetAst::Source(span)),
-        ChooseSpec::Tagged(tag) => Some(TargetAst::Tagged(crate::tag::TagRef::of(tag.clone()), span)),
+        ChooseSpec::Tagged(tag) => {
+            Some(TargetAst::Tagged(crate::tag::TagRef::of(tag.clone()), span))
+        }
         ChooseSpec::Target(inner) => target_from_counter_source_spec(inner, span),
         _ => None,
     }
@@ -289,7 +291,12 @@ fn parse_counter_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, Ca
 }
 
 pub(super) fn has_counter_placement_head(tokens: &[OwnedLexToken]) -> bool {
-    let Some(counter) = tokens.iter().position(|token| token.is_any_word(&["counter", "counters"])) else { return false; };
+    let Some(counter) = tokens
+        .iter()
+        .position(|token| token.is_any_word(&["counter", "counters"]))
+    else {
+        return false;
+    };
     // A counter on entry belongs to a zone move, not to a counter-placement action.
     !tokens[..counter].iter().any(|token| token.is_word("onto"))
 }
@@ -299,32 +306,52 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
         return Ok(EffectAst::Sequence { effects });
     }
     if !has_counter_placement_head(tokens) {
-        return Err(CardTextError::ParseError("zone move with entry counters is not counter placement".into()));
+        return Err(CardTextError::ParseError(
+            "zone move with entry counters is not counter placement".into(),
+        ));
     }
 
     if let crate::recognition::ParseOutcome::Match(matched) =
         crate::grammar::effects::coordination::recognize_coordination(tokens)
         && matched.value.members.len() > 1
         && (tokens.iter().any(|token| token.is_word("then"))
-            || matched.value.members.iter().skip(1).any(|member| member.tokens.first().is_some_and(|token| token.is_any_word(&["tap", "untap", "attach"]))))
-        && matched.value.members.iter().skip(1).any(|member|
-            super::find_verb(member.tokens).is_some_and(|(_, index)| index == 0
-                || (index == 1 && member.tokens.first().is_some_and(|token| token.is_word("then"))))
-        )
+            || matched.value.members.iter().skip(1).any(|member| {
+                member
+                    .tokens
+                    .first()
+                    .is_some_and(|token| token.is_any_word(&["tap", "untap", "attach"]))
+            }))
+        && matched.value.members.iter().skip(1).any(|member| {
+            super::find_verb(member.tokens).is_some_and(|(_, index)| {
+                index == 0
+                    || (index == 1
+                        && member
+                            .tokens
+                            .first()
+                            .is_some_and(|token| token.is_word("then")))
+            })
+        })
     {
         let plan = matched.value;
-        let effects = plan.members.iter().map(|member|
-            crate::effect_sentences::parse_effect_sentence_lexed(member.tokens)
-                .map(|effects| EffectAst::Sequence { effects })
-        ).collect::<Result<Vec<_>, _>>()?;
-        if let Some(coordination) = plan.into_ast(effects) { return Ok(EffectAst::Coordination(coordination)); }
+        let effects = plan
+            .members
+            .iter()
+            .map(|member| {
+                crate::effect_sentences::parse_effect_sentence_lexed(member.tokens)
+                    .map(|effects| EffectAst::Sequence { effects })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        if let Some(coordination) = plan.into_ast(effects) {
+            return Ok(EffectAst::Coordination(coordination));
+        }
     }
     if let Some(effects) = super::subject_verb_primitives::parse_put_counter_choice_sequence(
         super::SubjectVerbPrimitiveClause::new(tokens),
     )? {
         return Ok(EffectAst::Sequence { effects });
     }
-    let tokens = if let Some(entry) = tokens.windows(2)
+    let tokens = if let Some(entry) = tokens
+        .windows(2)
         .position(|pair| pair[0].is_word("enters") && pair[1].is_word("with"))
         && crate::util::is_source_reference_words(&crate::lexer::token_word_refs(&tokens[..entry]))
     {
@@ -340,11 +367,20 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
         let plan = matched.value;
         let mut members = Vec::new();
         for member in &plan.members {
-            let Some(clause) = split_trailing_if_clause_lexed(member.tokens) else { break; };
-            if !clause.leading_tokens.iter().any(|token| token.is_any_word(&["counter", "counters"])) { break; }
+            let Some(clause) = split_trailing_if_clause_lexed(member.tokens) else {
+                break;
+            };
+            if !clause
+                .leading_tokens
+                .iter()
+                .any(|token| token.is_any_word(&["counter", "counters"]))
+            {
+                break;
+            }
             let effect = parse_put_counters(clause.leading_tokens)?;
             members.push(EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
-                predicate: clause.predicate, effects: vec![effect],
+                predicate: clause.predicate,
+                effects: vec![effect],
             }));
         }
         if members.len() == plan.members.len()
@@ -404,18 +440,22 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
 
     // The descriptor belongs to the first counter noun. A later count
     // expression can mention counters again without renaming these counters.
-    let descriptor_end = rest.iter().position(|token| token.is_any_word(&["counter", "counters"]))
-        .map(|index| index + 1).unwrap_or(rest.len());
-    let counter_type = if let Some(counter_type) = parse_counter_type_from_tokens(&rest[..descriptor_end]) {
-        counter_type
-    } else if let Value::CountersOn(_, Some(counter_type)) = &count_value {
-        *counter_type
-    } else {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported counter type (clause: '{}')",
-            render_clause_words(tokens)
-        )));
-    };
+    let descriptor_end = rest
+        .iter()
+        .position(|token| token.is_any_word(&["counter", "counters"]))
+        .map(|index| index + 1)
+        .unwrap_or(rest.len());
+    let counter_type =
+        if let Some(counter_type) = parse_counter_type_from_tokens(&rest[..descriptor_end]) {
+            counter_type
+        } else if let Value::CountersOn(_, Some(counter_type)) = &count_value {
+            *counter_type
+        } else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported counter type (clause: '{}')",
+                render_clause_words(tokens)
+            )));
+        };
 
     if let Value::Fixed(fixed_count) = count_value
         && fixed_count >= 0
@@ -429,7 +469,10 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
         let mut predicate = trailing_predicate.clone();
         if let Some(PredicateAst::ItMatches(filter)) = predicate.as_ref()
             && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::Counters(CounterActionAst::PutOrRemoveCounters { target, .. }),
+                action:
+                    SubjectVerbActionAst::Counters(CounterActionAst::PutOrRemoveCounters {
+                        target, ..
+                    }),
                 ..
             }) = &mut effect
             && merge_it_match_filter_into_target(target, filter)
@@ -671,13 +714,18 @@ pub fn split_until_target_leaves_tail(
     shapes::split_until_target_leaves_shape(tokens)
 }
 
-pub fn parse_starting_life_total_value(tokens: &[OwnedLexToken], player: PlayerAst) -> Option<Value> {
+pub fn parse_starting_life_total_value(
+    tokens: &[OwnedLexToken],
+    player: PlayerAst,
+) -> Option<Value> {
     let words = crate::lexer::parser_token_word_refs(tokens);
     let words = words.strip_prefix(&["equal", "to"]).unwrap_or(&words);
     let player_filter = shapes::player_filter_for_half_reference(player)?;
     if (words == ["your", "starting", "life", "total"] && player_filter == PlayerFilter::You)
         || words == ["their", "starting", "life", "total"]
-    { return Some(Value::StartingLifeTotal(player_filter)); }
+    {
+        return Some(Value::StartingLifeTotal(player_filter));
+    }
     parse_half_starting_life_total_value(tokens, player)
 }
 
@@ -927,14 +975,30 @@ mod entry_counter_descriptor_tests {
     #[test]
     fn entry_counter_descriptor_is_not_taken_from_its_count_expression() {
         for descriptor in ["+1/+1", "charge"] {
-            let text = format!("this creature enters with a {descriptor} counter on it for each counter removed this way.");
+            let text = format!(
+                "this creature enters with a {descriptor} counter on it for each counter removed this way."
+            );
             let tokens = crate::lexer::lex_line(&text, 0).unwrap();
             let body = &tokens[4..];
             let direct = parse_put_counters(body).unwrap();
-            assert!(format!("{direct:#?}").contains(if descriptor == "charge" { "Charge" } else { "PlusOnePlusOne" }), "body={body:#?} direct={direct:#?}");
+            assert!(
+                format!("{direct:#?}").contains(if descriptor == "charge" {
+                    "Charge"
+                } else {
+                    "PlusOnePlusOne"
+                }),
+                "body={body:#?} direct={direct:#?}"
+            );
             let effects = crate::effect_sentences::parse_effect_sentence_lexed(&tokens).unwrap();
             let debug = format!("{effects:#?}");
-            assert!(debug.contains(if descriptor == "charge" { "Charge" } else { "PlusOnePlusOne" }), "{debug}");
+            assert!(
+                debug.contains(if descriptor == "charge" {
+                    "Charge"
+                } else {
+                    "PlusOnePlusOne"
+                }),
+                "{debug}"
+            );
             assert!(!debug.contains("Named(\"each\")"), "{debug}");
         }
     }

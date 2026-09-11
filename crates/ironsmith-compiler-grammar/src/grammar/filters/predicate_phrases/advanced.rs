@@ -1,8 +1,8 @@
-use crate::cards::builders::TurnEventPredicateAst;
-use crate::cards::builders::TriggeringPredicateAst;
-use crate::cards::builders::SourcePredicateAst;
-use crate::cards::builders::PlayerPredicateAst;
 use super::*;
+use crate::cards::builders::PlayerPredicateAst;
+use crate::cards::builders::SourcePredicateAst;
+use crate::cards::builders::TriggeringPredicateAst;
+use crate::cards::builders::TurnEventPredicateAst;
 use crate::effect::ValueComparisonOperator;
 use crate::filter::StackObjectKind;
 
@@ -161,17 +161,25 @@ fn parse_turn_history_intervening_predicate(
     if let Some(dealt) = crate::word_primitives::parse_sequence_start(&words, &["has", "dealt"])
         && words.ends_with(&["damage", "this", "turn"])
         && let Some(source) = clause.between_word_range(0, dealt)
-        && matches!(crate::util::parse_target_phrase(source.tokens()),
+        && matches!(
+            crate::util::parse_target_phrase(source.tokens()),
             Ok(crate::cards::builders::TargetAst::Source(_))
-            | Ok(crate::cards::builders::TargetAst::Object(ObjectFilter { source: true, .. }, ..)))
+                | Ok(crate::cards::builders::TargetAst::Object(
+                    ObjectFilter { source: true, .. },
+                    ..
+                ))
+        )
         && let Some(quantity) = clause.between_word_range(dealt + 2, words.len() - 3)
-        && let Ok((comparison, used)) = parse_quantity_comparison_prefix(quantity.tokens(), false, false, "source damage total")
+        && let Ok((comparison, used)) =
+            parse_quantity_comparison_prefix(quantity.tokens(), false, false, "source damage total")
         && used == quantity.tokens().len()
-        && let Some((operator, amount)) = crate::util::comparison_to_value_comparison_operator(comparison)
+        && let Some((operator, amount)) =
+            crate::util::comparison_to_value_comparison_operator(comparison)
     {
         return Ok(Some(PredicateAst::ValueComparison {
             left: Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::DamageDealtBySource),
-            operator, right: Value::Fixed(amount),
+            operator,
+            right: Value::Fixed(amount),
         }));
     }
 
@@ -677,7 +685,9 @@ pub(super) fn player_filter_for_turn_value(player: PlayerAst) -> Option<PlayerFi
             Some(PlayerFilter::TargetPlayerOrControllerOfTarget)
         }
         PlayerAst::TriggeringSourceController => Some(PlayerFilter::ControllerOf(
-            crate::filter::ObjectRef::tagged(crate::tag::CompilerReferenceTag::TriggeringSource.bind()),
+            crate::filter::ObjectRef::tagged(
+                crate::tag::CompilerReferenceTag::TriggeringSource.bind(),
+            ),
         )),
         PlayerAst::ItsController | PlayerAst::ItsOwner | PlayerAst::Enchanted => None,
     }
@@ -709,13 +719,13 @@ pub(super) fn parse_player_status_predicate(tokens: &[OwnedLexToken]) -> Option<
                 )?,
             }))
         }
-        crate::grammar::conditions::PlayerStatusAst::Initiative => {
-            Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasInitiative {
+        crate::grammar::conditions::PlayerStatusAst::Initiative => Some(PredicateAst::Player(
+            PlayerPredicateAst::PlayerHasInitiative {
                 player: player_ast_from_status_player_filter(
                     crate::grammar::conditions::unconditional_player_filter(status.player)?,
                 )?,
-            }))
-        }
+            },
+        )),
         crate::grammar::conditions::PlayerStatusAst::MaxSpeed => {
             Some(PredicateAst::ValueComparison {
                 left: Value::Speed(crate::grammar::conditions::unconditional_player_filter(
@@ -797,12 +807,16 @@ pub(super) fn parse_initiative_choice_predicate_shape(
         return None;
     }
     Some(PredicateAst::Or(
-        Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerHasInitiative {
-            player: PlayerAst::You,
-        })),
-        Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerHasInitiative {
-            player: PlayerAst::Defending,
-        })),
+        Box::new(PredicateAst::Player(
+            PlayerPredicateAst::PlayerHasInitiative {
+                player: PlayerAst::You,
+            },
+        )),
+        Box::new(PredicateAst::Player(
+            PlayerPredicateAst::PlayerHasInitiative {
+                player: PlayerAst::Defending,
+            },
+        )),
     ))
 }
 
@@ -907,21 +921,25 @@ pub(super) fn parse_source_controllers_main_phase_predicate_shape(
             &["it", "is", "your", "main", "phase"],
         ],
     )
-    .then_some(PredicateAst::Source(SourcePredicateAst::SourceControllersMainPhase))
+    .then_some(PredicateAst::Source(
+        SourcePredicateAst::SourceControllersMainPhase,
+    ))
 }
 
 pub(super) fn parse_player_achievement_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let achievement = crate::grammar::conditions::parse_player_achievement_condition(tokens)?;
     let player = achievement.player;
     let predicate = match achievement.achievement {
-        crate::grammar::conditions::PlayerAchievementAst::CitysBlessing => {
-            Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasCitysBlessing { player }))
-        }
+        crate::grammar::conditions::PlayerAchievementAst::CitysBlessing => Some(
+            PredicateAst::Player(PlayerPredicateAst::PlayerHasCitysBlessing { player }),
+        ),
         crate::grammar::conditions::PlayerAchievementAst::CompletedDungeon { dungeon_name } => {
-            Some(PredicateAst::Player(PlayerPredicateAst::PlayerCompletedDungeon {
-                player,
-                dungeon_name,
-            }))
+            Some(PredicateAst::Player(
+                PlayerPredicateAst::PlayerCompletedDungeon {
+                    player,
+                    dungeon_name,
+                },
+            ))
         }
         crate::grammar::conditions::PlayerAchievementAst::FullParty => {
             if player == PlayerAst::You {
@@ -1015,7 +1033,10 @@ pub(super) fn cards_in_hand_or_more(
     at_turn_start: bool,
 ) -> PredicateAst {
     if at_turn_start {
-        PredicateAst::Player(PlayerPredicateAst::PlayerCardsInHandAtTurnStartOrMore { player, count })
+        PredicateAst::Player(PlayerPredicateAst::PlayerCardsInHandAtTurnStartOrMore {
+            player,
+            count,
+        })
     } else {
         PredicateAst::Player(PlayerPredicateAst::PlayerCardsInHandOrMore { player, count })
     }
@@ -1027,7 +1048,10 @@ pub(super) fn cards_in_hand_or_fewer(
     at_turn_start: bool,
 ) -> PredicateAst {
     if at_turn_start {
-        PredicateAst::Player(PlayerPredicateAst::PlayerCardsInHandAtTurnStartOrFewer { player, count })
+        PredicateAst::Player(PlayerPredicateAst::PlayerCardsInHandAtTurnStartOrFewer {
+            player,
+            count,
+        })
     } else {
         PredicateAst::Player(PlayerPredicateAst::PlayerCardsInHandOrFewer { player, count })
     }
@@ -1075,17 +1099,21 @@ pub(super) fn parse_player_life_relation_predicate(
     let relation = crate::grammar::conditions::parse_player_life_relation_condition(tokens)?;
     let player = player_ast_from_status_player_filter(relation.player)?;
     match relation.relation {
-        crate::grammar::conditions::PlayerLifeRelationAst::HasMoreLifeThanYou => {
-            Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreLifeThanYou { player }))
-        }
-        crate::grammar::conditions::PlayerLifeRelationAst::HasLessLifeThanYou => {
-            Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasLessLifeThanYou { player }))
-        }
+        crate::grammar::conditions::PlayerLifeRelationAst::HasMoreLifeThanYou => Some(
+            PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreLifeThanYou { player }),
+        ),
+        crate::grammar::conditions::PlayerLifeRelationAst::HasLessLifeThanYou => Some(
+            PredicateAst::Player(PlayerPredicateAst::PlayerHasLessLifeThanYou { player }),
+        ),
         crate::grammar::conditions::PlayerLifeRelationAst::HasNoOpponentWithMoreLifeThan => {
-            Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasNoOpponentWithMoreLifeThan { player }))
+            Some(PredicateAst::Player(
+                PlayerPredicateAst::PlayerHasNoOpponentWithMoreLifeThan { player },
+            ))
         }
         crate::grammar::conditions::PlayerLifeRelationAst::HasMoreLifeThanEachOtherPlayer => {
-            Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreLifeThanEachOtherPlayer { player }))
+            Some(PredicateAst::Player(
+                PlayerPredicateAst::PlayerHasMoreLifeThanEachOtherPlayer { player },
+            ))
         }
     }
 }
@@ -1172,7 +1200,9 @@ pub(super) fn parse_player_turn_event_predicate(tokens: &[OwnedLexToken]) -> Opt
                 || matches!(condition.comparison, crate::effect::Comparison::Equal(1))
             {
                 let player = player_ast_from_status_player_filter(condition.player)?;
-                return Some(PredicateAst::Player(PlayerPredicateAst::PlayerHadLandEnterBattlefieldThisTurn { player }));
+                return Some(PredicateAst::Player(
+                    PlayerPredicateAst::PlayerHadLandEnterBattlefieldThisTurn { player },
+                ));
             }
             Value::LandsEnteredBattlefieldThisTurn(condition.player)
         }
@@ -1668,22 +1698,28 @@ pub(super) fn parse_player_life_change_this_turn_predicate(
     match condition.direction {
         crate::grammar::conditions::PlayerLifeChangeDirectionAst::Gained => {
             let count = comparison_to_strict_at_least_threshold(&condition.comparison)?;
-            Some(PredicateAst::Player(PlayerPredicateAst::PlayerGainedLifeThisTurnOrMore {
-                player: player_ast_from_status_player_filter(condition.player)?,
-                count,
-            }))
+            Some(PredicateAst::Player(
+                PlayerPredicateAst::PlayerGainedLifeThisTurnOrMore {
+                    player: player_ast_from_status_player_filter(condition.player)?,
+                    count,
+                },
+            ))
         }
         crate::grammar::conditions::PlayerLifeChangeDirectionAst::Lost
             if condition.player == PlayerFilter::Opponent
                 && comparison_to_strict_at_least_threshold(&condition.comparison) == Some(1) =>
         {
-            Some(PredicateAst::TurnEvents(TurnEventPredicateAst::OpponentLostLifeThisTurn))
+            Some(PredicateAst::TurnEvents(
+                TurnEventPredicateAst::OpponentLostLifeThisTurn,
+            ))
         }
         crate::grammar::conditions::PlayerLifeChangeDirectionAst::Lost
             if condition.player == PlayerFilter::Any =>
         {
             let count = comparison_to_strict_at_least_threshold(&condition.comparison)?;
-            Some(PredicateAst::TurnEvents(TurnEventPredicateAst::AnyPlayerLostLifeThisTurnOrMore { count }))
+            Some(PredicateAst::TurnEvents(
+                TurnEventPredicateAst::AnyPlayerLostLifeThisTurnOrMore { count },
+            ))
         }
         crate::grammar::conditions::PlayerLifeChangeDirectionAst::Lost => {
             let (operator, count) = comparison_to_value_comparison_operator(condition.comparison)?;
@@ -1714,7 +1750,9 @@ pub(super) fn parse_player_descended_this_turn_predicate(
         return None;
     };
 
-    Some(PredicateAst::Player(PlayerPredicateAst::PlayerDescendedThisTurn { player }))
+    Some(PredicateAst::Player(
+        PlayerPredicateAst::PlayerDescendedThisTurn { player },
+    ))
 }
 
 pub(super) fn parse_object_death_this_turn_predicate(
@@ -1759,15 +1797,15 @@ pub(super) fn parse_player_would_action_predicate(
     let condition = crate::grammar::conditions::parse_player_would_action_condition(tokens)?;
     let player = player_ast_from_status_player_filter(condition.player)?;
     match condition.action {
-        crate::grammar::conditions::PlayerWouldActionAst::DrawCard => {
-            Some(PredicateAst::Player(PlayerPredicateAst::PlayerWouldDrawCard { player }))
-        }
-        crate::grammar::conditions::PlayerWouldActionAst::Proliferate => {
-            Some(PredicateAst::Player(PlayerPredicateAst::PlayerWouldProliferate { player }))
-        }
-        crate::grammar::conditions::PlayerWouldActionAst::BeginExtraTurn => {
-            Some(PredicateAst::Player(PlayerPredicateAst::PlayerWouldBeginExtraTurn { player }))
-        }
+        crate::grammar::conditions::PlayerWouldActionAst::DrawCard => Some(PredicateAst::Player(
+            PlayerPredicateAst::PlayerWouldDrawCard { player },
+        )),
+        crate::grammar::conditions::PlayerWouldActionAst::Proliferate => Some(
+            PredicateAst::Player(PlayerPredicateAst::PlayerWouldProliferate { player }),
+        ),
+        crate::grammar::conditions::PlayerWouldActionAst::BeginExtraTurn => Some(
+            PredicateAst::Player(PlayerPredicateAst::PlayerWouldBeginExtraTurn { player }),
+        ),
     }
 }
 
@@ -1948,7 +1986,9 @@ pub(super) fn parse_source_dealt_combat_damage_this_turn_shape(
     if !is_this_turn_clause(window_clause) {
         return None;
     }
-    Some(PredicateAst::Source(SourcePredicateAst::SourceDealtCombatDamageToPlayerThisTurn))
+    Some(PredicateAst::Source(
+        SourcePredicateAst::SourceDealtCombatDamageToPlayerThisTurn,
+    ))
 }
 
 pub(super) fn parse_player_dealt_combat_damage_by_subtype_this_turn_shape(
@@ -1972,7 +2012,9 @@ pub(super) fn parse_player_dealt_combat_damage_by_subtype_this_turn_shape(
     if !is_this_turn_clause(window_clause) {
         return None;
     }
-    Some(PredicateAst::Player(PlayerPredicateAst::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype }))
+    Some(PredicateAst::Player(
+        PlayerPredicateAst::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype },
+    ))
 }
 
 pub(super) fn parse_combat_turn_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -1999,9 +2041,9 @@ pub(super) fn parse_negative_attack_history_shape(
             &["this", "creature", "did", "not", "attack", "this", "turn"],
         ],
     ) {
-        return Some(PredicateAst::Not(Box::new(
-            PredicateAst::Source(SourcePredicateAst::SourceAttackedThisTurn),
-        )));
+        return Some(PredicateAst::Not(Box::new(PredicateAst::Source(
+            SourcePredicateAst::SourceAttackedThisTurn,
+        ))));
     }
 
     if surface::exact_any(
@@ -2015,9 +2057,9 @@ pub(super) fn parse_negative_attack_history_shape(
             ],
         ],
     ) {
-        return Some(PredicateAst::Not(Box::new(
-            PredicateAst::TurnEvents(TurnEventPredicateAst::YouAttackedThisTurn),
-        )));
+        return Some(PredicateAst::Not(Box::new(PredicateAst::TurnEvents(
+            TurnEventPredicateAst::YouAttackedThisTurn,
+        ))));
     }
 
     None
@@ -2043,7 +2085,9 @@ pub(super) fn parse_you_attacked_this_turn_shape(tokens: &[OwnedLexToken]) -> Op
     if !is_this_turn_clause(window_clause) {
         return None;
     }
-    Some(PredicateAst::TurnEvents(TurnEventPredicateAst::YouAttackedThisTurn))
+    Some(PredicateAst::TurnEvents(
+        TurnEventPredicateAst::YouAttackedThisTurn,
+    ))
 }
 
 pub(super) fn parse_triggering_object_had_to_attack_this_combat_shape(
@@ -2068,7 +2112,9 @@ pub(super) fn parse_triggering_object_had_to_attack_this_combat_shape(
         if !is_this_combat_clause(window_clause) {
             continue;
         }
-        return Some(PredicateAst::Triggering(TriggeringPredicateAst::TriggeringObjectHadToAttackThisCombat));
+        return Some(PredicateAst::Triggering(
+            TriggeringPredicateAst::TriggeringObjectHadToAttackThisCombat,
+        ));
     }
     None
 }
@@ -2102,7 +2148,9 @@ pub(super) fn parse_you_attacked_with_n_or_more_creatures_shape(
     if used != count_clause.tokens().len() {
         return None;
     }
-    Some(PredicateAst::TurnEvents(TurnEventPredicateAst::YouAttackedWithNOrMoreCreaturesThisTurn(count)))
+    Some(PredicateAst::TurnEvents(
+        TurnEventPredicateAst::YouAttackedWithNOrMoreCreaturesThisTurn(count),
+    ))
 }
 
 pub(super) fn parse_you_attacked_with_exactly_other_creatures_shape(
@@ -2139,7 +2187,9 @@ pub(super) fn parse_you_attacked_with_exactly_other_creatures_shape(
     if used != count_clause.tokens().len() {
         return None;
     }
-    Some(PredicateAst::TurnEvents(TurnEventPredicateAst::YouAttackedWithExactlyNOtherCreaturesThisCombat(count)))
+    Some(PredicateAst::TurnEvents(
+        TurnEventPredicateAst::YouAttackedWithExactlyNOtherCreaturesThisCombat(count),
+    ))
 }
 
 pub(super) fn parse_source_attacked_or_blocked_this_turn_shape(
@@ -2167,7 +2217,9 @@ pub(super) fn parse_source_attacked_or_blocked_this_turn_shape(
     if !is_this_turn_clause(window_clause) {
         return None;
     }
-    Some(PredicateAst::Source(SourcePredicateAst::SourceAttackedOrBlockedThisTurn))
+    Some(PredicateAst::Source(
+        SourcePredicateAst::SourceAttackedOrBlockedThisTurn,
+    ))
 }
 
 pub(super) fn parse_source_did_not_attack_or_enter_control_this_turn_shape(
@@ -2201,12 +2253,12 @@ pub(super) fn parse_source_did_not_attack_or_enter_control_this_turn_shape(
         return None;
     }
     Some(PredicateAst::And(
-        Box::new(PredicateAst::Not(Box::new(
-            PredicateAst::Source(SourcePredicateAst::SourceAttackedThisTurn),
-        ))),
-        Box::new(PredicateAst::Not(Box::new(
-            PredicateAst::Source(SourcePredicateAst::SourceCameUnderYourControlThisTurn),
-        ))),
+        Box::new(PredicateAst::Not(Box::new(PredicateAst::Source(
+            SourcePredicateAst::SourceAttackedThisTurn,
+        )))),
+        Box::new(PredicateAst::Not(Box::new(PredicateAst::Source(
+            SourcePredicateAst::SourceCameUnderYourControlThisTurn,
+        )))),
     ))
 }
 
@@ -2459,7 +2511,9 @@ pub(super) fn parse_no_spells_cast_last_turn_shape(
     if !is_last_turn_clause(window_clause) {
         return None;
     }
-    Some(PredicateAst::TurnEvents(TurnEventPredicateAst::NoSpellsWereCastLastTurn))
+    Some(PredicateAst::TurnEvents(
+        TurnEventPredicateAst::NoSpellsWereCastLastTurn,
+    ))
 }
 
 pub(super) fn parse_this_spell_paid_named_label_shape(
@@ -2699,11 +2753,15 @@ fn parse_mana_from_source_spent_to_cast_shape(tokens: &[OwnedLexToken]) -> Optio
         ],
     )?;
     let activation = words.get(spent_idx + 3) == Some(&"activate");
-    let valid_reference = if activation { &words[spent_idx + 4..] == ["this", "ability"] }
-        else { crate::word_primitives::parse_any_sequence_complete(
-            &words[spent_idx + 4..], &[&["it"], &["that", "spell"], &["this", "spell"]]) };
-    if spent_idx <= mana_idx + 2 || !valid_reference
-    {
+    let valid_reference = if activation {
+        &words[spent_idx + 4..] == ["this", "ability"]
+    } else {
+        crate::word_primitives::parse_any_sequence_complete(
+            &words[spent_idx + 4..],
+            &[&["it"], &["that", "spell"], &["this", "spell"]],
+        )
+    };
+    if spent_idx <= mana_idx + 2 || !valid_reference {
         return None;
     }
     let source_clause = clause.between_word_range(mana_idx + 2, spent_idx)?;
@@ -2731,7 +2789,11 @@ fn parse_mana_from_source_spent_to_cast_shape(tokens: &[OwnedLexToken]) -> Optio
         left: Value::ManaFromSourceSpentToCastThisSpell {
             source_filter,
             include_source_noun: false,
-            reference: if activation { ironsmith_core::ManaSpentCastReferenceSurface::ThisAbility } else { ironsmith_core::ManaSpentCastReferenceSurface::It },
+            reference: if activation {
+                ironsmith_core::ManaSpentCastReferenceSurface::ThisAbility
+            } else {
+                ironsmith_core::ManaSpentCastReferenceSurface::It
+            },
         },
         operator: ValueComparisonOperator::GreaterThanOrEqual,
         right: Value::Fixed(amount as i32),
@@ -3059,9 +3121,14 @@ pub(super) fn parse_tagged_exiled_predicate(tokens: &[OwnedLexToken]) -> Option<
     let subject = subject_clause.word_refs();
     if subject.contains(&"cards") {
         filter.set_plural_pronoun_reference_surface(true);
-        filter.union_surface = filter.union_surface.with_one_or_more(subject.first() == Some(&"any"));
+        filter.union_surface = filter
+            .union_surface
+            .with_one_or_more(subject.first() == Some(&"any"));
     }
-    Some(PredicateAst::TaggedMatches(crate::tag::CompilerReferenceTag::It.bind(), filter))
+    Some(PredicateAst::TaggedMatches(
+        crate::tag::CompilerReferenceTag::It.bind(),
+        filter,
+    ))
 }
 
 pub(super) fn parse_tagged_state_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -3096,7 +3163,9 @@ fn parse_triggering_object_first_tap_this_turn_predicate(
     {
         return None;
     }
-    Some(PredicateAst::Triggering(TriggeringPredicateAst::TriggeringObjectBecameTappedFirstTimeThisTurn))
+    Some(PredicateAst::Triggering(
+        TriggeringPredicateAst::TriggeringObjectBecameTappedFirstTimeThisTurn,
+    ))
 }
 
 fn parse_triggering_object_first_counters_this_turn_predicate(
@@ -3122,7 +3191,9 @@ fn parse_triggering_object_first_counters_this_turn_predicate(
     {
         return None;
     }
-    Some(PredicateAst::Triggering(TriggeringPredicateAst::TriggeringObjectHadCountersPutFirstTimeThisTurn))
+    Some(PredicateAst::Triggering(
+        TriggeringPredicateAst::TriggeringObjectHadCountersPutFirstTimeThisTurn,
+    ))
 }
 
 pub(super) fn parse_tagged_controlled_permanent_shape(
@@ -3139,12 +3210,14 @@ pub(super) fn parse_tagged_controlled_permanent_shape(
     filter.set_demonstrative_antecedent_surface(Some(
         ironsmith_core::DemonstrativeAntecedentSurface::Permanent,
     ));
-    Some(PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches {
-        player: PlayerAst::You,
-        tag: crate::tag::CompilerReferenceTag::It.bind(),
-        filter,
-        mode: ironsmith_core::TaggedObjectMatchMode::LastKnown,
-    }))
+    Some(PredicateAst::Player(
+        PlayerPredicateAst::PlayerTaggedObjectMatches {
+            player: PlayerAst::You,
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
+            filter,
+            mode: ironsmith_core::TaggedObjectMatchMode::LastKnown,
+        },
+    ))
 }
 
 pub(super) fn parse_tagged_entered_under_your_control_shape(
@@ -3166,10 +3239,12 @@ pub(super) fn parse_tagged_entered_under_your_control_shape(
     if !is_your_control_clause(controller_clause) {
         return None;
     }
-    Some(PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectEnteredBattlefieldThisTurn {
-        player: PlayerAst::You,
-        tag: crate::tag::CompilerReferenceTag::It.bind(),
-    }))
+    Some(PredicateAst::Player(
+        PlayerPredicateAst::PlayerTaggedObjectEnteredBattlefieldThisTurn {
+            player: PlayerAst::You,
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
+        },
+    ))
 }
 
 pub(super) fn parse_tagged_wasnt_blocking_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -3192,12 +3267,10 @@ pub(super) fn parse_tagged_wasnt_blocking_shape(tokens: &[OwnedLexToken]) -> Opt
         if !is_blocking_state_clause(state_clause) {
             continue;
         }
-        return Some(PredicateAst::ItMatchedLastKnown(
-            ObjectFilter {
-                nonblocking: true,
-                ..Default::default()
-            },
-        ));
+        return Some(PredicateAst::ItMatchedLastKnown(ObjectFilter {
+            nonblocking: true,
+            ..Default::default()
+        }));
     }
     None
 }
@@ -3357,7 +3430,9 @@ pub(super) fn parse_tagged_historical_identity_shape(
     if !object_filter_has_identity(&filter) {
         return None;
     }
-    filter.set_demonstrative_antecedent_surface(demonstrative_antecedent_surface(subject_clause.tokens()));
+    filter.set_demonstrative_antecedent_surface(demonstrative_antecedent_surface(
+        subject_clause.tokens(),
+    ));
     Some(PredicateAst::ItMatchedLastKnown(filter))
 }
 
@@ -3582,7 +3657,9 @@ pub(super) fn parse_player_controls_more_than_you_predicate(
         return None;
     }
 
-    Some(PredicateAst::Player(PlayerPredicateAst::PlayerControlsMoreThanYou { player, filter }))
+    Some(PredicateAst::Player(
+        PlayerPredicateAst::PlayerControlsMoreThanYou { player, filter },
+    ))
 }
 
 pub(super) fn parse_player_controls_fewer_than_you_predicate(
@@ -3659,7 +3736,9 @@ pub(super) fn parse_player_controls_more_than_each_other_player_predicate(
         return None;
     }
 
-    Some(PredicateAst::Player(PlayerPredicateAst::PlayerControlsMoreThanEachOtherPlayer { player, filter }))
+    Some(PredicateAst::Player(
+        PlayerPredicateAst::PlayerControlsMoreThanEachOtherPlayer { player, filter },
+    ))
 }
 
 pub(super) fn parse_opponent_controls_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -3778,10 +3857,12 @@ pub(super) fn parse_graveyard_escape_keyword_predicate(
     filter.zone = Some(Zone::Graveyard);
     filter.owner = Some(PlayerFilter::You);
     filter.alternative_cast = Some(crate::filter::AlternativeCastKind::Escape);
-    Ok(Some(PredicateAst::Player(PlayerPredicateAst::PlayerControls {
-        player: PlayerAst::You,
-        filter,
-    })))
+    Ok(Some(PredicateAst::Player(
+        PlayerPredicateAst::PlayerControls {
+            player: PlayerAst::You,
+            filter,
+        },
+    )))
 }
 
 pub(super) fn parse_player_object_keyword_predicate(
@@ -3845,10 +3926,12 @@ pub(super) fn parse_player_object_keyword_predicate(
     };
 
     apply_filter_keyword_constraint(&mut filter, constraint, false);
-    Ok(Some(PredicateAst::Player(PlayerPredicateAst::PlayerControls {
-        player: PlayerAst::You,
-        filter,
-    })))
+    Ok(Some(PredicateAst::Player(
+        PlayerPredicateAst::PlayerControls {
+            player: PlayerAst::You,
+            filter,
+        },
+    )))
 }
 
 pub(super) fn parse_keyword_subject_object_in_zone_filter(
@@ -4271,10 +4354,12 @@ fn parse_you_controlled_as_cast_predicate(
         return Ok(None);
     }
     filter.set_as_you_cast_this_turn_surface(true);
-    Ok(Some(PredicateAst::Player(PlayerPredicateAst::PlayerControls {
-        player: PlayerAst::You,
-        filter,
-    })))
+    Ok(Some(PredicateAst::Player(
+        PlayerPredicateAst::PlayerControls {
+            player: PlayerAst::You,
+            filter,
+        },
+    )))
 }
 
 pub(super) fn single_subtype_descriptor_clause<'a>(
@@ -4571,7 +4656,9 @@ pub(super) fn parse_card_types_in_graveyard_predicate(
         return None;
     }
 
-    Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasCardTypesInGraveyardOrMore { player, count }))
+    Some(PredicateAst::Player(
+        PlayerPredicateAst::PlayerHasCardTypesInGraveyardOrMore { player, count },
+    ))
 }
 
 pub(super) fn card_types_graveyard_lead_player_clause(

@@ -192,24 +192,53 @@ pub fn parse_spell_or_activated_ability_x_cost_trigger_tokens<'a>(
 ) -> Option<SpellOrActivatedAbilityXCostTrigger<'a>> {
     let (head, tail) = primitives::split_lexed_once_on_comma(full_tokens)?;
     let head_words = parser_token_word_refs(head);
-    if !phrase_is_exact(&head_words, &[
-        "whenever", "you", "cast", "an", "instant", "or", "sorcery", "spell", "or", "activate", "an", "ability",
-    ]) {
+    if !phrase_is_exact(
+        &head_words,
+        &[
+            "whenever", "you", "cast", "an", "instant", "or", "sorcery", "spell", "or", "activate",
+            "an", "ability",
+        ],
+    ) {
         return None;
     }
     let (condition, effect_tokens) = primitives::split_lexed_once_on_comma(tail)?;
     let (pip, condition_head) = condition.split_last()?;
-    let pip = primitives::probe_all(std::slice::from_ref(pip),
-        super::super::leaf::parse_leaf_surface_mana_pip_lexed, "X-cost trigger")?;
+    let pip = primitives::probe_all(
+        std::slice::from_ref(pip),
+        super::super::leaf::parse_leaf_surface_mana_pip_lexed,
+        "X-cost trigger",
+    )?;
     let is_x = match pip {
-        super::super::leaf::LeafManaPipToken::ManaGroup(symbols) => symbols.as_slice() == [crate::mana::ManaSymbol::X],
-        super::super::leaf::LeafManaPipToken::LegacyBare(symbol) => symbol == crate::mana::ManaSymbol::X,
+        super::super::leaf::LeafManaPipToken::ManaGroup(symbols) => {
+            symbols.as_slice() == [crate::mana::ManaSymbol::X]
+        }
+        super::super::leaf::LeafManaPipToken::LegacyBare(symbol) => {
+            symbol == crate::mana::ManaSymbol::X
+        }
     };
     let words = parser_token_word_refs(condition_head);
     let mut words = words.as_slice();
-    if !is_x || super::parse_apostrophe_insensitive_phrase(&mut words, &[
-        "if", "that", "spells", "mana", "cost", "or", "that", "abilitys", "activation", "cost", "contains",
-    ]).is_err() || !words.is_empty() || effect_tokens.is_empty() {
+    if !is_x
+        || super::parse_apostrophe_insensitive_phrase(
+            &mut words,
+            &[
+                "if",
+                "that",
+                "spells",
+                "mana",
+                "cost",
+                "or",
+                "that",
+                "abilitys",
+                "activation",
+                "cost",
+                "contains",
+            ],
+        )
+        .is_err()
+        || !words.is_empty()
+        || effect_tokens.is_empty()
+    {
         return None;
     }
     Some(SpellOrActivatedAbilityXCostTrigger { effect_tokens })
@@ -274,16 +303,28 @@ mod tests {
 
     #[test]
     fn x_cost_trigger_requires_the_shared_x_condition_and_preserves_the_body() {
-        for (cost, expected) in [("X", true), ("{X}", true), ("{R}", false), ("{T}", false), ("{1}", false)] {
+        for (cost, expected) in [
+            ("X", true),
+            ("{X}", true),
+            ("{R}", false),
+            ("{T}", false),
+            ("{1}", false),
+        ] {
             let full = lex_line(&format!("Whenever you cast an instant or sorcery spell or activate an ability, if that spell's mana cost or that ability's activation cost contains {cost}, draw a card."), 0).unwrap();
             let parsed = parse_spell_or_activated_ability_x_cost_trigger_tokens(&full, &[], &[]);
             assert_eq!(parsed.is_some(), expected, "{cost}");
             if let Some(parsed) = parsed {
-                assert_eq!(parser_token_word_refs(parsed.effect_tokens), ["draw", "a", "card"]);
+                assert_eq!(
+                    parser_token_word_refs(parsed.effect_tokens),
+                    ["draw", "a", "card"]
+                );
             }
         }
         let unrestricted = lex_line("Whenever you cast an instant or sorcery spell or activate an ability, copy that spell or ability. You may choose new targets for the copy.", 0).unwrap();
-        assert!(parse_spell_or_activated_ability_x_cost_trigger_tokens(&unrestricted, &[], &[]).is_none());
+        assert!(
+            parse_spell_or_activated_ability_x_cost_trigger_tokens(&unrestricted, &[], &[])
+                .is_none()
+        );
     }
 
     #[test]

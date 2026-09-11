@@ -1784,10 +1784,15 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
             clauses.push(format!("{verb} base toughness {}", describe_value(value)));
         }
         crate::continuous::Modification::AddAbility(ability) => {
-            if matches!(ability.compiled_model().map(|model| &model.payload),
-                Some(ironsmith_core::StaticAbilityPayload::CharacteristicDefiningPt { .. })) {
+            if matches!(
+                ability.compiled_model().map(|model| &model.payload),
+                Some(ironsmith_core::StaticAbilityPayload::CharacteristicDefiningPt { .. })
+            ) {
                 let text = describe_static_ability_with_subject(ability, "this creature");
-                clauses.push(format!("{add_ability_verb} \"{}.\"", text.trim_end_matches('.')));
+                clauses.push(format!(
+                    "{add_ability_verb} \"{}.\"",
+                    text.trim_end_matches('.')
+                ));
             } else if let Some(inline) = ability.granted_inline_ability() {
                 clauses.push(format!(
                     "{add_ability_verb} {}",
@@ -2529,9 +2534,15 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
         _ => return None,
     };
     let removes_all_abilities = !effect.runtime_modifications.is_empty()
-        && effect.runtime_modifications.iter().all(|modification| matches!(modification,
-            crate::effects::continuous::RuntimeModification::RemoveAllAbilities));
-    if !card_types.contains(&CardType::Creature) || (!effect.runtime_modifications.is_empty() && !removes_all_abilities) {
+        && effect.runtime_modifications.iter().all(|modification| {
+            matches!(
+                modification,
+                crate::effects::continuous::RuntimeModification::RemoveAllAbilities
+            )
+        });
+    if !card_types.contains(&CardType::Creature)
+        || (!effect.runtime_modifications.is_empty() && !removes_all_abilities)
+    {
         return None;
     }
     let mut name_override = None;
@@ -2547,7 +2558,9 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
     for modification in &effect.additional_modifications {
         match modification {
             crate::continuous::Modification::SetName(name) => name_override = Some(name),
-            crate::continuous::Modification::AddSupertypes(types) => supertypes.extend(types.iter().copied()),
+            crate::continuous::Modification::AddSupertypes(types) => {
+                supertypes.extend(types.iter().copied())
+            }
             crate::continuous::Modification::SetPowerToughness {
                 power: candidate_power,
                 toughness: candidate_toughness,
@@ -2719,7 +2732,11 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
     preserves_land_types = preserves_land_types || target_text.eq_ignore_ascii_case("this land");
 
     let mut descriptor = Vec::new();
-    descriptor.extend(supertypes.iter().map(|supertype| supertype.to_string().to_lowercase()));
+    descriptor.extend(
+        supertypes
+            .iter()
+            .map(|supertype| supertype.to_string().to_lowercase()),
+    );
     if let Some(colors) = colors {
         descriptor.push(describe_token_color_words(colors, false));
     }
@@ -2765,7 +2782,8 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
         matches!(target_lower.as_str(), "it" | "this" | "this permanent")
             && effect.type_retention_surface.is_none()
             && !preserves_land_types;
-    let redundant_creature_noun = name_override.is_none() && !subtypes.is_empty()
+    let redundant_creature_noun = name_override.is_none()
+        && !subtypes.is_empty()
         && extra_card_types.is_empty()
         && (target_lower.contains("creature") || pronoun_creature_backref)
         && (pronoun_creature_backref
@@ -2935,7 +2953,11 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
         text.push_str(&format!(" named {}", capitalize_first(name)));
     }
     if removes_all_abilities {
-        text.push_str(if plural_target { " and lose all abilities" } else { " and loses all abilities" });
+        text.push_str(if plural_target {
+            " and lose all abilities"
+        } else {
+            " and loses all abilities"
+        });
     }
     if !ability_text.is_empty() {
         let ability_connector = if text.contains(" with base power and toughness ")
@@ -5417,8 +5439,12 @@ fn describe_prior_effect_result_surface(
         let phrase = match (surface.actor, surface.negated) {
             (crate::effect::PriorEffectResultActor::You, false) => "you draw a card",
             (crate::effect::PriorEffectResultActor::You, true) => "you don't draw a card",
-            (crate::effect::PriorEffectResultActor::ThatPlayer, false) => "that player draws a card",
-            (crate::effect::PriorEffectResultActor::ThatPlayer, true) => "that player doesn't draw a card",
+            (crate::effect::PriorEffectResultActor::ThatPlayer, false) => {
+                "that player draws a card"
+            }
+            (crate::effect::PriorEffectResultActor::ThatPlayer, true) => {
+                "that player doesn't draw a card"
+            }
             (crate::effect::PriorEffectResultActor::Passive, false) => "a card was drawn",
             (crate::effect::PriorEffectResultActor::Passive, true) => "no card was drawn",
             _ => "",
@@ -5438,7 +5464,8 @@ fn describe_prior_effect_result_surface(
             let mut filter = surface.filter.clone();
             filter.zone = None;
             filter.set_prior_effect_action_surface(None);
-            let object = pluralize_relative_object_phrase(strip_leading_article(&filter.description()));
+            let object =
+                pluralize_relative_object_phrase(strip_leading_article(&filter.description()));
             let action = if surface.put_into_exile_surface {
                 "put into exile".to_string()
             } else {
@@ -5572,16 +5599,29 @@ fn describe_prior_effect_result_surface(
         return format!("{actor} {action} {object} this way");
     }
 
-    if surface.put_into_exile_surface && surface.action == crate::effect::PriorEffectAction::Exiled {
-        let verb = if surface.quantifier == crate::effect::PriorEffectResultQuantifier::OneOrMore { "are" } else { "is" };
+    if surface.put_into_exile_surface && surface.action == crate::effect::PriorEffectAction::Exiled
+    {
+        let verb = if surface.quantifier == crate::effect::PriorEffectResultQuantifier::OneOrMore {
+            "are"
+        } else {
+            "is"
+        };
         return format!("{object} {verb} put into exile this way");
     }
     let copula = match (
         surface.action,
         surface.quantifier == crate::effect::PriorEffectResultQuantifier::OneOrMore,
     ) {
-        (crate::effect::PriorEffectAction::PutOntoBattlefield | crate::effect::PriorEffectAction::PutIntoGraveyard, false) => "is",
-        (crate::effect::PriorEffectAction::PutOntoBattlefield | crate::effect::PriorEffectAction::PutIntoGraveyard, true) => "are",
+        (
+            crate::effect::PriorEffectAction::PutOntoBattlefield
+            | crate::effect::PriorEffectAction::PutIntoGraveyard,
+            false,
+        ) => "is",
+        (
+            crate::effect::PriorEffectAction::PutOntoBattlefield
+            | crate::effect::PriorEffectAction::PutIntoGraveyard,
+            true,
+        ) => "are",
         (_, false) => "was",
         (_, true) => "were",
     };

@@ -2,8 +2,7 @@
 
 use super::*;
 
-#[derive(Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Clone, PartialEq, TagKeyWalk)]
 pub enum RandomActionAst {
     FlipCoin,
     /// Flip without a call when only the physical heads/tails face matters.

@@ -343,8 +343,12 @@ pub(super) fn component_pouch_mana_activation_requires_counter_pays_cost_and_add
         "Component Pouch mana ability should be illegal without a component counter"
     );
 
-    game.add_counters(pouch_id, crate::object::CounterType::Named("component".into()), 1)
-        .expect("component counter should be addable to Component Pouch");
+    game.add_counters(
+        pouch_id,
+        crate::object::CounterType::Named("component".into()),
+        1,
+    )
+    .expect("component counter should be addable to Component Pouch");
     let activate_action = crate::decision::compute_legal_actions(&game, alice)
         .into_iter()
         .find(|action| {
@@ -369,7 +373,10 @@ pub(super) fn component_pouch_mana_activation_requires_counter_pays_cost_and_add
     .expect("Component Pouch mana ability should pay costs and resolve");
 
     assert_eq!(
-        game.counter_count(pouch_id, crate::object::CounterType::Named("component".into())),
+        game.counter_count(
+            pouch_id,
+            crate::object::CounterType::Named("component".into())
+        ),
         0,
         "activation cost should remove the component counter"
     );
@@ -405,7 +412,10 @@ pub(super) fn component_pouch_d20_branches_put_one_or_two_component_counters_run
             crate::effects::execute_effect(&mut game, effect, &mut ctx)
                 .expect("Component Pouch d20 effect should resolve");
         }
-        game.counter_count(pouch_id, crate::object::CounterType::Named("component".into()))
+        game.counter_count(
+            pouch_id,
+            crate::object::CounterType::Named("component".into()),
+        )
     }
 
     assert_eq!(

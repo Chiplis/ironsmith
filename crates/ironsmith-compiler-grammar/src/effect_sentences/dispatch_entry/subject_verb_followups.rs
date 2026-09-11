@@ -1,7 +1,7 @@
-use crate::cards::builders::SourcePredicateAst;
-use crate::cards::builders::ForEachEffectAst;
 use super::*;
 use crate::ChoiceCount;
+use crate::cards::builders::ForEachEffectAst;
+use crate::cards::builders::SourcePredicateAst;
 use crate::cards::builders::SubjectVerbSubjectAst;
 use crate::grammar::effects::followup_shapes;
 use crate::grammar::structure::parse_trailing_if_predicate_lexed;
@@ -154,7 +154,11 @@ fn last_demonstrative_collection_filter(effects: &[EffectAst]) -> Option<ObjectF
             ..
         }) => Some(filter.clone()),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ScalePowerToughnessAll { filter, .. }),
+            action:
+                SubjectVerbActionAst::PermanentState(PermanentStateActionAst::ScalePowerToughnessAll {
+                    filter,
+                    ..
+                }),
             ..
         }) => Some(filter.clone()),
         EffectAst::ForEach(ForEachEffectAst::ForEachObject { filter, .. }) => Some(filter.clone()),
@@ -658,13 +662,15 @@ fn pre_rule_optional_source_exile_and_collect_evidence(
             crate::tag::CompilerReferenceTag::Triggering.bind(),
             crate::filter::TaggedOpbjectRelation::IsNotTaggedObject,
         );
-    let choose_evidence = EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
-        filter: evidence_filter,
-        count: ChoiceCount::any_number(),
-        player: PlayerAst::You,
-        tag: crate::tag::TagRef::of(evidence_tag.clone()),
-        constraint: crate::effect::ChoiceAggregateConstraint::total_mana_value_at_least(amount),
-    });
+    let choose_evidence = EffectAst::ObjectChoices(
+        ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
+            filter: evidence_filter,
+            count: ChoiceCount::any_number(),
+            player: PlayerAst::You,
+            tag: crate::tag::TagRef::of(evidence_tag.clone()),
+            constraint: crate::effect::ChoiceAggregateConstraint::total_mana_value_at_least(amount),
+        },
+    );
     let exile_source = EffectAst::TagAffected {
         effect: Box::new(EffectAst::subject_verb_exile(
             TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None),
@@ -725,16 +731,18 @@ fn pre_rule_return_source_exiled_cards_if_source_sacrificed(
         return Ok(None);
     }
 
-    state.effects.push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-        predicate: IfResultPredicate::Did,
-        effects: vec![EffectAst::subject_verb_return_all_to_battlefield(
-            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind())
-                .in_zone(Zone::Exile),
-            false,
-            false,
-            ReturnControllerAst::Owner,
-        )],
-    }));
+    state
+        .effects
+        .push(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+            predicate: IfResultPredicate::Did,
+            effects: vec![EffectAst::subject_verb_return_all_to_battlefield(
+                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind())
+                    .in_zone(Zone::Exile),
+                false,
+                false,
+                ReturnControllerAst::Owner,
+            )],
+        }));
     Ok(Some(PreParseFollowupResult::Handled {
         consumed_sentences: 1,
         route: Some(
@@ -794,11 +802,13 @@ fn pre_rule_skip_tapped_source_turn_replacement(
     Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
         tokens: sentence_tokens.to_vec(),
         wrap_if_result: None,
-        direct_effects: Some(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-            predicate: PredicateAst::Source(SourcePredicateAst::SourceIsTapped),
-            if_true,
-            if_false: Vec::new(),
-        })]),
+        direct_effects: Some(vec![EffectAst::Conditionals(
+            ConditionalEffectAst::Conditional {
+                predicate: PredicateAst::Source(SourcePredicateAst::SourceIsTapped),
+                if_true,
+                if_false: Vec::new(),
+            },
+        )]),
         consumed_sentences: if has_untap_followup { 2 } else { 1 },
     })))
 }
@@ -1085,7 +1095,10 @@ fn mark_deal_damage_unpreventable_in_effect(effect: &mut EffectAst) -> bool {
                 *unpreventable = true;
                 true
             }
-            SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { unpreventable, .. }) => {
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
+                unpreventable,
+                ..
+            }) => {
                 *unpreventable = true;
                 true
             }
@@ -1268,7 +1281,11 @@ fn pre_rule_permission_spell_discount(
 }
 
 const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
-    pre_followup_rule!("permission-spell-discount", &["spells"], pre_rule_permission_spell_discount),
+    pre_followup_rule!(
+        "permission-spell-discount",
+        &["spells"],
+        pre_rule_permission_spell_discount
+    ),
     pre_followup_rule!(
         "prepare-each-player-coin-face-followup",
         &["each"],

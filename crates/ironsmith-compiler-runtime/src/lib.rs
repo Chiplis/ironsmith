@@ -209,7 +209,9 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
             compiler::grant::GrantDuration::UntilEndOfTurn => {
                 Ok(ironsmith::grant::GrantDuration::UntilEndOfTurn)
             }
-            compiler::grant::GrantDuration::UntilYourNextTurn => Ok(ironsmith::grant::GrantDuration::UntilYourNextTurn),
+            compiler::grant::GrantDuration::UntilYourNextTurn => {
+                Ok(ironsmith::grant::GrantDuration::UntilYourNextTurn)
+            }
             compiler::grant::GrantDuration::UntilYourNextTurnEnd => {
                 Ok(ironsmith::grant::GrantDuration::UntilYourNextTurnEnd)
             }

@@ -1,8 +1,8 @@
 //! Readings shard 1 of 4, in rank order.
 
-use crate::cards::builders::SourcePredicateAst;
 use super::super::*;
 use super::{Predicate, Reading};
+use crate::cards::builders::SourcePredicateAst;
 use crate::recognition::RuleId;
 use crate::registry::HeadDiscriminator;
 
@@ -13,7 +13,9 @@ pub(super) fn read_saddled(input: &Predicate<'_>) -> Result<Option<PredicateAst>
     // subject is therefore the source object, just as in the complete
     // "this creature is saddled" spelling handled below.
     if surface::exact(LexedClause::new(predicate_tokens), &["saddled"]) {
-        return Ok(Some(PredicateAst::Source(SourcePredicateAst::SourceIsSaddled)));
+        return Ok(Some(PredicateAst::Source(
+            SourcePredicateAst::SourceIsSaddled,
+        )));
     }
     Ok(None)
 }
@@ -208,7 +210,9 @@ pub(super) fn read_source_suspected(
         .iter()
         .any(|expected| surface::exact_words(&simple_words, expected))
         {
-            return Ok(Some(PredicateAst::Source(SourcePredicateAst::SourceSuspected)));
+            return Ok(Some(PredicateAst::Source(
+                SourcePredicateAst::SourceSuspected,
+            )));
         }
     }
     Ok(None)

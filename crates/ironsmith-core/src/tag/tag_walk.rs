@@ -40,8 +40,26 @@ macro_rules! tag_key_leaves {
 }
 
 tag_key_leaves!(
-    (), bool, char, u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, f32, f64,
-    str, String, std::time::Duration
+    (),
+    bool,
+    char,
+    u8,
+    u16,
+    u32,
+    u64,
+    u128,
+    usize,
+    i8,
+    i16,
+    i32,
+    i64,
+    i128,
+    isize,
+    f32,
+    f64,
+    str,
+    String,
+    std::time::Duration
 );
 
 impl<T: TagKeyWalk> TagKeyWalk for Option<T> {

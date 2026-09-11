@@ -17,8 +17,8 @@ use crate::game_loop::{
     blocker_mana_ability_window_context, drain_pending_trigger_events,
     finish_attack_declaration_transaction, finish_blocker_declaration_transaction,
     generate_and_queue_step_triggers, get_declare_attackers_decision,
-    get_declare_blockers_decision, preview_optional_attack_cost_prompts,
-    preview_attack_cost_needs_mana_window, put_triggers_on_stack, queue_combat_damage_triggers,
+    get_declare_blockers_decision, preview_attack_cost_needs_mana_window,
+    preview_optional_attack_cost_prompts, put_triggers_on_stack, queue_combat_damage_triggers,
     try_execute_combat_damage_step, try_execute_combat_damage_step_with_first_step_snapshot,
 };
 use crate::game_state::{
@@ -373,7 +373,11 @@ impl DecisionMaker for QueuedBooleanDecisionMaker {
 
 impl QueuedAttackCostDecisionMaker {
     fn new(answers: Vec<AttackCostAnswer>) -> Self {
-        Self { answers, next: 0, pending_prompt: None }
+        Self {
+            answers,
+            next: 0,
+            pending_prompt: None,
+        }
     }
     fn next_answer(&mut self) -> Option<AttackCostAnswer> {
         let answer = self.answers.get(self.next).cloned();
@@ -383,23 +387,45 @@ impl QueuedAttackCostDecisionMaker {
 }
 
 impl DecisionMaker for QueuedAttackCostDecisionMaker {
-    fn awaiting_choice(&self) -> bool { self.pending_prompt.is_some() }
+    fn awaiting_choice(&self) -> bool {
+        self.pending_prompt.is_some()
+    }
     fn decide_boolean(&mut self, _game: &GameState, ctx: &BooleanContext) -> bool {
         match self.next_answer() {
             Some(AttackCostAnswer::Boolean(answer)) => answer,
-            _ => { self.pending_prompt.get_or_insert_with(|| DecisionContext::Boolean(ctx.clone())); false }
+            _ => {
+                self.pending_prompt
+                    .get_or_insert_with(|| DecisionContext::Boolean(ctx.clone()));
+                false
+            }
         }
     }
-    fn decide_objects(&mut self, _game: &GameState, ctx: &crate::decisions::context::SelectObjectsContext) -> Vec<ObjectId> {
+    fn decide_objects(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
         match self.next_answer() {
             Some(AttackCostAnswer::Objects(objects)) => objects,
-            _ => { self.pending_prompt.get_or_insert_with(|| DecisionContext::SelectObjects(ctx.clone())); Vec::new() }
+            _ => {
+                self.pending_prompt
+                    .get_or_insert_with(|| DecisionContext::SelectObjects(ctx.clone()));
+                Vec::new()
+            }
         }
     }
-    fn decide_options(&mut self, _game: &GameState, ctx: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> {
+    fn decide_options(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
         match self.next_answer() {
             Some(AttackCostAnswer::Options(options)) => options,
-            _ => { self.pending_prompt.get_or_insert_with(|| DecisionContext::SelectOptions(ctx.clone())); Vec::new() }
+            _ => {
+                self.pending_prompt
+                    .get_or_insert_with(|| DecisionContext::SelectOptions(ctx.clone()));
+                Vec::new()
+            }
         }
     }
 }
@@ -912,7 +938,12 @@ impl TurnRunner {
                         return Ok(TurnAction::Decision(prompt));
                     };
                     pending.answers.push(answer);
-                    if let Some(action) = self.finish_attack_payment_with_choices(pending.transaction, pending.answers, game, tq)? {
+                    if let Some(action) = self.finish_attack_payment_with_choices(
+                        pending.transaction,
+                        pending.answers,
+                        game,
+                        tq,
+                    )? {
                         return Ok(action);
                     }
                 } else if let Some(pending) = self.pending_attacker_mana_window.take() {
@@ -943,7 +974,12 @@ impl TurnRunner {
                         return Ok(TurnAction::Decision(DecisionContext::SelectOptions(ctx)));
                     }
 
-                    if let Some(action) = self.finish_attack_payment_with_choices(pending.transaction, pending.optional_cost_answers, game, tq)? {
+                    if let Some(action) = self.finish_attack_payment_with_choices(
+                        pending.transaction,
+                        pending.optional_cost_answers,
+                        game,
+                        tq,
+                    )? {
                         return Ok(action);
                     }
                 } else if let Some(pending) = self.pending_attacker_optional_costs.as_mut() {
@@ -990,11 +1026,21 @@ impl TurnRunner {
                             self.pending_attacker_mana_window = Some(mana_pending);
                             return Ok(TurnAction::Decision(DecisionContext::SelectOptions(ctx)));
                         }
-                        if let Some(action) = self.finish_attack_payment_with_choices(mana_pending.transaction, mana_pending.optional_cost_answers, game, tq)? {
+                        if let Some(action) = self.finish_attack_payment_with_choices(
+                            mana_pending.transaction,
+                            mana_pending.optional_cost_answers,
+                            game,
+                            tq,
+                        )? {
                             return Ok(action);
                         }
                     } else {
-                        if let Some(action) = self.finish_attack_payment_with_choices(pending.transaction, pending.answers, game, tq)? {
+                        if let Some(action) = self.finish_attack_payment_with_choices(
+                            pending.transaction,
+                            pending.answers,
+                            game,
+                            tq,
+                        )? {
                             return Ok(action);
                         }
                     }
@@ -1050,7 +1096,12 @@ impl TurnRunner {
                             self.pending_attacker_mana_window = Some(pending);
                             return Ok(TurnAction::Decision(DecisionContext::SelectOptions(ctx)));
                         }
-                        if let Some(action) = self.finish_attack_payment_with_choices(pending.transaction, Vec::new(), game, tq)? {
+                        if let Some(action) = self.finish_attack_payment_with_choices(
+                            pending.transaction,
+                            Vec::new(),
+                            game,
+                            tq,
+                        )? {
                             return Ok(action);
                         }
                     } else {
@@ -1558,7 +1609,7 @@ impl TurnRunner {
         self.pending_attacking_bands = Some(bands);
         self.pending_attacker_optional_costs = None;
         self.pending_attacker_mana_window = None;
-                self.pending_attacker_payment_choices = None;
+        self.pending_attacker_payment_choices = None;
         self.pending_option = None;
         self.pending_boolean = None;
         self.pending_draw_replacement = None;
@@ -1576,7 +1627,8 @@ impl TurnRunner {
     /// Provide a discard selection in response to a `Decision(SelectObjects(...))`.
     pub fn respond_discard(&mut self, cards: Vec<ObjectId>) {
         if let Some(pending) = self.pending_attacker_payment_choices.as_mut() {
-            pending.response = Some(AttackCostAnswer::Objects(cards)); return;
+            pending.response = Some(AttackCostAnswer::Objects(cards));
+            return;
         }
         self.pending_discard = Some(cards);
     }
@@ -1584,7 +1636,8 @@ impl TurnRunner {
     /// Provide a boolean response in response to a `Decision(Boolean(...))`.
     pub fn respond_boolean(&mut self, answer: bool) {
         if let Some(pending) = self.pending_attacker_payment_choices.as_mut() {
-            pending.response = Some(AttackCostAnswer::Boolean(answer)); return;
+            pending.response = Some(AttackCostAnswer::Boolean(answer));
+            return;
         }
         self.pending_boolean = Some(answer);
     }
@@ -1592,7 +1645,8 @@ impl TurnRunner {
     /// Provide a response to a runner-driven single-select options decision.
     pub fn respond_options(&mut self, option_indices: Vec<usize>) {
         if let Some(pending) = self.pending_attacker_payment_choices.as_mut() {
-            pending.response = Some(AttackCostAnswer::Options(option_indices)); return;
+            pending.response = Some(AttackCostAnswer::Options(option_indices));
+            return;
         }
         self.pending_option = option_indices.first().copied();
     }
@@ -1609,18 +1663,30 @@ impl TurnRunner {
 
     /// Replay answers against a private payment transaction. Publish only a
     /// completed payment or its rollback; prompts never spend real resources.
-    fn finish_attack_payment_with_choices(&mut self, transaction: AttackDeclarationTransaction,
-        answers: Vec<AttackCostAnswer>, game: &mut GameState, tq: &mut TriggerQueue,
+    fn finish_attack_payment_with_choices(
+        &mut self,
+        transaction: AttackDeclarationTransaction,
+        answers: Vec<AttackCostAnswer>,
+        game: &mut GameState,
+        tq: &mut TriggerQueue,
     ) -> Result<Option<TurnAction>, GameLoopError> {
         let mut payment_game = game.clone();
         let mut payment_combat = self.combat.clone();
         let mut payment_triggers = tq.clone();
         let mut dm = QueuedAttackCostDecisionMaker::new(answers.clone());
-        let result = finish_attack_declaration_transaction(transaction.clone(), &mut payment_game,
-            &mut payment_combat, &mut payment_triggers, &mut dm);
+        let result = finish_attack_declaration_transaction(
+            transaction.clone(),
+            &mut payment_game,
+            &mut payment_combat,
+            &mut payment_triggers,
+            &mut dm,
+        );
         if let Some(prompt) = dm.pending_prompt {
             self.pending_attacker_payment_choices = Some(PendingAttackerPaymentChoices {
-                transaction, answers, prompt: prompt.clone(), response: None,
+                transaction,
+                answers,
+                prompt: prompt.clone(),
+                response: None,
             });
             return Ok(Some(TurnAction::Decision(prompt)));
         }
@@ -2578,10 +2644,12 @@ mod tests {
                 EffectTarget::Specific(creature),
                 Modification::AddAbility(StaticAbility::must_attack()),
             )
-            .with_condition(crate::ConditionExpr::PlayerHasCardTypesInGraveyardOrMore {
-                player: crate::target::PlayerFilter::You,
-                count: 4,
-            }),
+            .with_condition(
+                crate::ConditionExpr::PlayerHasCardTypesInGraveyardOrMore {
+                    player: crate::target::PlayerFilter::You,
+                    count: 4,
+                },
+            ),
         );
         let before = game.work_counters();
         let mut runner = TurnRunner::from_state_for_sync(TurnState::DeclareAttackersDecision);
@@ -3555,91 +3623,95 @@ mod tests {
     #[test]
     fn attack_cost_mana_window_taps_attackers_then_allows_mana_abilities_before_payment() {
         for typed in [false, true] {
-        let mut game = setup_game();
-        let mut tq = TriggerQueue::new();
-        let mut runner = TurnRunner::new();
-        let alice = PlayerId::from_index(0);
-        let bob = PlayerId::from_index(1);
-        let attacker = create_battlefield_creature(&mut game, alice, "Taxed Attacker");
-        game.remove_summoning_sickness(attacker);
-        let mountain = create_mountain(&mut game, alice);
-        let second_mountain = create_mountain(&mut game, alice);
-        let tax = add_attack_tax(&mut game, bob, 1);
-        if typed {
-            let abilities = game.object_mut(tax).unwrap().abilities_mut();
-            abilities.clear();
-            abilities.push(Ability::static_ability(StaticAbility::attack_cost(
-                crate::target::ObjectFilter::creature(), true,
-                crate::cost::TotalCost::from_costs(vec![crate::costs::Cost::dynamic_mana(
-                    ironsmith_core::DynamicManaCost::generic_equal_to(crate::effect::Value::Count(
-                        crate::target::ObjectFilter::enchantment().you_control(),
-                    )),
-                )]), "Dynamic attack tax",
-            )));
-        }
-        game.refresh_continuous_state();
+            let mut game = setup_game();
+            let mut tq = TriggerQueue::new();
+            let mut runner = TurnRunner::new();
+            let alice = PlayerId::from_index(0);
+            let bob = PlayerId::from_index(1);
+            let attacker = create_battlefield_creature(&mut game, alice, "Taxed Attacker");
+            game.remove_summoning_sickness(attacker);
+            let mountain = create_mountain(&mut game, alice);
+            let second_mountain = create_mountain(&mut game, alice);
+            let tax = add_attack_tax(&mut game, bob, 1);
+            if typed {
+                let abilities = game.object_mut(tax).unwrap().abilities_mut();
+                abilities.clear();
+                abilities.push(Ability::static_ability(StaticAbility::attack_cost(
+                    crate::target::ObjectFilter::creature(),
+                    true,
+                    crate::cost::TotalCost::from_costs(vec![crate::costs::Cost::dynamic_mana(
+                        ironsmith_core::DynamicManaCost::generic_equal_to(
+                            crate::effect::Value::Count(
+                                crate::target::ObjectFilter::enchantment().you_control(),
+                            ),
+                        ),
+                    )]),
+                    "Dynamic attack tax",
+                )));
+            }
+            game.refresh_continuous_state();
 
-        game.turn.phase = Phase::Combat;
-        game.turn.step = Some(Step::DeclareAttackers);
-        game.turn.active_player = alice;
-        game.turn.priority_player = Some(alice);
-        runner.state = TurnState::DeclareAttackersApply;
-        runner.pending_attackers = Some(vec![AttackerDeclaration {
-            creature: attacker,
-            target: AttackTarget::Player(bob),
-        }]);
+            game.turn.phase = Phase::Combat;
+            game.turn.step = Some(Step::DeclareAttackers);
+            game.turn.active_player = alice;
+            game.turn.priority_player = Some(alice);
+            runner.state = TurnState::DeclareAttackersApply;
+            runner.pending_attackers = Some(vec![AttackerDeclaration {
+                creature: attacker,
+                target: AttackTarget::Player(bob),
+            }]);
 
-        let first_window = match runner.advance(&mut game, &mut tq).unwrap() {
-            TurnAction::Decision(DecisionContext::SelectOptions(ctx)) => ctx,
-            other => panic!("expected the attack-cost mana window, got {other:?}"),
-        };
-        assert!(
-            game.is_tapped(attacker),
-            "CR 508.1f precedes the mana window"
-        );
-        assert!(!game.is_tapped(mountain));
-        assert!(runner.combat.attackers.is_empty());
-        assert_eq!(
-            game.player(alice).expect("Alice exists").mana_pool.total(),
-            0
-        );
+            let first_window = match runner.advance(&mut game, &mut tq).unwrap() {
+                TurnAction::Decision(DecisionContext::SelectOptions(ctx)) => ctx,
+                other => panic!("expected the attack-cost mana window, got {other:?}"),
+            };
+            assert!(
+                game.is_tapped(attacker),
+                "CR 508.1f precedes the mana window"
+            );
+            assert!(!game.is_tapped(mountain));
+            assert!(runner.combat.attackers.is_empty());
+            assert_eq!(
+                game.player(alice).expect("Alice exists").mana_pool.total(),
+                0
+            );
 
-        let mana_choice = first_window
-            .options
-            .iter()
-            .find(|option| option.object_id == Some(mountain))
-            .map(|option| option.index)
-            .expect("the Mountain should be offered in the attack-cost mana window");
-        runner.respond_options(vec![mana_choice]);
-        let second_window = match runner.advance(&mut game, &mut tq).unwrap() {
-            TurnAction::Decision(DecisionContext::SelectOptions(ctx)) => ctx,
-            other => panic!("the repeatable mana window should remain open, got {other:?}"),
-        };
-        assert!(game.is_tapped(mountain));
-        assert_eq!(
-            game.player(alice).expect("Alice exists").mana_pool.total(),
-            1
-        );
-        assert!(runner.combat.attackers.is_empty());
+            let mana_choice = first_window
+                .options
+                .iter()
+                .find(|option| option.object_id == Some(mountain))
+                .map(|option| option.index)
+                .expect("the Mountain should be offered in the attack-cost mana window");
+            runner.respond_options(vec![mana_choice]);
+            let second_window = match runner.advance(&mut game, &mut tq).unwrap() {
+                TurnAction::Decision(DecisionContext::SelectOptions(ctx)) => ctx,
+                other => panic!("the repeatable mana window should remain open, got {other:?}"),
+            };
+            assert!(game.is_tapped(mountain));
+            assert_eq!(
+                game.player(alice).expect("Alice exists").mana_pool.total(),
+                1
+            );
+            assert!(runner.combat.attackers.is_empty());
 
-        let finish_choice = second_window
-            .options
-            .iter()
-            .find(|option| option.description.starts_with("Finish"))
-            .map(|option| option.index)
-            .expect("the mana window should have a finish option");
-        runner.respond_options(vec![finish_choice]);
-        assert!(matches!(
-            runner.advance(&mut game, &mut tq).unwrap(),
-            TurnAction::RunPriority
-        ));
-        assert_eq!(
-            game.player(alice).expect("Alice exists").mana_pool.total(),
-            0
-        );
-        assert_eq!(runner.combat.attackers.len(), 1);
-        assert_eq!(runner.combat.attackers[0].creature, attacker);
-        assert!(!game.is_tapped(second_mountain));
+            let finish_choice = second_window
+                .options
+                .iter()
+                .find(|option| option.description.starts_with("Finish"))
+                .map(|option| option.index)
+                .expect("the mana window should have a finish option");
+            runner.respond_options(vec![finish_choice]);
+            assert!(matches!(
+                runner.advance(&mut game, &mut tq).unwrap(),
+                TurnAction::RunPriority
+            ));
+            assert_eq!(
+                game.player(alice).expect("Alice exists").mana_pool.total(),
+                0
+            );
+            assert_eq!(runner.combat.attackers.len(), 1);
+            assert_eq!(runner.combat.attackers[0].creature, attacker);
+            assert!(!game.is_tapped(second_mountain));
         }
     }
 
@@ -3647,46 +3719,109 @@ mod tests {
     fn typed_attack_payment_prompts_preserve_order_choices_and_commit_once() {
         use crate::mana::{ManaCost, ManaSymbol};
         for invalid_second_choice in [false, true] {
-            let mut game = setup_game(); let mut runner = TurnRunner::new(); let mut tq = TriggerQueue::new();
-            let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+            let mut game = setup_game();
+            let mut runner = TurnRunner::new();
+            let mut tq = TriggerQueue::new();
+            let alice = PlayerId::from_index(0);
+            let bob = PlayerId::from_index(1);
             let first = create_battlefield_creature(&mut game, alice, "First attacker");
             let second = create_battlefield_creature(&mut game, alice, "Second attacker");
-            game.remove_summoning_sickness(first); game.remove_summoning_sickness(second);
-            let card = CardBuilder::new(CardId::new(), "Attack tax").card_types(vec![CardType::Enchantment]).build();
+            game.remove_summoning_sickness(first);
+            game.remove_summoning_sickness(second);
+            let card = CardBuilder::new(CardId::new(), "Attack tax")
+                .card_types(vec![CardType::Enchantment])
+                .build();
             let tax = game.create_object_from_card(&card, bob, Zone::Battlefield);
-            game.object_mut(tax).unwrap().abilities_mut().push(Ability::static_ability(StaticAbility::attack_cost(
-                crate::target::ObjectFilter::creature(), true,
-                crate::cost::TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::White, ManaSymbol::Life(2)]])), "Attack tax",
-            )));
-            game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::White, 1);
-            game.turn.phase = Phase::Combat; game.turn.step = Some(Step::DeclareAttackers);
-            game.turn.active_player = alice; game.turn.priority_player = Some(alice);
+            game.object_mut(tax)
+                .unwrap()
+                .abilities_mut()
+                .push(Ability::static_ability(StaticAbility::attack_cost(
+                    crate::target::ObjectFilter::creature(),
+                    true,
+                    crate::cost::TotalCost::mana(ManaCost::from_pips(vec![vec![
+                        ManaSymbol::White,
+                        ManaSymbol::Life(2),
+                    ]])),
+                    "Attack tax",
+                )));
+            game.player_mut(alice)
+                .unwrap()
+                .mana_pool
+                .add(ManaSymbol::White, 1);
+            game.turn.phase = Phase::Combat;
+            game.turn.step = Some(Step::DeclareAttackers);
+            game.turn.active_player = alice;
+            game.turn.priority_player = Some(alice);
             game.refresh_continuous_state();
             runner.state = TurnState::DeclareAttackersApply;
-            runner.respond_attackers(vec![first, second].into_iter().map(|creature| AttackerDeclaration { creature, target: AttackTarget::Player(bob) }).collect());
-            let TurnAction::Decision(DecisionContext::SelectOptions(order)) = runner.advance(&mut game, &mut tq).unwrap() else { panic!("payment order expected"); };
+            runner.respond_attackers(
+                vec![first, second]
+                    .into_iter()
+                    .map(|creature| AttackerDeclaration {
+                        creature,
+                        target: AttackTarget::Player(bob),
+                    })
+                    .collect(),
+            );
+            let TurnAction::Decision(DecisionContext::SelectOptions(order)) =
+                runner.advance(&mut game, &mut tq).unwrap()
+            else {
+                panic!("payment order expected");
+            };
             assert_eq!(order.min, 2);
             runner.respond_options(vec![1, 0]);
-            let TurnAction::Decision(DecisionContext::SelectOptions(first_payment)) = runner.advance(&mut game, &mut tq).unwrap() else { panic!("first mana/life choice expected"); };
-            let life = first_payment.options.iter().find(|option| option.description.contains("life")).unwrap().index;
-            assert!(matches!(runner.advance(&mut game, &mut tq).unwrap(), TurnAction::Decision(DecisionContext::SelectOptions(_))), "waiting does not submit an answer");
-            assert_eq!(game.player(alice).unwrap().life, 20); assert_eq!(game.player(alice).unwrap().mana_pool.total(), 1);
+            let TurnAction::Decision(DecisionContext::SelectOptions(first_payment)) =
+                runner.advance(&mut game, &mut tq).unwrap()
+            else {
+                panic!("first mana/life choice expected");
+            };
+            let life = first_payment
+                .options
+                .iter()
+                .find(|option| option.description.contains("life"))
+                .unwrap()
+                .index;
+            assert!(
+                matches!(
+                    runner.advance(&mut game, &mut tq).unwrap(),
+                    TurnAction::Decision(DecisionContext::SelectOptions(_))
+                ),
+                "waiting does not submit an answer"
+            );
+            assert_eq!(game.player(alice).unwrap().life, 20);
+            assert_eq!(game.player(alice).unwrap().mana_pool.total(), 1);
             runner.respond_options(vec![life]);
-            let TurnAction::Decision(DecisionContext::SelectOptions(second_payment)) = runner.advance(&mut game, &mut tq).unwrap() else { panic!("second mana/life choice expected"); };
-            assert_eq!(game.player(alice).unwrap().life, 20, "partial replay must not spend life");
+            let TurnAction::Decision(DecisionContext::SelectOptions(second_payment)) =
+                runner.advance(&mut game, &mut tq).unwrap()
+            else {
+                panic!("second mana/life choice expected");
+            };
+            assert_eq!(
+                game.player(alice).unwrap().life,
+                20,
+                "partial replay must not spend life"
+            );
             assert_eq!(game.player(alice).unwrap().mana_pool.total(), 1);
             assert!(runner.combat.attackers.is_empty());
-            let mana = second_payment.options.iter().find(|option| option.description.contains("{W}")).unwrap().index;
+            let mana = second_payment
+                .options
+                .iter()
+                .find(|option| option.description.contains("{W}"))
+                .unwrap()
+                .index;
             runner.respond_options(vec![if invalid_second_choice { 999 } else { mana }]);
             let result = runner.advance(&mut game, &mut tq);
             if invalid_second_choice {
-                assert!(result.is_err()); assert_eq!(game.player(alice).unwrap().life, 20);
+                assert!(result.is_err());
+                assert_eq!(game.player(alice).unwrap().life, 20);
                 assert_eq!(game.player(alice).unwrap().mana_pool.total(), 1);
-                assert!(!game.is_tapped(first)); assert!(!game.is_tapped(second));
+                assert!(!game.is_tapped(first));
+                assert!(!game.is_tapped(second));
                 assert!(runner.combat.attackers.is_empty());
             } else {
                 assert!(matches!(result.unwrap(), TurnAction::RunPriority));
-                assert_eq!(game.player(alice).unwrap().life, 18); assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0);
+                assert_eq!(game.player(alice).unwrap().life, 18);
+                assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0);
                 assert_eq!(runner.combat.attackers.len(), 2);
             }
         }

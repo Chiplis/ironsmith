@@ -17,18 +17,22 @@ impl EffectExecutor for RegisterEnterWithCountersReplacementEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let filters = if let Some(objects) = &self.objects {
-            let selected = match crate::effects::helpers::resolve_objects_from_spec(game, objects, ctx) {
-                Ok(objects) => objects,
-                // A referenced spell can leave the stack before this trigger
-                // resolves. That leaves no future entry to modify.
-                Err(ExecutionError::InvalidTarget) if !objects.is_target() => Vec::new(),
-                Err(error) => return Err(error),
-            };
-            selected.into_iter().map(|id| {
+            let selected =
+                match crate::effects::helpers::resolve_objects_from_spec(game, objects, ctx) {
+                    Ok(objects) => objects,
+                    // A referenced spell can leave the stack before this trigger
+                    // resolves. That leaves no future entry to modify.
+                    Err(ExecutionError::InvalidTarget) if !objects.is_target() => Vec::new(),
+                    Err(error) => return Err(error),
+                };
+            selected
+                .into_iter()
+                .map(|id| {
                     let mut filter = self.filter.clone();
                     filter.specific = Some(id);
                     filter
-                }).collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>()
         } else {
             vec![self.filter.clone()]
         };
@@ -46,7 +50,11 @@ impl EffectExecutor for RegisterEnterWithCountersReplacementEffect {
                     added_abilities: Vec::new(),
                 },
             );
-            ApplyReplacementEffect { effect: replacement, mode: self.mode }.execute(game, ctx)?;
+            ApplyReplacementEffect {
+                effect: replacement,
+                mode: self.mode,
+            }
+            .execute(game, ctx)?;
         }
         Ok(EffectOutcome::resolved())
     }
@@ -179,32 +187,65 @@ mod tests {
         for counter_timing in [0, 1, 2] {
             let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
             let alice = game.players[0].id;
-            let card = CardBuilder::new(CardId::new(), "Creature").card_types(vec![CardType::Creature]).build();
+            let card = CardBuilder::new(CardId::new(), "Creature")
+                .card_types(vec![CardType::Creature])
+                .build();
             let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
             let spell = game.create_object_from_card(&card, alice, Zone::Stack);
-            game.stack.push(crate::game_state::StackEntry::new(spell, alice));
+            game.stack
+                .push(crate::game_state::StackEntry::new(spell, alice));
             let unrelated = game.create_object_from_card(&card, alice, Zone::Hand);
-            let snapshot = crate::snapshot::ObjectSnapshot::from_object(game.object(spell).unwrap(), &game);
+            let snapshot =
+                crate::snapshot::ObjectSnapshot::from_object(game.object(spell).unwrap(), &game);
             let mut current = spell;
-            if counter_timing == 1 { current = game.move_object_by_effect(current, Zone::Graveyard).unwrap(); }
+            if counter_timing == 1 {
+                current = game
+                    .move_object_by_effect(current, Zone::Graveyard)
+                    .unwrap();
+            }
             let mut ctx = ExecutionContext::new_default(source, alice);
             ctx.tagged_objects.insert("spell".into(), vec![snapshot]);
             let effect = RegisterEnterWithCountersReplacementEffect::new(
-                ObjectFilter::permanent(), CounterType::PlusOnePlusOne, crate::Value::Fixed(1),
+                ObjectFilter::permanent(),
+                CounterType::PlusOnePlusOne,
+                crate::Value::Fixed(1),
                 ReplacementApplyMode::OneShot,
-            ).with_objects(crate::target::ChooseSpec::Object(ObjectFilter::exact_tagged("spell").in_zone(Zone::Stack)));
+            )
+            .with_objects(crate::target::ChooseSpec::Object(
+                ObjectFilter::exact_tagged("spell").in_zone(Zone::Stack),
+            ));
             effect.execute(&mut game, &mut ctx).unwrap();
             game.move_object_by_effect(source, Zone::Graveyard).unwrap();
             let mut dm = SelectFirstDecisionMaker;
-            let unrelated = game.move_object_with_etb_processing_with_dm(unrelated, Zone::Battlefield, &mut dm).unwrap().new_id;
-            assert_eq!(game.counter_count(unrelated, CounterType::PlusOnePlusOne), 0);
-            if counter_timing == 2 { current = game.move_object_by_effect(current, Zone::Graveyard).unwrap(); }
-            let entered = game.move_object_with_etb_processing_with_dm(current, Zone::Battlefield, &mut dm).unwrap().new_id;
-            assert_eq!(game.counter_count(entered, CounterType::PlusOnePlusOne), u32::from(counter_timing == 0));
-            let graveyard = game.move_object_by_effect(entered, Zone::Graveyard).unwrap();
-            let returned = game.move_object_with_etb_processing_with_dm(graveyard, Zone::Battlefield, &mut dm).unwrap().new_id;
+            let unrelated = game
+                .move_object_with_etb_processing_with_dm(unrelated, Zone::Battlefield, &mut dm)
+                .unwrap()
+                .new_id;
+            assert_eq!(
+                game.counter_count(unrelated, CounterType::PlusOnePlusOne),
+                0
+            );
+            if counter_timing == 2 {
+                current = game
+                    .move_object_by_effect(current, Zone::Graveyard)
+                    .unwrap();
+            }
+            let entered = game
+                .move_object_with_etb_processing_with_dm(current, Zone::Battlefield, &mut dm)
+                .unwrap()
+                .new_id;
+            assert_eq!(
+                game.counter_count(entered, CounterType::PlusOnePlusOne),
+                u32::from(counter_timing == 0)
+            );
+            let graveyard = game
+                .move_object_by_effect(entered, Zone::Graveyard)
+                .unwrap();
+            let returned = game
+                .move_object_with_etb_processing_with_dm(graveyard, Zone::Battlefield, &mut dm)
+                .unwrap()
+                .new_id;
             assert_eq!(game.counter_count(returned, CounterType::PlusOnePlusOne), 0);
         }
     }
-
 }

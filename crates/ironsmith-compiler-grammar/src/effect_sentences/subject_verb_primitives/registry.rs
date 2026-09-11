@@ -1,9 +1,9 @@
-use crate::cards::builders::ObjectChoiceEffectAst;
-use crate::cards::builders::DelayedEffectAst;
-use crate::cards::builders::TokenActionAst;
-use crate::cards::builders::LifeResourceActionAst;
-use crate::cards::builders::LibraryActionAst;
 use super::*;
+use crate::cards::builders::DelayedEffectAst;
+use crate::cards::builders::LibraryActionAst;
+use crate::cards::builders::LifeResourceActionAst;
+use crate::cards::builders::ObjectChoiceEffectAst;
+use crate::cards::builders::TokenActionAst;
 use crate::grammar::effects::subject_verb_registry_shapes as registry_shapes;
 use crate::grammar::effects::typed_clause_heads::classify_typed_clause_head;
 use crate::parse_trace;
@@ -754,11 +754,13 @@ pub fn parse_you_and_player_each_sacrifice_sentence(
     let tag = crate::util::helper_tag_for_tokens(clause.tokens(), "sacrificed");
     Ok(Some(vec![EffectAst::TagAffected {
         tag,
-        effect: Box::new(EffectAst::ForEach(crate::cards::builders::ForEachEffectAst::ForEachPlayersFiltered {
-            filter: players,
-            effects: vec![sacrifice],
-            sequential: false,
-        })),
+        effect: Box::new(EffectAst::ForEach(
+            crate::cards::builders::ForEachEffectAst::ForEachPlayersFiltered {
+                filter: players,
+                effects: vec![sacrifice],
+                sequential: false,
+            },
+        )),
     }]))
 }
 
@@ -1172,14 +1174,16 @@ pub fn parse_sentence_sacrifice_it_next_end_step(
             effects: vec![sacrifice],
         })]
     };
-    Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
-        player: if shape.your_end_step {
-            PlayerFilter::You
-        } else {
-            PlayerFilter::Any
+    Ok(Some(vec![EffectAst::Delayed(
+        DelayedEffectAst::DelayedUntilNextEndStep {
+            player: if shape.your_end_step {
+                PlayerFilter::You
+            } else {
+                PlayerFilter::Any
+            },
+            effects: delayed_effects,
         },
-        effects: delayed_effects,
-    })]))
+    )]))
 }
 
 pub fn parse_sentence_exile_it_next_end_step(
@@ -1239,14 +1243,16 @@ pub fn parse_sentence_exile_it_next_end_step(
             effects: vec![exile],
         })]
     };
-    Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
-        player: if shape.your_end_step {
-            PlayerFilter::You
-        } else {
-            PlayerFilter::Any
+    Ok(Some(vec![EffectAst::Delayed(
+        DelayedEffectAst::DelayedUntilNextEndStep {
+            player: if shape.your_end_step {
+                PlayerFilter::You
+            } else {
+                PlayerFilter::Any
+            },
+            effects: delayed_effects,
         },
-        effects: delayed_effects,
-    })]))
+    )]))
 }
 
 pub fn parse_sentence_if_tagged_cards_remain_exiled(
@@ -1351,10 +1357,17 @@ mod tests {
         let full_parse = crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
             .expect("the full dispatcher should retain the delayed condition");
         let full_debug = format!("{full_parse:#?}");
-        let [EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep { effects, .. })] = full_parse.as_slice() else {
+        let [EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep { effects, .. })] =
+            full_parse.as_slice()
+        else {
             panic!("the timing owner must remain outside its condition: {full_parse:#?}");
         };
-        assert!(matches!(effects.as_slice(), [EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { .. })]));
+        assert!(matches!(
+            effects.as_slice(),
+            [EffectAst::Conditionals(
+                ConditionalEffectAst::TrailingIf { .. }
+            )]
+        ));
         assert!(full_debug.contains("mana_value"), "{full_debug}");
     }
 }

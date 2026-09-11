@@ -1,11 +1,13 @@
+use super::*;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::ZoneMoveActionAst;
-use super::*;
 
 pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if let Some(shape) = crate::grammar::effects::parse_return_create_tail_shape(tokens) {
         let mut effects = vec![parse_return(shape.return_tokens)?];
-        effects.extend(crate::effect_sentences::parse_effect_chain(shape.create_tokens)?);
+        effects.extend(crate::effect_sentences::parse_effect_chain(
+            shape.create_tokens,
+        )?);
         return Ok(EffectAst::Sequence { effects });
     }
     if let Some(for_each_idx) = crate::slice_primitives::find_last_window_by(tokens, 2, |window| {
@@ -73,12 +75,18 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
         )?;
         fn mark_entry(effect: &mut EffectAst) {
             if let EffectAst::SubjectVerb(subject) = effect
-                && let SubjectVerbActionAst::Counters(crate::cards::builders::CounterActionAst::PutCounters { count, .. }) = &mut subject.action
+                && let SubjectVerbActionAst::Counters(
+                    crate::cards::builders::CounterActionAst::PutCounters { count, .. },
+                ) = &mut subject.action
             {
-                *count = count.clone().with_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter);
+                *count = count.clone().with_surface_hint(
+                    ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter,
+                );
             }
             crate::effect_ast_traversal::for_each_nested_effects_mut(effect, true, |effects| {
-                for effect in effects { mark_entry(effect); }
+                for effect in effects {
+                    mark_entry(effect);
+                }
             });
         }
         mark_entry(&mut counters);
@@ -444,9 +452,16 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
             back_reference,
             top_only,
         } => {
-            let choice = crate::grammar::choices::parse_possessive_object_choice_tokens(&target_tokens)
-                .filter(|choice| choice.actor == crate::grammar::choices::PossessiveObjectChoiceActor::Opponent);
-            let target_tokens = choice.as_ref().map(|choice| choice.object_tokens.clone()).unwrap_or(target_tokens);
+            let choice =
+                crate::grammar::choices::parse_possessive_object_choice_tokens(&target_tokens)
+                    .filter(|choice| {
+                        choice.actor
+                            == crate::grammar::choices::PossessiveObjectChoiceActor::Opponent
+                    });
+            let target_tokens = choice
+                .as_ref()
+                .map(|choice| choice.object_tokens.clone())
+                .unwrap_or(target_tokens);
             if !destination.excluded_subtypes.is_empty() {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported return exception on non-return-all clause (clause: '{clause_text}')"
@@ -498,7 +513,10 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                     TargetAst::WithCount(Box::new(target), crate::effect::ChoiceCount::dynamic_x());
             }
             if choice.is_some() && target_tokens.iter().any(|token| token.is_word("target")) {
-                choice_prefix.push(EffectAst::subject_verb_explicit_target_only_for_chooser(target, PlayerAst::Opponent));
+                choice_prefix.push(EffectAst::subject_verb_explicit_target_only_for_chooser(
+                    target,
+                    PlayerAst::Opponent,
+                ));
                 target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None);
             } else if choice.is_some() {
                 let (inner, count) = match target {
@@ -506,16 +524,20 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                     target => (target, crate::effect::ChoiceCount::exactly(1)),
                 };
                 let TargetAst::Object(filter, _, _) = inner else {
-                    return Err(CardTextError::ParseError("opponent choice requires an object filter".into()));
+                    return Err(CardTextError::ParseError(
+                        "opponent choice requires an object filter".into(),
+                    ));
                 };
                 let tag = crate::util::helper_tag_for_tokens(tokens, "returned_choice");
-                choice_prefix.push(EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseObjects {
-                    filter,
-                    count,
-                    count_value: count_value.clone(),
-                    player: PlayerAst::Opponent,
-                    tag: crate::tag::TagRef::of(tag.clone()),
-                }));
+                choice_prefix.push(EffectAst::ObjectChoices(
+                    crate::cards::builders::ObjectChoiceEffectAst::ChooseObjects {
+                        filter,
+                        count,
+                        count_value: count_value.clone(),
+                        player: PlayerAst::Opponent,
+                        tag: crate::tag::TagRef::of(tag.clone()),
+                    },
+                ));
                 target = TargetAst::Tagged(crate::tag::TagRef::of(tag), None);
             }
             set_return_destination_first_surface(&mut target, destination_first);
@@ -626,7 +648,10 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
     if destination.zone == crate::grammar::effects::ReturnZoneShape::Battlefield
         && destination.destination_player_surface == Some(PlayerAst::That)
         && let EffectAst::SubjectVerb(subject_verb) = &mut effect
-        && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { target, .. }) = &mut subject_verb.action
+        && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
+            target,
+            ..
+        }) = &mut subject_verb.action
         && let Some(filter) =
             crate::effect_sentences::zone_counter_helpers::target_object_filter_mut(target)
     {
@@ -640,6 +665,8 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
         Ok(effect)
     } else {
         choice_prefix.push(effect);
-        Ok(EffectAst::Sequence { effects: choice_prefix })
+        Ok(EffectAst::Sequence {
+            effects: choice_prefix,
+        })
     }
 }

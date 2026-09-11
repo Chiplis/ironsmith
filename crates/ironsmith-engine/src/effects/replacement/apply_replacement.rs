@@ -57,9 +57,13 @@ impl EffectExecutor for ApplyReplacementEffect {
                     .add_until_end_of_turn_effect(self.effect.clone());
             }
             ReplacementApplyMode::UntilYourNextTurn => {
-                game.effect_store.replacement_effects.add_until_next_turn_effect(
-                    self.effect.clone(), _ctx.controller, game.turn.turn_number,
-                );
+                game.effect_store
+                    .replacement_effects
+                    .add_until_next_turn_effect(
+                        self.effect.clone(),
+                        _ctx.controller,
+                        game.turn.turn_number,
+                    );
             }
             ReplacementApplyMode::Resolution => {
                 game.effect_store

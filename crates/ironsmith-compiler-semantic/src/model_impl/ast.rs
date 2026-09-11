@@ -46,8 +46,7 @@ pub use effects::*;
 mod nodes;
 pub use nodes::*;
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum StaticAbilityAst {
     Static(crate::model::CompilerStaticAbilityCore),
     KeywordAction(KeywordAction),
@@ -149,16 +148,14 @@ impl From<crate::model::CompilerStaticAbilityCore> for StaticAbilityAst {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum TriggerIntroSurfaceAst {
     When,
     Whenever,
     At,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum TriggerSpec {
     WithIntro {
         intro: TriggerIntroSurfaceAst,

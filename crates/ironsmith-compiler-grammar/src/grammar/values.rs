@@ -334,12 +334,12 @@ fn value_from_mana_value_segment_shape(shape: ValueManaValueSegmentShape) -> Val
         ValueManaValueSubjectShape::Tagged => {
             ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into())
         }
-        ValueManaValueSubjectShape::TaggedPossessivePronoun => ChooseSpec::Tagged(
-            (crate::tag::CompilerReferenceTag::It.bind()).into(),
-        )
-        .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(
-            crate::target::SourceReferenceSurface::ThisPermanentType("it".to_string()),
-        )),
+        ValueManaValueSubjectShape::TaggedPossessivePronoun => {
+            ChooseSpec::Tagged((crate::tag::CompilerReferenceTag::It.bind()).into())
+                .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(
+                    crate::target::SourceReferenceSurface::ThisPermanentType("it".to_string()),
+                ))
+        }
     };
     Value::ManaValueOf(Box::new(choose_spec))
 }

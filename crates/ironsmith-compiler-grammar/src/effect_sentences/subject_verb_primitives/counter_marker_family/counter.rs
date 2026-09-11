@@ -1,6 +1,6 @@
+use super::*;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::ZoneMoveActionAst;
-use super::*;
 
 pub fn parse_if_enters_with_additional_counter_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
@@ -23,10 +23,12 @@ pub fn parse_if_enters_with_additional_counter_sentence(
         if_false: Vec::new(),
     });
 
-    Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-        predicate: IfResultPredicate::Did,
-        effects: vec![apply_only_if_creature],
-    })]))
+    Ok(Some(vec![EffectAst::Conditionals(
+        ConditionalEffectAst::IfResult {
+            predicate: IfResultPredicate::Did,
+            effects: vec![apply_only_if_creature],
+        },
+    )]))
 }
 
 pub fn parse_tagged_enters_with_additional_counter_sentence(
@@ -110,8 +112,11 @@ pub(super) fn lower_put_with_additional_counter(
                     action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                         zone: Zone::Battlefield,
                         ..
-                    }) | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { .. })
-                        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield { .. }),
+                    }) | SubjectVerbActionAst::ZoneMoves(
+                        ZoneMoveActionAst::ReturnToBattlefield { .. }
+                    ) | SubjectVerbActionAst::ZoneMoves(
+                        ZoneMoveActionAst::ReturnAllToBattlefield { .. }
+                    ),
                     ..
                 })
             )
@@ -154,11 +159,13 @@ pub fn parse_if_sacrifice_then_put_onto_battlefield_with_additional_counters_sen
     if effects.is_empty() {
         return Ok(None);
     }
-    Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-        predicate: parse_predicate_lexed(shape.predicate_tokens)?,
-        if_true: effects,
-        if_false: Vec::new(),
-    })]))
+    Ok(Some(vec![EffectAst::Conditionals(
+        ConditionalEffectAst::Conditional {
+            predicate: parse_predicate_lexed(shape.predicate_tokens)?,
+            if_true: effects,
+            if_false: Vec::new(),
+        },
+    )]))
 }
 
 pub fn parse_each_player_return_with_additional_counter_sentence(
@@ -176,8 +183,11 @@ pub fn parse_each_player_return_with_additional_counter_sentence(
         matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { .. })
-                    | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield { .. }),
+                action: SubjectVerbActionAst::ZoneMoves(
+                    ZoneMoveActionAst::ReturnToBattlefield { .. }
+                ) | SubjectVerbActionAst::ZoneMoves(
+                    ZoneMoveActionAst::ReturnAllToBattlefield { .. }
+                ),
                 ..
             })
         )
@@ -193,7 +203,9 @@ pub fn parse_each_player_return_with_additional_counter_sentence(
         false,
     ));
 
-    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
-        effects: per_player_effects,
-    })]))
+    Ok(Some(vec![EffectAst::ForEach(
+        ForEachEffectAst::ForEachPlayer {
+            effects: per_player_effects,
+        },
+    )]))
 }

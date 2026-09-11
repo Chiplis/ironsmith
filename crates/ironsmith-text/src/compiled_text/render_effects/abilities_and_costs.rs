@@ -1046,8 +1046,10 @@ pub(crate) fn describe_ability(
         && matches!(&grant.ability.kind, ironsmith_core::AbilityKind::Static(granted)
             if granted.id == Some(crate::static_abilities::StaticAbilityId::DoesntUntap))
     {
-        return vec![format!("Static ability {index}: {}",
-            describe_static_ability_with_subject(static_ability, subject))];
+        return vec![format!(
+            "Static ability {index}: {}",
+            describe_static_ability_with_subject(static_ability, subject)
+        )];
     }
     if let AbilityKind::Static(static_ability) = &ability.kind
         && let Some(surface) = static_ability.authored_line_surface()
@@ -1214,7 +1216,8 @@ pub(crate) fn describe_ability(
             if let Some(rendered) = describe_oath_of_ghouls_triggered_ability(triggered) {
                 return vec![format!("Triggered ability {index}: {rendered}")];
             }
-            if let Some(rendered) = describe_copy_exile_with_counters_suspend_triggered_ability(triggered)
+            if let Some(rendered) =
+                describe_copy_exile_with_counters_suspend_triggered_ability(triggered)
             {
                 return vec![format!("Triggered ability {index}: {rendered}")];
             }
