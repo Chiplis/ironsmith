@@ -1834,6 +1834,9 @@
     if let Some(suspect) = effect.downcast_ref::<crate::effects::SuspectEffect>() {
         return format!("Suspect {}", describe_choose_spec(&suspect.target));
     }
+    if let Some(prepare) = effect.downcast_ref::<crate::effects::PrepareEffect>() {
+        return format!("{} becomes prepared", describe_choose_spec(&prepare.target));
+    }
     if let Some(clear) = effect.downcast_ref::<crate::effects::ClearGoadEffect>() {
         return match &clear.target {
             Some(ChooseSpec::All(filter)) => format!("Each {} is no longer goaded", strip_leading_article(&filter.description())),

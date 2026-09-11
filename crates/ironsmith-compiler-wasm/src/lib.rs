@@ -47,6 +47,7 @@ fn compile_artifact(input: CompileCardInput) -> Result<CompiledCardArtifact, Str
     compiled.definition.card.other_face_name = input.other_face_name.clone();
     compiled.definition.card.linked_face_layout = match input.linked_face_layout.as_deref() {
         Some("split") => LinkedFaceLayout::Split,
+        Some("prepare") => LinkedFaceLayout::Prepare,
         Some("transform") | Some("transform_like") | Some("transformLike") => {
             LinkedFaceLayout::TransformLike
         }

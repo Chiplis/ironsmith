@@ -397,6 +397,13 @@ struct BattlefieldFlags {
     monstrous: HashSet<ObjectId>,
     /// Permanents that are suspected.
     suspected: HashSet<ObjectId>,
+    /// Permanents that are prepared (CR: the Prepared designation).
+    ///
+    /// A prepared permanent's controller may cast a copy of the card's prepare
+    /// spell. The rules put that copy in exile for exactly as long as the
+    /// permanent is on the battlefield and prepared, so the designation alone
+    /// carries the permission and this set is cleared when either ends.
+    prepared: HashSet<ObjectId>,
     /// Mounts that are saddled until end of turn.
     saddled_until_end_of_turn: HashSet<ObjectId>,
     /// Creatures dealt nonzero damage by a source with deathtouch since last SBA check.
@@ -446,6 +453,13 @@ struct CastPermissionFlags {
     foretold_cards: HashSet<ObjectId>,
     /// Cards exiled after resolving as Adventure spells.
     adventure_exiled: HashSet<ObjectId>,
+    /// Prepare spell copies in exile, keyed by the prepared permanent that
+    /// created them. The copy exists for exactly as long as that permanent is
+    /// on the battlefield and prepared, and only its controller may cast it.
+    prepared_spell_copies: HashMap<ObjectId, ObjectId>,
+    /// Reverse index of `prepared_spell_copies`, so a cast can find the
+    /// permanent to unprepare from the copy alone.
+    prepared_spell_sources: HashMap<ObjectId, ObjectId>,
 }
 
 /// Per-object annotation state grouped behind copy-on-write storage.
@@ -6427,6 +6441,38 @@ impl GameState {
 
         self.cache_linked_face_definition(def);
         self.prime_linked_face_lookup(def.card.other_face_name.as_deref(), def.card.other_face);
+    }
+
+    /// Whether a permanent's card carries a prepare spell it could copy.
+    ///
+    /// The prepare spell is the card's other face; a permanent that is not a
+    /// prepare card (a token copy of one, say) can never become prepared.
+    pub fn has_prepare_spell(&self, id: crate::ids::ObjectId) -> bool {
+        let Some(object) = self.object(id) else {
+            return false;
+        };
+        object.linked_face_layout == crate::card::LinkedFaceLayout::Prepare
+            && self
+                .linked_face_definition_by_name_or_id(
+                    object.other_face_name.as_deref(),
+                    object.other_face,
+                )
+                .is_some()
+    }
+
+    /// The prepare spell face of a prepared permanent, if it has one.
+    pub fn prepare_spell_definition(
+        &self,
+        id: crate::ids::ObjectId,
+    ) -> Option<crate::cards::CardDefinition> {
+        let object = self.object(id)?;
+        if object.linked_face_layout != crate::card::LinkedFaceLayout::Prepare {
+            return None;
+        }
+        self.linked_face_definition_by_name_or_id(
+            object.other_face_name.as_deref(),
+            object.other_face,
+        )
     }
 
     pub fn linked_face_definition_by_name_or_id(

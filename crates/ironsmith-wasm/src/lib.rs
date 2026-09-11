@@ -4201,13 +4201,16 @@ enum CustomCardLayoutInput {
     Single,
     TransformLike,
     Split,
+    Prepare,
 }
 
 impl CustomCardLayoutInput {
     fn face_count(self) -> usize {
         match self {
             CustomCardLayoutInput::Single => 1,
-            CustomCardLayoutInput::TransformLike | CustomCardLayoutInput::Split => 2,
+            CustomCardLayoutInput::TransformLike
+            | CustomCardLayoutInput::Split
+            | CustomCardLayoutInput::Prepare => 2,
         }
     }
 
@@ -4218,6 +4221,7 @@ impl CustomCardLayoutInput {
                 ironsmith::card::LinkedFaceLayout::TransformLike
             }
             CustomCardLayoutInput::Split => ironsmith::card::LinkedFaceLayout::Split,
+            CustomCardLayoutInput::Prepare => ironsmith::card::LinkedFaceLayout::Prepare,
         }
     }
 }

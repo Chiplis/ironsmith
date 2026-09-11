@@ -345,6 +345,15 @@ fn finish_battlefield_entry(
         game.tap(new_id);
     }
 
+    // "This creature enters prepared." The permanent is on the battlefield by
+    // now, which is what the prepare spell copy's existence is tied to.
+    if game.current_has_static_ability_id(
+        new_id,
+        crate::static_abilities::StaticAbilityId::EntersPrepared,
+    ) {
+        game.set_prepared(new_id);
+    }
+
     let event = if enters_tapped {
         TriggerEvent::new_with_provenance(
             EnterBattlefieldEvent::tapped(new_id, old_zone),

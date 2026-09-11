@@ -11,11 +11,16 @@ function stripActionPrefix(label) {
   return label;
 }
 
+/**
+ * Announce the hovered option's card to the hand. A hand that is showing the
+ * card answers by claiming the hover, so the caller can tell whether the card
+ * already has a readable surface on screen. Returns true when it was claimed.
+ */
 function dispatchHandActionHover(objectId = null) {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(new CustomEvent("ironsmith:hand-action-hover", {
-    detail: { objectId: objectId != null ? String(objectId) : null },
-  }));
+  if (typeof window === "undefined") return false;
+  const detail = { objectId: objectId != null ? String(objectId) : null, claimed: false };
+  window.dispatchEvent(new CustomEvent("ironsmith:hand-action-hover", { detail }));
+  return detail.claimed === true;
 }
 
 export default function ActionPopover({
@@ -51,6 +56,15 @@ export default function ActionPopover({
       dispatchHandActionHover(null);
     };
   }, []);
+
+  // The lifted hand card and the frame preview are two answers to the same
+  // question, so only one of them runs: the preview is for options whose card
+  // no hand is showing.
+  const previewActionCard = useCallback((objectId) => {
+    const liftedInHand = dispatchHandActionHover(objectId);
+    if (objectId && !liftedInHand) hoverCard(objectId);
+    else clearHover();
+  }, [clearHover, hoverCard]);
 
   const handleClose = useCallback(() => {
     if (phase === "exiting") return;
@@ -239,10 +253,7 @@ export default function ActionPopover({
               }}
               onMouseEnter={() => {
                 setHoveredIdx(i);
-                if (previewCards) {
-                  if (objId) hoverCard(objId);
-                  dispatchHandActionHover(objId);
-                }
+                if (previewCards) previewActionCard(objId);
               }}
               onMouseLeave={() => {
                 setHoveredIdx(-1);
@@ -251,10 +262,7 @@ export default function ActionPopover({
               }}
               onFocus={() => {
                 setHoveredIdx(i);
-                if (previewCards) {
-                  if (objId) hoverCard(objId);
-                  dispatchHandActionHover(objId);
-                }
+                if (previewCards) previewActionCard(objId);
               }}
               onBlur={() => {
                 setHoveredIdx(-1);

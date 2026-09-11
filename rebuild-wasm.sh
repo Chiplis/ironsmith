@@ -40,6 +40,78 @@ require_cmd() {
   }
 }
 
+cargo_locked_version() {
+  python3 - "$ROOT_DIR/Cargo.lock" "$1" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+lock = Path(sys.argv[1]).read_text(encoding="utf-8")
+name = re.escape(sys.argv[2])
+match = re.search(
+    rf'^\[\[package\]\]\nname = "{name}"\nversion = "([^"]+)"',
+    lock,
+    re.MULTILINE,
+)
+print(match.group(1) if match else "")
+PY
+}
+
+# The artifact fingerprint resolves the workspace with `cargo metadata --offline`,
+# which a checkout whose cargo cache has never seen these registry and git
+# dependencies cannot answer. Fetch them once so a first run gets that far.
+ensure_cargo_dependencies_available() {
+  if cargo metadata --locked --offline --format-version 1 >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "[INFO] fetching pinned cargo dependencies for this checkout..."
+  cargo fetch --locked
+}
+
+ensure_wasm_target() {
+  if ! command -v rustup >/dev/null 2>&1; then
+    if ! rustc --print target-libdir --target wasm32-unknown-unknown >/dev/null 2>&1; then
+      cat >&2 <<EOF
+[ERROR] the wasm32-unknown-unknown Rust target is not installed and rustup is not on PATH.
+Install it with your Rust toolchain manager, for example:
+  rustup target add wasm32-unknown-unknown
+EOF
+      exit 1
+    fi
+    return 0
+  fi
+  if rustup target list --installed 2>/dev/null | grep -qx "wasm32-unknown-unknown"; then
+    return 0
+  fi
+  echo "[INFO] installing the wasm32-unknown-unknown Rust target..."
+  rustup target add wasm32-unknown-unknown
+}
+
+# wasm-bindgen refuses to bind a module built against a different version of its
+# crate, so the CLI is pinned to whatever Cargo.lock resolves for the workspace.
+ensure_wasm_bindgen_cli() {
+  local pinned
+  local installed
+  pinned="$(cargo_locked_version wasm-bindgen)"
+  if [[ -z "$pinned" ]]; then
+    echo "[ERROR] could not read the pinned wasm-bindgen version from Cargo.lock" >&2
+    exit 1
+  fi
+  if ! command -v wasm-bindgen >/dev/null 2>&1; then
+    echo "[INFO] installing wasm-bindgen-cli $pinned..."
+    cargo install wasm-bindgen-cli --version "$pinned" --locked
+  fi
+  installed="$(wasm-bindgen --version 2>/dev/null | awk '{print $2}')"
+  if [[ "$installed" != "$pinned" ]]; then
+    cat >&2 <<EOF
+[ERROR] wasm-bindgen CLI $installed cannot bind modules built with wasm-bindgen $pinned.
+Install the matching CLI, replacing the one on PATH:
+  cargo install wasm-bindgen-cli --version $pinned --locked
+EOF
+    exit 1
+  fi
+}
+
 feature_enabled() {
   local normalized
   normalized="$(printf '%s' "$FEATURES" | tr -d '[:space:]')"
@@ -58,6 +130,9 @@ Examples:
   ./rebuild-wasm.sh --features wasm,generated-registry --default-features
 
 Notes:
+  - A fresh checkout needs nothing but cargo, rustup, and python3: the wasm32-unknown-unknown
+    target, the pinned wasm-bindgen CLI, the cargo dependency cache, the Scryfall card list,
+    the registry DB, and the frontend card assets are all created on the first run.
   - Cargo builds WASM with the Binaryen-oriented wasm-release profile.
   - Native corpus tools use the optimized release profile.
   - wasm-opt is skipped by default for faster iteration; pass --release to enable it.
@@ -199,6 +274,58 @@ sys.exit(0)
 PY
 }
 
+report_frontend_card_coverage() {
+  python3 - "$DB_PATH" "$FRONTEND_CARDS_DIR" <<'PY'
+import json
+import sqlite3
+import sys
+from pathlib import Path
+
+db_path = Path(sys.argv[1])
+cards_dir = Path(sys.argv[2])
+index_path = cards_dir / "index.json"
+
+if not index_path.is_file():
+    sys.exit(f"[ERROR] no frontend card index was written: {index_path}")
+
+try:
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError) as error:
+    sys.exit(f"[ERROR] unreadable frontend card index {index_path}: {error}")
+
+cards = index.get("cards")
+if not isinstance(cards, list) or not cards:
+    sys.exit(f"[ERROR] frontend card index holds no cards: {index_path}")
+
+# "index" is the manifest's own route, so a card that slugs to it has no file.
+reserved_routes = {"index"}
+missing = [
+    route
+    for route in (str(card.get("route") or "").strip() for card in cards)
+    if route not in reserved_routes and not (cards_dir / f"{route}.json").is_file()
+]
+if missing:
+    shown = ", ".join(missing[:5])
+    sys.exit(
+        f"[ERROR] {len(missing)} card(s) in {index_path} have no compiled asset: {shown}"
+    )
+
+conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+try:
+    registered = conn.execute("SELECT COUNT(*) FROM registry_card").fetchone()[0]
+finally:
+    conn.close()
+
+scored = index.get("scoredCount")
+scored_note = f", {scored} scored" if isinstance(scored, int) else ""
+filtered = max(0, registered - len(cards))
+print(
+    f"[INFO] playable card assets: {len(cards)} of {registered} registered cards"
+    f" ({filtered} filtered as non-playable{scored_note})"
+)
+PY
+}
+
 scryfall_sync_enabled() {
   case "$SYNC_SCRYFALL_CARDS" in
     1|true|TRUE|yes|YES|on|ON)
@@ -267,6 +394,15 @@ sync_scryfall_cards_for_rebuild() {
   if ! scryfall_sync_enabled; then
     echo "[INFO] skipped Scryfall card sync by request"
     return 0
+  fi
+
+  if [[ ! -f "$DB_PATH" ]]; then
+    cat <<EOF
+[INFO] no registry DB yet: $DB_PATH
+[INFO] this first run downloads the Scryfall card list, registers every supported
+[INFO] card, and compiles a snapshot for each one. Expect it to take a while; later
+[INFO] runs only pick up cards the registry does not have yet.
+EOF
   fi
 
   download_status_file="$(mktemp "$ROOT_DIR/target/scryfall-download-status.XXXXXX")"
@@ -393,10 +529,12 @@ esac
 
 cd "$ROOT_DIR"
 require_cmd cargo
-require_cmd wasm-bindgen
 require_cmd python3
+ensure_wasm_target
+ensure_wasm_bindgen_cli
 
 mkdir -p "$ROOT_DIR/target"
+ensure_cargo_dependencies_available
 ARTIFACT_COMPILER_FINGERPRINT="$(python3 "$ROOT_DIR/scripts/artifact_compiler_fingerprint.py")"
 sync_scryfall_cards_for_rebuild
 
@@ -404,10 +542,9 @@ if [[ ! -f "$DB_PATH" ]]; then
   cat >&2 <<EOF
 [ERROR] registry DB not found: $DB_PATH
 
-Run the registry sync first, for example:
+A fresh checkout builds this DB in the Scryfall preflight, so drop --skip-scryfall-sync
+to let this script create it. To build it by hand instead:
   cargo run --release -p ironsmith-registry-sync --bin sync_registry_db -- --cards cards.json --db-path "$DB_PATH"
-
-Or let this script do the missing-card preflight by omitting --skip-scryfall-sync.
 EOF
   exit 1
 fi
@@ -494,6 +631,8 @@ PY
   echo "[INFO] synced frontend card compilation assets: $FRONTEND_CARDS_DIR"
 fi
 
+report_frontend_card_coverage
+
 if feature_enabled "generated-registry"; then
   export IRONSMITH_REGISTRY_DB_PATH="$DB_PATH"
   echo "[INFO] registry DB source: $IRONSMITH_REGISTRY_DB_PATH"
@@ -512,8 +651,19 @@ else
   echo "[INFO] wasm-opt: disabled (--no-opt)"
 fi
 
-# shellcheck source=scripts/lib/wasm-opt.sh
-source "$ROOT_DIR/scripts/lib/wasm-opt.sh"
+load_wasm_opt_library() {
+  local library="$ROOT_DIR/scripts/lib/wasm-opt.sh"
+  if [[ ! -f "$library" ]]; then
+    cat >&2 <<EOF
+[ERROR] missing optimizer helper: $library
+Drop --release to package the unoptimized WASM, or point IRONSMITH_WASM_OPT at a
+Binaryen wasm-opt and restore the helper from the repository.
+EOF
+    return 1
+  fi
+  # shellcheck source=scripts/lib/wasm-opt.sh
+  source "$library"
+}
 
 build_split_wasm_package() {
   local engine_features
@@ -573,6 +723,7 @@ build_split_wasm_package() {
   done
 
   if [[ "$OPTIMIZE_WASM" -eq 1 ]]; then
+    load_wasm_opt_library || return 1
     wasm_opt="$(resolve_wasm_opt)" || {
       echo "[ERROR] release packaging requires the pinned Binaryen $IRONSMITH_BINARYEN_VERSION wasm-opt (or IRONSMITH_WASM_OPT)" >&2
       return 1
@@ -608,6 +759,12 @@ build_split_wasm_package
 rm -rf -- "$DEMO_PKG_DIR"
 mkdir -p "$DEMO_PKG_DIR"
 cp -Rf "$PKG_DIR/." "$DEMO_PKG_DIR/"
+
+cat <<EOF
+[INFO] wasm package: $PKG_DIR (copied to $DEMO_PKG_DIR for the web app)
+[INFO] run the app with:
+[INFO]   cd web/ui && pnpm install && pnpm dev
+EOF
 
 }
 

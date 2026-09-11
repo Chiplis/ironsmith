@@ -2456,6 +2456,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("target", target)
                 .field("duration", duration)
                 .finish(),
+            Self::KeywordActions(KeywordActionAst::Prepare { target }) => {
+                f.debug_tuple("Prepare").field(target).finish()
+            }
             Self::KeywordActions(KeywordActionAst::Suspect { target }) => {
                 f.debug_tuple("Suspect").field(target).finish()
             }

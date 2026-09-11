@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { GameContext } from "../src/context/GameContext.shared";
 import { HoverProvider } from "../src/context/HoverContext";
-import { DragProvider } from "../src/context/DragContext";
+import { DragProvider, useDragActions } from "../src/context/DragContext";
 import { CombatArrowProvider } from "../src/context/CombatArrowContext";
 import { useCombatArrows } from "../src/context/useCombatArrows";
 import { I18nProvider } from "../src/i18n/I18nContext";
@@ -65,6 +65,7 @@ const state = {
 // kept: a driven mouse cannot rest anywhere without moving there first, so the
 // tip the arrow started with is only observable in the history.
 window.__dragArrowHistory = [];
+window.__cancelled = 0;
 
 export function ArrowProbe() {
   const { dragArrow } = useCombatArrows();
@@ -73,6 +74,32 @@ export function ArrowProbe() {
     if (dragArrow) window.__dragArrowHistory.push({ ...dragArrow });
   }, [dragArrow]);
   return null;
+}
+
+/**
+ * Mimics the one piece of the workspace this fixture needs: a hand gesture is
+ * ended by the document pointerup, which the browser then follows with a click
+ * on whatever the release landed over.
+ */
+export function CastGestureRig() {
+  const { startDrag, markCastIntent, endDrag } = useDragActions();
+  useEffect(() => {
+    const onPointerUp = () => { endDrag(); };
+    document.addEventListener("pointerup", onPointerUp);
+    return () => document.removeEventListener("pointerup", onPointerUp);
+  }, [endDrag]);
+  return (
+    <button
+      type="button"
+      data-start-cast-gesture
+      onClick={() => {
+        startDrag(10, "Unsummon", [{ index: 0, kind: "cast_spell" }], "instant", 200, 800);
+        markCastIntent({ x: 200, y: 800 });
+      }}
+    >
+      Start cast gesture
+    </button>
+  );
 }
 
 export function Fixture() {
@@ -87,7 +114,7 @@ export function Fixture() {
         game: null,
         holdRule: "never",
         setHoldRule: () => {},
-        cancelDecision: () => {},
+        cancelDecision: () => { window.__cancelled += 1; },
         dispatch: async (command) => { window.__dispatched = command; },
         dispatchInBackground: async () => {},
       }}>
@@ -96,6 +123,7 @@ export function Fixture() {
             <CombatArrowProvider>
               <TooltipProvider>
                 <ArrowProbe />
+                <CastGestureRig />
                 <main style={{ height: "96vh" }}>
                   <TableCore
                     zoneViews={[]}

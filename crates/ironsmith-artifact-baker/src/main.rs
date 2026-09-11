@@ -148,10 +148,10 @@ fn compile_source(source: &CardSourceFile) -> Result<Vec<CompiledCardArtifact>, 
                     face.name
                 ));
             }
-            let layout = if layout == "split" {
-                LinkedFaceLayout::Split
-            } else {
-                LinkedFaceLayout::TransformLike
+            let layout = match layout.as_str() {
+                "split" => LinkedFaceLayout::Split,
+                "prepare" => LinkedFaceLayout::Prepare,
+                _ => LinkedFaceLayout::TransformLike,
             };
             faces
                 .iter()

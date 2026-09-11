@@ -1782,6 +1782,10 @@ impl Effect {
         Self::new(crate::effects::GoadEffect::with_duration(target, duration))
     }
 
+    pub fn prepare(target: crate::target::ChooseSpec) -> Self {
+        Self::new(crate::effects::PrepareEffect::new(target))
+    }
+
     pub fn suspect(target: crate::target::ChooseSpec) -> Self {
         Self::new(crate::effects::SuspectEffect::new(target))
     }

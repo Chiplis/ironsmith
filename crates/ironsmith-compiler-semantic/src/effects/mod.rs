@@ -68,7 +68,7 @@ pub use ironsmith_core::{
     RemoveAnyCountersAmongEffect, RemoveAnyCountersFromSourceEffect, RemoveCountersEffect,
     RemoveFromCombatEffect, RemoveUpToAnyCountersEffect, RemoveUpToCountersEffect, RenownEffect,
     ReorderGraveyardEffect, ReorderLibraryTopEffect, ReorderTopPlanarDeckEffect,
-    RepeatProcessPromptEffect,
+    PrepareEffect, RepeatProcessPromptEffect,
     ReplaceNextDamageToTargetEffect as CoreReplaceNextDamageToTargetEffect, ReplacementApplyMode,
     RestartGameEffect, RetainManaUntilEndOfTurnEffect, RetargetMode, RetargetStackObjectEffect,
     ReturnAllToBattlefieldEffect, ReturnAsAuraOptions,

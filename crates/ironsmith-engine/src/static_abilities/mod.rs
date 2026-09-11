@@ -2675,6 +2675,10 @@ impl StaticAbility {
         Self::new(EntersTapped)
     }
 
+    pub fn enters_prepared_ability() -> Self {
+        Self::new(EntersPrepared)
+    }
+
     pub fn enters_tapped_unless_control_two_or_more_other_lands() -> Self {
         Self::new(EntersTappedUnlessControlTwoOrMoreOtherLands)
     }

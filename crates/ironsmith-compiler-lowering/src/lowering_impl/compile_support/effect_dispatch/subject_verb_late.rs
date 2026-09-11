@@ -107,6 +107,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
                 TurnStructureActionAst::SkipNextCombatPhaseThisTurn
             )
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipTurn)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { .. })
             | SubjectVerbActionAst::PermanentState(
                 PermanentStateActionAst::SwitchPowerToughness { .. }
@@ -2227,6 +2228,21 @@ pub(super) fn compile_subject_verb_late(
                 "goaded",
             );
             track_selected_object_player_provenance(&spec, ctx);
+            Ok((vec![effect], choices))
+        }
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { target }) => {
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let spec = if choices.is_empty() {
+                match spec {
+                    ChooseSpec::Object(filter) => ChooseSpec::All(filter),
+                    other => other,
+                }
+            } else {
+                spec
+            };
+            let effect =
+                tag_object_target_effect(Effect::prepare(spec.clone()), &spec, ctx, "prepared");
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { target }) => {

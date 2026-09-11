@@ -82,6 +82,7 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "NinjutsuEffect" => decode_as::<ironsmith_core::NinjutsuEffect>(payload).map(Some),
         "PhaseInEffect" => decode_as::<ironsmith_core::PhaseInEffect>(payload).map(Some),
         "PhaseOutEffect" => decode_as::<ironsmith_core::PhaseOutEffect>(payload).map(Some),
+        "PrepareEffect" => decode_as::<ironsmith_core::PrepareEffect>(payload).map(Some),
         "PutStickerEffect" => decode_as::<ironsmith_core::PutStickerEffect>(payload).map(Some),
         "ReconfigureEffect" => decode_as::<ironsmith_core::ReconfigureEffect>(payload).map(Some),
         "RegenerateEffect" => {

@@ -5579,6 +5579,14 @@ impl EffectAst {
         )
     }
 
+    pub fn subject_verb_prepare(target: TargetAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { target }),
+        )
+    }
+
     pub fn subject_verb_suspect(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,

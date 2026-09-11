@@ -722,7 +722,9 @@ fn add_exile_cast_actions(
             view,
             exile_has_active_grants,
         );
-        if game.is_adventure_exiled(card_id)
+        // A prepare spell copy waits in exile for exactly one caster: whoever
+        // controls the prepared permanent right now.
+        if (game.is_adventure_exiled(card_id) || game.is_prepared_spell_copy(card_id))
             && game.controller_of(card) == player
             && can_cast_spell_with_view(game, player, card, &CastingMethod::Normal, view)
         {

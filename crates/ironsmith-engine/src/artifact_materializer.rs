@@ -549,6 +549,7 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "SoulbondPairEffect" => decode_as::<T, ironsmith_core::SoulbondPairEffect>(effect),
         "SupportEffect" => decode_as::<T, ironsmith_core::SupportEffect>(effect),
         "SurveilEffect" => decode_as::<T, ironsmith_core::SurveilEffect>(effect),
+        "PrepareEffect" => decode_as::<T, ironsmith_core::PrepareEffect>(effect),
         "SuspectEffect" => decode_as::<T, ironsmith_core::SuspectEffect>(effect),
         "TagAttachedToSourceEffect" => {
             decode_as::<T, ironsmith_core::TagAttachedToSourceEffect>(effect)

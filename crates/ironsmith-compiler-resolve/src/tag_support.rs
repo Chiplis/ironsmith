@@ -261,6 +261,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Detain { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { target, .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { target })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
                 target,
@@ -1480,6 +1481,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DiscardHand)
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Detain { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearSuspected { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearGoad { .. })

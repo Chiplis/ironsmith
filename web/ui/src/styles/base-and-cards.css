@@ -3486,6 +3486,15 @@
   width: clamp(15px, 22%, 22px);
 }
 
+/* On a closed pile the count label already owns the top-right corner, so the
+   check for a chosen card inside sits opposite it. */
+.zone-pile-slot > .zone-pile-check {
+  top: 23px;
+  right: auto;
+  left: 3px;
+  width: clamp(14px, 30%, 20px);
+}
+
 .zone-pile-card-row.is-chosen {
   border-color: rgba(126, 226, 150, 0.9);
   box-shadow: 0 0 5px rgba(96, 206, 126, 0.6);

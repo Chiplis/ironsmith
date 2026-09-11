@@ -2,7 +2,8 @@ pub use super::activation_and_restrictions::{
     color_from_color_set, parse_all_creatures_able_to_block_source_line, parse_cant_clauses,
     parse_choose_basic_land_type_phrase_words, parse_choose_color_phrase_words,
     parse_choose_creature_type_phrase_words, parse_choose_player_phrase_words,
-    parse_cost_reduction_line, parse_devotion_value_from_add_clause, parse_enters_tapped_line,
+    parse_cost_reduction_line, parse_devotion_value_from_add_clause, parse_enters_prepared_line,
+    parse_enters_tapped_line,
     parse_source_must_be_blocked_if_able_line, scale_dynamic_cost_modifier_value,
 };
 pub use super::effect_sentences::{

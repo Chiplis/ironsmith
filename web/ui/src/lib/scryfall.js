@@ -298,12 +298,25 @@ function standardPrintingSearchUrl(cardName, printPreference = null) {
   return `https://api.scryfall.com/cards/search?${params.toString()}`;
 }
 
+// Faces that name the card. Scryfall's "prepare" layout hangs a copy of an
+// existing spell off the creature ("Cheerful Osteomancer // Raise Dead"), and
+// that face has neither its own art nor its own identity — the name belongs to
+// the real card — so only the creature side names a prepared card.
+function identityFaceNames(card) {
+  const faces = Array.isArray(card?.card_faces) ? card.card_faces : [];
+  return (card?.layout === "prepare" ? faces.slice(0, 1) : faces).map((face) => face?.name);
+}
+
+function scryfallCardIsWholeNameMatch(card, cardName) {
+  const queryKey = customArtKey(cardName);
+  return Boolean(queryKey) && customArtKey(card?.name) === queryKey;
+}
+
 function scryfallCardMatchesName(card, cardName) {
   const queryKey = customArtKey(cardName);
   if (!queryKey || !card || typeof card !== "object") return false;
   if (customArtKey(card.name) === queryKey) return true;
-  return Array.isArray(card.card_faces)
-    && card.card_faces.some((face) => customArtKey(face?.name) === queryKey);
+  return identityFaceNames(card).some((name) => customArtKey(name) === queryKey);
 }
 
 function imageUrlFromScryfallCard(card, version = "normal") {
@@ -514,19 +527,30 @@ async function fetchScryfallCardJson(cardName, printPreference = null) {
     // Search outside the requested set before accepting a special treatment.
     for (const scope of preference?.setCode ? [preference, null] : [null]) {
       let url = standardPrintingSearchUrl(query, scope);
+      // Scryfall's exact-name search also returns multi-face cards that merely
+      // carry the name on a face, and release order can float one of those
+      // above the card itself ("Raise Dead" finds SOS 76 first). A card whose
+      // own name is the query always wins; a face match is only a fallback.
+      let faceMatch = null;
       while (url) {
         const response = await fetchScryfallApiJson(url);
         if (response.status === 404) break;
         if (!response.ok) throw new Error(`Standard printing search failed: HTTP ${response.status}`);
         const payload = await response.json();
-        const card = (payload.data || []).find(candidate =>
+        const usable = (payload.data || []).filter(candidate =>
           scryfallCardMatchesName(candidate, query) && isStandardPrinting(candidate)
           && imageUrlFromScryfallCard(candidate));
+        const card = usable.find(candidate => scryfallCardIsWholeNameMatch(candidate, query));
         if (card) {
           cacheResolvedImageUrls(query, card, preference);
           return card;
         }
+        faceMatch ||= usable[0] || null;
         url = payload.has_more ? payload.next_page : null;
+      }
+      if (faceMatch) {
+        cacheResolvedImageUrls(query, faceMatch, preference);
+        return faceMatch;
       }
     }
 

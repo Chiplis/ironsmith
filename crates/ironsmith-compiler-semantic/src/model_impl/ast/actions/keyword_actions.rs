@@ -124,6 +124,10 @@ pub enum KeywordActionAst {
     Suspect {
         target: TargetAst,
     },
+    /// The Prepared keyword action: the subject becomes prepared.
+    Prepare {
+        target: TargetAst,
+    },
     ClearSuspected {
         target: Option<TargetAst>,
     },

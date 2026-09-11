@@ -203,6 +203,8 @@ pub struct ObjectSnapshot {
     pub was_enchanted: bool,
     /// Whether the permanent was monstrous.
     pub is_monstrous: bool,
+    /// Whether the permanent was prepared.
+    pub is_prepared: bool,
     /// Whether this object is a commander.
     pub is_commander: bool,
     /// The zone the object was in.
@@ -284,6 +286,7 @@ impl ObjectSnapshot {
             attachments: obj.attachments.clone(),
             was_enchanted,
             is_monstrous: game.is_monstrous(obj.id),
+            is_prepared: game.is_prepared(obj.id),
             is_commander: game.is_commander(obj.id),
             zone: obj.zone,
         }
@@ -633,6 +636,7 @@ impl ObjectSnapshot {
             attachments: vec![],
             was_enchanted: false,
             is_monstrous: false,
+            is_prepared: false,
             is_commander: false,
             zone: Zone::Battlefield,
         }

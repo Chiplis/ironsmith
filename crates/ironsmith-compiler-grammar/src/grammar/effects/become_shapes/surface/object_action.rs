@@ -365,6 +365,8 @@ pub fn parse_become_body_surface_shape(tokens: &[OwnedLexToken]) -> BecomeBodySu
         Some(BecomeExactKind::Colorless)
     } else if permission_shapes::exact_words(&words, &["saddled"]) {
         Some(BecomeExactKind::Saddled)
+    } else if permission_shapes::exact_words(&words, &["prepared"]) {
+        Some(BecomeExactKind::Prepared)
     } else {
         None
     };

@@ -170,10 +170,10 @@ pub use permanents::{
     ConspireCostEffect, ConvertEffect, CrewCostEffect, DetainEffect, EarthbendEffect, EvolveEffect,
     ExertCostEffect, FlipEffect, GrantObjectAbilityEffect, MeldEffect, MonstrosityEffect,
     NinjutsuCostEffect, NinjutsuEffect, PhaseInEffect, PhaseOutDuration, PhaseOutEffect,
-    PutStickerEffect, ReconfigureEffect, RegenerateEffect, RenownEffect, SaddleCostEffect,
-    SneakCostEffect, SolveCaseEffect, SoulbondPairEffect, SuspectEffect, TapEffect,
-    TransformEffect, TurnFaceUpEffect, UmbraArmorEffect, UnattachObjectsEffect, UnearthEffect,
-    UnlockRoomDoorEffect, UntapEffect,
+    PrepareEffect, PutStickerEffect, ReconfigureEffect, RegenerateEffect, RenownEffect,
+    SaddleCostEffect, SneakCostEffect, SolveCaseEffect, SoulbondPairEffect, SuspectEffect,
+    TapEffect, TransformEffect, TurnFaceUpEffect, UmbraArmorEffect, UnattachObjectsEffect,
+    UnearthEffect, UnlockRoomDoorEffect, UntapEffect,
 };
 pub use player::{
     AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, AscendEffect,

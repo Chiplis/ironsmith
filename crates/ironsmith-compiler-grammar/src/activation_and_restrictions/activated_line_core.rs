@@ -1022,6 +1022,13 @@ pub fn parse_cardinal_u32(word: &str) -> Option<u32> {
     parse_number(&[token]).map(|(value, _)| value)
 }
 
+pub fn parse_enters_prepared_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    Ok(activated_line_grammar::parse_enters_prepared_line_shape(tokens)
+        .then(StaticAbility::enters_prepared_ability))
+}
+
 pub fn parse_enters_tapped_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {

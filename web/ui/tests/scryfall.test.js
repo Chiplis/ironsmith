@@ -328,3 +328,34 @@ test("custom art is used only after standard alternatives have been exhausted", 
     } finally { globalThis.fetch = originalFetch; }
   }
 });
+
+test("a prepared card's spell face never hijacks the real card's printing", async () => {
+  installLocalStorageMock();
+  const originalFetch = globalThis.fetch;
+  const name = "Raise Dead";
+  // Scryfall's exact-name search matches face names too, and release order
+  // floats the newest "prepare" card above every printing of the real spell.
+  const prepared = {
+    name: "Cheerful Osteomancer // Raise Dead",
+    layout: "prepare",
+    oracle_id: "prepared-oracle",
+    image_uris: { normal: "prepared-scan" },
+    card_faces: [{ name: "Cheerful Osteomancer" }, { name: "Raise Dead" }],
+  };
+  const real = { name, oracle_id: "raise-dead-oracle", image_uris: { normal: "raise-dead-scan" } };
+  globalThis.fetch = async url => {
+    if (String(url).startsWith("http://localhost/")) return { ok: false, status: 404 };
+    const q = new URL(url).searchParams.get("q") || "";
+    if (q.includes("lang:es")) {
+      assert.match(q, /oracleid:raise-dead-oracle/);
+      return { ok: true, json: async () => ({ data: [{ image_uris: { normal: "raise-dead-es-scan" } }] }) };
+    }
+    return { ok: true, json: async () => ({ data: [prepared, real] }) };
+  };
+  try {
+    assert.equal(await resolveScryfallImageUrl(name), "raise-dead-scan");
+    assert.equal(await resolveScryfallLocalizedImageUrl(name, "es"), "raise-dead-es-scan");
+    // The prepared card still resolves under its own name.
+    assert.equal(await resolveScryfallImageUrl("Cheerful Osteomancer"), "prepared-scan");
+  } finally { globalThis.fetch = originalFetch; }
+});

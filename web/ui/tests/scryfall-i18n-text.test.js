@@ -64,3 +64,15 @@ test('empty printed names and type lines are filled from the newest sibling prin
   assert.equal(backfillPayloadFields({name: 'x', typeLine: 'y'}, fills.get('o1')).typeLine, 'y', 'present fields are kept');
   assert.equal(backfillPayloadFields({name: '', typeLine: ''}, undefined).name, '');
 });
+
+test('a prepared card is named by its creature side, not by the spell it copies', async () => {
+  const source = await readFile(new URL('../scripts/build-scryfall-i18n.mjs', import.meta.url), 'utf8');
+  const start = source.indexOf('export function identityFaceNames(');
+  let depth = 0, i = source.indexOf('{', start);
+  for (; i < source.length; i++) { if (source[i] === '{') depth++; else if (source[i] === '}' && --depth === 0) break; }
+  const {identityFaceNames} = await import(`data:text/javascript,${encodeURIComponent(source.slice(start, i + 1))}`);
+  const faces = [{name: 'Cheerful Osteomancer'}, {name: 'Raise Dead'}];
+  assert.deepEqual(identityFaceNames({layout: 'prepare', card_faces: faces}), ['Cheerful Osteomancer']);
+  assert.deepEqual(identityFaceNames({layout: 'transform', card_faces: faces}), ['Cheerful Osteomancer', 'Raise Dead']);
+  assert.deepEqual(identityFaceNames({layout: 'normal', name: 'Raise Dead'}), []);
+});

@@ -3986,6 +3986,23 @@ impl SuspectEffect {
     }
 }
 
+/// The Prepared keyword action: the affected permanents become prepared.
+///
+/// Only a permanent whose card has a prepare spell (its second face) can become
+/// prepared, and one that already is stays as it was rather than preparing a
+/// second copy.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct PrepareEffect {
+    pub target: ChooseSpec,
+}
+
+impl PrepareEffect {
+    pub fn new(target: ChooseSpec) -> Self {
+        Self { target }
+    }
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ClearSuspectedEffect {

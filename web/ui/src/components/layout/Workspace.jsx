@@ -1485,15 +1485,6 @@ export default function Workspace({
       return () => cancelAnimationFrame(clearFrameId);
     }
     const frameId = requestAnimationFrame(() => {
-      if (pendingCastTargetDrop.cancelCast) {
-        setPendingCastTargetDrop(null);
-        if (!samePlayerId(decision.player, state?.perspective)) return;
-        // "Up to X targets" survives a release over nothing: the player still
-        // gets to submit the cast with no targets.
-        if (targetDecisionAllowsNoTargets(decision)) return;
-        cancelDecision();
-        return;
-      }
       // Payment and additional-cost decisions can sit between declaring the
       // cast and choosing targets. Keep the remembered release target through
       // those steps, but note that returning to priority means the cast was
@@ -1530,10 +1521,10 @@ export default function Workspace({
         currentCandidate,
       ]);
       setPendingCastTargetDrop(null);
-      if (!target) {
-        if (!targetDecisionAllowsNoTargets(decision)) cancelDecision();
-        return;
-      }
+      // The release looked like a target when it happened but is not one now
+      // that the engine has asked. Leave the decision open to be aimed again
+      // rather than throwing the cast away.
+      if (!target) return;
 
       window.dispatchEvent(new CustomEvent("ironsmith:target-choice", {
         detail: {
@@ -1544,7 +1535,7 @@ export default function Workspace({
       }));
     });
     return () => cancelAnimationFrame(frameId);
-  }, [cancelDecision, decision, pendingCastTargetDrop, state]);
+  }, [decision, pendingCastTargetDrop, state]);
 
   // Handle drag drop — if user drops on the battlefield area, dispatch the action
   useEffect(() => {
@@ -1559,18 +1550,21 @@ export default function Workspace({
           ? state.decision
           : ds.castIntent.targetDecision;
         const optionalTargets = targetDecisionAllowsNoTargets(targetDecision);
-        const cancelCast = !optionalTargets && (!candidate || (targetDecision?.kind === "targets"
+        const missedTarget = !optionalTargets && (!candidate || (targetDecision?.kind === "targets"
           && !legalTargetForDropCandidates(targetDecision, [candidate])
           && !zoneHasLegalTargets(state, targetDecision, candidate)));
         clearHover();
-        if (cancelCast && ds.actions.length > 1) {
-          // Provisional gestures have not started a cast in the engine yet.
+        // Letting go over dead space is not a decision to cancel. The cast
+        // stays where it is and its targeting arrow goes back to following the
+        // mouse, so the player can keep aiming; only a deliberate click on
+        // dead space cancels it. A provisional gesture — several ways to cast
+        // the card — has started nothing in the engine, so it just ends.
+        if (missedTarget) {
           setPendingCastTargetDrop(null);
           return;
         }
         const pendingTargetDrop = {
           candidate,
-          cancelCast,
           x: e.clientX,
           y: e.clientY,
           sourceObjectId: ds.objectId,

@@ -62,9 +62,18 @@ impl WasmGame {
         Ok(definitions)
     }
 
+    /// The names this source claims in the registry.
+    ///
+    /// A prepare card claims only its creature face: the spell face is a copy
+    /// of an existing card, so registering it by name would shadow the real
+    /// one (18 of the 46 prepare cards copy a card that exists on its own).
+    /// It stays reachable as the creature's linked face instead.
     fn external_source_definition_names(source: &ExternalCardSourceFile) -> Vec<&str> {
         match &source.group {
             ExternalCardSourceGroup::Single { name, .. } => vec![name.as_str()],
+            ExternalCardSourceGroup::Linked { layout, faces, .. } if layout == "prepare" => {
+                faces.iter().take(1).map(|face| face.name.as_str()).collect()
+            }
             ExternalCardSourceGroup::Linked { faces, .. } => {
                 faces.iter().map(|face| face.name.as_str()).collect()
             }
@@ -170,6 +179,7 @@ impl WasmGame {
         let back = &faces[1];
         let linked_layout = match layout {
             "split" => ironsmith::card::LinkedFaceLayout::Split,
+            "prepare" => ironsmith::card::LinkedFaceLayout::Prepare,
             _ => ironsmith::card::LinkedFaceLayout::TransformLike,
         };
         let front_id = CardId::new();
@@ -328,13 +338,24 @@ impl WasmGame {
             } => self.compile_external_linked_group(layout, faces, *has_fuse)?,
         };
 
+        let claimed_names = Self::external_source_definition_names(&source)
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
         let mut loaded = 0usize;
         for definition in definitions {
             self.clear_external_error(definition.name());
-            if self.registry.get(definition.name()).is_none() {
-                loaded += 1;
+            // A face this source does not claim (a prepare spell) is only ever
+            // reached through its creature, never by name.
+            if claimed_names
+                .iter()
+                .any(|name| name.eq_ignore_ascii_case(definition.name()))
+            {
+                if self.registry.get(definition.name()).is_none() {
+                    loaded += 1;
+                }
+                self.registry.register(definition.clone());
             }
-            self.registry.register(definition.clone());
             self.game.register_linked_face_definition(&definition);
         }
 

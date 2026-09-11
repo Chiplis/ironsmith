@@ -64,7 +64,7 @@ pub use activated_line_core::{
     is_any_player_may_activate_sentence_lexed, is_trigger_only_restriction_sentence,
     parse_activated_line, parse_activation_cost, parse_all_creatures_able_to_block_source_line,
     parse_compiler_activation_cost, parse_cost_reduction_line,
-    parse_devotion_value_from_add_clause, parse_enters_tapped_line,
+    parse_devotion_value_from_add_clause, parse_enters_prepared_line, parse_enters_tapped_line,
     parse_mana_usage_restriction_sentence_lexed, parse_named_number,
     parse_source_must_be_blocked_if_able_line, parse_triggered_times_each_turn_lexed,
     scale_dynamic_cost_modifier_value,

@@ -67,3 +67,25 @@ test("browser facade preserves compiler failures for loading and diagnostics", a
     assert.ok(game.addCardToZone(0, source.canonicalName, "hand", true));
   } finally { game.free(); }
 });
+
+test("an unknown card name reports the name, not the engine's registry internals", async () => {
+  const modules = await Promise.all(["engine", "compiler", "verifier"].map(async name => [
+    name, await readFile(new URL(`../../wasm_demo/pkg/${name}_bg.wasm`, import.meta.url)),
+  ]));
+  await init(Object.fromEntries(modules));
+  const game = new WasmGame();
+  try {
+    game.resetEmpty(["Alice", "Bob"], 20);
+    // The lean engine embeds no generated registry, so every name it has no
+    // artifact for comes back through one sentinel. That sentinel is an
+    // implementation detail and must never reach the add-card notice.
+    const name = "Nonexistent Card Probe";
+    assert.throws(
+      () => game.addCardToZone(0, name, "hand", true),
+      (thrown) => String(thrown.message ?? thrown) === `unknown card name: ${name}`,
+    );
+    const diagnostics = game.cardLoadDiagnostics(name);
+    assert.equal(diagnostics.error, `unknown card name: ${name}`);
+    assert.equal(diagnostics.parseError, `unknown card name: ${name}`);
+  } finally { game.free(); }
+});

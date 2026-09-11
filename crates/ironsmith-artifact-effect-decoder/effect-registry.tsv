@@ -170,6 +170,7 @@ PhaseOutEffect	ironsmith_core::PhaseOutEffect
 PlaySubgameEffect	ironsmith_core::PlaySubgameEffect<wire::WireEffect>
 PoisonCountersEffect	ironsmith_core::PoisonCountersEffect
 PopulateEffect	ironsmith_core::PopulateEffect
+PrepareEffect	ironsmith_core::PrepareEffect
 PreventAllCombatDamageEffect	ironsmith_core::PreventAllCombatDamageEffect
 PreventAllDamageEffect	ironsmith_core::PreventAllDamageEffect
 PreventAllDamageToTargetEffect	ironsmith_core::PreventAllDamageToTargetEffect<wire::WireEffect>

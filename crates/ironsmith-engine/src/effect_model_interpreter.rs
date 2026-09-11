@@ -1740,6 +1740,11 @@ where
             payload.duration.clone(),
         )));
     }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::PrepareEffect>(&effect) {
+        return Ok(Effect::new(crate::effects::PrepareEffect::new(
+            payload.target.clone(),
+        )));
+    }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::SuspectEffect>(&effect) {
         return Ok(Effect::new(crate::effects::SuspectEffect::new(
             payload.target.clone(),

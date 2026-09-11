@@ -206,6 +206,7 @@ fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> Objec
             attachments: Vec::new(),
             was_enchanted: false,
             is_monstrous: false,
+            is_prepared: false,
             is_commander: false,
             zone: memory.zone,
         });

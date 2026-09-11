@@ -866,8 +866,11 @@ impl WasmGame {
         Err("source compilation is provided by ironsmith-compiler-wasm; register compiled artifacts with the lean engine".to_string())
     }
 
+    // A build without an embedded generated registry reports every unknown name
+    // with one sentinel; that is an implementation detail, not something to show
+    // a player who mistyped a card. Anything else is a real compile failure.
     fn card_lookup_error_for_query(query: &str, err: String) -> String {
-        if err == "generated registry not available" {
+        if err == ironsmith::cards::GENERATED_REGISTRY_UNAVAILABLE {
             format!("unknown card name: {query}")
         } else {
             err
@@ -1071,6 +1074,7 @@ impl WasmGame {
                     CustomCardLayoutInput::Single => "single-face",
                     CustomCardLayoutInput::TransformLike => "double-faced",
                     CustomCardLayoutInput::Split => "split",
+                    CustomCardLayoutInput::Prepare => "prepare",
                 },
                 expected_faces
             )));
@@ -1284,6 +1288,7 @@ impl WasmGame {
             ironsmith::card::LinkedFaceLayout::TransformLike => {
                 CustomCardLayoutInput::TransformLike
             }
+            ironsmith::card::LinkedFaceLayout::Prepare => CustomCardLayoutInput::Prepare,
             ironsmith::card::LinkedFaceLayout::None => CustomCardLayoutInput::Single,
         };
 
@@ -1448,6 +1453,11 @@ impl WasmGame {
             .or_else(|| self.semantic_score_for_name(query));
         let threshold_percent =
             (self.semantic_threshold > 0.0).then_some(self.semantic_threshold * 100.0);
+        let compile_error = || {
+            CardRegistry::try_compile_card(query)
+                .err()
+                .map(|err| Self::card_lookup_error_for_query(query, err))
+        };
         let parse_error = if query.is_empty() {
             Some("card name cannot be empty".to_string())
         } else if let Some(result) = source_compile_result.as_ref() {
@@ -1455,10 +1465,10 @@ impl WasmGame {
                 .clone()
                 .err()
                 .or_else(|| self.external_compile_error_for_name(query))
-                .or_else(|| CardRegistry::try_compile_card(query).err())
+                .or_else(compile_error)
         } else {
             self.external_compile_error_for_name(query)
-                .or_else(|| CardRegistry::try_compile_card(query).err())
+                .or_else(compile_error)
         };
         let error = explicit_error
             .map(str::trim)

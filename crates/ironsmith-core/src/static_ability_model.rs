@@ -3613,6 +3613,9 @@ impl<
     pub fn enters_tapped_ability() -> Self {
         Self::identified(StaticAbilityId::EntersTapped, "enters tapped")
     }
+    pub fn enters_prepared_ability() -> Self {
+        Self::identified(StaticAbilityId::EntersPrepared, "enters prepared")
+    }
     pub fn remove_all_abilities(filter: ObjectFilter) -> Self {
         Self {
             id: Some(StaticAbilityId::RemoveAllAbilitiesForFilter),

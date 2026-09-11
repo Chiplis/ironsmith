@@ -677,11 +677,11 @@ export default function HandZone({
     const handleHandActionHover = (event) => {
       const rawObjectId = event?.detail?.objectId ?? null;
       const normalizedObjectId = rawObjectId != null ? String(rawObjectId) : null;
-      setMenuHoveredHandObjectId(
-        normalizedObjectId && hoverableHandObjectIds.has(normalizedObjectId)
-          ? normalizedObjectId
-          : null
-      );
+      const lifted = Boolean(normalizedObjectId && hoverableHandObjectIds.has(normalizedObjectId));
+      setMenuHoveredHandObjectId(lifted ? normalizedObjectId : null);
+      // Claiming the hover tells the menu this card already has a readable
+      // surface here, so it can leave the frame preview closed.
+      if (lifted && event.detail) event.detail.claimed = true;
     };
     window.addEventListener(HAND_ACTION_HOVER_EVENT, handleHandActionHover);
     return () => {

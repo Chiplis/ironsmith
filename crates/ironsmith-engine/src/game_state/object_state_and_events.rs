@@ -363,6 +363,99 @@ impl GameState {
         removed
     }
 
+    /// Check if a permanent is prepared.
+    pub fn is_prepared(&self, id: ObjectId) -> bool {
+        self.battlefield_flags.prepared.contains(&id)
+    }
+
+    /// Return all currently prepared permanents.
+    pub(crate) fn prepared_ids(&self) -> impl Iterator<Item = ObjectId> + '_ {
+        self.battlefield_flags.prepared.iter().copied()
+    }
+
+    /// Mark a permanent as prepared, putting a copy of its prepare spell into
+    /// exile. Returns true if this changed game state.
+    ///
+    /// A permanent cannot become prepared twice: the second attempt is a no-op
+    /// rather than a second prepare spell copy.
+    pub fn set_prepared(&mut self, id: ObjectId) -> bool {
+        if !self.battlefield_flags_mut().prepared.insert(id) {
+            return false;
+        }
+        if let Some(definition) = self.prepare_spell_definition(id)
+            && let Some(controller) = self.object(id).map(|object| self.controller_of(object))
+        {
+            let copy_id = self.create_object_from_definition(&definition, controller, Zone::Exile);
+            self.cast_permission_flags_mut()
+                .prepared_spell_copies
+                .insert(id, copy_id);
+            self.cast_permission_flags_mut()
+                .prepared_spell_sources
+                .insert(copy_id, id);
+        }
+        self.mark_object_characteristics_dirty(id);
+        true
+    }
+
+    /// Clear the prepared designation from a permanent, and with it the prepare
+    /// spell copy waiting in exile.
+    ///
+    /// Used when the permanent leaves the battlefield or an effect unprepares
+    /// it. A copy that has already left exile is being cast, so it is left
+    /// alone; [`Self::unprepare_for_cast`] is that path.
+    pub fn clear_prepared(&mut self, id: ObjectId) -> bool {
+        if !self.battlefield_flags_mut().prepared.remove(&id) {
+            return false;
+        }
+        if let Some(copy_id) = self.unlink_prepared_spell_copy(id)
+            && self
+                .object(copy_id)
+                .is_some_and(|object| object.zone == Zone::Exile)
+        {
+            self.remove_object(copy_id);
+        }
+        self.mark_object_characteristics_dirty(id);
+        true
+    }
+
+    /// The prepared permanent a prepare spell copy belongs to, if any.
+    pub fn prepared_spell_source(&self, copy_id: ObjectId) -> Option<ObjectId> {
+        self.cast_permission_flags
+            .prepared_spell_sources
+            .get(&copy_id)
+            .copied()
+    }
+
+    /// Whether an exiled object is a prepare spell copy its controller may cast.
+    pub fn is_prepared_spell_copy(&self, copy_id: ObjectId) -> bool {
+        self.cast_permission_flags
+            .prepared_spell_sources
+            .contains_key(&copy_id)
+    }
+
+    /// Drop the designation as the prepare spell copy is cast (CR: the creature
+    /// stops being prepared as the copy is cast). The copy is already on its way
+    /// to the stack, so it is not removed here.
+    pub fn unprepare_for_cast(&mut self, copy_id: ObjectId) {
+        let Some(source) = self.prepared_spell_source(copy_id) else {
+            return;
+        };
+        self.battlefield_flags_mut().prepared.remove(&source);
+        self.unlink_prepared_spell_copy(source);
+        self.mark_object_characteristics_dirty(source);
+    }
+
+    fn unlink_prepared_spell_copy(&mut self, id: ObjectId) -> Option<ObjectId> {
+        let copy_id = self
+            .cast_permission_flags_mut()
+            .prepared_spell_copies
+            .remove(&id)?;
+        self.cast_permission_flags_mut()
+            .prepared_spell_sources
+            .remove(&copy_id);
+        Some(copy_id)
+    }
+
     /// Check if a Case permanent has become solved.
     pub fn is_case_solved(&self, id: ObjectId) -> bool {
         self.battlefield_flags.solved_cases.contains(&id)
@@ -1199,6 +1292,7 @@ impl GameState {
     /// Clear battlefield state for an object (when leaving battlefield).
     pub fn clear_battlefield_state(&mut self, id: ObjectId) {
         self.clear_soulbond_pair(id);
+        self.clear_prepared(id);
         {
             let flags = self.battlefield_flags_mut();
             flags.tapped_permanents.remove(&id);
@@ -1500,6 +1594,9 @@ impl GameState {
             flags.madness_exiled.remove(&id);
             flags.foretold_cards.remove(&id);
             flags.adventure_exiled.remove(&id);
+        }
+        if let Some(source) = self.prepared_spell_source(id) {
+            self.unlink_prepared_spell_copy(source);
         }
         {
             let tracking = self.exile_tracking_mut();

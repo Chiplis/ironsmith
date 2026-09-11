@@ -12,6 +12,9 @@ pub enum LinkedFaceLayout {
     None,
     TransformLike,
     Split,
+    /// Two faces where the back is a prepare spell: never cast from hand, only
+    /// as a copy while the front permanent is prepared.
+    Prepare,
 }
 
 /// Represents power or toughness values that may be variable.

@@ -708,7 +708,9 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         // lexical subject. Their typed grammars accept source references (and
         // the counter family also accepts a leading condition), so indexing
         // them only under the derived word `enters` makes them unreachable.
-        "parse_enters_tapped_line" | "parse_enters_tapped_with_choose_color_line" => vec![
+        "parse_enters_prepared_line"
+        | "parse_enters_tapped_line"
+        | "parse_enters_tapped_with_choose_color_line" => vec![
             StaticAbilityLineHeadHint::Single("this"),
             StaticAbilityLineHeadHint::Single("it"),
         ],
@@ -1501,6 +1503,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_enters_untapped_for_filter_line),
         single_static_ability_ast_rule!(parse_enters_tapped_for_filter_line),
         single_static_ability_ast_rule!(parse_x_at_most_enters_tapped_line),
+        single_static_ability_ast_rule!(parse_enters_prepared_line),
         single_static_ability_ast_rule!(parse_enters_tapped_line),
         multi_static_ability_ast_rule!(parse_additional_land_play_line),
         single_static_ability_ast_rule!(parse_you_may_look_top_card_any_time_line),

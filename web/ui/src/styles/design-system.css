@@ -207,6 +207,18 @@
 .zone-pile > img { width: 100%; height: 100%; object-fit: cover; }
 .zone-pile-placeholder { display: grid; place-items: center; height: 100%; color: var(--ui-text-muted); }
 .zone-pile-slot { position: relative; padding-top: 20px; }
+
+/* A zone holding a card the player may pick grows by half, so its art can be
+   read and hit without opening the strip. Scaling leaves the flex column's box
+   model alone, so the pile beside it does not move and the measured look and
+   stack anchors stay where they were. It returns to size as the strip opens:
+   the strip is placed against the pile's own box, and the cards inside are
+   meant to look like they came out of it. */
+.zone-pile-slot:has(> .zone-pile[data-has-targets="true"]:not([aria-expanded="true"])) {
+  z-index: 26;
+  transform: scale(1.5);
+  transform-origin: right bottom;
+}
 .zone-pile-slot:first-child { margin-top: -20px; }
 .zone-pile-label { position: absolute; top: 0; right: 0; height: 16px; color: var(--ui-text-secondary); white-space: nowrap; font-size: 10px; line-height: 16px; }
 
@@ -241,6 +253,8 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .zone-pile { transition: none; }
+  /* The slot's transitions are inline, so only an important rule stops them. */
+  .zone-pile-slot { transition: none !important; }
   .zone-pile-menu[data-slot="popover-content"] { animation: none; }
   .look-eye-effect, .look-eye-glow, .look-eye-lid, .look-eye-iris, .look-eye-pupil { animation: none; }
 }

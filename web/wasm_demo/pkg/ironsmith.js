@@ -65,7 +65,10 @@ function sourceArtifacts(source) {
       localId: index + 1,
       otherFaceId: otherIndex + 1,
       otherFaceName: other?.name,
-      linkedFaceLayout: group.layout === "split" ? "split" : "transform_like",
+      linkedFaceLayout:
+        group.layout === "split" || group.layout === "prepare"
+          ? group.layout
+          : "transform_like",
     });
   });
 }

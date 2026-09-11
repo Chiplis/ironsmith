@@ -65,7 +65,10 @@ function sourceArtifacts(source) {
       localId: index + 1,
       otherFaceId: otherIndex + 1,
       otherFaceName: other?.name,
-      linkedFaceLayout: group.layout === "split" ? "split" : "transform_like",
+      linkedFaceLayout:
+        group.layout === "split" || group.layout === "prepare"
+          ? group.layout
+          : "transform_like",
     });
   });
 }
@@ -81,6 +84,16 @@ export function compileAndRegisterCardSources(game, input) {
       ?? source?.canonicalName
       ?? "unknown card source";
     try {
+      // The browser engine already includes source compilation for custom cards.
+      // Reuse it when the standalone compiler has deliberately not been loaded.
+      // Baked artifacts retain the faster artifact-only path.
+      if (!compilerInitialization && !source?.artifacts?.length && source?.group
+          && typeof registerSourceInEngine === "function") {
+        const registered = registerSourceInEngine.call(game, source);
+        summary.loaded += Number(registered?.loaded ?? 0);
+        if (Array.isArray(registered?.failed)) summary.failed.push(...registered.failed);
+        continue;
+      }
       const registered = game.registerCompiledCardSourceArtifacts(
         source,
         sourceArtifacts(source),
@@ -88,11 +101,11 @@ export function compileAndRegisterCardSources(game, input) {
       summary.loaded += Number(registered?.loaded ?? 0);
       if (Array.isArray(registered?.failed)) summary.failed.push(...registered.failed);
     } catch (error) {
-      // A rebuilt engine can reject artifacts baked against an older schema.
-      // Recompile the original source with this engine; never rewrite or bypass
-      // the artifact checksum, or use a mismatched standalone compiler result.
-      if (Array.isArray(source?.artifacts) && source.artifacts.length > 0
-        && source?.group && typeof registerSourceInEngine === "function") {
+      // Recompile rejected sources through the engine's source entry point.
+      // Besides recovering stale artifacts, this records parse failures and
+      // source metadata for subsequent card loading and diagnostics. A failure
+      // in the standalone compiler has not reached the engine at all yet.
+      if (source?.group && typeof registerSourceInEngine === "function") {
         try {
           const registered = registerSourceInEngine.call(game, source);
           summary.loaded += Number(registered?.loaded ?? 0);
@@ -220,6 +233,16 @@ const verifierMethods = {
 };
 
 let initialized;
+let compilerInitialization;
+let verifierInitialization;
+export function initCompilerRuntime(input) {
+  compilerInitialization ||= initCompiler(wasmInitOptions(input)).catch(error => { compilerInitialization = null; throw error; });
+  return compilerInitialization;
+}
+export function initVerifierRuntime(input) {
+  verifierInitialization ||= initVerifier(wasmInitOptions(input)).catch(error => { verifierInitialization = null; throw error; });
+  return verifierInitialization;
+}
 
 function wasmInitOptions(input) {
   if (input === undefined) return undefined;
@@ -290,11 +313,11 @@ export default function init(input) {
       : { engine: input };
   initialized = Promise.all([
     initEngine(wasmInitOptions(splitInput.engine)),
-    initCompiler(wasmInitOptions(splitInput.compiler)),
-    initVerifier(wasmInitOptions(splitInput.verifier)),
+    splitInput.compiler === false ? null : initCompilerRuntime(splitInput.compiler),
+    splitInput.verifier === false ? null : initVerifierRuntime(splitInput.verifier),
   ]).then(([engine]) => {
     installCompatibilityMethods();
     return engine;
-  });
+  }).catch(error => { initialized = null; throw error; });
   return initialized;
 }

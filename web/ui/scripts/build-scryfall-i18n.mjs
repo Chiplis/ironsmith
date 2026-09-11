@@ -225,6 +225,16 @@ export function backfillPayloadFields(payload, fills) {
   return filled;
 }
 
+// Multi-face cards are looked up by face name in the UI, so every face name
+// earns a route alongside the full-name route. The "prepare" layout is the
+// exception: its second face is a copy of an existing spell ("Cheerful
+// Osteomancer // Raise Dead"), so that name belongs to the real card and the
+// creature side alone names the prepared card.
+export function identityFaceNames(card) {
+  const faces = Array.isArray(card?.card_faces) ? card.card_faces : [];
+  return (card?.layout === "prepare" ? faces.slice(0, 1) : faces).map((face) => face?.name);
+}
+
 // By-name routes: a card's own full name always wins its route. Face routes
 // of multi-face cards only fill routes no whole card owns, so a new
 // double-faced card whose back face is called "Lightning Bolt" cannot shadow
@@ -376,11 +386,7 @@ for await (const card of streamBulkCards(bulkFile)) {
   if (englishByOracle.has(card.oracle_id)) continue;
   const name = firstFaceValue(card, "name");
   const textNorm = normalizeText(firstFaceValue(card, "oracle_text"));
-  // Multi-face cards are looked up by face name in the UI; register every
-  // face's route alongside the full-name route.
-  const faceRoutes = (Array.isArray(card.card_faces) ? card.card_faces : [])
-    .map((face) => routeKey(face?.name))
-    .filter(Boolean);
+  const faceRoutes = identityFaceNames(card).map(routeKey).filter(Boolean);
   englishByOracle.set(card.oracle_id, {
     oracleId: card.oracle_id,
     name,

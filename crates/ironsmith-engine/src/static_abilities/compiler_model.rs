@@ -339,6 +339,7 @@ impl StaticAbility {
                 Self::opponents_play_with_hands_revealed()
             }
             Some(StaticAbilityId::EntersTapped) => Self::enters_tapped_ability(),
+            Some(StaticAbilityId::EntersPrepared) => Self::enters_prepared_ability(),
             Some(StaticAbilityId::EntersTappedUnlessControlTwoOrMoreOtherLands) => {
                 Self::enters_tapped_unless_control_two_or_more_other_lands()
             }

@@ -137,7 +137,7 @@ pub use effect::{
     PayEnergyEffect, PayLifeEffect, PayManaEffect, PhaseInEffect, PhaseOutDuration, PhaseOutEffect,
     PlaySubgameEffect, PlayerControlDuration, PlayerControlStart, PoisonCountersEffect,
     PopulateEffect, PreventAllCombatDamageEffect, PreventAllDamageEffect,
-    PreventAllDamageToTargetEffect, PreventDamageEffect, PreventNextTimeDamageEffect,
+    PrepareEffect, PreventAllDamageToTargetEffect, PreventDamageEffect, PreventNextTimeDamageEffect,
     PreventNextTimeDamageSource, PreventNextTimeDamageTarget, PreventionTarget,
     PriorEffectResultActor, PriorEffectResultQuantifier, PriorEffectResultSurface,
     ProliferateEffect, PutCounterOfChosenKindEffect, PutCountersEffect, PutOntoBattlefieldEffect,

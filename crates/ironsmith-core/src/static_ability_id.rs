@@ -233,6 +233,7 @@ pub enum StaticAbilityId {
     MayChooseNotToUntapDuringUntapStep,
     ChooseCreatureTypeAsEnters,
     EntersTapped,
+    EntersPrepared,
     EntersTappedUnlessControlTwoOrMoreOtherLands,
     EntersTappedUnlessControlTwoOrFewerOtherLands,
     EntersTappedUnlessControlTwoOrMoreBasicLands,
@@ -546,6 +547,7 @@ impl StaticAbilityId {
             | MayChooseNotToUntapDuringUntapStep
             | ChooseCreatureTypeAsEnters
             | EntersTapped
+            | EntersPrepared
             | EntersTappedUnlessControlTwoOrMoreOtherLands
             | EntersTappedUnlessControlTwoOrFewerOtherLands
             | EntersTappedUnlessControlTwoOrMoreBasicLands

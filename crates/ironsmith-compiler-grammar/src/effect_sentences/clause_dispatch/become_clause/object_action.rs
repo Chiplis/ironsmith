@@ -319,6 +319,9 @@ pub fn parse_become_clause(
             target,
         ));
     }
+    if become_surface.exact_kind == Some(become_grammar::BecomeExactKind::Prepared) {
+        return Ok(EffectAst::subject_verb_prepare(target));
+    }
     if let Some(aura) = become_surface.aura {
         if become_grammar::aura_subject_prefers_source(target_subject_tokens)
             || matches!(&target, TargetAst::Tagged(tag, _) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())

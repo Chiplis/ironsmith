@@ -101,6 +101,7 @@ pub enum BecomeExactKind {
     CreatureTypeChoice,
     Colorless,
     Saddled,
+    Prepared,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

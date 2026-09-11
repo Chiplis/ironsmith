@@ -13,6 +13,9 @@ import { isObjectChosen, requestObjectSelection } from "@/lib/object-selection";
 import { useChosenObjectIds } from "@/context/ObjectSelectionContext";
 import SelectionCheckBadge from "@/components/cards/SelectionCheckBadge";
 
+// How long a zone takes to grow when it starts holding something to pick.
+const ZONE_TARGET_GROW_MS = 220;
+
 function ZoneArt({ card }) {
   const imageRef = useRef(null);
   const name = isFaceUpZoneCard(card) ? card.name : null;
@@ -107,6 +110,14 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
     return () => window.removeEventListener("ironsmith:open-target-zone", openTargetZone);
   }, [player.id, player.index, zone]);
 
+  // A card chosen inside a closed pile is otherwise invisible: the pile shows
+  // only its top card's art. It wears the same check the cards themselves do,
+  // and clicking it unchooses that card without opening the strip. Once the
+  // strip is open the cards carry their own checks, so this one steps aside.
+  const chosenInPile = !open && choosingObject
+    ? cards.find((card) => isObjectChosen(chosenObjectIds, card.id))
+    : null;
+
   const renderCard = (card) => {
     const legal = canChoose && isLegal(card);
     const disabled = (choosingTarget || choosingObject) && !legal;
@@ -175,7 +186,12 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
 
   return (
     <Popover open={open} onOpenChange={changeOpen}>
-      <div className="zone-pile-slot" style={{ opacity: fading ? 0 : 1, transition: fading ? `opacity ${LOOK_FADE_MS}ms linear` : "opacity 120ms ease" }}>
+      {/* The slot carries its transitions inline, so the growth a legal target
+          brings has to be listed here too or the stylesheet's is overridden. */}
+      <div className="zone-pile-slot" style={{
+        opacity: fading ? 0 : 1,
+        transition: `${fading ? `opacity ${LOOK_FADE_MS}ms linear` : "opacity 120ms ease"}, transform ${ZONE_TARGET_GROW_MS}ms ease`,
+      }}>
       <span className="zone-pile-label">{label} <strong>{count}</strong></span>
       <PopoverTrigger asChild>
         <button ref={triggerRef} type="button" className="zone-pile" data-zone-pile={zone}
@@ -198,6 +214,13 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
           <ZoneArt card={topCard} />
         </button>
       </PopoverTrigger>
+      {chosenInPile ? (
+        <SelectionCheckBadge
+          objectId={chosenInPile.id}
+          className="zone-pile-check"
+          label={`Deselect ${chosenInPile.name || "card"}`}
+        />
+      ) : null}
       </div>
       <PopoverContent ref={menuRef} className={`zone-pile-menu${zone === "look" ? " zone-pile-menu--look" : ""}`} side={zone === "look" ? "right" : "left"} align="start" sideOffset={-(stripBounds.cardWidth + 6)} alignOffset={-6} avoidCollisions={false}
         style={{ "--zone-strip-width": `${stripBounds.width}px`, "--zone-strip-card-width": `${stripBounds.cardWidth}px` }}

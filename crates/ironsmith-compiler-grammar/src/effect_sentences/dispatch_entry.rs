@@ -11333,6 +11333,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DiscardHand)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Detain { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearSuspected { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearGoad { .. })

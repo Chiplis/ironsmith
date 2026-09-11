@@ -3322,6 +3322,12 @@ pub(super) fn finalize_spell_cast(
         game.record_commander_cast_from_command_zone(new_id);
     }
 
+    // CR: the creature stops being prepared as its prepare spell copy is cast.
+    // The copy is already on the stack, so it survives losing the designation.
+    if from_zone == Zone::Exile {
+        game.unprepare_for_cast(spell_id);
+    }
+
     // Expend belongs to the player who actually spent each mana unit. Assist
     // can split that spending between the caster and one other player.
     let assisted_total = assist_mana_spent_to_cast

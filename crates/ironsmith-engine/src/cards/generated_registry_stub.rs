@@ -51,5 +51,5 @@ pub fn generated_parser_card_parse_source(_name: &str) -> Option<(String, String
 }
 
 pub fn try_compile_card_by_name(_name: &str) -> Result<crate::cards::CardDefinition, String> {
-    Err("generated registry is not embedded in this product".to_string())
+    Err(crate::cards::GENERATED_REGISTRY_UNAVAILABLE.to_string())
 }

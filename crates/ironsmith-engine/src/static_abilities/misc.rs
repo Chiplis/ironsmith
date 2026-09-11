@@ -1091,6 +1091,24 @@ impl StaticAbilityKind for MayChooseNotToUntapDuringUntapStep {
     }
 }
 
+/// Enters the battlefield prepared (SOS: the Prepared designation).
+///
+/// Entering prepared is not a replacement of any entry characteristic, so this
+/// carries no replacement effect; battlefield entry applies the designation
+/// once the permanent is actually there and its prepare spell copy can exist.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct EntersPrepared;
+
+impl StaticAbilityKind for EntersPrepared {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::EntersPrepared
+    }
+
+    fn display(&self) -> String {
+        "This enters prepared".to_string()
+    }
+}
+
 /// Enters the battlefield tapped.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct EntersTapped;

@@ -19,6 +19,15 @@ pub use helper_tags::is_sentence_helper_tag;
 #[cfg(test)]
 mod parse_snapshots;
 
+/// Error text `CardRegistry::try_compile_card` returns in products that ship
+/// without an embedded generated registry (the lean/wasm engine, which loads
+/// compiled artifacts instead). It means "this build knows no card by that
+/// name", not "this card failed to compile", so callers that report to a user
+/// translate it rather than passing it through. Compare against this constant;
+/// an inlined copy of the text silently rots when the wording changes.
+pub const GENERATED_REGISTRY_UNAVAILABLE: &str =
+    "generated registry is not embedded in this product";
+
 mod generated_registry {
     include!("generated_registry_stub.rs");
 }

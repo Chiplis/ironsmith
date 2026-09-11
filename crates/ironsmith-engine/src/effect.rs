@@ -243,6 +243,7 @@ impl OutcomeObjectMemory {
                 attachments: Vec::new(),
                 was_enchanted: false,
                 is_monstrous: false,
+                is_prepared: false,
                 is_commander: false,
                 zone: self.zone,
             });
@@ -1988,6 +1989,12 @@ impl Effect {
     pub fn detain(target: ChooseSpec) -> Self {
         use crate::effects::DetainEffect;
         Self::new(DetainEffect::new(target))
+    }
+
+    /// Create a "that permanent becomes prepared" effect.
+    pub fn prepare(target: ChooseSpec) -> Self {
+        use crate::effects::PrepareEffect;
+        Self::new(PrepareEffect::new(target))
     }
 
     /// Create a "suspect target creature" effect.
