@@ -8,7 +8,8 @@ use crate::combat_state::AttackTarget;
 use crate::game_state::Target;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
-use crate::runtime_display::{compile_effect_list, unprocessed_compiled_lines};
+use crate::runtime_display::effect_sentences::looks_like_compiled_structure;
+use crate::runtime_display::unprocessed_compiled_lines;
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -1777,11 +1778,102 @@ impl DecisionContext {
     }
 }
 
+/// Replace any structural rendering that reached a player-visible string.
+///
+/// The engine still keeps `Debug` fallbacks for effects, abilities, conditions
+/// and values, and a card definition compiled without canonical text carries
+/// one in `compiled_card_text` itself. Individual prompts phrase themselves
+/// from card text where they can; this is the backstop that makes "a decision
+/// never shows compiled structure" true no matter which path built the string.
+fn scrub_compiled_structure(ctx: &mut DecisionContext) {
+    fn scrub(text: &mut String, replacement: &str) {
+        if looks_like_compiled_structure(text) {
+            text.clear();
+            text.push_str(replacement);
+        }
+    }
+
+    fn scrub_hint(hint: &mut Option<String>) {
+        if hint.as_deref().is_some_and(looks_like_compiled_structure) {
+            *hint = None;
+        }
+    }
+
+    match ctx {
+        DecisionContext::Boolean(ctx) => {
+            scrub(&mut ctx.description, "Perform the effect");
+            scrub_hint(&mut ctx.ui_hints.context_text);
+            scrub_hint(&mut ctx.ui_hints.consequence_text);
+        }
+        DecisionContext::Number(ctx) => {
+            scrub(&mut ctx.description, "Choose a number");
+            scrub_hint(&mut ctx.ui_hints.context_text);
+            scrub_hint(&mut ctx.ui_hints.consequence_text);
+        }
+        DecisionContext::TextInput(ctx) => {
+            scrub(&mut ctx.description, "Choose a name");
+            scrub_hint(&mut ctx.ui_hints.context_text);
+            scrub_hint(&mut ctx.ui_hints.consequence_text);
+        }
+        DecisionContext::SelectObjects(ctx) => {
+            scrub(&mut ctx.description, "Choose");
+            scrub_hint(&mut ctx.ui_hints.context_text);
+            scrub_hint(&mut ctx.ui_hints.consequence_text);
+        }
+        DecisionContext::SelectOptions(ctx) => {
+            scrub(&mut ctx.description, "Choose");
+            for (index, option) in ctx.options.iter_mut().enumerate() {
+                scrub(&mut option.description, &format!("Option {}", index + 1));
+            }
+            scrub_hint(&mut ctx.ui_hints.context_text);
+            scrub_hint(&mut ctx.ui_hints.consequence_text);
+        }
+        DecisionContext::Order(ctx) => {
+            scrub(&mut ctx.description, "Choose an order");
+            for (index, (_, label)) in ctx.items.iter_mut().enumerate() {
+                scrub(label, &format!("Ability {}", index + 1));
+            }
+        }
+        DecisionContext::Targets(ctx) => {
+            scrub(&mut ctx.context, "Choose targets");
+            scrub_hint(&mut ctx.ui_hints.context_text);
+            scrub_hint(&mut ctx.ui_hints.consequence_text);
+        }
+        DecisionContext::ManaPayment(ctx) => {
+            scrub(&mut ctx.subject, "Pay mana");
+            scrub_hint(&mut ctx.ui_hints.context_text);
+            scrub_hint(&mut ctx.ui_hints.consequence_text);
+        }
+        DecisionContext::Modes(_)
+        | DecisionContext::HybridChoice(_)
+        | DecisionContext::Attackers(_)
+        | DecisionContext::Blockers(_)
+        | DecisionContext::Distribute(_)
+        | DecisionContext::Colors(_)
+        | DecisionContext::Counters(_)
+        | DecisionContext::Partition(_)
+        | DecisionContext::Proliferate(_)
+        | DecisionContext::Priority(_) => {}
+    }
+}
+
 pub fn enrich_display_hints(
     game: &crate::game_state::GameState,
     ctx: DecisionContext,
 ) -> DecisionContext {
+    let mut ctx = add_display_hints(game, ctx);
+    // Scrub last: the hints added above are themselves derived from text that
+    // can carry a structural rendering.
+    scrub_compiled_structure(&mut ctx);
+    ctx
+}
+
+fn add_display_hints(
+    game: &crate::game_state::GameState,
+    ctx: DecisionContext,
+) -> DecisionContext {
     let mut ctx = ctx;
+    scrub_compiled_structure(&mut ctx);
     let source_text = ctx.context_text().map(str::to_string).or_else(|| {
         ctx.source()
             .and_then(|source| decision_source_text(game, source))
@@ -1810,18 +1902,24 @@ pub fn decision_source_text(
     game: &crate::game_state::GameState,
     source: ObjectId,
 ) -> Option<String> {
+    // Card text only. Both the cached text and the runtime fallback can hold a
+    // structural rendering for a definition compiled without canonical text,
+    // and a player must never be shown that.
     fn object_source_text(obj: &crate::object::Object) -> Option<String> {
         let cached_text = obj
             .compiled_card_text
             .lines()
             .map(str::trim)
-            .filter(|line| !line.is_empty())
+            .filter(|line| !line.is_empty() && !looks_like_compiled_structure(line))
             .collect::<Vec<_>>();
         if !cached_text.is_empty() {
             return Some(cached_text.join("; "));
         }
 
-        let lines = unprocessed_compiled_lines(&obj.to_card_definition());
+        let lines = unprocessed_compiled_lines(&obj.to_card_definition())
+            .into_iter()
+            .filter(|line| !looks_like_compiled_structure(line))
+            .collect::<Vec<_>>();
         (!lines.is_empty()).then(|| lines.join("; "))
     }
 
@@ -1832,11 +1930,21 @@ pub fn decision_source_text(
         .find(|entry| entry.object_id == source)
     {
         if entry.is_ability {
-            return entry
-                .ability_effects
-                .as_ref()
-                .map(|effects| compile_effect_list(effects))
-                .filter(|text| !text.trim().is_empty());
+            // A resolving ability is not a card, so quote the printed sentences
+            // of the permanent it came from instead of its compiled program.
+            return entry.ability_effects.as_ref().and_then(|effects| {
+                crate::runtime_display::effect_sentences::effect_summary_text(
+                    game,
+                    entry
+                        .source_snapshot
+                        .as_ref()
+                        .map_or(entry.object_id, |snapshot| snapshot.object_id),
+                    entry.source_snapshot.as_ref(),
+                    entry.ability_index,
+                    effects.flattened_default_effects(),
+                )
+                .filter(|text| !text.trim().is_empty())
+            });
         }
         return game.object(source).and_then(object_source_text);
     }
@@ -1966,6 +2074,68 @@ mod tests {
 
         let boolean = ctx.into_boolean();
         assert_eq!(boolean.description, "test");
+    }
+
+    #[test]
+    fn enrich_display_hints_scrubs_compiled_structure_from_every_visible_string() {
+        let game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let debug_text =
+            r#"Effect(WithIdEffect { id: EffectId(0), effect: Effect(CopySpellEffect { copier: You }) })"#;
+
+        let mut boolean = BooleanContext::new(alice, None, debug_text);
+        boolean.ui_hints.context_text = Some(debug_text.to_string());
+        boolean.ui_hints.consequence_text = Some(debug_text.to_string());
+        let enriched = enrich_display_hints(&game, DecisionContext::Boolean(boolean)).into_boolean();
+        assert_eq!(enriched.description, "Perform the effect");
+        assert_eq!(enriched.ui_hints.context_text, None);
+        assert_eq!(enriched.ui_hints.consequence_text, None);
+
+        let options = DecisionContext::SelectOptions(SelectOptionsContext::new(
+            alice,
+            None,
+            debug_text,
+            vec![SelectableOption::new(0, debug_text)],
+            1,
+            1,
+        ));
+        let enriched = enrich_display_hints(&game, options).into_options();
+        assert_eq!(enriched.description, "Choose");
+        assert_eq!(enriched.options[0].description, "Option 1");
+
+        let order = DecisionContext::Order(OrderContext::new(
+            alice,
+            None,
+            debug_text,
+            vec![(ObjectId::from_raw(1), debug_text.to_string())],
+        ));
+        let enriched = enrich_display_hints(&game, order).into_order();
+        assert_eq!(enriched.description, "Choose an order");
+        assert_eq!(enriched.items[0].1, "Ability 1");
+    }
+
+    #[test]
+    fn decision_source_text_never_quotes_a_structural_text_box() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let definition = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Uncompiled Source",
+        )
+        .card_types(vec![crate::types::CardType::Creature])
+        .with_ability(crate::ability::flying())
+        .build();
+        let source = game.create_object_from_definition(
+            &definition,
+            PlayerId::from_index(0),
+            crate::zone::Zone::Battlefield,
+        );
+
+        // A definition compiled without canonical text carries the structural
+        // rendering in `compiled_card_text` itself.
+        assert!(looks_like_compiled_structure(
+            &game.object(source).unwrap().compiled_card_text
+        ));
+        assert_eq!(decision_source_text(&game, source), None);
     }
 
     #[test]

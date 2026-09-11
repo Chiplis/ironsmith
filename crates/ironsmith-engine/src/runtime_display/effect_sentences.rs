@@ -62,8 +62,69 @@ pub fn optional_effect_prompt(
     ability_index: Option<usize>,
     effects: &[Effect],
 ) -> String {
-    matched_sentences(game, source, source_snapshot, ability_index, effects, true)
-        .unwrap_or_else(|| "perform the effect".to_string())
+    let clause = matched_sentences(game, source, source_snapshot, ability_index, effects, true)
+        .unwrap_or_else(|| "perform the effect".to_string());
+    // The other optional prompts (`describe_move`, the same-name search prompt)
+    // read as standalone capitalized phrases, so this one does too.
+    capitalize_first(&clause)
+}
+
+fn capitalize_first(text: &str) -> String {
+    let mut chars = text.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
+/// Whether a string is a Rust `Debug` rendering rather than card wording.
+///
+/// The engine keeps structural `Debug` fallbacks for effects, abilities and
+/// conditions, and any of them can end up in a string bound for a player. Two
+/// shapes give a derived `Debug` away and never occur in card text: a struct
+/// literal (`Ident { field: `) and a tuple/newtype head with no space before
+/// its parenthesis (`TagKey(`). Reminder text always puts a space before "(",
+/// and mana symbols never carry a field separator.
+pub fn looks_like_compiled_structure(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    for (index, byte) in bytes.iter().enumerate() {
+        match byte {
+            b'{' => {
+                let mut at = index + 1;
+                while bytes.get(at).is_some_and(u8::is_ascii_whitespace) {
+                    at += 1;
+                }
+                let start = at;
+                while bytes
+                    .get(at)
+                    .is_some_and(|ch| ch.is_ascii_lowercase() || *ch == b'_' || ch.is_ascii_digit())
+                {
+                    at += 1;
+                }
+                if at > start && bytes.get(at) == Some(&b':') && bytes.get(at + 1) != Some(&b':') {
+                    return true;
+                }
+            }
+            b'(' if index > 0 => {
+                let mut at = index;
+                while at > 0
+                    && bytes[at - 1]
+                        .is_ascii_alphanumeric()
+                {
+                    at -= 1;
+                }
+                let head = &bytes[at..index];
+                if head.len() >= 2
+                    && head[0].is_ascii_uppercase()
+                    && head[1..].iter().any(u8::is_ascii_lowercase)
+                {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
 }
 
 /// The printed sentence(s) these effects were compiled from, for labels that
@@ -374,7 +435,7 @@ mod tests {
     fn optional_prompt_quotes_the_printed_may_clause() {
         let text = "Whenever a creature you control dies, you may draw a card.";
 
-        assert_eq!(prompt(text, &[Effect::draw(1)]), "draw a card");
+        assert_eq!(prompt(text, &[Effect::draw(1)]), "Draw a card");
     }
 
     #[test]
@@ -383,7 +444,7 @@ mod tests {
 
         assert_eq!(
             prompt(text, &[Effect::draw(1), Effect::gain_life(2)]),
-            "draw a card. Gain 2 life"
+            "Draw a card. Gain 2 life"
         );
     }
 
@@ -391,14 +452,14 @@ mod tests {
     fn optional_prompt_stops_before_instructions_the_offer_does_not_cover() {
         let text = "At the beginning of your upkeep, you may draw a card. Gain 2 life.";
 
-        assert_eq!(prompt(text, &[Effect::draw(1)]), "draw a card");
+        assert_eq!(prompt(text, &[Effect::draw(1)]), "Draw a card");
     }
 
     #[test]
     fn optional_prompt_picks_the_may_clause_matching_the_offered_effect() {
         let text = "You may draw a card.\nYou may gain 2 life.";
 
-        assert_eq!(prompt(text, &[Effect::gain_life(2)]), "gain 2 life");
+        assert_eq!(prompt(text, &[Effect::gain_life(2)]), "Gain 2 life");
     }
 
     #[test]
@@ -414,8 +475,8 @@ mod tests {
 
     #[test]
     fn optional_prompt_falls_back_to_plain_wording_without_printed_text() {
-        assert_eq!(prompt("", &[Effect::draw(1)]), "perform the effect");
-        assert_eq!(prompt("Flying", &[Effect::draw(1)]), "perform the effect");
+        assert_eq!(prompt("", &[Effect::draw(1)]), "Perform the effect");
+        assert_eq!(prompt("Flying", &[Effect::draw(1)]), "Perform the effect");
     }
 
     #[test]
@@ -436,7 +497,38 @@ mod tests {
         let copy = Effect::with_id(0, Effect::copy_spell(crate::target::ChooseSpec::spell()))
             .tag("__copied_stack_object__");
 
-        assert_eq!(prompt(IVY, &[copy]), "copy that spell");
+        assert_eq!(prompt(IVY, &[copy]), "Copy that spell");
+    }
+
+    #[test]
+    fn compiled_structure_is_recognized_but_card_text_is_not() {
+        for structural in [
+            r#"Effect(WithIdEffect { id: EffectId(0), effect: Effect(CopySpellEffect { copier: You }) })"#,
+            r#"TagKey("__copied_stack_object__")"#,
+            "Ability { kind: Static(StaticAbility(Flying, StaticAbilityInstanceId(1))) }",
+            "MayEffect { effects: [], fallback: Decline }",
+        ] {
+            assert!(
+                looks_like_compiled_structure(structural),
+                "missed compiled structure: {structural}"
+            );
+        }
+
+        for printed in [
+            "Flying",
+            "Whenever a player casts a spell that targets only a single creature other than Ivy, you may copy that spell. The copy targets Ivy.",
+            "{T}: Add {G}.",
+            "Flying (This creature can't be blocked except by creatures with flying or reach.)",
+            "Choose one \u{2014} \u{2022} Draw a card. \u{2022} Gain 2 life.",
+            "Kicker {2}{B} (You may pay an additional {2}{B} as you cast this spell.)",
+            "Sacrifice a creature: Draw a card. Activate only as a sorcery.",
+            "Copy that spell. You may choose new targets for the copy.",
+        ] {
+            assert!(
+                !looks_like_compiled_structure(printed),
+                "card text misread as compiled structure: {printed}"
+            );
+        }
     }
 
     #[test]

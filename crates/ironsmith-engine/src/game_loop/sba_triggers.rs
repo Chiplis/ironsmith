@@ -677,7 +677,17 @@ fn players_in_apnap_order(game: &GameState) -> Vec<PlayerId> {
 }
 
 fn describe_trigger_for_ordering(game: &GameState, trigger: &TriggeredAbilityEntry) -> String {
+    // A trigger's own `display()` still falls back to a structural rendering for
+    // some condition-qualified triggers. Drop that line rather than let it cost
+    // the whole label at the display boundary.
     let trigger_text = trigger.ability.trigger.display();
+    let trigger_text = if crate::runtime_display::effect_sentences::looks_like_compiled_structure(
+        &trigger_text,
+    ) {
+        String::new()
+    } else {
+        trigger_text
+    };
     // The ability's own printed sentences, never the compiled structure: these
     // labels are what a player picks a trigger order from.
     let effect_text = crate::runtime_display::effect_sentences::effect_summary_text(
