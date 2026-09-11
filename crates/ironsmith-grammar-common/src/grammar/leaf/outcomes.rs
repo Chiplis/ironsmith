@@ -184,9 +184,19 @@ pub fn recognize_target_head(tokens: &[OwnedLexToken]) -> ParseOutcome<LeafTarge
                 | "any"
                 | "each"
                 | "another"
+                // Counted selections run past three ("exile eight cards from
+                // your graveyard"); the head only commits to the rule, the
+                // grammar below still has to parse the phrase.
                 | "one"
                 | "two"
                 | "three"
+                | "four"
+                | "five"
+                | "six"
+                | "seven"
+                | "eight"
+                | "nine"
+                | "ten"
                 | "x"
                 | "this"
                 | "that"

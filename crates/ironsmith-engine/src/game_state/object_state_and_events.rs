@@ -404,9 +404,14 @@ impl GameState {
     /// it. A copy that has already left exile is being cast, so it is left
     /// alone; [`Self::unprepare_for_cast`] is that path.
     pub fn clear_prepared(&mut self, id: ObjectId) -> bool {
-        if !self.battlefield_flags_mut().prepared.remove(&id) {
+        // Read before writing: every object leaving the battlefield calls this,
+        // and `battlefield_flags_mut` would clone the copy-on-write flag block
+        // (and invalidate the batched layer rebuild) for objects that were
+        // never prepared.
+        if !self.battlefield_flags.prepared.contains(&id) {
             return false;
         }
+        self.battlefield_flags_mut().prepared.remove(&id);
         if let Some(copy_id) = self.unlink_prepared_spell_copy(id)
             && self
                 .object(copy_id)
@@ -443,6 +448,22 @@ impl GameState {
         self.battlefield_flags_mut().prepared.remove(&source);
         self.unlink_prepared_spell_copy(source);
         self.mark_object_characteristics_dirty(source);
+    }
+
+    /// Re-establish a prepared permanent and its exiled copy from a restored
+    /// checkpoint, where both objects already exist.
+    ///
+    /// Unlike [`Self::set_prepared`] this creates nothing: the copy is part of
+    /// the restored exile zone, and creating a second one would duplicate it.
+    pub fn restore_prepared_link(&mut self, permanent: ObjectId, copy_id: ObjectId) {
+        self.battlefield_flags_mut().prepared.insert(permanent);
+        self.cast_permission_flags_mut()
+            .prepared_spell_copies
+            .insert(permanent, copy_id);
+        self.cast_permission_flags_mut()
+            .prepared_spell_sources
+            .insert(copy_id, permanent);
+        self.mark_object_characteristics_dirty(permanent);
     }
 
     fn unlink_prepared_spell_copy(&mut self, id: ObjectId) -> Option<ObjectId> {

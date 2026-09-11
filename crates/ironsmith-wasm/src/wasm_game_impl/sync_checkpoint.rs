@@ -170,6 +170,13 @@ struct SyncObject {
     foretold: bool,
     #[serde(default)]
     suspected: bool,
+    #[serde(default)]
+    prepared: bool,
+    /// Set on a prepare spell copy in exile: the prepared permanent it belongs
+    /// to. The link is restored rather than recreated, because the copy itself
+    /// is already part of the restored exile zone.
+    #[serde(default)]
+    prepared_spell_source: Option<u64>,
     plotted_by: Option<u8>,
     plotted_turn: Option<u32>,
     damage_marked: u32,
@@ -254,6 +261,8 @@ struct PublicAuditObject {
     foretold: bool,
     #[serde(default)]
     suspected: bool,
+    #[serde(default)]
+    prepared: bool,
     plotted_by: Option<u8>,
     plotted_turn: Option<u32>,
     damage_marked: u32,
@@ -1803,6 +1812,11 @@ impl WasmGame {
                     madness_exiled: self.game.is_madness_exiled(id),
                     foretold: self.game.is_foretold(id),
                     suspected: self.game.is_suspected(id),
+                    prepared: self.game.is_prepared(id),
+                    prepared_spell_source: self
+                        .game
+                        .prepared_spell_source(id)
+                        .map(|source| source.0),
                     plotted_by: self.game.plotted_by(id).map(|player| player.0),
                     plotted_turn: self.game.plotted_turn(id),
                     damage_marked: self.game.damage_on(id),
@@ -2143,6 +2157,7 @@ impl WasmGame {
                     madness_exiled: self.game.is_madness_exiled(id),
                     foretold: self.game.is_foretold(id),
                     suspected: self.game.is_suspected(id),
+                    prepared: self.game.is_prepared(id),
                     plotted_by: self.game.plotted_by(id).map(|player| player.0),
                     plotted_turn: self.game.plotted_turn(id),
                     damage_marked: self.game.damage_on(id),
@@ -2914,6 +2929,13 @@ impl WasmGame {
             }
             if object.monstrous {
                 self.game.set_monstrous(id);
+            }
+            // The prepare spell copy is restored with the rest of exile, so
+            // relink it rather than preparing again (which would mint a second
+            // copy). The copy carries the link, so this runs once per pair.
+            if let Some(source) = object.prepared_spell_source {
+                self.game
+                    .restore_prepared_link(ObjectId::from_raw(source), id);
             }
             if object.renowned {
                 self.game.set_renowned(id);

@@ -2178,6 +2178,21 @@ impl GameState {
             }
         }
 
+        // "This creature enters prepared." The permanent is on the battlefield
+        // by now, which is what the prepare spell copy's existence is tied to.
+        //
+        // This reads the printed abilities rather than the calculated ones:
+        // every battlefield entry runs through here, and asking for calculated
+        // characteristics would force a per-entry recomputation instead of the
+        // batched layer rebuild. Entering prepared is a printed property, and
+        // CR keeps the designation even if the permanent later loses abilities.
+        if self.object_printed_static_ability(
+            new_id,
+            crate::static_abilities::StaticAbilityId::EntersPrepared,
+        ) {
+            self.set_prepared(new_id);
+        }
+
         Some(EntersResult {
             new_id,
             enters_tapped: result.enters_tapped,
@@ -3590,6 +3605,24 @@ impl GameState {
         self.calculated_characteristics(id)
             .map(|c| c.static_abilities.contains(ability))
             .unwrap_or(false)
+    }
+
+    /// Whether an object's printed abilities include a static ability id.
+    ///
+    /// Unlike [`Self::current_has_static_ability_id`] this never asks for
+    /// calculated characteristics, so it is safe on hot paths that run for
+    /// every object.
+    pub(crate) fn object_printed_static_ability(
+        &self,
+        id: ObjectId,
+        ability_id: crate::static_abilities::StaticAbilityId,
+    ) -> bool {
+        self.object(id).is_some_and(|object| {
+            object.abilities.iter().any(|ability| {
+                matches!(&ability.kind, crate::ability::AbilityKind::Static(static_ability)
+                    if static_ability.id() == ability_id)
+            })
+        })
     }
 
     /// Check if an object has a static ability with the given ID.

@@ -1753,6 +1753,19 @@ fn pseudo_hand_glow_kind_with_grants(
         return Some("extra");
     }
 
+    // A prepare spell copy and an Adventure-exiled card carry their casting
+    // permission on the game state rather than as a grant or an alternative
+    // cast, so neither is visible to the checks below. Both belong in the
+    // pseudo-hand of whoever may cast them: for a prepare copy that is the
+    // current controller of the prepared permanent, which is also the copy's
+    // controller.
+    if zone == Zone::Exile
+        && (game.is_prepared_spell_copy(object.id) || game.is_adventure_exiled(object.id))
+        && game.controller_of(object) == perspective
+    {
+        return Some("extra");
+    }
+
     let kinds = if let Some(grants) = grants {
         game.effect_store
             .grant_registry
@@ -3550,6 +3563,72 @@ mod tests {
             assert_eq!(alice_snapshot.ante_cards.len(), 1);
             assert_eq!(alice_snapshot.ante_cards[0].id, object_id.0);
         }
+    }
+
+    #[test]
+    fn pseudo_hand_surfaces_a_prepare_spell_copy_for_its_caster_only() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let spell = ironsmith::cards::CardDefinition::new(
+            CardBuilder::new(CardId::from_raw(90_020), "Raise Dead")
+                .card_types(vec![CardType::Sorcery])
+                .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Black]]))
+                .build(),
+        );
+        game.register_linked_face_definition(&spell);
+
+        let mut creature = CardBuilder::new(CardId::from_raw(90_021), "Cheerful Osteomancer")
+            .card_types(vec![CardType::Creature])
+            .build();
+        creature.linked_face_layout = ironsmith::card::LinkedFaceLayout::Prepare;
+        creature.other_face = Some(spell.card.id);
+        let permanent = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+        assert!(game.set_prepared(permanent));
+        let copy_id = *game
+            .exile
+            .first()
+            .expect("the prepare spell copy is in exile");
+
+        let pseudo_hand_entry = |perspective: PlayerId| {
+            let snapshot = GameSnapshot::from_game(
+                &game,
+                perspective,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Vec::new(),
+                None,
+                false,
+                None,
+                0,
+            );
+            snapshot
+                .players
+                .iter()
+                .find(|player| player.id == alice.0)
+                .expect("Alice snapshot should exist")
+                .exile_cards
+                .iter()
+                .find(|card| card.id == copy_id.0)
+                .map(|card| (card.show_in_pseudo_hand, card.pseudo_hand_glow_kind.clone()))
+                .expect("the copy should be listed in exile")
+        };
+
+        assert_eq!(
+            pseudo_hand_entry(alice),
+            (true, Some("extra".to_string())),
+            "the prepared permanent's controller sees the copy among their playable cards"
+        );
+        assert_eq!(
+            pseudo_hand_entry(bob).0,
+            false,
+            "an opponent cannot cast the copy, so it is not in their pseudo-hand"
+        );
     }
 
     #[test]

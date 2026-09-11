@@ -574,6 +574,7 @@ mod tests {
                     attachments: Vec::new(),
                     was_enchanted: false,
                     is_monstrous: false,
+                    is_prepared: false,
                     is_commander: false,
                     zone: Zone::Battlefield,
                 }),
