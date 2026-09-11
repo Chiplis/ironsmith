@@ -28,7 +28,8 @@ export function DragProvider({ children }) {
   const dragStateRef = useRef(null);
   // dragState shape: {
   //   objectId, cardName, card, actions, glowKind, startX, startY, currentX, currentY,
-  //   sourceRect, sourceContainerRect, hiddenSourcePoint, castIntent, keyboard
+  //   sourceRect, sourceContainerRect, hiddenSourcePoint, castIntent, keyboard,
+  //   held
   // }
   // `keyboard` marks a card held by the activation key rather than a pointer:
   // no button is down, so the mouse is tracked for as long as it is held, and
@@ -107,6 +108,22 @@ export function DragProvider({ children }) {
     });
   }, []);
 
+  /**
+   * Put a released gesture back in the player's hands without the button.
+   *
+   * A card with more than one way to be cast has not entered the engine yet,
+   * so letting go over dead space leaves nothing to keep aiming at. Rather
+   * than throw the cast away, the gesture itself carries on: the aim follows
+   * the bare pointer until a click picks a target or drops it.
+   */
+  const resumeDrag = useCallback((snapshot) => {
+    if (!snapshot) return null;
+    const next = { ...snapshot, keyboard: true, held: true };
+    dragStateRef.current = next;
+    setDragState(next);
+    return next;
+  }, []);
+
   const endDrag = useCallback(() => {
     const state = dragStateRef.current;
     dragStateRef.current = null;
@@ -115,8 +132,8 @@ export function DragProvider({ children }) {
   }, []);
 
   const actions = useMemo(
-    () => ({ startDrag, updateDrag, markCastIntent, setCastTargetPreview, endDrag }),
-    [startDrag, updateDrag, markCastIntent, setCastTargetPreview, endDrag]
+    () => ({ startDrag, updateDrag, markCastIntent, setCastTargetPreview, resumeDrag, endDrag }),
+    [startDrag, updateDrag, markCastIntent, setCastTargetPreview, resumeDrag, endDrag]
   );
 
   const commitPlacementSlot = useCallback((card, slot) => {

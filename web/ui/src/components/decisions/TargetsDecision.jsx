@@ -151,6 +151,10 @@ function findMatchingVisibleStackSource(state, decision) {
 // Anything the player could be doing other than aiming: a control, a panel,
 // the inspector, a popover. A click on one of those is not a click on dead
 // space, so it must never abandon the cast being aimed.
+// Long enough to cover the click a browser fires after a gesture's pointerup,
+// short enough that the player's next real click still lands.
+const RELEASE_CLICK_GRACE_MS = 400;
+
 const TARGETING_CHROME = [
   "button",
   "a",
@@ -693,12 +697,21 @@ export default function TargetsDecision({
     }
   }, []);
 
-  // A hand gesture ends with a pointerup, and the browser follows that with a
-  // click on whatever the release landed over. That click belongs to the
-  // release, not to a fresh decision, so the first one after a gesture passes.
-  const gestureReleasedRef = useRef(false);
+  // A hand gesture ends with a pointerup, and the browser may follow that with
+  // a click on whatever the release landed over. That click belongs to the
+  // release, not to a fresh decision. Waiting it out rather than swallowing
+  // the next click matters: the card being cast leaves the hand mid-gesture,
+  // so the release often has no common element left to fire a click on at all,
+  // and a swallowed click would be the player's real one.
+  const gestureEndedAtRef = useRef(-Infinity);
+  const gestureActiveRef = useRef(false);
   useEffect(() => {
-    if (handCastTargetGestureActive) gestureReleasedRef.current = true;
+    if (handCastTargetGestureActive) {
+      gestureActiveRef.current = true;
+    } else if (gestureActiveRef.current) {
+      gestureActiveRef.current = false;
+      gestureEndedAtRef.current = performance.now();
+    }
   }, [handCastTargetGestureActive]);
 
   // Letting go over dead space keeps the arrow live; clicking dead space is
@@ -716,10 +729,7 @@ export default function TargetsDecision({
 
     const onClick = (event) => {
       if (event.button != null && event.button !== 0) return;
-      if (gestureReleasedRef.current) {
-        gestureReleasedRef.current = false;
-        return;
-      }
+      if (performance.now() - gestureEndedAtRef.current < RELEASE_CLICK_GRACE_MS) return;
       const target = event.target;
       if (typeof target?.closest !== "function") return;
       if (!target.closest("[data-drop-zone]") || target.closest(TARGETING_CHROME)) return;

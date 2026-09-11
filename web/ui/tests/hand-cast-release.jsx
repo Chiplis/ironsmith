@@ -1,9 +1,10 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { GameContext } from "../src/context/GameContext.shared";
 import { HoverProvider } from "../src/context/HoverContext";
-import { DragProvider } from "../src/context/DragContext";
+import { DragProvider, useDragState } from "../src/context/DragContext";
 import { CombatArrowProvider } from "../src/context/CombatArrowContext";
+import { useCombatArrows } from "../src/context/useCombatArrows";
 import { ObjectSelectionProvider } from "../src/context/ObjectSelectionContext";
 import { I18nProvider } from "../src/i18n/I18nContext";
 import { TooltipProvider } from "../src/components/ui/tooltip";
@@ -45,7 +46,19 @@ const castAction = {
   action_ref: { kind: "cast_spell", spell_id: 5 },
 };
 
-const priorityDecision = { kind: "priority", player: 0, actions: [castAction] };
+// With something like Omniscience out, the same spell has more than one way
+// to be cast, which keeps the gesture provisional until it is released.
+const freeCastAction = {
+  ...castAction,
+  index: 1,
+  label: "Cast Unsummon without paying its mana cost",
+  action_ref: { kind: "cast_spell", spell_id: 5, casting_method: { kind: "free" } },
+};
+const castActions = new URLSearchParams(window.location.search).has("two")
+  ? [castAction, freeCastAction]
+  : [castAction];
+
+const priorityDecision = { kind: "priority", player: 0, actions: castActions };
 const targetsDecision = {
   kind: "targets",
   player: 0,
@@ -60,7 +73,30 @@ const targetsDecision = {
 };
 
 window.__cancelled = 0;
+window.__arrow = null;
+window.__drag = null;
 window.__dispatched = [];
+
+/** The targeting arrow lives in context; the DOM only shows it if it can find
+ *  the card it comes from, so the probe reads the state itself. */
+export function ArrowProbe() {
+  const { dragArrow } = useCombatArrows();
+  useEffect(() => {
+    window.__arrow = dragArrow ? { ...dragArrow } : null;
+  }, [dragArrow]);
+  return null;
+}
+
+/** The gesture's own state, which the arrow follows while it is held. */
+export function DragProbe() {
+  const drag = useDragState();
+  useEffect(() => {
+    window.__drag = drag
+      ? { objectId: drag.objectId, held: Boolean(drag.held), castIntent: Boolean(drag.castIntent), x: drag.currentX, y: drag.currentY }
+      : null;
+  }, [drag]);
+  return null;
+}
 
 export function Fixture() {
   // The engine's part of the exchange: casting Unsummon asks for a target.
@@ -75,7 +111,21 @@ export function Fixture() {
     step: "Main",
     cancelable: true,
     decision,
-    stack: decision.kind === "targets" ? [{ id: 90, name: "Unsummon", controller: 0 }] : [],
+    // The cast sits on the stack while it asks for a target, which is what
+    // the targeting arrow anchors itself to.
+    stack_objects: decision.kind === "targets"
+      ? [{
+        id: 90,
+        stable_id: 90,
+        name: "Unsummon",
+        controller: 0,
+        source_stable_id: 5,
+        inspect_object_id: 90,
+        ability_kind: "Spell",
+        source_ability_text: "Return target creature to its owner's hand.",
+        targets: [],
+      }]
+      : [],
     players: [0, 1].map((id) => ({
       id,
       index: id,
@@ -99,6 +149,8 @@ export function Fixture() {
 
   const value = useMemo(() => ({
     state,
+    // The provisional gesture asks the engine what it could target without
+    // casting anything yet.
     game: { previewCastTargets: async () => targetsDecision },
     multiplayer: { mode: "idle" },
     playerAccentOverrides: {},
@@ -119,6 +171,8 @@ export function Fixture() {
             <CombatArrowProvider>
               <ObjectSelectionProvider>
                 <TooltipProvider>
+                  <ArrowProbe />
+                  <DragProbe />
                   <div data-cast-release-case style={{ position: "fixed", inset: 0 }}>
                     <Workspace zoneViews={[]} setZoneViews={() => {}} />
                   </div>

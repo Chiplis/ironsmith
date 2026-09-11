@@ -765,7 +765,7 @@ export default function Workspace({
     playerAccentOverrides,
   } = useGame();
   const { updateStackArrows, clearStackArrows } = useCombatArrows();
-  const { endDrag, markCastIntent, setCastTargetPreview, startDrag } = useDragActions();
+  const { endDrag, markCastIntent, resumeDrag, setCastTargetPreview, startDrag } = useDragActions();
   const dragState = useDragState();
   const {
     clearPendingPlacement,
@@ -1561,6 +1561,12 @@ export default function Workspace({
         // the card — has started nothing in the engine, so it just ends.
         if (missedTarget) {
           setPendingCastTargetDrop(null);
+          // With one way to cast it the spell is already on the stack, so the
+          // decision's own arrow takes over the aiming. With several, nothing
+          // has entered the engine yet and there would be nothing to aim at,
+          // so the gesture keeps going without the button until a click picks
+          // a target or a second release over dead space lets it go.
+          if (ds.actions.length > 1 && !ds.held) resumeDrag(ds);
           return;
         }
         const pendingTargetDrop = {
@@ -1709,6 +1715,7 @@ export default function Workspace({
     endDrag,
     nonDesktopViewport,
     requestHandCardAction,
+    resumeDrag,
     state,
     triggerPriorityCardAction,
   ]);
