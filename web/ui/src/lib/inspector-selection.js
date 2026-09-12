@@ -11,12 +11,14 @@ export function resolveInspectorObjectId({
   return null;
 }
 
-export function objectExistsInState(state, objectId) {
-  if (!state || objectId == null) return false;
+// The card view for one object id, or null. Callers that only need existence
+// should use objectExistsInState, which also counts merged members and cards
+// that are visible without being in a zone list.
+export function findObjectCardInState(state, objectId) {
+  if (!state || objectId == null) return null;
   const needle = String(objectId);
-  const players = state?.players || [];
 
-  for (const player of players) {
+  for (const player of state?.players || []) {
     const zones = [
       player?.battlefield || [],
       player?.hand_cards || [],
@@ -27,21 +29,33 @@ export function objectExistsInState(state, objectId) {
     ];
     for (const cards of zones) {
       for (const card of cards) {
-        if (String(card?.id) === needle) return true;
-        if (Array.isArray(card?.member_ids) && card.member_ids.some((id) => String(id) === needle)) {
-          return true;
-        }
+        if (String(card?.id) === needle) return card;
       }
     }
   }
 
   for (const entry of getVisibleStackObjects(state)) {
-    if (String(entry?.id) === needle) return true;
-    if (String(entry?.inspect_object_id) === needle) return true;
+    if (String(entry?.id) === needle || String(entry?.inspect_object_id) === needle) return entry;
   }
 
   for (const card of state?.planechase?.face_up || []) {
-    if (String(card?.id) === needle) return true;
+    if (String(card?.id) === needle) return card;
+  }
+
+  return null;
+}
+
+export function objectExistsInState(state, objectId) {
+  if (!state || objectId == null) return false;
+  if (findObjectCardInState(state, objectId)) return true;
+  const needle = String(objectId);
+
+  for (const player of state?.players || []) {
+    for (const card of player?.battlefield || []) {
+      if (Array.isArray(card?.member_ids) && card.member_ids.some((id) => String(id) === needle)) {
+        return true;
+      }
+    }
   }
 
   if (

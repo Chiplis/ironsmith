@@ -9,6 +9,9 @@ import { isObjectChosen, requestObjectSelection } from "@/lib/object-selection";
 import { Button } from "@/components/ui/button";
 import DecisionRouter from "@/components/decisions/DecisionRouter";
 import DecisionSummary from "@/components/decisions/DecisionSummary";
+import { useTranslatedDecisionText } from "@/i18n/useTranslatedDecisionText";
+import { DECISION_REASON_KEYS } from "@/i18n/decisionPhrases";
+import { useI18n } from "@/i18n/I18nContext";
 import PeerWaitPopover, { PeerWaitButtonContent } from "@/components/decisions/PeerWaitPopover";
 import useDeferredPeerWait from "@/hooks/useDeferredPeerWait";
 import { normalizeDecisionText } from "@/components/decisions/decisionText";
@@ -110,16 +113,16 @@ function conciseDecisionSummary(value) {
     .trim();
 }
 
-function decisionStageLabel(decision) {
+function decisionStageLabel(decision, t) {
   switch (decision?.kind) {
-    case "targets": return "Target";
-    case "select_objects": return "Select";
-    case "select_options": return "Choose";
-    case "number": return "Number";
-    case "mana_payment": return "Payment";
+    case "targets": return t("decision.stage.target");
+    case "select_objects": return t("decision.stage.select");
+    case "select_options": return t("decision.stage.choose");
+    case "number": return t("decision.stage.number");
+    case "mana_payment": return t("decision.stage.payment");
     case "attackers":
-    case "blockers": return "Combat";
-    default: return "Action";
+    case "blockers": return t("decision.stage.combat");
+    default: return t("decision.stage.action");
   }
 }
 
@@ -905,22 +908,26 @@ function PriorityActionStrip({
   );
 }
 
-function resolveDecisionTitle(decision) {
-  if (!decision) return "Decision";
-  if (decision.reason) return decision.reason;
+function resolveDecisionTitle(decision, t) {
+  if (!decision) return t("decision.title.default");
+  // Reasons come from a closed vocabulary the wasm bridge composes.
+  if (decision.reason) {
+    const key = DECISION_REASON_KEYS[decision.reason];
+    return key ? t(key) : decision.reason;
+  }
   switch (decision.kind) {
     case "targets":
-      return "Choose Targets";
+      return t("decision.title.targets");
     case "select_objects":
-      return "Choose Objects";
+      return t("decision.title.objects");
     case "select_options":
-      return "Choose Option";
+      return t("decision.title.options");
     case "number":
-      return "Choose Number";
+      return t("decision.title.number");
     case "mana_payment":
-      return "Pay Mana";
+      return t("decision.title.manaPayment");
     default:
-      return "Decision";
+      return t("decision.title.default");
   }
 }
 
@@ -1588,6 +1595,9 @@ function MobileBattleDecisionLayer({
     clearHoverLinkedObjects,
   } = useHover();
   const decision = state?.decision || null;
+  // Prompts quote the source card, so they follow that card's localized text.
+  const { t } = useI18n();
+  const localizeDecisionText = useTranslatedDecisionText(decision);
   const canAct = !!decision && samePlayerId(state?.perspective, decision.player);
   const peerWait = useDeferredPeerWait(multiplayer?.peerWait || null);
   const peerWaiting = Boolean(peerWait);
@@ -1745,10 +1755,10 @@ function MobileBattleDecisionLayer({
       decision?.description,
       decision?.context_text,
     ]
-      .map((value) => conciseDecisionSummary(value))
+      .map((value) => conciseDecisionSummary(localizeDecisionText(value)))
       .filter(Boolean);
     return parts[0] || "";
-  }, [decision?.context_text, decision?.description]);
+  }, [decision?.context_text, decision?.description, localizeDecisionText]);
   const mobileDockSubtitle = useMemo(() => {
     if (toolbarDecisionSummary) return toolbarDecisionSummary;
     if (hasCustomPassLabel) return "";
@@ -1945,7 +1955,7 @@ function MobileBattleDecisionLayer({
           }
           : (canCancelDecision
             ? {
-              label: "Cancel",
+              label: t("decision.cancel"),
               disabled: !canCancelDecision,
               onClick: () => cancelDecision(),
             }
@@ -1958,7 +1968,7 @@ function MobileBattleDecisionLayer({
         }
         : (canCancelDecision
           ? {
-            label: "Cancel",
+            label: t("decision.cancel"),
             disabled: !canCancelDecision,
             onClick: () => cancelDecision(),
           }
@@ -2063,7 +2073,7 @@ function MobileBattleDecisionLayer({
             onClick={() => effectiveSubmitAction.onSubmit()}
           >
             <span className="mobile-decision-primary-label">
-              {effectiveSubmitAction.label || "Submit"}
+              {effectiveSubmitAction.label || t("decision.submitPlain")}
             </span>
           </Button>
         ) : null}
@@ -2073,7 +2083,7 @@ function MobileBattleDecisionLayer({
     return renderMobileBattlePortal(
       <MobileDecisionSheet
         eyebrow={canAct ? "Your Action" : "Opponent Action"}
-        title={resolveDecisionTitle(decision)}
+        title={resolveDecisionTitle(decision, t)}
         subtitle={decision?.source_name || ""}
         headerClassName="mobile-select-options-header"
         headerDetails={optionHeaderDetails}
@@ -2126,10 +2136,10 @@ function MobileBattleDecisionLayer({
         <MobileDecisionDock
           title={canAct ? "Your Action" : "Opponent Action"}
           subtitle={boardSelectionSubtitle}
-          primaryLabel={effectiveSubmitAction?.label || "Submit"}
+          primaryLabel={effectiveSubmitAction?.label || t("decision.submitPlain")}
           primaryDisabled={!canSubmitFocused}
           onPrimary={() => effectiveSubmitAction?.onSubmit?.()}
-          secondaryLabel={canCancelDecision ? "Cancel" : ""}
+          secondaryLabel={canCancelDecision ? t("decision.cancel") : ""}
           secondaryDisabled={!canCancelDecision}
           onSecondary={canCancelDecision ? () => cancelDecision() : null}
           inline={dockInline}
@@ -2165,7 +2175,7 @@ function MobileBattleDecisionLayer({
           }
           primaryDisabled={combatAction?.disabled ?? !canAct}
           onPrimary={combatAction?.onSubmit}
-          secondaryLabel={canCancelDecision ? "Cancel" : ""}
+          secondaryLabel={canCancelDecision ? t("decision.cancel") : ""}
           secondaryDisabled={!canCancelDecision}
           onSecondary={canCancelDecision ? () => cancelDecision() : null}
           inline={dockInline}
@@ -2212,7 +2222,7 @@ function MobileBattleDecisionLayer({
           onClick={() => effectiveSubmitAction.onSubmit()}
         >
           <span className="mobile-decision-primary-label">
-            {effectiveSubmitAction.label || "Submit"}
+            {effectiveSubmitAction.label || t("decision.submitPlain")}
           </span>
         </Button>
       ) : null}
@@ -2227,7 +2237,7 @@ function MobileBattleDecisionLayer({
           ? "Declare Attackers"
           : decision.kind === "blockers"
             ? "Declare Blockers"
-            : resolveDecisionTitle(decision)
+            : resolveDecisionTitle(decision, t)
       }
       subtitle={decision?.source_name || ""}
       inline={false}
@@ -2400,6 +2410,9 @@ function PriorityBar({
     showAnchoredCardPreview,
   } = useHover();
   const decision = state?.decision || null;
+  // Prompts quote the source card, so they follow that card's localized text.
+  const { t } = useI18n();
+  const localizeDecisionText = useTranslatedDecisionText(decision);
   const manaPayment = state?.mana_payment || null;
   const canAct = !!decision && samePlayerId(state?.perspective, decision.player);
   const { style: decisionButtonStyle, isLocal: localDecisionButton } =
@@ -2493,10 +2506,10 @@ function PriorityBar({
       decision?.description,
       decision?.context_text,
     ]
-      .map((value) => conciseDecisionSummary(value))
+      .map((value) => conciseDecisionSummary(localizeDecisionText(value)))
       .filter(Boolean);
     return parts[0] || "";
-  }, [decision?.context_text, decision?.description]);
+  }, [decision?.context_text, decision?.description, localizeDecisionText]);
   const viewedCardEntries = useMemo(
     () => {
       if (Array.isArray(viewedCards?.cards) && viewedCards.cards.length > 0) {
@@ -2695,7 +2708,7 @@ function PriorityBar({
         cancelDecision();
       }}
     >
-      Cancel
+      {t("decision.cancel")}
     </Button>
   );
   const renderExpandedPrimaryControl = (ported = false) => (
@@ -2719,7 +2732,7 @@ function PriorityBar({
           data-local-action={localDecisionButton ? "true" : "false"}
           aria-disabled={peerWaitLocked || (showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused)}
           disabled={peerWaiting ? false : (showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused)}
-          title={peerWaiting ? "Waiting for peers" : (showViewedCardsStep ? "Done" : (effectiveSubmitAction?.label || "Submit"))}
+          title={peerWaiting ? t("decision.waitingForPeers") : (showViewedCardsStep ? t("decision.done") : (effectiveSubmitAction?.label || t("decision.submitPlain")))}
           onPointerDown={(event) => {
             if (peerWaitLocked) return;
             if (showViewedCardsStep) {
@@ -2746,7 +2759,7 @@ function PriorityBar({
           {peerWaiting ? (
             <PeerWaitButtonContent />
           ) : (
-            showViewedCardsStep ? "Done" : (effectiveSubmitAction?.label || "Submit")
+            showViewedCardsStep ? t("decision.done") : (effectiveSubmitAction?.label || t("decision.submitPlain"))
           )}
         </Button>
       </PeerWaitPopover>
@@ -3041,9 +3054,9 @@ function PriorityBar({
                   ) : !triggerOrderingDecision && (
                     <div className="action-strip-decision-meta flex min-w-0 flex-1 flex-col justify-center px-1">
                       <div className="flex min-w-0 items-baseline gap-2">
-                        <span className="decision-stage-chip">{decisionStageLabel(decision)}</span>
+                        <span className="decision-stage-chip">{decisionStageLabel(decision, t)}</span>
                         <div className="action-strip-decision-title text-[11px] font-bold uppercase tracking-[0.14em]">
-                          {resolveDecisionTitle(decision)}
+                          {resolveDecisionTitle(decision, t)}
                         </div>
                         {toolbarDecisionSummary && (
                           <div className="action-strip-decision-inline-summary truncate text-[11px]">
@@ -3310,7 +3323,7 @@ function PriorityBar({
                         {peerWaiting ? (
                           <PeerWaitButtonContent />
                         ) : (
-                          showViewedCardsStep ? "Done" : (effectiveSubmitAction?.label || "Submit")
+                          showViewedCardsStep ? t("decision.done") : (effectiveSubmitAction?.label || t("decision.submitPlain"))
                         )}
                       </Button>
                     </PeerWaitPopover>
@@ -3349,9 +3362,9 @@ function PriorityBar({
                   ) : !triggerOrderingDecision && (
                     <div className="action-strip-decision-meta flex min-w-0 flex-1 flex-col justify-center py-1.5">
                       <div className="flex min-w-0 items-center gap-2">
-                        <span className="decision-stage-chip">{decisionStageLabel(decision)}</span>
+                        <span className="decision-stage-chip">{decisionStageLabel(decision, t)}</span>
                         <div className="action-strip-decision-title truncate text-[11px] font-bold uppercase tracking-[0.14em]">
-                          {resolveDecisionTitle(decision)}
+                          {resolveDecisionTitle(decision, t)}
                         </div>
                       </div>
                       {decision?.source_name && (
@@ -3492,6 +3505,7 @@ function PriorityBar({
 }
 
 function CombatBar({ anchor = null, inline = false, replaceMiddleControls = false, decision, canAct }) {
+  const { t } = useI18n();
   const {
     state,
     cancelDecision,
@@ -3562,14 +3576,14 @@ function CombatBar({ anchor = null, inline = false, replaceMiddleControls = fals
             {!topbarHost ? primaryControl : null}
             <div className="combat-decision-meta">
               <span className="decision-stage-chip">{decision.kind === "attackers" ? "Attack" : "Block"}</span>
-              <span className="action-strip-decision-title">{decision.kind === "attackers" ? "Choose attackers" : "Choose blockers"}</span>
-              <span className="action-strip-decision-inline-summary">{!canAct ? "Waiting for opponent." : decision.kind === "attackers"
-                ? "Select a creature, then its defender; or drag between them."
-                : "Select a blocker, then an attacker; or drag between them."}</span>
+              <span className="action-strip-decision-title">{t(decision.kind === "attackers" ? "decision.chooseAttackers" : "decision.chooseBlockers")}</span>
+              <span className="action-strip-decision-inline-summary">{!canAct ? t("decision.waitingForOpponent") : t(decision.kind === "attackers"
+                ? "decision.attackersHint"
+                : "decision.blockersHint")}</span>
             </div>
             {canCancelDecision ? <Button type="button" variant="ghost" size="sm"
               className="decision-neon-button decision-neon-button--danger decision-cancel-button h-10 shrink-0 rounded-none px-3 font-bold uppercase"
-              onClick={() => cancelDecision()}>Cancel</Button> : null}
+              onClick={() => cancelDecision()}>{t("decision.cancel")}</Button> : null}
           </div>
           <DecisionRouter decision={decision} canAct={canAct} combatInline
             onCombatActionChange={handleCombatActionChange} />

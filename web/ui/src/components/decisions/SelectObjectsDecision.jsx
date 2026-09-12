@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { useHover } from "@/context/HoverContext";
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/i18n/I18nContext";
+import { useTranslatedCardNames } from "@/i18n/useTranslatedCardName";
 import { cn } from "@/lib/utils";
 import DecisionSummary from "./DecisionSummary";
 import HighlightedDecisionText from "./HighlightedDecisionText";
@@ -34,6 +36,11 @@ export default function SelectObjectsDecision({
   useEffect(() => () => clearHoverLinkedObjects(), [clearHoverLinkedObjects]);
   const stripLayout = layout === "strip";
   const candidates = useMemo(() => decision.candidates || [], [decision.candidates]);
+  const { t } = useI18n();
+  // Candidate rows name cards, so they use the official localized printing.
+  const localizeCardName = useTranslatedCardNames(
+    useMemo(() => candidates.map((candidate) => candidate?.name), [candidates])
+  );
   // Choices live above this panel: every card surface renders a check for them.
   const selected = useChosenObjectIds();
   const { applyChoice, clearChoices } = useObjectSelectionActions() || {};
@@ -96,7 +103,7 @@ export default function SelectObjectsDecision({
   const submitRangeLabel = allowPartialCompletion
     ? `0-${max}`
     : (min === max ? min : `${min}-${max}`);
-  const submitLabel = `Submit (${selected.length}/${submitRangeLabel})`;
+  const submitLabel = t("decision.submit", { progress: `${selected.length}/${submitRangeLabel}` });
   const handleSubmit = useCallback(() => {
     dispatch(
       { type: "select_objects", object_ids: selectedIds },
@@ -160,13 +167,13 @@ export default function SelectObjectsDecision({
             {!stripLayout && (
               <div className="decision-helper-text text-[13px] leading-snug">
                 {allowPartialCompletion
-                  ? `Select up to ${max} object(s)`
-                  : `Select ${min === max ? min : `${min}-${max}`} object(s)`}
+                  ? t("decision.selectUpTo", { max })
+                  : t("decision.selectRange", { range: min === max ? min : `${min}-${max}` })}
               </div>
             )}
             {!stripLayout && focusedToHover && (
               <div className="decision-helper-text decision-helper-text--muted text-[12px] italic leading-snug">
-                Showing options for the hovered card.
+                {t("decision.hoveredOptions")}
               </div>
             )}
           </div>
@@ -237,8 +244,8 @@ export default function SelectObjectsDecision({
                 >
                   <HighlightedDecisionText
                     className="decision-option-label"
-                    text={c.name}
-                    highlightText={c.name}
+                    text={localizeCardName(c.name)}
+                    highlightText={localizeCardName(c.name)}
                   />
                 </Button>
               );
@@ -248,7 +255,7 @@ export default function SelectObjectsDecision({
                 "decision-empty-note text-[12px] italic",
                 stripLayout ? "px-2 py-1" : "px-2.5 py-2"
               )}>
-                No legal choices.
+                {t("decision.noLegalChoices")}
               </div>
             )}
           </div>

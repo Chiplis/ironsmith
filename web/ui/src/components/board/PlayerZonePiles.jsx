@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { useGame } from "@/context/GameContext";
+import { useI18n } from "@/i18n/I18nContext";
 import { useCastTargeting, useCastTargetHover } from "@/context/DragContext";
 import { useHover } from "@/context/HoverContext";
 import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
@@ -35,6 +36,7 @@ function ZoneArt({ card }) {
 
 function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverride, fading = false, onOpenChange }) {
   const { state } = useGame();
+  const { t } = useI18n();
   const chosenObjectIds = useChosenObjectIds();
   const { hoverCard, clearHover, showAnchoredCardPreview } = useHover();
   const castIntent = useCastTargeting();
@@ -81,7 +83,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
   const cards = cardsOverride ?? zonePileCards(player, zone);
   const topCard = cards.find(isFaceUpZoneCard) || cards[0];
   const remainingCards = cards.filter((card) => card !== topCard);
-  const label = zone === "graveyard" ? "Graveyard" : zone === "look" ? "Look" : "Exile";
+  const label = t(zone === "graveyard" ? "zone.graveyardFull" : zone === "look" ? "zone.look" : "zone.exileFull");
   const count = zone === "graveyard" ? (player.graveyard_size ?? cards.length) : cards.length;
   const decision = state?.decision?.kind === "targets" ? state.decision
     : castIntent?.targetDecision || state?.decision;

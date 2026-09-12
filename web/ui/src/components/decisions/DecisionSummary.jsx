@@ -4,6 +4,8 @@ import { SymbolText } from "@/lib/mana-symbols";
 import { getVisibleTopStackObject } from "@/lib/stack-targets";
 import { cn } from "@/lib/utils";
 import { normalizeDecisionText } from "./decisionText";
+import { useTranslatedDecisionText } from "@/i18n/useTranslatedDecisionText";
+import { useI18n } from "@/i18n/I18nContext";
 
 function normalizeLine(text) {
   if (typeof text !== "string") return "";
@@ -66,10 +68,13 @@ export default function DecisionSummary({
   className = "",
 }) {
   const { state } = useGame();
+  const { t } = useI18n();
+  // Prompts quote the source card, so they follow that card's localized text.
+  const localize = useTranslatedDecisionText(decision);
   const stripLayout = layout === "strip";
   const tabLayout = layout === "tab";
   const shouldHideSummary = !decision || (stripLayout && hideDescription);
-  const description = hideDescription ? "" : normalizeLine(decision?.description);
+  const description = hideDescription ? "" : localize(normalizeLine(decision?.description));
   const topStackObject = getVisibleTopStackObject(state);
   const resolvingStackContextText = (() => {
     if (!decision || !stackObjectMatchesDecisionSource(topStackObject, decision)) return "";
@@ -88,8 +93,8 @@ export default function DecisionSummary({
     }
     return `${stackPrefix}: ${rawStackText}`;
   })();
-  const contextText = resolvingStackContextText || normalizeLine(decision?.context_text);
-  const consequenceText = normalizeLine(decision?.consequence_text);
+  const contextText = resolvingStackContextText || localize(normalizeLine(decision?.context_text));
+  const consequenceText = localize(normalizeLine(decision?.consequence_text));
 
   const lines = useMemo(() => {
     const nextLines = [];
@@ -107,7 +112,7 @@ export default function DecisionSummary({
         secondarySegments.push(contextText);
       }
       if (consequenceText && !sameLine(consequenceText, description) && !sameLine(consequenceText, contextText)) {
-        secondarySegments.push(`Follow-up: ${consequenceText}`);
+        secondarySegments.push(t("decision.followUp", { text: consequenceText }));
       }
       if (secondarySegments.length > 0) {
         nextLines.push({
@@ -129,7 +134,7 @@ export default function DecisionSummary({
         secondarySegments.push(contextText);
       }
       if (consequenceText && !sameLine(consequenceText, description) && !sameLine(consequenceText, contextText)) {
-        secondarySegments.push(`Follow-up: ${consequenceText}`);
+        secondarySegments.push(t("decision.followUp", { text: consequenceText }));
       }
       if (secondarySegments.length > 0) {
         nextLines.push({
@@ -163,7 +168,7 @@ export default function DecisionSummary({
     }
 
     return nextLines;
-  }, [consequenceText, contextText, description, stripLayout, tabLayout]);
+  }, [consequenceText, contextText, description, stripLayout, t, tabLayout]);
 
   if (shouldHideSummary || lines.length === 0) return null;
 

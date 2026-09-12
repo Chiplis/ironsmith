@@ -16,6 +16,8 @@ import {
   normalizeTriggerOrderingOrder,
 } from "@/lib/trigger-ordering";
 import { normalizeDecisionText } from "./decisionText";
+import { useTranslatedDecisionText } from "@/i18n/useTranslatedDecisionText";
+import { useI18n } from "@/i18n/I18nContext";
 import DecisionSummary from "./DecisionSummary";
 import HighlightedDecisionText from "./HighlightedDecisionText";
 import { decisionOptionAccentVars, getPlayerAccent } from "@/lib/player-colors";
@@ -243,8 +245,9 @@ function optionLabelContent(
   objectNameById,
   opt,
   onInspectObject = null,
+  localizeText = (text) => text,
 ) {
-  const normalizedText = normalizeDecisionText(opt.description);
+  const normalizedText = localizeText(normalizeDecisionText(opt.description));
   const objectName =
     opt?.object_id != null
       ? objectNameById.get(String(opt.object_id)) || ""
@@ -580,6 +583,9 @@ function SingleSelectDecision({
   toolbarSearchTarget = null,
 }) {
   const { dispatch, state, playerAccentOverrides } = useGame();
+  const { t } = useI18n();
+  // Option labels quote the source card's costs, so they follow its localized text.
+  const localizeDecisionText = useTranslatedDecisionText(decision);
   const {
     hoveredObjectId,
     clearHover,
@@ -682,8 +688,8 @@ function SingleSelectDecision({
   const canSubmitPayment =
     canAct && !!autoSubmitPayOption && autoSubmitPayOption.legal !== false;
   const paymentProgressLabel = canSubmitPayment
-    ? "Submit (1/1)"
-    : "Submit (0/1)";
+    ? t("decision.submit", { progress: "1/1" })
+    : t("decision.submit", { progress: "0/1" });
   const submitPayment = useCallback(() => {
     if (!autoSubmitPayOption || autoSubmitPayOption.legal === false) return;
     dispatch(
@@ -794,12 +800,12 @@ function SingleSelectDecision({
     );
   }, [dispatch, singleLegalOption]);
   const singleSubmitLabel = useMemo(() => {
-    if (!singleLegalOption) return "Submit";
+    if (!singleLegalOption) return t("decision.submitPlain");
     const description = String(singleLegalOption.description || "").trim();
-    if (isCastOptionDescription(description)) return "Cast";
-    if (isPlayOptionDescription(description)) return "Play";
-    return "Submit (1/1)";
-  }, [singleLegalOption]);
+    if (isCastOptionDescription(description)) return t("decision.cast");
+    if (isPlayOptionDescription(description)) return t("decision.play");
+    return t("decision.submit", { progress: "1/1" });
+  }, [singleLegalOption, t]);
   const contextual = useMemo(
     () => {
       // A mana-ability window is a single global payment step. Its sources
@@ -937,6 +943,7 @@ function SingleSelectDecision({
                         objectNameById,
                         opt,
                         showAnchoredCardPreview,
+                        localizeDecisionText,
                       )}
                       {opt.group_count > 1 && (
                         <span
@@ -1004,6 +1011,9 @@ function MultiSelectDecision({
   layout = "panel",
 }) {
   const { dispatch, state, playerAccentOverrides } = useGame();
+  const { t } = useI18n();
+  // Option labels quote the source card's costs, so they follow its localized text.
+  const localizeDecisionText = useTranslatedDecisionText(decision);
   const {
     hoveredObjectId,
     clearHover,
@@ -1109,7 +1119,7 @@ function MultiSelectDecision({
   }, [canAct, options, toggle]);
   const canSubmit = canAct && selected.size >= min && selected.size <= max;
   const selectedIndices = useMemo(() => Array.from(selected), [selected]);
-  const submitLabel = `Submit (${selected.size})`;
+  const submitLabel = useMemo(() => t("decision.submit", { progress: selected.size }), [selected.size, t]);
   const handleSubmit = useCallback(() => {
     dispatch(
       { type: "select_options", option_indices: selectedIndices },
@@ -1197,6 +1207,7 @@ function MultiSelectDecision({
                     objectNameById,
                     opt,
                     showAnchoredCardPreview,
+                    localizeDecisionText,
                   )}
                   canAct={canAct}
                   isHighlighted={isHighlighted}
@@ -1506,6 +1517,7 @@ function DistributeDecision({
   layout = "panel",
 }) {
   const { dispatch, setStatus, state, playerAccentOverrides } = useGame();
+  const { t } = useI18n();
   const { hoverCard, clearHover } = useHover();
   const stripLayout = layout === "strip";
   const options = decision.options || [];
@@ -1534,7 +1546,7 @@ function DistributeDecision({
     return expanded;
   };
   const canSubmit = canAct && assigned === total;
-  const submitLabel = `Submit (${assigned}/${total})`;
+  const submitLabel = useMemo(() => t("decision.submit", { progress: `${assigned}/${total}` }), [assigned, t, total]);
   const handleSubmit = useCallback(() => {
     if (assigned !== total) {
       setStatus(`Must assign exactly ${total} (currently ${assigned})`, true);
@@ -1842,6 +1854,7 @@ function RepeatableDecision({
   layout = "panel",
 }) {
   const { dispatch, state, playerAccentOverrides } = useGame();
+  const { t } = useI18n();
   const { hoverCard, clearHover } = useHover();
   const stripLayout = layout === "strip";
   const options = useMemo(() => decision.options || [], [decision.options]);
@@ -1871,7 +1884,7 @@ function RepeatableDecision({
     return expanded;
   };
   const canSubmit = canAct && total >= min && total <= maxTotal;
-  const submitLabel = `Submit (${total})`;
+  const submitLabel = useMemo(() => t("decision.submit", { progress: total }), [t, total]);
   const handleSubmit = useCallback(() => {
     dispatch(
       { type: "select_options", option_indices: expandOptionCounts(counts) },
