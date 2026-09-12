@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useMemo, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,7 @@ function fitTextsToPlayers(players, texts) {
 }
 
 export default function DeckLoadingView({ onLoad, onCancel }) {
+  const ui = useUiText();
   const {
     state,
     setStatus,
@@ -87,7 +89,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
         existingPreset && !samePresetTexts(existingPreset.texts, nextTexts);
       if (
         shouldConfirmOverride
-        && !window.confirm(`A saved deck named "${existingPreset.name}" already exists. Override it?`)
+        && !window.confirm(ui('A saved deck named "{0}" already exists. Override it?', { 0: existingPreset.name }))
       ) {
         onLoad({ decks, sideboards });
         return;
@@ -115,23 +117,17 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
     >
       <div className="mb-3 grid shrink-0 gap-3 border-b border-[rgba(154,126,82,0.34)] pb-3 xl:grid-cols-[minmax(180px,260px)_minmax(0,1fr)]">
         <div className="min-w-[220px]">
-          <h1 className="text-[18px] font-bold uppercase tracking-wide text-[#f2d9a3]">
-            Load Decks
-          </h1>
-          <div className="mt-1 text-[12px] font-semibold text-[#b8aa8e]">
-            Paste main deck lists with optional Sideboard sections.
-          </div>
+          <h1 className="text-[18px] font-bold uppercase tracking-wide text-[#f2d9a3]">{ui("Load Decks")}</h1>
+          <div className="mt-1 text-[12px] font-semibold text-[#b8aa8e]">{ui("Paste main deck lists with optional Sideboard sections.")}</div>
         </div>
         <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(0,1fr)_minmax(220px,300px)]">
-          <label className={labelClass}>
-            Saved Deck
-            <div className="flex gap-2">
+          <label className={labelClass}>{ui("Saved Deck")}<div className="flex gap-2">
               <select
                 className={fieldClass}
                 value={selectedPresetName}
                 onChange={(event) => setSelectedPresetName(event.target.value)}
               >
-                <option value="">Select a saved deck</option>
+                <option value="">{ui("Select a saved deck")}</option>
                 {savedPresets.map((preset) => (
                   <option key={preset.name} value={preset.name}>
                     {preset.name}
@@ -145,16 +141,12 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
                 className="h-9 shrink-0 border border-[#9a7e52]/55 px-3 text-[12px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317] disabled:text-[#8b806b]"
                 disabled={!selectedPreset}
                 onClick={handleApplySavedPreset}
-              >
-                Use
-              </Button>
+              >{ui("Use")}</Button>
             </div>
           </label>
-          <label className={labelClass}>
-            Save As
-            <input
+          <label className={labelClass}>{ui("Save As")}<input
               className={fieldClass}
-              placeholder="Friday gauntlet"
+              placeholder={ui("Friday gauntlet")}
               value={presetName}
               onChange={(event) => setPresetName(event.target.value)}
             />
@@ -175,16 +167,16 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
                 {player.name}
               </span>
               <div className="shrink-0 text-right text-[12px] font-semibold text-[#b8aa8e]">
-                <span>{cardCounts[i]} main</span>
+                <span>{cardCounts[i]}{" " + ui("main")}</span>
                 <span className="mx-1.5 text-[#776b58]">/</span>
-                <span>{sideboardCounts[i]} sideboard</span>
+                <span>{sideboardCounts[i]}{" " + ui("sideboard")}</span>
               </div>
             </div>
             <textarea
-              aria-label={`${player.name} decklist`}
+              aria-label={ui("{0} decklist", { 0: player.name })}
               spellCheck={false}
               className="h-full min-h-0 w-full resize-none border border-[rgba(154,126,82,0.48)] bg-[#080b0d] p-2 font-mono text-[13px] leading-snug text-[#e7d9bc] outline-none transition-colors placeholder:text-[#8b806b] focus:border-[#d8bf7a]/75"
-              placeholder={`Paste ${player.name}'s list...\n\nDeck\n4 Lightning Bolt\n2 Counterspell\n20 Island\n\nSideboard\n2 Pyroblast\n1 Tormod's Crypt`}
+              placeholder={ui("Paste {0}'s list...\n\nDeck\n4 Lightning Bolt\n2 Counterspell\n20 Island\n\nSideboard\n2 Pyroblast\n1 Tormod's Crypt", { 0: player.name })}
               value={texts[i] || ""}
               onChange={(e) => handleTextChange(i, e.target.value)}
             />
@@ -193,11 +185,9 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
       </div>
       <div className="mt-3 flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-[rgba(154,126,82,0.34)] pt-3">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-          <span className="whitespace-nowrap text-[12px] font-semibold uppercase tracking-wide text-[#d8bf7a]">
-            Min similarity
-          </span>
+          <span className="whitespace-nowrap text-[12px] font-semibold uppercase tracking-wide text-[#d8bf7a]">{ui("Min similarity")}</span>
           <Slider
-            aria-label="Card fidelity threshold"
+            aria-label={ui("Card fidelity threshold")}
             className="w-28"
             min={0}
             max={100}
@@ -206,7 +196,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
             onValueChange={([value]) => setSemanticThreshold(value)}
           />
           <span className="whitespace-nowrap text-[12px] text-[#b8aa8e]">
-            {semanticThreshold > 0 ? `${Math.round(semanticThreshold)}%` : "Off"} ({cardsMeetingThreshold})
+            {semanticThreshold > 0 ? `${Math.round(semanticThreshold)}%` : ui("Off")} ({cardsMeetingThreshold})
           </span>
         </div>
         <div className="flex items-center justify-center gap-2">
@@ -217,8 +207,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
             className="ui-primary-action h-9 border border-[#f2d9a3]/45 bg-[#211a10] px-4 text-[12px] font-bold uppercase tracking-wide text-[#f2d9a3] hover:bg-[#342817]"
             disabled={totalCards === 0}
             onClick={handleLoad}
-          >
-            Load{totalCards > 0 ? ` (${totalCards} main${totalSideboardCards > 0 ? `, ${totalSideboardCards} sideboard` : ""})` : ""}
+          >{ui("Load")}{totalCards > 0 ? ui(" ({0} main{1})", { 0: totalCards, 1: totalSideboardCards > 0 ? `, ${totalSideboardCards} sideboard` : "" }) : ""}
           </Button>
           <Button
             type="button"
@@ -226,9 +215,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
             size="sm"
             className="h-9 border border-[#9a7e52]/45 px-3 text-[12px] font-bold uppercase tracking-wide text-[#d8bf7a] hover:bg-[#2c2317]"
             onClick={onCancel}
-          >
-            Cancel
-          </Button>
+          >{ui("Cancel")}</Button>
         </div>
       </div>
     </main>

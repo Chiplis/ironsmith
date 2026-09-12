@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useGame } from "@/context/GameContext";
 import { useHoveredObjectId } from "@/context/HoverContext";
@@ -99,6 +100,7 @@ function hoveredPriorityActionGroups(decision, hoveredObjectId, suppressBattlefi
 }
 
 export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
+  const ui = useUiText();
   const {
     state,
     dispatch,
@@ -278,7 +280,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
   const handleSurrender = useCallback(async () => {
     if (!canSurrender) return;
     const playerName = playerDisplayName(players, localPlayer) || `Player ${Number(localPlayerIndex) + 1}`;
-    if (!window.confirm(`Surrender as ${playerName}? This will be signed and broadcast to the match.`)) {
+    if (!window.confirm(ui("Surrender as {0}? This will be signed and broadcast to the match.", { 0: playerName }))) {
       return;
     }
     setSurrendering(true);
@@ -303,6 +305,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
     players,
     setStatus,
     submitMultiplayerCommand,
+    ui,
   ]);
 
   return (
@@ -327,7 +330,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
                 {t("game.over")}
               </div>
               <div className="text-[16px] font-bold leading-tight text-[#f2d9a3]">
-                {gameOverText}
+                {ui(gameOverText)}
               </div>
               {rematchSideboarding ? (
                 <div className="text-[12px] leading-snug text-muted-foreground">
@@ -372,7 +375,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
                         className={groupIndex > 0 ? "pt-1 border-t border-[#2a3647]" : ""}
                       >
                         <h4 className="text-[11px] uppercase tracking-wider font-bold text-[#c6ddff]">
-                          {group.label}
+                          {ui(group.label)}
                         </h4>
                         <div className="grid gap-0.5 mt-0.5">
                           {group.actions.map((action) => (
@@ -458,7 +461,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
 
           <div className="flex items-center gap-1 shrink-0 flex-wrap">
             <h3 className="m-0 text-[12px] font-bold whitespace-nowrap uppercase tracking-wider text-[#8ec4ff]">{t("action.action")}</h3>
-            <span className="text-muted-foreground text-[11px] truncate flex-1 min-w-0">{metaText}</span>
+            <span className="text-muted-foreground text-[11px] truncate flex-1 min-w-0">{ui(metaText)}</span>
             <div className="flex items-center gap-1">
               {showSurrender ? (
                 <Button
@@ -471,8 +474,8 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
                   }`}
                   disabled={!canSurrender}
                   onClick={handleSurrender}
-                  title={canSurrender ? t("action.surrender") : t("action.surrenderSorcery")}
-                  aria-label={canSurrender ? t("action.surrender") : t("action.surrenderUnavailable")}
+                  title={ui(canSurrender ? t("action.surrender") : t("action.surrenderSorcery"))}
+                  aria-label={ui(canSurrender ? t("action.surrender") : t("action.surrenderUnavailable"))}
                 >
                   <Flag className="h-3.5 w-3.5" />
                 </Button>
@@ -487,8 +490,8 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
                 }`}
                 disabled={undoDisabled}
                 onClick={handleCancel}
-                title={undoAvailable ? t("action.undo") : t("action.undoUnavailable")}
-                aria-label={undoAvailable ? t("action.undo") : t("action.undoUnavailable")}
+                title={ui(undoAvailable ? t("action.undo") : t("action.undoUnavailable"))}
+                aria-label={ui(undoAvailable ? t("action.undo") : t("action.undoUnavailable"))}
               >
                 <Undo2 className="h-3.5 w-3.5" />
               </Button>

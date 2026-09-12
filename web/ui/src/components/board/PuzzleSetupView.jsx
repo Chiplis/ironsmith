@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useEffect, useMemo, useState } from "react";
 
 import { useGame } from "@/context/GameContext";
@@ -61,6 +62,7 @@ function puzzleDraftFromGameState(state) {
 }
 
 export default function PuzzleSetupView({ onLoadPuzzle, onCancel }) {
+  const ui = useUiText();
   const { state, setStatus } = useGame();
   const initialDraft = useMemo(
     () => {
@@ -165,31 +167,20 @@ export default function PuzzleSetupView({ onLoadPuzzle, onCancel }) {
       <section className="puzzle-setup-hero">
         <div className="puzzle-setup-copy">
           <div className="grid gap-2">
-            <div className="puzzle-setup-kicker">
-              Puzzle Setup
-            </div>
-            <h1 className="puzzle-setup-title">
-              Share A Board Position
-            </h1>
-            <p className="puzzle-setup-description">
-              Fill any zone for each player, then copy the generated `?puzzle=` link. Loading that
-              link resets the table and places the listed cards directly
-              into those zones without triggering ETBs.
-            </p>
-            <p className="puzzle-setup-note">
-              Importing from the current table includes visible zones only. Libraries and hidden
-              opponent hands stay blank unless you type them in here.
-            </p>
+            <div className="puzzle-setup-kicker">{ui("Puzzle Setup")}</div>
+            <h1 className="puzzle-setup-title">{ui("Share A Board Position")}</h1>
+            <p className="puzzle-setup-description">{ui("Fill any zone for each player, then copy the generated `?puzzle=` link. Loading that link resets the table and places the listed cards directly into those zones without triggering ETBs.")}</p>
+            <p className="puzzle-setup-note">{ui("Importing from the current table includes visible zones only. Libraries and hidden opponent hands stay blank unless you type them in here.")}</p>
           </div>
 
           <div className="puzzle-setup-control-strip">
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="secondary" className="stone-pill px-3 uppercase">
                 <Users className="size-3.5" />
-                {players.length} player{players.length === 1 ? "" : "s"}
+                {players.length}{" " + ui("player")}{players.length === 1 ? "" : ui("s")}
               </Badge>
               <Badge variant="secondary" className="stone-pill px-3 uppercase">
-                {totalCards} card{totalCards === 1 ? "" : "s"}
+                {totalCards}{" " + ui("card")}{totalCards === 1 ? "" : ui("s")}
               </Badge>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -200,9 +191,7 @@ export default function PuzzleSetupView({ onLoadPuzzle, onCancel }) {
                 disabled={players.length <= 1}
                 onClick={() => adjustPlayerCount(players.length - 1)}
               >
-                <UserMinus className="size-4" />
-                Remove Player
-              </Button>
+                <UserMinus className="size-4" />{ui("Remove Player")}</Button>
               <Button
                 type="button"
                 variant="secondary"
@@ -210,17 +199,11 @@ export default function PuzzleSetupView({ onLoadPuzzle, onCancel }) {
                 disabled={players.length >= MAX_PLAYERS}
                 onClick={() => adjustPlayerCount(players.length + 1)}
               >
-                <UserPlus className="size-4" />
-                Add Player
-              </Button>
+                <UserPlus className="size-4" />{ui("Add Player")}</Button>
               <Button type="button" variant="secondary" className="stone-pill" onClick={handleImportCurrentTable}>
-                <Download className="size-4" />
-                Import Current Table
-              </Button>
+                <Download className="size-4" />{ui("Import Current Table")}</Button>
               <Button type="button" variant="secondary" className="stone-pill" onClick={handleClearDraft}>
-                <Eraser className="size-4" />
-                Clear Draft
-              </Button>
+                <Eraser className="size-4" />{ui("Clear Draft")}</Button>
             </div>
           </div>
         </div>
@@ -228,9 +211,7 @@ export default function PuzzleSetupView({ onLoadPuzzle, onCancel }) {
         <aside className="puzzle-share-panel">
           <label className={zoneLabelClass}>
             <span className="inline-flex items-center gap-2">
-              <Link2 className="size-3.5" />
-              Share Link
-            </span>
+              <Link2 className="size-3.5" />{ui("Share Link")}</span>
             <textarea
               className="puzzle-setup-field puzzle-share-link"
               readOnly
@@ -239,13 +220,9 @@ export default function PuzzleSetupView({ onLoadPuzzle, onCancel }) {
           </label>
           <div className="grid gap-2 sm:grid-cols-2">
             <Button type="button" variant="secondary" className="stone-pill" onClick={handleCopyLink}>
-              <Clipboard className="size-4" />
-              Copy Link
-            </Button>
+              <Clipboard className="size-4" />{ui("Copy Link")}</Button>
             <Button type="button" variant="secondary" className="stone-pill" onClick={handleLoadHere}>
-              <Play className="size-4" />
-              Load Here
-            </Button>
+              <Play className="size-4" />{ui("Load Here")}</Button>
           </div>
         </aside>
       </section>
@@ -261,45 +238,39 @@ export default function PuzzleSetupView({ onLoadPuzzle, onCancel }) {
               className="puzzle-player-panel"
             >
               <div className="puzzle-player-header">
-                <label className={zoneLabelClass}>
-                  Player Name
-                  <input
+                <label className={zoneLabelClass}>{ui("Player Name")}<input
                     className={fieldClass}
                     value={player.name}
                     onChange={(event) => updatePlayerName(playerIndex, event.target.value)}
-                    placeholder={`Player ${playerIndex + 1}`}
+                    placeholder={ui("Player {0}", { 0: playerIndex + 1 })}
                   />
                 </label>
-                <label className={zoneLabelClass}>
-                  Life
-                  <input
+                <label className={zoneLabelClass}>{ui("Life")}<input
                     className={fieldClass}
                     type="number"
                     value={player.life}
                     onChange={(event) => updatePlayerLife(playerIndex, event.target.value)}
                   />
                 </label>
-                <div className="puzzle-player-summary">
-                  Life {playerPayload?.life ?? 20} - {" "}
+                <div className="puzzle-player-summary">{ui("Life") + " "}{playerPayload?.life ?? 20} - {" "}
                   {PUZZLE_ZONE_ORDER.reduce(
                     (count, zone) => count + (playerPayload?.zones?.[zone]?.length || 0),
                     0
-                  )} cards encoded
-                </div>
+                  )}{" " + ui("cards encoded")}</div>
               </div>
 
               <div className="puzzle-zone-grid">
                 {PUZZLE_ZONE_ORDER.map((zone) => (
                   <label key={`${player.id}:${zone}`} className="puzzle-zone-editor">
                     <span className="puzzle-zone-header">
-                      <span>{zoneTitle(zone)}</span>
+                      <span>{ui(zoneTitle(zone))}</span>
                       <span className="puzzle-zone-count">
                         {parsePuzzleCardList(zoneTexts[playerIndex]?.[zone]).length}
                       </span>
                     </span>
                     <textarea
                       className={`${fieldClass} puzzle-zone-textarea`}
-                      placeholder={`1 ${player.name || `Player ${playerIndex + 1}`} card per line`}
+                      placeholder={ui("1 {0} card per line", { 0: player.name || `Player ${playerIndex + 1}` })}
                       value={zoneTexts[playerIndex]?.[zone] || ""}
                       onChange={(event) => updateZoneText(playerIndex, zone, event.target.value)}
                     />
@@ -313,9 +284,7 @@ export default function PuzzleSetupView({ onLoadPuzzle, onCancel }) {
 
       <footer className="puzzle-setup-footer">
         <Button type="button" variant="secondary" className="stone-pill" onClick={onCancel}>
-          <ArrowLeft className="size-4" />
-          Back To Table
-        </Button>
+          <ArrowLeft className="size-4" />{ui("Back To Table")}</Button>
       </footer>
     </main>
   );

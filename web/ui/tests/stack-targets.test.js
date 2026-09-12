@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildStackTargetPresentation,
+  getVisibleStackObjects,
   stackInspectObjectId,
   stackSelectionKeys,
 } from "../src/lib/stack-targets.js";
@@ -38,4 +39,17 @@ test("stack target presentation can focus a stack object by linked card id", () 
   assert.equal(presentation.activeStackObject.id, 2001);
   assert.equal(presentation.arrows[0].fromId, 2001);
   assert.equal(presentation.arrows[0].toId, 99);
+});
+
+
+test("a completed resolving entry cannot reappear at priority", () => {
+  const old = { id: 81, name: "Resolved spell" };
+  const next = { id: 82, name: "Next spell" };
+  const prompt = { stack_objects: [next], resolving_stack_object: old,
+    decision: { kind: "select_options", player: 0 } };
+  assert.deepEqual(getVisibleStackObjects(prompt), [old, next], "keep the active resolution during its prompt");
+  const priority = { ...prompt, decision: { kind: "priority", player: 0 } };
+  assert.deepEqual(getVisibleStackObjects(priority), [next]);
+  assert.deepEqual(getVisibleStackObjects({ ...priority, stack_objects: [] }), []);
+  assert.deepEqual(getVisibleStackObjects({ ...priority, stack_objects: [old] }), [old], "live entries remain authoritative");
 });

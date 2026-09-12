@@ -1,3 +1,4 @@
+import { localeCatalogs } from "../i18n/catalog.js";
 // Re-express a decision prompt in the player's language.
 //
 // The engine phrases prompts by quoting the source card's own compiled text
@@ -67,10 +68,7 @@ export function printedSentences(line) {
 // The word that introduces an optional action, per locale. The engine strips
 // the English one when it phrases a "may" prompt, so the localized sentence
 // has to lose its own equivalent to stay parallel.
-const OPTIONAL_MARKERS = {
-  en: /\byou\s+may\b|\bmay\b/iu,
-  es: /\bpuedes\b|\bpuedas\b|\bpuede\b|\bpueden\b|\bpodr[áa]s\b|\bpod[ée]is\b/iu,
-};
+
 
 function normalize(text) {
   return String(text || "")
@@ -94,7 +92,7 @@ function stripTerminator(text) {
 // way the engine drops "you may". Without a marker the whole sentence stands —
 // still the right sentence, just with its lead-in.
 function optionalClause(sentence, locale) {
-  const marker = OPTIONAL_MARKERS[locale];
+  const marker = localeCatalogs[locale]?.optionalMarkers;
   if (!marker) return sentence;
   const match = marker.exec(sentence);
   if (!match) return sentence;

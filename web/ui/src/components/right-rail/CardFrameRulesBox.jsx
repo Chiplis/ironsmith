@@ -1,7 +1,9 @@
+import useUiText from "@/i18n/useUiText";
 import { useLayoutEffect, useRef } from "react";
 import "@/styles/card-frame-text-fit.css";
 
 export default function CardFrameRulesBox({ children, label, onFit, onMeasure, refitKey }) {
+  const ui = useUiText();
   const boxRef = useRef(null);
   const fitRef = useRef(null);
   const onFitRef = useRef(onFit);
@@ -120,5 +122,5 @@ export default function CardFrameRulesBox({ children, label, onFit, onMeasure, r
 
   useLayoutEffect(() => { fitRef.current?.(); }, [children, refitKey]);
 
-  return <div ref={boxRef} className="interactive-card-frame__rules" data-fit-text="true" aria-label={label}>{children}</div>;
+  return <div ref={boxRef} className="interactive-card-frame__rules" data-fit-text="true" aria-label={ui(label)}>{children}</div>;
 }

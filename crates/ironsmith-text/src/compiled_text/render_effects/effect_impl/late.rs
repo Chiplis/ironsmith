@@ -97,6 +97,9 @@
         return compact;
     }
     if let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() {
+        if let Some((_, compact)) = describe_permanent_keyword_choice(choose_mode) {
+            return compact;
+        }
         if let Some(compact) = describe_choose_card_type_reveal_partition(choose_mode) {
             return compact;
         }
@@ -3367,6 +3370,9 @@
             return text;
         }
         if let Some(text) = describe_delayed_exile_referenced_controller_graveyard(schedule) {
+            return text;
+        }
+        if let Some(text) = describe_delayed_single_tagged_exile(schedule) {
             return text;
         }
         if let Some(text) = describe_delayed_trailing_if_next_end_step(schedule) {

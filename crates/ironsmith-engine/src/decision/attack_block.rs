@@ -365,7 +365,14 @@ pub(crate) fn compute_legal_attackers_with_view(
             .collect::<Vec<_>>();
 
         let mut valid_targets = Vec::new();
-        if !required_player_targets.is_empty() {
+        let assigned_players = game
+            .required_attack_players_this_turn(perm_id)
+            .collect::<Vec<_>>();
+        if !assigned_players.is_empty() {
+            // Keep all legal choices: requirements are compared globally, and
+            // never force an attack cost or override another requirement.
+            valid_targets.extend(legal_targets);
+        } else if !required_player_targets.is_empty() {
             valid_targets.extend(required_player_targets);
         } else if !nongoad_targets.is_empty() {
             valid_targets.extend(nongoad_targets);
@@ -382,7 +389,8 @@ pub(crate) fn compute_legal_attackers_with_view(
             .iter()
             .any(|ability| ability.id() == crate::static_abilities::StaticAbilityId::MustAttack)
             || !goaded_by.is_empty()
-            || has_required_attack_target;
+            || has_required_attack_target
+            || valid_targets.iter().any(|target| matches!(target, AttackTarget::Player(player) if assigned_players.contains(player)));
 
         if !valid_targets.is_empty() {
             options.push(AttackerOption {

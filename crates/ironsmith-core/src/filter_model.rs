@@ -1893,6 +1893,10 @@ pub struct ObjectFilter {
     pub could_be_targeted_by: Option<TargetabilityConstraint>,
     pub card_types: Vec<CardType>,
     pub all_card_types: Vec<CardType>,
+    /// Number of distinct card types on the candidate, independent of its
+    /// supertypes and subtypes.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub card_type_count: Option<Comparison>,
     pub excluded_card_types: Vec<CardType>,
     pub subtypes: Vec<Subtype>,
     /// Every listed subtype must be present. This represents compound
@@ -2730,6 +2734,7 @@ impl ObjectFilter {
             || self.all_colors.is_some()
             || self.exactly_two_colors.is_some()
             || self.color_count.is_some()
+            || self.card_type_count.is_some()
             || self.historic
             || self.nonhistoric
             || self.modified
@@ -5120,6 +5125,14 @@ impl ObjectFilter {
                 };
                 parts.push(format!("with total {metric} {maximum}"));
             }
+        }
+        if let Some(ref count) = self.card_type_count {
+            parts.push(match count {
+                Comparison::GreaterThanOrEqual(minimum) => {
+                    format!("with {minimum} or more card types")
+                }
+                _ => format!("with card type count {}", describe_comparison(count)),
+            });
         }
         if let Some(ref color_count) = self.color_count {
             parts.push(format!(

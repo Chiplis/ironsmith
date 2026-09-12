@@ -107,10 +107,12 @@ test("a permanent stays held so its battlefield slot follows the mouse", { timeo
     assert.equal(overCard, false, "nothing a click would pick sits under the arrow");
 
     // The hold tracks the bare pointer: no button is down to drag with.
+    const sessionUpdates = await page.evaluate(() => window.__dragSessionUpdates);
     await page.mouse.move(880, 220);
     await page.waitForTimeout(80);
     let moved = await drag();
     assert.deepEqual([moved.currentX, moved.currentY], [880, 220]);
+    assert.equal(await page.evaluate(() => window.__dragSessionUpdates), sessionUpdates, "pointer motion does not republish the hand/workspace session");
     assert.notDeepEqual([moved.currentX, moved.currentY], [anchor.x, anchor.y], "the mouse takes the arrow over");
     assert.deepEqual([moved.startX, moved.startY], [grip.x, grip.y], "it still points from the card");
 
@@ -129,5 +131,29 @@ test("a permanent stays held so its battlefield slot follows the mouse", { timeo
   } finally {
     assert.deepEqual(errors, []);
     await close();
+  }
+});
+
+
+test("an accepted drop tucks the hand and suppresses hover for 200ms", async () => {
+  const h = await harness();
+  try {
+    const card = h.page.locator('[data-hand-case] .game-card[data-object-id="8"]');
+    await card.focus();
+    await h.page.evaluate(() => {
+      window.dispatchEvent(new CustomEvent("ironsmith:hand-card-dropped"));
+      const card = document.querySelector('[data-hand-case] .game-card[data-object-id="8"]');
+      card.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    });
+    await h.page.waitForTimeout(80);
+    assert.equal(await card.evaluate((el) => getComputedStyle(el).pointerEvents), "none");
+    assert.equal(await card.evaluate((el) => el.classList.contains("inspected") || el.classList.contains("hovered")), false);
+    await h.page.waitForFunction(() => !document.documentElement.hasAttribute("data-hand-drop-cooldown"));
+    assert.notEqual(await card.evaluate((el) => getComputedStyle(el).pointerEvents), "none");
+    await card.hover();
+    await h.page.waitForFunction(() => document.querySelector('[data-hand-case] .game-card[data-object-id="8"]').classList.contains("hovered"));
+    assert.deepEqual(h.errors, []);
+  } finally {
+    await h.close();
   }
 });

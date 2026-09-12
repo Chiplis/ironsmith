@@ -1,7 +1,10 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef, useSyncExternalStore } from "react";
 import { castHoverTargetAtPoint } from "@/lib/hand-drag-intent";
 
+import { createFrameStore } from "@/lib/frame-store";
+
+const DragMotionContext = createContext(null);
 const CastHoverContext = createContext(null);
 const CastTargetContext = createContext(null);
 const DragStateContext = createContext(undefined);
@@ -22,7 +25,14 @@ function placementKeys(card) {
 }
 
 export function DragProvider({ children }) {
-  const [dragState, setDragState] = useState(null);
+  const [dragState, setSession] = useState(null);
+  const [motion] = useState(() => createFrameStore());
+  const setDragState = useCallback((update) => {
+    const next = typeof update === "function" ? update(motion.getSnapshot()) : update;
+    motion.set(next);
+    setSession(next);
+  }, [motion]);
+  useEffect(() => () => motion.dispose(), [motion]);
   const [placementSlots, setPlacementSlots] = useState(() => new Map());
   const [pendingPlacement, setPendingPlacement] = useState(null);
   const dragStateRef = useRef(null);
@@ -68,20 +78,19 @@ export function DragProvider({ children }) {
     };
     dragStateRef.current = next;
     setDragState(next);
-  }, []);
+  }, [setDragState]);
 
   const updateDrag = useCallback((x, y) => {
-    const hit = dragStateRef.current?.castIntent ? castHoverTargetAtPoint(x, y) : null;
-    setDragState((prev) => {
-      if (!prev) return null;
-      const hoverCandidate = JSON.stringify(prev.hoverCandidate ?? null) === JSON.stringify(hit)
-        ? prev.hoverCandidate
-        : hit;
-      const next = { ...prev, currentX: x, currentY: y, hoverCandidate };
-      dragStateRef.current = next;
-      return next;
-    });
-  }, []);
+    const prev = dragStateRef.current;
+    if (!prev || (prev.currentX === x && prev.currentY === y)) return;
+    const hit = prev.castIntent ? castHoverTargetAtPoint(x, y) : null;
+    const hoverChanged = JSON.stringify(prev.hoverCandidate ?? null) !== JSON.stringify(hit);
+    const next = { ...prev, currentX: x, currentY: y,
+      hoverCandidate: hoverChanged ? hit : prev.hoverCandidate };
+    dragStateRef.current = next;
+    motion.set(next);
+    if (hoverChanged) setSession(next);
+  }, [motion]);
 
   const markCastIntent = useCallback((sourcePoint) => {
     setDragState((prev) => {
@@ -97,7 +106,7 @@ export function DragProvider({ children }) {
       dragStateRef.current = next;
       return next;
     });
-  }, []);
+  }, [setDragState]);
 
   const setCastTargetPreview = useCallback((objectId, startedAt, targetDecision) => {
     setDragState((prev) => {
@@ -106,7 +115,7 @@ export function DragProvider({ children }) {
       dragStateRef.current = next;
       return next;
     });
-  }, []);
+  }, [setDragState]);
 
   /**
    * Put a released gesture back in the player's hands without the button.
@@ -122,14 +131,14 @@ export function DragProvider({ children }) {
     dragStateRef.current = next;
     setDragState(next);
     return next;
-  }, []);
+  }, [setDragState]);
 
   const endDrag = useCallback(() => {
     const state = dragStateRef.current;
     dragStateRef.current = null;
     setDragState(null);
     return state;
-  }, []);
+  }, [setDragState]);
 
   const actions = useMemo(
     () => ({ startDrag, updateDrag, markCastIntent, setCastTargetPreview, resumeDrag, endDrag }),
@@ -191,6 +200,7 @@ export function DragProvider({ children }) {
   }, [clearPendingPlacement, dragState?.keyboard, endDrag, updateDrag]);
 
   return (
+    <DragMotionContext.Provider value={motion}>
     <CastHoverContext.Provider value={dragState?.castIntent ? dragState.hoverCandidate : null}>
       <CastTargetContext.Provider value={dragState?.castIntent || null}>
         <DragStateContext.Provider value={dragState}>
@@ -206,13 +216,20 @@ export function DragProvider({ children }) {
         </DragStateContext.Provider>
       </CastTargetContext.Provider>
     </CastHoverContext.Provider>
+    </DragMotionContext.Provider>
   );
 }
 
-export function useDragState() {
+export function useDragSession() {
   const dragState = useContext(DragStateContext);
   if (dragState === undefined) throw new Error("useDragState must be inside DragProvider");
   return dragState;
+}
+
+export function useDragState() {
+  const motion = useContext(DragMotionContext);
+  if (!motion) throw new Error("useDragState must be inside DragProvider");
+  return useSyncExternalStore(motion.subscribe, motion.getSnapshot, motion.getSnapshot);
 }
 
 export function useDragActions() {

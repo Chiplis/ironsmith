@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useRef, useLayoutEffect, useEffect, useCallback, useMemo, useState } from "react";
 import ManaAbilityPopover from "@/components/overlays/ManaAbilityPopover";
 import { manaPaymentActionMap, manaActivationCommand } from "@/lib/mana-payment-actions";
@@ -885,6 +886,7 @@ export default function BattlefieldRow({
   enablePlacementPreview = false,
   enableReposition = enablePlacementPreview,
 }) {
+  const ui = useUiText();
   const rowRef = useRef(null);
   const keyboardNavigationRef = useRef(false);
   const handInspectionLockedRef = useRef(false);
@@ -2654,8 +2656,8 @@ export default function BattlefieldRow({
                   event.stopPropagation();
                   cancelDecision();
                 }}
-                title="Undo"
-                aria-label={`Undo tap of ${card.name || "land"}`}
+                title={ui("Undo")}
+                aria-label={ui("Undo tap of {0}", { 0: card.name || "land" })}
               >
                 <Undo2 className="h-4 w-4" />
               </Button>

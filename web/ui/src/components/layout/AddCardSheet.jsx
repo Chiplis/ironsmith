@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useState, useCallback, useEffect, useRef, useId } from "react";
 import { useGame } from "@/context/GameContext";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,7 @@ export default function AddCardSheet({
   onAddCardNotice,
   triggerClassName = "",
 }) {
+  const ui = useUiText();
   const {
     game,
     state,
@@ -206,20 +208,14 @@ export default function AddCardSheet({
         className={`fantasy-sheet add-card-sheet w-[min(92vw,460px)] p-0 ${triggerClassName}`}
       >
         <SheetHeader className="fantasy-sheet-header pr-12">
-          <div className="text-[11px] uppercase tracking-[0.24em] text-[#cdb27a]">Tools</div>
-          <SheetTitle className="text-[22px] uppercase tracking-[0.18em] text-foreground">
-            Add Card
-          </SheetTitle>
-          <SheetDescription className="max-w-[34ch] text-[13px] leading-5">
-            Inject a card directly into a player zone for testing and board setup.
-          </SheetDescription>
+          <div className="text-[11px] uppercase tracking-[0.24em] text-[#cdb27a]">{ui("Tools")}</div>
+          <SheetTitle className="text-[22px] uppercase tracking-[0.18em] text-foreground">{ui("Add Card")}</SheetTitle>
+          <SheetDescription className="max-w-[34ch] text-[13px] leading-5">{ui("Inject a card directly into a player zone for testing and board setup.")}</SheetDescription>
         </SheetHeader>
 
         <div className="add-card-sheet-body grid gap-4 p-4">
           <div className="relative grid gap-1" ref={autocompleteRef}>
-            <label className={labelClass}>
-              Card Name
-              <input
+            <label className={labelClass}>{ui("Card Name")}<input
                 ref={cardNameInputRef}
                 role="combobox"
                 aria-autocomplete="list"
@@ -227,7 +223,7 @@ export default function AddCardSheet({
                 aria-controls={autocompleteVisible ? autocompleteId : undefined}
                 aria-activedescendant={autocompleteVisible && autocompleteIndex >= 0 ? `${autocompleteId}-${autocompleteIndex}` : undefined}
                 className={inputClass}
-                placeholder="Card name"
+                placeholder={ui("Card name")}
                 value={cardName}
                 disabled={addLocked}
                 onChange={(event) => {
@@ -287,7 +283,7 @@ export default function AddCardSheet({
               />
             </label>
             {autocompleteVisible ? (
-              <div id={autocompleteId} role="listbox" aria-label="Matching cards" className="add-card-autocomplete absolute left-0 top-[calc(100%+0.35rem)] z-40 w-full overflow-hidden p-1">
+              <div id={autocompleteId} role="listbox" aria-label={ui("Matching cards")} className="add-card-autocomplete absolute left-0 top-[calc(100%+0.35rem)] z-40 w-full overflow-hidden p-1">
                 {visibleAutocompleteOptions.map((option, index) => (
                   <button
                     key={option}
@@ -310,9 +306,7 @@ export default function AddCardSheet({
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className={labelClass}>
-              Player
-              <select
+            <label className={labelClass}>{ui("Player")}<select
                 className={selectClass}
                 value={selectedPlayer}
                 disabled={addLocked}
@@ -326,20 +320,18 @@ export default function AddCardSheet({
               </select>
             </label>
 
-            <label className={labelClass}>
-              Zone
-              <select
+            <label className={labelClass}>{ui("Zone")}<select
                 className={selectClass}
                 value={zone}
                 disabled={addLocked}
                 onChange={(event) => setZone(event.target.value)}
               >
-                <option value="hand">Hand</option>
-                <option value="battlefield">Battlefield</option>
-                <option value="graveyard">GY</option>
-                <option value="exile">Exile</option>
-                <option value="library">Library</option>
-                <option value="command">Command</option>
+                <option value="hand">{ui("Hand")}</option>
+                <option value="battlefield">{ui("Battlefield")}</option>
+                <option value="graveyard">{ui("GY")}</option>
+                <option value="exile">{ui("Exile")}</option>
+                <option value="library">{ui("Library")}</option>
+                <option value="command">{ui("Command")}</option>
               </select>
             </label>
           </div>
@@ -350,9 +342,7 @@ export default function AddCardSheet({
               disabled={addLocked}
               onCheckedChange={(checked) => setSkipTriggers(checked === true)}
               className="h-3.5 w-3.5"
-            />
-            Skip triggers
-          </label>
+            />{ui("Skip triggers")}</label>
 
           <div className="add-card-sheet-footer grid gap-2 sm:grid-cols-2">
             <Button
@@ -361,18 +351,14 @@ export default function AddCardSheet({
               size="sm"
               className="stone-pill"
               onClick={closeSheet}
-            >
-              Cancel
-            </Button>
+            >{ui("Cancel")}</Button>
             <Button
               type="button"
               size="sm"
               className="add-card-submit ui-primary-action w-full justify-center uppercase tracking-wide"
               onClick={() => handleAdd()}
               disabled={addLocked || !cardName.trim()}
-            >
-              Add to Game
-            </Button>
+            >{ui("Add to Game")}</Button>
           </div>
         </div>
       </SheetContent>

@@ -608,6 +608,28 @@ fn is_equipped_keyword_grant_line(tokens: &[OwnedLexToken]) -> Result<bool, Card
     }))
 }
 
+/// Static goad predicates keep the affected set live instead of resolving a goad action.
+pub fn parse_matching_are_goaded_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    let Some(are) = tokens.iter().position(|token| token.is_word("are")) else { return Ok(None) };
+    if crate::lexer::token_word_refs(&tokens[are..]) != ["are", "goaded"] { return Ok(None) }
+    let subject = &tokens[..are];
+    let mut filter = if let Some(with) = subject.iter().position(|token| token.is_word("with")) {
+        let words = crate::lexer::token_word_refs(&subject[with + 1..]);
+        if words.len() < 5 || words[..3] != ["power", "less", "than"]
+            || words.last().copied() != Some("power")
+            || crate::util::source_reference_surface_for_possessive_words(&words[3..words.len()-1]).is_none()
+        { return Ok(None) }
+        parse_object_filter(&subject[..with], false)?.with_power_less_than_source()
+    } else {
+        parse_object_filter(subject, false)?
+    };
+    filter.zone = Some(Zone::Battlefield);
+    Ok(Some(crate::model::CompilerStaticAbilityCore::goad_matching(filter).into()))
+}
+
 pub fn parse_anthem_and_goaded_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {

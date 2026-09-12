@@ -354,6 +354,14 @@ pub(crate) fn describe_effect_count_backref(value: &Value) -> Option<String> {
         }
         Value::SurfaceHinted { value, .. } => describe_effect_count_backref(value),
         Value::EffectValue(_) => Some("that many".to_string()),
+        Value::Scaled(value, multiplier) if *multiplier > 0 => {
+            let basis = describe_effect_count_backref(value)?;
+            Some(match multiplier {
+                1 => basis,
+                2 => format!("twice {basis}"),
+                _ => format!("{multiplier} times {basis}"),
+            })
+        }
         Value::EffectValueOffset(_, offset) => {
             if *offset == 0 {
                 Some("that many".to_string())
@@ -3323,6 +3331,16 @@ pub(crate) fn describe_single_search_filter_in_zone(filter: &ObjectFilter, zone:
     if filter_explicitly_selects_permanent_cards(filter) {
         if selection == "card" || selection.starts_with("card ") {
             selection = format!("permanent {selection}");
+        }
+        if let [subtype] = filter.subtypes.as_slice()
+            && filter.all_subtypes.is_empty()
+            && !filter.type_or_subtype_union
+        {
+            selection = selection.replacen(
+                &format!("permanent card {subtype}"),
+                &format!("{subtype} permanent card"),
+                1,
+            );
         }
         return with_indefinite_article(&selection);
     }

@@ -1246,6 +1246,15 @@ pub(crate) fn parse_get_pump_clause(
             disallowed_pronoun,
             demonstrative_reference,
         } => {
+            if crate::lexer::parser_token_word_refs(filter_tokens) == ["the", "creature"] {
+                return Ok(Some(EffectAst::subject_verb_pump(
+                    power,
+                    toughness,
+                    parse_target_phrase(filter_tokens)?,
+                    duration,
+                    condition,
+                )));
+            }
             if demonstrative_reference {
                 return Ok(None);
             }

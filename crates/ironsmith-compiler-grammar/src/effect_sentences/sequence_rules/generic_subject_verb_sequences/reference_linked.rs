@@ -255,13 +255,14 @@ pub fn parse_controller_defending_loot_then_greatest_mana_value_followup(
         followup.as_slice(),
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action: SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
-                target: TargetAst::Source(_),
+                target,
                 target_count: None,
                 distributed: false,
                 ..
             }),
             ..
-        })]
+        })] if matches!(target, TargetAst::Source(_))
+            || matches!(target, TargetAst::Object(filter, None, _) if filter.source)
     ) {
         return Ok(None);
     }

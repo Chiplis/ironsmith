@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import PlayerZonePiles from "./PlayerZonePiles";
 import PriorityHoldControl from "@/components/decisions/PriorityHoldControl";
 import RollingPanel from "./RollingPanel";
@@ -159,6 +160,7 @@ function buildActivatableMap(decision, perspective) {
 }
 
 export function ZoneCountInline({ player, onOpenDecklist = null, includeZones = null }) {
+  const ui = useUiText();
   const counts = zoneCounts(player).filter((entry) => (
     !Array.isArray(includeZones) || includeZones.includes(entry.zone)
   ));
@@ -170,7 +172,7 @@ export function ZoneCountInline({ player, onOpenDecklist = null, includeZones = 
         const deckEntry = entry.label === "Deck" && typeof onOpenDecklist === "function";
         const content = (
           <>
-            <span className="battlefield-count-label font-bold text-[#c1d4ea]">{entry.label}</span>
+            <span className="battlefield-count-label font-bold text-[#c1d4ea]">{ui(entry.label)}</span>
             <span className="text-[#d6e6fb] font-semibold">{entry.count}</span>
             {showLibraryTop && (
               <span className="battlefield-count-top text-[#f0dfba] font-semibold">({libraryTopName})</span>
@@ -186,7 +188,7 @@ export function ZoneCountInline({ player, onOpenDecklist = null, includeZones = 
                 "battlefield-count-item cursor-pointer text-left transition-colors hover:border-[#6d8ead] hover:text-[#e5f2ff]",
                 showLibraryTop && "battlefield-count-item--with-top"
               )}
-              title="Open decklist"
+              title={ui("Open decklist")}
               data-zone-anchor={entry.zone}
               data-zone-anchor-player={String(player?.id ?? player?.index ?? "")}
               onClick={(event) => {
@@ -203,7 +205,7 @@ export function ZoneCountInline({ player, onOpenDecklist = null, includeZones = 
           <span
             key={entry.label}
             className={cn("battlefield-count-item", showLibraryTop && "battlefield-count-item--with-top")}
-            title={showLibraryTop ? `Top card: ${libraryTopName}` : entry.title}
+            title={ui(showLibraryTop ? `Top card: ${libraryTopName}` : entry.title)}
             data-zone-anchor={entry.zone}
             data-zone-anchor-player={String(player?.id ?? player?.index ?? "")}
           >
@@ -221,10 +223,11 @@ function ZoneCardNameRows({
   onCardClick,
   onCardPointerDown,
 }) {
+  const ui = useUiText();
   if (!Array.isArray(cards) || cards.length === 0) {
     return (
       <div className="zone-card-name-list zone-card-name-list--empty">
-        <div className="zone-card-name-empty">Empty</div>
+        <div className="zone-card-name-empty">{ui("Empty")}</div>
       </div>
     );
   }
@@ -241,9 +244,9 @@ function ZoneCardNameRows({
             className={cn("zone-card-name-row", selected && "is-selected")}
             onPointerDown={(event) => onCardPointerDown?.(event, card)}
             onClick={(event) => onCardClick?.(event, card)}
-            title={String(card?.name || "Card")}
+            title={String(card?.name || ui("Card"))}
           >
-            <span>{card?.name || "Card"}</span>
+            <span>{card?.name || ui("Card")}</span>
           </button>
         );
       })}
@@ -277,6 +280,7 @@ export default function MyZone({
   tableGridRow = null,
   battlefieldTopInset = 0,
 }) {
+  const ui = useUiText();
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const { state, playerAccentOverrides } = useGame();
   const mobileZoneRef = useRef(null);
@@ -578,7 +582,7 @@ export default function MyZone({
                     activity && formatZoneActivityClass(activity.direction)
                   )}
                 >
-                  <span>{entry.label}</span>
+                  <span>{ui(entry.label)}</span>
                   <span>{displayCount}</span>
                 </div>
               );
@@ -624,8 +628,7 @@ export default function MyZone({
             onClick={handlePlayerTargetClick}
           >
             <span className="mobile-battle-self-copy">
-              <span className="mobile-battle-self-meta">
-                H {handCount} G {graveyardCount} X {exileCount} D {libraryCount}
+              <span className="mobile-battle-self-meta">{ui("H") + " "}{handCount}{" " + ui("G") + " "}{graveyardCount}{" " + ui("X") + " "}{exileCount}{" " + ui("D") + " "}{libraryCount}
               </span>
             </span>
             <span className="mobile-battle-inline-life" aria-hidden="true">
@@ -720,7 +723,7 @@ export default function MyZone({
                     <span className={cn(isActivePlayer && "battlefield-name-text--active")}>
                       {playerDisplayName(state?.players || [], player)}
                     </span>
-                    {zoneName && <span className="text-muted-foreground">{zoneName}</span>}
+                    {zoneName && <span className="text-muted-foreground">{ui(zoneName)}</span>}
                   </span>
                 </span>
                 <PriorityHoldControl />
@@ -740,9 +743,9 @@ export default function MyZone({
                 >
                   {mergedMobileHeader ? (
                     <div className="my-zone-merged-zone-meta flex items-center gap-1 text-[10px] uppercase tracking-[0.08em] text-[#bcae93] whitespace-nowrap">
-                      <span className="font-bold text-[#d8cbb0]">Hand</span>
+                      <span className="font-bold text-[#d8cbb0]">{ui("Hand")}</span>
                       <span className="text-[#efe0bb]">{player.hand_size ?? 0}</span>
-                      <span className="font-bold text-[#d8cbb0]">GY</span>
+                      <span className="font-bold text-[#d8cbb0]">{ui("GY")}</span>
                       <span className="text-[#efe0bb]">{player.graveyard_size ?? 0}</span>
                     </div>
                   ) : (
@@ -811,7 +814,7 @@ export default function MyZone({
                   )}
                 >
                   <div className="battlefield-overlay-zone-label flex items-center gap-2">
-                    <span>{entry.label}</span>
+                    <span>{ui(entry.label)}</span>
                     <span className="text-[#f1e2c0]">{displayCount}</span>
                     {activity ? (
                       <span
@@ -822,7 +825,7 @@ export default function MyZone({
                             : "zone-activity-badge-enter"
                         )}
                       >
-                        {activity.label}
+                        {ui(activity.label)}
                       </span>
                     ) : null}
                   </div>
@@ -938,7 +941,7 @@ export default function MyZone({
               >
                 {(showZoneHeaders || activity) && (
                   <div className="battlefield-zone-label flex items-center gap-1 text-[11px] uppercase tracking-wide text-[#9cb8d8] px-0.5">
-                    <span>{entry.label}</span>
+                    <span>{ui(entry.label)}</span>
                     <span className="text-[#d6e6fb]">{displayCount}</span>
                     {activity ? (
                       <span
@@ -949,7 +952,7 @@ export default function MyZone({
                             : "zone-activity-badge-enter"
                         )}
                       >
-                        {activity.label}
+                        {ui(activity.label)}
                       </span>
                     ) : null}
                   </div>
@@ -1006,7 +1009,7 @@ export default function MyZone({
                     style={{ gridTemplateRows: "auto minmax(0,1fr)" }}
                   >
                     <div className="battlefield-zone-label flex items-center gap-1 text-[11px] uppercase tracking-wide text-[#9cb8d8] px-0.5">
-                      <span>{entry.label}</span>
+                      <span>{ui(entry.label)}</span>
                       <span className="text-[#d6e6fb]">{displayCount}</span>
                       {activity ? (
                         <span
@@ -1017,7 +1020,7 @@ export default function MyZone({
                               : "zone-activity-badge-enter"
                           )}
                         >
-                          {activity.label}
+                          {ui(activity.label)}
                         </span>
                       ) : null}
                     </div>

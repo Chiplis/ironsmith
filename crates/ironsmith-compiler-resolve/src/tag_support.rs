@@ -669,6 +669,7 @@ pub fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
             filter.toughness.as_ref(),
             filter.mana_value.as_ref(),
             filter.color_count.as_ref(),
+            filter.card_type_count.as_ref(),
         ]
         .into_iter()
         .flatten()
@@ -1253,6 +1254,10 @@ fn filter_references_event_derived_amount(filter: &ObjectFilter) -> bool {
             .is_some_and(comparison_references_event_derived_amount)
         || filter
             .color_count
+            .as_ref()
+            .is_some_and(comparison_references_event_derived_amount)
+        || filter
+            .card_type_count
             .as_ref()
             .is_some_and(comparison_references_event_derived_amount)
         || filter

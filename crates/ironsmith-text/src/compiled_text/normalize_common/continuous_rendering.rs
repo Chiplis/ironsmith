@@ -1428,7 +1428,14 @@ fn is_vanishing_upkeep_ability(ability: &Ability) -> bool {
     let AbilityKind::Triggered(triggered) = &ability.kind else {
         return false;
     };
-    if triggered.intervening_if.is_some()
+    if !matches!(
+        triggered.intervening_if,
+        None | Some(Condition::SourceHasCounterAtLeast {
+            counter_type: CounterType::Time,
+            count: 1,
+            ..
+        })
+    )
         || !triggered.choices.is_empty()
         || triggered
             .trigger
@@ -1459,17 +1466,22 @@ fn is_vanishing_last_counter_ability(ability: &Ability) -> bool {
     if triggered.intervening_if.is_some() || !triggered.choices.is_empty() {
         return false;
     }
-    let Some(trigger) = triggered
+    let is_last_time_counter = if let Some(trigger) = triggered
         .trigger
-        .downcast_ref::<crate::triggers::CustomTrigger>()
-    else {
-        return false;
-    };
-    if trigger.id != "vanishing-last-time-counter-removed"
-        && !trigger
-            .description
-            .eq_ignore_ascii_case("when the last time counter is removed")
+        .downcast_ref::<crate::triggers::CounterRemovedFromTrigger>()
     {
+        trigger.filter == ObjectFilter::source()
+            && trigger.counter_type == Some(CounterType::Time)
+            && trigger.last
+            && !trigger.one_or_more
+            && !trigger.caused_by_source
+    } else {
+        triggered.trigger.downcast_ref::<crate::triggers::CustomTrigger>().is_some_and(|trigger| {
+            trigger.id == "vanishing-last-time-counter-removed"
+                || trigger.description.eq_ignore_ascii_case("when the last time counter is removed")
+        })
+    };
+    if !is_last_time_counter {
         return false;
     }
     let [effect] = triggered.effects.flattened_default_effects() else {

@@ -50,6 +50,18 @@ pub(super) const REGISTRY: RuleId = RuleId::new("trigger-clause-registry");
 /// The readings, in the order they were ranked.
 const READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("repeated-intro-event-union"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(try_parse_repeated_intro_event_union_lexed(input.tokens)),
+    },
+    Reading {
+        id: RuleId::new("player-plays-card"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(try_parse_player_plays_card_lexed(input.tokens)),
+    },
+    Reading {
         id: RuleId::new("simple-beginning-of-combat"),
         head: HeadDiscriminator::Any,
         admits: |_| true,

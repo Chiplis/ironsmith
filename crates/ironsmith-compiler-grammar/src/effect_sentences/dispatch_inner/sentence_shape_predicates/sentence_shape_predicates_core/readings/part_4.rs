@@ -1,6 +1,5 @@
 //! Sentence readings 67–88, in rank order.
 
-use crate::cards::builders::ObjectChoiceEffectAst;
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::DelayedEffectAst;
 use super::super::*;
@@ -197,41 +196,22 @@ pub(super) fn read_for_each_object_effect(
 pub(super) fn read_for_each_dynamic_target_effect(
     input: &Sentence<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let tokens = input.tokens;
-    if let Some(shape) =
-        effect_grammar::for_each_shapes::parse_for_each_dynamic_target_effect_shape(tokens)
-    {
-        let mut filter = parse_object_filter_lexed(shape.filter_tokens, false)?;
-        if filter.zone.is_none() {
-            filter.zone = Some(Zone::Battlefield);
-        }
-        let effects = parse_effect_sentence_lexed(shape.effect_tokens)?;
-        if effects.is_empty() {
-            return Err(CardTextError::ParseError(
-                "for-each dynamic target sentence missing effect payload".to_string(),
-            ))
-            .map(Some);
-        }
-        let tag = crate::tag::CompilerReferenceTag::It.bind();
-        return Ok(Some(vec![
-            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-                filter,
-                count: ChoiceCount::dynamic_x(),
-                count_value: None,
-                player: PlayerAst::You,
-                tag: tag.clone(),
-            }),
-            EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, effects }),
-        ]));
-    }
-    Ok(None)
+    crate::effect_sentences::subject_verb_primitives::parse_sentence_for_each_of_target_objects(
+        crate::effect_sentences::subject_verb_primitives::SubjectVerbPrimitiveClause::new(input.tokens),
+    )
 }
+
 pub(super) fn read_for_each_object_filter_effect(
     input: &Sentence<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
     if let Some(shape) = effect_grammar::for_each_shapes::parse_for_each_object_effect_shape(tokens)
     {
+        if shape.filter_tokens.iter().any(|token| token.is_word("target")) {
+            // Announced targets belong to the target iterator, including
+            // its fixed or dynamic count. A set filter would lose both.
+            return Ok(None);
+        }
         let filter = super::super::super::super::for_each_helpers::parse_for_each_object_filter(
             shape.filter_tokens,
         )?;

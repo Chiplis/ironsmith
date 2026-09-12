@@ -1,9 +1,11 @@
+import useUiText from "@/i18n/useUiText";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 const STACK_ALERT_FADE_MS = 180;
 
 export default function PlayerStackAlert({ visible, className = "" }) {
+  const ui = useUiText();
   const [shouldRender, setShouldRender] = useState(visible);
   const [isShown, setIsShown] = useState(visible);
   const hideTimeoutRef = useRef(null);
@@ -52,8 +54,8 @@ export default function PlayerStackAlert({ visible, className = "" }) {
         isShown ? "player-stack-alert-visible" : "player-stack-alert-hidden",
         className
       )}
-      aria-label="This player has something on the stack"
-      title="This player has something on the stack"
+      aria-label={ui("This player has something on the stack")}
+      title={ui("This player has something on the stack")}
     >
       <svg
         viewBox="0 0 16 16"

@@ -3,6 +3,7 @@ import {
   DEATH_COLLAPSE_EFFECT_MS,
   MARQUEE_STREAM_EFFECT_MS,
   RIFT_DISSOLVE_EXILE_EFFECT_MS,
+  RIFT_DISSOLVE_EXILE_SOURCE_MS,
   WIPE_WAVE_EFFECT_MS,
 } from "@/lib/game-animations";
 
@@ -35,7 +36,7 @@ const TARGET_WAIT_TIMEOUT_MS = 1100;
 // mid-animation rect unless we wait for those to settle first.
 const INSPECTOR_ENTRY_SETTLE_MS = 420;
 const MAX_INSPECTOR_SCALE = 2.8;
-const CLEANUP_TAIL_MS = 220;
+const CLEANUP_TAIL_MS = 32;
 
 const VERTEX_SHADER_SOURCE = `
 attribute vec2 a_position;
@@ -546,7 +547,7 @@ function effectDurationMs(effect) {
     case WIPE_WAVE_EFFECT_KIND:
       return WIPE_WAVE_EFFECT_MS;
     default:
-      return EXILE_EFFECT_DURATION_MS;
+      return effect?.travelsToInspector ? EXILE_EFFECT_DURATION_MS : RIFT_DISSOLVE_EXILE_SOURCE_MS;
   }
 }
 
@@ -1031,6 +1032,8 @@ function ShaderCanvas({ effects }) {
     const render = (now) => {
       const activeEffects = effectsRef.current.slice(0, MAX_SHADER_EFFECTS);
       if (activeEffects.length === 0) {
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
         frameId = window.requestAnimationFrame(render);
         return;
       }
@@ -1121,6 +1124,7 @@ function ParticleExileCard({ effect }) {
     "--exile-target-scale-x": String(Math.max(0.24, targetRect.width / rect.width)),
     "--exile-target-scale-y": String(Math.max(0.24, targetRect.height / rect.height)),
     "--exile-tilt": `${hashText(effect.id) % 2 === 0 ? -4 : 4}deg`,
+    "--exile-source-duration": `${RIFT_DISSOLVE_EXILE_SOURCE_MS}ms`,
     "--exile-start-delay": `${effect.cssAnimationDelayMs ?? effect.startDelayMs ?? 0}ms`,
     "--exile-converge-x": `${effect.convergeOffsetX || 0}px`,
     "--exile-converge-y": `${effect.convergeOffsetY || 0}px`,
@@ -1346,12 +1350,22 @@ export default function ZoneMoveEffects() {
   const pendingPollsRef = useRef(new Set());
 
   useEffect(() => {
-    if (effects.length === 0) return undefined;
+    // Only the source choreography suppresses hover. Inspector streams and
+    // invisible cleanup tails must not extend the interaction lock.
+    const releaseAt = Math.max(0, ...effects
+      .filter((effect) => effect.includeSourceClone)
+      .map((effect) => effect.startedAt + effectDurationMs(effect)));
+    const remaining = releaseAt - performance.now();
+    if (remaining <= 0) return undefined;
     document.body.classList.add("ironsmith-exile-animating");
+    const timer = window.setTimeout(() => {
+      document.body.classList.remove("ironsmith-exile-animating");
+    }, remaining);
     return () => {
+      window.clearTimeout(timer);
       document.body.classList.remove("ironsmith-exile-animating");
     };
-  }, [effects.length]);
+  }, [effects]);
 
   const addEffects = useCallback((nextEffects) => {
     setEffects((currentEffects) => [...currentEffects, ...nextEffects]);
@@ -1359,7 +1373,7 @@ export default function ZoneMoveEffects() {
     const now = performance.now();
     for (const effect of nextEffects) {
       const elapsed = now - effect.startedAt;
-      const remaining = Math.max(120, effectDurationMs(effect) - elapsed + CLEANUP_TAIL_MS);
+      const remaining = Math.max(0, effectDurationMs(effect) - elapsed + CLEANUP_TAIL_MS);
       const timerId = window.setTimeout(() => {
         setEffects((currentEffects) => currentEffects.filter((currentEffect) => currentEffect.id !== effect.id));
       }, remaining);

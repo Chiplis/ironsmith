@@ -74,7 +74,7 @@ const READINGS: &[Reading] = &[
     Reading {
         id: RuleId::new("counter-pair"),
         head: HeadDiscriminator::Any,
-        admits: |_| true,
+        admits: |input| counter_shapes::parse_counter_placement_sequence_tokens(input.tokens).is_none(),
         read: |input| input.outcome(read_counter_pair(input)),
     },
 ];

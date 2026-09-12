@@ -478,6 +478,9 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                 .as_deref()
                 .and_then(|prefix_tokens| match parse_target_phrase(prefix_tokens) {
                     Ok(TargetAst::Source(span)) => Some(TargetAst::Source(span)),
+                    Ok(TargetAst::Object(filter, None, span)) if filter.source => {
+                        Some(TargetAst::Source(span))
+                    }
                     _ => None,
                 });
             let graveyard_or_exile_source = source_from_graveyard_or_exile_target.is_some();

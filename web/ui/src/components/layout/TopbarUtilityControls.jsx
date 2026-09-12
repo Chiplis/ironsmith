@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useGame } from "@/context/GameContext";
 import { useI18n } from "@/i18n/I18nContext";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,9 @@ export default function TopbarUtilityControls({
   puzzleSetupMode = false,
   onAddCardNotice,
   showInlineControls = true,
+  children,
 }) {
+  const ui = useUiText();
   const { inspectorDebug, setInspectorDebug } = useGame();
   const { t } = useI18n();
   return (
@@ -78,12 +81,13 @@ export default function TopbarUtilityControls({
             onClick={() => setInspectorDebug(!inspectorDebug)}
             aria-label={t("settings.debug")}
             aria-pressed={inspectorDebug}
-            title={inspectorDebug ? t("settings.debugEnabled") : t("settings.debug")}
+            title={ui(inspectorDebug ? t("settings.debugEnabled") : t("settings.debug"))}
           >
             <Bug className="size-3.5" />
           </Button>
         </>
       ) : null}
+      {children}
     </div>
   );
 }

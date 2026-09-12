@@ -42,6 +42,7 @@ test("a fresh targeting arrow points at dead space until the mouse moves", { tim
     const target = page.locator('.game-card[data-object-id="20"]').first();
     const targetBox = await target.boundingBox();
     const overTarget = [targetBox.x + (targetBox.width / 2), targetBox.y + (targetBox.height / 2)];
+    const sessionCount = await page.evaluate(() => window.__dragArrowHistory.length);
     await page.mouse.move(overTarget[0], overTarget[1]);
     await page.waitForFunction(
       (point) => window.__dragArrow
@@ -50,6 +51,13 @@ test("a fresh targeting arrow points at dead space until the mouse moves", { tim
       overTarget,
       { timeout: 5000 },
     );
+    await page.waitForFunction((point) => {
+      const path = document.querySelector('path[marker-end="url(#arrowhead-drag)"]');
+      const numbers = path?.getAttribute("d")?.match(/-?[\d.]+/g)?.map(Number);
+      return numbers && Math.abs(numbers.at(-2) - point[0]) < 2 && Math.abs(numbers.at(-1) - point[1]) < 2;
+    }, overTarget);
+    assert.equal(await page.evaluate(() => window.__dragArrowHistory.length), sessionCount,
+      "pointer movement does not republish combat context");
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();

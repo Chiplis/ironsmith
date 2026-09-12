@@ -224,7 +224,12 @@ fn repeated_intro_branch_description(trigger: &TriggerSpec) -> Option<String> {
             "{} dies",
             indefinite_subject_description(filter.description())
         ),
-        _ => return None,
+        _ => {
+            let description = compile_trigger_spec((**trigger).clone()).display();
+            ["Whenever ", "When ", "At "].into_iter()
+                .find_map(|prefix| description.strip_prefix(prefix))
+                .unwrap_or(&description).to_string()
+        },
     };
     Some(format!("{intro} {body}"))
 }
@@ -322,7 +327,26 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         }
         TriggerSpec::StateBased { display, .. } => Trigger::state_based(display),
         TriggerSpec::AnyOf(branches) => {
-            Trigger::any_of(branches.into_iter().map(compile_trigger_spec).collect())
+            let play_description = match branches.as_slice() {
+                [TriggerSpec::SpellCast {
+                    filter: Some(cast_filter), caster, mana_source_filter: None,
+                    timing: None, during_turn: None, min_spells_this_turn: None,
+                    exact_spells_this_turn: None, from_not_hand: false,
+                }, TriggerSpec::PlayerPlaysLand { player, filter }]
+                    if caster == player && cast_filter == filter => {
+                    let object = filter.description().replacen("permanent", "card", 1);
+                    let object = indefinite_subject_description(object);
+                    let verb = if player == &PlayerFilter::You { "play" } else { "plays" };
+                    Some(format!("Whenever {} {verb} {object}", player.description()))
+                }
+                _ => None,
+            };
+            let trigger = Trigger::any_of(branches.into_iter().map(compile_trigger_spec).collect());
+            if let Some(description) = play_description {
+                trigger.with_display_label(description)
+            } else {
+                trigger
+            }
         }
         TriggerSpec::ConditionQualified {
             trigger,

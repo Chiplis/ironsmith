@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useGame } from "@/context/GameContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
@@ -55,6 +56,7 @@ export default function BlockersDecision({
   compact = false,
   onCompactActionChange = null,
 }) {
+  const ui = useUiText();
   const { dispatch, state, multiplayer, playerAccentOverrides } = useGame();
   const {
     updateArrows,
@@ -294,7 +296,7 @@ export default function BlockersDecision({
     <div className="flex h-full min-h-0 w-full flex-col gap-2 overflow-x-hidden">
       <ScrollArea className="flex-1 min-h-0 w-full overflow-x-hidden">
         <div className="flex flex-col gap-2 pr-1 overflow-x-hidden">
-          <div className="px-0.5 text-[13px] font-bold uppercase tracking-wider text-[#d8c18c]">Declare blockers</div>
+          <div className="px-0.5 text-[13px] font-bold uppercase tracking-wider text-[#d8c18c]">{ui("Declare blockers")}</div>
           {blockerOptions.map((opt) => {
             const blockerId = opt.blocker;
             const name = opt.name;
@@ -332,13 +334,13 @@ export default function BlockersDecision({
                   onClick={() => toggleBlockerSelection(opt)}
                 >
                   <span className="block min-w-0 truncate">
-                    {currentDecls.length > 0 ? "[BLK] " : ""}{name}
+                    {currentDecls.length > 0 ? ui("[BLK] ") : ""}{name}
                   </span>
                 </Button>
 
                 {decl && (
                   <div className="mt-1.5 px-1 text-[14px] text-[#d6c8ac] min-w-0 truncate">
-                    -&gt; {attackerNameById.get(Number(decl.blocking)) || `Attacker ${Number(decl.blocking)}`}
+                    -&gt; {attackerNameById.get(Number(decl.blocking)) || ui("Attacker {0}", { 0: Number(decl.blocking) })}
                   </div>
                 )}
 
@@ -404,7 +406,7 @@ export default function BlockersDecision({
             {peerWaiting ? (
               <PeerWaitButtonContent />
             ) : (
-              <>{blockerSubmitLabel(declarations.length)}</>
+              <>{ui(blockerSubmitLabel(declarations.length))}</>
             )}
           </Button>
         </PeerWaitPopover>

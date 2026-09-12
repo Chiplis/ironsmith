@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { useGame } from "@/context/GameContext";
@@ -35,6 +36,7 @@ function ZoneArt({ card }) {
 }
 
 function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverride, fading = false, onOpenChange }) {
+  const ui = useUiText();
   const { state } = useGame();
   const { t } = useI18n();
   const chosenObjectIds = useChosenObjectIds();
@@ -113,11 +115,17 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
   }, [player.id, player.index, zone]);
 
   // A card chosen inside a closed pile is otherwise invisible: the pile shows
-  // only its top card's art. It wears the same check the cards themselves do,
+  // its most recent Look choice (or the normal top card). It wears the same check,
   // and clicking it unchooses that card without opening the strip. Once the
   // strip is open the cards carry their own checks, so this one steps aside.
+  const latestChosenCard = zone === "look" && choosingObject
+    ? chosenObjectIds.slice().reverse()
+      .map((id) => cards.find((card) => String(card.id) === String(id)))
+      .find(Boolean)
+    : null;
+  const collapsedCard = latestChosenCard || topCard;
   const chosenInPile = !open && choosingObject
-    ? cards.find((card) => isObjectChosen(chosenObjectIds, card.id))
+    ? latestChosenCard || cards.find((card) => isObjectChosen(chosenObjectIds, card.id))
     : null;
 
   const renderCard = (card) => {
@@ -128,7 +136,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
     // row gets a wrapper of its own strip width.
     return <span key={card.id} className="zone-pile-card-slot">
       <button type="button" className={`zone-pile-card-row${chosen ? " is-chosen" : ""}`}
-        aria-label={card.name || "Face-down card"}
+        aria-label={card.name || ui("Face-down card")}
         data-object-id={String(card.id).startsWith("look-top-") ? undefined : card.id} data-zone-card={zone}
         data-target-legal={legal ? "true" : undefined} disabled={disabled}
         onPointerEnter={(event) => {
@@ -194,12 +202,12 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
         opacity: fading ? 0 : 1,
         transition: `${fading ? `opacity ${LOOK_FADE_MS}ms linear` : "opacity 120ms ease"}, transform ${ZONE_TARGET_GROW_MS}ms ease`,
       }}>
-      <span className="zone-pile-label">{label} <strong>{count}</strong></span>
+      <span className="zone-pile-label">{ui(label)} <strong>{count}</strong></span>
       <PopoverTrigger asChild>
         <button ref={triggerRef} type="button" className="zone-pile" data-zone-pile={zone}
           data-zone-owner={String(player.id ?? player.index)}
           data-has-targets={hasLegalCards ? "true" : undefined}
-          aria-label={`${player.name}'s ${label}, ${count} cards. Open zone`}
+          aria-label={ui("{0}'s {1}, {2} cards. Open zone", { 0: player.name, 1: ui(label), 2: count })}
           onPointerEnter={(event) => {
             if (zone === "look") dismissedRef.current = false;
             if (event.pointerType !== "touch") keepOpen();
@@ -213,20 +221,20 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
             event.stopPropagation();
             if (event.detail > 0 && event.pointerType !== "touch") event.preventDefault();
           }}>
-          <ZoneArt card={topCard} />
+          <ZoneArt card={open ? topCard : collapsedCard} />
         </button>
       </PopoverTrigger>
       {chosenInPile ? (
         <SelectionCheckBadge
           objectId={chosenInPile.id}
           className="zone-pile-check"
-          label={`Deselect ${chosenInPile.name || "card"}`}
+          label={ui("Deselect {0}", { 0: chosenInPile.name || "card" })}
         />
       ) : null}
       </div>
       <PopoverContent ref={menuRef} className={`zone-pile-menu${zone === "look" ? " zone-pile-menu--look" : ""}`} side={zone === "look" ? "right" : "left"} align="start" sideOffset={-(stripBounds.cardWidth + 6)} alignOffset={-6} avoidCollisions={false}
         style={{ "--zone-strip-width": `${stripBounds.width}px`, "--zone-strip-card-width": `${stripBounds.cardWidth}px` }}
-        aria-label={`${player.name}'s ${label}`}
+        aria-label={ui("{0}'s {1}", { 0: player.name, 1: ui(label) })}
         onOpenAutoFocus={(event) => event.preventDefault()}
         onCloseAutoFocus={(event) => event.preventDefault()}
         onPointerEnter={() => clearTimeout(closeTimerRef.current)}

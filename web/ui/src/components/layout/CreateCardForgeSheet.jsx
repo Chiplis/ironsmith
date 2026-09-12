@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { cloneElement, isValidElement, useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCw, Sparkles, SquareSplitHorizontal, Layers3 } from "lucide-react";
 
@@ -134,6 +135,7 @@ function toggleChoice(values, item) {
 }
 
 function LayoutPicker({ value, onChange }) {
+  const ui = useUiText();
   return (
     <div className="grid gap-2 sm:grid-cols-3">
       {LAYOUT_OPTIONS.map((option) => {
@@ -149,7 +151,7 @@ function LayoutPicker({ value, onChange }) {
           >
             <span className="flex items-center gap-2">
               <Icon className="size-4" />
-              {option.label}
+              {ui(option.label)}
             </span>
           </button>
         );
@@ -159,6 +161,7 @@ function LayoutPicker({ value, onChange }) {
 }
 
 function ToggleChipGroup({ values, options, onToggle }) {
+  const ui = useUiText();
   return (
     <div className="flex flex-wrap gap-1.5">
       {options.map((option) => (
@@ -169,7 +172,7 @@ function ToggleChipGroup({ values, options, onToggle }) {
           className={cn("card-forge-chip", values.includes(option) && "is-active")}
           onClick={() => onToggle(option)}
         >
-          {option}
+          {ui(option)}
         </button>
       ))}
     </div>
@@ -195,11 +198,12 @@ function ColorToggleGroup({ values, onToggle }) {
 }
 
 function CompilePanel({ face, previewError, busy }) {
+  const ui = useUiText();
   if (previewError) {
     return (
       <section className="card-forge-panel card-forge-compile-panel">
-        <div className="card-forge-panel-title">Compile Status</div>
-        <div className="card-forge-status card-forge-status--error">{previewError}</div>
+        <div className="card-forge-panel-title">{ui("Compile Status")}</div>
+        <div className="card-forge-status card-forge-status--error">{ui(previewError)}</div>
       </section>
     );
   }
@@ -207,32 +211,30 @@ function CompilePanel({ face, previewError, busy }) {
   if (busy && !face) {
     return (
       <section className="card-forge-panel card-forge-compile-panel">
-        <div className="card-forge-panel-title">Compile Status</div>
-        <div className="card-forge-status">Preparing preview...</div>
+        <div className="card-forge-panel-title">{ui("Compile Status")}</div>
+        <div className="card-forge-status">{ui("Preparing preview...")}</div>
       </section>
     );
   }
 
   return (
     <section className="card-forge-panel card-forge-compile-panel">
-      <div className="card-forge-panel-title">Compile Status</div>
-      <div className="card-forge-status card-forge-status--good">
-        Ready
-        {busy ? " • refreshing" : ""}
+      <div className="card-forge-panel-title">{ui("Compile Status")}</div>
+      <div className="card-forge-status card-forge-status--good">{ui("Ready")}{busy ? ui(" • refreshing") : ""}
       </div>
       <div className="card-forge-compile-grid">
         <div className="grid gap-1.5">
-          <div className="card-forge-section-label">Compiled Text</div>
+          <div className="card-forge-section-label">{ui("Compiled Text")}</div>
           <div className="card-forge-codeblock">
-            {(face?.compiledText?.length || 0) > 0 ? face.compiledText.join("\n") : "No compiled spell text"}
+            {(face?.compiledText?.length || 0) > 0 ? face.compiledText.join("\n") : ui("No compiled spell text")}
           </div>
         </div>
         <div className="grid gap-1.5">
-          <div className="card-forge-section-label">Compiled Abilities</div>
+          <div className="card-forge-section-label">{ui("Compiled Abilities")}</div>
           <div className="card-forge-codeblock">
             {(face?.compiledAbilities?.length || 0) > 0
               ? face.compiledAbilities.join("\n")
-              : "No compiled abilities"}
+              : ui("No compiled abilities")}
           </div>
         </div>
       </div>
@@ -247,6 +249,7 @@ function layoutLabel(layout) {
 }
 
 function InlineFaceEditor({ face, layout, hasFuse, busy, updateFace, toggleFaceArrayValue }) {
+  const ui = useUiText();
   return (
     <section className="card-forge-inline-editor">
       <div className="card-forge-preview-aurora" />
@@ -255,29 +258,29 @@ function InlineFaceEditor({ face, layout, hasFuse, busy, updateFace, toggleFaceA
           <div className="min-w-0">
             <input
               className="card-forge-inline-name"
-              aria-label="Card name"
+              aria-label={ui("Card name")}
               value={face.name}
               onChange={(event) => updateFace({ name: event.target.value })}
             />
             <div className="card-forge-preview-layout">
-              {layoutLabel(layout)}
-              {hasFuse ? " • Fuse" : ""}
-              {busy ? " • compiling" : ""}
+              {ui(layoutLabel(layout))}
+              {hasFuse ? ui(" • Fuse") : ""}
+              {busy ? ui(" • compiling") : ""}
             </div>
           </div>
           <div className="card-forge-inline-header-side">
             <input
               className="card-forge-inline-cost"
-              aria-label="Mana cost"
+              aria-label={ui("Mana cost")}
               placeholder="{2}{W}{U}"
               value={face.manaCost}
               onChange={(event) => updateFace({ manaCost: event.target.value })}
             />
             <label className="card-forge-inline-art-field">
-              <span className="card-forge-section-label">Art URL</span>
+              <span className="card-forge-section-label">{ui("Art URL")}</span>
               <input
                 className="card-forge-input card-forge-input--compact"
-                aria-label="Art URL"
+                aria-label={ui("Art URL")}
                 placeholder="https://..."
                 value={face.artUrl}
                 onChange={(event) => updateFace({ artUrl: event.target.value })}
@@ -288,14 +291,14 @@ function InlineFaceEditor({ face, layout, hasFuse, busy, updateFace, toggleFaceA
 
         <div className="card-forge-inline-type">
           <div className="card-forge-inline-row">
-            <span className="card-forge-section-label">Indicator</span>
+            <span className="card-forge-section-label">{ui("Indicator")}</span>
             <ColorToggleGroup
               values={face.colorIndicator}
               onToggle={(value) => toggleFaceArrayValue("colorIndicator", value)}
             />
           </div>
           <div className="card-forge-inline-row">
-            <span className="card-forge-section-label">Supertypes</span>
+            <span className="card-forge-section-label">{ui("Supertypes")}</span>
             <ToggleChipGroup
               values={face.supertypes}
               options={SUPER_TYPES}
@@ -303,7 +306,7 @@ function InlineFaceEditor({ face, layout, hasFuse, busy, updateFace, toggleFaceA
             />
           </div>
           <div className="card-forge-inline-row card-forge-inline-row--types">
-            <span className="card-forge-section-label">Types</span>
+            <span className="card-forge-section-label">{ui("Types")}</span>
             <ToggleChipGroup
               values={face.cardTypes}
               options={CARD_TYPES}
@@ -311,10 +314,10 @@ function InlineFaceEditor({ face, layout, hasFuse, busy, updateFace, toggleFaceA
             />
           </div>
           <label className="card-forge-inline-subtypes">
-            <span className="card-forge-section-label">Subtypes</span>
+            <span className="card-forge-section-label">{ui("Subtypes")}</span>
             <input
               className="card-forge-input card-forge-input--compact"
-              placeholder="Wizard, Human"
+              placeholder={ui("Wizard, Human")}
               value={joinedSubtypes(face)}
               onChange={(event) => updateFace({ subtypes: setFromCsv(event.target.value) })}
             />
@@ -323,33 +326,33 @@ function InlineFaceEditor({ face, layout, hasFuse, busy, updateFace, toggleFaceA
 
         <textarea
           className="card-forge-inline-rules"
-          aria-label="Rules text"
-          placeholder="Write oracle-style rules text here..."
+          aria-label={ui("Rules text")}
+          placeholder={ui("Write oracle-style rules text here...")}
           value={face.oracleText}
           onChange={(event) => updateFace({ oracleText: event.target.value })}
         />
 
         <div className="card-forge-inline-stats">
           <label className="card-forge-stat-field">
-            <span>Power</span>
+            <span>{ui("Power")}</span>
             <input
               className="card-forge-input card-forge-input--compact"
-              placeholder="2 or *"
+              placeholder={ui("2 or *")}
               value={face.power}
               onChange={(event) => updateFace({ power: event.target.value })}
             />
           </label>
           <label className="card-forge-stat-field">
-            <span>Toughness</span>
+            <span>{ui("Toughness")}</span>
             <input
               className="card-forge-input card-forge-input--compact"
-              placeholder="2 or *+1"
+              placeholder={ui("2 or *+1")}
               value={face.toughness}
               onChange={(event) => updateFace({ toughness: event.target.value })}
             />
           </label>
           <label className="card-forge-stat-field">
-            <span>Loyalty</span>
+            <span>{ui("Loyalty")}</span>
             <input
               className="card-forge-input card-forge-input--compact"
               type="number"
@@ -359,7 +362,7 @@ function InlineFaceEditor({ face, layout, hasFuse, busy, updateFace, toggleFaceA
             />
           </label>
           <label className="card-forge-stat-field">
-            <span>Defense</span>
+            <span>{ui("Defense")}</span>
             <input
               className="card-forge-input card-forge-input--compact"
               type="number"
@@ -385,6 +388,7 @@ export default function CreateCardForgeSheet({
   onSkipTriggersChange,
   trigger = null,
 }) {
+  const ui = useUiText();
   const { game, refresh, runWasmInteraction, setStatus } = useGame();
   const [open, setOpen] = useState(false);
   const [seedLoading, setSeedLoading] = useState(false);
@@ -566,9 +570,7 @@ export default function CreateCardForgeSheet({
           className="stone-pill inline-flex items-center rounded-none px-2.5 py-0.5 text-[13px] font-medium uppercase transition-all select-none hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
           disabled={disabled}
           onClick={() => handleOpenChange(true)}
-        >
-          Compile Card
-        </button>
+        >{ui("Compile Card")}</button>
       )}
 
       <Sheet open={open} onOpenChange={handleOpenChange}>
@@ -583,20 +585,14 @@ export default function CreateCardForgeSheet({
           }}
         >
           <SheetHeader className="fantasy-sheet-header card-forge-header pr-12">
-            <div className="card-forge-eyebrow">Forge</div>
-            <SheetTitle className="text-[24px] uppercase tracking-[0.18em] text-foreground">
-              Compile Card
-            </SheetTitle>
-            <SheetDescription className="card-forge-description max-w-[58ch] text-[13px] leading-5">
-              Seeded from a random nonland card in the loaded deck. The sample is only a teaching
-              aid, and every printed characteristic can be rewritten before the card enters this
-              goldfishing session.
-            </SheetDescription>
+            <div className="card-forge-eyebrow">{ui("Forge")}</div>
+            <SheetTitle className="text-[24px] uppercase tracking-[0.18em] text-foreground">{ui("Compile Card")}</SheetTitle>
+            <SheetDescription className="card-forge-description max-w-[58ch] text-[13px] leading-5">{ui("Seeded from a random nonland card in the loaded deck. The sample is only a teaching aid, and every printed characteristic can be rewritten before the card enters this goldfishing session.")}</SheetDescription>
           </SheetHeader>
 
           <div className="card-forge-toolbar">
             <div className="card-forge-banner">
-              {seedLoading ? "Loading deck sample..." : `Seed example: ${seedDraft?.faces?.[0]?.name || "Blank custom card"}`}
+              {seedLoading ? ui("Loading deck sample...") : ui("Seed example: {0}", { 0: seedDraft?.faces?.[0]?.name || "Blank custom card" })}
             </div>
             <div className="flex flex-wrap gap-2">
               <Button
@@ -607,9 +603,7 @@ export default function CreateCardForgeSheet({
                 disabled={seedLoading}
                 onClick={() => void runWasmInteraction(() => loadSeed({ reroll: true }))}
               >
-                <RefreshCw className={cn("size-3.5", seedLoading && "animate-spin")} />
-                New Sample
-              </Button>
+                <RefreshCw className={cn("size-3.5", seedLoading && "animate-spin")} />{ui("New Sample")}</Button>
               <Button
                 type="button"
                 variant="secondary"
@@ -617,9 +611,7 @@ export default function CreateCardForgeSheet({
                 className="stone-pill"
                 disabled={!seedDraft}
                 onClick={resetToSeed}
-              >
-                Reset Seed
-              </Button>
+              >{ui("Reset Seed")}</Button>
             </div>
           </div>
 
@@ -646,9 +638,9 @@ export default function CreateCardForgeSheet({
                         className="card-forge-tab-trigger"
                       >
                         <span className="grid text-left">
-                          <span>{tab.title}</span>
+                          <span>{ui(tab.title)}</span>
                           <span className="card-forge-tab-subtitle text-[10px] uppercase tracking-[0.2em]">
-                            {tab.subtitle}
+                            {ui(tab.subtitle)}
                           </span>
                         </span>
                       </TabsTrigger>
@@ -677,7 +669,7 @@ export default function CreateCardForgeSheet({
 
             <div className="card-forge-side">
               <section className="card-forge-panel">
-                <div className="card-forge-panel-title">Card Layout</div>
+                <div className="card-forge-panel-title">{ui("Card Layout")}</div>
                 <LayoutPicker value={draft.layout} onChange={handleLayoutChange} />
                 {draft.layout === "split" ? (
                   <label className="toolbar-checkbox mt-2 flex items-center gap-2 text-[13px] uppercase tracking-wide">
@@ -687,17 +679,15 @@ export default function CreateCardForgeSheet({
                         setDraft((current) => ({ ...current, hasFuse: checked === true }));
                       }}
                       className="h-3.5 w-3.5"
-                    />
-                    Fuse enabled
-                  </label>
+                    />{ui("Fuse enabled")}</label>
                 ) : null}
               </section>
 
               <section className="card-forge-panel">
-                <div className="card-forge-panel-title">Placement</div>
+                <div className="card-forge-panel-title">{ui("Placement")}</div>
                 <div className="grid gap-3 md:grid-cols-2">
                   <label className="card-forge-field">
-                    <span className="card-forge-section-label">Player</span>
+                    <span className="card-forge-section-label">{ui("Player")}</span>
                     <select
                       className="card-forge-input"
                       value={selectedPlayer}
@@ -712,7 +702,7 @@ export default function CreateCardForgeSheet({
                   </label>
 
                   <label className="card-forge-field">
-                    <span className="card-forge-section-label">Zone</span>
+                    <span className="card-forge-section-label">{ui("Zone")}</span>
                     <select
                       className="card-forge-input"
                       value={zone}
@@ -720,7 +710,7 @@ export default function CreateCardForgeSheet({
                     >
                       {ZONE_OPTIONS.map(([value, label]) => (
                         <option key={value} value={value}>
-                          {label}
+                          {ui(label)}
                         </option>
                       ))}
                     </select>
@@ -732,9 +722,7 @@ export default function CreateCardForgeSheet({
                     checked={skipTriggers}
                     onCheckedChange={(checked) => onSkipTriggersChange?.(checked === true)}
                     className="h-3.5 w-3.5"
-                  />
-                  Skip triggers
-                </label>
+                  />{ui("Skip triggers")}</label>
               </section>
 
               <CompilePanel face={previewFace} previewError={previewError} busy={previewLoading} />
@@ -742,10 +730,7 @@ export default function CreateCardForgeSheet({
           </div>
 
           <div className="card-forge-footer">
-            <div className="card-forge-footer-note">
-              Live preview is compiled by the engine, so the compiled card uses the same runtime path
-              as built-in cards.
-            </div>
+            <div className="card-forge-footer-note">{ui("Live preview is compiled by the engine, so the compiled card uses the same runtime path as built-in cards.")}</div>
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
@@ -753,9 +738,7 @@ export default function CreateCardForgeSheet({
                 size="sm"
                 className="stone-pill"
                 onClick={() => setOpen(false)}
-              >
-                Cancel
-              </Button>
+              >{ui("Cancel")}</Button>
               <Button
                 type="button"
                 size="sm"
@@ -763,7 +746,7 @@ export default function CreateCardForgeSheet({
                 disabled={!canCompile}
                 onClick={() => void handleCompile()}
               >
-                {submitting ? "Compiling..." : `Compile ${primaryName}`}
+                {submitting ? ui("Compiling...") : ui("Compile {0}", { 0: primaryName })}
               </Button>
             </div>
           </div>

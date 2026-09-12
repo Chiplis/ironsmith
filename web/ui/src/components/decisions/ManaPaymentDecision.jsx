@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, LoaderCircle, RotateCcw, Shield, X } from "lucide-react";
 import { useGame } from "@/context/GameContext";
@@ -34,17 +35,18 @@ function poolEntries(pool) {
 }
 
 function PoolSummary({ label, pool }) {
+  const ui = useUiText();
   const entries = poolEntries(pool);
   return (
     <div className="mana-plan-pool">
-      <span className="mana-plan-label">{label}</span>
+      <span className="mana-plan-label">{ui(label)}</span>
       <span className="flex min-h-6 items-center gap-1">
         {entries.length ? entries.map(({ symbol, amount }) => (
           <span key={symbol} className="inline-flex items-center gap-0.5 text-xs font-semibold">
             <ManaSymbol sym={symbol} size={17} />
             {amount > 1 ? <span>×{amount}</span> : null}
           </span>
-        )) : <span className="text-xs opacity-60">Empty</span>}
+        )) : <span className="text-xs opacity-60">{ui("Empty")}</span>}
       </span>
     </div>
   );
@@ -75,15 +77,16 @@ function pipPaymentLabel(allocation) {
 }
 
 function SourceConstraintButtons({ sourceId, required, excluded, preserved, onChange, disabled }) {
+  const ui = useUiText();
   return (
-    <div className="flex shrink-0 items-center gap-1" aria-label="Payment source preference">
+    <div className="flex shrink-0 items-center gap-1" aria-label={ui("Payment source preference")}>
       <button
         type="button"
         disabled={disabled}
         className={cn("mana-plan-constraint", required && "is-required")}
         onClick={() => onChange(sourceId, "required")}
         aria-pressed={required}
-        title="Require this source"
+        title={ui("Require this source")}
       >
         <Check size={13} />
       </button>
@@ -93,7 +96,7 @@ function SourceConstraintButtons({ sourceId, required, excluded, preserved, onCh
         className={cn("mana-plan-constraint", preserved && "is-preserved")}
         onClick={() => onChange(sourceId, "preserved")}
         aria-pressed={preserved}
-        title="Prefer to preserve this source"
+        title={ui("Prefer to preserve this source")}
       >
         <Shield size={13} />
       </button>
@@ -103,7 +106,7 @@ function SourceConstraintButtons({ sourceId, required, excluded, preserved, onCh
         className={cn("mana-plan-constraint", excluded && "is-excluded")}
         onClick={() => onChange(sourceId, "excluded")}
         aria-pressed={excluded}
-        title="Exclude this source"
+        title={ui("Exclude this source")}
       >
         <X size={13} />
       </button>
@@ -112,6 +115,7 @@ function SourceConstraintButtons({ sourceId, required, excluded, preserved, onCh
 }
 
 function PaymentCardName({ objectId, onInspect, children, className = "" }) {
+  const ui = useUiText();
   const containerRef = useRef(null);
   const textRef = useRef(null);
   useLayoutEffect(() => {
@@ -136,7 +140,7 @@ function PaymentCardName({ objectId, onInspect, children, className = "" }) {
   }, [children]);
   const label = <span ref={textRef} className="inline-block whitespace-nowrap">{children}</span>;
   if (objectId == null || typeof onInspect !== "function") {
-    return <span ref={containerRef} className={cn("block min-w-0 max-w-full overflow-hidden whitespace-nowrap", className)}>{label}</span>;
+    return <span ref={containerRef} className={cn("block min-w-0 max-w-full overflow-hidden whitespace-nowrap", className)}>{ui(label)}</span>;
   }
   return (
     <button
@@ -144,7 +148,7 @@ function PaymentCardName({ objectId, onInspect, children, className = "" }) {
       ref={containerRef}
       className={cn("decision-card-name-trigger block min-w-0 max-w-full overflow-hidden whitespace-nowrap", className)}
       data-inspector-object-id={String(objectId)}
-      aria-label={`Inspect ${String(children || "card")}`}
+      aria-label={ui("Inspect {0}", { 0: String(children || "card") })}
       onPointerDown={(event) => {
         event.stopPropagation();
       }}
@@ -159,7 +163,7 @@ function PaymentCardName({ objectId, onInspect, children, className = "" }) {
         onInspect(objectId, event.currentTarget);
       }}
     >
-      {label}
+      {ui(label)}
     </button>
   );
 }
@@ -171,6 +175,7 @@ export default function ManaPaymentDecision({
   onSubmitActionChange = null,
   layout = "panel",
 }) {
+  const ui = useUiText();
   const { state, dispatch, dispatchInBackground } = useGame();
   const {
     setPreviewLinkedObjects,
@@ -322,7 +327,7 @@ export default function ManaPaymentDecision({
   }, [onSubmitActionChange, submitAction]);
 
   if (!payment) {
-    return <div className="p-3 text-sm italic opacity-70">Preparing a mana payment plan…</div>;
+    return <div className="p-3 text-sm italic opacity-70">{ui("Preparing a mana payment plan…")}</div>;
   }
 
   if (stripLayout) {
@@ -337,7 +342,7 @@ export default function ManaPaymentDecision({
       <div className={cn("mana-plan-strip", adjusting && "is-adjusting")}>
         <div
           className="mana-plan-strip-source-region"
-          aria-label={adjusting ? "Available sources" : "Planned sources"}
+          aria-label={ui(adjusting ? "Available sources" : "Planned sources")}
         >
           <div className="mana-plan-strip-source-scroller">
             {sourceRows.length ? sourceRows.map((source, index) => {
@@ -374,7 +379,7 @@ export default function ManaPaymentDecision({
                       ) : null}
                     </span>
                     <span className="mana-plan-strip-source-action">
-                      {[sourceActionLabel(source), !source.undo_safe && "no undo"].filter(Boolean).join(" · ")}
+                      {[sourceActionLabel(source), !source.undo_safe && "no undo"].filter(Boolean).map(value => ui(value)).join(" · ")}
                     </span>
                   </span>
                   {adjusting ? (
@@ -390,42 +395,41 @@ export default function ManaPaymentDecision({
                 </div>
               );
             }) : (
-              <span className="mana-plan-strip-no-sources">{payment.can_confirm === false ? "The cost needs more mana. Activate sources or change the plan." : "Floating mana covers the cost."}</span>
+              <span className="mana-plan-strip-no-sources">{payment.can_confirm === false ? ui("The cost needs more mana. Activate sources or change the plan.") : ui("Floating mana covers the cost.")}</span>
             )}
           </div>
         </div>
 
         {warningSummary ? (
-          <div className="mana-plan-strip-warning" title={warningSummary} aria-label={warningSummary}>
+          <div className="mana-plan-strip-warning" title={ui(warningSummary)} aria-label={ui(warningSummary)}>
             <AlertTriangle size={15} />
-            <span>{payment.life_to_pay > 0 ? `${payment.life_to_pay} life` : "Warning"}</span>
+            <span>{payment.life_to_pay > 0 ? ui("{0} life", { 0: payment.life_to_pay }) : ui("Warning")}</span>
           </div>
         ) : null}
 
         {!payment.planning_complete ? (
-          <div className="mana-plan-strip-planning" title="Checking for a better payment plan">
+          <div className="mana-plan-strip-planning" title={ui("Checking for a better payment plan")}>
             <LoaderCircle size={15} className="animate-spin" />
-            <span>Improving</span>
+            <span>{ui("Improving")}</span>
           </div>
         ) : null}
 
         {adjusting ? (
-          <label className="mana-plan-strip-life-preference" title="Prefer legal life payments over spending mana">
+          <label className="mana-plan-strip-life-preference" title={ui("Prefer legal life payments over spending mana")}>
             <input
               type="checkbox"
               checked={preferLife}
               disabled={!canAct}
               onChange={(event) => setPreferLife(event.target.checked)}
             />
-            <span>Life first</span>
+            <span>{ui("Life first")}</span>
           </label>
         ) : null}
 
         <div className="mana-plan-strip-actions">
           {adjusting ? (
             <Button type="button" variant="ghost" size="sm" onClick={resetAdjustments}>
-              <RotateCcw size={13} /> Reset
-            </Button>
+              <RotateCcw size={13} />{" " + ui("Reset")}</Button>
           ) : null}
         </div>
       </div>
@@ -436,7 +440,7 @@ export default function ManaPaymentDecision({
     <div className="mana-plan-content">
       <div className="mana-plan-heading">
         <div>
-          <div className="mana-plan-eyebrow">Mana payment</div>
+          <div className="mana-plan-eyebrow">{ui("Mana payment")}</div>
           <h3 className="mana-plan-title">
             <PaymentCardName objectId={decision?.source_id} onInspect={showAnchoredCardPreview}>
               {payment.source_name || decision.subject}
@@ -448,11 +452,11 @@ export default function ManaPaymentDecision({
             <span
               key={`${pip.join("-")}-${index}`}
               className={cn("mana-plan-pip", `is-${allocationsByIndex.get(index)?.payment_kind || "planned"}`)}
-              title={pipPaymentLabel(allocationsByIndex.get(index))}
+              title={ui(pipPaymentLabel(allocationsByIndex.get(index)))}
             >
               <ManaSymbol sym={pip.join("/")} size={22} />
               <span className="mana-plan-pip-method">
-                {pipPaymentLabel(allocationsByIndex.get(index))}
+                {ui(pipPaymentLabel(allocationsByIndex.get(index)))}
               </span>
             </span>
           ))}
@@ -460,17 +464,17 @@ export default function ManaPaymentDecision({
       </div>
 
       <div className="mana-plan-pools">
-        <PoolSummary label="Pool now" pool={payment.pool_before} />
+        <PoolSummary label={ui("Pool now")} pool={payment.pool_before} />
         <span className="mana-plan-arrow">→</span>
-        <PoolSummary label="After sources" pool={payment.pool_after_activations} />
+        <PoolSummary label={ui("After sources")} pool={payment.pool_after_activations} />
         <span className="mana-plan-arrow">→</span>
-        <PoolSummary label="After payment" pool={payment.pool_after_payment} />
+        <PoolSummary label={ui("After payment")} pool={payment.pool_after_payment} />
       </div>
 
       <div className="mana-plan-section">
         <div className="mana-plan-section-title">
-          <span>Planned sources</span>
-          <span className="font-normal opacity-65">{plannedIds.length} source{plannedIds.length === 1 ? "" : "s"}</span>
+          <span>{ui("Planned sources")}</span>
+          <span className="font-normal opacity-65">{plannedIds.length}{" " + ui("source")}{plannedIds.length === 1 ? "" : ui("s")}</span>
         </div>
         <div className="mana-plan-source-list">
           {sourceRows.length ? sourceRows.map((source, index) => {
@@ -496,7 +500,7 @@ export default function ManaPaymentDecision({
                     {source.source_name}
                   </PaymentCardName>
                   <span className="flex items-center gap-1 text-[11px] opacity-70">
-                    {[sourceActionLabel(source), !source.undo_safe && "cannot safely undo"].filter(Boolean).join(" · ")}
+                    {[sourceActionLabel(source), !source.undo_safe && "cannot safely undo"].filter(Boolean).map(value => ui(value)).join(" · ")}
                   </span>
                 </span>
                 {produced.length ? (
@@ -521,7 +525,7 @@ export default function ManaPaymentDecision({
               </div>
             );
           }) : (
-            <div className="mana-plan-empty">{payment.can_confirm === false ? "The cost needs more mana. Activate sources or change the plan." : "The floating mana pool already covers this cost."}</div>
+            <div className="mana-plan-empty">{payment.can_confirm === false ? ui("The cost needs more mana. Activate sources or change the plan.") : ui("The floating mana pool already covers this cost.")}</div>
           )}
         </div>
       </div>
@@ -530,9 +534,9 @@ export default function ManaPaymentDecision({
         <div className="mana-plan-warnings">
           <AlertTriangle size={15} />
           <div>
-            {payment.life_to_pay > 0 ? <div>Pay {payment.life_to_pay} life.</div> : null}
+            {payment.life_to_pay > 0 ? <div>{ui("Pay") + " "}{payment.life_to_pay}{" " + ui("life.")}</div> : null}
             {(payment.warnings || []).filter((warning) => !String(warning).startsWith("PaysLife")).map((warning, index) => (
-              <div key={`${warning}-${index}`}>{warningText(warning)}</div>
+              <div key={`${warning}-${index}`}>{ui(warningText(warning))}</div>
             ))}
           </div>
         </div>
@@ -545,9 +549,7 @@ export default function ManaPaymentDecision({
             checked={preferLife}
             disabled={!canAct}
             onChange={(event) => setPreferLife(event.target.checked)}
-          />
-          Prefer legal life payments over spending mana
-        </label>
+          />{ui("Prefer legal life payments over spending mana")}</label>
       ) : null}
 
     </div>
@@ -557,27 +559,18 @@ export default function ManaPaymentDecision({
     <div className="flex h-full min-h-0 flex-col">
       <ScrollArea className="min-h-0 flex-1">{content}</ScrollArea>
       <div className="mana-plan-actions">
-        <Button type="button" variant="ghost" size="sm" disabled={!canAct} onClick={cancel}>
-          Cancel
-        </Button>
+        <Button type="button" variant="ghost" size="sm" disabled={!canAct} onClick={cancel}>{ui("Cancel")}</Button>
         {adjusting ? (
           <>
             <Button type="button" variant="outline" size="sm" onClick={resetAdjustments}>
-              <RotateCcw size={14} /> Reset
-            </Button>
-            <Button type="button" size="sm" disabled={!canAct} onClick={replan}>
-              Replan
-            </Button>
+              <RotateCcw size={14} />{" " + ui("Reset")}</Button>
+            <Button type="button" size="sm" disabled={!canAct} onClick={replan}>{ui("Replan")}</Button>
           </>
         ) : (
           <>
-            <Button type="button" variant="outline" size="sm" disabled={!canAct} onClick={() => setAdjusting(true)}>
-              Plan
-            </Button>
+            <Button type="button" variant="outline" size="sm" disabled={!canAct} onClick={() => setAdjusting(true)}>{ui("Plan")}</Button>
             {inlineSubmit ? (
-              <Button type="button" size="sm" disabled={!canAct || payment.can_confirm === false} onClick={confirm}>
-                Pay
-              </Button>
+              <Button type="button" size="sm" disabled={!canAct || payment.can_confirm === false} onClick={confirm}>{ui("Pay")}</Button>
             ) : null}
           </>
         )}

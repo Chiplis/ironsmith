@@ -1094,6 +1094,7 @@ pub fn execute_cleanup_step(game: &mut GameState) {
         .grant_registry
         .cleanup_expired(turn_number, &battlefield);
 
+    game.effect_store.attack_player_requirements.clear();
     game.cleanup_restrictions_end_of_turn();
     game.cleanup_mana_spend_permissions_end_of_turn();
     game.cleanup_granted_mana_abilities_end_of_turn();

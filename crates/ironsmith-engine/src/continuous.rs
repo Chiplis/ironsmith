@@ -3796,6 +3796,15 @@ fn filter_matches_layered_fast(
         return Some(false);
     }
 
+    if let Some(comparison) = &filter.card_type_count {
+        let count = chars.card_types.iter().enumerate()
+            .filter(|(index, card_type)| !chars.card_types[..*index].contains(card_type))
+            .count() as i32;
+        if !comparison.satisfies_with_context(count, game, filter_ctx, None) {
+            return Some(false);
+        }
+    }
+
     let is_historic = chars.card_types.contains(&CardType::Artifact)
         || chars.supertypes.contains(&Supertype::Legendary)
         || chars.subtypes.contains(&Subtype::Saga);

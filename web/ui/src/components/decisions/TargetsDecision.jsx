@@ -1,8 +1,9 @@
+import useUiText from "@/i18n/useUiText";
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useGame } from "@/context/GameContext";
 import { useHover } from "@/context/HoverContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
-import { useDragState } from "@/context/DragContext";
+import { useDragSession } from "@/context/DragContext";
 import { Button } from "@/components/ui/button";
 import { deadZoneAimPoint } from "@/lib/aim-dead-zone";
 import { castHoverTargetAtPoint } from "@/lib/hand-drag-intent";
@@ -228,6 +229,7 @@ function ActiveRequirementTargets({
   objectControllerById = new Map(),
   accentOverrides = null,
 }) {
+  const ui = useUiText();
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const legalTargets = req.legal_targets || [];
   const objectTargets = legalTargets.filter((target) => targetObjectId(target) != null);
@@ -373,7 +375,7 @@ function ActiveRequirementTargets({
         onMouseEnter={() => hoverObjectId && hoverCard?.(hoverObjectId)}
         onMouseLeave={() => hoverObjectId && clearHover?.()}
       >
-        {label}
+        {ui(label)}
       </Button>
     );
   });
@@ -400,14 +402,12 @@ function ActiveRequirementTargets({
             <>
               {coveredPlayerTargetButtons}
               <div className="decision-empty-note px-2 text-[11px] italic whitespace-nowrap">
-                {interactionHint || "Click a highlighted card or player to target it directly."}
+                {interactionHint || ui("Click a highlighted card or player to target it directly.")}
               </div>
             </>
           )}
           {!showRows && showTargetButtons && (
-            <div className="decision-empty-note px-2 text-[11px] italic whitespace-nowrap">
-              No legal targets.
-            </div>
+            <div className="decision-empty-note px-2 text-[11px] italic whitespace-nowrap">{ui("No legal targets.")}</div>
           )}
           {showSkip && (
             <Button
@@ -431,7 +431,7 @@ function ActiveRequirementTargets({
                 onSkipRequirement();
               }}
             >
-              {skipLabel}
+              {ui(skipLabel)}
             </Button>
           )}
         </div>
@@ -483,7 +483,7 @@ function ActiveRequirementTargets({
             onSkipRequirement();
           }}
         >
-          {skipLabel}
+          {ui(skipLabel)}
         </Button>
       )}
     </div>
@@ -500,6 +500,7 @@ export default function TargetsDecision({
   layout = "panel",
   showStripSummary = true,
 }) {
+  const ui = useUiText();
   const { cancelDecision, dispatch, state, playerAccentOverrides } = useGame();
   const {
     updateArrows,
@@ -509,7 +510,7 @@ export default function TargetsDecision({
     endDragArrow,
   } = useCombatArrows();
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
-  const handDragState = useDragState();
+  const handDragState = useDragSession();
   const handCastTargetGestureActive = Boolean(handDragState?.castIntent);
   const stripLayout = layout === "strip";
   const compactStripLayout =
@@ -933,15 +934,14 @@ export default function TargetsDecision({
                 <span className={cn(
                   "font-semibold",
                   stripLayout && !compactStripLayout ? "text-[#f0e0bf]" : "text-[#f0e0bf]"
-                )}>
-                  Target {reqIdx + 1}:
+                )}>{ui("Target") + " "}{reqIdx + 1}:
                 </span>{" "}
-                {req.description || "Choose a target"}
+                {req.description || ui("Choose a target")}
                 <span className={cn(
                   "ml-1 text-[11px]",
                   stripLayout && !compactStripLayout ? "text-[#bca887]" : "text-[#bca887]"
                 )}>
-                  ({reqMin}-{req.max_targets ?? req.legal_targets?.length ?? "?"}{isOptional ? ", optional" : ""})
+                  ({reqMin}-{req.max_targets ?? req.legal_targets?.length ?? "?"}{isOptional ? ui(", optional") : ""})
                 </span>
               </div>
             );
@@ -985,7 +985,7 @@ export default function TargetsDecision({
                       return (
                         <Button
                           key={selIdx}
-                          aria-label={`Remove target: ${label}`}
+                          aria-label={ui("Remove target: {0}", { 0: label })}
                           variant="ghost"
                           size="sm"
                           className={cn(
@@ -1010,7 +1010,7 @@ export default function TargetsDecision({
                             handleRemoveTarget(reqIdx, selIdx);
                           }}
                         >
-                          {label} <X className="size-3 inline ml-1" />
+                          {ui(label)} <X className="size-3 inline ml-1" />
                         </Button>
                       );
                     })}
@@ -1034,7 +1034,7 @@ export default function TargetsDecision({
                     onSelectTarget={handleSelectTarget}
                     onSkipRequirement={handleSkipRequirement}
                     showSkip={isActive && (isOptional || currentMet) && !allDone}
-                    skipLabel={isOptional ? "Skip (optional)" : <>Next requirement <ArrowRight className="size-3 inline" /></>}
+                    skipLabel={isOptional ? ui("Skip (optional)") : <>{ui("Next requirement") + " "}<ArrowRight className="size-3 inline" /></>}
                     horizontal={stripLayout && !compactStripLayout}
                     showTargetButtons={!stripLayout || compactStripLayout}
                     coveredPlayerId={stripLayout && !compactStripLayout ? state?.perspective : null}
@@ -1069,8 +1069,7 @@ export default function TargetsDecision({
               if (!canAct || !canSubmit || !shouldHandleClick(event)) return;
               handleSubmit();
             }}
-          >
-            Submit Targets ({allSelections.length})
+          >{ui("Submit Targets (")}{allSelections.length})
           </Button>
         </div>
       )}

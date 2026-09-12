@@ -1391,6 +1391,13 @@ pub(super) fn describe_sequential_any_player_may_action(
         .collect::<Vec<_>>();
     if let [effect] = visible_effects.as_slice() {
         let effect = structural_unwrap_render_wrappers(effect);
+        if let Some(move_card) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && move_card.actor_surface == Some(PlayerFilter::You)
+        {
+            let action = describe_effect(effect);
+            let action = action.strip_prefix("You ").unwrap_or(&action);
+            return Some(format!("{subject} may have you {}", lowercase_first(action)));
+        }
         let damage = effect
             .downcast_ref::<crate::effects::DealDamageEffect>()
             .or_else(|| {
@@ -2655,6 +2662,8 @@ pub(super) fn describe_council_dilemma_named_vote_sequence(effects: &[Effect]) -
     let mut subject_last_clauses = Vec::new();
     let (repeat_effects, trailing_effects) = repeat_effects.split_at(options.len());
     for (option, repeat_effect) in options.iter().zip(repeat_effects.iter()) {
+        let repeat_effect = repeat_effect.downcast_ref::<crate::effects::WithIdEffect>()
+            .map_or(repeat_effect, |wrapped| &wrapped.effect);
         let repeat = repeat_effect.downcast_ref::<crate::effects::RepeatEffectsEffect>()?;
         let Value::VoteCount(repeat_option) = &repeat.count else {
             return None;
@@ -2687,7 +2696,15 @@ pub(super) fn describe_council_dilemma_named_vote_sequence(effects: &[Effect]) -
         ));
     }
 
-    let shared_quantified_subject = [
+    let shared_imperative_subject = repeat_effects.iter().all(|effect| {
+        let effect = effect.downcast_ref::<crate::effects::WithIdEffect>()
+            .map_or(effect, |wrapped| &wrapped.effect);
+        let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatEffectsEffect>() else { return false };
+        let [effect] = repeat.effects.as_slice() else { return false };
+        effect.downcast_ref::<crate::effects::DrawCardsEffect>().is_some_and(|draw| draw.player == PlayerFilter::You)
+            || effect.downcast_ref::<crate::effects::PutCountersEffect>().is_some_and(|put| matches!(put.target.base(), ChooseSpec::Source))
+    });
+    let shared_quantified_subject = shared_imperative_subject || [
         "each opponent ",
         "each player ",
         "each other player ",
@@ -2723,7 +2740,16 @@ pub(super) fn describe_council_dilemma_named_vote_sequence(effects: &[Effect]) -
         text.push_str(&clauses.join(". "));
     }
     if !trailing_effects.is_empty() {
-        let trailing = describe_effect_list(trailing_effects);
+        let mut trailing = describe_effect_list(trailing_effects);
+        if shared_imperative_subject
+            && let [repeat] = trailing_effects
+            && let Some(repeat) = repeat.downcast_ref::<crate::effects::RepeatEffectsEffect>()
+            && let [discard] = repeat.effects.as_slice()
+            && let Some(discard) = discard.downcast_ref::<crate::effects::DiscardEffect>()
+            && discard.player == PlayerFilter::You
+        {
+            trailing = trailing.replace(", you discard ", ", discard ");
+        }
         if !trailing.trim().is_empty() {
             text.push_str(". ");
             text.push_str(&capitalize_first(trailing.trim().trim_end_matches('.')));
@@ -7174,16 +7200,6 @@ pub(super) fn tagged_move_to_library_nth_from_effect(
         .downcast_ref::<crate::effects::MoveToLibraryNthFromTopEffect>()
 }
 
-pub(super) fn choose_owner_matches_looked_player(
-    choose: &crate::effects::ChooseObjectsEffect,
-    looked_player: &str,
-) -> bool {
-    choose.filter.owner.as_ref().is_none_or(|owner| {
-        let owner_text = describe_player_filter(owner);
-        owner_text == looked_player || owner_text == format!("target {looked_player}")
-    })
-}
-
 pub(super) fn describe_hand_choose_then_library_placement(effects: &[&Effect]) -> Option<String> {
     let [look_effect, choose_effect, move_effect] = effects else {
         return None;
@@ -7195,7 +7211,10 @@ pub(super) fn describe_hand_choose_then_library_placement(effects: &[&Effect]) -
     }
 
     let looked_player = describe_choose_spec(&look.target);
-    if !choose_owner_matches_looked_player(choose, &looked_player) {
+    let looked_filter = choose_spec_player_filter(&look.target)?;
+    if !choose.filter.owner.as_ref().is_some_and(|owner| {
+        player_filters_refer_to_same_player(owner, &looked_filter)
+    }) {
         return None;
     }
 
@@ -7234,7 +7253,9 @@ pub(super) fn describe_hand_choose_then_library_placement(effects: &[&Effect]) -
     }
 
     if let Some(move_to_library) = tagged_move_to_library_nth_from_effect(move_effect)
-        && matches!(&move_to_library.target, ChooseSpec::Tagged(tag) if tag == &choose.tag)
+        && look.reveal
+        && choose.count.is_single()
+        && matches!(move_to_library.target.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
     {
         let position = library_position_from_top_text(&move_to_library.position, true);
         let reveal_verb = player_verb(&looked_player, "reveal", "reveals");

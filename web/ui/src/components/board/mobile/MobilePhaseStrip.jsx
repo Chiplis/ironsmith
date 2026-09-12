@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useMemo } from "react";
 import { Sparkles, Eye, BookOpen, Zap, Swords, Hourglass, MoonStar, Brush } from "lucide-react";
 import { useGame } from "@/context/GameContext";
@@ -19,6 +20,7 @@ const PHASE_CELLS = [
 const COMPACT_PHASE_KEYS = new Set(["Untap", "Cleanup"]);
 
 export default function MobilePhaseStrip({ className }) {
+  const ui = useUiText();
   const { state } = useGame();
   const { phaseStops, togglePhaseStop } = useMobileBattle();
   const activeKey = useMemo(
@@ -30,7 +32,7 @@ export default function MobilePhaseStrip({ className }) {
     <div
       className={cn("mobile-mtga-phase-strip", className)}
       role="group"
-      aria-label="Turn phases"
+      aria-label={ui("Turn phases")}
     >
       {PHASE_CELLS.map((cell) => {
         const { key, label } = cell;
@@ -49,12 +51,12 @@ export default function MobilePhaseStrip({ className }) {
               isCompact && "mobile-mtga-phase-cell--compact"
             )}
             data-phase-key={key}
-            aria-label={`${label}${isActive ? " (current)" : ""}${isStopped ? " (stop set)" : ""}`}
+            aria-label={ui("{0}{1}{2}", { 0: label, 1: isActive ? " (current)" : "", 2: isStopped ? " (stop set)" : "" })}
             aria-pressed={isStopped}
             onClick={() => togglePhaseStop?.(key)}
           >
             <PhaseIcon className="size-3" aria-hidden="true" />
-            <span className="mobile-mtga-phase-cell-label">{label}</span>
+            <span className="mobile-mtga-phase-cell-label">{ui(label)}</span>
             {isStopped ? (
               <span className="mobile-mtga-phase-cell-stop-dot" aria-hidden="true" />
             ) : null}

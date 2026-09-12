@@ -2982,6 +2982,37 @@ pub fn stage_owned_triggered_effects_for_lowering(
     let mut trigger = trigger;
     ensure_concrete_trigger_spec(&trigger)?;
 
+    // A singular creature event supplies a typed antecedent independently of
+    // subsequent object choices (for example, returning a land). Keep that
+    // event object stable even if an Equipment changes its attachment.
+    fn has_single_creature_antecedent(trigger: &TriggerSpec) -> bool {
+        match trigger {
+            TriggerSpec::WithIntro { trigger, .. }
+            | TriggerSpec::ConditionQualified { trigger, .. } => has_single_creature_antecedent(trigger),
+            TriggerSpec::Attacks(_)
+            | TriggerSpec::AttacksAlone(_)
+            | TriggerSpec::AttacksWhileSaddled(_)
+            | TriggerSpec::AttacksAndIsntBlocked(_) => true,
+            TriggerSpec::EntersBattlefield { filter, .. }
+            | TriggerSpec::EntersBattlefieldFromZone { filter, one_or_more: false, .. }
+            | TriggerSpec::EntersBattlefieldTapped { filter, .. }
+            | TriggerSpec::EntersBattlefieldUntapped { filter, .. } => {
+                filter.card_types == [crate::types::CardType::Creature]
+                    && filter.any_of.is_empty()
+                    && !filter.type_or_subtype_union
+            }
+            _ => false,
+        }
+    }
+    if has_single_creature_antecedent(&trigger) {
+        std::sync::Arc::make_mut(&mut imports.recent_object_target_bindings).push(
+            crate::model::reference_state::ObjectTargetBinding::new(
+                crate::tag::CompilerReferenceTag::Triggering.key(),
+                &ObjectFilter::creature(),
+            ),
+        );
+    }
+
     let mut normalized = effects;
     crate::effect_ast_normalization::normalize_effects_ast_in_place(&mut normalized);
     if std::env::var("IRONSMITH_CHOICE_TRACE").is_ok() {
@@ -3616,6 +3647,7 @@ pub fn runtime_static_ability_for_keyword_action(action: KeywordAction) -> Optio
         | KeywordAction::SoulshiftValue(_)
         | KeywordAction::Outlast(_)
         | KeywordAction::Unearth(_)
+        | KeywordAction::Encore(_)
         | KeywordAction::Eternalize(_)
         | KeywordAction::Ninjutsu(_)
         | KeywordAction::Extort => None,

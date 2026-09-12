@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import PriorityDecision from "./PriorityDecision";
 import TargetsDecision from "./TargetsDecision";
 import AttackersDecision from "./AttackersDecision";
@@ -24,6 +25,7 @@ export default function DecisionRouter({
   onCombatActionChange = null,
   toolbarSearchTarget = null,
 }) {
+  const ui = useUiText();
   const { state } = useGame();
   if (!decision) return null;
 
@@ -133,8 +135,7 @@ export default function DecisionRouter({
       );
     default:
       return (
-        <div className="text-muted-foreground text-[16px] italic p-2">
-          Unknown decision type: {decision.kind}
+        <div className="text-muted-foreground text-[16px] italic p-2">{ui("Unknown decision type:") + " "}{decision.kind}
         </div>
       );
   }

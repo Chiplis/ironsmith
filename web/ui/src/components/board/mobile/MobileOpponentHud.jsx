@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useCastPlayerHovered } from "@/context/DragContext";
 import { useCallback } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -38,6 +39,7 @@ export default function MobileOpponentHud({
   trailing = null,
   className,
 }) {
+  const ui = useUiText();
   const { state, playerAccentOverrides } = useGame();
   const castPlayerHovered = useCastPlayerHovered(opponent?.index ?? opponent?.id);
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
@@ -75,7 +77,7 @@ export default function MobileOpponentHud({
           className="mobile-mtga-opponent-cycle"
           data-player-nav-target={previousOpponent?.index ?? previousOpponent?.id}
           data-player-nav-target-name={previousOpponent?.id ?? previousOpponent?.index}
-          aria-label="Show previous opponent"
+          aria-label={ui("Show previous opponent")}
           onClick={onCyclePrev}
         >
           <ChevronLeft className="size-3.5" aria-hidden="true" />
@@ -105,12 +107,11 @@ export default function MobileOpponentHud({
         <PlayerAvatar player={opponent} accentHex={accent?.hex} isActiveTurn={isActiveTurn} />
         <span className="mobile-mtga-hud-identity">
           <span className="mobile-mtga-hud-name">{playerDisplayName(state?.players || [], opponent)}</span>
-          <span className="mobile-mtga-hud-life" aria-label={`Life ${opponent.life}`}>
+          <span className="mobile-mtga-hud-life" aria-label={ui("Life {0}", { 0: opponent.life })}>
             {opponent.life}
           </span>
         </span>
-        <span className="mobile-mtga-hud-zones-meta" aria-hidden="true">
-          H {opponent.hand_size ?? 0} · G {opponent.graveyard_size ?? 0} · D {opponent.library_size ?? 0}
+        <span className="mobile-mtga-hud-zones-meta" aria-hidden="true">{ui("H") + " "}{opponent.hand_size ?? 0}{" " + ui("· G") + " "}{opponent.graveyard_size ?? 0}{" " + ui("· D") + " "}{opponent.library_size ?? 0}
         </span>
       </button>
 
@@ -126,7 +127,7 @@ export default function MobileOpponentHud({
           className="mobile-mtga-opponent-cycle"
           data-player-nav-target={nextOpponent?.index ?? nextOpponent?.id}
           data-player-nav-target-name={nextOpponent?.id ?? nextOpponent?.index}
-          aria-label="Show next opponent"
+          aria-label={ui("Show next opponent")}
           onClick={onCycleNext}
         >
           <ChevronRight className="size-3.5" aria-hidden="true" />

@@ -2556,13 +2556,67 @@ fn try_parse_repeated_intro_attack_union_lexed(tokens: &[OwnedLexToken]) -> Opti
     None
 }
 
-/// "Whenever A or B" over two distinct trigger events, where the right half
-/// resumes with a bare verb sharing the left half's subject ("an opponent
-/// sacrifices a nontoken permanent or discards a permanent card").
-///
-/// Deliberately narrow: only verbs with no dedicated union spec are split
-/// here, so tuned single-spec unions (enters-or-attacks, damage recipients)
-/// keep their existing routes.
+/// An explicit repeated trigger introduction describes alternative events,
+/// even when the printed connective is "and".
+fn try_parse_repeated_intro_event_union_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<TriggerSpec>, CardTextError> {
+    let Some(separator) = tokens.windows(2).position(|pair| {
+        pair[0].is_word("and") && pair[1].is_any_word(&["when", "whenever", "at"])
+    }) else {
+        return Ok(None);
+    };
+    let left = parse_trigger_clause_lexed(&tokens[..separator])?;
+    let left = if matches!(left, TriggerSpec::WithIntro { .. }) {
+        left
+    } else {
+        TriggerSpec::WithIntro {
+            intro: TriggerIntroSurfaceAst::When,
+            trigger: Box::new(left),
+        }
+    };
+    let right_tokens = &tokens[separator + 1..];
+    let right = parse_trigger_clause_lexed(strip_leading_trigger_intro(right_tokens))?;
+    Ok(Some(TriggerSpec::Either(
+        Box::new(left),
+        Box::new(apply_leading_trigger_intro_surface(right, right_tokens)),
+    )))
+}
+
+fn try_parse_player_plays_card_lexed(
+    raw_tokens: &[OwnedLexToken],
+) -> Result<Option<TriggerSpec>, CardTextError> {
+    let tokens = strip_leading_trigger_intro(raw_tokens);
+    let Some(play) = tokens.iter().position(|token| token.is_any_word(&["play", "plays"])) else {
+        return Ok(None);
+    };
+    let Some(player) = parse_trigger_subject_player_filter(&crate::lexer::token_word_refs(&tokens[..play])) else {
+        return Ok(None);
+    };
+    let object = &tokens[play + 1..];
+    if !object.first().is_some_and(|token| token.is_word("a"))
+        || !object.get(1).is_some_and(|token| token.is_word("card"))
+    {
+        return Ok(None);
+    }
+    let filter = parse_object_filter_lexed(object, false)?;
+    Ok(Some(apply_leading_trigger_intro_surface(TriggerSpec::AnyOf(vec![
+        TriggerSpec::SpellCast {
+            filter: Some(filter.clone()),
+            mana_source_filter: None,
+            caster: player.clone(),
+            timing: None,
+            during_turn: None,
+            min_spells_this_turn: None,
+            exact_spells_this_turn: None,
+            from_not_hand: false,
+        },
+        TriggerSpec::PlayerPlaysLand { player, filter },
+    ]), raw_tokens)))
+}
+
+/// Split a shared-subject "or" only for verbs without a dedicated union
+/// shape, preserving the tuned enters-or-attacks and damage-recipient routes.
 fn try_parse_trigger_union_lexed(tokens: &[OwnedLexToken]) -> Option<TriggerSpec> {
     const UNION_RIGHT_VERBS: &[&str] = &["sacrifices", "discards", "leaves", "phases"];
     const UNION_RIGHT_PASSIVE_PREFIX: &[&str] = &["is", "put", "into", "exile"];

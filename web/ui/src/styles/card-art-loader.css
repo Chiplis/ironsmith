@@ -1,0 +1,105 @@
+.card-art-loader {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: inherit;
+  color: #d7bc79;
+  background: radial-gradient(ellipse at 50% 38%, #283547, #111923 72%);
+  contain: paint;
+}
+.card-art-loader__sigil {
+  display: block;
+  width: 72%;
+  height: 72%;
+  max-width: 112px;
+  max-height: 112px;
+  min-width: 0;
+  min-height: 0;
+  opacity: .8;
+}
+.card-art-loader__ring {
+  position: absolute;
+  width: 44%;
+  aspect-ratio: 1;
+  border: 1px solid #d7bc7938;
+  border-radius: 50%;
+}
+.card-art-loader__ring {
+  border-color: #e9cd8e;
+  box-shadow: 0 0 12px #efc96d66, inset 0 0 10px #efc96d33;
+  animation: card-art-heartbeat 1.8s ease-in-out infinite;
+}
+.card-art-loader__sigil {
+  filter: drop-shadow(0 0 5px #ffe6a6aa);
+  animation: card-art-heartbeat 1.8s ease-in-out infinite;
+}
+.card-art-loader--hand { background: linear-gradient(155deg, #202c3a, #111821 70%); }
+.card-art-loader--hand::before {
+  content: "";
+  position: absolute;
+  inset: 7%;
+  border: 1px solid #d7bc792b;
+  background: linear-gradient(#d7bc7910, transparent 48%);
+}
+.card-art-loader--hand .card-art-loader__ring { width: 30%; border-radius: 2px; transform: rotate(45deg); }
+.card-art-loader__sweep { display: none; }
+.card-art-loader--hand .card-art-loader__sweep {
+  display: block;
+  position: absolute;
+  inset: -50%;
+  background: linear-gradient(110deg, transparent 40%, #efdca71c 50%, transparent 60%);
+  animation: card-art-sweep 2s ease-in-out infinite;
+}
+.card-art-loader[data-card-art-loader="unavailable"] { opacity: .65; }
+.card-art-loader[data-card-art-loader="unavailable"] :is(.card-art-loader__ring, .card-art-loader__sigil) { animation: none; }
+.card-art-loader[data-card-art-loader="unavailable"] .card-art-loader__sweep { display: none; }
+/* Two luminous beats, followed by a quiet pause. Only opacity and scale animate. */
+@keyframes card-art-heartbeat {
+  0%, 58%, 100% { scale: .94; opacity: .28; }
+  18% { scale: 1.08; opacity: 1; }
+  30% { scale: .98; opacity: .5; }
+  42% { scale: 1.04; opacity: .9; }
+}
+[data-card-art-state="revealing"] {
+  transform-origin: center;
+  animation: card-art-reveal 560ms cubic-bezier(.16, 1, .3, 1) both;
+}
+[data-card-art-svg="true"][data-card-art-state="revealing"] {
+  animation-name: card-art-reveal-token;
+}
+.card-art-reveal-sheen {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: inherit;
+}
+.card-art-reveal-sheen::after {
+  content: "";
+  position: absolute;
+  inset: -50%;
+  background: linear-gradient(115deg, transparent 35%, #fff2c466 49%, #fff8df99 50%, transparent 65%);
+  animation: card-art-reveal-sweep 560ms ease-out both;
+}
+@keyframes card-art-reveal {
+  from { opacity: 0; scale: 1.07; }
+  to { opacity: 1; scale: 1; }
+}
+/* Keep the token's circular clip fixed inside its metal frame. */
+@keyframes card-art-reveal-token { from { opacity: 0; } to { opacity: 1; } }
+@keyframes card-art-reveal-sweep {
+  from { transform: translateX(-65%); opacity: 0; }
+  25% { opacity: 1; }
+  to { transform: translateX(65%); opacity: 0; }
+}
+@keyframes card-art-sweep { from { transform: translateX(-55%); } to { transform: translateX(55%); } }
+@media (prefers-reduced-motion: reduce) {
+  .card-art-loader__ring, .card-art-loader__sigil, .card-art-loader__sweep,
+  [data-card-art-state="revealing"], .card-art-reveal-sheen::after { animation: none !important; }
+  .card-art-loader__sweep, .card-art-reveal-sheen { display: none !important; }
+}

@@ -166,21 +166,22 @@ pub fn parse_for_each_object_filter(
 
 pub fn parse_for_each_targeted_object_subject(
     subject_tokens: &[OwnedLexToken],
-) -> Result<Option<(ObjectFilter, ChoiceCount)>, CardTextError> {
+) -> Result<Option<TargetAst>, CardTextError> {
     let Some(shape) = for_each_shapes::parse_for_each_target_subject_shape(subject_tokens) else {
         return Ok(None);
     };
-    let target = match parse_target_phrase(shape.target_tokens) {
-        Ok(target) => target,
-        Err(_) => return Ok(None),
-    };
-    let TargetAst::WithCount(inner, count) = target else {
+    if !shape.target_tokens.iter().any(|token| token.is_word("target")) {
         return Ok(None);
+    }
+    let target = parse_target_phrase(shape.target_tokens)?;
+    let inner = match &target {
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => inner.as_ref(),
+        target => target,
     };
-    let TargetAst::Object(filter, _, _) = *inner else {
+    if !matches!(inner, TargetAst::Object(..)) {
         return Ok(None);
-    };
-    Ok(Some((filter, count)))
+    }
+    Ok(Some(target))
 }
 
 pub fn is_target_player_dealt_damage_by_this_turn_subject(words: &[&str]) -> bool {

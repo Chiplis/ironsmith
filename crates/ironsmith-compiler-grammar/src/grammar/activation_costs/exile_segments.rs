@@ -147,6 +147,23 @@ fn parse_source_and_chosen_exile(
         render_token_slice(source_tokens).trim().to_string(),
     );
     let chosen_tokens = &body[and_idx + 1..];
+    // In "exile this card and two other cards ... from your graveyard",
+    // the trailing origin qualifies both operands, not just the chosen set.
+    let shared_origin = chosen_tokens.len().checked_sub(3).and_then(|start| {
+        let tail = &chosen_tokens[start..];
+        if !tail[0].is_word("from") || !tail[1].is_word("your") {
+            return None;
+        }
+        let zone = if tail[2].is_word("graveyard") {
+            Zone::Graveyard
+        } else if tail[2].is_word("hand") {
+            Zone::Hand
+        } else {
+            return None;
+        };
+        Some((start, zone))
+    });
+    let chosen_tokens = shared_origin.map_or(chosen_tokens, |(end, _)| &chosen_tokens[..end]);
     let Some(choice) = parse_activation_choice_prefix_tokens(chosen_tokens) else {
         return Ok(None);
     };
@@ -156,12 +173,33 @@ fn parse_source_and_chosen_exile(
     {
         return Ok(None);
     }
-    let filter = parse_activation_exile_filter_tokens(choice.rest)?;
+    let mut filter = parse_activation_exile_filter_tokens(choice.rest)?;
+    // A complete authored name at the end of this bounded selector is a
+    // literal, including words such as "Its" that also have grammatical uses.
+    if let Some(named) = choice.rest.iter().position(|token| token.is_word("named")) {
+        let name_tokens = &choice.rest[named + 1..];
+        if !name_tokens.is_empty()
+            && (shared_origin.is_some()
+                || crate::lexer::is_authored_proper_name_phrase(name_tokens))
+        {
+            filter = parse_activation_exile_filter_tokens(&choice.rest[..named])?;
+            let name = crate::lexer::render_literal_token_slice(name_tokens);
+            filter.name = Some(name.to_ascii_lowercase());
+            filter.set_name_surface(name);
+        }
+    }
+    if let Some((_, zone)) = shared_origin {
+        filter.zone = Some(zone);
+        filter.owner = Some(PlayerFilter::You);
+    }
     if !filter.other {
         return Ok(None);
     }
     let mut source_filter = crate::target::ObjectFilter::source_with_surface(source_surface);
-    source_filter.zone = Some(Zone::Battlefield);
+    source_filter.zone = Some(shared_origin.map_or(Zone::Battlefield, |(_, zone)| zone));
+    if shared_origin.is_some() {
+        source_filter.owner = Some(PlayerFilter::You);
+    }
     Ok(Some(ActivationCostSegmentCst::ExileSourceAndChosen {
         source_filter,
         choice_count: choice.count,

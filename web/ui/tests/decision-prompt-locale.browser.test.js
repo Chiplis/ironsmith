@@ -8,7 +8,8 @@ async function promptText(page, port, query) {
   const probe = page.locator("[data-decision-summary-probe]");
   await probe.waitFor();
   await page.waitForTimeout(600);
-  return (await probe.innerText()).trim();
+  // Keyword helper spans may add layout whitespace to innerText.
+  return (await probe.innerText()).replace(/\s+/g, " ").trim();
 }
 
 test("a decision prompt follows the source card's localized printing", async () => {

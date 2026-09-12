@@ -1,8 +1,10 @@
+import useUiText from "@/i18n/useUiText";
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { PUBLIC_FORMATS, relayBaseUrl } from '@/lib/relay/formats';
 
 export default function PublicLobbySearch({ onSelect }) {
+  const ui = useUiText();
   const [lobbies, setLobbies] = useState([]);
   const [query, setQuery] = useState('');
   const [format, setFormat] = useState('');
@@ -34,18 +36,18 @@ export default function PublicLobbySearch({ onSelect }) {
   }, [refresh]);
   const matches = lobbies.filter(l => (!format || l.format === format)
     && `${l.name} ${l.format}`.toLowerCase().includes(query.toLowerCase()));
-  return <section className="fantasy-sheet-section grid gap-3 p-4" aria-label="Public WebSocket lobbies">
-    <div className="flex items-center justify-between gap-2"><strong>Public lobbies</strong>
-      <Button variant="secondary" onClick={() => setRefresh(n => n + 1)}>Refresh</Button></div>
-    <p className="text-sm text-muted-foreground">Find a table by format. These lobbies use open decklists (Trusted mode).</p>
-    <input className="fantasy-field px-3 py-2" aria-label="Search public lobbies" placeholder="Search host or format" value={query} onChange={e => setQuery(e.target.value)} />
-    <select className="fantasy-field px-3 py-2" aria-label="Filter public lobbies by format" value={format} onChange={e => setFormat(e.target.value)}>
-      <option value="">All formats</option>{Object.values(PUBLIC_FORMATS).map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+  return <section className="fantasy-sheet-section grid gap-3 p-4" aria-label={ui("Public WebSocket lobbies")}>
+    <div className="flex items-center justify-between gap-2"><strong>{ui("Public lobbies")}</strong>
+      <Button variant="secondary" onClick={() => setRefresh(n => n + 1)}>{ui("Refresh")}</Button></div>
+    <p className="text-sm text-muted-foreground">{ui("Find a table by format. These lobbies use open decklists (Trusted mode).")}</p>
+    <input className="fantasy-field px-3 py-2" aria-label={ui("Search public lobbies")} placeholder={ui("Search host or format")} value={query} onChange={e => setQuery(e.target.value)} />
+    <select className="fantasy-field px-3 py-2" aria-label={ui("Filter public lobbies by format")} value={format} onChange={e => setFormat(e.target.value)}>
+      <option value="">{ui("All formats")}</option>{Object.values(PUBLIC_FORMATS).map(f => <option key={f.id} value={f.id}>{ui(f.label)}</option>)}
     </select>
-    <div role="status" className="text-sm text-muted-foreground">{error || (!loaded ? 'Searching for lobbies…' : matches.length ? `${matches.length} available ${matches.length === 1 ? 'lobby' : 'lobbies'}` : 'No available lobbies. Create one to advertise your table.')}</div>
+    <div role="status" className="text-sm text-muted-foreground">{error || (!loaded ? ui('Searching for lobbies…') : matches.length ? ui("{0} available {1}", { 0: matches.length, 1: matches.length === 1 ? 'lobby' : 'lobbies' }) : ui('No available lobbies. Create one to advertise your table.'))}</div>
     {matches.map(lobby => <Button key={lobby.id} variant="secondary" className="h-auto justify-between whitespace-normal py-3 text-left" onClick={() => onSelect(lobby.id)}>
       <span>{lobby.name} · {PUBLIC_FORMATS[lobby.format]?.label || lobby.format}</span>
-      <span>{lobby.playerCount}/{lobby.desiredPlayers} · Select</span>
+      <span>{lobby.playerCount}/{lobby.desiredPlayers}{" " + ui("· Select")}</span>
     </Button>)}
   </section>;
 }

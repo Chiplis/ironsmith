@@ -51,6 +51,7 @@ pub(crate) fn synthetic_chosen_name_snapshot(
         is_token: false,
         tapped: false,
         attacking: false,
+        goaded: None,
         flipped: false,
         face_down: false,
         transform_count: 0,

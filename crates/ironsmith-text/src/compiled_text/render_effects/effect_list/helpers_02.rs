@@ -879,7 +879,7 @@ pub(crate) fn render_consult_reveal_put_hand_rest_exile(effects: &[&Effect]) -> 
         return None;
     }
     let exile_effect = unwrap_tag_wrappers(&conditional.if_false[0]);
-    let move_remainder = exile_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let move_remainder = move_to_zone_surface_view(exile_effect)?;
     if move_remainder.zone != Zone::Exile || !move_remainder.to_top {
         return None;
     }
@@ -2600,8 +2600,7 @@ pub(crate) fn describe_look_may_exile_from_among_rest_bottom_cast(
     let choose = effects
         .get(1)?
         .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-    let exile =
-        unwrap_tag_wrappers(effects.get(2)?).downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let exile = move_to_zone_surface_view(unwrap_tag_wrappers(effects.get(2)?))?;
     let rest = effects
         .get(3)?
         .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;

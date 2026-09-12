@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {clearEdgeRules,glyphSimilarity,inpaintGlyphMask} from '../src/lib/card-frame-font-mask.js';
+import {isPanelInk,expandGlyphMask,clearEdgeRules,glyphSimilarity,inpaintGlyphMask} from '../src/lib/card-frame-font-mask.js';
 
 test('glyph matching distinguishes shape rather than merely dark pixels',()=>{
   const a={w:3,h:3,pixels:Uint8Array.from([1,0,0,1,0,0,1,1,1])};
@@ -35,4 +35,30 @@ test('bevel lines along the region edge are cleared without touching lettering',
   // A short line on the edge is lettering (an underscore, a serif), not a bevel.
   const small=new Uint8Array(width*height);for(let x=5;x<15;x++)small[x]=1;
   assert.deepEqual(clearEdgeRules(small.slice(),width,height),small);
+});
+
+
+test('expanded glyph cleanup removes halos while retaining original edge rules',()=>{
+  const width=40,height=20,ink=new Uint8Array(width*height);
+  for(let x=0;x<width;x++)ink[(height-2)*width+x]=1;
+  const original=ink.slice();
+  clearEdgeRules(ink,width,height);
+  const protectedPixels=original.map((v,p)=>v&&!ink[p]?1:0);
+  const accepted=new Uint8Array(width*height);
+  accepted[15*width+10]=1;
+  const mask=expandGlyphMask(accepted,width,height,protectedPixels);
+  assert.equal(mask[15*width+13],1,'includes three-pixel glyph halo');
+  for(let x=0;x<width;x++)assert.equal(mask[(height-2)*width+x],0,'preserves bevel');
+  assert.equal(mask[10*width+10],0,'distant paper remains unchanged');
+});
+
+
+test('white lettering is recognized on midtone gold without selecting gold material',()=>{
+  assert.equal(isPanelInk(245,242,225,144),true);
+  assert.equal(isPanelInk(205,203,195,144),true,'antialiased white ink');
+  assert.equal(isPanelInk(165,145,90,144),false,'gold paper');
+  assert.equal(isPanelInk(220,180,95,144),false,'gold highlight');
+  assert.equal(isPanelInk(30,30,30,224),true,'black ink on light paper');
+  assert.equal(isPanelInk(230,230,230,224),false,'light paper grain');
+  assert.equal(isPanelInk(240,240,240,64),true,'white ink on dark paper');
 });

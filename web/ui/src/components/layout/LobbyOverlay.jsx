@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import PublicLobbySearch from './PublicLobbySearch';
 import { PUBLIC_FORMATS, isRelayId, relayBaseUrl } from '@/lib/relay/formats';
 import { validateFormatDeck, formatCatalogDate } from '@/lib/relay/format-legality';
@@ -152,6 +153,7 @@ export default function LobbyOverlay({
   initialJoinDeckText = "",
   initialJoinCommanderText = "",
 }) {
+  const ui = useUiText();
   const {
     multiplayer,
     canStartHostedMatch,
@@ -362,21 +364,17 @@ export default function LobbyOverlay({
         className="fantasy-sheet lobby-sheet flex max-h-[96vh] w-[min(96vw,1040px)] flex-col p-0"
       >
         <SheetHeader className="fantasy-sheet-header pr-12">
-          <div className="text-[11px] uppercase tracking-[0.24em] text-[#cdb27a]">
-            Multiplayer
-          </div>
+          <div className="text-[11px] uppercase tracking-[0.24em] text-[#cdb27a]">{ui("Multiplayer")}</div>
           <SheetTitle className="text-[24px] uppercase tracking-[0.16em] text-foreground">
-            {lobbyActive ? "Multiplayer Lobby" : mode === "join" ? "Join Lobby" : "Create Lobby"}
+            {lobbyActive ? ui("Multiplayer Lobby") : mode === "join" ? ui("Join Lobby") : ui("Create Lobby")}
           </SheetTitle>
-          <SheetDescription className="max-w-[46ch] text-[13px] leading-5">
-            Host or join a multiplayer table, submit decks, and manage invite links from one place.
-          </SheetDescription>
+          <SheetDescription className="max-w-[46ch] text-[13px] leading-5">{ui("Host or join a multiplayer table, submit decks, and manage invite links from one place.")}</SheetDescription>
         </SheetHeader>
 
         <div className="lobby-sheet-body grid min-h-0 gap-4 p-4">
               {publicDeckStatus && <div className={panelClass} role="status">
-                <span>{publicDeckStatus.ready ? 'Your deck meets the format restrictions.' : publicDeckStatus.errors.slice(0, 5).join(' ')}</span>
-                <small>Card legality snapshot: {formatCatalogDate()?.slice(0, 10) || 'loading'}</small>
+                <span>{publicDeckStatus.ready ? ui('Your deck meets the format restrictions.') : publicDeckStatus.errors.slice(0, 5).join(' ')}</span>
+                <small>{ui("Card legality snapshot:") + " "}{formatCatalogDate()?.slice(0, 10) || ui('loading')}</small>
               </div>}
           {!lobbyActive ? (
             <div className="grid gap-4">
@@ -388,9 +386,7 @@ export default function LobbyOverlay({
                   }`}
                   aria-pressed={mode === "create"}
                   onClick={() => setMode("create")}
-                >
-                  Create
-                </button>
+                >{ui("Create")}</button>
                 <button
                   type="button"
                   className={`${modeTabClass} ${
@@ -398,14 +394,11 @@ export default function LobbyOverlay({
                   }`}
                   aria-pressed={mode === "join"}
                   onClick={() => setMode("join")}
-                >
-                  Join
-                </button>
+                >{ui("Join")}</button>
               </div>
 
               {mode === 'create' && <div className={panelClass}>
-                <label className={labelClass}>Connection
-                  <select aria-label="Connection" className={inputClass} value={transport} onChange={event => {
+                <label className={labelClass}>{ui("Connection")}<select aria-label={ui("Connection")} className={inputClass} value={transport} onChange={event => {
                     const value = event.target.value;
                     setTransport(value);
                     if (value === 'websocket') {
@@ -415,48 +408,41 @@ export default function LobbyOverlay({
                       setCreateSecurityMode(MULTIPLAYER_SECURITY_TRUSTED);
                     }
                   }}>
-                    <option value="peerjs">{import.meta.env.VITE_LAN_LOBBY === 'true' ? 'Local network' : 'Peer-to-peer'}</option>
-                    <option value="websocket" disabled={!relayBaseUrl()}>WebSocket lobby{!relayBaseUrl() ? ' (not configured)' : ''}</option>
+                    <option value="peerjs">{import.meta.env.VITE_LAN_LOBBY === 'true' ? ui('Local network') : ui('Peer-to-peer')}</option>
+                    <option value="websocket" disabled={!relayBaseUrl()}>{ui("WebSocket lobby")}{!relayBaseUrl() ? ui(' (not configured)') : ''}</option>
                   </select>
                 </label>
                 {transport === 'websocket' && <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={advertise} onChange={e => setAdvertise(e.target.checked)} />Advertise in public lobby search
-                </label>}
-                {transport === 'websocket' && <p className="text-sm text-muted-foreground">Format rules are enforced. Open decklists are shared with the table. Reopen this lobby link in the same browser to recover your seat. Play waits while the host is offline.</p>}
+                  <input type="checkbox" checked={advertise} onChange={e => setAdvertise(e.target.checked)} />{ui("Advertise in public lobby search")}</label>}
+                {transport === 'websocket' && <p className="text-sm text-muted-foreground">{ui("Format rules are enforced. Open decklists are shared with the table. Reopen this lobby link in the same browser to recover your seat. Play waits while the host is offline.")}</p>}
               </div>}
               {mode === "create" ? (
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
                   <div className="grid gap-4">
                     <div className="grid gap-4 md:grid-cols-2">
-                      <label className={labelClass}>
-                        Your Name
-                        <input
+                      <label className={labelClass}>{ui("Your Name")}<input
                           className={inputClass}
                           value={createName}
                           onChange={(event) => setCreateName(event.target.value)}
-                          placeholder="Host name"
+                          placeholder={ui("Host name")}
                         />
                       </label>
-                      <label className={labelClass}>
-                        Format
-                        <select
+                      <label className={labelClass}>{ui("Format")}<select
                           className={inputClass}
-                          aria-label="Format"
+                          aria-label={ui("Format")}
                           value={createFormat}
                           onChange={(event) => handleCreateFormatChange(event.target.value)}
                         >
-                          {transport === 'websocket' ? Object.values(PUBLIC_FORMATS).map(f => <option key={f.id} value={f.id}>{f.label}</option>) : <>
-                            <option value={MATCH_FORMAT_NORMAL}>Normal</option>
-                            <option value={MATCH_FORMAT_COMMANDER}>Commander</option>
-                            <option value={MATCH_FORMAT_PLANECHASE}>Planechase</option>
+                          {transport === 'websocket' ? Object.values(PUBLIC_FORMATS).map(f => <option key={f.id} value={f.id}>{ui(f.label)}</option>) : <>
+                            <option value={MATCH_FORMAT_NORMAL}>{ui("Normal")}</option>
+                            <option value={MATCH_FORMAT_COMMANDER}>{ui("Commander")}</option>
+                            <option value={MATCH_FORMAT_PLANECHASE}>{ui("Planechase")}</option>
                           </>}
                         </select>
                       </label>
                     </div>
                     <div className="grid gap-4 md:grid-cols-2">
-                      <label className={labelClass}>
-                        Starting Life
-                        <input
+                      <label className={labelClass}>{ui("Starting Life")}<input
                           className={inputClass}
                           type="number"
                           min={1}
@@ -465,25 +451,21 @@ export default function LobbyOverlay({
                           onChange={(event) => setStartingLife(Number(event.target.value) || 20)}
                         />
                       </label>
-                      <label className={labelClass}>
-                        Players
-                        <select
+                      <label className={labelClass}>{ui("Players")}<select
                           className={inputClass}
-                          aria-label="Players"
+                          aria-label={ui("Players")}
                           value={desiredPlayers}
                           disabled={transport === 'websocket' && PUBLIC_FORMATS[createFormat]?.maxPlayers === 2}
                           onChange={(event) => setDesiredPlayers(Number(event.target.value) || 2)}
                         >
-                          <option value={2}>2 Players</option>
-                          <option value={3}>3 Players</option>
-                          <option value={4}>4 Players</option>
+                          <option value={2}>{ui("2 Players")}</option>
+                          <option value={3}>{ui("3 Players")}</option>
+                          <option value={4}>{ui("4 Players")}</option>
                         </select>
                       </label>
                     </div>
                     <fieldset className="grid gap-2">
-                      <legend className="text-[12px] uppercase tracking-[0.18em] text-muted-foreground">
-                        Multiplayer Mode
-                      </legend>
+                      <legend className="text-[12px] uppercase tracking-[0.18em] text-muted-foreground">{ui("Multiplayer Mode")}</legend>
                       <div className="grid gap-2 md:grid-cols-2">
                         {securityModeOptions.map((option) => {
                           if (transport === 'websocket' && option.value === MULTIPLAYER_SECURITY_VERIFIED) return null;
@@ -513,26 +495,24 @@ export default function LobbyOverlay({
                                 onChange={() => setCreateSecurityMode(option.value)}
                               />
                               <span className="text-[13px] font-semibold uppercase tracking-[0.18em] text-foreground">
-                                {option.label}
+                                {ui(option.label)}
                               </span>
                               <span className="text-[13px] leading-5 text-muted-foreground">
-                                {needsHttps ? "Open the LAN server's trusted HTTPS address to use Verified mode." : option.description}
+                                {needsHttps ? ui("Open the LAN server's trusted HTTPS address to use Verified mode.") : option.description}
                               </span>
                             </label>
                           );
                         })}
                       </div>
                     </fieldset>
-                    <label className={labelClass}>
-                      Main Deck
-                      <textarea
+                    <label className={labelClass}>{ui("Main Deck")}<textarea
                         className={textareaClass}
                         value={createDeckText}
                         onChange={(event) => setCreateDeckText(event.target.value)}
                         placeholder={
-                          createFormat === MATCH_FORMAT_COMMANDER
+                          ui(createFormat === MATCH_FORMAT_COMMANDER
                             ? `Paste a ${COMMANDER_DECK_SIZE}-card Commander main deck...\n\n1 Sol Ring\n1 Swords to Plowshares\n35 Plains`
-                            : `Paste a ${LOBBY_DECK_SIZE}-card main deck...\n\n4 Lightning Bolt\n4 Counterspell\n24 Island`
+                            : `Paste a ${LOBBY_DECK_SIZE}-card main deck...\n\n4 Lightning Bolt\n4 Counterspell\n24 Island`)
                         }
                       />
                     </label>
@@ -540,16 +520,16 @@ export default function LobbyOverlay({
                     || createFormat === MATCH_FORMAT_PLANECHASE ? (
                       <label className={labelClass}>
                         {createFormat === MATCH_FORMAT_PLANECHASE
-                          ? "Planar Deck"
-                          : "Commander(s)"}
+                          ? ui("Planar Deck")
+                          : ui("Commander(s)")}
                         <textarea
                           className={commanderTextareaClass}
                           value={createCommanderText}
                           onChange={(event) => setCreateCommanderText(event.target.value)}
                           placeholder={
-                            createFormat === MATCH_FORMAT_PLANECHASE
+                            ui(createFormat === MATCH_FORMAT_PLANECHASE
                               ? "1 The Aether Flues\n1 Spatial Merging\n1 The Great Forest\n..."
-                              : "1 Atraxa, Praetors' Voice\nor\nTymna the Weaver\nKraum, Ludevic's Opus"
+                              : "1 Atraxa, Praetors' Voice\nor\nTymna the Weaver\nKraum, Ludevic's Opus")
                           }
                         />
                       </label>
@@ -558,98 +538,79 @@ export default function LobbyOverlay({
 
                   <div className={panelClass}>
                     <div className={infoTextClass}>
-                      <span>Format: {formatName(createFormat)}</span>
-                      <span>
-                        Main deck:{" "}
+                      <span>{ui("Format:") + " "}{ui(formatName(createFormat))}</span>
+                      <span>{ui("Main deck:")}{" "}
                         {createFormat === MATCH_FORMAT_COMMANDER
                           ? `${createDeckCount}/${createCommanderTarget}`
                           : `${createDeckCount}/${LOBBY_DECK_SIZE}`}
                       </span>
                       {createFormat === MATCH_FORMAT_COMMANDER ? (
-                        <span>Commander(s): {createCommanderCount}/1-2</span>
+                        <span>{ui("Commander(s):") + " "}{createCommanderCount}/1-2</span>
                       ) : createFormat === MATCH_FORMAT_PLANECHASE ? (
-                        <span>Planar deck: {createCommanderCount}/10+</span>
+                        <span>{ui("Planar deck:") + " "}{createCommanderCount}/10+</span>
                       ) : null}
-                      <span>Mode: {securityModeName(createSecurityMode)}</span>
-                      <span>{securityModeSummary(createSecurityMode)}</span>
-                      <span>{formatDeckRequirement(createFormat)}</span>
-                      <span>
-                        The host can start the match once every seat is filled and ready.
-                      </span>
+                      <span>{ui("Mode:") + " "}{ui(securityModeName(createSecurityMode))}</span>
+                      <span>{ui(securityModeSummary(createSecurityMode))}</span>
+                      <span>{ui(formatDeckRequirement(createFormat))}</span>
+                      <span>{ui("The host can start the match once every seat is filled and ready.")}</span>
                     </div>
                     <Button
                       variant="secondary"
                       className={`${pill} ui-primary-action`}
                       onClick={handleCreate}
-                    >
-                      Create Lobby
-                    </Button>
+                    >{ui("Create Lobby")}</Button>
                   </div>
                 </div>
               ) : (
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
                   <div className="grid gap-4">
                     <div className="grid gap-4 md:grid-cols-2">
-                      <label className={labelClass}>
-                        Your Name
-                        <input
+                      <label className={labelClass}>{ui("Your Name")}<input
                           className={inputClass}
                           value={joinName}
                           onChange={(event) => setJoinName(event.target.value)}
-                          placeholder="Guest name"
+                          placeholder={ui("Guest name")}
                         />
                       </label>
-                      <label className={labelClass}>
-                        Lobby Code
-                        <input
+                      <label className={labelClass}>{ui("Lobby Code")}<input
                           className={inputClass}
                           value={joinCode}
                           onChange={(event) => setJoinCode(event.target.value)}
-                          placeholder="Host lobby code"
+                          placeholder={ui("Host lobby code")}
                         />
                       </label>
                     </div>
                     {relayBaseUrl() && <PublicLobbySearch onSelect={setJoinCode} />}
                     {import.meta.env.VITE_LAN_LOBBY === "true" && <LocalLobbySearch onSelect={setJoinCode} />}
-                    <label className={labelClass}>
-                      Main Deck
-                      <textarea
+                    <label className={labelClass}>{ui("Main Deck")}<textarea
                         className={textareaClass}
                         value={joinDeckText}
                         onChange={(event) => setJoinDeckText(event.target.value)}
-                        placeholder={`Paste your main deck now or finish it inside the lobby.\n\nNormal and Planechase lobbies need ${LOBBY_DECK_SIZE} cards.\nCommander lobbies need ${COMMANDER_DECK_SIZE} or ${PARTNER_DECK_SIZE} main-deck cards.`}
+                        placeholder={ui("Paste your main deck now or finish it inside the lobby.\n\nNormal and Planechase lobbies need {0} cards.\nCommander lobbies need {1} or {2} main-deck cards.", { 0: LOBBY_DECK_SIZE, 1: COMMANDER_DECK_SIZE, 2: PARTNER_DECK_SIZE })}
                       />
                     </label>
-                    <label className={labelClass}>
-                      Commander(s) / Planar Deck
-                      <textarea
+                    <label className={labelClass}>{ui("Commander(s) / Planar Deck")}<textarea
                         className={commanderTextareaClass}
                         value={joinCommanderText}
                         onChange={(event) => setJoinCommanderText(event.target.value)}
-                        placeholder={"Optional until you see the host format.\nAdd 1 or 2 commanders for Commander, or at least 10 unique planar cards for Planechase."}
+                        placeholder={ui("Optional until you see the host format.\nAdd 1 or 2 commanders for Commander, or at least 10 unique planar cards for Planechase.")}
                       />
                     </label>
                   </div>
 
                   <div className={panelClass}>
                     <div className={infoTextClass}>
-                      <span>Main deck: {joinDeckCount} cards</span>
-                      <span>Supplemental cards: {joinCommanderCount}</span>
-                      <span>
-                        Join first to see the host’s format and deck requirements.
-                      </span>
-                      <span>
-                        You only become ready after the host receives a valid deck submission for that format.
-                      </span>
+                      <span>{ui("Main deck:") + " "}{joinDeckCount}{" " + ui("cards")}</span>
+                      <span>{ui("Supplemental cards:") + " "}{joinCommanderCount}</span>
+                      <span>{ui("Join first to see the host’s format and deck requirements.")}</span>
+                      <span>{ui("You only become ready after the host receives a valid deck submission for that format.")}</span>
                     </div>
                     <Button
                       variant="secondary"
                       className={`${pill} ui-primary-action`}
                       disabled={!joinCode.trim()}
                       onClick={handleJoin}
-                    >
-                      Join Lobby
-                    </Button>
+                    >{ui("Join Lobby")}</Button>
                   </div>
                 </div>
               )}
@@ -658,60 +619,46 @@ export default function LobbyOverlay({
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
               <div className="grid gap-4">
                 <div className="lobby-sheet-panel fantasy-sheet-section grid gap-1 p-4">
-                  <span className="text-[11px] uppercase tracking-[0.22em] text-[#c3a774]">
-                    Lobby Code
-                  </span>
+                  <span className="text-[11px] uppercase tracking-[0.22em] text-[#c3a774]">{ui("Lobby Code")}</span>
                   <div className="lobby-sheet-code font-mono text-[24px] font-bold tracking-[0.04em] text-foreground">
-                    {multiplayer.lobbyId || multiplayer.hostPeerId || "Connecting"}
+                    {multiplayer.lobbyId || multiplayer.hostPeerId || ui("Connecting")}
                   </div>
                   <p className="text-[13px] text-muted-foreground">
                     {multiplayer.mode === "hosting"
-                      ? "Registering lobby with PeerJS..."
+                      ? ui("Registering lobby with PeerJS...")
                       : multiplayer.mode === "joining"
-                        ? "Connecting to lobby host..."
+                        ? ui("Connecting to lobby host...")
                         : multiplayer.matchStarted
-                          ? `Seat ${
-                              multiplayer.localPlayerIndex != null
+                          ? ui("Seat {0} is active.", { 0: multiplayer.localPlayerIndex != null
                                 ? multiplayer.localPlayerIndex + 1
-                                : "-"
-                            } is active.`
+                                : "-" })
                           : startPending
-                            ? "Starting match."
+                            ? ui("Starting match.")
                             : multiplayer.role === "host"
                               ? slotsRemaining > 0
-                                ? `Share this code. ${slotsRemaining} slot${
-                                    slotsRemaining === 1 ? "" : "s"
-                                  } remaining.`
+                                ? ui("Share this code. {0} slot{1} remaining.", { 0: slotsRemaining, 1: slotsRemaining === 1 ? "" : "s" })
                                 : canStartHostedMatch
-                                  ? "All players are ready. Start the match when you're ready."
-                                  : `Waiting for ${
-                                      playerCount - readyPlayers
-                                    } player${
-                                      playerCount - readyPlayers === 1 ? "" : "s"
-                                    } to submit a valid ${formatName(activeFormat)} deck.`
+                                  ? ui("All players are ready. Start the match when you're ready.")
+                                  : ui("Waiting for {0} player{1} to submit a valid {2} deck.", { 0: playerCount - readyPlayers, 1: playerCount - readyPlayers === 1 ? "" : "s", 2: formatName(activeFormat) })
                               : localReady
                                 ? readyPlayers === multiplayer.desiredPlayers
-                                  ? "All players are ready. Waiting for the host to start."
-                                  : "Ready. Waiting for the remaining players."
+                                  ? ui("All players are ready. Waiting for the host to start.")
+                                  : ui("Ready. Waiting for the remaining players.")
                                 : formatDeckRequirement(activeFormat)}
                   </p>
-                  <p className="text-[12px] uppercase tracking-[0.18em] text-[#c3a774]">
-                    Signaling: {multiplayer.signalingServer || "0.peerjs.com:443"}
+                  <p className="text-[12px] uppercase tracking-[0.18em] text-[#c3a774]">{ui("Signaling:") + " "}{multiplayer.signalingServer || "0.peerjs.com:443"}
                   </p>
-                  <p className="text-[12px] uppercase tracking-[0.18em] text-[#c3a774]">
-                    Mode: {securityModeName(activeSecurityMode)}
+                  <p className="text-[12px] uppercase tracking-[0.18em] text-[#c3a774]">{ui("Mode:") + " "}{ui(securityModeName(activeSecurityMode))}
                   </p>
                   <p className="text-[13px] text-muted-foreground">
-                    {securityModeSummary(activeSecurityMode)}
+                    {ui(securityModeSummary(activeSecurityMode))}
                   </p>
                 </div>
 
                 {!multiplayer.matchStarted ? (
                   <div className="lobby-sheet-panel fantasy-sheet-section grid gap-3 p-4">
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-[11px] uppercase tracking-[0.22em] text-[#c3a774]">
-                        Invite Link
-                      </span>
+                      <span className="text-[11px] uppercase tracking-[0.22em] text-[#c3a774]">{ui("Invite Link")}</span>
                       <button
                         type="button"
                         disabled={!inviteLink}
@@ -719,29 +666,23 @@ export default function LobbyOverlay({
                         onClick={() => {
                           void handleCopyInviteLink();
                         }}
-                      >
-                        Copy Link
-                      </button>
+                      >{ui("Copy Link")}</button>
                     </div>
-                    <label className={labelClass}>
-                      Invitee Name
-                      <input
+                    <label className={labelClass}>{ui("Invitee Name")}<input
                         className={inputClass}
                         value={inviteName}
                         onChange={(event) => setInviteName(event.target.value)}
-                        placeholder="Optional player name"
+                        placeholder={ui("Optional player name")}
                       />
                     </label>
-                    <label className={labelClass}>
-                      Main Deck
-                      <textarea
+                    <label className={labelClass}>{ui("Main Deck")}<textarea
                         className={textareaClass}
                         value={inviteDeckText}
                         onChange={(event) => setInviteDeckText(event.target.value)}
                         placeholder={
-                          activeFormat === MATCH_FORMAT_COMMANDER
+                          ui(activeFormat === MATCH_FORMAT_COMMANDER
                             ? `Optional ${COMMANDER_DECK_SIZE}-card or ${PARTNER_DECK_SIZE}-card main deck for this invitee`
-                            : `Optional ${LOBBY_DECK_SIZE}-card main deck for this invitee`
+                            : `Optional ${LOBBY_DECK_SIZE}-card main deck for this invitee`)
                         }
                       />
                     </label>
@@ -749,36 +690,30 @@ export default function LobbyOverlay({
                     || activeFormat === MATCH_FORMAT_PLANECHASE ? (
                       <label className={labelClass}>
                         {activeFormat === MATCH_FORMAT_PLANECHASE
-                          ? "Planar Deck"
-                          : "Commander(s)"}
+                          ? ui("Planar Deck")
+                          : ui("Commander(s)")}
                         <textarea
                           className={commanderTextareaClass}
                           value={inviteCommanderText}
                           onChange={(event) => setInviteCommanderText(event.target.value)}
                           placeholder={
-                            activeFormat === MATCH_FORMAT_PLANECHASE
+                            ui(activeFormat === MATCH_FORMAT_PLANECHASE
                               ? "Optional planar deck for this invitee"
-                              : "Optional until the invitee finalizes their commander choice"
+                              : "Optional until the invitee finalizes their commander choice")
                           }
                         />
                       </label>
                     ) : null}
-                    <label className={labelClass}>
-                      Generated Link
-                      <textarea
+                    <label className={labelClass}>{ui("Generated Link")}<textarea
                         className={`${commanderTextareaClass} min-h-[96px]`}
                         readOnly
                         value={inviteLink}
-                        placeholder="Invite link will appear once the lobby code is available"
+                        placeholder={ui("Invite link will appear once the lobby code is available")}
                       />
                     </label>
                     <div className={infoTextClass}>
-                      <span>
-                        Includes the current lobby code plus any optional name, deck, and supplemental fields above.
-                      </span>
-                      <span>
-                        Incomplete deck submissions still join the lobby and can be finished there before the player becomes ready.
-                      </span>
+                      <span>{ui("Includes the current lobby code plus any optional name, deck, and supplemental fields above.")}</span>
+                      <span>{ui("Incomplete deck submissions still join the lobby and can be finished there before the player becomes ready.")}</span>
                     </div>
                   </div>
                 ) : null}
@@ -786,11 +721,8 @@ export default function LobbyOverlay({
                 {!multiplayer.matchStarted ? (
                   <div className="lobby-sheet-panel fantasy-sheet-section grid gap-3 p-4">
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] uppercase tracking-[0.22em] text-[#c3a774]">
-                        Your Deck
-                      </span>
-                      <span className="text-[13px] text-muted-foreground">
-                        Format: {formatName(activeFormat)}
+                      <span className="text-[11px] uppercase tracking-[0.22em] text-[#c3a774]">{ui("Your Deck")}</span>
+                      <span className="text-[13px] text-muted-foreground">{ui("Format:") + " "}{ui(formatName(activeFormat))}
                       </span>
                     </div>
                     <textarea
@@ -801,14 +733,13 @@ export default function LobbyOverlay({
                         updateLobbyDeck({ deckText: event.target.value })
                       }
                       placeholder={
-                        activeFormat === MATCH_FORMAT_COMMANDER
+                        ui(activeFormat === MATCH_FORMAT_COMMANDER
                           ? `Paste your Commander main deck...\n\n1 Sol Ring\n1 Brainstorm\n33 Island`
-                          : `Paste a ${LOBBY_DECK_SIZE}-card main deck...\n\n4 Swords to Plowshares\n4 Brainstorm\n24 Plains`
+                          : `Paste a ${LOBBY_DECK_SIZE}-card main deck...\n\n4 Swords to Plowshares\n4 Brainstorm\n24 Plains`)
                       }
                     />
                     <div className={infoTextClass}>
-                      <span>
-                        Main deck:{" "}
+                      <span>{ui("Main deck:")}{" "}
                         {activeFormat === MATCH_FORMAT_COMMANDER
                           ? `${multiplayer.localDeckCount}/${activeCommanderTarget}`
                           : `${multiplayer.localDeckCount}/${LOBBY_DECK_SIZE}`}
@@ -824,21 +755,21 @@ export default function LobbyOverlay({
                               updateLobbyDeck({ commanderText: event.target.value })
                             }
                             placeholder={
-                              activeFormat === MATCH_FORMAT_PLANECHASE
+                              ui(activeFormat === MATCH_FORMAT_PLANECHASE
                                 ? "1 Plane or Phenomenon per line"
-                                : "1 Commander\nor\nCommander One\nCommander Two"
+                                : "1 Commander\nor\nCommander One\nCommander Two")
                             }
                           />
                           <span>
                             {activeFormat === MATCH_FORMAT_PLANECHASE
-                              ? `Planar deck: ${multiplayer.localCommanderCount}/10+`
-                              : `Commander(s): ${multiplayer.localCommanderCount}/1-2`}
+                              ? ui("Planar deck: {0}/10+", { 0: multiplayer.localCommanderCount })
+                              : ui("Commander(s): {0}/1-2", { 0: multiplayer.localCommanderCount })}
                           </span>
                         </>
                       ) : null}
                       <span>
                         {localReady
-                          ? "Ready. The host has your current deck submission."
+                          ? ui("Ready. The host has your current deck submission.")
                           : formatDeckRequirement(activeFormat)}
                       </span>
                     </div>
@@ -849,12 +780,9 @@ export default function LobbyOverlay({
               <div className="grid gap-4">
                 <div className="lobby-sheet-panel fantasy-sheet-section grid gap-2 p-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] uppercase tracking-[0.22em] text-[#c3a774]">
-                      Players
-                    </span>
+                    <span className="text-[11px] uppercase tracking-[0.22em] text-[#c3a774]">{ui("Players")}</span>
                     <span className="text-[13px] text-muted-foreground">
-                      {playerCount}/{multiplayer.desiredPlayers} seats, {readyPlayers} ready
-                    </span>
+                      {playerCount}/{multiplayer.desiredPlayers}{" " + ui("seats,") + " "}{readyPlayers}{" " + ui("ready")}</span>
                   </div>
                   {multiplayer.players.map((player) => (
                     <div
@@ -871,7 +799,7 @@ export default function LobbyOverlay({
                           player.connected === false ? "text-[#ffb8c0]" : "text-muted-foreground"
                         }`}
                       >
-                        {formatPlayerStatus(player, multiplayer.localPeerId, activeFormat)}
+                        {ui(formatPlayerStatus(player, multiplayer.localPeerId, activeFormat))}
                       </span>
                     </div>
                   ))}
@@ -880,8 +808,8 @@ export default function LobbyOverlay({
                 {multiplayer.matchStarted && offlinePlayers.length > 0 ? (
                   <div className="lobby-sheet-status border border-[#7d302f] bg-[#2b1114]/70 px-3 py-2 text-[13px] leading-5 text-[#ffb8c0]">
                     {offlinePlayers.length === 1
-                      ? `${offlinePlayers[0].name} is disconnected. Wait ${formatCountdown(offlinePlayers[0].remainingMs)} for the timeout policy.`
-                      : `${offlinePlayerSummary(offlinePlayers)} are disconnected. Wait for reconnects or timeout policy timers.`}
+                      ? ui("{0} is disconnected. Wait {1} for the timeout policy.", { 0: offlinePlayers[0].name, 1: formatCountdown(offlinePlayers[0].remainingMs) })
+                      : ui("{0} are disconnected. Wait for reconnects or timeout policy timers.", { 0: offlinePlayerSummary(offlinePlayers) })}
                   </div>
                 ) : null}
 
@@ -894,21 +822,19 @@ export default function LobbyOverlay({
                       void startHostedMatch();
                     }}
                   >
-                    {startPending ? "Starting..." : "Start game"}
+                    {startPending ? ui("Starting...") : ui("Start game")}
                   </button>
                 ) : null}
 
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[13px] text-muted-foreground">
-                    {formatName(activeFormat)} • Starting life: {multiplayer.startingLife}
+                    {ui(formatName(activeFormat))}{" " + ui("• Starting life:") + " "}{multiplayer.startingLife}
                   </span>
                   <Button
                     variant="secondary"
                     className={pill}
                     onClick={() => leaveLobby("Lobby closed")}
-                  >
-                    Leave Lobby
-                  </Button>
+                  >{ui("Leave Lobby")}</Button>
                 </div>
               </div>
             </div>
@@ -922,7 +848,7 @@ export default function LobbyOverlay({
                   : "text-muted-foreground"
               }`}
             >
-              {status.msg}
+              {ui(status.msg)}
             </div>
           ) : null}
         </div>

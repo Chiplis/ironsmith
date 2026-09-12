@@ -8,6 +8,7 @@ export function CombatArrowProvider({ children }) {
 
   // Live drag arrow: { fromId, x, y, color }
   const [dragArrow, setDragArrow] = useState(null);
+  const dragArrowRef = useRef(null);
 
   // Combat interaction mode — set by AttackersDecision / BlockersDecision
   // Shape: { mode: "attackers"|"blockers", candidates: Set<id>, onDrop(fromId, targetEl) }
@@ -36,14 +37,16 @@ export function CombatArrowProvider({ children }) {
   }, []);
 
   const startDragArrow = useCallback((fromId, x, y, color) => {
-    setDragArrow({ fromId, x, y, color });
+    dragArrowRef.current = { fromId, x, y, color };
+    setDragArrow(dragArrowRef.current);
   }, []);
 
   const updateDragArrow = useCallback((x, y) => {
-    setDragArrow((prev) => prev ? { ...prev, x, y } : null);
+    if (dragArrowRef.current) dragArrowRef.current = { ...dragArrowRef.current, x, y };
   }, []);
 
   const endDragArrow = useCallback(() => {
+    dragArrowRef.current = null;
     setDragArrow(null);
   }, []);
 
@@ -55,7 +58,7 @@ export function CombatArrowProvider({ children }) {
   return (
     <CombatArrowContext.Provider value={{
       arrows, updateArrows, clearArrows, updateStackArrows, clearStackArrows,
-      dragArrow, startDragArrow, updateDragArrow, endDragArrow,
+      dragArrow, dragArrowRef, startDragArrow, updateDragArrow, endDragArrow,
       combatMode, combatModeRef, setCombatMode,
     }}>
       {children}

@@ -295,13 +295,25 @@ fn lower_counter_placements(
         } else {
             (parse_target_phrase(placement.target_tokens)?, None)
         };
-        effects.push(EffectAst::subject_verb_put_counters(
+        let declares_target = crate::lexer::parser_token_word_refs(placement.target_tokens)
+            .contains(&"target");
+        let effect = EffectAst::subject_verb_put_counters(
             placement.descriptor.counter_type,
             Value::Fixed(placement.descriptor.count as i32),
             target,
             target_count,
             false,
-        ));
+        );
+        // Each explicit target phrase announces a new selection, including in
+        // activated abilities whose effects do not receive automatic tags.
+        effects.push(if declares_target {
+            EffectAst::TagReferenced {
+                effect: Box::new(effect),
+                tag: helper_tag_for_tokens(placement.target_tokens, "counter_target"),
+            }
+        } else {
+            effect
+        });
     }
 
     Ok(effects)
@@ -767,6 +779,7 @@ pub fn replace_target_subtype(target: &mut TargetAst, subtype: Subtype) -> bool 
     match target {
         TargetAst::Object(filter, _, _) => {
             filter.subtypes = vec![subtype];
+            filter.excluded_subtypes.retain(|excluded| *excluded != subtype);
             true
         }
         TargetAst::WithCount(inner, _) => replace_target_subtype(inner, subtype),

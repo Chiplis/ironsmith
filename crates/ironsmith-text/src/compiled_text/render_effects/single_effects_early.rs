@@ -2517,8 +2517,83 @@ pub(super) fn describe_inline_token_creation_choice(
     })
 }
 
-/// Resolution-time alternatives have an explicit chooser and no printed mode
-/// labels. Render their typed actions as an inline choice.
+/// Render a choice of permanent grants from their shared target and typed abilities.
+pub(super) fn describe_permanent_keyword_choice(
+    choose: &crate::effects::ChooseModeEffect,
+) -> Option<(ChooseSpec, String)> {
+    if choose.chooser != Some(PlayerFilter::You)
+        || choose.modes.len() < 2
+        || choose.min != Value::Fixed(1)
+        || choose.max != Value::Fixed(1)
+        || choose.choose_count != Value::Fixed(1)
+        || choose.min_choose_count != Value::Fixed(1)
+        || choose.random
+        || choose.allow_repeat
+        || choose.allow_repeated_modes
+        || choose.spree
+        || choose.tiered
+        || choose.disallow_previously_chosen_modes
+        || choose.disallow_previously_chosen_modes_this_turn
+        || choose.distinct_player_targets_per_mode
+        || choose.conditional_mode_range.is_some()
+        || choose.presentation_label.is_some()
+        || !choose.common_prefix_effects.is_empty()
+        || choose.common_suffix_effect_count != 0
+        || !choose.mode_additional_mana_costs.is_empty()
+        || choose.mode_point_costs.iter().any(|cost| *cost != 1)
+    {
+        return None;
+    }
+    let mut target = None;
+    let mut subject = None;
+    let mut abilities = Vec::new();
+    for mode in &choose.modes {
+        let [effect] = mode.effects.as_slice() else {
+            return None;
+        };
+        let apply = structural_unwrap_render_wrappers(effect)
+            .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+        if apply.until != Until::Forever
+            || apply.condition.is_some()
+            || !apply.additional_modifications.is_empty()
+            || !apply.runtime_modifications.is_empty()
+            || apply.require_creature_target
+        {
+            return None;
+        }
+        let spec = apply.target_spec.as_ref()?;
+        if target.as_ref().is_some_and(|previous| previous != spec) {
+            return None;
+        }
+        target = Some(spec.clone());
+        let mode_subject = describe_apply_continuous_target(apply);
+        if subject
+            .as_ref()
+            .is_some_and(|previous| previous != &mode_subject)
+        {
+            return None;
+        }
+        subject = Some(mode_subject);
+        let Some(crate::continuous::Modification::AddAbility(ability)) = &apply.modification else {
+            return None;
+        };
+        if ability.granted_inline_ability().is_some() {
+            return None;
+        }
+        abilities.push(ability.display().to_ascii_lowercase());
+    }
+    let (subject, plural) = subject?;
+    Some((
+        target?,
+        format!(
+            "{} {} {}",
+            capitalize_first(&subject),
+            if plural { "gain" } else { "gains" },
+            join_with_or(&abilities)
+        ),
+    ))
+}
+
 pub(super) fn describe_inline_action_choice(
     choose: &crate::effects::ChooseModeEffect,
 ) -> Option<String> {
@@ -2548,22 +2623,78 @@ pub(super) fn describe_inline_action_choice(
     {
         return None;
     }
+    let mut branch_targets = Vec::new();
     let clauses = choose
         .modes
         .iter()
         .map(|mode| {
+            let (declaration, effects) = match mode.effects.as_slice() {
+                [first, rest @ ..]
+                    if first
+                        .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                        .is_some_and(|target| {
+                            !target.explicit_declaration && target.chooser.is_none()
+                        }) =>
+                {
+                    (
+                        first.downcast_ref::<crate::effects::TargetOnlyEffect>(),
+                        rest,
+                    )
+                }
+                effects => (None, effects),
+            };
+            let effect = match effects {
+                [effect] => effect,
+                [selection, action] if declaration.is_none()
+                    && selection.downcast_ref::<crate::effects::ChooseObjectsEffect>().is_some()
+                    && sacrifice_view_unwrapped(action).is_some() => {
+                    let text = compile_effect_list(effects).trim_end_matches('.').to_string();
+                    branch_targets.push(None);
+                    return (!text.contains(['\n', '.'])).then_some(text);
+                }
+                _ => return None,
+            };
+            if let Some(nested) = structural_unwrap_render_wrappers(effect)
+                .downcast_ref::<crate::effects::ChooseModeEffect>()
+                && let Some((target, mut text)) = describe_permanent_keyword_choice(nested)
+            {
+                if declaration.is_some_and(|d| d.target != target) {
+                    return None;
+                }
+                if branch_targets.first() == Some(&Some(target.clone())) {
+                    let subject = capitalize_first(&describe_choose_spec(&target));
+                    if let Some(noun) = subject.strip_prefix("Target ")
+                        && let Some(rest) = text.strip_prefix(&subject)
+                    {
+                        text = format!("That {noun}{rest}");
+                    }
+                }
+                branch_targets.push(Some(target));
+                return Some(text);
+            }
             let [effect] = mode.effects.as_slice() else {
                 return None;
             };
+            branch_targets.push(rendered_action_target(effect).cloned());
             let text = describe_effect(effect);
             (!text.contains(['\n', '.'])).then_some(text)
         })
         .collect::<Option<Vec<_>>>()?;
-    Some(format!(
-        "{} or {}",
-        clauses[0],
-        lowercase_first(&clauses[1])
-    ))
+    let shared_you = choose.modes.iter().all(|mode| match mode.effects.as_slice() {
+        [effect] => structural_unwrap_render_wrappers(effect)
+            .downcast_ref::<crate::effects::DiscardEffect>()
+            .is_some_and(|discard| discard.player == PlayerFilter::You),
+        [selection, action] => selection.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            .is_some_and(|selection| selection.chooser == PlayerFilter::You)
+            && sacrifice_view_unwrapped(action).is_some_and(|sacrifice| *sacrifice.player == PlayerFilter::You),
+        _ => false,
+    });
+    let second = if shared_you || clauses[0].starts_with("You ") || clauses[0].starts_with("you ") {
+        clauses[1].strip_prefix("You ").or_else(|| clauses[1].strip_prefix("you ")).unwrap_or(&clauses[1])
+    } else {
+        &clauses[1]
+    };
+    Some(format!("{} or {}", clauses[0], lowercase_first(second)))
 }
 
 /// Compact an instruction-level choice between two non-targeted destruction
@@ -3946,6 +4077,12 @@ pub(crate) fn describe_search_choose_for_each(
                 pluralize_noun_phrase(type_cards)
             )
         }
+    } else if searched_library
+        && choose.count.max == Some(1)
+        && choose.count_value.is_none()
+        && filter_explicitly_selects_permanent_cards(&choose.filter)
+    {
+        describe_single_search_filter_in_zone(&implied_filter, Zone::Library)
     } else {
         describe_search_selection_with_cards_preserving_where(&selection_text)
     };
@@ -4030,7 +4167,20 @@ pub(crate) fn describe_search_choose_for_each(
                     describe_possessive_player_filter(&controller)
                 )
             };
-            text = if selection_text.contains(", where X is ") && !shuffle_before_move {
+            // Keep an iterated player's optional search and placement in one
+            // clause; the definition of X belongs after the complete action.
+            let deferred_where = if choose.chooser == PlayerFilter::IteratedPlayer
+                && !shuffle_before_move
+            {
+                selection_text.split_once(", where X is ")
+            } else {
+                None
+            };
+            text = if let Some((selection, _)) = deferred_where {
+                format!(
+                    "Search {search_origin} for {selection}{reveal_clause} and put {pronoun} onto the battlefield{control_suffix}"
+                )
+            } else if selection_text.contains(", where X is ") && !shuffle_before_move {
                 format!(
                     "Search {search_origin} for {selection_text}{reveal_clause}. Put {pronoun} onto the battlefield{control_suffix}"
                 )
@@ -4061,6 +4211,9 @@ pub(crate) fn describe_search_choose_for_each(
             }
             if let Some(attachment_target) = attachment_target.as_deref() {
                 text.push_str(&format!(", attach {pronoun} to {attachment_target}"));
+            }
+            if let Some((_, definition)) = deferred_where {
+                text.push_str(&format!(", where X is {definition}"));
             }
         }
         SearchDestination::Hand => {
@@ -5545,6 +5698,8 @@ pub(super) fn describe_owned_exile_card_target(spec: &ChooseSpec) -> Option<Stri
     let (noun, owner) = separate_origin(spec)?;
     let ownership = if owner == PlayerFilter::You {
         "you own"
+    } else if noun.count().is_single() {
+        "an opponent owns"
     } else {
         "your opponents own"
     };

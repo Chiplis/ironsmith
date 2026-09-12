@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import './card-frame-stage.css';
 
@@ -6,6 +7,7 @@ import './card-frame-stage.css';
 const renderedFrames = new WeakSet();
 
 export default function CardFrameStage({ preparation, assets = preparation, previewUrl, previewName, onReadyChange, children, style, ...props }) {
+  const ui = useUiText();
   const ref = useRef(null);
   const [decodedPreview, setDecodedPreview] = useState(null);
   const [finished, setFinished] = useState(null);
@@ -51,7 +53,7 @@ export default function CardFrameStage({ preparation, assets = preparation, prev
   useLayoutEffect(() => { onReadyChange?.(ready || previewReady); }, [onReadyChange, ready, previewReady]);
   return <div className="card-frame-preview-shell">
     {previewReady && <img className="card-frame-art-preview" src={previewUrl}
-      alt={previewName || 'Card artwork'} referrerPolicy="no-referrer"
+      alt={previewName || ui('Card artwork')} referrerPolicy="no-referrer"
       data-frame-ready={ready ? 'true' : 'false'} aria-hidden={ready} />}
     <div {...props} ref={ref} data-render-ready={ready ? 'true' : 'false'} data-frame-reused={presentation.reuse ? 'true' : 'false'}
     aria-hidden={!ready} inert={!ready}

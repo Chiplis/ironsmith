@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { useHover } from "@/context/HoverContext";
@@ -31,6 +32,7 @@ export default function SelectObjectsDecision({
   hideDescription = false,
   layout = "panel",
 }) {
+  const ui = useUiText();
   const { dispatch, state, playerAccentOverrides } = useGame();
   const { hoveredObjectId, hoverCard, clearHover, setHoverLinkedObjects, clearHoverLinkedObjects } = useHover();
   useEffect(() => () => clearHoverLinkedObjects(), [clearHoverLinkedObjects]);
@@ -281,7 +283,7 @@ export default function SelectObjectsDecision({
               handleSubmit();
             }}
           >
-            {submitLabel}
+            {ui(submitLabel)}
           </Button>
         </div>
       )}

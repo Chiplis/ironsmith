@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
@@ -6,6 +7,7 @@ export default function PriorityPassButtonLabel({
   advanceLabel,
   className = "",
 }) {
+  const ui = useUiText();
   const minScale = 0.45;
   const maxAdvanceRatioScale = 0.75;
   const minAdvanceRatio = 0.55;
@@ -57,11 +59,11 @@ export default function PriorityPassButtonLabel({
       }}
     >
       <span ref={currentRef} className="priority-pass-label-current block max-w-none whitespace-nowrap text-[1em] font-bold leading-[1.05] uppercase">
-        {currentLabel || "Priority"}
+        {currentLabel || ui("Priority")}
       </span>
       {advanceLabel ? (
         <span ref={advanceRef} className="priority-pass-label-advance mt-0.5 block max-w-none whitespace-nowrap text-[0.68em] font-bold leading-[1.05] uppercase">
-          {advanceLabel}
+          {ui(advanceLabel)}
         </span>
       ) : null}
     </span>

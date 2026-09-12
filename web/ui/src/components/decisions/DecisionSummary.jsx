@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useMemo } from "react";
 import { useGame } from "@/context/GameContext";
 import { SymbolText } from "@/lib/mana-symbols";
@@ -67,6 +68,7 @@ export default function DecisionSummary({
   layout = "panel",
   className = "",
 }) {
+  const ui = useUiText();
   const { state } = useGame();
   const { t } = useI18n();
   // Prompts quote the source card, so they follow that card's localized text.
@@ -199,7 +201,7 @@ export default function DecisionSummary({
                     "decision-strip-summary-line block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap",
                     line.className
                   )}
-                  title={line.text}
+                  title={ui(line.text)}
                 >
                   <SymbolText text={line.text} noWrap />
                 </div>

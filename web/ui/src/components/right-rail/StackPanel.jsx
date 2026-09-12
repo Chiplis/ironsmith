@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -13,6 +14,7 @@ export default function StackPanel({
   onToggleExpanded,
   onContentHeightChange,
 }) {
+  const ui = useUiText();
   const { state } = useGame();
   const objects = getVisibleStackObjects(state);
   const previews = state?.stack_preview || [];
@@ -104,7 +106,7 @@ export default function StackPanel({
           <button
             type="button"
             onClick={onToggleExpanded}
-            aria-label={expanded ? "Collapse stack panel" : "Expand stack panel"}
+            aria-label={ui(expanded ? "Collapse stack panel" : "Expand stack panel")}
             className="w-6 h-6 rounded-none border border-[#32445a] bg-[#111927] text-[#8ec4ff] hover:text-[#c6e4ff] hover:border-[#4f6f90] grid place-items-center transition-colors"
           >
             {expanded ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
@@ -112,8 +114,7 @@ export default function StackPanel({
         ) : (
           <span className="w-6 h-6 shrink-0" aria-hidden="true" />
         )}
-        <h4 className="m-0 ml-auto text-right text-[#8ec4ff] uppercase tracking-widest text-[14px] font-bold">
-          Stack{hasContent ? ` (${itemCount})` : ""}
+        <h4 className="m-0 ml-auto text-right text-[#8ec4ff] uppercase tracking-widest text-[14px] font-bold">{ui("Stack")}{hasContent ? ` (${itemCount})` : ""}
         </h4>
       </div>
       {hasContent && (

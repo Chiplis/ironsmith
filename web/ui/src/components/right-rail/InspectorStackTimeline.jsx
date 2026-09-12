@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import RollingPanel from "@/components/board/RollingPanel";
 import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import { useGame } from "@/context/GameContext";
@@ -71,6 +72,7 @@ function HorizontalStackEntry({
   reorderControls = null,
   compact = false,
 }) {
+  const ui = useUiText();
   const name = entry?.name || `Object#${entry?.id}`;
   const artUrl = useScryfallImageUrl(name, "art_crop");
   const kindLabel = horizontalStackKindLabel(entry);
@@ -111,8 +113,8 @@ function HorizontalStackEntry({
             className="stack-card-reorder-button stack-card-reorder-button-left"
             disabled={!reorderControls.canMoveLeft}
             onClick={() => reorderControls.onMoveLeft?.()}
-            aria-label={reorderControls.leftLabel || `Move ${name} toward the top of the stack`}
-            title={reorderControls.leftTitle || "Move toward the top of the stack"}
+            aria-label={ui(reorderControls.leftLabel || `Move ${name} toward the top of the stack`)}
+            title={ui(reorderControls.leftTitle || "Move toward the top of the stack")}
           >
             <ArrowUp className="size-3.5" />
           </button>
@@ -121,8 +123,8 @@ function HorizontalStackEntry({
             className="stack-card-reorder-button stack-card-reorder-button-right"
             disabled={!reorderControls.canMoveRight}
             onClick={() => reorderControls.onMoveRight?.()}
-            aria-label={reorderControls.rightLabel || `Move ${name} toward the bottom of the stack`}
-            title={reorderControls.rightTitle || "Move toward the bottom of the stack"}
+            aria-label={ui(reorderControls.rightLabel || `Move ${name} toward the bottom of the stack`)}
+            title={ui(reorderControls.rightTitle || "Move toward the bottom of the stack")}
           >
             <ArrowDown className="size-3.5" />
           </button>
@@ -166,7 +168,7 @@ function HorizontalStackEntry({
           className="stack-entry-badge pointer-events-none absolute left-2 z-[2] rounded-none bg-[rgba(54,43,33,0.9)] px-1 py-[1px] text-[8px] font-bold uppercase leading-none tracking-[0.12em] text-[#f0d7a2]"
           style={{ top: `${compact ? 22 : HORIZONTAL_STACK_BADGE_TOP}px` }}
         >
-          {positionLabel}
+          {ui(positionLabel)}
         </span>
         <div
           className={cn(
@@ -236,6 +238,7 @@ export default function InspectorStackTimeline({
   maxBodyHeight = null,
   compact = false,
 }) {
+  const ui = useUiText();
   const {
     state,
     triggerOrderingState,
@@ -312,10 +315,7 @@ export default function InspectorStackTimeline({
       .reverse(),
     [horizontalTimelineEntries]
   );
-  const horizontalPreviewEntries = useMemo(
-    () => [...stackPreview].reverse(),
-    [stackPreview]
-  );
+  const horizontalPreviewEntries = [...stackPreview].reverse();
   const handleInspectStackObject = useCallback((objectId, meta) => {
     dismissStackStartAlert();
     onInspectObject?.(objectId, meta);
@@ -470,18 +470,18 @@ export default function InspectorStackTimeline({
               type="button"
               className="pointer-events-auto inline-flex h-4 w-4 items-center justify-center rounded-none border border-[#3a5673] bg-[rgba(9,18,30,0.7)] text-[10px] text-[#9cc8f3] transition-colors hover:border-[#8ec4ff] hover:text-[#d8ecff]"
               onClick={onToggleCollapsed}
-              aria-label={collapsed ? "Expand stack" : "Collapse stack"}
-              title={collapsed ? "Expand stack" : "Collapse stack"}
+              aria-label={ui(collapsed ? "Expand stack" : "Collapse stack")}
+              title={ui(collapsed ? "Expand stack" : "Collapse stack")}
             >
               {collapsed ? "▸" : "▾"}
             </button>
           )}
           <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#8ec4ff]">
-            {title}
+            {ui(title)}
           </div>
         </div>
         <div className="text-[11px] text-[#c5d9f2]">
-          {focusedDecision ? `${itemCount} stack entr${itemCount === 1 ? "y" : "ies"}` : `${itemCount} entr${itemCount === 1 ? "y" : "ies"}`}
+          {focusedDecision ? ui("Stack entries: {0}", { 0: itemCount }) : ui("Entries: {0}", { 0: itemCount })}
         </div>
       </header>
       {embedded ? (
@@ -498,7 +498,7 @@ export default function InspectorStackTimeline({
                     className="stack-timeline-entry pointer-events-auto relative"
                   >
                     <span className="pointer-events-none absolute left-1.5 top-1.5 z-10 rounded-none bg-[rgba(8,18,30,0.86)] px-1 py-[2px] text-[10px] font-bold uppercase tracking-[0.12em] text-[#8ec4ff]">
-                      {positionLabelForIndex(index)}
+                      {ui(positionLabelForIndex(index))}
                     </span>
                     <StackCard
                       entry={entry}
@@ -536,9 +536,7 @@ export default function InspectorStackTimeline({
                     key={`${name}-${index}`}
                     className="pointer-events-auto rounded-none border border-[#304760] bg-[linear-gradient(180deg,rgba(13,33,52,0.8),rgba(8,18,31,0.92))] px-2.5 py-2 text-[14px] text-[#d5e7fd]"
                   >
-                    <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#8ec4ff]">
-                      Preview
-                    </div>
+                    <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#8ec4ff]">{ui("Preview")}</div>
                     <div className="mt-0.5 leading-snug">{name}</div>
                   </div>
                 ))}
@@ -555,7 +553,7 @@ export default function InspectorStackTimeline({
                     className="stack-timeline-entry pointer-events-auto relative"
                   >
                     <span className="pointer-events-none absolute left-1.5 top-1.5 z-10 rounded-none bg-[rgba(8,18,30,0.86)] px-1 py-[2px] text-[10px] font-bold uppercase tracking-[0.12em] text-[#8ec4ff]">
-                      {positionLabelForIndex(index)}
+                      {ui(positionLabelForIndex(index))}
                     </span>
                     <StackCard
                       entry={entry}
@@ -591,9 +589,7 @@ export default function InspectorStackTimeline({
                     key={`${name}-${index}`}
                     className="pointer-events-auto rounded-none border border-[#304760] bg-[linear-gradient(180deg,rgba(13,33,52,0.8),rgba(8,18,31,0.92))] px-2.5 py-2 text-[14px] text-[#d5e7fd]"
                   >
-                    <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#8ec4ff]">
-                      Preview
-                    </div>
+                    <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#8ec4ff]">{ui("Preview")}</div>
                     <div className="mt-0.5 leading-snug">{name}</div>
                   </div>
                 ))}

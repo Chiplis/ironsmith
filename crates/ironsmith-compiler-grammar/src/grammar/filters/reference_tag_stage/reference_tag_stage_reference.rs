@@ -809,6 +809,7 @@ pub(in super::super) fn parse_object_filter_inner(
         }
     }
 
+    let _ = naming_and_reference::try_apply_card_type_count_phrase(&mut filter, &mut all_words);
     let _ = try_apply_color_count_phrase(&mut filter, &mut all_words)?;
     let _ = try_apply_sticker_filter_clause(&mut filter, &mut all_words);
     let has_power_or_toughness_clause = parse_phrase_choice_anywhere(
@@ -2377,6 +2378,7 @@ pub(in super::super) fn parse_object_filter_inner(
         || filter.all_colors.is_some()
         || filter.exactly_two_colors.is_some()
         || filter.color_count.is_some()
+        || filter.card_type_count.is_some()
         || filter.historic
         || filter.nonhistoric
         || filter.has_basic_land_type
@@ -2448,6 +2450,7 @@ pub(in super::super) fn parse_object_filter_inner(
         || filter.all_colors.is_some()
         || filter.exactly_two_colors.is_some()
         || filter.color_count.is_some()
+        || filter.card_type_count.is_some()
         || filter.historic
         || filter.nonhistoric
         || filter.power.is_some()

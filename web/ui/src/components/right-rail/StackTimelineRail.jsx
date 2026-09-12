@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import RollingPanel from "@/components/board/RollingPanel";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -23,6 +24,7 @@ export default function StackTimelineRail({
   anchorRef = null,
   className = "",
 }) {
+  const ui = useUiText();
   const { state } = useGame();
   const decision = state?.decision || null;
   const canAct = !!decision && samePlayerId(decision.player, state?.perspective);
@@ -257,7 +259,7 @@ export default function StackTimelineRail({
         >
           <InspectorStackTimeline
             embedded
-            title="Stack"
+            title={ui("Stack")}
             collapsible
             collapsed={isCollapsed}
             onToggleCollapsed={() => setIsCollapsed((prev) => !prev)}
@@ -287,7 +289,7 @@ export default function StackTimelineRail({
       >
         <InspectorStackTimeline
           embedded
-          title="Stack"
+          title={ui("Stack")}
           decision={decision}
           canAct={canAct}
           stackObjects={stackObjects}
@@ -350,7 +352,7 @@ export default function StackTimelineRail({
               >
                 <InspectorStackTimeline
                   embedded
-                  title="Stack"
+                  title={ui("Stack")}
                   decision={decision}
                   canAct={canAct}
                   stackObjects={stackObjects}

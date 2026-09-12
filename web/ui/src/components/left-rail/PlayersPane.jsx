@@ -1,7 +1,9 @@
+import useUiText from "@/i18n/useUiText";
 import { useGame } from "@/context/GameContext";
 import PlayerCard from "./PlayerCard";
 
 export default function PlayersPane() {
+  const ui = useUiText();
   const { state } = useGame();
   if (!state?.players?.length) return null;
 
@@ -24,7 +26,7 @@ export default function PlayersPane() {
           player={player}
           isActive={state.active_player === player.id}
           isPerspective={player.id === me.id}
-          label={player.id === me.id ? "You" : `Opponent ${idx}`}
+          label={ui(player.id === me.id ? "You" : `Opponent ${idx}`)}
         />
       ))}
     </section>

@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useMemo } from "react";
 import { useGame } from "@/context/GameContext";
 import { MANA_SYMBOLS } from "@/lib/constants";
@@ -22,6 +23,7 @@ function buildManaActivationMap(decision) {
 }
 
 export default function MobileManaPool({ pool, interactive = false, side = "self", className }) {
+  const ui = useUiText();
   const { state, dispatch } = useGame();
   const activationsByColor = useMemo(
     () => (interactive ? buildManaActivationMap(state?.decision) : new Map()),
@@ -43,7 +45,7 @@ export default function MobileManaPool({ pool, interactive = false, side = "self
           canActivate && "mobile-mtga-mana-pool-chip--activatable",
         )}
         disabled={!canActivate || amount > 0 ? !canActivate : false}
-        aria-label={`${amount} ${label} mana${canActivate ? ", tap to add mana" : ""}`}
+        aria-label={ui("{0} {1} mana{2}", { 0: amount, 1: ui(label), 2: canActivate ? ui(", tap to add mana") : "" })}
         onClick={() => {
           if (!canActivate) return;
           const action = actions[0];
@@ -63,7 +65,7 @@ export default function MobileManaPool({ pool, interactive = false, side = "self
     <div
       className={cn("mobile-mtga-mana-pool", `mobile-mtga-mana-pool--${side}`, className)}
       data-mobile-mana-pool-side={side}
-      aria-label={`${side === "self" ? "Your" : "Opponent"} mana pool`}
+      aria-label={ui("{0} mana pool", { 0: side === "self" ? "Your" : "Opponent" })}
     >
       {chips}
     </div>

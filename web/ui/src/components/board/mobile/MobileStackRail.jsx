@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import useModalFocus from "@/hooks/useModalFocus";
 import { useCallback, useMemo, useState } from "react";
 import { X } from "lucide-react";
@@ -61,6 +62,7 @@ function MobileStackRailEntry({
 }
 
 function MobileStackBrowser({ entries, focusedId, onFocus, onClose, onInspect }) {
+  const ui = useUiText();
   const dialogRef = useModalFocus(onClose);
   return (
     <section
@@ -69,15 +71,15 @@ function MobileStackBrowser({ entries, focusedId, onFocus, onClose, onInspect })
       tabIndex={-1}
       role="dialog"
       aria-modal="true"
-      aria-label="Full stack"
+      aria-label={ui("Full stack")}
     >
       <header className="mobile-mtga-stack-browser-header">
-        <span className="mobile-mtga-stack-browser-title">Stack</span>
+        <span className="mobile-mtga-stack-browser-title">{ui("Stack")}</span>
         <span className="mobile-mtga-stack-browser-count">{entries.length}</span>
         <button
           type="button"
           className="mobile-mtga-stack-browser-close"
-          aria-label="Close stack browser"
+          aria-label={ui("Close stack browser")}
           onClick={onClose}
         >
           <X className="size-4" aria-hidden="true" />
@@ -106,10 +108,10 @@ function MobileStackBrowser({ entries, focusedId, onFocus, onClose, onInspect })
             }}
           >
             <span className="mobile-mtga-stack-browser-name">
-              {entry?.name || `Object #${entry?.id}`}
+              {entry?.name || ui("Object #{0}", { 0: entry?.id })}
             </span>
             <span className="mobile-mtga-stack-browser-kind">
-              {entry?.ability_kind ? `${entry.ability_kind} ability` : "Spell"}
+              {entry?.ability_kind ? ui("{0} ability", { 0: entry.ability_kind }) : ui("Spell")}
             </span>
           </button>
         ))}
@@ -125,6 +127,7 @@ export default function MobileStackRail({
   onInspect,
   className,
 }) {
+  const ui = useUiText();
   const { state } = useGame();
   const stackIds = useMemo(
     () => objects.map((entry) => (entry?.id != null ? String(entry.id) : null)).filter(Boolean),
@@ -156,7 +159,7 @@ export default function MobileStackRail({
     <>
       <aside
         className={cn("mobile-mtga-stack-rail", className)}
-        aria-label={`Stack (${objects.length} item${objects.length === 1 ? "" : "s"})`}
+        aria-label={ui("Stack ({0} item{1})", { 0: objects.length, 1: objects.length === 1 ? "" : "s" })}
       >
         {visible.map((entry) => (
           <MobileStackRailEntry
@@ -173,7 +176,7 @@ export default function MobileStackRail({
           <button
             type="button"
             className="mobile-mtga-stack-rail-overflow"
-            aria-label={`Show ${overflow} more stack item${overflow === 1 ? "" : "s"}`}
+            aria-label={ui("Show {0} more stack item{1}", { 0: overflow, 1: overflow === 1 ? "" : "s" })}
             onClick={() => setBrowserOpen(true)}
           >
             +{overflow}

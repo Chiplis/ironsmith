@@ -49,6 +49,7 @@ pub enum AttackUnlessSurface {
     ControllerGraveyardCount,
     IslandsOnBattlefield,
     CardsInExile,
+    ZoneCardCount,
     DefendingPlayerPoisoned,
     DefendingPlayerGraveyardCount,
     DefendingPlayerControlsEnchantmentOrEnchantedPermanent,
@@ -183,7 +184,7 @@ fn parse_requirement_lexed(
             )),
             parse_controls_more,
             parse_mountain_present,
-            parse_there_are_count,
+            alt((parse_there_are_count, parse_there_are_filtered_cards)),
             parse_defending_player_requirement,
             parse_attacking_group_requirement,
             parse_opponent_damaged,
@@ -200,7 +201,7 @@ fn parse_requirement_lexed(
             parse_player_condition_requirement,
             parse_counted_controller_control_requirement,
             parse_controller_control_requirement,
-            parse_there_are_exile_count,
+            alt((parse_there_are_exile_count, parse_there_are_filtered_cards)),
         ))
         .parse_next(input),
     }
@@ -456,6 +457,28 @@ fn parse_there_are_count(input: &mut LexStream<'_>) -> WResult<ParsedRequirement
             }),
     ))
     .parse_next(input)
+}
+
+fn parse_there_are_filtered_cards(input: &mut LexStream<'_>) -> WResult<ParsedRequirement> {
+    primitives::phrase(&["there", "are"]).parse_next(input)?;
+    let count = parse_minimum_count_lexed.parse_next(input)?;
+    let tokens = take_remaining_tokens(input)?;
+    if !tokens.iter().any(|token| token.is_word("card") || token.is_word("cards")) {
+        return Err(primitives::backtrack_err("zone card count", "a card noun"));
+    }
+    let filter = filters::parse_object_filter_with_grammar_entrypoint(tokens, false)
+        .map_err(|_| primitives::backtrack_err("zone card count", "a card filter"))?;
+    if !matches!(filter.zone, Some(Zone::Graveyard | Zone::Exile | Zone::Hand | Zone::Library)) {
+        return Err(primitives::backtrack_err("zone card count", "an explicit card zone"));
+    }
+    Ok(ParsedRequirement {
+        surface: AttackUnlessSurface::ZoneCardCount,
+        condition: CantAttackUnlessConditionSpec::SourceCondition(PredicateAst::ValueComparison {
+            left: Value::Count(filter),
+            operator: ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(count as i32),
+        }),
+    })
 }
 
 fn parse_there_are_exile_count(input: &mut LexStream<'_>) -> WResult<ParsedRequirement> {

@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useGame, useMatchClock } from "@/context/GameContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
 import useViewportLayout from "@/hooks/useViewportLayout";
@@ -57,7 +58,9 @@ export default function Topbar({
   middleDocked = false,
   onChangePerspective,
   utilityControls,
+  tableToolsToggle,
 }) {
+  const ui = useUiText();
   const {
     multiplayer,
     playerAccentOverrides,
@@ -196,7 +199,7 @@ export default function Topbar({
     // MTGA-aligned mobile UI moves phase + opponent chrome into MobileBattleScene.
     // The Topbar's mobile branch shrinks to a single floating cog at the top-right.
     return (
-      <header className="topbar-mobile-overlay topbar-mobile-overlay--cog-only" aria-label="Mobile menu">
+      <header className="topbar-mobile-overlay topbar-mobile-overlay--cog-only" aria-label={ui("Mobile menu")}>
         <TopbarMenuSheet
           playerNames={playerNames}
           setPlayerNames={setPlayerNames}
@@ -254,22 +257,22 @@ export default function Topbar({
             type="button"
             className="stone-pill inline-flex min-h-8 max-w-[240px] items-center gap-2 rounded-none border border-[#7d302f] bg-[#2b1114]/90 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#ffb8c0]"
             onClick={onOpenLobby}
-            title={`Disconnected: ${connectionWarningLabel}. Timeout policy in ${disconnectCountdown}.`}
-            aria-label={`Disconnected players: ${connectionWarningLabel}`}
+            title={ui("Disconnected: {0}. Timeout policy in {1}.", { 0: connectionWarningLabel, 1: disconnectCountdown })}
+            aria-label={ui("Disconnected players: {0}", { 0: connectionWarningLabel })}
           >
             <WifiOff className="size-3.5 shrink-0" />
             <span className="truncate">
               {offlinePlayers.length === 1
                 ? `${connectionWarningLabel} ${disconnectCountdown}`
-                : `${offlinePlayers.length} offline ${disconnectCountdown}`}
+                : ui("{0} offline {1}", { 0: offlinePlayers.length, 1: disconnectCountdown })}
             </span>
           </button>
         ) : null}
         {showMatchClock ? (
           <div
             className="stone-pill inline-flex min-h-8 max-w-[520px] items-center gap-2 overflow-hidden rounded-none border border-[#5f4a22] bg-[#231c0e]/90 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#ffd98a]"
-            title="Match clocks"
-            aria-label="Per-player match clocks"
+            title={ui("Match clocks")}
+            aria-label={ui("Per-player match clocks")}
           >
             <Clock3 className="size-3.5 shrink-0" />
             <span className="flex min-w-0 items-center gap-2 overflow-hidden">
@@ -284,7 +287,7 @@ export default function Topbar({
                         : "text-[#c9b98f]"
                   }`}
                 >
-                  {playerDisplayName(players, entry.player) || `P${entry.index + 1}`} {formatTimerRemaining(entry.remainingMs)}
+                  {playerDisplayName(players, entry.player) || ui("P{0}", { 0: entry.index + 1 })} {formatTimerRemaining(entry.remainingMs)}
                 </span>
               ))}
             </span>
@@ -293,73 +296,6 @@ export default function Topbar({
         {showCenterLane ? (
           <div className="topbar-phase-shell">
             <PhaseTrack compact={middleDocked} />
-
-          </div>
-        ) : null}
-        {showCompactPhase ? (
-          <div className="topbar-mobile-status">
-            <div className="topbar-phase-chip" aria-label={translatedPhaseSummary}>
-              <span className="topbar-phase-chip-label">{translatedCompactPhaseLabel}</span>
-              <span className="topbar-phase-chip-turn">{t("game.turn", { turn: state?.turn_number ?? "-" })}</span>
-            </div>
-            {nonDesktopViewport && activeMobileOpponent ? (
-              <div
-                className={`topbar-opponent-chip${activeMobileOpponentButtonEnabled ? " is-targetable" : ""}`}
-                aria-label={`Viewing opponent ${playerDisplayName(players, activeMobileOpponent)}`}
-              >
-                {opponents.length > 1 ? (
-                  <button
-                    type="button"
-                    className="topbar-opponent-chip-nav"
-                    data-player-nav-target={previousMobileOpponent?.index ?? previousMobileOpponent?.id}
-                    data-player-nav-target-name={previousMobileOpponent?.id ?? previousMobileOpponent?.index}
-                    onClick={() => cycleMobileOpponent(-1)}
-                    aria-label="Show previous opponent"
-                  >
-                    <ChevronLeft className="size-3.5" />
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  className="topbar-opponent-chip-body topbar-opponent-chip-body--button"
-                  data-player-target={activeMobileOpponent.index ?? activeMobileOpponent.id}
-                  data-player-target-name={activeMobileOpponent.id ?? activeMobileOpponent.index}
-                  onClick={(event) => {
-                    if (handleCombatOpponentTarget(event)) return;
-                    handleMobileOpponentTarget();
-                  }}
-                  disabled={!activeMobileOpponentButtonEnabled}
-                  aria-label={`Opponent ${playerDisplayName(players, activeMobileOpponent)}, life ${activeMobileOpponent.life}`}
-                >
-                  <span className="topbar-opponent-chip-name" style={{ color: activeMobileOpponent.id === activePlayer?.id ? "#fff0ca" : undefined }}>
-                    {playerDisplayName(players, activeMobileOpponent)}
-                  </span>
-                  <span className="topbar-opponent-chip-life">{activeMobileOpponent.life}</span>
-                  <span className="topbar-opponent-chip-meta">
-                    H {activeMobileOpponent.hand_size ?? 0} G {activeMobileOpponent.graveyard_size ?? 0} D {activeMobileOpponent.library_size ?? 0}
-                  </span>
-                </button>
-                {opponents.length > 1 ? (
-                  <button
-                    type="button"
-                    className="topbar-opponent-chip-nav"
-                    data-player-nav-target={nextMobileOpponent?.index ?? nextMobileOpponent?.id}
-                    data-player-nav-target-name={nextMobileOpponent?.id ?? nextMobileOpponent?.index}
-                    onClick={() => cycleMobileOpponent(1)}
-                    aria-label="Show next opponent"
-                  >
-                    <ChevronRight className="size-3.5" />
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-
-      <div className="topbar-side-cluster topbar-side-cluster--right">
-        {showCenterLane ? (
-          <div className="topbar-brand-stack">
             <div
               className="topbar-phase-status"
               aria-label={t("game.currentTurnSummary")}
@@ -415,7 +351,73 @@ export default function Topbar({
                 </>
               ) : null}
             </div>
+          </div>
+        ) : null}
+        {showCompactPhase ? (
+          <div className="topbar-mobile-status">
+            <div className="topbar-phase-chip" aria-label={ui(translatedPhaseSummary)}>
+              <span className="topbar-phase-chip-label">{ui(translatedCompactPhaseLabel)}</span>
+              <span className="topbar-phase-chip-turn">{t("game.turn", { turn: state?.turn_number ?? "-" })}</span>
+            </div>
+            {nonDesktopViewport && activeMobileOpponent ? (
+              <div
+                className={`topbar-opponent-chip${activeMobileOpponentButtonEnabled ? " is-targetable" : ""}`}
+                aria-label={ui("Viewing opponent {0}", { 0: playerDisplayName(players, activeMobileOpponent) })}
+              >
+                {opponents.length > 1 ? (
+                  <button
+                    type="button"
+                    className="topbar-opponent-chip-nav"
+                    data-player-nav-target={previousMobileOpponent?.index ?? previousMobileOpponent?.id}
+                    data-player-nav-target-name={previousMobileOpponent?.id ?? previousMobileOpponent?.index}
+                    onClick={() => cycleMobileOpponent(-1)}
+                    aria-label={ui("Show previous opponent")}
+                  >
+                    <ChevronLeft className="size-3.5" />
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="topbar-opponent-chip-body topbar-opponent-chip-body--button"
+                  data-player-target={activeMobileOpponent.index ?? activeMobileOpponent.id}
+                  data-player-target-name={activeMobileOpponent.id ?? activeMobileOpponent.index}
+                  onClick={(event) => {
+                    if (handleCombatOpponentTarget(event)) return;
+                    handleMobileOpponentTarget();
+                  }}
+                  disabled={!activeMobileOpponentButtonEnabled}
+                  aria-label={ui("Opponent {0}, life {1}", { 0: playerDisplayName(players, activeMobileOpponent), 1: activeMobileOpponent.life })}
+                >
+                  <span className="topbar-opponent-chip-name" style={{ color: activeMobileOpponent.id === activePlayer?.id ? "#fff0ca" : undefined }}>
+                    {playerDisplayName(players, activeMobileOpponent)}
+                  </span>
+                  <span className="topbar-opponent-chip-life">{activeMobileOpponent.life}</span>
+                  <span className="topbar-opponent-chip-meta">{ui("H") + " "}{activeMobileOpponent.hand_size ?? 0}{" " + ui("G") + " "}{activeMobileOpponent.graveyard_size ?? 0}{" " + ui("D") + " "}{activeMobileOpponent.library_size ?? 0}
+                  </span>
+                </button>
+                {opponents.length > 1 ? (
+                  <button
+                    type="button"
+                    className="topbar-opponent-chip-nav"
+                    data-player-nav-target={nextMobileOpponent?.index ?? nextMobileOpponent?.id}
+                    data-player-nav-target-name={nextMobileOpponent?.id ?? nextMobileOpponent?.index}
+                    onClick={() => cycleMobileOpponent(1)}
+                    aria-label={ui("Show next opponent")}
+                  >
+                    <ChevronRight className="size-3.5" />
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="topbar-side-cluster topbar-side-cluster--right">
+        {showCenterLane ? (
+          <div className="topbar-brand-stack">
             <h1 className="toolbar-brand topbar-brand m-0 whitespace-nowrap font-bold">Ironsmith</h1>
+            {tableToolsToggle}
           </div>
         ) : utilityControls}
       </div>

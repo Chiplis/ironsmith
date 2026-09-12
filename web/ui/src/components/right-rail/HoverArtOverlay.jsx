@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { groupManaAbilities } from "@/lib/group-mana-abilities";
 import RegisteredCardFrame from './RegisteredCardFrame';
 import GroupedManaAbility from "./GroupedManaAbility";
@@ -182,12 +183,13 @@ function InspectorMetadataBlock({
 }
 
 function InspectorFlavorText({ text, style, className }) {
+  const ui = useUiText();
   if (!text) return null;
   return (
     <div
       className={cn("inspector-flavor-text inspector-oracle-line mt-2 border-t border-current/20 pt-2 italic whitespace-pre-line", className)}
       style={style}
-      aria-label="Flavor text"
+      aria-label={ui("Flavor text")}
     >
       {text}
     </div>
@@ -401,6 +403,7 @@ function InspectorArtImageLayers({
   fullArt = false,
   onError,
 }) {
+  const ui = useUiText();
   const [activeImageUrl, setActiveImageUrl] = useState(imageUrl || "");
   const [outgoingImageUrl, setOutgoingImageUrl] = useState(null);
   const activeImageUrlRef = useRef(imageUrl || "");
@@ -548,7 +551,7 @@ function InspectorArtImageLayers({
         <div ref={ref} className={cn("hover-art-full-art-crop absolute inset-[14px] flex items-center justify-center", layerClassName)}>
           <img
             src={src}
-            alt={objectName || "Card art"}
+            alt={objectName || ui("Card art")}
             className="h-full w-full object-fill drop-shadow-[0_22px_24px_rgba(0,0,0,0.4)]"
             loading="eager"
             decoding="async"
@@ -592,7 +595,7 @@ function InspectorArtImageLayers({
             />
             <img
               src={src}
-              alt={objectName || "Card art"}
+              alt={objectName || ui("Card art")}
               className="hover-art-foreground-image"
               loading="eager"
               decoding="async"
@@ -645,6 +648,7 @@ export default function HoverArtOverlay({
   interactiveActions = [],
   onInteractiveAction = null,
 }) {
+  const ui = useUiText();
   const { state, game, playerAccentOverrides } = useGame();
   const paymentActions = useInspectorPaymentActions(game, state, interactiveActions);
   const { locale, t } = useI18n();
@@ -1408,7 +1412,7 @@ export default function HoverArtOverlay({
             : "border-[rgba(92,79,61,0.7)] text-[#8f836f] opacity-60"
         }`}
         disabled={!canCopyDebug}
-        title={canCopyDebug ? "Copy compiled + raw definition" : "No debug text available"}
+        title={ui(canCopyDebug ? "Copy compiled + raw definition" : "No debug text available")}
         onClick={copyDebugPayload}
       >
         {copiedDebug ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
@@ -1422,7 +1426,7 @@ export default function HoverArtOverlay({
         className="inspector-chip inspector-chip--meta rounded-none border border-[rgba(181,148,97,0.34)] bg-[rgba(22,17,14,0.88)] px-3 py-1 text-[12px] font-extrabold leading-none tracking-[0.08em] text-[#eadfbe] shadow-[0_10px_28px_rgba(0,0,0,0.5)] backdrop-blur-[8px]"
         style={METADATA_TEXT_STYLE}
       >
-        {similarityBadgeLabel}
+        {ui(similarityBadgeLabel)}
       </div>
     </div>
   ) : null;
@@ -2370,7 +2374,7 @@ export default function HoverArtOverlay({
           highlighted={highlightedRuleLineIndices} flavorText={flavorText}
           stats={displayStatsText} counters={displayCountersLine}
           detailsLabel={t("card.previewDetails", null, "Card details")}
-        /> : <article className="interactive-card-frame" aria-label={displayObjectName || "Card details"}>
+        /> : <article className="interactive-card-frame" aria-label={displayObjectName || ui("Card details")}>
           <div className="interactive-card-frame__inner">
             <header className="interactive-card-frame__title-row">
               <div className="interactive-card-frame__title-wrap">
@@ -2382,7 +2386,7 @@ export default function HoverArtOverlay({
                 </CardFrameSingleLine>
               </div>
               {displayManaCost && !columnMana && (
-                <div className="interactive-card-frame__mana" aria-label={`Mana cost ${displayManaCost}`}>
+                <div className="interactive-card-frame__mana" aria-label={ui("Mana cost {0}", { 0: displayManaCost })}>
                   <ManaCostIcons cost={displayManaCost} size={18} />
                 </div>
               )}
@@ -2395,10 +2399,10 @@ export default function HoverArtOverlay({
                 top: `calc(${box.y} * var(--card-frame-source-unit) - 3px)`,
                 width: `calc(${box.width} * var(--card-frame-source-unit))`,
                 height: `calc(${box.height} * var(--card-frame-source-unit))`,
-              }}>{originalSymbol?.image ? <img src={originalSymbol.image} alt={token} /> : <ManaCostIcons cost={token} size="100%" />}</span>;
+              }}>{originalSymbol?.image ? <img src={originalSymbol.image} alt={ui(token)} /> : <ManaCostIcons cost={token} size="100%" />}</span>;
             })}
 
-            <div className="interactive-card-frame__art" aria-label={objectName ? `Art for ${objectName}` : "Card art"}>
+            <div className="interactive-card-frame__art" aria-label={ui(objectName ? `Art for ${objectName}` : "Card art")}>
               {showImageBackdrop ? (
                 <img
                   src={imageUrl}
@@ -2413,7 +2417,7 @@ export default function HoverArtOverlay({
                 <div className="interactive-card-frame__art-fallback" aria-hidden="true" />
               )}
               {displayZoneLine && (
-                <span className="interactive-card-frame__zone">{displayZoneLine}</span>
+                <span className="interactive-card-frame__zone">{ui(displayZoneLine)}</span>
               )}
               {displayStatsText && !printedStatsAtRules && (
                 <div className="interactive-card-frame__art-stats">{displayStatsText}</div>
@@ -2422,20 +2426,20 @@ export default function HoverArtOverlay({
 
             <div className="interactive-card-frame__type-row">
               <CardFrameSingleLine className="interactive-card-frame__type">
-                {displayTypeLine || "Card"}
+                {displayTypeLine || ui("Card")}
               </CardFrameSingleLine>
             </div>
 
             {displayTypeLineBadges.length > 0 && (
               <div className="interactive-card-frame__badges">
                 {displayTypeLineBadges.map((badge) => (
-                  <span key={badge}>{badge}</span>
+                  <span key={badge}>{ui(badge)}</span>
                 ))}
               </div>
             )}
 
             <div className="interactive-card-frame__rules-section" data-printed-stats={printedStatsAtRules ? "true" : undefined} data-pt-treatment={printedStatsAtRules ? cardFrameColors?.["--printed-pt-treatment"] : undefined}>
-            <CardFrameRulesBox label={displayObjectName ? `Rules text for ${displayObjectName}` : "Card rules text"}>
+            <CardFrameRulesBox label={ui(displayObjectName ? `Rules text for ${displayObjectName}` : "Card rules text")}>
               {displayRulesLines.length > 0 || flavorText ? (
                 <div className="interactive-card-frame__rules-body">
                   {displayRulesLines.map((line, lineIndex) => {
@@ -2475,9 +2479,9 @@ export default function HoverArtOverlay({
                               event.stopPropagation();
                               if (canActivate) onInteractiveAction(action);
                             }}
-                            aria-label={canActivate
+                            aria-label={ui(canActivate
                               ? `Activate ${displayObjectName || "card ability"}: ${line}`
-                              : `${displayObjectName || "Card"} ability cannot be activated now: ${line}`}
+                              : `${displayObjectName || "Card"} ability cannot be activated now: ${line}`)}
                           >
                             {content}
                           </button>
@@ -2500,7 +2504,7 @@ export default function HoverArtOverlay({
             {displayCountersLine && (
               <footer className="interactive-card-frame__footer">
                 <div className="interactive-card-frame__footer-meta">
-                  <span>{displayCountersLine}</span>
+                  <span>{ui(displayCountersLine)}</span>
                 </div>
               </footer>
             )}
@@ -2556,15 +2560,15 @@ export default function HoverArtOverlay({
                       className="pointer-events-auto inline-flex h-5 w-5 items-center justify-center border border-[#9bc6ec]/40 bg-[rgba(4,9,16,0.45)] text-[#d8ebff] transition-colors hover:bg-[rgba(34,56,80,0.72)]"
                       onPointerDown={(event) => handleInspectorChevronPointerDown(onShowPreviousTransientPreview, event)}
                       onClick={(event) => handleInspectorChevronClick(onShowPreviousTransientPreview, event)}
-                      aria-label="Show previous moved card"
+                      aria-label={ui("Show previous moved card")}
                     >
                       <ChevronLeft className="h-3.5 w-3.5" />
                     </button>
                   )}
-                  <span>{transitionTitle}</span>
+                  <span>{ui(transitionTitle)}</span>
                   {transitionSequenceLabel && (
                     <span className="border border-[#9bc6ec]/30 bg-[rgba(4,9,16,0.42)] px-1.5 py-0.5 text-[10px] tracking-[0.12em] text-[#cae5ff]">
-                      {transitionSequenceLabel}
+                      {ui(transitionSequenceLabel)}
                     </span>
                   )}
                   {hasTransitionNavigator && (
@@ -2573,7 +2577,7 @@ export default function HoverArtOverlay({
                       className="pointer-events-auto inline-flex h-5 w-5 items-center justify-center border border-[#9bc6ec]/40 bg-[rgba(4,9,16,0.45)] text-[#d8ebff] transition-colors hover:bg-[rgba(34,56,80,0.72)]"
                       onPointerDown={(event) => handleInspectorChevronPointerDown(onShowNextTransientPreview, event)}
                       onClick={(event) => handleInspectorChevronClick(onShowNextTransientPreview, event)}
-                      aria-label="Show next moved card"
+                      aria-label={ui("Show next moved card")}
                     >
                       <ChevronRight className="h-3.5 w-3.5" />
                     </button>
@@ -2600,7 +2604,7 @@ export default function HoverArtOverlay({
                       key={badge}
                       className="inspector-chip inspector-chip--meta rounded-none border border-[rgba(142,181,220,0.42)] bg-[rgba(12,20,31,0.72)] px-2 py-1 text-[10px] font-extrabold uppercase leading-none tracking-[0.12em] text-[#d8ebff] shadow-[0_0_16px_rgba(90,148,211,0.12)] backdrop-blur-[10px]"
                       style={METADATA_TEXT_STYLE}
-                      title={badge === "All creature types" ? "This object has every creature type." : badge}
+                      title={ui(badge === "All creature types" ? "This object has every creature type." : badge)}
                     >
                       {badge}
                     </span>
@@ -2719,9 +2723,9 @@ export default function HoverArtOverlay({
                         key={badge}
                         className="inspector-banner inspector-banner--meta rounded-none bg-[rgba(8,18,30,0.62)] px-2 py-1 text-[9px] font-extrabold uppercase leading-none tracking-[0.12em] text-[#d8ebff] backdrop-blur-[1.8px]"
                         style={{ ...METADATA_TEXT_STYLE, ...inspectorTopMetaStyle }}
-                        title={badge === "All creature types" ? "This object has every creature type." : badge}
+                        title={ui(badge === "All creature types" ? "This object has every creature type." : badge)}
                       >
-                        {badge}
+                        {ui(badge)}
                       </span>
                     ))}
                   </div>
@@ -2859,7 +2863,7 @@ export default function HoverArtOverlay({
                         compact ? "text-[9px]" : "text-[10px]"
                       )}
                       style={{ ...METADATA_TEXT_STYLE, ...inspectorTopMetaStyle }}
-                      title={badge === "All creature types" ? "This object has every creature type." : badge}
+                      title={ui(badge === "All creature types" ? "This object has every creature type." : badge)}
                     >
                       {badge}
                     </span>
@@ -2885,7 +2889,7 @@ export default function HoverArtOverlay({
             {transitionTitle && (
               <div
                 className="pointer-events-auto flex min-w-0 max-w-full items-end justify-start"
-                aria-label="Card movement"
+                aria-label={ui("Card movement")}
               >
                 <div
                   className={cn(
@@ -2900,15 +2904,15 @@ export default function HoverArtOverlay({
                       className="pointer-events-auto inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-none border border-[#9bc6ec]/40 bg-[rgba(4,9,16,0.45)] text-[#d8ebff] transition-colors hover:bg-[rgba(34,56,80,0.72)]"
                       onPointerDown={(event) => handleInspectorChevronPointerDown(onShowPreviousTransientPreview, event)}
                       onClick={(event) => handleInspectorChevronClick(onShowPreviousTransientPreview, event)}
-                      aria-label="Show previous moved card"
+                      aria-label={ui("Show previous moved card")}
                     >
                       <ChevronLeft className="h-3.5 w-3.5" />
                     </button>
                   )}
-                  <span className="min-w-0 whitespace-normal break-words text-left">{transitionTitle}</span>
+                  <span className="min-w-0 whitespace-normal break-words text-left">{ui(transitionTitle)}</span>
                   {transitionSequenceLabel && (
                     <span className="shrink-0 rounded-none border border-[#9bc6ec]/30 bg-[rgba(4,9,16,0.42)] px-1.5 py-0.5 text-[10px] tracking-[0.12em] text-[#cae5ff]">
-                      {transitionSequenceLabel}
+                      {ui(transitionSequenceLabel)}
                     </span>
                   )}
                   {hasTransitionNavigator && (
@@ -2917,7 +2921,7 @@ export default function HoverArtOverlay({
                       className="pointer-events-auto inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-none border border-[#9bc6ec]/40 bg-[rgba(4,9,16,0.45)] text-[#d8ebff] transition-colors hover:bg-[rgba(34,56,80,0.72)]"
                       onPointerDown={(event) => handleInspectorChevronPointerDown(onShowNextTransientPreview, event)}
                       onClick={(event) => handleInspectorChevronClick(onShowNextTransientPreview, event)}
-                      aria-label="Show next moved card"
+                      aria-label={ui("Show next moved card")}
                     >
                       <ChevronRight className="h-3.5 w-3.5" />
                     </button>
@@ -2953,7 +2957,7 @@ export default function HoverArtOverlay({
               ref={oracleScrollRef}
               className="inspector-oracle-scroll h-full overflow-y-auto pointer-events-auto overscroll-contain touch-pan-y"
               tabIndex={displayRulesLines.length > 0 || flavorText ? 0 : undefined}
-              aria-label={displayObjectName ? `Rules text for ${displayObjectName}` : "Card rules text"}
+              aria-label={ui(displayObjectName ? `Rules text for ${displayObjectName}` : "Card rules text")}
             >
               <div ref={oracleContainerRef} className={oracleContainerClass} style={resolvedOracleContainerStyle}>
                 <div
@@ -3014,14 +3018,12 @@ export default function HoverArtOverlay({
                                   event.stopPropagation();
                                   if (canActivate) onInteractiveAction(action);
                                 }}
-                                aria-label={canActivate
+                                aria-label={ui(canActivate
                                   ? `Activate ${displayObjectName || "card ability"}: ${line}`
-                                  : `${displayObjectName || "Card"} ability cannot be activated now: ${line}`}
+                                  : `${displayObjectName || "Card"} ability cannot be activated now: ${line}`)}
                               >
                                 {content}
-                                <span className="inspector-oracle-line-action__label" aria-hidden="true">
-                                  Activate
-                                </span>
+                                <span className="inspector-oracle-line-action__label" aria-hidden="true">{ui("Activate")}</span>
                               </button>
                             ) : content}
                           </div>

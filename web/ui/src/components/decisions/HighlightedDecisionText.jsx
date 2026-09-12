@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useMemo } from "react";
 import { SymbolText } from "@/lib/mana-symbols";
 
@@ -31,6 +32,7 @@ export default function HighlightedDecisionText({
   onHighlightClick = null,
   highlightAriaLabel = null,
 }) {
+  const ui = useUiText();
   const normalizedText = String(text || "");
   const segments = useMemo(
     () => splitHighlightedText(normalizedText, highlightText),
@@ -55,7 +57,7 @@ export default function HighlightedDecisionText({
         style={highlightColor ? { color: highlightColor } : undefined}
         role={onHighlightClick ? "button" : undefined}
         tabIndex={onHighlightClick ? 0 : undefined}
-        aria-label={onHighlightClick ? (highlightAriaLabel || `Inspect ${segments.match}`) : undefined}
+        aria-label={ui(onHighlightClick ? (highlightAriaLabel || `Inspect ${segments.match}`) : undefined)}
         onPointerDown={onHighlightClick ? (event) => {
           event.stopPropagation();
         } : undefined}

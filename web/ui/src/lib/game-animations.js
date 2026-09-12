@@ -5,7 +5,8 @@ const RUNTIME_EVENT_EFFECT = "effect_event";
 
 export const RIFT_DISSOLVE_EXILE_EFFECT_MS = 3000;
 export const RIFT_DISSOLVE_EXILE_INSPECTOR_REVEAL_DELAY_MS = 1500;
-export const RIFT_DISSOLVE_EXILE_BOARD_HOLD_MS = 3300;
+export const RIFT_DISSOLVE_EXILE_SOURCE_MS = 2200;
+export const RIFT_DISSOLVE_EXILE_BOARD_HOLD_MS = RIFT_DISSOLVE_EXILE_SOURCE_MS;
 
 // Marquee leave animations (death, sacrifice, counter) pair an in-place DOM
 // collapse with a WebGL particle stream that converges on the card inspector
@@ -15,7 +16,7 @@ export const DEATH_COLLAPSE_EFFECT_MS = 1500;
 // The hold must expire BEFORE the overlay effect unmounts (effect duration +
 // cleanup tail), otherwise the held card flashes back for a frame when the
 // overlay's hold-hiding class is removed.
-export const DEATH_COLLAPSE_BOARD_HOLD_MS = 1600;
+export const DEATH_COLLAPSE_BOARD_HOLD_MS = DEATH_COLLAPSE_EFFECT_MS;
 export const MARQUEE_STREAM_EFFECT_MS = 2000;
 export const MARQUEE_INSPECTOR_REVEAL_DELAY_MS = 1250;
 export const WIPE_WAVE_EFFECT_MS = 900;

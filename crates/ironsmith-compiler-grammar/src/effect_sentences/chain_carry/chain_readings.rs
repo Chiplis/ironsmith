@@ -656,6 +656,19 @@ fn read_comma_then_chain(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, Ca
     // carried players, result values, tags, and authored ordering across the
     // separately parsed arms.
     if comma_then_segments.len() > 1 {
+        // A bare follow-up verb shares the initial optional instruction.
+        // Splitting first would copy `may` onto every arm and create several
+        // independent choices. Explicit later subjects keep their own scope.
+        if comma_then_segments.iter().skip(1).all(|segment| {
+            find_verb_lexed(segment).is_some_and(|(_, index)| index == 0)
+        }) {
+            if parse_leading_player_may_lexed(tokens).is_some() {
+                return read_player_may(input);
+            }
+            if chain_grammar::starts_with_may_tokens(tokens) {
+                return read_leading_may(input);
+            }
+        }
         return parse_effect_chain_inner_lexed(tokens).map(Some);
     }
     Ok(None)
@@ -845,6 +858,21 @@ fn read_any_player_or_opponent_may(
     {
         let stripped = remove_through_first_word(tokens);
         let stripped = crate::util::trim_edge_punctuation_tokens(&stripped);
+        if stripped.first().is_some_and(|token| token.is_word("have"))
+            && stripped.get(1).is_some_and(|token| token.is_word("you"))
+        {
+            let effects = parse_effect_chain_lexed(&stripped[1..])?;
+            return Ok(Some(vec![EffectAst::Permissions(
+                PermissionEffectAst::AnyPlayerMay {
+                    players: if player == PlayerAst::Opponent {
+                        PlayerFilter::Opponent
+                    } else {
+                        PlayerFilter::Any
+                    },
+                    effects,
+                },
+            )]));
+        }
         if stripped.first().is_some_and(|token| token.is_word("pay")) {
             let payment = super::super::zone_handlers::parse_pay(
                 crate::util::trim_edge_punctuation_tokens(&stripped[1..]),

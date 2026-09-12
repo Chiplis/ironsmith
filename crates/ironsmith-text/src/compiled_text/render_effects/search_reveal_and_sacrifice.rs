@@ -4336,9 +4336,8 @@ pub(super) fn describe_reveal_top_opponent_exiles_rest_hand_then_may_cast(
     }
     let chosen = describe_choose_filter_from_looked_cards(look, choose)?;
 
-    let exile = unwrap_tag_wrapped_effect(exile_effect)
-        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
-    if !move_to_exile_uses_chosen_tag(exile, choose.tag.as_str()) {
+    let exile = move_to_zone_surface_view(unwrap_tag_wrapped_effect(exile_effect))?;
+    if !move_to_exile_uses_chosen_tag(&exile, choose.tag.as_str()) {
         return None;
     }
     if !move_revealed_remainder_to_hand(hand_effect, &look.tag, &choose.tag) {
@@ -4515,7 +4514,7 @@ pub(super) fn describe_each_player_mill_exile_milled_creatures_create_power_toke
         } else {
             (None, exile_effect)
         };
-    let exile = exile_inner.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let exile = move_to_zone_surface_view(unwrap_basic_tag_wrappers(exile_inner))?;
     if exile.zone != Zone::Exile
         || !matches!(exile.target.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
     {

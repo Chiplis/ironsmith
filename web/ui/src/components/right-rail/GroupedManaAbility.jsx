@@ -1,7 +1,9 @@
+import useUiText from "@/i18n/useUiText";
 import { SymbolText } from '@/lib/mana-symbols';
 import './grouped-mana-ability.css';
 
 export default function GroupedManaAbility({ group, onActivate, name, className, style }) {
+  const ui = useUiText();
   return <span className={`inspector-mana-line ${className || ''}`} style={style}>
     <SymbolText text={group.prefix} />
     {group.parts.map((part, index) => {
@@ -11,7 +13,7 @@ export default function GroupedManaAbility({ group, onActivate, name, className,
       const available = Boolean(action && onActivate);
       return <button key={index} type="button" className="inspector-mana-choice"
         data-available={available ? 'true' : 'false'} disabled={!available}
-        aria-label={`${name || 'Card'}: ${group.prefix}${option.output}${group.suffix}`}
+        aria-label={ui("{0}: {1}{2}{3}", { 0: name || 'Card', 1: group.prefix, 2: option.output, 3: group.suffix })}
         onPointerDown={event => event.stopPropagation()}
         onClick={event => {
           event.preventDefault();

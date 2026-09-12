@@ -127,16 +127,45 @@ export function clearEdgeRules(ink,width,height,{band=3,coverage=.7}={}) {
   return ink;
 }
 
+// Keep edge-rule evidence from the original scan through mask expansion.
+// Otherwise dilation can erase the bevel beside an accepted letter even though
+// that bevel was excluded from glyph matching.
+export function expandGlyphMask(accepted,width,height,protectedPixels,radius=3) {
+  const mask=new Uint8Array(accepted.length);
+  for(let p=0;p<accepted.length;p++)if(accepted[p]) {
+    const x=p%width,y=Math.floor(p/width);
+    for(let dy=-radius;dy<=radius;dy++)for(let dx=-radius;dx<=radius;dx++) {
+      const nx=x+dx,ny=y+dy;
+      if(dx*dx+dy*dy<=radius*radius+1&&nx>=0&&nx<width&&ny>=0&&ny<height) {
+        const q=ny*width+nx;
+        if(!protectedPixels[q])mask[q]=1;
+      }
+    }
+  }
+  return mask;
+}
+
+// Midtone material (notably gold name bars) can carry white lettering too.
+// Keep both contrast polarities there; shape matching still decides whether
+// a bright component is a glyph rather than a highlight in the frame.
+export function isPanelInk(r,g,b,paper,{outlined=false}={}) {
+  const low=Math.min(r,g,b),high=Math.max(r,g,b),value=(r+g+b)/3;
+  if(outlined)return low>165&&high-low<65;
+  const paleInk=low>190&&high-low<65&&value>paper+45;
+  return paleInk||(paper<115?value>paper+65:value<paper-55);
+}
+
 export function fontGuidedPanel(scan,{family,weight=400,italic=false,allowItalic=false,symbols=false,text='',section='',outlined=false}) {
   const {data,width,height}=scan;
   const paperAt=paperField(scan);
   const ink=new Uint8Array(width*height);
   for(let p=0;p<ink.length;p++) {
-    const v=(data[p*4]+data[p*4+1]+data[p*4+2])/3;
-    const paper=paperAt(p%width,Math.floor(p/width)),light=paper<115;
-    ink[p]=outlined ? (Math.min(data[p*4],data[p*4+1],data[p*4+2])>165 && Math.max(data[p*4],data[p*4+1],data[p*4+2])-Math.min(data[p*4],data[p*4+1],data[p*4+2])<65?1:0) : (light?v>paper+65:v<paper-55)?1:0;
+    const paper=paperAt(p%width,Math.floor(p/width));
+    ink[p]=isPanelInk(data[p*4],data[p*4+1],data[p*4+2],paper,{outlined})?1:0;
   }
+  const originalInk=ink.slice();
   clearEdgeRules(ink,width,height);
+  const protectedPixels=originalInk.map((v,p)=>v&&!ink[p]?1:0);
   const bank=[...glyphBank(family,weight,italic,text),...(allowItalic?glyphBank(family,400,true,text):[])];
   const visited=new Uint8Array(ink.length),accepted=new Uint8Array(ink.length),components=[];
   for(let p=0;p<ink.length;p++)if(ink[p]&&!visited[p]) {
@@ -201,12 +230,7 @@ export function fontGuidedPanel(scan,{family,weight=400,italic=false,allowItalic
       for(let y=Math.max(0,c.cy-c.r-1);y<=Math.min(height-1,c.cy+c.r+1);y++)for(let x=Math.max(0,c.cx-c.r-1);x<=Math.min(width-1,c.cx+c.r+1);x++)if(Math.hypot(x-c.cx,y-c.cy)<=c.r+1)accepted[y*width+x]=1;
     }
   }
-  const mask=accepted.slice();
-  for(let p=0;p<accepted.length;p++)if(accepted[p]) {
-    const x=p%width,y=Math.floor(p/width);
-    const radius=outlined?4:2;
-    for(let dy=-radius;dy<=radius;dy++)for(let dx=-radius;dx<=radius;dx++)if(dx*dx+dy*dy<=radius*radius+1&&x+dx>=0&&x+dx<width&&y+dy>=0&&y+dy<height)mask[(y+dy)*width+x+dx]=1;
-  }
+  const mask=expandGlyphMask(accepted,width,height,protectedPixels,outlined?5:3);
   const result=inpaintGlyphMask(scan,mask);
   return {...result,matches:matches.length,method:'font-template'};
 }

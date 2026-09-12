@@ -47,6 +47,7 @@ pub fn executable_object_abilities_for_keyword_action(
             | KeywordAction::SoulshiftValue(_)
             | KeywordAction::Outlast(_)
             | KeywordAction::Unearth(_)
+            | KeywordAction::Encore(_)
             | KeywordAction::Eternalize(_)
             | KeywordAction::Ninjutsu(_)
             | KeywordAction::Extort
@@ -160,6 +161,7 @@ pub fn static_ability_for_keyword_action(action: KeywordAction) -> Option<Compil
         | KeywordAction::SoulshiftValue(_)
         | KeywordAction::Outlast(_)
         | KeywordAction::Unearth(_)
+        | KeywordAction::Encore(_)
         | KeywordAction::Eternalize(_)
         | KeywordAction::Ninjutsu(_)
         | KeywordAction::Extort => None,

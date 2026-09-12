@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import {
   ChevronsLeft,
   ChevronsRight,
@@ -14,6 +15,7 @@ function clampPosition(value, actionCount) {
 }
 
 export default function AuditReplayControls() {
+  const ui = useUiText();
   const {
     auditReplay,
     beginAuditReplaySession,
@@ -56,17 +58,17 @@ export default function AuditReplayControls() {
   };
 
   return (
-    <section className="audit-replay-rail" aria-label="Match replay controls">
+    <section className="audit-replay-rail" aria-label={ui("Match replay controls")}>
       <div className="audit-replay-rail-meta">
-        <span>Replay</span>
-        <strong title={active ? actionLabel : sourceLabel}>
-          {active ? `${position}/${actionCount}` : `${actionCount} actions`}
+        <span>{ui("Replay")}</span>
+        <strong title={ui(active ? actionLabel : sourceLabel)}>
+          {active ? `${position}/${actionCount}` : ui("{0} actions", { 0: actionCount })}
         </strong>
       </div>
 
       {active ? (
-        <div className="audit-replay-rail-label" title={actionLabel}>
-          {actionLabel}
+        <div className="audit-replay-rail-label" title={ui(actionLabel)}>
+          {ui(actionLabel)}
         </div>
       ) : null}
 
@@ -77,16 +79,14 @@ export default function AuditReplayControls() {
             className="stone-pill audit-replay-rail-button audit-replay-rail-button--wide"
             disabled={busy}
             onClick={() => void startReplay()}
-            aria-label="Start replay"
-            title="Start replay"
+            aria-label={ui("Start replay")}
+            title={ui("Start replay")}
           >
             {busy ? (
               <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
             ) : (
               <Play className="size-3.5" aria-hidden="true" />
-            )}
-            Start
-          </button>
+            )}{ui("Start")}</button>
         ) : (
           <>
             <button
@@ -94,8 +94,8 @@ export default function AuditReplayControls() {
               className="stone-icon-button audit-replay-rail-button"
               disabled={busy || position <= 0}
               onClick={() => void moveReplay(0)}
-              aria-label="Jump to replay start"
-              title="Jump to start"
+              aria-label={ui("Jump to replay start")}
+              title={ui("Jump to start")}
             >
               <ChevronsLeft className="size-3.5" aria-hidden="true" />
             </button>
@@ -104,8 +104,8 @@ export default function AuditReplayControls() {
               className="stone-icon-button audit-replay-rail-button"
               disabled={busy || position <= 0}
               onClick={() => void moveReplay(position - 1)}
-              aria-label="Previous replay action"
-              title="Previous action"
+              aria-label={ui("Previous replay action")}
+              title={ui("Previous action")}
             >
               <StepBack className="size-3.5" aria-hidden="true" />
             </button>
@@ -114,8 +114,8 @@ export default function AuditReplayControls() {
               className="stone-icon-button audit-replay-rail-button"
               disabled={busy || position >= actionCount}
               onClick={() => void moveReplay(position + 1)}
-              aria-label="Next replay action"
-              title="Next action"
+              aria-label={ui("Next replay action")}
+              title={ui("Next action")}
             >
               {busy ? (
                 <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
@@ -128,8 +128,8 @@ export default function AuditReplayControls() {
               className="stone-icon-button audit-replay-rail-button"
               disabled={busy || position >= actionCount}
               onClick={() => void moveReplay(actionCount)}
-              aria-label="Jump to replay end"
-              title="Jump to end"
+              aria-label={ui("Jump to replay end")}
+              title={ui("Jump to end")}
             >
               <ChevronsRight className="size-3.5" aria-hidden="true" />
             </button>
@@ -138,18 +138,16 @@ export default function AuditReplayControls() {
               className="stone-pill audit-replay-rail-button audit-replay-rail-button--wide"
               disabled={busy}
               onClick={() => void exitReplay()}
-              aria-label="Exit replay"
-              title="Exit replay"
+              aria-label={ui("Exit replay")}
+              title={ui("Exit replay")}
             >
-              <PauseCircle className="size-3.5" aria-hidden="true" />
-              Exit
-            </button>
+              <PauseCircle className="size-3.5" aria-hidden="true" />{ui("Exit")}</button>
           </>
         )}
       </div>
 
       {auditReplay?.error ? (
-        <div className="audit-replay-rail-error">{auditReplay.error}</div>
+        <div className="audit-replay-rail-error">{ui(auditReplay.error)}</div>
       ) : null}
     </section>
   );

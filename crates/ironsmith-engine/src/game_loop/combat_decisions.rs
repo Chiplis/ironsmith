@@ -87,6 +87,11 @@ fn attack_requirement_score_for_target(
         .filter(|ability| ability.id() == crate::static_abilities::StaticAbilityId::MustAttack)
         .count();
 
+    score += game
+        .required_attack_players_this_turn(attacker.id)
+        .filter(|player| matches!(target, AttackTarget::Player(defender) if defender == player))
+        .count();
+
     for effect in &game.effect_store.goad_effects {
         if effect.creature == attacker.id && effect.is_active(game, game.turn.turn_number) {
             score += 1;

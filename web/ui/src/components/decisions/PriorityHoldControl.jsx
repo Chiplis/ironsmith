@@ -1,8 +1,10 @@
+import useUiText from "@/i18n/useUiText";
 import { useRef } from "react";
 import { Hand } from "lucide-react";
 import { useGame } from "@/context/GameContext";
 
 export default function PriorityHoldControl() {
+  const ui = useUiText();
   const { holdRule, setHoldRule } = useGame();
   const previousRule = useRef("never");
   const holding = holdRule === "always";
@@ -12,9 +14,9 @@ export default function PriorityHoldControl() {
       type="button"
       className="player-priority-hold"
       aria-pressed={holding}
-      title={holding
+      title={ui(holding
         ? "Automatic priority passing is paused. Click to restore your previous hold setting."
-        : "Hold priority until turned off, including after casting your own spells. Enable before casting."}
+        : "Hold priority until turned off, including after casting your own spells. Enable before casting.")}
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => {
         event.stopPropagation();
@@ -27,7 +29,7 @@ export default function PriorityHoldControl() {
       }}
     >
       <Hand size={13} aria-hidden="true" />
-      <span>{holding ? "Holding priority" : "Hold priority"}</span>
+      <span>{holding ? ui("Holding priority") : ui("Hold priority")}</span>
     </button>
   );
 }

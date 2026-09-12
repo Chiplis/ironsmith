@@ -21,7 +21,10 @@ export function normalizeZoneViews(zoneViews) {
 export function getVisibleStackObjects(state) {
   const realStackObjects = Array.isArray(state?.stack_objects) ? state.stack_objects : [];
   const resolvingStackObject = state?.resolving_stack_object || null;
-  if (!resolvingStackObject) return realStackObjects;
+  // This presentation-only entry keeps a popped spell visible while its
+  // resolution asks for a choice. Priority means that resolution has ended;
+  // a leftover resolving snapshot must not resurrect it in the stack UI.
+  if (!resolvingStackObject || state?.decision?.kind === "priority") return realStackObjects;
 
   const resolvingId = Number(resolvingStackObject?.id);
   if (

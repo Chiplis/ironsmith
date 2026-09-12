@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useMemo, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -5,6 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { SymbolText } from "@/lib/mana-symbols";
 
 export default function LogDrawer({ open, onOpenChange }) {
+  const ui = useUiText();
   const { logEntries } = useGame();
   const [showRoutine, setShowRoutine] = useState(false);
   const visibleEntries = useMemo(() => {
@@ -29,20 +31,17 @@ export default function LogDrawer({ open, onOpenChange }) {
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="fantasy-sheet fantasy-sheet--log w-[min(92vw,400px)]">
         <SheetHeader className="fantasy-sheet-header pr-12">
-          <SheetTitle className="text-[22px] tracking-[0.08em] text-foreground">
-            Game Log
-          </SheetTitle>
+          <SheetTitle className="text-[22px] tracking-[0.08em] text-foreground">{ui("Game Log")}</SheetTitle>
           <div className="fantasy-log-toolbar">
             <span className="fantasy-sheet-subtitle text-[13px]">
-              {visibleEntries.length} of {logEntries.length} recent entries
-            </span>
+              {visibleEntries.length}{" " + ui("of") + " "}{logEntries.length}{" " + ui("recent entries")}</span>
             <button
               type="button"
               className="stone-pill fantasy-log-filter px-2 py-1 text-[12px]"
               aria-pressed={showRoutine}
               onClick={() => setShowRoutine((current) => !current)}
             >
-              {showRoutine ? "Hide system events" : "Show system events"}
+              {showRoutine ? ui("Hide system events") : ui("Show system events")}
             </button>
           </div>
         </SheetHeader>
@@ -56,12 +55,12 @@ export default function LogDrawer({ open, onOpenChange }) {
                 }`}
               >
                 <small className="fantasy-log-time mr-2">{entry.time}</small>
-                <SymbolText text={displayMessage(entry.message)} style={{ whiteSpace: "inherit" }} />
+                <SymbolText text={ui(displayMessage(entry.message))} style={{ whiteSpace: "inherit" }} />
               </li>
             ))}
             {visibleEntries.length === 0 && (
               <li className="fantasy-sheet-empty p-4 text-center text-[15px] italic">
-                {logEntries.length === 0 ? "No log entries yet" : "No gameplay entries yet"}
+                {logEntries.length === 0 ? ui("No log entries yet") : ui("No gameplay entries yet")}
               </li>
             )}
           </ul>

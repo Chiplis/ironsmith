@@ -191,6 +191,10 @@ mod damaged_target_player_or_controller;
 mod paid_color_hand_discard;
 
 mod combat_face_up_or_counter;
+mod permanent_keyword_choice;
+mod cohort_library_partition;
+mod cohort_choices;
+mod cohort_targeted_tokens;
 
 mod manifest_dread_counter_bundle;
 
@@ -301,3 +305,11 @@ mod power_difference_counters;
 mod activation_source_zone;
 
 mod shared_pump_targets;
+
+mod cohort_static_goad_and_prevention;
+mod cohort_counter_and_play_events;
+mod cohort_aura_returns_and_branches;
+
+mod cohort_offers_and_references;
+
+mod cohort_attachment_and_cast_history;

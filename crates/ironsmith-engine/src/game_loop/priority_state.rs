@@ -458,11 +458,37 @@ pub(crate) fn choose_tagged_cost_step(
     choose: &crate::effects::ChooseObjectsEffect,
     next: &crate::costs::Cost,
 ) -> Option<ActivationCostStep> {
+    let next_effect = next.effect_ref()?;
     if !choose.count.is_single() {
+        // Keep a fixed multi-object exile payment as one counted selection.
+        // Checking its choose/exile components independently would reject the
+        // exile before the preceding choice has populated its tag.
+        if choose.count.min > 1
+            && choose.count.max == Some(choose.count.min)
+            && !choose.count.dynamic_x
+            && !choose.count.random
+            && choose.count_value.is_none()
+            && choose.aggregate_constraint.is_none()
+            && !choose.top_only
+            && !choose.bottom_only
+            && !choose.filter.single_graveyard
+            && choose.additional_zones.is_empty()
+            && choose.chooser == crate::target::PlayerFilter::You
+            && let Some(exile) = next_effect.downcast_ref::<crate::effects::ExileEffect>()
+            && matches!(exile.spec.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+        {
+            let mut filter = choose.filter.clone();
+            filter.zone = filter.zone.or(choose.zone);
+            let mut exile = exile.clone();
+            exile.spec = ChooseSpec::Object(filter).with_count(choose.count);
+            return Some(ActivationCostStep::Cost(
+                crate::costs::Cost::validated_effect(
+                    crate::effect::Effect::new(exile).tag(choose.tag.clone()),
+                ),
+            ));
+        }
         return None;
     }
-
-    let next_effect = next.effect_ref()?;
 
     if let Some(sacrifice) = next_effect.downcast_ref::<crate::effects::SacrificeEffect>()
         && sacrifice.player == crate::target::PlayerFilter::You

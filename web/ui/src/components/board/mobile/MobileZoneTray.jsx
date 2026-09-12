@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { Library, Skull, Sparkles, Crown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -33,6 +34,7 @@ function zoneCount(player, zone) {
 }
 
 export default function MobileZoneTray({ player, onOpenZone, className }) {
+  const ui = useUiText();
   if (!player) return null;
   const items = ZONES.map((zone) => {
     const { key, label, short } = zone;
@@ -45,11 +47,11 @@ export default function MobileZoneTray({ player, onOpenZone, className }) {
         type="button"
         className="mobile-mtga-zone-pill"
         data-zone={key}
-        aria-label={`${label} (${count})`}
+        aria-label={ui("{0} ({1})", { 0: label, 1: count })}
         onClick={() => onOpenZone?.(key)}
       >
         <ZoneIcon className="size-3" aria-hidden="true" />
-        <span className="mobile-mtga-zone-pill-short">{short}</span>
+        <span className="mobile-mtga-zone-pill-short">{ui(short)}</span>
         <span className="mobile-mtga-zone-pill-count">{count}</span>
       </button>
     );
@@ -59,7 +61,7 @@ export default function MobileZoneTray({ player, onOpenZone, className }) {
     <div
       className={cn("mobile-mtga-zone-tray", className)}
       role="group"
-      aria-label="Your zones"
+      aria-label={ui("Your zones")}
     >
       {items}
     </div>

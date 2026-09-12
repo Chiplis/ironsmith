@@ -2925,12 +2925,12 @@ fn parse_effect_sentences_from_sentence_inputs(
                     .map_or_else(|| sentence_words.contains(&"then"), |word| *word == "then")
             },
         );
-        if counter_follows_then {
+        if counter_verb.is_some() && counter_follows_then {
             annotate_counter_followup_surface(
                 &mut sentence_effects,
                 ValueSurfaceHint::CounterFollowupThen,
             );
-        } else if sentence_idx > 0 {
+        } else if counter_verb.is_some() && sentence_idx > 0 {
             // The parser already knows this effect came from a later authored
             // sentence. Preserve that boundary for every counter-producing
             // verb ("put", "distribute", and future equivalents); the
@@ -4757,6 +4757,15 @@ pub(super) fn parse_flat_independent_statements(
     sentences: &[&[OwnedLexToken]],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if sentences.iter().skip(1).any(|sentence| {
+        crate::word_primitives::parse_sequence_prefix(
+            &crate::lexer::token_word_refs(sentence), &["they", "each"],
+        )
+    }) {
+        // A plural participant reference belongs to the preceding player
+        // procedure, so it cannot be compiled as an independent statement.
+        return Ok(None);
+    }
+    if sentences.iter().skip(1).any(|sentence| {
         matches!(
             classify_instead_followup_tokens(sentence),
             InsteadSemantics::SelfReplacement
@@ -6229,7 +6238,7 @@ fn contains_tagged_battlefield_partition(effect: &EffectAst) -> bool {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action: SubjectVerbActionAst::TagMatchingObjects { tag, .. },
             ..
-        }) => tag.as_str().starts_with("partition_pool"),
+        }) => crate::util::is_sentence_helper_tag(&tag.key, "partition_pool"),
         EffectAst::Sequence { effects }
         | EffectAst::Coordinated { effects, .. }
         | EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })
@@ -6254,6 +6263,13 @@ fn append_effects_to_optional_search(
         | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. }) => effects,
         _ => return false,
     };
+    if !matches!(body.as_slice(), [EffectAst::ObjectChoices(
+        ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            zones, search_mode: Some(_), ..
+        }
+    )] if zones.as_slice() == [Zone::Library]) {
+        return false;
+    }
     body.append(&mut followups);
     true
 }
@@ -6269,6 +6285,7 @@ fn transport_optional_search_partition_followup(effects: &mut Vec<EffectAst>) {
     while index + 2 < effects.len() {
         let mut partition_effects = match effects.get(index + 1) {
             Some(EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }))
+            | Some(EffectAst::Sequence { effects })
                 if effects.iter().any(contains_tagged_battlefield_partition) =>
             {
                 effects.clone()
@@ -12578,27 +12595,19 @@ fn apply_unapplied_token_copy_followup(
                 )],
             },
         )],
-        TokenCopyFollowup::ExileAtNextEndStep(_) => vec![EffectAst::Delayed(
+        TokenCopyFollowup::ExileAtNextEndStep(surface) => vec![EffectAst::Delayed(
             DelayedEffectAst::DelayedUntilNextEndStep {
                 player: PlayerFilter::Any,
                 effects: vec![EffectAst::subject_verb_exile(
-                    TargetAst::Object(
-                        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
-                        span,
-                        None,
-                    ),
+                    token_reference_target(surface),
                     false,
                 )],
             },
         )],
-        TokenCopyFollowup::ExileAtEndOfCombat(_) => vec![EffectAst::Delayed(
+        TokenCopyFollowup::ExileAtEndOfCombat(surface) => vec![EffectAst::Delayed(
             DelayedEffectAst::DelayedUntilEndOfCombat {
                 effects: vec![EffectAst::subject_verb_exile(
-                    TargetAst::Object(
-                        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
-                        span,
-                        None,
-                    ),
+                    token_reference_target(surface),
                     false,
                 )],
             },

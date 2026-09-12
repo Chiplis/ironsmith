@@ -107,3 +107,31 @@ fn exile_segments_preserve_zone_top_and_named_shapes() {
         }
     ));
 }
+
+#[test]
+fn coordinated_exile_cost_shares_origin_and_preserves_literal_names() {
+    for (zone, zone_word) in [(Zone::Graveyard, "graveyard"), (Zone::Hand, "hand")] {
+        let tokens = lex_line(
+            &format!(
+                "Exile this card and two other cards named Say Its Name from your {zone_word}"
+            ),
+            0,
+        )
+        .unwrap();
+        let ActivationCostSegmentCst::ExileSourceAndChosen {
+            source_filter,
+            choice_count,
+            filter,
+        } = parse_exile_segment_tokens(&tokens, |_| false).unwrap()
+        else {
+            panic!("expected compound exile cost")
+        };
+        assert_eq!(source_filter.zone, Some(zone));
+        assert!(source_filter.source);
+        assert_eq!(filter.zone, Some(zone));
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+        assert_eq!(filter.name.as_deref(), Some("say its name"));
+        assert!(filter.other);
+        assert_eq!(choice_count, crate::effect::ChoiceCount::exactly(2));
+    }
+}

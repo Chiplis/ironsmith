@@ -781,6 +781,14 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             let previous_last_player_filter = ctx.last_player_filter.clone();
             let (inner_effects, inner_choices) = compile_effects(effects, ctx)?;
             let (player_filter, mut player_choices) = match player {
+                // The payer is determined before the conditional effects
+                // execute. Bind an inline target's controller to the target
+                // chosen on activation, not an outcome tag those effects will
+                // create later (including coordinated source/target moves).
+                PlayerAst::ItsController if inner_choices.iter().any(ChooseSpec::is_target) => (
+                    PlayerFilter::ControllerOf(crate::target::ObjectRef::Target),
+                    Vec::new(),
+                ),
                 PlayerAst::Target => (
                     PlayerFilter::target_player(),
                     vec![ChooseSpec::target_player()],

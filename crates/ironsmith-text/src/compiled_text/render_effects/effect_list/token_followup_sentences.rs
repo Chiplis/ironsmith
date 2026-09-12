@@ -134,10 +134,33 @@ fn describe_sacrifice_then_create_for_result_sentence(effects: &[Effect]) -> Opt
     ))
 }
 
+pub(in crate::compiled_text) fn describe_quantified_created_tokens_goaded_forever(effects: &[Effect]) -> Option<String> {
+    let [producer, consumer] = effects else { return None; };
+    let players = structural_unwrap_render_wrappers(producer)
+        .downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    if players.stop_after_first_happened {
+        return None;
+    }
+    let [created] = players.effects.as_slice() else { return None; };
+    let tagged = created.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let create = tagged.effect.downcast_ref::<crate::effects::CreateTokenEffect>()?;
+    let goad = structural_unwrap_render_wrappers(consumer)
+        .downcast_ref::<crate::effects::GoadEffect>()?;
+    if create.controller != PlayerFilter::IteratedPlayer
+        || create.controller_target.is_some()
+        || goad.duration != Until::Forever
+        || !choose_spec_references_exact_tag(&goad.target, &tagged.tag)
+    {
+        return None;
+    }
+    Some(format!("{}. The tokens are goaded for the rest of the game", rendered_clause(producer)))
+}
+
 pub(in crate::compiled_text) fn describe_token_followup_sentence_surface(
     effects: &[Effect],
 ) -> Option<String> {
-    describe_draw_lose_then_create(effects)
+    describe_quantified_created_tokens_goaded_forever(effects)
+        .or_else(|| describe_draw_lose_then_create(effects))
         .or_else(|| describe_damage_then_create_sentence(effects))
         .or_else(|| describe_sacrifice_then_create_for_result_sentence(effects))
 }

@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 function normalizeCount(value) {
   const count = Number(value);
   return Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
@@ -9,6 +10,7 @@ export default function DeckZonePile({
   canViewTop = false,
   compact = false,
 }) {
+  const ui = useUiText();
   const deckCount = normalizeCount(count);
   const stackDepth = Math.min(Math.max(deckCount, 1), 4);
   const visibleTopCard = canViewTop ? String(topCardName || "Empty") : "";
@@ -17,15 +19,14 @@ export default function DeckZonePile({
     return (
       <section className="deck-zone-pile deck-zone-pile--compact relative h-full min-h-0 overflow-hidden rounded-none border border-[#34485f] bg-[linear-gradient(180deg,rgba(12,20,31,0.98),rgba(7,12,19,0.98))]">
         <div className="deck-zone-mini-card" aria-hidden="true">
-          <span>Deck</span>
+          <span>{ui("Deck")}</span>
         </div>
         <div className="deck-zone-mini-meta">
           {visibleTopCard ? (
-            <span className="deck-zone-mini-top" title={`Top card: ${visibleTopCard}`}>
-              Top: {visibleTopCard}
+            <span className="deck-zone-mini-top" title={ui("Top card: {0}", { 0: visibleTopCard })}>{ui("Top:") + " "}{visibleTopCard}
             </span>
           ) : (
-            <span>{deckCount} card{deckCount === 1 ? "" : "s"}</span>
+            <span>{deckCount}{" " + ui("card")}{deckCount === 1 ? "" : ui("s")}</span>
           )}
         </div>
         <div className="deck-zone-mini-count">{deckCount}</div>
@@ -63,13 +64,11 @@ export default function DeckZonePile({
                   <div className="absolute inset-x-[13px] top-[59%] h-px bg-[rgba(158,196,232,0.09)]" />
                   {isFront && (
                     <div className="absolute inset-x-[7px] bottom-[10px] text-center">
-                      <div className="text-[12px] font-bold uppercase tracking-[0.28em] text-[#d5e7fb]">
-                        Deck
-                      </div>
+                      <div className="text-[12px] font-bold uppercase tracking-[0.28em] text-[#d5e7fb]">{ui("Deck")}</div>
                       {visibleTopCard && (
                         <div
                           className="mt-1 truncate rounded-none border border-[#78a6d8]/35 bg-[#07111c]/90 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[#e5f2ff]"
-                          title={`Top card: ${visibleTopCard}`}
+                          title={ui("Top card: {0}", { 0: visibleTopCard })}
                         >
                           {visibleTopCard}
                         </div>
@@ -84,13 +83,11 @@ export default function DeckZonePile({
         <div className="relative z-[1] border-t border-[#32485f]/85 bg-[linear-gradient(180deg,rgba(7,12,18,0.82),rgba(4,8,13,0.96))] px-3 py-2">
           <div className="flex items-end justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#8eb1d7]">
-                Deck
-              </div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#8eb1d7]">{ui("Deck")}</div>
               <div className="text-[12px] text-[#a9c1dc]">
                 {visibleTopCard
-                  ? `Top: ${visibleTopCard}`
-                  : deckCount === 0 ? "Empty" : `${deckCount} card${deckCount === 1 ? "" : "s"}`}
+                  ? ui("Top: {0}", { 0: visibleTopCard })
+                  : deckCount === 0 ? ui("Empty") : ui("{0} card{1}", { 0: deckCount, 1: deckCount === 1 ? "" : "s" })}
               </div>
             </div>
             <div className="deck-zone-count rounded-none border border-[#4d6987] bg-[rgba(10,18,27,0.94)] px-2.5 py-1 text-[18px] font-bold leading-none text-[#e3efff] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">

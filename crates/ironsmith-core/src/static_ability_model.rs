@@ -505,6 +505,8 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     LegendRuleDoesntApplyToController {
         filter: ObjectFilter,
     },
+    /// Matching permanents are goaded by this source's controller.
+    GoadMatching { filter: ObjectFilter },
     Companion(CompanionDeckCondition),
     Anthem(Anthem<ICond>),
     AttachedAbilityGrant(Box<AttachedAbilityGrant<T, E, C, Cond>>),
@@ -1409,6 +1411,7 @@ where
             StaticAbilityPayload::LegendRuleDoesntApplyToController { filter } => {
                 StaticAbilityPayload::LegendRuleDoesntApplyToController { filter }
             }
+            StaticAbilityPayload::GoadMatching { filter } => StaticAbilityPayload::GoadMatching { filter },
             StaticAbilityPayload::Companion(condition) => {
                 StaticAbilityPayload::Companion(condition)
             }
@@ -3030,6 +3033,14 @@ impl<
 
     pub fn must_attack() -> Self {
         Self::identified(StaticAbilityId::MustAttack, "must attack")
+    }
+
+    pub fn goad_matching(filter: ObjectFilter) -> Self {
+        Self {
+            id: Some(StaticAbilityId::GoadMatching),
+            label: "Matching permanents are goaded".into(),
+            payload: StaticAbilityPayload::GoadMatching { filter },
+        }
     }
 
     pub fn attached_goaded_by_source_controller(display: impl Into<String>) -> Self {

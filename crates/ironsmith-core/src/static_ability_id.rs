@@ -95,6 +95,7 @@ pub enum StaticAbilityId {
     MustAttackAttachedController,
     AllCreaturesAttackAttachedControllerEachCombatIfAble,
     AttachedGoadedBySourceController,
+    GoadMatching,
     AttachedControllerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn,
     AnyPlayerMayPayManaToIgnoreSourceEffectUntilEndOfTurn,
     ExertAttack,
@@ -409,6 +410,7 @@ impl StaticAbilityId {
             | MustAttackAttachedController
             | AllCreaturesAttackAttachedControllerEachCombatIfAble
             | AttachedGoadedBySourceController
+            | GoadMatching
             | AttachedControllerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn
             | AnyPlayerMayPayManaToIgnoreSourceEffectUntilEndOfTurn
             | ExertAttack
@@ -663,6 +665,7 @@ impl StaticAbilityId {
                 | Skulk
                 | Prowess
                 | Flanking
+                | UmbraArmor
                 | Landwalk
                 | Bloodthirst
                 | Tribute

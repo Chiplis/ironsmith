@@ -3664,6 +3664,15 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
 
+        if let Some(comparison) = &self.card_type_count {
+            let count = object_card_types.iter().enumerate()
+                .filter(|(index, card_type)| !object_card_types[..*index].contains(card_type))
+                .count() as i32;
+            if !comparison.satisfies_with_context(count, game, ctx, stack_entry) {
+                return false;
+            }
+        }
+
         // Color check
         if let Some(required_colors) = self.required_colors
             && !object_colors.contains_all(required_colors)
@@ -4745,6 +4754,14 @@ impl ObjectFilterExt for ObjectFilter {
                 return false;
             }
         }
+        if let Some(comparison) = &self.card_type_count {
+            let count = snapshot.card_types.iter().enumerate()
+                .filter(|(index, card_type)| !snapshot.card_types[..*index].contains(card_type))
+                .count() as i32;
+            if !comparison.satisfies_with_context(count, game, ctx, None) {
+                return false;
+            }
+        }
 
         let is_historic = snapshot.card_types.contains(&CardType::Artifact)
             || snapshot.supertypes.contains(&Supertype::Legendary)
@@ -4822,7 +4839,8 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
         if self.goaded
-            && (snapshot.zone != Zone::Battlefield || !game.is_goaded(snapshot.object_id))
+            && (snapshot.zone != Zone::Battlefield
+                || !snapshot.goaded.unwrap_or_else(|| game.is_goaded(snapshot.object_id)))
         {
             return false;
         }
@@ -6575,6 +6593,14 @@ impl ObjectFilterExt for ObjectFilter {
         }
         if self.no_x_in_cost {
             parts.push("with no {X} in its mana cost".to_string());
+        }
+        if let Some(ref count) = self.card_type_count {
+            parts.push(match count {
+                Comparison::GreaterThanOrEqual(minimum) => {
+                    format!("with {minimum} or more card types")
+                }
+                _ => format!("with card type count {}", describe_comparison(count)),
+            });
         }
         if let Some(ref color_count) = self.color_count {
             parts.push(format!(

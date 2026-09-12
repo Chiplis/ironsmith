@@ -1285,7 +1285,8 @@ pub struct TargetRequirementContext {
     pub min_targets: usize,
     /// Maximum number of targets to choose (None = unlimited).
     pub max_targets: Option<usize>,
-    /// Requirements in the same group must select different player targets.
+    /// Requirements in the same group must select different targets.
+    /// The field retains its original player-only API name.
     pub distinct_player_group: Option<usize>,
 }
 

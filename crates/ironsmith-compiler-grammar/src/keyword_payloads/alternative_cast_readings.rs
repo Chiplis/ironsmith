@@ -232,13 +232,9 @@ fn read_encore(
                     line.info.raw_line
                 ))
             })?;
-        return Ok(ast(LineAst::StaticAbility(
-            crate::model::CompilerStaticAbilityCore::keyword_marker(format!(
-                "Encore {}",
-                cost.to_oracle()
-            ))
-            .into(),
-        )));
+        return Ok(ast(LineAst::Abilities(vec![
+            crate::cards::builders::KeywordAction::Encore(cost),
+        ])));
     }
     Ok(None)
 }

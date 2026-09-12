@@ -12,8 +12,8 @@ const trigger = {id: 2, name: "Ivy, Gleeful Spellthief", controller: 0, ability_
 const sequence = [[], [spell], [spell, trigger], [], [spell], [spell, trigger], [spell], [spell, trigger]];
 const step = Number(new URLSearchParams(location.search).get("step") || 35);
 const root = createRoot(document.getElementById("root"));
-const show = (stack) => {
-  const state = {perspective: 0, players: [{id: 0, name: "Alice"}], stack_objects: stack, stack_size: stack.length, decision: {kind: "priority", player: 0, actions: []}};
+const show = (stack, resolving = null) => {
+  const state = {perspective: 0, players: [{id: 0, name: "Alice"}], stack_objects: stack, resolving_stack_object: resolving, stack_size: stack.length, decision: {kind: "priority", player: 0, actions: []}};
   root.render(<I18nProvider><GameContext.Provider value={{state}}><HoverProvider>
     <div data-my-zone style={{position: "relative", margin: 30}}>
       <div className="my-zone-board-shell" style={{position: "relative", height: 520, width: 900}}>
@@ -22,5 +22,6 @@ const show = (stack) => {
     </div>
   </HoverProvider></GameContext.Provider></I18nProvider>);
 };
+window.__showStack = show;
 show([]);
-sequence.forEach((stack, index) => setTimeout(() => show(stack), 80 + index * step));
+if (!new URLSearchParams(location.search).has("manual")) sequence.forEach((stack, index) => setTimeout(() => show(stack), 80 + index * step));

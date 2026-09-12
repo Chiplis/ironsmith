@@ -199,6 +199,7 @@ fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> Objec
             is_token: memory.is_token,
             tapped: false,
             attacking: false,
+            goaded: None,
             flipped: false,
             face_down: false,
             transform_count: 0,

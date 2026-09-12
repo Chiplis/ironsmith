@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { Button } from "@/components/ui/button";
@@ -58,6 +59,7 @@ function randomSeed() {
  * always contribute basic lands so the table can make mana.
  */
 export default function RandomGameSheet({ trigger, onGenerate, disabled = false }) {
+  const ui = useUiText();
   const { setStatus } = useGame();
   const [open, setOpen] = useState(false);
   const [config, setConfig] = useState(randomGameDefaults);
@@ -159,21 +161,14 @@ export default function RandomGameSheet({ trigger, onGenerate, disabled = false 
       <SheetTrigger asChild>{trigger}</SheetTrigger>
       <SheetContent side="center" className="fantasy-sheet random-game-sheet w-[min(94vw,620px)] p-0">
         <SheetHeader className="fantasy-sheet-header pr-12">
-          <div className={sectionTitleClass}>Tools</div>
-          <SheetTitle className="text-[22px] uppercase tracking-[0.18em] text-foreground">
-            Random Game
-          </SheetTitle>
-          <SheetDescription className="max-w-[46ch] text-[13px] leading-5">
-            Fill every player&apos;s zones with random cards. Only legal placements are
-            generated, so spells never start on the battlefield.
-          </SheetDescription>
+          <div className={sectionTitleClass}>{ui("Tools")}</div>
+          <SheetTitle className="text-[22px] uppercase tracking-[0.18em] text-foreground">{ui("Random Game")}</SheetTitle>
+          <SheetDescription className="max-w-[46ch] text-[13px] leading-5">{ui("Fill every player's zones with random cards. Only legal placements are generated, so spells never start on the battlefield.")}</SheetDescription>
         </SheetHeader>
 
         <div className="random-game-sheet-body grid max-h-[70vh] gap-4 overflow-y-auto p-4">
           <div className="grid gap-3 sm:grid-cols-3">
-            <label className={labelClass}>
-              Players
-              <input
+            <label className={labelClass}>{ui("Players")}<input
                 type="number"
                 min={1}
                 max={8}
@@ -183,9 +178,7 @@ export default function RandomGameSheet({ trigger, onGenerate, disabled = false 
                 onChange={(event) => patch({ playerCount: Number(event.target.value) })}
               />
             </label>
-            <label className={labelClass}>
-              Starting life
-              <input
+            <label className={labelClass}>{ui("Starting life")}<input
                 type="number"
                 min={1}
                 max={999}
@@ -195,12 +188,10 @@ export default function RandomGameSheet({ trigger, onGenerate, disabled = false 
                 onChange={(event) => patch({ startingLife: Number(event.target.value) })}
               />
             </label>
-            <label className={labelClass}>
-              Seed
-              <span className="flex gap-1">
+            <label className={labelClass}>{ui("Seed")}<span className="flex gap-1">
                 <input
                   className={inputClass}
-                  placeholder="random"
+                  placeholder={ui("random")}
                   value={config.seed}
                   disabled={busy}
                   onChange={(event) => patch({ seed: event.target.value })}
@@ -212,24 +203,20 @@ export default function RandomGameSheet({ trigger, onGenerate, disabled = false 
                   className="stone-pill shrink-0"
                   disabled={busy}
                   onClick={() => patch({ seed: randomSeed() })}
-                >
-                  Roll
-                </Button>
+                >{ui("Roll")}</Button>
               </span>
             </label>
           </div>
 
           <div className={sectionClass}>
-            <div className={sectionTitleClass}>Cards per zone</div>
+            <div className={sectionTitleClass}>{ui("Cards per zone")}</div>
             <div className="grid gap-2">
               {RANDOM_GAME_ZONES.map((zone) => (
                 <div key={zone} className="grid grid-cols-[1fr_auto_auto] items-center gap-2">
                   <span className="text-[12px] uppercase tracking-wide text-muted-foreground">
-                    {ZONE_LABELS[zone]}
+                    {ui(ZONE_LABELS[zone])}
                   </span>
-                  <label className="flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                    Cards
-                    <input
+                  <label className="flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">{ui("Cards")}<input
                       type="number"
                       min={0}
                       max={250}
@@ -239,9 +226,7 @@ export default function RandomGameSheet({ trigger, onGenerate, disabled = false 
                       onChange={(event) => patchZone(zone, { count: Number(event.target.value) })}
                     />
                   </label>
-                  <label className="flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                    Basics
-                    <input
+                  <label className="flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">{ui("Basics")}<input
                       type="number"
                       min={0}
                       max={250}
@@ -254,31 +239,25 @@ export default function RandomGameSheet({ trigger, onGenerate, disabled = false 
                 </div>
               ))}
             </div>
-            <p className="text-[11px] leading-4 text-muted-foreground">
-              Basics come from the colours below, so a generated table can always make mana.
-              The command zone only takes legendary creatures and planeswalkers.
-            </p>
+            <p className="text-[11px] leading-4 text-muted-foreground">{ui("Basics come from the colours below, so a generated table can always make mana. The command zone only takes legendary creatures and planeswalkers.")}</p>
           </div>
 
           <div className={sectionClass}>
-            <div className={sectionTitleClass}>Always on my battlefield</div>
+            <div className={sectionTitleClass}>{ui("Always on my battlefield")}</div>
             <input
               className={inputClass}
-              placeholder="Omniscience"
+              placeholder={ui("Omniscience")}
               value={config.alwaysOnMyBattlefield.join(", ")}
               disabled={busy}
               onChange={(event) => patch({
                 alwaysOnMyBattlefield: event.target.value.split(",").map((name) => name.trim()).filter(Boolean),
               })}
             />
-            <p className="text-[11px] leading-4 text-muted-foreground">
-              These cards always start on your own battlefield, whatever the filters below
-              allow. They take battlefield slots, so the count above still holds.
-            </p>
+            <p className="text-[11px] leading-4 text-muted-foreground">{ui("These cards always start on your own battlefield, whatever the filters below allow. They take battlefield slots, so the count above still holds.")}</p>
           </div>
 
           <div className={sectionClass}>
-            <div className={sectionTitleClass}>Card types</div>
+            <div className={sectionTitleClass}>{ui("Card types")}</div>
             <div className="flex flex-wrap gap-x-4 gap-y-1">
               {CARD_TYPES.map((type) => (
                 <label key={type} className={toggleClass}>
@@ -290,14 +269,14 @@ export default function RandomGameSheet({ trigger, onGenerate, disabled = false 
                       types: { ...config.types, [type]: checked === true },
                     })}
                   />
-                  {type}
+                  {ui(type)}
                 </label>
               ))}
             </div>
           </div>
 
           <div className={sectionClass}>
-            <div className={sectionTitleClass}>Colours</div>
+            <div className={sectionTitleClass}>{ui("Colours")}</div>
             <div className="flex flex-wrap gap-x-4 gap-y-1">
               {COLOR_KEYS.map((color) => (
                 <label key={color} className={toggleClass}>
@@ -309,18 +288,16 @@ export default function RandomGameSheet({ trigger, onGenerate, disabled = false 
                       colors: { ...config.colors, [color]: checked === true },
                     })}
                   />
-                  {color}
+                  {ui(color)}
                 </label>
               ))}
             </div>
           </div>
 
           <div className={sectionClass}>
-            <div className={sectionTitleClass}>Limits</div>
+            <div className={sectionTitleClass}>{ui("Limits")}</div>
             <div className="grid gap-3 sm:grid-cols-3">
-              <label className={labelClass}>
-                Min mana value
-                <input
+              <label className={labelClass}>{ui("Min mana value")}<input
                   type="number"
                   min={0}
                   max={20}
@@ -332,9 +309,7 @@ export default function RandomGameSheet({ trigger, onGenerate, disabled = false 
                   })}
                 />
               </label>
-              <label className={labelClass}>
-                Max mana value
-                <input
+              <label className={labelClass}>{ui("Max mana value")}<input
                   type="number"
                   min={0}
                   max={20}
@@ -346,9 +321,7 @@ export default function RandomGameSheet({ trigger, onGenerate, disabled = false 
                   })}
                 />
               </label>
-              <label className={labelClass}>
-                Min fidelity
-                <input
+              <label className={labelClass}>{ui("Min fidelity")}<input
                   type="number"
                   min={0}
                   max={1}
@@ -367,41 +340,32 @@ export default function RandomGameSheet({ trigger, onGenerate, disabled = false 
                   disabled={busy}
                   className="h-3.5 w-3.5"
                   onCheckedChange={(checked) => patch({ singleFacedOnly: checked === true })}
-                />
-                Single-faced only
-              </label>
+                />{ui("Single-faced only")}</label>
               <label className={toggleClass}>
                 <Checkbox
                   checked={config.allowDuplicates}
                   disabled={busy}
                   className="h-3.5 w-3.5"
                   onCheckedChange={(checked) => patch({ allowDuplicates: checked === true })}
-                />
-                Allow duplicates
-              </label>
+                />{ui("Allow duplicates")}</label>
               <label className={toggleClass}>
                 <Checkbox
                   checked={config.allowDuplicateLegends}
                   disabled={busy || !config.allowDuplicates}
                   className="h-3.5 w-3.5"
                   onCheckedChange={(checked) => patch({ allowDuplicateLegends: checked === true })}
-                />
-                Duplicate legends on board
-              </label>
+                />{ui("Duplicate legends on board")}</label>
             </div>
-            <p className="text-[11px] leading-4 text-muted-foreground">
-              Fidelity is the compiled-text similarity score; 1 keeps only cards the engine
-              reproduces exactly. Lower it for a wider pool.
-            </p>
+            <p className="text-[11px] leading-4 text-muted-foreground">{ui("Fidelity is the compiled-text similarity score; 1 keeps only cards the engine reproduces exactly. Lower it for a wider pool.")}</p>
           </div>
 
           {blocked ? (
             <p className="text-[12px] leading-4 text-[#f0a9a0]">
               {!anyTypeChosen
-                ? "Pick at least one card type."
+                ? ui("Pick at least one card type.")
                 : !anyColorChosen
-                  ? "Pick at least one colour."
-                  : "The battlefield can only hold permanents: pick a permanent type or fill it with basics."}
+                  ? ui("Pick at least one colour.")
+                  : ui("The battlefield can only hold permanents: pick a permanent type or fill it with basics.")}
             </p>
           ) : null}
 
@@ -413,7 +377,7 @@ export default function RandomGameSheet({ trigger, onGenerate, disabled = false 
               className="stone-pill"
               onClick={cancel}
             >
-              {busy ? "Stop" : "Cancel"}
+              {busy ? ui("Stop") : ui("Cancel")}
             </Button>
             <Button
               type="button"
@@ -423,8 +387,8 @@ export default function RandomGameSheet({ trigger, onGenerate, disabled = false 
               disabled={disabled || busy || blocked}
             >
               {busy
-                ? `Collecting ${progress?.collected ?? 0}/${progress?.target ?? budget}`
-                : "Generate"}
+                ? ui("Collecting {0}/{1}", { 0: progress?.collected ?? 0, 1: progress?.target ?? budget })
+                : ui("Generate")}
             </Button>
           </div>
         </div>

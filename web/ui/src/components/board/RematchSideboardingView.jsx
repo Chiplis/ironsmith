@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useMemo } from "react";
 import { useGame } from "@/context/GameContext";
 import { ArrowLeftRight } from "lucide-react";
@@ -27,12 +28,13 @@ function moveCard(cards, name, direction) {
 }
 
 function CardColumn({ title, cards, emptyText, actionLabel, onMove, disabled = false }) {
+  const ui = useUiText();
   const countedCards = useMemo(() => countCards(cards), [cards]);
   return (
     <section className="setup-editor flex min-h-0 flex-1 flex-col border border-[rgba(128,107,78,0.42)] bg-[rgba(11,13,15,0.74)]">
       <div className="flex shrink-0 items-center justify-between border-b border-[rgba(128,107,78,0.28)] px-3 py-2">
         <h2 className="text-[12px] font-bold uppercase tracking-wider text-[#f2d9a3]">
-          {title}
+          {ui(title)}
         </h2>
         <span className="text-[12px] font-semibold text-muted-foreground">
           {cards.length}
@@ -41,7 +43,7 @@ function CardColumn({ title, cards, emptyText, actionLabel, onMove, disabled = f
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {countedCards.length === 0 ? (
           <div className="px-2 py-8 text-center text-[13px] italic text-muted-foreground">
-            {emptyText}
+            {ui(emptyText)}
           </div>
         ) : (
           <div className="grid gap-1">
@@ -54,8 +56,8 @@ function CardColumn({ title, cards, emptyText, actionLabel, onMove, disabled = f
                   if (!disabled) onMove(entry.name);
                 }}
                 disabled={disabled}
-                title={actionLabel}
-                aria-label={`${entry.name}: ${actionLabel}`}
+                title={ui(actionLabel)}
+                aria-label={ui("{0}: {1}", { 0: entry.name, 1: actionLabel })}
               >
                 <span className="w-8 shrink-0 text-[12px] font-bold text-primary">
                   {entry.count}x
@@ -74,6 +76,7 @@ function CardColumn({ title, cards, emptyText, actionLabel, onMove, disabled = f
 }
 
 export default function RematchSideboardingView() {
+  const ui = useUiText();
   const { multiplayer, updateRematchDecks } = useGame();
   const rematch = multiplayer?.rematch || {};
   const localDeck = rematch.localDeck || [];
@@ -96,43 +99,35 @@ export default function RematchSideboardingView() {
     <div className="setup-screen sideboarding-screen flex h-full min-h-0 w-full flex-col overflow-hidden bg-[linear-gradient(180deg,rgba(17,16,14,0.98),rgba(8,10,12,0.98))] px-3 py-3">
       <div className="mb-3 flex shrink-0 items-end justify-between gap-3">
         <div>
-          <h1 className="text-[18px] font-bold uppercase tracking-wide text-[#f2d9a3]">
-            Sideboard
-          </h1>
+          <h1 className="text-[18px] font-bold uppercase tracking-wide text-[#f2d9a3]">{ui("Sideboard")}</h1>
           <div className="mt-1 text-[12px] font-semibold text-muted-foreground">
-            {readyPlayers}/{totalPlayers} ready
-          </div>
+            {readyPlayers}/{totalPlayers}{" " + ui("ready")}</div>
         </div>
-        <div className="text-right text-[12px] font-semibold text-muted-foreground">
-          Main {localDeck.length} · Sideboard {localSideboard.length}
+        <div className="text-right text-[12px] font-semibold text-muted-foreground">{ui("Main") + " "}{localDeck.length}{" " + ui("· Sideboard") + " "}{localSideboard.length}
         </div>
       </div>
       <div className="grid min-h-0 flex-1 gap-3 md:grid-cols-2">
         <CardColumn
-          title="Main Deck"
+          title={ui("Main Deck")}
           cards={localDeck}
-          emptyText="Main deck is empty"
-          actionLabel="Move one copy to sideboard"
+          emptyText={ui("Main deck is empty")}
+          actionLabel={ui("Move one copy to sideboard")}
           onMove={moveToSideboard}
           disabled={localReady}
         />
         <CardColumn
-          title="Sideboard"
+          title={ui("Sideboard")}
           cards={localSideboard}
-          emptyText="Sideboard is empty"
-          actionLabel="Move one copy to main deck"
+          emptyText={ui("Sideboard is empty")}
+          actionLabel={ui("Move one copy to main deck")}
           onMove={moveToMain}
           disabled={localReady}
         />
       </div>
       {localReady ? (
-        <div className="mt-3 shrink-0 border border-[#8ec4ff]/35 bg-[#102033] px-3 py-2 text-[12px] font-bold uppercase tracking-wide text-[#c6ddff]">
-          Waiting for the other players.
-        </div>
+        <div className="mt-3 shrink-0 border border-[#8ec4ff]/35 bg-[#102033] px-3 py-2 text-[12px] font-bold uppercase tracking-wide text-[#c6ddff]">{ui("Waiting for the other players.")}</div>
       ) : (
-        <div className="mt-3 shrink-0 text-[12px] text-muted-foreground">
-          Use the main decision button when ready.
-        </div>
+        <div className="mt-3 shrink-0 text-[12px] text-muted-foreground">{ui("Use the main decision button when ready.")}</div>
       )}
     </div>
   );

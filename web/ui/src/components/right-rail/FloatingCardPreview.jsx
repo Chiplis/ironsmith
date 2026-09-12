@@ -1,6 +1,7 @@
+import useUiText from "@/i18n/useUiText";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { manaPaymentActionMap } from "@/lib/mana-payment-actions";
-import { useDragState } from "@/context/DragContext";
+import { useDragSession } from "@/context/DragContext";
 import { useGame } from "@/context/GameContext";
 import {
   useAnchoredCardPreview,
@@ -279,6 +280,7 @@ export default function FloatingCardPreview({
   pinnedObjectId = null,
   onRequestClose = null,
 }) {
+  const ui = useUiText();
   const previewSuppressed = useCardPreviewSuppressed();
   const disabled = externallyDisabled || previewSuppressed;
   const { state, dispatch, cancelDecision } = useGame();
@@ -286,7 +288,7 @@ export default function FloatingCardPreview({
   const hoveredObjectId = useHoveredObjectId();
   const anchoredCardPreview = useAnchoredCardPreview();
   const { clearAnchoredCardPreview } = useHoverActions();
-  const dragState = useDragState();
+  const dragState = useDragSession();
   const shellRef = useRef(null);
   const closeTimerRef = useRef(null);
   const [renderedObjectId, setRenderedObjectId] = useState(null);
@@ -534,7 +536,7 @@ export default function FloatingCardPreview({
       {visible && zoneImagePreview && readyObjectId !== renderedObjectId ? (
         <img
           src={renderedImageUrl}
-          alt={preparationName || "Card preview"}
+          alt={preparationName || ui("Card preview")}
           referrerPolicy="no-referrer"
           className="absolute inset-0 z-40 h-full w-full object-contain pointer-events-none"
         />

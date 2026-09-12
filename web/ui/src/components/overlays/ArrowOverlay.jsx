@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useCombatArrows } from "@/context/useCombatArrows";
 import { animate, cancelMotion } from "@/lib/motion/anime";
 import { getCardElement, getCardRect, getPlayerTargetRect, centerOf } from "@/hooks/useCardPositions";
@@ -159,14 +159,7 @@ function stackToBoardArrowPath(fromRect, toRect, targetGap = 9) {
   return curvedArrowPath(from.x, from.y, to.x, to.y);
 }
 
-export default function ArrowOverlay() {
-  const { arrows, dragArrow } = useCombatArrows();
-  const [, setTick] = useState(0);
-  const pathRefs = useRef(new Map());
-  const pathAnimationsRef = useRef(new Map());
-  const animatedKeysRef = useRef(new Set());
-  const overlayActive = arrows.length > 0 || !!dragArrow;
-  const paths = (() => {
+function calculatePaths(arrows) {
     const result = [];
     for (const arrow of arrows) {
       const fromEl = getCardElement(arrow.fromId);
@@ -222,18 +215,41 @@ export default function ArrowOverlay() {
       result.push({ d, color: arrow.color || "#ff3b30", key: arrow.key });
     }
     return result;
-  })();
-  const pathSignature = paths.map((path) => path.key).join("|");
-  const pathKeys = useMemo(
-    () => (pathSignature ? pathSignature.split("|") : []),
-    [pathSignature]
-  );
+}
+
+
+export default function ArrowOverlay() {
+  const { arrows, dragArrow, dragArrowRef } = useCombatArrows();
+  const livePathRef = useRef(null);
+  const pathRefs = useRef(new Map());
+  const pathAnimationsRef = useRef(new Map());
+  const animatedKeysRef = useRef(new Set());
+  const overlayActive = arrows.length > 0 || !!dragArrow;
+  const paths = arrows.map((arrow) => ({ ...arrow, d: "", color: arrow.color || "#ff3b30" }));
+  const pathKeys = useMemo(() => arrows.map((arrow) => arrow.key), [arrows]);
 
   useEffect(() => {
     if (!overlayActive) return;
 
     let frameId = 0;
-    const recalc = () => setTick((t) => t + 1);
+    const recalc = () => {
+      const measured = new Map(calculatePaths(arrows).map((path) => [path.key, path]));
+      for (const arrow of arrows) {
+        const path = measured.get(arrow.key) || { key: arrow.key, d: "" };
+        const node = pathRefs.current.get(path.key);
+        if (node && node.getAttribute("d") !== path.d) node.setAttribute("d", path.d);
+      }
+      const live = dragArrowRef.current;
+      const node = livePathRef.current;
+      if (live && node) {
+        const fromEl = getCardElement(live.fromId);
+        const rect = getCardRect(live.fromId);
+        const from = rect && (fromEl?.getAttribute("data-arrow-anchor") === "stack"
+          ? pointAfterRect(rect, { x: live.x, y: live.y }, 10) : centerOf(rect));
+        const d = from ? curvedArrowPath(from.x, from.y, live.x, live.y) : "";
+        if (node.getAttribute("d") !== d) node.setAttribute("d", d);
+      }
+    };
     const tick = () => {
       recalc();
       frameId = window.requestAnimationFrame(tick);
@@ -249,7 +265,7 @@ export default function ArrowOverlay() {
       window.removeEventListener("resize", recalc);
       window.removeEventListener("scroll", recalc, true);
     };
-  }, [overlayActive]);
+  }, [overlayActive, arrows, dragArrowRef]);
 
   useLayoutEffect(() => {
     const animationStore = pathAnimationsRef.current;
@@ -285,22 +301,7 @@ export default function ArrowOverlay() {
     };
   }, [pathKeys]);
 
-  // Build live drag arrow path
-  let dragPath = null;
-  if (dragArrow) {
-    const fromEl = getCardElement(dragArrow.fromId);
-    const fromRect = getCardRect(dragArrow.fromId);
-    if (fromRect) {
-      const dragTarget = { x: dragArrow.x, y: dragArrow.y };
-      const from = fromEl?.getAttribute("data-arrow-anchor") === "stack"
-        ? pointAfterRect(fromRect, dragTarget, 10)
-        : centerOf(fromRect);
-      dragPath = {
-        d: curvedArrowPath(from.x, from.y, dragArrow.x, dragArrow.y),
-        color: dragArrow.color || "#ff3b30",
-      };
-    }
-  }
+  const dragPath = dragArrow ? { d: "", color: dragArrow.color || "#ff3b30" } : null;
 
   if (paths.length === 0 && !dragPath) return null;
 
@@ -364,6 +365,7 @@ export default function ArrowOverlay() {
       {/* Live drag arrow */}
       {dragPath && (
         <path
+          ref={livePathRef}
           d={dragPath.d}
           fill="none"
           stroke={dragPath.color}

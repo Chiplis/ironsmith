@@ -422,19 +422,9 @@ pub fn parse_sentence_for_each_of_target_objects(
     };
 
     let subject_clause = SubjectVerbPrimitiveClause::new(shape.subject_tokens).trimmed();
-    let Some((mut filter, count)) =
-        parse_for_each_targeted_object_subject(subject_clause.tokens())?
-    else {
+    let Some(target) = parse_for_each_targeted_object_subject(subject_clause.tokens())? else {
         return Ok(None);
     };
-    if filter.zone == Some(Zone::Battlefield)
-        && filter.controller.is_none()
-        && filter.tagged_constraints.is_empty()
-    {
-        // Keep this unrestricted to avoid implicit "you control" defaulting in ChooseObjects
-        // compilation for plain "target permanent(s)" clauses.
-        filter.controller = Some(PlayerFilter::Any);
-    }
 
     let effect_clause = SubjectVerbPrimitiveClause::new(shape.effect_tokens).trimmed();
     if effect_clause.is_empty() {
@@ -455,13 +445,10 @@ pub fn parse_sentence_for_each_of_target_objects(
     }
 
     Ok(Some(vec![
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-            filter,
-            count,
-            count_value: None,
-            player: PlayerAst::Implicit,
+        EffectAst::TagAffected {
             tag: crate::tag::CompilerReferenceTag::It.bind(),
-        }),
+            effect: Box::new(EffectAst::subject_verb_target_only(target)),
+        },
         EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
             tag: crate::tag::CompilerReferenceTag::It.bind(),
             effects: per_target_effects,

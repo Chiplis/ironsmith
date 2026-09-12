@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { HIDDEN_CARD_BACK_IMAGE_URL } from "@/lib/scryfall";
@@ -218,6 +219,7 @@ function CardFlight({ effect, onDone }) {
 /* --------------------------- library FX ---------------------------- */
 
 function LibraryPeek({ effect, onDone }) {
+  const ui = useUiText();
   const rootRef = useRef(null);
   const motionsRef = useRef([]);
   const onDoneRef = useStableCallbackRef(onDone);
@@ -289,7 +291,7 @@ function LibraryPeek({ effect, onDone }) {
       style={{ left: center.x, top: effect.rect.top }}
     >
       <div className="game-fx-peek-label-wrap">
-        <div className="game-fx-peek-label">{effect.label}</div>
+        <div className="game-fx-peek-label">{ui(effect.label)}</div>
       </div>
       {Array.from({ length: effect.count }, (_, index) => (
         <img
@@ -465,6 +467,7 @@ function LifeSwap({ effect, onDone }) {
 }
 
 function HudFlourish({ effect, onDone }) {
+  const ui = useUiText();
   const rootRef = useRef(null);
   const motionsRef = useRef([]);
   const onDoneRef = useStableCallbackRef(onDone);
@@ -511,13 +514,14 @@ function HudFlourish({ effect, onDone }) {
       <div className="game-fx-hud-ring" />
       <div className="game-fx-hud-badge">
         <span className="game-fx-hud-icon" aria-hidden="true" />
-        <span className="game-fx-hud-label">{effect.label}</span>
+        <span className="game-fx-hud-label">{ui(effect.label)}</span>
       </div>
     </div>
   );
 }
 
 function CoinFlip({ effect, onDone }) {
+  const ui = useUiText();
   const rootRef = useRef(null);
   const motionsRef = useRef([]);
   const onDoneRef = useStableCallbackRef(onDone);
@@ -573,7 +577,7 @@ function CoinFlip({ effect, onDone }) {
         <span className="game-fx-coin-face">{isDie ? "⬡" : "◉"}</span>
       </div>
       <div className="game-fx-coin-result-wrap">
-        <div className="game-fx-coin-result">{effect.label}</div>
+        <div className="game-fx-coin-result">{ui(effect.label)}</div>
       </div>
     </div>
   );
@@ -709,6 +713,7 @@ function PhaseGhost({ effect, onDone }) {
 }
 
 function LevelUpRing({ effect, onDone }) {
+  const ui = useUiText();
   const rootRef = useRef(null);
   const motionsRef = useRef([]);
   const onDoneRef = useStableCallbackRef(onDone);
@@ -763,13 +768,14 @@ function LevelUpRing({ effect, onDone }) {
     <div ref={rootRef} className="game-fx-levelup" style={{ left: center.x, top: center.y }}>
       <div className="game-fx-levelup-ring" />
       <div className="game-fx-levelup-label-wrap">
-        <div className="game-fx-levelup-label">{effect.label}</div>
+        <div className="game-fx-levelup-label">{ui(effect.label)}</div>
       </div>
     </div>
   );
 }
 
 function BoardTint({ effect, onDone }) {
+  const ui = useUiText();
   const rootRef = useRef(null);
   const motionRef = useRef(null);
   const onDoneRef = useStableCallbackRef(onDone);
@@ -798,12 +804,13 @@ function BoardTint({ effect, onDone }) {
       className={`game-fx-board-tint game-fx-board-tint--${effect.flavor}`}
       style={{ opacity: 0 }}
     >
-      <div className="game-fx-board-tint-label">{effect.flavor === "night" ? "NIGHT" : "DAY"}</div>
+      <div className="game-fx-board-tint-label">{effect.flavor === "night" ? ui("NIGHT") : ui("DAY")}</div>
     </div>
   );
 }
 
 function TurnBanner({ effect, onDone }) {
+  const ui = useUiText();
   const rootRef = useRef(null);
   const motionRef = useRef(null);
   const onDoneRef = useStableCallbackRef(onDone);
@@ -829,7 +836,7 @@ function TurnBanner({ effect, onDone }) {
   const center = rectCenter(effect.rect);
   return (
     <div ref={rootRef} className="game-fx-turn-banner" style={{ left: center.x, top: effect.rect.top }}>
-      <span className="game-fx-turn-banner-text">{effect.label}</span>
+      <span className="game-fx-turn-banner-text">{ui(effect.label)}</span>
     </div>
   );
 }

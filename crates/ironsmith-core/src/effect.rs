@@ -4547,6 +4547,9 @@ pub struct CreateTokenCopyEffect<A> {
     /// The entry state was authored as a separate token-followup sentence.
     pub entry_tapped_attacking_followup: bool,
     pub attack_target_mode: Option<CopyAttackTargetMode>,
+    /// A requirement to attack the resolved player this turn, without entering attacking.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub must_attack_player_this_turn: Option<PlayerFilter>,
     pub exile_at_end_of_combat: bool,
     pub exile_at_end_of_combat_reference_surface: Option<TokenCopyReferenceSurface>,
     /// "except it has haste and loses soulbond" (Mirage Phalanx): the copy is
@@ -4592,6 +4595,7 @@ impl<A> CreateTokenCopyEffect<A> {
             enters_attacking: false,
             entry_tapped_attacking_followup: false,
             attack_target_mode: None,
+            must_attack_player_this_turn: None,
             exile_at_end_of_combat: false,
             exile_at_end_of_combat_reference_surface: None,
             loses_soulbond: false,

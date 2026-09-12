@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useEffect, useCallback, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { parseNames } from "@/lib/constants";
@@ -26,6 +27,7 @@ import MobileLandscapeGate from "./MobileLandscapeGate";
 import LogDrawer from "@/components/overlays/LogDrawer";
 
 export default function Shell() {
+  const ui = useUiText();
   useEffect(() => installMainDecisionShortcut(document), []);
   const {
     game,
@@ -419,7 +421,7 @@ export default function Shell() {
         <div className="game-loading-brand">Ironsmith</div>
         {wasmPhase === "init" ? (
           <span className="game-loading-status text-[16px] font-semibold">
-            {phaseLabel}
+            {ui(phaseLabel)}
             <span className="loading-dots" aria-hidden="true">
               <span className="loading-dot loading-dot-1">.</span>
               <span className="loading-dot loading-dot-2">.</span>
@@ -427,7 +429,7 @@ export default function Shell() {
             </span>
           </span>
         ) : (
-          <span className="game-loading-status text-[16px] font-semibold">{phaseLabel}</span>
+          <span className="game-loading-status text-[16px] font-semibold">{ui(phaseLabel)}</span>
         )}
         <div className="game-loading-track h-2 w-64 overflow-hidden border">
           <div
@@ -442,8 +444,7 @@ export default function Shell() {
 
   if (wasmError) {
     return (
-      <div className="flex items-center justify-center h-screen text-destructive">
-        WASM failed: {wasmError.message}
+      <div className="flex items-center justify-center h-screen text-destructive">{ui("WASM failed:") + " "}{ui(wasmError.message)}
       </div>
     );
   }
@@ -451,11 +452,9 @@ export default function Shell() {
   if (initializationError) {
     return (
       <div className="flex flex-col items-center justify-center h-screen gap-3 px-6 text-center text-destructive">
-        <span className="text-[18px] font-bold uppercase tracking-wider">
-          Game initialization failed
-        </span>
+        <span className="text-[18px] font-bold uppercase tracking-wider">{ui("Game initialization failed")}</span>
         <span className="max-w-2xl text-sm text-muted-foreground">
-          {initializationError}
+          {ui(initializationError)}
         </span>
       </div>
     );
@@ -466,9 +465,7 @@ export default function Shell() {
     return (
       <div className="game-loading-screen flex h-screen flex-col items-center justify-center gap-4 text-muted-foreground">
         <div className="game-loading-brand">Ironsmith</div>
-        <span className="game-loading-status text-[16px] font-semibold">
-          Preparing Game
-          <span className="loading-dots" aria-hidden="true">
+        <span className="game-loading-status text-[16px] font-semibold">{ui("Preparing Game")}<span className="loading-dots" aria-hidden="true">
             <span className="loading-dot loading-dot-1">.</span>
             <span className="loading-dot loading-dot-2">.</span>
             <span className="loading-dot loading-dot-3">.</span>

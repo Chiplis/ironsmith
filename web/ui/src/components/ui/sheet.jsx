@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import * as React from "react"
 import { XIcon } from "lucide-react"
 import { Dialog as SheetPrimitive } from "radix-ui"
@@ -55,6 +56,7 @@ function SheetContent({
   style,
   ...props
 }) {
+  const ui = useUiText();
   const returnFocusRef = React.useRef(null);
   const centeredStyle = side === "center"
     ? {
@@ -105,7 +107,7 @@ function SheetContent({
             data-slot="sheet-close-button"
             className="absolute top-3 right-3 z-10 inline-flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none">
             <XIcon className="size-4" />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">{ui("Close")}</span>
           </SheetPrimitive.Close>
         )}
       </SheetPrimitive.Content>

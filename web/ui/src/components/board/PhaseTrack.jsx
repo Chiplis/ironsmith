@@ -1,113 +1,43 @@
-import { useRef, useEffect, useState } from "react";
+import { useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { useI18n } from "@/i18n/I18nContext";
-import { PHASE_TRACK, normalizePhaseStep } from "@/lib/constants";
-import { cn } from "@/lib/utils";
+import { normalizePhaseStep } from "@/lib/constants";
 
-export default function PhaseTrack({ compact = false, showBrand = false }) {
+export default function PhaseTrack({ compact = false }) {
   const { state } = useGame();
   const { t } = useI18n();
   const active = state ? normalizePhaseStep(state.phase, state.step) : null;
-  const trackRef = useRef(null);
-  const [indicator, setIndicator] = useState(null);
-  const firstRender = useRef(true);
+  const [transition, setTransition] = useState({ active, previous: null, revision: 0 });
 
-  // Recompute when the active phase or the track width changes. The middle
-  // inspector deliberately contracts this strip, so the indicator geometry
-  // cannot be tied to phase changes alone.
-  useEffect(() => {
-    if (!active || !trackRef.current) {
-      const clearRafId = requestAnimationFrame(() => setIndicator(null));
-      return () => cancelAnimationFrame(clearRafId);
-    }
+  if (transition.active !== active) {
+    setTransition({ active, previous: transition.active, revision: transition.revision + 1 });
+  }
 
-    const track = trackRef.current;
-    let rafId = null;
-    const measureIndicator = () => {
-      rafId = null;
-      const idx = PHASE_TRACK.indexOf(active);
-      if (idx < 0) { setIndicator(null); return; }
-
-      const cells = track.querySelectorAll(".phase-track-cell");
-      const cell = cells[idx];
-      const lastPhaseCell = cells[cells.length - 1];
-      if (!cell) { setIndicator(null); return; }
-
-      const trackRect = track.getBoundingClientRect();
-      const cellRect = cell.getBoundingClientRect();
-      const lastPhaseRect = lastPhaseCell?.getBoundingClientRect?.() || cellRect;
-      const isFirst = firstRender.current;
-      firstRender.current = false;
-      const leftInset = cellRect.left - trackRect.left;
-      const rightInset = lastPhaseRect.right - cellRect.right;
-
-      setIndicator({
-        left: idx === 0 ? 0 : leftInset,
-        width: cellRect.width + (idx === 0 ? leftInset : 0) + (idx === PHASE_TRACK.length - 1 ? rightInset : 0),
-        animate: !isFirst,
-      });
-    };
-    const scheduleIndicatorMeasure = () => {
-      if (rafId != null) cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(measureIndicator);
-    };
-
-    scheduleIndicatorMeasure();
-    const observer = new ResizeObserver(scheduleIndicatorMeasure);
-    observer.observe(track);
-    window.addEventListener("resize", scheduleIndicatorMeasure);
-
-    return () => {
-      if (rafId != null) cancelAnimationFrame(rafId);
-      observer.disconnect();
-      window.removeEventListener("resize", scheduleIndicatorMeasure);
-    };
-  }, [active]);
+  const label = (phase) => phase
+    ? t(`game.track.${phase}`, null, phase)
+    : "—";
 
   return (
-    <section
-      ref={trackRef}
-      className="phase-track grid gap-px min-h-[24px] relative overflow-hidden"
-      data-compact={compact ? "true" : "false"}
-      data-has-brand={showBrand ? "true" : "false"}
-    >
-      {/* Sliding glow indicator */}
-      {indicator && (
+    <section className="phase-track phase-track--single" data-compact={compact ? "true" : "false"}>
+      <div key={transition.revision} className="phase-track-window">
+        {transition.previous && active ? (
+          <div className="phase-track-label phase-track-label--outgoing" aria-hidden="true">
+            {label(transition.previous)}
+          </div>
+        ) : null}
         <div
-          className="phase-track-indicator absolute top-0 bottom-0 z-0 pointer-events-none"
-          style={{
-            left: indicator.left,
-            width: indicator.width,
-            transition: indicator.animate
-              ? "left 350ms cubic-bezier(0.4, 0, 0.2, 1), width 350ms cubic-bezier(0.4, 0, 0.2, 1)"
-              : "none",
-          }}
-        />
-      )}
-
-      {PHASE_TRACK.map((name) => (
-        <div
-          key={name}
-          aria-current={name === active ? "step" : undefined}
-          data-phase-name={name}
-          data-phase-active={name === active ? "true" : "false"}
-          className={cn(
-            "phase-track-cell relative z-[1] grid items-center justify-items-center text-[13px] uppercase tracking-wide font-semibold transition-colors duration-300",
-            name === active
-              ? "text-[#f3f9ff] font-bold"
-              : "text-[#d7c8a8]"
-          )}
+          className={`phase-track-label${transition.previous && active ? " phase-track-label--incoming" : ""}`}
+          data-phase-name={active}
+          aria-current={active ? "step" : undefined}
+          aria-live="polite"
+          aria-atomic="true"
+          onAnimationEnd={() => setTransition((current) => (
+            current.revision === transition.revision ? { ...current, previous: null } : current
+          ))}
         >
-          {compact
-            ? t(`game.trackCompact.${name}`, null, name)
-            : t(`game.track.${name}`, null, name)}
+          {label(active)}
         </div>
-      ))}
-      {showBrand ? (
-        <h1 className="toolbar-brand phase-track-brand relative z-[2] m-0 whitespace-nowrap font-bold">
-          Ironsmith
-        </h1>
-      ) : null}
+      </div>
     </section>
   );
 }

@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import PlayerZonePiles from "./PlayerZonePiles";
 import { useCastPlayerHovered } from "@/context/DragContext";
 import { useCallback, useEffect, useState } from "react";
@@ -155,6 +156,7 @@ function buildActivatableMap(decision, perspective) {
 }
 
 function ZoneCountInline({ player, onOpenDecklist = null }) {
+  const ui = useUiText();
   const counts = zoneCounts(player);
   const libraryTopName = player?.can_view_library_top ? String(player?.library_top || "Empty") : "";
   return (
@@ -164,7 +166,7 @@ function ZoneCountInline({ player, onOpenDecklist = null }) {
         const deckEntry = entry.label === "Deck" && typeof onOpenDecklist === "function";
         const content = (
           <>
-            <span className="battlefield-count-label font-bold text-[#c1d4ea]">{entry.label}</span>
+            <span className="battlefield-count-label font-bold text-[#c1d4ea]">{ui(entry.label)}</span>
             <span className="text-[#d6e6fb] font-semibold">{entry.count}</span>
             {showLibraryTop && (
               <span className="battlefield-count-top text-[#f0dfba] font-semibold">({libraryTopName})</span>
@@ -180,7 +182,7 @@ function ZoneCountInline({ player, onOpenDecklist = null }) {
                 "battlefield-count-item cursor-pointer text-left transition-colors hover:border-[#6d8ead] hover:text-[#e5f2ff]",
                 showLibraryTop && "battlefield-count-item--with-top"
               )}
-              title="Open decklist"
+              title={ui("Open decklist")}
               data-zone-anchor={entry.zone}
               data-zone-anchor-player={String(player?.id ?? player?.index ?? "")}
               onClick={(event) => {
@@ -197,7 +199,7 @@ function ZoneCountInline({ player, onOpenDecklist = null }) {
           <span
             key={entry.label}
             className={cn("battlefield-count-item", showLibraryTop && "battlefield-count-item--with-top")}
-            title={showLibraryTop ? `Top card: ${libraryTopName}` : entry.title}
+            title={ui(showLibraryTop ? `Top card: ${libraryTopName}` : entry.title)}
             data-zone-anchor={entry.zone}
             data-zone-anchor-player={String(player?.id ?? player?.index ?? "")}
           >
@@ -210,12 +212,13 @@ function ZoneCountInline({ player, onOpenDecklist = null }) {
 }
 
 function HiddenHandRows({ count }) {
+  const ui = useUiText();
   const hiddenCount = Math.max(0, Math.floor(Number(count) || 0));
   return (
-    <div className="zone-hidden-card-list" aria-label={`${hiddenCount} hidden cards`}>
+    <div className="zone-hidden-card-list" aria-label={ui("{0} hidden cards", { 0: hiddenCount })}>
       {Array.from({ length: hiddenCount }).map((_, index) => (
         <div key={index} className="zone-hidden-card-row" aria-hidden="true">
-          <span className="zone-hidden-card-sigil">I</span>
+          <span className="zone-hidden-card-sigil">{ui("I")}</span>
         </div>
       ))}
     </div>
@@ -228,10 +231,11 @@ function ZoneCardNameRows({
   onCardClick,
   onCardPointerDown,
 }) {
+  const ui = useUiText();
   if (!Array.isArray(cards) || cards.length === 0) {
     return (
       <div className="zone-card-name-list zone-card-name-list--empty">
-        <div className="zone-card-name-empty">Empty</div>
+        <div className="zone-card-name-empty">{ui("Empty")}</div>
       </div>
     );
   }
@@ -248,9 +252,9 @@ function ZoneCardNameRows({
             className={cn("zone-card-name-row", selected && "is-selected")}
             onPointerDown={(event) => onCardPointerDown?.(event, card)}
             onClick={(event) => onCardClick?.(event, card)}
-            title={String(card?.name || "Card")}
+            title={String(card?.name || ui("Card"))}
           >
-            <span>{card?.name || "Card"}</span>
+            <span>{card?.name || ui("Card")}</span>
           </button>
         );
       })}
@@ -367,6 +371,7 @@ function OpponentSlot({
   onMobileCardActionMenu = null,
   onMobileCardLongPress = null,
 }) {
+  const ui = useUiText();
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const { combatModeRef, combatMode, dragArrow } = useCombatArrows();
   const { playerAccentOverrides } = useGame();
@@ -589,9 +594,9 @@ function OpponentSlot({
                 data-player-target-name={player.index ?? player.id}
                 role={playerHeaderInteractive ? "button" : undefined}
                 tabIndex={playerHeaderInteractive ? 0 : undefined}
-                aria-label={playerHeaderInteractive
+                aria-label={ui(playerHeaderInteractive
                   ? `${zoneIsAttackHoverTarget ? "Attack" : "Target"} ${playerDisplayName(state?.players || [], player)}`
-                  : undefined}
+                  : undefined)}
                 onKeyDown={handlePlayerHeaderKeyDown}
                 onPointerDown={handlePlayerTargetPointerDown}
                 onClick={handlePlayerTargetClick}
@@ -603,7 +608,7 @@ function OpponentSlot({
                 <span className={cn(isActivePlayer && "battlefield-name-text--active")}>
                   {playerDisplayName(state?.players || [], player)}
                 </span>
-                {zoneName && <span className="text-muted-foreground">{zoneName}</span>}
+                {zoneName && <span className="text-muted-foreground">{ui(zoneName)}</span>}
               </span>
             </span>
             <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
@@ -634,7 +639,7 @@ function OpponentSlot({
                   )}
                 >
                   <div className="battlefield-overlay-zone-label flex items-center gap-2">
-                    <span>{entry.label}</span>
+                    <span>{ui(entry.label)}</span>
                     <span className="text-[#f1e2c0]">{displayCount}</span>
                     {activity ? (
                       <span
@@ -645,7 +650,7 @@ function OpponentSlot({
                             : "zone-activity-badge-enter"
                         )}
                       >
-                        {activity.label}
+                        {ui(activity.label)}
                       </span>
                     ) : null}
                   </div>
@@ -731,7 +736,7 @@ function OpponentSlot({
               >
                 {(showZoneHeaders || activity) && (
                   <div className="battlefield-zone-label flex items-center gap-1 text-[10px] uppercase tracking-wide text-[#9cb8d8] px-0.5">
-                    <span>{entry.label}</span>
+                    <span>{ui(entry.label)}</span>
                     <span className="text-[#d6e6fb]">{displayCount}</span>
                     {activity ? (
                       <span
@@ -742,7 +747,7 @@ function OpponentSlot({
                             : "zone-activity-badge-enter"
                         )}
                       >
-                        {activity.label}
+                        {ui(activity.label)}
                       </span>
                     ) : null}
                   </div>
@@ -798,7 +803,7 @@ function OpponentSlot({
                     style={{ gridTemplateRows: "auto minmax(0,1fr)" }}
                   >
                     <div className="battlefield-zone-label flex items-center gap-1 text-[10px] uppercase tracking-wide text-[#9cb8d8] px-0.5">
-                      <span>{entry.label}</span>
+                      <span>{ui(entry.label)}</span>
                       <span className="text-[#d6e6fb]">{displayCount}</span>
                       {activity ? (
                         <span
@@ -809,7 +814,7 @@ function OpponentSlot({
                               : "zone-activity-badge-enter"
                           )}
                         >
-                          {activity.label}
+                          {ui(activity.label)}
                         </span>
                       ) : null}
                     </div>

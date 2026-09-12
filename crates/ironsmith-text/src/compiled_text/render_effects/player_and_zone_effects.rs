@@ -4629,8 +4629,7 @@ pub(super) fn describe_looked_card_split_destinations_structural(
         .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     let bottom_move = unwrap_basic_tag_wrappers(bottom_move_effect)
         .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
-    let exile_move = unwrap_basic_tag_wrappers(exile_move_effect)
-        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let exile_move = move_to_zone_surface_view(unwrap_basic_tag_wrappers(exile_move_effect))?;
     let grant = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
 
     describe_look_at_top_split_hand_bottom_exile_then_play_exiled(
@@ -4640,7 +4639,7 @@ pub(super) fn describe_looked_card_split_destinations_structural(
         exile_choose,
         hand_move,
         bottom_move,
-        exile_move,
+        &exile_move,
         grant,
     )
 }

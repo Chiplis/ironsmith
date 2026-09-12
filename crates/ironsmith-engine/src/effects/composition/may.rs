@@ -2,13 +2,39 @@
 
 use crate::decision::FallbackStrategy;
 use crate::decisions::ask_may_choice;
-use crate::effect::{Effect, EffectOutcome, ExecutionFact};
+use crate::effect::{Effect, EffectOutcome, ExecutionFact, OutcomeValue};
 use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::target::PlayerFilter;
+
+// An object-selection prelude supplies references for the action; its object
+// payload must not erase that action's numeric result (for example, how many
+// permanents were sacrificed). Keep all choice facts and retain a standalone
+// choice's result when the optional program contains only choices.
+fn is_object_selection(effect: &Effect) -> bool {
+    effect.downcast_ref::<crate::effects::ChooseObjectsEffect>().is_some()
+        || effect.0.transparent_child_effect().is_some_and(is_object_selection)
+}
+
+fn execute_optional_effects(
+    effects: &[Effect],
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<EffectOutcome, ExecutionError> {
+    let has_action = effects.iter().any(|effect| !is_object_selection(effect));
+    let mut outcomes = Vec::new();
+    for effect in effects {
+        let mut outcome = execute_effect(game, effect, ctx)?;
+        if has_action && is_object_selection(effect) {
+            outcome.set_value(OutcomeValue::None);
+        }
+        outcomes.push(outcome);
+    }
+    Ok(EffectOutcome::aggregate(outcomes).with_execution_fact(ExecutionFact::Accepted))
+}
 
 /// Effect that offers an optional choice to the player.
 ///
@@ -158,12 +184,7 @@ impl EffectExecutor for MayEffect {
         );
 
         if should_do {
-            // Execute all effects and aggregate outcomes
-            let mut outcomes = Vec::new();
-            for effect in &self.effects {
-                outcomes.push(execute_effect(game, effect, ctx)?);
-            }
-            Ok(EffectOutcome::aggregate(outcomes).with_execution_fact(ExecutionFact::Accepted))
+            execute_optional_effects(&self.effects, game, ctx)
         } else {
             Ok(EffectOutcome::declined())
         }
@@ -247,11 +268,7 @@ impl crate::effects::SimultaneousEffectProposal for MayProposal {
         }
         let effects = self.effects;
         ctx.with_temp_iterated_player(self.iterated_player, |ctx| {
-            let mut outcomes = Vec::new();
-            for effect in &effects {
-                outcomes.push(execute_effect(game, effect, ctx)?);
-            }
-            Ok(EffectOutcome::aggregate(outcomes).with_execution_fact(ExecutionFact::Accepted))
+            execute_optional_effects(&effects, game, ctx)
         })
     }
 }

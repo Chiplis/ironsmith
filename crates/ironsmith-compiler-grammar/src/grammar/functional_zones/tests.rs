@@ -123,3 +123,122 @@ fn source_exile_from_graveyard_sets_trigger_zone_without_affecting_other_cards()
         None
     );
 }
+
+#[test]
+fn rule_113_6m_coordinated_source_moves_and_exile() {
+    let cost = lex_line("{1}{B}{R}{G}, Sacrifice a Saproling", 0).unwrap();
+    for text in [
+        "Return this card and up to one other target creature card from your graveyard to the battlefield",
+        "Return this card and target land card from your graveyard to the battlefield tapped",
+    ] {
+        let effect = lex_line(text, 0).unwrap();
+        assert_eq!(
+            parse_activated_functional_zones_tokens(&cost, &[&effect]),
+            vec![Zone::Graveyard],
+            "{text}"
+        );
+    }
+    let effect = lex_line("Put this card from exile onto the battlefield tapped", 0).unwrap();
+    assert_eq!(
+        parse_activated_functional_zones_tokens(&cost, &[&effect]),
+        vec![Zone::Exile]
+    );
+    let cost = lex_line(
+        "Exile this card and two other cards named Example from your graveyard",
+        0,
+    )
+    .unwrap();
+    assert_eq!(
+        parse_activated_functional_zones_tokens(&cost, &[]),
+        vec![Zone::Graveyard]
+    );
+}
+
+#[test]
+fn rule_113_6m_prior_source_moves_and_unrelated_origins() {
+    for (cost, effects, expected) in [
+        (
+            "Discard this card",
+            "Shuffle this card into your library from your graveyard, then draw a card",
+            Zone::Hand,
+        ),
+        (
+            "Sacrifice this creature",
+            "Return this card from your graveyard to the battlefield",
+            Zone::Battlefield,
+        ),
+        (
+            "Exile this creature",
+            "At the beginning of the next end step, return this card from exile to the battlefield",
+            Zone::Battlefield,
+        ),
+        (
+            "{2}",
+            "Exile this creature, then return this card from exile to the battlefield",
+            Zone::Battlefield,
+        ),
+        (
+            "{2}",
+            "Return this creature to its owner's hand and return target Griffin card from your graveyard to your hand",
+            Zone::Battlefield,
+        ),
+        (
+            "{2}",
+            "Return target creature card from your graveyard to the battlefield",
+            Zone::Battlefield,
+        ),
+        (
+            "{2}",
+            "At the beginning of the next end step, return this card from your graveyard to the battlefield",
+            Zone::Graveyard,
+        ),
+        (
+            "{2}",
+            "Shuffle this card into your library from your graveyard",
+            Zone::Graveyard,
+        ),
+        (
+            "{2}",
+            "Put this card onto the battlefield from your hand",
+            Zone::Hand,
+        ),
+        (
+            "{2}",
+            "Exile this card. Activate only if this card is in your graveyard",
+            Zone::Graveyard,
+        ),
+    ] {
+        let cost = lex_line(cost, 0).unwrap();
+        let effect = lex_line(effects, 0).unwrap();
+        assert_eq!(
+            parse_activated_functional_zones_tokens(&cost, &[&effect]),
+            vec![expected],
+            "{effects}"
+        );
+    }
+    let cost = lex_line("{2}", 0).unwrap();
+    let effect = lex_line("Return this card to its owner's hand. Activate only if this card is on the battlefield or in your graveyard", 0).unwrap();
+    assert_eq!(
+        parse_activated_functional_zones_tokens(&cost, &[&effect]),
+        vec![Zone::Battlefield, Zone::Graveyard]
+    );
+    let effect = lex_line(
+        "Return this card from your graveyard or from exile to your hand",
+        0,
+    )
+    .unwrap();
+    assert_eq!(
+        parse_activated_functional_zones_tokens(&cost, &[&effect]),
+        vec![Zone::Graveyard, Zone::Exile]
+    );
+}
+
+#[test]
+fn rule_113_6m_granted_abilities_have_their_own_source() {
+    let cost = lex_line("{2}", 0).unwrap();
+    let effect = lex_line(r#"Target creature gains "{B}: Return this card from your graveyard to your hand" until end of turn"#, 0).unwrap();
+    assert_eq!(
+        parse_activated_functional_zones_tokens(&cost, &[&effect]),
+        vec![Zone::Battlefield]
+    );
+}

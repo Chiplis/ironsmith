@@ -1312,13 +1312,14 @@ fn source_sentence_for_each_player_effects_mut(
 ) -> Option<&mut Vec<EffectAst>> {
     match effect {
         EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects }) => Some(effects),
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+            filter: crate::filter::PlayerFilter::Any, effects, ..
+        }) => Some(effects),
         EffectAst::SourceSentence { effects, .. } => {
-            let [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects })] =
-                effects.as_mut_slice()
-            else {
+            let [effect] = effects.as_mut_slice() else {
                 return None;
             };
-            Some(effects)
+            source_sentence_for_each_player_effects_mut(effect)
         }
         _ => None,
     }

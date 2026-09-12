@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 
 function sanitizeCards(cards) {
@@ -16,12 +17,13 @@ function groupedCards(cards) {
 }
 
 function DeckSection({ title, cards }) {
+  const ui = useUiText();
   const grouped = groupedCards(cards);
   return (
     <section className="min-h-0">
       <div className="decklist-section-heading">
         <h3 >
-          {title}
+          {ui(title)}
         </h3>
         <span >
           {sanitizeCards(cards).length}
@@ -42,15 +44,14 @@ function DeckSection({ title, cards }) {
           ))}
         </div>
       ) : (
-        <div className="decklist-empty">
-          Empty
-        </div>
+        <div className="decklist-empty">{ui("Empty")}</div>
       )}
     </section>
   );
 }
 
 export default function OpenDecklistModal({ decklist, onClose }) {
+  const ui = useUiText();
   if (!decklist) return null;
   const deck = sanitizeCards(decklist.deck);
   const sideboard = sanitizeCards(decklist.sideboard);
@@ -62,16 +63,16 @@ export default function OpenDecklistModal({ decklist, onClose }) {
       <SheetContent side="center" className="fantasy-sheet decklist-sheet gap-0 p-0" style={{ maxWidth: "760px" }}>
         <SheetHeader className="fantasy-sheet-header">
           <SheetTitle>{playerName}</SheetTitle>
-          <SheetDescription>Open decklist · {deck.length} main · {sideboard.length} sideboard</SheetDescription>
+          <SheetDescription>{ui("Open decklist ·") + " "}{deck.length}{" " + ui("main ·") + " "}{sideboard.length}{" " + ui("sideboard")}</SheetDescription>
         </SheetHeader>
         <div className="min-h-0 overflow-y-auto px-4 py-4">
           {decklist.available === false ? (
-            <p className="decklist-empty" role="status">No shared decklist is available for this player. Decklists appear here when shared through a multiplayer lobby.</p>
+            <p className="decklist-empty" role="status">{ui("No shared decklist is available for this player. Decklists appear here when shared through a multiplayer lobby.")}</p>
           ) : <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.72fr)]">
-            <DeckSection title="Deck" cards={deck} />
+            <DeckSection title={ui("Deck")} cards={deck} />
             <div className="grid content-start gap-4">
-              {commanders.length > 0 ? <DeckSection title="Commanders" cards={commanders} /> : null}
-              <DeckSection title="Sideboard" cards={sideboard} />
+              {commanders.length > 0 ? <DeckSection title={ui("Commanders")} cards={commanders} /> : null}
+              <DeckSection title={ui("Sideboard")} cards={sideboard} />
             </div>
           </div>}
         </div>

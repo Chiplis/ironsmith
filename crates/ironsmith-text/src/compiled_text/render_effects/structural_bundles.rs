@@ -4464,7 +4464,19 @@ pub(super) fn describe_search_selection_from_filter_text(
     choose: &crate::effects::ChooseObjectsEffect,
     filter_text: &str,
 ) -> String {
-    let filter_text = filter_text.trim();
+    let mut ordered_filter_text = filter_text.trim().to_string();
+    if filter_explicitly_selects_permanent_cards(&choose.filter)
+        && let [subtype] = choose.filter.subtypes.as_slice()
+        && choose.filter.all_subtypes.is_empty()
+        && !choose.filter.type_or_subtype_union
+    {
+        ordered_filter_text = ordered_filter_text.replacen(
+            &format!("permanent card {subtype}"),
+            &format!("{subtype} permanent card"),
+            1,
+        );
+    }
+    let filter_text = ordered_filter_text.as_str();
     let where_clause = describe_runtime_choice_where_clause(choose).unwrap_or_default();
     let filter_is_generic_card = filter_text.eq_ignore_ascii_case("card");
     let simple_land_subtype = (choose.filter.card_types.as_slice() == [CardType::Land]
@@ -6550,10 +6562,8 @@ pub(super) fn describe_choose_name_exile_top_consult_hand_rest_exile(
         return None;
     }
 
-    let exile_remainder = unwrap_basic_tag_wrappers(&conditional.if_false[0])
-        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let exile_remainder = move_to_zone_surface_view(unwrap_basic_tag_wrappers(&conditional.if_false[0]))?;
     if exile_remainder.zone != Zone::Exile
-        || !exile_remainder.to_top
         || !matches!(&exile_remainder.target, ChooseSpec::Iterated)
     {
         return None;
@@ -8605,9 +8615,6 @@ fn describe_chosen_type_consult_move_matches_shuffle_remainder(
         .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     let shuffle = structural_unwrap_render_wrappers(shuffle_effect)
         .downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()?;
-    let ChooseSpec::Object(remainder_filter) = shuffle.target.unhinted() else {
-        return None;
-    };
     let crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) = &consult.stop_rule else {
         return None;
     };
@@ -8634,7 +8641,7 @@ fn describe_chosen_type_consult_move_matches_shuffle_remainder(
         || shuffle.player != PlayerFilter::You
         || shuffle.owner_library_destination
         || shuffle.possessive_owner_subject
-        || !is_tagged_only_filter_except_tag(remainder_filter, &consult.all_tag, &consult.match_tag)
+        || !is_exact_consult_remainder_shuffle(shuffle_effect, consult)
     {
         return None;
     }
@@ -9064,6 +9071,7 @@ pub(super) fn describe_quantified_player_effect(
         // conjugates the second action independently.
         .or_else(|| describe_each_player_may_discard_hand_draw_commander_value(for_players))
         .or_else(|| describe_each_player_may_discard_hand_draw(for_players))
+        .or_else(|| describe_for_players_optional_search_battlefield_partition(for_players))
         .or_else(|| describe_for_players_may_search_library_then_shuffle(for_players))
         .or_else(|| describe_for_players_search_library_then_shuffle(for_players))
         .or_else(|| describe_for_players_may_happened_sequence(for_players))

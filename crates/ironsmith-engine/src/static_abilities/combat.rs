@@ -2953,3 +2953,15 @@ mod tests {
         assert!(!inclusive.generic_attack_tax_applies_to(AttackTaxTargetKind::Battle));
     }
 }
+
+/// A continuous goad grant that follows the current matching set and source controller.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GoadMatching {
+    pub filter: crate::target::ObjectFilter,
+}
+
+impl StaticAbilityKind for GoadMatching {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::GoadMatching }
+    fn display(&self) -> String { "Matching permanents are goaded".into() }
+    fn goads_matching(&self) -> Option<&crate::target::ObjectFilter> { Some(&self.filter) }
+}

@@ -1,7 +1,9 @@
+import useUiText from "@/i18n/useUiText";
+import useKeyboardPointerSuspend from "@/hooks/useKeyboardPointerSuspend";
 import { Fragment, useRef, useMemo, useEffect, useLayoutEffect, useCallback, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { useHover } from "@/context/HoverContext";
-import { useDragActions, useDragState } from "@/context/DragContext";
+import { useDragActions, useDragSession } from "@/context/DragContext";
 import useNewCards from "@/hooks/useNewCards";
 import useManabrewHandScale, {
   MANABREW_HAND_CARD_BASE,
@@ -221,12 +223,24 @@ function buildHandCardRowStyle(index, total, { dims, activeIndex = null, activeI
     const totalWidth = Math.max(0, (total - 1) * spread);
     const selectedCenter = -totalWidth / 2 + index * spread;
     pushX = -selectedCenter;
-  } else if (activeIndex !== null && activeIndex >= 0 && spreadAroundActive) {
-    const distance = Math.abs(index - activeIndex);
+  } else if (!isActive && activeIndex !== null && activeIndex >= 0 && spreadAroundActive) {
     const sign = index < activeIndex ? -1 : 1;
-    // Open a small reading corridor around the centered card. The nearby
-    // cards move apart the most, while farther cards preserve the hand shape.
-    pushX = sign * Math.max(0, dims.neighborPush * 0.45 - distance * 8);
+    // Reserve the enlarged card's full horizontal footprint, including the
+    // fan rotation around its bottom center. Move each side together so the
+    // gap cannot close again at a farther card in a tightly packed hand.
+    const horizontalReach = (layout, scale) => {
+      const angle = Math.abs(layout.rot) * Math.PI / 180;
+      return scale * (dims.cardW / 2 * Math.cos(angle) + dims.cardH * Math.sin(angle));
+    };
+    const activeReach = horizontalReach(baseLayout[activeIndex], MANABREW_HAND_FAN_PARAMS.hoverScale);
+    const clearance = dims.cardW * 0.06;
+    let sidePush = dims.neighborPush;
+    baseLayout.forEach((layout, neighborIndex) => {
+      if (Math.sign(neighborIndex - activeIndex) !== sign) return;
+      const distance = Math.abs(neighborIndex - activeIndex) * spread;
+      sidePush = Math.max(sidePush, activeReach + horizontalReach(layout, 0.94) + clearance - distance);
+    });
+    pushX = sign * sidePush;
   }
 
   const fanRotate = isActive && centerActive && !activeIsPlayable ? "0deg" : `${base.rot.toFixed(2)}deg`;
@@ -362,10 +376,11 @@ export default function HandZone({
   isExpanded = false,
   layout = "fan",
 }) {
+  const ui = useUiText();
   const { state, multiplayer } = useGame();
   const { hoveredObjectId, hoveredLinkedObjectIds, clearHover, clearAnchoredCardPreview } = useHover();
   const { startDrag, updateDrag, endDrag } = useDragActions();
-  const dragState = useDragState();
+  const dragState = useDragSession();
   // A card being dragged out of the hand goes back to its tucked slot as a
   // ghost: the hover/inspection treatment it was wearing when the gesture
   // started would otherwise keep it raised over the field the drag is aiming
@@ -377,6 +392,8 @@ export default function HandZone({
   const activePointerIdRef = useRef(null);
   const dragHandlersRef = useRef(null);
   const dragScrollLockRef = useRef(null);
+  const hoverSuppressedUntilRef = useRef(0);
+  const [handHoverSuppressed, setHandHoverSuppressed] = useState(false);
   const hoverClearTimerRef = useRef(null);
   const hoverActivateTimerRef = useRef(null);
   const pointerHoverTargetRef = useRef(null);
@@ -681,6 +698,7 @@ export default function HandZone({
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const handleHandActionHover = (event) => {
+      if (performance.now() < hoverSuppressedUntilRef.current) return;
       const rawObjectId = event?.detail?.objectId ?? null;
       const normalizedObjectId = rawObjectId != null ? String(rawObjectId) : null;
       const lifted = Boolean(normalizedObjectId && hoverableHandObjectIds.has(normalizedObjectId));
@@ -724,7 +742,7 @@ export default function HandZone({
   const interactionObjectId = keyboardNavigationActive
     ? keyboardSelectedObjectId
     : hoveredHandObjectId;
-  const activeFanObjectId = dragState
+  const activeFanObjectId = dragState || handHoverSuppressed
     ? null
     : activeMenuHoveredHandObjectId
       || interactionObjectId
@@ -994,12 +1012,43 @@ export default function HandZone({
   }, [isMobileFan, selectedObjectId]);
 
 
+  useEffect(() => {
+    let timer;
+    const onDrop = () => {
+      hoverSuppressedUntilRef.current = performance.now() + 200;
+      setHandHoverSuppressed(true);
+      document.documentElement.setAttribute("data-hand-drop-cooldown", "true");
+      window.clearTimeout(hoverActivateTimerRef.current);
+      window.clearTimeout(hoverClearTimerRef.current);
+      pointerHoverTargetRef.current = null;
+      setHoveredHandObjectId(null);
+      setMenuHoveredHandObjectId(null);
+      setKeyboardSelectedObjectId(null);
+      setPinnedHandObjectId(null);
+      clearHover();
+      clearAnchoredCardPreview();
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        setHandHoverSuppressed(false);
+        document.documentElement.removeAttribute("data-hand-drop-cooldown");
+      }, 200);
+    };
+    window.addEventListener("ironsmith:hand-card-dropped", onDrop);
+    return () => {
+      window.removeEventListener("ironsmith:hand-card-dropped", onDrop);
+      window.clearTimeout(timer);
+      document.documentElement.removeAttribute("data-hand-drop-cooldown");
+    };
+  }, [clearHover, clearAnchoredCardPreview]);
+
   const scheduleHoverTarget = useCallback((objectId) => {
+    if (performance.now() < hoverSuppressedUntilRef.current) return;
     const normalizedObjectId = String(objectId);
     pointerHoverTargetRef.current = normalizedObjectId;
     if (hoverActivateTimerRef.current) clearTimeout(hoverActivateTimerRef.current);
     hoverActivateTimerRef.current = window.setTimeout(() => {
       hoverActivateTimerRef.current = null;
+      if (performance.now() < hoverSuppressedUntilRef.current) return;
       setHoveredHandObjectId(normalizedObjectId);
       clearHover();
       clearAnchoredCardPreview();
@@ -1007,6 +1056,7 @@ export default function HandZone({
   }, [clearAnchoredCardPreview, clearHover]);
 
   const handleHoverEnter = useCallback((objectId) => {
+    if (performance.now() < hoverSuppressedUntilRef.current) return;
     // Once arrow-key navigation starts, keep the keyboard selection stable
     // until the pointer actually moves. Transformed cards can pass beneath a
     // stationary cursor and fire synthetic mouse-enter events otherwise.
@@ -1036,7 +1086,23 @@ export default function HandZone({
     scheduleHoverTarget(normalizedObjectId);
   }, [clearAnchoredCardPreview, clearHover, hoveredHandObjectId, scheduleHoverTarget]);
 
+  const resumeHandPointer = useCallback(() => {
+    keyboardNavigationRef.current = false;
+    setKeyboardNavigationActive(false);
+    setKeyboardSelectedObjectId(null);
+    if (keyboardExitTimerRef.current) {
+      clearTimeout(keyboardExitTimerRef.current);
+      keyboardExitTimerRef.current = null;
+    }
+  }, []);
+  const suspendHandPointer = useKeyboardPointerSuspend(resumeHandPointer);
+
   const handleKeyboardNavigation = useCallback(() => {
+    suspendHandPointer();
+    if (hoverActivateTimerRef.current) {
+      clearTimeout(hoverActivateTimerRef.current);
+      hoverActivateTimerRef.current = null;
+    }
     keyboardNavigationRef.current = true;
     setKeyboardNavigationActive(true);
     if (keyboardExitTimerRef.current) {
@@ -1048,7 +1114,7 @@ export default function HandZone({
       hoverClearTimerRef.current = null;
     }
     setHoveredHandObjectId(null);
-  }, []);
+  }, [suspendHandPointer]);
 
   const handleCardFocus = useCallback((_event, card) => {
     handleHoverEnter(card.id);
@@ -1058,6 +1124,7 @@ export default function HandZone({
     if (keyboardNavigationRef.current) setPinnedHandObjectId(String(card.id));
   }, [handleHoverEnter]);
   const handleHoverLeave = useCallback(() => {
+    if (performance.now() < hoverSuppressedUntilRef.current) return;
     if (hoverActivateTimerRef.current) {
       clearTimeout(hoverActivateTimerRef.current);
       hoverActivateTimerRef.current = null;
@@ -1122,6 +1189,7 @@ export default function HandZone({
   }, [hoverableHandObjectIds, isMobileFan, selectedObjectIdKey]);
 
   const handleHandPointerMove = useCallback((event) => {
+    if (performance.now() < hoverSuppressedUntilRef.current) return;
     if (event.pointerType === "touch" || activePointerIdRef.current != null) return;
     if (keyboardNavigationRef.current) {
       const pointerOverHandCard = resolveHandHoverObjectId(event.clientX, event.clientY) != null;
@@ -1442,9 +1510,9 @@ export default function HandZone({
           : isActionLinkedHover ? "action-link" : baseGlowKind;
         const cardObjectId = String(card.id);
         const isDragSource = dragSourceObjectId === cardObjectId;
-        const isHovered = !isDragSource && !keyboardNavigationActive && hoveredHandObjectId === cardObjectId;
+        const isHovered = !handHoverSuppressed && !isDragSource && !keyboardNavigationActive && hoveredHandObjectId === cardObjectId;
         const isKeyboardSelected = !isDragSource && keyboardNavigationActive && keyboardSelectedObjectId === cardObjectId;
-        const isInspected = !isDragSource && !isMobileFan && (
+        const isInspected = !handHoverSuppressed && !isDragSource && !isMobileFan && (
           ((selectedObjectIdKey != null && cardObjectId === selectedObjectIdKey)
             || cardObjectId === keyboardSelectedObjectId)
           || cardObjectId === pinnedHandObjectId
@@ -1509,9 +1577,9 @@ export default function HandZone({
         : isActionLinkedHover ? "action-link" : baseGlowKind;
       const extraObjectId = String(extra.id);
       const isDragSource = dragSourceObjectId === extraObjectId;
-      const isHovered = !isDragSource && !keyboardNavigationActive && hoveredHandObjectId === extraObjectId;
+      const isHovered = !handHoverSuppressed && !isDragSource && !keyboardNavigationActive && hoveredHandObjectId === extraObjectId;
       const isKeyboardSelected = !isDragSource && keyboardNavigationActive && keyboardSelectedObjectId === extraObjectId;
-      const isInspected = !isDragSource && !isMobileFan && (
+      const isInspected = !handHoverSuppressed && !isDragSource && !isMobileFan && (
           ((selectedObjectIdKey != null && extraObjectId === selectedObjectIdKey)
             || extraObjectId === keyboardSelectedObjectId)
           || extraObjectId === pinnedHandObjectId
@@ -1578,9 +1646,9 @@ export default function HandZone({
           : isActionLinkedHover ? "action-link" : baseGlowKind;
         const cardObjectId = String(card.id);
         const isDragSource = dragSourceObjectId === cardObjectId;
-        const isHovered = !isDragSource && !keyboardNavigationActive && hoveredHandObjectId === cardObjectId;
+        const isHovered = !handHoverSuppressed && !isDragSource && !keyboardNavigationActive && hoveredHandObjectId === cardObjectId;
         const isKeyboardSelected = !isDragSource && keyboardNavigationActive && keyboardSelectedObjectId === cardObjectId;
-        const isInspected = !isDragSource && !isMobileFan && (
+        const isInspected = !handHoverSuppressed && !isDragSource && !isMobileFan && (
           ((selectedObjectIdKey != null && cardObjectId === selectedObjectIdKey)
             || cardObjectId === keyboardSelectedObjectId)
           || cardObjectId === pinnedHandObjectId
@@ -1656,9 +1724,9 @@ export default function HandZone({
         : isActionLinkedHover ? "action-link" : baseGlowKind;
       const extraObjectId = String(extra.id);
       const isDragSource = dragSourceObjectId === extraObjectId;
-      const isHovered = !isDragSource && !keyboardNavigationActive && hoveredHandObjectId === extraObjectId;
+      const isHovered = !handHoverSuppressed && !isDragSource && !keyboardNavigationActive && hoveredHandObjectId === extraObjectId;
       const isKeyboardSelected = !isDragSource && keyboardNavigationActive && keyboardSelectedObjectId === extraObjectId;
-      const isInspected = !isDragSource && !isMobileFan && (
+      const isInspected = !handHoverSuppressed && !isDragSource && !isMobileFan && (
           ((selectedObjectIdKey != null && extraObjectId === selectedObjectIdKey)
             || extraObjectId === keyboardSelectedObjectId)
           || extraObjectId === pinnedHandObjectId
@@ -1720,9 +1788,7 @@ export default function HandZone({
             >
               {handEntries.map((entry) => renderVerticalEntry(entry))}
               {handCards.length === 0 && extraCards.length === 0 && (
-                <div className="mobile-hand-rail-empty text-muted-foreground p-2 text-center text-[11px] italic">
-                  Empty hand
-                </div>
+                <div className="mobile-hand-rail-empty text-muted-foreground p-2 text-center text-[11px] italic">{ui("Empty hand")}</div>
               )}
             </div>
           </div>
@@ -1772,7 +1838,7 @@ export default function HandZone({
               ))}
 
               {handCards.length === 0 && extraCards.length === 0 && (
-                <div className="text-muted-foreground text-[17px] p-3 italic">Empty hand</div>
+                <div className="text-muted-foreground text-[17px] p-3 italic">{ui("Empty hand")}</div>
               )}
             </div>
           </div>
@@ -1785,8 +1851,7 @@ export default function HandZone({
   const backs = Math.min(player.hand_size, 8);
   return (
     <section className="border border-[#41566f] bg-[#10161f] p-2 grid gap-1.5 h-full overflow-hidden" style={{ gridTemplateRows: "auto minmax(0,1fr)" }}>
-      <h3 className="m-0 text-[#a4bdd7] uppercase tracking-wider text-[16px] font-semibold">
-        Hand ({player.hand_size})
+      <h3 className="m-0 text-[#a4bdd7] uppercase tracking-wider text-[16px] font-semibold">{ui("Hand (")}{player.hand_size})
       </h3>
       <div className="flex gap-1.5 flex-nowrap pb-0.5 items-end min-h-0 overflow-hidden">
         {backs > 0
@@ -1801,10 +1866,10 @@ export default function HandZone({
                   minHeight: `${handDimensions.cardH}px`,
                 }}
               >
-                <span className="card-label text-muted-foreground">Card</span>
+                <span className="card-label text-muted-foreground">{ui("Card")}</span>
               </div>
             ))
-          : <div className="text-muted-foreground text-[17px] p-3 italic">Empty hand</div>
+          : <div className="text-muted-foreground text-[17px] p-3 italic">{ui("Empty hand")}</div>
         }
       </div>
     </section>

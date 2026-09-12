@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { useGame } from "@/context/GameContext";
 import PlayerStackAlert from "@/components/board/PlayerStackAlert";
@@ -23,6 +24,7 @@ export default function StackCard({
   entryMotion = "default",
   variant = "default",
 }) {
+  const ui = useUiText();
   const { state } = useGame();
   const name = entry.name || `Object#${entry.id}`;
   const artUrl = useScryfallImageUrl(name, "art_crop");
@@ -163,9 +165,7 @@ export default function StackCard({
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
-        >
-          img
-        </a>
+        >{ui("img")}</a>
       )}
 
       {hasReorderControls && (
@@ -178,8 +178,8 @@ export default function StackCard({
               event.stopPropagation();
               reorderControls.onMoveLeft?.();
             }}
-            aria-label={reorderControls.leftLabel || `Move ${name} toward the top of the stack`}
-            title={reorderControls.leftTitle || "Move toward the top of the stack"}
+            aria-label={ui(reorderControls.leftLabel || `Move ${name} toward the top of the stack`)}
+            title={ui(reorderControls.leftTitle || "Move toward the top of the stack")}
           >
             <ArrowUp className="size-3.5" />
           </button>
@@ -191,8 +191,8 @@ export default function StackCard({
               event.stopPropagation();
               reorderControls.onMoveRight?.();
             }}
-            aria-label={reorderControls.rightLabel || `Move ${name} toward the bottom of the stack`}
-            title={reorderControls.rightTitle || "Move toward the bottom of the stack"}
+            aria-label={ui(reorderControls.rightLabel || `Move ${name} toward the bottom of the stack`)}
+            title={ui(reorderControls.rightTitle || "Move toward the bottom of the stack")}
           >
             <ArrowDown className="size-3.5" />
           </button>
@@ -227,7 +227,7 @@ export default function StackCard({
               {name}
             </div>
             <div className="mt-1 flex items-center gap-2 text-[11px] uppercase tracking-[0.12em] text-[#8ec4ff]">
-              <span>{kindLabel}</span>
+              <span>{ui(kindLabel)}</span>
             </div>
             {subtitle && (
               <div className="stack-card-effect mt-1 text-[11px] font-semibold uppercase leading-[1.2] tracking-[0.08em] text-[#91cdfc]">

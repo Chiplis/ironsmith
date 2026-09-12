@@ -209,7 +209,7 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
 .zone-exile-effect {
   position: fixed;
   transform-origin: 50% 50%;
-  animation: zone-exile-source-only-root 2200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: zone-exile-source-only-root var(--exile-source-duration, 2200ms) cubic-bezier(0.16, 1, 0.3, 1) both;
   will-change: transform, opacity, filter;
 }
 
@@ -223,7 +223,7 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   filter: blur(3px) saturate(0.8);
   opacity: 0;
   transform: scale(0.74);
-  animation: zone-exile-source-only-halo 2200ms ease-out forwards;
+  animation: zone-exile-source-only-halo var(--exile-source-duration, 2200ms) ease-out forwards;
 }
 
 .zone-exile-card-proxy {
@@ -234,7 +234,7 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   background: transparent;
   box-shadow: none;
   transform-origin: 50% 52%;
-  animation: zone-exile-source-only-card-proxy 2200ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: zone-exile-source-only-card-proxy var(--exile-source-duration, 2200ms) cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .zone-exile-card-proxy img {
@@ -245,7 +245,7 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   object-fit: cover;
   opacity: 0.94;
   filter: saturate(1.08) contrast(1.08) brightness(1.02);
-  animation: zone-exile-source-only-art 2200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: zone-exile-source-only-art var(--exile-source-duration, 2200ms) cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .zone-exile-source-clone {
@@ -254,7 +254,7 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   z-index: 0;
   overflow: hidden;
   border-radius: 0;
-  animation: zone-exile-source-only-art 2200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: zone-exile-source-only-art var(--exile-source-duration, 2200ms) cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .zone-exile-source-clone > .game-card {
@@ -299,7 +299,7 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   clip-path: polygon(18% 0, 100% 0, 82% 12%, 100% 26%, 78% 42%, 100% 58%, 76% 74%, 100% 100%, 8% 100%, 30% 82%, 10% 66%, 32% 50%, 12% 34%, 34% 18%);
   opacity: 0;
   mix-blend-mode: screen;
-  animation: zone-exile-source-only-whiteout 2200ms ease-out forwards;
+  animation: zone-exile-source-only-whiteout var(--exile-source-duration, 2200ms) ease-out forwards;
 }
 
 .zone-exile-card-dissolve {
@@ -317,7 +317,7 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   transform: translate3d(86%, 0, 0) scaleX(0.82);
   filter: blur(0.5px);
   mix-blend-mode: screen;
-  animation: zone-exile-dissolve 2200ms ease-in forwards;
+  animation: zone-exile-dissolve var(--exile-source-duration, 2200ms) ease-in forwards;
 }
 
 .zone-exile-wings {
@@ -619,28 +619,28 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
 }
 
 .zone-exile-effect--source-only {
-  animation: zone-exile-source-only-root 2200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: zone-exile-source-only-root var(--exile-source-duration, 2200ms) cubic-bezier(0.16, 1, 0.3, 1) both;
   z-index: 1;
 }
 
 .zone-exile-effect--source-only .zone-exile-halo {
   animation-name: zone-exile-source-only-halo;
-  animation-duration: 2200ms;
+  animation-duration: var(--exile-source-duration, 2200ms);
 }
 
 .zone-exile-effect--source-only .zone-exile-card-proxy {
   animation-name: zone-exile-source-only-card-proxy;
-  animation-duration: 2200ms;
+  animation-duration: var(--exile-source-duration, 2200ms);
 }
 
 .zone-exile-effect--source-only .zone-exile-source-clone,
 .zone-exile-effect--source-only .zone-exile-card-proxy img {
-  animation: zone-exile-source-only-art 2200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: zone-exile-source-only-art var(--exile-source-duration, 2200ms) cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .zone-exile-effect--source-only .zone-exile-card-whiteout {
   animation-name: zone-exile-source-only-whiteout;
-  animation-duration: 2200ms;
+  animation-duration: var(--exile-source-duration, 2200ms);
 }
 
 .zone-exile-effect--to-inspector .zone-exile-card-proxy {
@@ -3550,4 +3550,14 @@ body {
   .battlefield-panel-header::before {
     background-size: 180px 30px;
   }
+}
+
+/* Let the tucked hand settle before it can acquire hover again after a drop. */
+html[data-hand-drop-cooldown] .hand-reveal-shell,
+html[data-hand-drop-cooldown] .hand-reveal-shell *,
+html[data-hand-drop-cooldown] .hand-layout-item,
+html[data-hand-drop-cooldown] .hand-layout-item *,
+html[data-hand-drop-cooldown] .game-card.hand-card,
+html[data-hand-drop-cooldown] .game-card.hand-card * {
+  pointer-events: none !important;
 }

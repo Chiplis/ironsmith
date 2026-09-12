@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useCallback, useEffect, useMemo, useState, useId } from "react";
 import useModalFocus from "@/hooks/useModalFocus";
 import useViewportLayout from "@/hooks/useViewportLayout";
@@ -13,6 +14,7 @@ function isStandaloneDisplayMode() {
 }
 
 export default function MobileLandscapeGate() {
+  const ui = useUiText();
   const {
     portraitCompactViewport,
     nonDesktopViewport,
@@ -59,11 +61,9 @@ export default function MobileLandscapeGate() {
   return (
     <div className="mobile-landscape-gate" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
       <div className="mobile-landscape-gate-panel">
-        <div className="mobile-landscape-gate-kicker">Landscape Required</div>
-        <h2 id={titleId} className="mobile-landscape-gate-title">Rotate your phone</h2>
-        <p className="mobile-landscape-gate-copy">
-          Ironsmith is tuned for landscape play on phones. Turn your device sideways to continue.
-        </p>
+        <div className="mobile-landscape-gate-kicker">{ui("Landscape Required")}</div>
+        <h2 id={titleId} className="mobile-landscape-gate-title">{ui("Rotate your phone")}</h2>
+        <p className="mobile-landscape-gate-copy">{ui("Ironsmith is tuned for landscape play on phones. Turn your device sideways to continue.")}</p>
         <button
           type="button"
           className="stone-pill mobile-landscape-gate-button"
@@ -71,14 +71,12 @@ export default function MobileLandscapeGate() {
             const rotated = await tryLockLandscape();
             setRotationMessage(rotated ? "Landscape rotation requested." : "Turn your phone sideways. If it stays upright, turn off rotation lock on your device.");
           }}
-        >
-          Try landscape
-        </button>
-        {rotationMessage && <p className="mobile-landscape-gate-copy" role="status">{rotationMessage}</p>}
+        >{ui("Try landscape")}</button>
+        {rotationMessage && <p className="mobile-landscape-gate-copy" role="status">{ui(rotationMessage)}</p>}
         <p className="mobile-landscape-gate-note">
           {standaloneMode
-            ? "Standalone mode is active. Once the device rotates, the table will fill the screen."
-            : "Safari browser tabs keep browser chrome visible. Add the app to your Home Screen for the most screen space."}
+            ? ui("Standalone mode is active. Once the device rotates, the table will fill the screen.")
+            : ui("Safari browser tabs keep browser chrome visible. Add the app to your Home Screen for the most screen space.")}
         </p>
       </div>
     </div>

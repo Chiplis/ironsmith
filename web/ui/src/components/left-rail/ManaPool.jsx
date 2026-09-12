@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { MANA_SYMBOLS } from "@/lib/constants";
 import { ManaSymbol } from "@/lib/mana-symbols";
 import { cn } from "@/lib/utils";
@@ -8,6 +9,7 @@ export default function ManaPool({
   compact = false,
   className = "",
 }) {
+  const ui = useUiText();
   const safePool = pool && typeof pool === "object" ? pool : {};
   if (!alwaysVisible && safePool !== pool) return null;
 
@@ -24,7 +26,7 @@ export default function ManaPool({
           compact && "mana-pool-chip--compact"
         )}
       >
-        <span aria-label={`${safeAmount} ${label} mana in pool`} className="inline-flex items-center">
+        <span aria-label={ui("{0} {1} mana in pool", { 0: safeAmount, 1: ui(label) })} className="inline-flex items-center">
           <ManaSymbol sym={symbol} size={compact ? 12 : 14} />
         </span>
         <span className="min-w-[7px] text-center text-[11px] leading-none font-bold text-foreground">
@@ -44,8 +46,8 @@ export default function ManaPool({
         compact && "mana-pool-inline--compact",
         className
       )}
-      aria-label="Mana pool by type"
-      title="Mana pool by type"
+      aria-label={ui("Mana pool by type")}
+      title={ui("Mana pool by type")}
     >
       {chips}
     </div>

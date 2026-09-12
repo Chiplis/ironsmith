@@ -1,3 +1,7 @@
+import { cardArtColors } from "@/lib/card-art-colors";
+import LoadingCardArt from "./LoadingCardArt";
+import useUiText from "@/i18n/useUiText";
+import { translateUiText as ui } from "@/i18n/catalog";
 import { useCastTargeting, useCastTargetHover } from "@/context/DragContext";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
@@ -8,11 +12,10 @@ import { debounceClick, debouncePointerDown } from "@/lib/interactionDebounce";
 import { cn } from "@/lib/utils";
 import { getPlayerAccent } from "@/lib/player-colors";
 import { fetchScryfallCardMeta } from "@/lib/scryfall";
-import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
+import { useScryfallImage } from "@/hooks/useScryfallImageUrl";
 import { useTranslatedCardName } from "@/i18n/useTranslatedCardName";
 
 const semanticScoreCache = new Map();
-const HAND_CORNER_REPAIR_VERSION = 2;
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -247,13 +250,14 @@ function buildCounterBadge(counter) {
 }
 
 function BattlefieldCounterBadge({ badge }) {
+  const ui = useUiText();
   const amountLabel = badge.amount > 99 ? "99+" : String(badge.amount);
   const labelFontSize = badge.shortLabel.length >= 3 ? 9 : 10;
   const amountFontSize = amountLabel.length >= 3 ? 10 : 12;
 
   return (
-    <span className="battlefield-counter-chip" title={badge.fullLabel}>
-      <svg viewBox="0 0 84 28" role="img" aria-label={badge.fullLabel} preserveAspectRatio="none">
+    <span className="battlefield-counter-chip" title={ui(badge.fullLabel)}>
+      <svg viewBox="0 0 84 28" role="img" aria-label={ui(badge.fullLabel)} preserveAspectRatio="none">
         <path
           d="M10 1H69L83 14L69 27H10L1 14Z"
           fill="rgba(6, 11, 18, 0.96)"
@@ -288,7 +292,7 @@ function BattlefieldCounterBadge({ badge }) {
           fontWeight="800"
           fontFamily="Rajdhani, Avenir Next, Segoe UI, system-ui, sans-serif"
         >
-          {amountLabel}
+          {ui(amountLabel)}
         </text>
         <text
           x="50"
@@ -300,7 +304,7 @@ function BattlefieldCounterBadge({ badge }) {
           letterSpacing="1.1"
           fontFamily="Rajdhani, Avenir Next, Segoe UI, system-ui, sans-serif"
         >
-          {badge.shortLabel}
+          {ui(badge.shortLabel)}
         </text>
       </svg>
     </span>
@@ -775,7 +779,7 @@ function renderBattlefieldTokenBadgeContent(display, slot, ids) {
         textAnchor="middle"
         className={textClassName}
       >
-        {normalized.label}
+        {ui(normalized.label)}
       </text>
     );
   }
@@ -852,6 +856,7 @@ export default function GameCard({
   battlefieldVisualMode = "classic",
   sourceImageUrl = null,
 }) {
+  const ui = useUiText();
   const { game, inspectorDebug, state, playerAccentOverrides } = useGame();
   const sourceAccent = getPlayerAccent(state?.players || [], card.owner ?? card.controller, state?.perspective, playerAccentOverrides);
   const castIntent = useCastTargeting();
@@ -873,7 +878,7 @@ export default function GameCard({
   const displayName = useTranslatedCardName(name, card.oracle_id || card.oracleId || null);
   const usePortraitBattlefield = variant === "battlefield" && battlefieldVisualMode === "portrait";
   const artVersion = variant === "hand" || usePortraitBattlefield ? "normal" : "art_crop";
-  const resolvedArtUrl = useScryfallImageUrl(sourceImageUrl ? "" : name, artVersion);
+  const { url: resolvedArtUrl, ready: artResolved } = useScryfallImage(sourceImageUrl ? "" : name, artVersion);
   const artUrl = sourceImageUrl || resolvedArtUrl;
   const imageLoading = variant === "hand" ? "eager" : "lazy";
   const imageFetchPriority = variant === "hand" ? "high" : "auto";
@@ -1486,10 +1491,10 @@ export default function GameCard({
       data-member-stable-ids={memberStableIds.join(",")}
       data-card-name={name}
       data-hand-irregular-corners={variant === "hand" && repairedHandArt?.source === artUrl && repairedHandArt.hasIrregularCorners ? "true" : undefined}
-      title={suppressTooltip || variant === "battlefield" ? undefined : (groupSize > 1 ? `${displayName} (${groupSize} grouped permanents)` : displayName)}
+      title={ui(suppressTooltip || variant === "battlefield" ? undefined : (groupSize > 1 ? `${displayName} (${groupSize} grouped permanents)` : displayName))}
       role={keyboardInteractive ? "button" : undefined}
       tabIndex={keyboardInteractive ? 0 : undefined}
-      aria-label={keyboardInteractive ? `${displayName}${isPlayable ? ", playable" : ""}` : undefined}
+      aria-label={ui(keyboardInteractive ? `${displayName}${isPlayable ? ", playable" : ""}` : undefined)}
       aria-pressed={keyboardInteractive && isInspected ? true : undefined}
       onClick={debouncedOnClick}
       onKeyDown={(event) => {
@@ -1624,9 +1629,12 @@ export default function GameCard({
         {chosenObjectId != null && (
           <SelectionCheckBadge objectId={chosenObjectId} />
         )}
-        {artUrl && (variant !== "battlefield" || !useTokenBattlefield) && (
-          <img
-            key={variant === "hand" ? `${artUrl}-${HAND_CORNER_REPAIR_VERSION}` : artUrl}
+        {(variant !== "battlefield" || !useTokenBattlefield) && (
+          <LoadingCardArt
+            sourceKey={artUrl}
+            colors={cardArtColors(resolvedBattlefieldCard)}
+            pending={!artResolved}
+            variant={variant === "battlefield" ? "battlefield" : "hand"}
             className={cn(
               "absolute inset-0 w-full h-full z-0 pointer-events-none",
               variant === "hand" || usePortraitBattlefield ? "object-cover object-top" : "object-fill",
@@ -1743,9 +1751,14 @@ export default function GameCard({
                 className="battlefield-token-ring-glint"
               />
 
-              {artUrl && (
-                <image
-                  href={artUrl}
+              {(
+                <LoadingCardArt
+                  svg
+                  sourceKey={artUrl}
+                  src={artUrl}
+                  colors={cardArtColors(resolvedBattlefieldCard)}
+                  pending={!artResolved}
+                  variant="battlefield"
                   x="22"
                   y="7"
                   width="76"
@@ -1791,12 +1804,12 @@ export default function GameCard({
 
             {primaryBattlefieldInfo ? (
               <span className="sr-only">
-                {primaryBattlefieldInfo.title}
+                {ui(primaryBattlefieldInfo.title)}
               </span>
             ) : null}
             {secondaryBattlefieldInfo ? (
               <span className="sr-only">
-                {secondaryBattlefieldInfo.title}
+                {ui(secondaryBattlefieldInfo.title)}
               </span>
             ) : null}
           </div>
@@ -1804,9 +1817,9 @@ export default function GameCard({
           showDebugSimilarityBadge ? (
             <span
               className="absolute right-1.5 top-1 z-2 rounded-none border border-[#6aa6d5]/50 bg-[rgba(7,13,20,0.88)] px-1 py-0.5 text-[10px] font-semibold leading-none tracking-wide text-[#bfe5ff] shadow-[0_2px_6px_rgba(0,0,0,0.32)]"
-              title={`Similarity score: ${debugSimilarityLabel}`}
+              title={ui("Similarity score: {0}", { 0: debugSimilarityLabel })}
             >
-              {debugSimilarityLabel}
+              {ui(debugSimilarityLabel)}
             </span>
           ) : null
         ) : showBattlefieldHeaderOverlay ? (
@@ -1822,9 +1835,9 @@ export default function GameCard({
               {showDebugSimilarityBadge && (
                 <span
                   className="rounded-none border border-[#6aa6d5]/50 bg-[rgba(7,13,20,0.88)] px-1 py-0.5 text-[10px] font-semibold leading-none tracking-wide text-[#bfe5ff] shadow-[0_2px_6px_rgba(0,0,0,0.32)]"
-                  title={`Similarity score: ${debugSimilarityLabel}`}
+                  title={ui("Similarity score: {0}", { 0: debugSimilarityLabel })}
                 >
-                  {debugSimilarityLabel}
+                  {ui(debugSimilarityLabel)}
                 </span>
               )}
             </span>

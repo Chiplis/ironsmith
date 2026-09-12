@@ -7,6 +7,7 @@ import { CombatArrowProvider } from "../src/context/CombatArrowContext";
 import { useCombatArrows } from "../src/context/useCombatArrows";
 import { I18nProvider } from "../src/i18n/I18nContext";
 import { TooltipProvider } from "../src/components/ui/tooltip";
+import ArrowOverlay from "../src/components/overlays/ArrowOverlay";
 import TableCore from "../src/components/board/TableCore";
 import "../src/index.css";
 
@@ -68,11 +69,11 @@ window.__dragArrowHistory = [];
 window.__cancelled = 0;
 
 export function ArrowProbe() {
-  const { dragArrow } = useCombatArrows();
+  const { dragArrow, dragArrowRef } = useCombatArrows();
   useEffect(() => {
-    window.__dragArrow = dragArrow ? { ...dragArrow } : null;
+    Object.defineProperty(window, "__dragArrow", { configurable: true, get: () => dragArrowRef.current });
     if (dragArrow) window.__dragArrowHistory.push({ ...dragArrow });
-  }, [dragArrow]);
+  }, [dragArrow, dragArrowRef]);
   return null;
 }
 
@@ -123,6 +124,7 @@ export function Fixture() {
             <CombatArrowProvider>
               <TooltipProvider>
                 <ArrowProbe />
+                <ArrowOverlay />
                 <CastGestureRig />
                 <main style={{ height: "96vh" }}>
                   <TableCore

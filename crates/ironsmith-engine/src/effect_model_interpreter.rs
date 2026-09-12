@@ -505,6 +505,7 @@ where
             enters_attacking: payload.enters_attacking,
             entry_tapped_attacking_followup: payload.entry_tapped_attacking_followup,
             attack_target_mode: payload.attack_target_mode.clone(),
+            must_attack_player_this_turn: payload.must_attack_player_this_turn.clone(),
             exile_at_end_of_combat: payload.exile_at_end_of_combat,
             exile_at_end_of_combat_reference_surface: payload
                 .exile_at_end_of_combat_reference_surface,

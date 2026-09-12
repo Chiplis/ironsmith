@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useGame } from "@/context/GameContext";
 import { DEFAULT_PLAYER_ACCENT, getPlayerAccent } from "@/lib/player-colors";
 import { cn } from "@/lib/utils";
@@ -5,6 +6,7 @@ import { playerDisplayName } from "@/lib/player-display";
 import ManaPool from "./ManaPool";
 
 export default function PlayerCard({ player, isActive, isPerspective }) {
+  const ui = useUiText();
   const { state, playerAccentOverrides } = useGame();
   const playerAccent = getPlayerAccent(
     state?.players || [],
@@ -54,33 +56,25 @@ export default function PlayerCard({ player, isActive, isPerspective }) {
       </div>
 
       <div className="flex flex-wrap gap-1 text-[11px] text-muted-foreground">
-        <span className="bg-background/70 px-1.5 rounded-none" title="Library">
-          Lib <span className="font-bold text-foreground">{player.library_size}</span>
+        <span className="bg-background/70 px-1.5 rounded-none" title={ui("Library")}>{ui("Lib") + " "}<span className="font-bold text-foreground">{player.library_size}</span>
         </span>
-        <span className="bg-background/70 px-1.5 rounded-none" title="Hand">
-          Hand <span className="font-bold text-foreground">{player.hand_size}</span>
+        <span className="bg-background/70 px-1.5 rounded-none" title={ui("Hand")}>{ui("Hand") + " "}<span className="font-bold text-foreground">{player.hand_size}</span>
         </span>
-        <span className="bg-background/70 px-1.5 rounded-none" title="GY">
-          GY <span className="font-bold text-foreground">{player.graveyard_size}</span>
+        <span className="bg-background/70 px-1.5 rounded-none" title={ui("GY")}>{ui("GY") + " "}<span className="font-bold text-foreground">{player.graveyard_size}</span>
         </span>
-        <span className="bg-background/70 px-1.5 rounded-none" title="Exile">
-          Exl <span className="font-bold text-foreground">{exileCards.length}</span>
+        <span className="bg-background/70 px-1.5 rounded-none" title={ui("Exile")}>{ui("Exl") + " "}<span className="font-bold text-foreground">{exileCards.length}</span>
         </span>
-        <span className="bg-background/70 px-1.5 rounded-none" title="CZ">
-          Cmd <span className="font-bold text-foreground">{player.command_size ?? commandCards.length}</span>
+        <span className="bg-background/70 px-1.5 rounded-none" title={ui("CZ")}>{ui("Cmd") + " "}<span className="font-bold text-foreground">{player.command_size ?? commandCards.length}</span>
         </span>
         {anteCards.length > 0 && (
-          <span className="bg-background/70 px-1.5 rounded-none" title="Ante">
-            Ante <span className="font-bold text-foreground">{player.ante_size ?? anteCards.length}</span>
+          <span className="bg-background/70 px-1.5 rounded-none" title={ui("Ante")}>{ui("Ante") + " "}<span className="font-bold text-foreground">{player.ante_size ?? anteCards.length}</span>
           </span>
         )}
         {sideboardCards.length > 0 && (
-          <span className="bg-background/70 px-1.5 rounded-none" title="Sideboard">
-            SB <span className="font-bold text-foreground">{sideboardCards.length}</span>
+          <span className="bg-background/70 px-1.5 rounded-none" title={ui("Sideboard")}>{ui("SB") + " "}<span className="font-bold text-foreground">{sideboardCards.length}</span>
           </span>
         )}
-        <span className="bg-background/70 px-1.5 rounded-none" title="Battlefield">
-          BF <span className="font-bold text-foreground">{battlefieldCount}</span>
+        <span className="bg-background/70 px-1.5 rounded-none" title={ui("Battlefield")}>{ui("BF") + " "}<span className="font-bold text-foreground">{battlefieldCount}</span>
         </span>
       </div>
 

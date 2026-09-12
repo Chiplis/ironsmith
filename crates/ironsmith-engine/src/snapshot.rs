@@ -189,6 +189,9 @@ pub struct ObjectSnapshot {
     pub tapped: bool,
     /// Whether the object was attacking.
     pub attacking: bool,
+    /// Last-known goad designation for a snapshot with calculated state.
+    /// Raw snapshots leave this unset rather than recursively calculating layers.
+    pub goaded: Option<bool>,
     /// Whether the object was flipped.
     pub flipped: bool,
     /// Whether the object was face-down.
@@ -279,6 +282,7 @@ impl ObjectSnapshot {
                 .combat
                 .as_ref()
                 .is_some_and(|combat| crate::combat_state::is_attacking(combat, obj.id)),
+            goaded: None,
             flipped: game.is_flipped(obj.id),
             face_down: game.is_face_down(obj.id),
             transform_count: game.transform_count(obj.id),
@@ -395,6 +399,7 @@ impl ObjectSnapshot {
         copiable_values: Option<CopiableValues>,
     ) -> Self {
         let mut snapshot = Self::from_object(obj, game);
+        snapshot.goaded = Some(obj.zone == Zone::Battlefield && game.is_goaded(obj.id));
         if let Some(copiable_values) = copiable_values {
             snapshot.copiable_values = copiable_values;
         }

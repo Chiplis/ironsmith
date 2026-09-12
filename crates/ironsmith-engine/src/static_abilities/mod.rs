@@ -495,6 +495,9 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// A continuously evaluated goad designation from this source.
+    fn goads_matching(&self) -> Option<&crate::target::ObjectFilter> { None }
+
     /// Player currently goading this creature through a static ability.
     fn goaded_by_player(
         &self,
@@ -1711,6 +1714,10 @@ impl StaticAbility {
         controller: PlayerId,
     ) -> Option<PlayerId> {
         self.0.required_attack_player(game, source, controller)
+    }
+
+    pub fn goads_matching(&self) -> Option<&crate::target::ObjectFilter> {
+        self.0.goads_matching()
     }
 
     pub fn goaded_by_player(

@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {SymbolText} from '@/lib/mana-symbols';
 import {mergeRegisteredLineSegments,registeredColumns,registeredFieldLayouts,registeredRuleAssignments,trimRegisteredNameCosts} from '@/lib/card-region-layout';
@@ -13,6 +14,7 @@ const same=(a,b)=>String(a||'').normalize('NFKC').replace(/\s+/g,' ').trim()===S
 const flows=field=>['rule','flavor'].includes(field.kind);
 
 function RegisteredField({field,layout,flow,unit,scale=1,onFit,onMeasure,forceReplace,text,actions,group,imageUrl,typography,name,onActivate,highlighted}) {
+  const ui = useUiText();
   // Errata'd printings keep stale wording in the box: replace it even when the
   // live text already equals the current oracle text. A flowed column masks
   // every paragraph, since moved text would otherwise land on printed lines.
@@ -48,17 +50,17 @@ function RegisteredField({field,layout,flow,unit,scale=1,onFit,onMeasure,forceRe
       data-replaced={showReplacement?'true':'false'} data-live-text={text} data-printed-text={field.text} data-outlined={field.outlined?'true':undefined}
       data-stack-highlighted={highlighted?'true':undefined} data-unprinted={field.unprinted?'true':undefined}
       data-centred={layout.centred?'true':undefined} data-flow-top={flow?flow.top.toFixed(4):undefined} data-flow-bottom={flow?flow.bottom.toFixed(4):undefined} data-flow-limit={flow?flow.limit.toFixed(4):undefined}>
-      {showReplacement ? <CardFrameRulesBox label={text} refitKey={`${unit}|${scale}`} onFit={onFit?fit=>onFit(fit*scale):undefined} onMeasure={onMeasure}>
+      {showReplacement ? <CardFrameRulesBox label={ui(text)} refitKey={`${unit}|${scale}`} onFit={onFit?fit=>onFit(fit*scale):undefined} onMeasure={onMeasure}>
         {group?<GroupedManaAbility group={group} name={name} onActivate={onActivate}/>:actions.length?
-          <button className="registered-card-frame__action" disabled={!available} onClick={activate} aria-label={`${name}: ${text}`}>{content}</button>:content}
+          <button className="registered-card-frame__action" disabled={!available} onClick={activate} aria-label={ui("{0}: {1}", { 0: name, 1: text })}>{content}</button>:content}
       </CardFrameRulesBox>:group?<div className="registered-card-frame__mana-hotspots">
         {group.options.map((option,index)=>{
           const selected=option.actions.find(a=>!a.payment_pending&&a.mana_payment_available!==false);
-          return <button key={option.output} disabled={!selected||!onActivate} aria-label={`Activate ${name}: ${group.prefix}${option.output}${group.suffix}`}
+          return <button key={option.output} disabled={!selected||!onActivate} aria-label={ui("Activate {0}: {1}{2}{3}", { 0: name, 1: group.prefix, 2: option.output, 3: group.suffix })}
             style={{left:`${45+index*50/group.options.length}%`,width:`${50/group.options.length}%`}}
             onPointerDown={event=>event.stopPropagation()} onClick={event=>{event.stopPropagation();if(selected&&onActivate)onActivate(selected);}} />;
         })}
-      </div>:actions.length?<button className="registered-card-frame__hotspot" disabled={!available} aria-label={`${name}: ${text}`}
+      </div>:actions.length?<button className="registered-card-frame__hotspot" disabled={!available} aria-label={ui("{0}: {1}", { 0: name, 1: text })}
         onPointerDown={event=>event.stopPropagation()} onClick={activate}><span className="sr-only">{text}</span></button>:<span className="sr-only">{text}</span>}
     </div>
   </>;

@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useMemo } from "react";
 import { CircleHelp } from "lucide-react";
 import { ComicTooltip } from "@/components/ui/comic-tooltip";
@@ -12,8 +13,7 @@ import { cn } from "@/lib/utils";
 function cleanAdvanceLabel(label) {
   return String(label || "the next step")
     .replace(/^→\s*/, "")
-    .trim()
-    .toLowerCase();
+    .trim();
 }
 
 function actionKindLabel(kind) {
@@ -26,7 +26,7 @@ function actionKindLabel(kind) {
   }
 }
 
-function summarizeAvailableActions(decision) {
+function summarizeAvailableActions(decision, ui) {
   const labels = [];
   const seen = new Set();
 
@@ -35,18 +35,18 @@ function summarizeAvailableActions(decision) {
     const label = actionKindLabel(action.kind);
     if (!label || seen.has(label)) continue;
     seen.add(label);
-    labels.push(label);
+    labels.push(ui(label));
   }
 
   if (labels.length === 0) {
-    return "You can pass priority if you do not want to act.";
+    return ui("You can pass priority if you do not want to act.");
   }
 
   if (labels.length === 1) {
-    return `You can ${labels[0]} or pass priority.`;
+    return ui("You can {0} or pass priority.", { 0: labels[0] });
   }
 
-  return `You can ${labels.slice(0, -1).join(", ")}, ${labels.at(-1)}, or pass priority.`;
+  return ui("You can {0}, {1}, or pass priority.", { 0: labels.slice(0, -1).join(", "), 1: labels.at(-1) });
 }
 
 function currentPhaseGuidance(state) {
@@ -99,18 +99,18 @@ function currentPhaseGuidance(state) {
   }
 }
 
-function phaseHelpContent(state, decision, advanceLabel) {
-  const phaseLabel = formatPhase(state?.phase);
-  const stepLabel = formatStep(state?.step);
-  const hasStep = stepLabel && stepLabel !== "None";
+function phaseHelpContent(state, decision, advanceLabel, ui) {
+  const phaseLabel = ui(formatPhase(state?.phase));
+  const stepLabel = ui(formatStep(state?.step));
+  const hasStep = stepLabel && state?.step && normalizeStepKey(state.step) !== "None";
   const title = hasStep ? `${phaseLabel}: ${stepLabel}` : phaseLabel;
-  const actionSummary = summarizeAvailableActions(decision);
-  const guidance = currentPhaseGuidance(state);
-  const nextLabel = cleanAdvanceLabel(advanceLabel);
+  const actionSummary = summarizeAvailableActions(decision, ui);
+  const guidance = ui(currentPhaseGuidance(state));
+  const nextLabel = ui(cleanAdvanceLabel(advanceLabel));
 
   return {
     title,
-    description: `${guidance} ${actionSummary} The main button advances to ${nextLabel}.`,
+    description: ui("{0} {1} The main button advances to {2}.", { 0: guidance, 1: actionSummary, 2: nextLabel }),
   };
 }
 
@@ -120,15 +120,16 @@ export default function PhaseHelpPopover({
   advanceLabel,
   className = "",
 }) {
+  const ui = useUiText();
   const help = useMemo(
-    () => phaseHelpContent(state, decision, advanceLabel),
-    [advanceLabel, decision, state]
+    () => phaseHelpContent(state, decision, advanceLabel, ui),
+    [advanceLabel, decision, state, ui]
   );
 
   return (
     <ComicTooltip
-      title={help.title}
-      description={help.description}
+      title={ui(help.title)}
+      description={ui(help.description)}
       side="top"
       align="end"
       sideOffset={7}
@@ -141,7 +142,7 @@ export default function PhaseHelpPopover({
       <button
         type="button"
         className={cn("decision-phase-help-button", className)}
-        aria-label="Explain current phase"
+        aria-label={ui("Explain current phase")}
         data-decision-phase-help
         onPointerDown={(event) => {
           if (event.button != null && event.button !== 0) return;

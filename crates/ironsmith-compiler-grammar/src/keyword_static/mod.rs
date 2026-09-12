@@ -1372,6 +1372,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             parse_each_creature_can_block_additional_creature_each_combat_line
         ),
         multi_static_ability_ast_rule!(parse_anthem_and_type_color_addition_line),
+        single_static_ability_ast_rule!(parse_matching_are_goaded_line),
         multi_static_ability_ast_rule!(parse_anthem_and_goaded_line),
         multi_static_ability_ast_passthrough_rule!(parse_anthem_and_granted_ability_line),
         multi_static_ability_ast_passthrough_rule!(

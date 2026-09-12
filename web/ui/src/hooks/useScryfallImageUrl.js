@@ -18,8 +18,12 @@ export function useScryfallImage(cardName, version = "normal") {
     url: cached,
     settled: Boolean(cached) || !query,
   }));
+  const localizedSettled = localized.key === key && localized.settled;
+  const useEnglishFallback = locale === "en" || (localizedSettled && !localized.url);
   const localizedUrl = localized.key === key ? localized.url : "";
-  const currentUrl = localizedUrl || ((resolved.key === key && resolved.url) ? resolved.url : cached);
+  const currentUrl = localizedUrl || (useEnglishFallback
+    ? ((resolved.key === key && resolved.url) ? resolved.url : cached)
+    : "");
 
   useEffect(() => {
     let cancelled = false;
@@ -40,7 +44,7 @@ export function useScryfallImage(cardName, version = "normal") {
 
   useEffect(() => {
     let cancelled = false;
-    if (cached || !query) return undefined;
+    if (!useEnglishFallback || cached || !query) return undefined;
 
     resolveScryfallImageUrl(query, imageVersion)
       .then((url) => {
@@ -57,9 +61,13 @@ export function useScryfallImage(cardName, version = "normal") {
     return () => {
       cancelled = true;
     };
-  }, [cached, imageVersion, key, query]);
+  }, [cached, imageVersion, key, query, useEnglishFallback]);
 
-  return {url: currentUrl, ready: Boolean(currentUrl) || !query || (localized.key === key && localized.settled) || (resolved.key === key && resolved.settled)};
+  return {
+    url: currentUrl,
+    ready: Boolean(currentUrl) || !query
+      || (useEnglishFallback && resolved.key === key && resolved.settled),
+  };
 }
 
 export default function useScryfallImageUrl(cardName, version = "normal") {

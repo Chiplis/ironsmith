@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { forwardRef } from "react";
 import { cn } from "@/lib/utils";
 
@@ -9,13 +10,14 @@ const MobileTurnActionStack = forwardRef(function MobileTurnActionStack(
   { className },
   ref,
 ) {
+  const ui = useUiText();
   return (
     <div
       ref={ref}
       className={cn("mobile-mtga-turn-action-stack", className)}
       data-mobile-mtga-action-stack
       role="group"
-      aria-label="Turn actions"
+      aria-label={ui("Turn actions")}
     />
   );
 });

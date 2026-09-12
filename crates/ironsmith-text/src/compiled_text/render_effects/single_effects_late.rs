@@ -123,6 +123,46 @@ pub(super) fn describe_delayed_exile_referenced_controller_graveyard(
     Some("When that creature dies this turn, exile its controller's graveyard".to_string())
 }
 
+/// Render a delayed exile of an already selected object without a new target.
+pub(super) fn describe_delayed_single_tagged_exile(
+    schedule: &crate::effects::ScheduleDelayedTriggerEffect,
+) -> Option<String> {
+    if !schedule.one_shot || schedule.start_next_turn || schedule.until_end_of_turn
+        || schedule.until_end_of_combat || schedule.prepayment.is_some()
+        || schedule.duration != ironsmith_core::DelayedTriggerDuration::Forever
+        || schedule.while_any_tagged_object_in_zone.is_some()
+        || schedule.watch_ability_source || schedule.watch_all_object_targets
+        || schedule.either_of_watched_objects || !schedule.target_objects.is_empty()
+        || schedule.target_tag.is_some() || schedule.target_filter.is_some()
+        || schedule.controller != PlayerFilter::You
+        || schedule.event_value_from_prior_prevention || schedule.leading_duration_surface
+        || !schedule.trigger.downcast_ref::<crate::triggers::BeginningOfEndStepTrigger>()
+            .is_some_and(|trigger| trigger.player == PlayerFilter::Any)
+        || schedule.effects.segments.iter().any(|segment| !segment.self_replacements.is_empty())
+    {
+        return None;
+    }
+    let [effect] = schedule.effects.flattened_default_effects() else { return None; };
+    let exile = effect.downcast_ref::<crate::effects::ExileEffect>()?;
+    if exile.face_down || exile.turn_face_up { return None; }
+    match exile.spec.unhinted() {
+        ChooseSpec::Tagged(_) => {},
+        ChooseSpec::Object(filter) => {
+            let [constraint] = filter.tagged_constraints.as_slice() else { return None; };
+            if *filter != ObjectFilter::tagged(constraint.tag.clone()) { return None; }
+        },
+        _ => return None,
+    }
+    let reference = match exile.spec.source_reference_surface() {
+        None => "it",
+        Some(crate::target::SourceReferenceSurface::ThisPermanentType(noun)) => {
+            if noun == "they" { "them" } else { noun.as_str() }
+        },
+        _ => return None,
+    };
+    Some(format!("Exile {reference} at the beginning of the next end step"))
+}
+
 /// Render a one-shot end-step instruction whose condition was authored after
 /// the action. The timing belongs between the action and its trailing `if`:
 /// "Sacrifice it at the beginning of the next end step if ...".
@@ -2134,6 +2174,11 @@ pub(crate) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
         && let Some(scavenge) = describe_structural_scavenge_keyword(ability, activated)
     {
         return Some(scavenge);
+    }
+    if let AbilityKind::Activated(activated) = &ability.kind
+        && let Some(encore) = describe_structural_encore_keyword(ability, activated)
+    {
+        return Some(encore);
     }
     if let AbilityKind::Activated(activated) = &ability.kind
         && let Some(embalm) = describe_structural_embalm_keyword(ability, activated)
@@ -4893,6 +4938,66 @@ pub(super) fn describe_structural_scavenge_keyword(
     }
     let cost = keyword_base_cost_text(costs, is_exile_source_cost)?;
     Some(format!("Scavenge {cost}"))
+}
+
+fn describe_structural_encore_keyword(
+    ability: &Ability,
+    activated: &crate::ability::ActivatedAbility,
+) -> Option<String> {
+    if ability.functional_zones != [Zone::Graveyard]
+        || activated.timing != ActivationTiming::SorcerySpeed
+        || !activated.additional_restrictions.is_empty()
+        || !activated.activation_restrictions.is_empty()
+        || activated.activation_condition.is_some()
+        || !activated.mana_usage_restrictions.is_empty()
+        || !activated.choices.is_empty()
+    {
+        return None;
+    }
+    let [effect, haste] = activated.effects.flattened_default_effects() else {
+        return None;
+    };
+    let players = effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    if players.filter != PlayerFilter::Opponent
+        || players.sequential
+        || players.starting_with_controller
+        || players.stop_after_first_happened
+    {
+        return None;
+    }
+    let [copy] = players.effects.as_slice() else {
+        return None;
+    };
+    let tagged = copy.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let create = tagged
+        .effect
+        .downcast_ref::<crate::effects::CreateTokenCopyEffect>()?;
+    let mut expected =
+        crate::effects::CreateTokenCopyEffect::new(ChooseSpec::Source, 1, PlayerFilter::You)
+            .sacrifice_at_next_end_step(true);
+    expected.must_attack_player_this_turn = Some(PlayerFilter::IteratedPlayer);
+    if create != &expected {
+        return None;
+    }
+    let grant = haste.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    let expected_grant = crate::effects::ApplyContinuousEffect::new(
+        crate::continuous::EffectTarget::Filter(crate::target::ObjectFilter::tagged(
+            tagged.tag.clone(),
+        )),
+        crate::continuous::Modification::AddAbility(crate::static_abilities::StaticAbility::haste()),
+        crate::effect::Until::Forever,
+    );
+    if grant != &expected_grant {
+        return None;
+    }
+    let costs = activated.mana_cost.costs();
+    if !costs.iter().any(is_exile_source_cost) {
+        return None;
+    }
+    Some(format!(
+        "Encore {}",
+        keyword_base_cost_text(costs, is_exile_source_cost)?
+    ))
 }
 
 pub(super) fn describe_structural_embalm_keyword(

@@ -2432,10 +2432,15 @@ fn parse_predicate_spell_cast_this_turn_uses_shared_capture_parser() -> Result<(
     let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
     assert_eq!(
         parsed,
-        PredicateAst::Player(PlayerPredicateAst::PlayerCastSpellsThisTurnOrMore {
-            player: PlayerAst::You,
-            count: 2,
-        })
+        PredicateAst::ValueComparison {
+            left: Value::SpellsCastThisTurnMatching {
+                player: PlayerFilter::You,
+                filter: ObjectFilter::spell(),
+                exclude_source: true,
+            },
+            operator: ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(1),
+        }
     );
 
     for text in [

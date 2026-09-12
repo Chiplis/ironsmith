@@ -2529,7 +2529,7 @@ pub(super) fn compile_subject_verb_early(
                 );
                 Ok((vec![effect], follow_up_choices))
             } else {
-                let (effects, mut choices) = compile_effect_for_target(target, ctx, |spec| {
+                let (mut effects, mut choices) = compile_effect_for_target(target, ctx, |spec| {
                     if *source_of_your_choice {
                         let mut prevent = crate::effects::PreventDamageEffect::new(
                             amount.clone(),
@@ -2554,6 +2554,11 @@ pub(super) fn compile_subject_verb_early(
                         Effect::prevent_damage(amount.clone(), spec, duration.clone())
                     }
                 })?;
+                if target_is_any_damage_target(target) {
+                    let tag = ctx.next_tag("targeted");
+                    ctx.last_object_tag = Some(tag.clone());
+                    if let Some(effect) = effects.pop() { effects.push(effect.tag(tag)); }
+                }
                 if !follow_up_effects.is_empty() {
                     choices.extend(follow_up_choices);
                 }

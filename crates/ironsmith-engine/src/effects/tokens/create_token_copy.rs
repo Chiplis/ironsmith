@@ -223,6 +223,21 @@ fn build_token_copy_object(
 }
 
 impl EffectExecutor for CreateTokenCopyEffect {
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        _game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
+            effect: crate::effect::Effect::new(self.clone()),
+            iterated_player: ctx.iteration.iterated_player,
+        }))
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -241,14 +256,21 @@ impl EffectExecutor for CreateTokenCopyEffect {
         // carries the calculated snapshot captured while paying the cost, so
         // use that identity and LKI directly instead of relocating the object
         // by stable id into its new zone.
-        let sacrificed_snapshot =
+        let departed_snapshot =
             self.target
                 .sacrificed_object_kind()
                 .and_then(|_| match self.target.base() {
                     ChooseSpec::Tagged(tag) => ctx.get_tagged(tag.as_str()).cloned(),
                     _ => None,
                 });
-        let target_id = if let Some(snapshot) = sacrificed_snapshot.as_ref() {
+        // A source that left its zone is a new object even if the physical card
+        // can still be found by stable id. Copy its recorded characteristics.
+        let departed_snapshot = departed_snapshot.or_else(|| {
+            (matches!(self.target.base(), ChooseSpec::Source) && game.object(ctx.source).is_none())
+                .then(|| ctx.source_snapshot.clone())
+                .flatten()
+        });
+        let target_id = if let Some(snapshot) = departed_snapshot.as_ref() {
             snapshot.object_id
         } else {
             let resolved = resolve_objects_for_effect(game, ctx, &self.target);
@@ -284,11 +306,11 @@ impl EffectExecutor for CreateTokenCopyEffect {
 
         // Resolve target object, falling back to stored LKI snapshots when needed.
         let resolved_target_id = target_id;
-        let target_object = sacrificed_snapshot
+        let target_object = departed_snapshot
             .is_none()
             .then(|| game.object(resolved_target_id).cloned())
             .flatten();
-        let mut stored_snapshot = sacrificed_snapshot;
+        let mut stored_snapshot = departed_snapshot;
         if target_object.is_none() {
             if stored_snapshot.is_some() {
                 // Typed sacrificed sources always prefer the cost-time LKI.
@@ -331,6 +353,11 @@ impl EffectExecutor for CreateTokenCopyEffect {
             ),
             None => (None, false),
         };
+        let required_attack_player = self
+            .must_attack_player_this_turn
+            .as_ref()
+            .map(|player| resolve_player_filter(game, player, ctx))
+            .transpose()?;
         let cleanup_options = TokenCleanupOptions::new(
             self.exile_at_end_of_combat,
             false,
@@ -466,14 +493,6 @@ impl EffectExecutor for CreateTokenCopyEffect {
                         });
                     }
                 }
-
-                schedule_token_cleanup(
-                    game,
-                    ctx,
-                    entered_id,
-                    controller_id,
-                    cleanup_options.clone(),
-                )?;
             }
         }
 
@@ -501,6 +520,24 @@ impl EffectExecutor for CreateTokenCopyEffect {
             &mut events,
         )?;
         created_ids.extend(additional_ids);
+
+        // Follow-up instructions apply to the complete creation event, including
+        // additional tokens supplied by replacement effects.
+        for &id in &created_ids {
+            if game
+                .object(id)
+                .is_some_and(|object| object.zone == Zone::Battlefield)
+            {
+                if let Some(player) = required_attack_player {
+                    game.effect_store.attack_player_requirements.push((
+                        id,
+                        player,
+                        game.turn.turn_number,
+                    ));
+                }
+                schedule_token_cleanup(game, ctx, id, controller_id, cleanup_options.clone())?;
+            }
+        }
 
         Ok(EffectOutcome::with_objects(created_ids).with_events(events))
     }
@@ -605,6 +642,37 @@ mod tests {
                 ),
             ))
             .build()
+    }
+
+    #[test]
+    fn copy_followups_apply_to_additional_replacement_tokens() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.create_object_from_definition(&xorn_definition(), alice, Zone::Battlefield);
+        let original = game.create_object_from_definition(
+            &treasure_token_definition(),
+            alice,
+            Zone::Battlefield,
+        );
+        game.refresh_continuous_state();
+        let mut effect = CreateTokenCopyEffect::one(ChooseSpec::SpecificObject(original))
+            .sacrifice_at_next_end_step(true);
+        effect.must_attack_player_this_turn = Some(PlayerFilter::Specific(bob));
+        let mut ctx = ExecutionContext::new_default(original, alice);
+        let outcome = effect.execute(&mut game, &mut ctx).unwrap();
+        let crate::effect::OutcomeValue::Objects(ids) = outcome.value else {
+            panic!("missing tokens")
+        };
+        assert_eq!(ids.len(), 2);
+        assert_eq!(game.effect_store.delayed_triggers.len(), 2);
+        for id in ids {
+            assert_eq!(
+                game.required_attack_players_this_turn(id)
+                    .collect::<Vec<_>>(),
+                vec![bob]
+            );
+        }
     }
 
     #[test]

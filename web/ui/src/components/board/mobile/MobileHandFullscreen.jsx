@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import useModalFocus from "@/hooks/useModalFocus";
 import { X } from "lucide-react";
 import HandZone from "@/components/board/HandZone";
@@ -13,6 +14,7 @@ export default function MobileHandFullscreen({
   onClose,
   className,
 }) {
+  const ui = useUiText();
   const dialogRef = useModalFocus(onClose);
   const handCount = Number(me?.hand_size ?? 0);
   return (
@@ -22,17 +24,17 @@ export default function MobileHandFullscreen({
       className={cn("mobile-mtga-hand-fullscreen", className)}
       role="dialog"
       aria-modal="true"
-      aria-label="Hand"
+      aria-label={ui("Hand")}
     >
       <header className="mobile-mtga-hand-fullscreen-header">
-        <span className="mobile-mtga-hand-fullscreen-title">Hand</span>
+        <span className="mobile-mtga-hand-fullscreen-title">{ui("Hand")}</span>
         <span className="mobile-mtga-hand-fullscreen-count">
-          {handCount} card{handCount === 1 ? "" : "s"}
+          {handCount}{" " + ui("card")}{handCount === 1 ? "" : ui("s")}
         </span>
         <button
           type="button"
           className="mobile-mtga-hand-fullscreen-close"
-          aria-label="Close hand"
+          aria-label={ui("Close hand")}
           onClick={onClose}
         >
           <X className="size-4" aria-hidden="true" />

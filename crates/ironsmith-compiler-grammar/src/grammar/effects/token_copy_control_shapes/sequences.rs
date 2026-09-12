@@ -117,7 +117,12 @@ pub fn parse_return_same_subtypes_shape(
     };
     let subtypes = crate::grammar::primitives::probe_all(
         subtype_tokens,
-        (subtype_list, primitives::sentence_end()).map(|(subtypes, _)| subtypes),
+        (
+            subtype_list,
+            opt(alt((primitives::kw("card"), primitives::kw("cards")))),
+            primitives::sentence_end(),
+        )
+            .map(|(subtypes, _, _)| subtypes),
         "return same subtype list",
     )?;
     (!subtypes.is_empty()).then_some(ReturnSameSubtypesShape {

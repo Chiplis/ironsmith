@@ -113,7 +113,13 @@ export function measureRulesFirstLine(ctx, box, text, family, { italic = false, 
     let count = 0;
     for (let px = 0; px < scan.width; px++) {
       const p = py * scan.width + px, value = luminance(Array.from(scan.data.subarray(p * 4, p * 4 + 3)));
-      if ((Math.max(paper, value) + .05) / (Math.min(paper, value) + .05) > 2.5) { ink[p] = 1; count++; }
+      const rgb=scan.data.subarray(p*4,p*4+3);
+      // Coloured artwork beneath translucent dark panels must not join text
+      // rows. Printed light ink is bright and nearly neutral.
+      const printedInk=paper<.2
+        ? Math.min(...rgb)>170 && Math.max(...rgb)-Math.min(...rgb)<65 && value>paper
+        : value<paper;
+      if (printedInk && (Math.max(paper, value) + .05) / (Math.min(paper, value) + .05) > 2.5) { ink[p] = 1; count++; }
     }
     if (count >= 3) rows.push(py);
   }
@@ -155,6 +161,9 @@ export function measureRulesFirstLine(ctx, box, text, family, { italic = false, 
     }
     candidates.push({size, confidence:intersection / union, line, x:x+left, y:y+top, width, height, lineHeight});
   }
+  candidates.sort((a,b) => b.confidence - a.confidence);
+  const best = candidates[0];
+  if(best?.confidence > .4 && (!candidates[1] || best.confidence - candidates[1].confidence > .06))return best;
   // Symbol-led lines cannot be compared as plain canvas text. Their printed
   // letter height still gives a font size without treating {T} as three glyphs.
   const first = String(text || '').split('\n')[0];
@@ -167,9 +176,7 @@ export function measureRulesFirstLine(ctx, box, text, family, { italic = false, 
       if (size >= 12 && size <= 36) return {size,line:letters,x:x+left,y:y+top,width,height,lineHeight};
     }
   }
-  candidates.sort((a,b) => b.confidence - a.confidence);
-  const best = candidates[0];
-  return best?.confidence > .4 && (!candidates[1] || best.confidence - candidates[1].confidence > .06) ? best : null;
+  return null;
 }
 
 // Flavor can start below several rules lines. Match its own italic text against

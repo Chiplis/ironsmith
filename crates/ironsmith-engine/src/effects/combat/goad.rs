@@ -203,6 +203,7 @@ mod tests {
                 is_token: false,
                 tapped: false,
                 attacking: false,
+                goaded: None,
                 flipped: false,
                 face_down: false,
                 transform_count: 0,

@@ -57,7 +57,20 @@ pub fn parse_consult_traversal_sentence(
         }
         effects
     };
-    let inferred_prefix_player = infer_consult_player_from_prefix(&prefix_tokens);
+    let inferred_prefix_player = infer_consult_player_from_prefix(&prefix_tokens).or_else(|| {
+        // A controller-of-target subject can be resolved by the sacrifice
+        // parser even when the generic textual player-subject parser cannot
+        // represent it. Sacrifice lowering records that resolved controller;
+        // the following traversal must use the same player.
+        match prefix_effects.last()? {
+            EffectAst::SubjectVerb(subject)
+                if matches!(subject.action,
+                    crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
+                        crate::cards::builders::ZoneMoveActionAst::Sacrifice { target: Some(_), .. }
+                    )) && subject.subject.player == PlayerAst::ItsController => Some(PlayerAst::That),
+            _ => None,
+        }
+    });
     let player = match shape.player {
         effect_grammar::ConsultTraversalPlayerShape::ImpliedByPrefixOrYou => {
             inferred_prefix_player.unwrap_or(PlayerAst::You)

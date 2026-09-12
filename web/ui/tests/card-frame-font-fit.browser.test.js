@@ -20,9 +20,22 @@ test('short text keeps its size, spacing shrinks first, and long text has a read
       ctx.font='18px Georgia';ctx.fillText('Draw three cards.',12,32);
       ctx.font='italic 24px Georgia';ctx.fillText('As patient as nature.',12,90);
       const box={x:0,y:0,width:400,height:180};
-      return {rules:measureRulesFirstLine(ctx,box,'Draw three cards.','Georgia')?.size,flavor:measureFlavorFirstLine(ctx,box,'As patient as nature.','Georgia')?.size};
+      const rules=measureRulesFirstLine(ctx,box,'Draw three cards.','Georgia')?.size;
+      const flavor=measureFlavorFirstLine(ctx,box,'As patient as nature.','Georgia')?.size;
+      ctx.fillStyle='#121820';ctx.fillRect(0,0,400,180);
+      // A coloured art streak joins every row under the white printed ink.
+      ctx.fillStyle='#6090b0';ctx.fillRect(150,8,24,155);
+      ctx.fillStyle='white';ctx.font='18px Georgia';
+      ctx.fillText('Whenever you discard a card,',12,32);
+      ctx.fillText('you may pay to draw a card.',12,54);
+      ctx.font='italic 24px Georgia';ctx.fillText('As patient as nature.',12,110);
+      const translucent=measureRulesFirstLine(ctx,box,'Whenever you discard a card, you may pay {2}.','Georgia');
+      return {rules,flavor,translucent};
     });
     assert.ok(Math.abs(measured.rules-18)<2,JSON.stringify(measured));
+    assert.ok(Math.abs(measured.translucent?.size-18)<2,JSON.stringify(measured));
+    assert.equal(measured.translucent.line,'Whenever you discard a card,');
+    assert.ok(measured.translucent.y<32,'measures rules rather than later flavor');
     assert.ok(Math.abs(measured.flavor-24)<2,JSON.stringify(measured));
     assert.equal(metrics.registered.font,22,'registered fields keep the printed size without the preview clamp');
     assert.equal(metrics.registered.overflow,'false','flush text is not overflow');

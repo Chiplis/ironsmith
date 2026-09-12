@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { cloneElement, isValidElement, useEffect, useState, useSyncExternalStore } from "react";
 import { Activity, Check, ClipboardCopy, Eraser } from "lucide-react";
 import { useGame, useMatchClock } from "@/context/GameContext";
@@ -31,16 +32,18 @@ function tone(value, warn, bad) {
 }
 
 function Stat({ label, value, tone: toneName = "muted", hint }) {
+  const ui = useUiText();
   return (
     <div className="fantasy-sheet-stat diagnostics-stat" data-tone={toneName}>
-      <div className="diagnostics-stat-label">{label}</div>
-      <div className="diagnostics-stat-value">{value}</div>
-      {hint ? <div className="diagnostics-stat-hint">{hint}</div> : null}
+      <div className="diagnostics-stat-label">{ui(label)}</div>
+      <div className="diagnostics-stat-value">{ui(value)}</div>
+      {hint ? <div className="diagnostics-stat-hint">{ui(hint)}</div> : null}
     </div>
   );
 }
 
 function StageChips({ trace, nowMs }) {
+  const ui = useUiText();
   const stages = trace.stages || [];
   const items = stages.map((stage) => ({ key: `${stage.name}-${stage.at}`, name: stage.name, ms: stage.sincePreviousMs }));
   if (!trace.done) {
@@ -51,7 +54,7 @@ function StageChips({ trace, nowMs }) {
     <div className="diagnostics-stages">
       {items.map((item) => (
         <span key={item.key} className="diagnostics-stage" data-live={item.live ? "true" : undefined} data-tone={tone(item.ms, 1000, 5000)}>
-          <span className="diagnostics-stage-name">{item.name}</span>
+          <span className="diagnostics-stage-name">{ui(item.name)}</span>
           <span className="diagnostics-stage-ms">+{Math.round(item.ms)} ms</span>
         </span>
       ))}
@@ -95,6 +98,7 @@ function verdict({ snapshot, peerWait, multiplayer }) {
 }
 
 export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTriggerClassName }) {
+  const ui = useUiText();
   const { game, multiplayer, state } = useGame();
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -162,7 +166,7 @@ export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTr
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="center" className="diagnostics-sheet fantasy-sheet overflow-hidden p-0" style={{ width: "min(96vw, 820px)", maxWidth: "820px" }}>
           <SheetHeader className="fantasy-sheet-header diagnostics-header pr-12">
-            <div className="verify-match-eyebrow">Latency</div>
+            <div className="verify-match-eyebrow">{ui("Latency")}</div>
             <SheetTitle className="verify-match-title">{t("action.diagnostics")}</SheetTitle>
           </SheetHeader>
           {snapshot ? (() => {
@@ -173,45 +177,45 @@ export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTr
             const activeClockPlayer = clock?.activePlayerIndex != null ? playerDisplayName(players, clock.activePlayerIndex) || `P${Number(clock.activePlayerIndex) + 1}` : "—";
             return (
               <div className="diagnostics-body">
-                <div className="diagnostics-verdict" data-tone={summary.tone}>{summary.text}</div>
+                <div className="diagnostics-verdict" data-tone={summary.tone}>{ui(summary.text)}</div>
 
                 <section className="fantasy-sheet-section diagnostics-section">
-                  <h3 className="diagnostics-section-title">This browser</h3>
+                  <h3 className="diagnostics-section-title">{ui("This browser")}</h3>
                   <div className="diagnostics-stat-grid">
-                    <Stat label="Event-loop lag" value={ms(snapshot.mainThread.lagMs)} tone={tone(snapshot.mainThread.lagMs, 100, 1000)} hint="how late a 500 ms timer fires" />
-                    <Stat label="Worst freeze, last 60 s" value={snapshot.mainThread.worstStallMs ? seconds(snapshot.mainThread.worstStallMs) : "none"} tone={tone(snapshot.mainThread.worstStallMs, 200, 2000)} hint={snapshot.mainThread.worstStallAt != null ? `${age(snapshot.at - snapshot.mainThread.worstStallAt)} ago` : undefined} />
-                    <Stat label="Engine queue wait" value={snapshot.engine ? ms(snapshot.engine.queueWaitMs) : "—"} tone={snapshot.engine ? tone(snapshot.engine.queueWaitMs, 200, 2000) : "muted"} hint={snapshot.engine ? `last ${snapshot.engine.method || "call"}, ${age(snapshot.at - snapshot.engine.at)} ago` : "no engine call yet"} />
-                    <Stat label="Engine compute" value={snapshot.engine ? ms(snapshot.engine.wasmCallMs) : "—"} tone={snapshot.engine ? tone(snapshot.engine.wasmCallMs, 500, 5000) : "muted"} hint="wasm time inside the worker" />
+                    <Stat label={ui("Event-loop lag")} value={ms(snapshot.mainThread.lagMs)} tone={tone(snapshot.mainThread.lagMs, 100, 1000)} hint={ui("how late a 500 ms timer fires")} />
+                    <Stat label={ui("Worst freeze, last 60 s")} value={snapshot.mainThread.worstStallMs ? seconds(snapshot.mainThread.worstStallMs) : "none"} tone={tone(snapshot.mainThread.worstStallMs, 200, 2000)} hint={ui(snapshot.mainThread.worstStallAt != null ? `${age(snapshot.at - snapshot.mainThread.worstStallAt)} ago` : undefined)} />
+                    <Stat label={ui("Engine queue wait")} value={snapshot.engine ? ms(snapshot.engine.queueWaitMs) : "—"} tone={snapshot.engine ? tone(snapshot.engine.queueWaitMs, 200, 2000) : "muted"} hint={ui(snapshot.engine ? `last ${snapshot.engine.method || "call"}, ${age(snapshot.at - snapshot.engine.at)} ago` : "no engine call yet")} />
+                    <Stat label={ui("Engine compute")} value={snapshot.engine ? ms(snapshot.engine.wasmCallMs) : "—"} tone={snapshot.engine ? tone(snapshot.engine.wasmCallMs, 500, 5000) : "muted"} hint={ui("wasm time inside the worker")} />
                   </div>
                 </section>
 
                 <section className="fantasy-sheet-section diagnostics-section">
-                  <h3 className="diagnostics-section-title">Match</h3>
+                  <h3 className="diagnostics-section-title">{ui("Match")}</h3>
                   <div className="diagnostics-stat-grid">
-                    <Stat label="In flight" value={current ? `${current.label} · ${seconds(snapshot.at - current.startedAt)}` : "nothing"} tone={current ? tone(snapshot.at - current.startedAt, 1000, 8000) : "good"} hint={peerWait ? `${peerWait.kind || "wait"}${peerWait.operation ? ` · ${peerWait.operation}` : ""}` : undefined} />
-                    <Stat label="Last applied sequence" value={multiplayer?.lastAppliedSequence ?? "—"} hint={multiplayer?.submittingAction ? "submitting" : "idle"} />
-                    <Stat label="Clock" value={clock?.enabled ? `${activeClockPlayer} · ${seconds(clock.remainingMs)}` : "off"} hint={clock?.enabled ? `epoch started ${age(clockEpochAge)} ago · seq ${clock.lastSequence ?? "—"}` : undefined} tone={clock?.enabled && clockEpochAge != null && clockEpochAge > 120000 ? "warn" : "muted"} />
-                    <Stat label="Connection warnings" value={(multiplayer?.connectionWarnings || []).length || "none"} tone={(multiplayer?.connectionWarnings || []).length ? "bad" : "good"} hint={(multiplayer?.connectionWarnings || []).map((warning) => `${warning.name || warning.peerId}: ${warning.kind}`).join(", ") || undefined} />
+                    <Stat label={ui("In flight")} value={current ? `${current.label} · ${seconds(snapshot.at - current.startedAt)}` : "nothing"} tone={current ? tone(snapshot.at - current.startedAt, 1000, 8000) : "good"} hint={ui(peerWait ? `${peerWait.kind || "wait"}${peerWait.operation ? ` · ${peerWait.operation}` : ""}` : undefined)} />
+                    <Stat label={ui("Last applied sequence")} value={multiplayer?.lastAppliedSequence ?? "—"} hint={ui(multiplayer?.submittingAction ? "submitting" : "idle")} />
+                    <Stat label={ui("Clock")} value={clock?.enabled ? `${activeClockPlayer} · ${seconds(clock.remainingMs)}` : "off"} hint={ui(clock?.enabled ? `epoch started ${age(clockEpochAge)} ago · seq ${clock.lastSequence ?? "—"}` : undefined)} tone={clock?.enabled && clockEpochAge != null && clockEpochAge > 120000 ? "warn" : "muted"} />
+                    <Stat label={ui("Connection warnings")} value={(multiplayer?.connectionWarnings || []).length || "none"} tone={(multiplayer?.connectionWarnings || []).length ? "bad" : "good"} hint={ui((multiplayer?.connectionWarnings || []).map((warning) => `${warning.name || warning.peerId}: ${warning.kind}`).join(", ") || undefined)} />
                   </div>
                 </section>
 
                 <section className="fantasy-sheet-section diagnostics-section">
-                  <h3 className="diagnostics-section-title">Peers</h3>
-                  {snapshot.peers.length === 0 ? <div className="diagnostics-empty">No peer connections observed.</div> : (
+                  <h3 className="diagnostics-section-title">{ui("Peers")}</h3>
+                  {snapshot.peers.length === 0 ? <div className="diagnostics-empty">{ui("No peer connections observed.")}</div> : (
                     <table className="diagnostics-table">
-                      <thead><tr><th>Peer</th><th>State</th><th>Round trip</th><th>Avg</th><th>Last received</th><th>Last sent</th><th>Traffic</th></tr></thead>
+                      <thead><tr><th>{ui("Peer")}</th><th>{ui("State")}</th><th>{ui("Round trip")}</th><th>{ui("Avg")}</th><th>{ui("Last received")}</th><th>{ui("Last sent")}</th><th>{ui("Traffic")}</th></tr></thead>
                       <tbody>
                         {snapshot.peers.map((peer) => {
                           const lobby = lobbyPlayers.find((player) => String(player?.peerId || "") === peer.peerId);
                           return (
                             <tr key={peer.peerId}>
                               <td>{peer.name || lobby?.name || peer.peerId.slice(0, 8)}</td>
-                              <td data-tone={lobby && lobby.connected === false ? "bad" : peer.state === "closed" ? "bad" : "good"}>{lobby && lobby.connected === false ? "offline" : peer.state}</td>
+                              <td data-tone={lobby && lobby.connected === false ? "bad" : peer.state === "closed" ? "bad" : "good"}>{lobby && lobby.connected === false ? ui("offline") : peer.state}</td>
                               <td data-tone={tone(peer.rttMs, 300, 1000)}>{ms(peer.rttMs)}</td>
                               <td>{ms(peer.rttAvgMs)}</td>
-                              <td data-tone={tone(peer.sinceReceivedMs, 5000, 10000)}>{age(peer.sinceReceivedMs)} ago</td>
-                              <td>{age(peer.sinceSentMs)} ago</td>
-                              <td>{peer.received} in / {peer.sent} out · {Math.round((peer.bytesIn + peer.bytesOut) / 1024)} KB</td>
+                              <td data-tone={tone(peer.sinceReceivedMs, 5000, 10000)}>{age(peer.sinceReceivedMs)}{" " + ui("ago")}</td>
+                              <td>{age(peer.sinceSentMs)}{" " + ui("ago")}</td>
+                              <td>{peer.received}{" " + ui("in /") + " "}{peer.sent}{" " + ui("out ·") + " "}{Math.round((peer.bytesIn + peer.bytesOut) / 1024)} KB</td>
                             </tr>
                           );
                         })}
@@ -221,16 +225,16 @@ export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTr
                 </section>
 
                 <section className="fantasy-sheet-section diagnostics-section">
-                  <h3 className="diagnostics-section-title">Recent actions</h3>
-                  {snapshot.traces.length === 0 ? <div className="diagnostics-empty">No actions traced yet.</div> : (
+                  <h3 className="diagnostics-section-title">{ui("Recent actions")}</h3>
+                  {snapshot.traces.length === 0 ? <div className="diagnostics-empty">{ui("No actions traced yet.")}</div> : (
                     <div className="diagnostics-traces">
                       {snapshot.traces.slice(0, 12).map((trace) => (
                         <div key={trace.id} className="diagnostics-trace" data-outcome={trace.outcome || "open"}>
                           <div className="diagnostics-trace-head">
-                            <span className="diagnostics-trace-label">{trace.label}</span>
-                            <span className="diagnostics-trace-mode">{trace.mode}</span>
+                            <span className="diagnostics-trace-label">{ui(trace.label)}</span>
+                            <span className="diagnostics-trace-mode">{ui(trace.mode)}</span>
                             <span className="diagnostics-trace-total" data-tone={tone(trace.done ? trace.totalMs : snapshot.at - trace.startedAt, 1000, 8000)}>
-                              {trace.done ? `${ms(trace.totalMs)} · ${trace.outcome}` : `${seconds(snapshot.at - trace.startedAt)} · in flight`}
+                              {trace.done ? `${ms(trace.totalMs)} · ${trace.outcome}` : ui("{0} · in flight", { 0: seconds(snapshot.at - trace.startedAt) })}
                             </span>
                             <span className="diagnostics-trace-when">{new Date(trace.startedAtWall).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
                           </div>
@@ -242,13 +246,13 @@ export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTr
                 </section>
 
                 <section className="fantasy-sheet-section diagnostics-section">
-                  <h3 className="diagnostics-section-title">Recent events</h3>
-                  {snapshot.events.length === 0 ? <div className="diagnostics-empty">Quiet.</div> : (
+                  <h3 className="diagnostics-section-title">{ui("Recent events")}</h3>
+                  {snapshot.events.length === 0 ? <div className="diagnostics-empty">{ui("Quiet.")}</div> : (
                     <ul className="diagnostics-events">
                       {snapshot.events.slice(0, 30).map((event) => (
                         <li key={`${event.kind}-${event.at}`}>
-                          <span className="diagnostics-event-age">{age(snapshot.at - event.at)} ago</span>
-                          <span className="diagnostics-event-kind">{event.kind}</span>
+                          <span className="diagnostics-event-age">{age(snapshot.at - event.at)}{" " + ui("ago")}</span>
+                          <span className="diagnostics-event-kind">{ui(event.kind)}</span>
                           <span className="diagnostics-event-meta">{event.meta ? Object.entries(event.meta).map(([key, value]) => `${key}=${typeof value === "object" ? JSON.stringify(value) : value}`).join("  ") : ""}</span>
                         </li>
                       ))}
@@ -259,15 +263,12 @@ export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTr
                 <div className="diagnostics-toolbar">
                   <Button type="button" variant="secondary" size="sm" className="stone-pill" onClick={handleCopy}>
                     {copied ? <Check className="size-3.5" aria-hidden="true" /> : <ClipboardCopy className="size-3.5" aria-hidden="true" />}
-                    {copied ? "Copied" : "Copy report"}
+                    {copied ? ui("Copied") : ui("Copy report")}
                   </Button>
-                  <Button type="button" variant="secondary" size="sm" className="stone-pill" onClick={handleDownload}>
-                    Download report
-                  </Button>
+                  <Button type="button" variant="secondary" size="sm" className="stone-pill" onClick={handleDownload}>{ui("Download report")}</Button>
                   <Button type="button" variant="secondary" size="sm" className="stone-pill" onClick={() => resetDiagnostics()}>
-                    <Eraser className="size-3.5" aria-hidden="true" /> Clear
-                  </Button>
-                  <span className="diagnostics-toolbar-note">Also available in the console as <code>__ironsmithDiagnostics.export()</code>.</span>
+                    <Eraser className="size-3.5" aria-hidden="true" />{" " + ui("Clear")}</Button>
+                  <span className="diagnostics-toolbar-note">{ui("Also available in the console as") + " "}<code>__ironsmithDiagnostics.export()</code>.</span>
                 </div>
               </div>
             );

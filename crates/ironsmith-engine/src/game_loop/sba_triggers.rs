@@ -1547,10 +1547,10 @@ fn choose_trigger_targets(
 
     // Multiple players can be assigned distinct target decisions within one
     // trigger. Prompt each requirement's chooser in authored order, retaining
-    // the existing distinct-player constraint across those prompts.
+    // the distinct-target constraint across those prompts.
     let mut selected_targets = Vec::new();
     let mut assignments = Vec::with_capacity(requirements.len());
-    let mut selected_distinct_players = std::collections::HashMap::<usize, Vec<PlayerId>>::new();
+    let mut selected_distinct_targets = std::collections::HashMap::<usize, Vec<Target>>::new();
     for (requirement, chooser) in requirements.iter().zip(choosers) {
         let mut requirement_ctx =
             trigger_target_requirement_contexts(std::slice::from_ref(requirement));
@@ -1574,14 +1574,14 @@ fn choose_trigger_targets(
             return None;
         }
         if let Some(group) = requirement.distinct_player_group
-            && let Some(already_selected) = selected_distinct_players.get(&group)
+            && let Some(already_selected) = selected_distinct_targets.get(&group)
         {
             context.legal_targets.retain(|target| {
-                !matches!(target, Target::Player(player) if already_selected.contains(player))
+                !already_selected.contains(target)
             });
             context.legal_target_sets.retain(|set| {
                 set.iter().all(|target| {
-                    !matches!(target, Target::Player(player) if already_selected.contains(player))
+                    !already_selected.contains(target)
                 })
             });
         }
@@ -1600,13 +1600,10 @@ fn choose_trigger_targets(
             crate::targeting::normalize_targets_for_requirements(&requirement_ctx, proposed)?;
         let start = selected_targets.len();
         if let Some(group) = requirement.distinct_player_group {
-            selected_distinct_players
+            selected_distinct_targets
                 .entry(group)
                 .or_default()
-                .extend(chosen.iter().filter_map(|target| match target {
-                    Target::Player(player) => Some(*player),
-                    Target::Object(_) => None,
-                }));
+                .extend(chosen.iter().copied());
         }
         selected_targets.extend(chosen);
         assignments.push(crate::game_state::TargetAssignment {

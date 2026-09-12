@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { LOOK_DONE_EVENT } from "@/lib/look-pile";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -17,7 +18,7 @@ import useDeferredPeerWait from "@/hooks/useDeferredPeerWait";
 import { normalizeDecisionText } from "@/components/decisions/decisionText";
 import { animate, cancelMotion, snappySpring, stagger } from "@/lib/motion/anime";
 import { KeywordHelpersProvider, ManaSymbol, SymbolText } from "@/lib/mana-symbols";
-import { nextPriorityAdvanceLabel } from "@/lib/constants";
+import { nextPriorityAdvanceLabel, priorityAdvanceButtonLabel } from "@/lib/constants";
 import HighlightedDecisionText from "@/components/decisions/HighlightedDecisionText";
 import { decisionOptionAccentVars, getPlayerAccent } from "@/lib/player-colors";
 import { useDecisionButtonAccent } from "@/lib/decision-button-style";
@@ -66,6 +67,7 @@ function safeInlineLabel(value, fallback = "") {
 }
 
 function DecisionCardNameTrigger({ objectId, onInspect, children, className = "" }) {
+  const ui = useUiText();
   if (objectId == null || typeof onInspect !== "function") return children;
   return (
     <span
@@ -73,7 +75,7 @@ function DecisionCardNameTrigger({ objectId, onInspect, children, className = ""
       data-inspector-object-id={String(objectId)}
       role="button"
       tabIndex={0}
-      aria-label={`Inspect ${String(children || "card")}`}
+      aria-label={ui("Inspect {0}", { 0: String(children || "card") })}
       onPointerDown={(event) => {
         event.stopPropagation();
       }}
@@ -568,6 +570,7 @@ function PriorityActionStrip({
   onActionCardInspect,
   accentOverrides = null,
 }) {
+  const ui = useUiText();
   const { playerAccentOverrides: contextAccentOverrides } = useGame();
   const effectiveAccentOverrides = accentOverrides || contextAccentOverrides;
   const viewportRef = useRef(null);
@@ -770,17 +773,14 @@ function PriorityActionStrip({
 
   if (!canAct) {
     return (
-      <div className={cn("action-strip-empty-state action-strip-empty-state--waiting flex min-w-0 flex-1 items-center px-3 text-[12px] whitespace-nowrap", className)}>
-        Waiting for {playerDisplayName(players, decisionPlayer)}
+      <div className={cn("action-strip-empty-state action-strip-empty-state--waiting flex min-w-0 flex-1 items-center px-3 text-[12px] whitespace-nowrap", className)}>{ui("Waiting for") + " "}{playerDisplayName(players, decisionPlayer)}
       </div>
     );
   }
 
   if (!groups.length) {
     return (
-      <div className={cn("action-strip-empty-state action-strip-empty-state--empty flex min-w-0 flex-1 items-center px-3 text-[12px] whitespace-nowrap", className)}>
-        No actions available
-      </div>
+      <div className={cn("action-strip-empty-state action-strip-empty-state--empty flex min-w-0 flex-1 items-center px-3 text-[12px] whitespace-nowrap", className)}>{ui("No actions available")}</div>
     );
   }
 
@@ -1087,6 +1087,7 @@ function ViewedCardsStrip({
   compact = false,
   wrap = false,
 }) {
+  const ui = useUiText();
   const { state, playerAccentOverrides: contextAccentOverrides } = useGame();
   const chosenObjectIds = useChosenObjectIds();
   const effectiveAccentOverrides = accentOverrides || contextAccentOverrides;
@@ -1100,7 +1101,7 @@ function ViewedCardsStrip({
     <>
       <div className="flex min-w-0 items-center gap-2">
         <div className="shrink-0 text-[11px] font-bold uppercase tracking-[0.14em] text-[#d9c18b]">
-          {label}
+          {ui(label)}
         </div>
         {normalizedSourceName && (
           <div className="min-w-0 truncate text-[11px] text-[#d8cdb6]">
@@ -1163,7 +1164,7 @@ function ViewedCardsStrip({
                 "text-[#d8ccb4]",
               )}
               style={cardAccentStyle}
-              title={selectableCandidate ? `Select ${card.name}` : undefined}
+              title={ui(selectableCandidate ? `Select ${card.name}` : undefined)}
               onClick={() => {
                 if (!selectableCandidate) return;
                 requestObjectSelection(selectableCandidate.id, "add");
@@ -1189,9 +1190,7 @@ function ViewedCardsStrip({
             </button>
           );
         }) : (
-          <div className="text-[12px] italic text-[#bda983]">
-            No cards visible.
-          </div>
+          <div className="text-[12px] italic text-[#bda983]">{ui("No cards visible.")}</div>
         )}
       </div>
     </div>
@@ -1206,13 +1205,13 @@ function ViewedCardsStrip({
       {compact ? (
         <div className="flex min-w-0 items-center gap-3">
           <div className="min-w-[200px] max-w-[360px] shrink-0">
-            {metadata}
+            {ui(metadata)}
           </div>
           {cardScroller}
         </div>
       ) : (
         <div className="flex flex-col gap-1">
-          {metadata}
+          {ui(metadata)}
           {cardScroller}
         </div>
       )}
@@ -1229,17 +1228,18 @@ function MobileDecisionHeader({
   compact = false,
   className = "",
 }) {
+  const ui = useUiText();
   if (compact) {
     return (
       <div className={cn("mobile-decision-header mobile-decision-header--compact", className)}>
         <div className="mobile-decision-header-copy">
           {eyebrow ? (
             <div className="mobile-decision-eyebrow">
-              {eyebrow}
+              {ui(eyebrow)}
             </div>
           ) : null}
           <div className="mobile-decision-title">
-            {normalizeDecisionText(title || "Decision")}
+            {ui(normalizeDecisionText(title || "Decision"))}
           </div>
           {subtitle ? (
             <div className="mobile-decision-subtitle">
@@ -1270,11 +1270,11 @@ function MobileDecisionHeader({
       ) : null}
       {eyebrow ? (
         <div className="mobile-decision-eyebrow">
-          {eyebrow}
+          {ui(eyebrow)}
         </div>
       ) : null}
       <div className="mobile-decision-title">
-        {normalizeDecisionText(title || "Decision")}
+        {ui(normalizeDecisionText(title || "Decision"))}
       </div>
       {subtitle ? (
         <div className="mobile-decision-subtitle">
@@ -1295,11 +1295,12 @@ export function MobileDecisionCloseButton({
   onClick,
   className = "",
 }) {
+  const ui = useUiText();
   return (
     <button
       type="button"
       className={cn("mobile-decision-close", className)}
-      aria-label={label}
+      aria-label={ui(label)}
       onClick={onClick}
     >
       <X className="size-4" />
@@ -1319,6 +1320,7 @@ function MobileDecisionDock({
   inline = false,
   orientation = "horizontal",
 }) {
+  const ui = useUiText();
   const { state, multiplayer, playerAccentOverrides } = useGame();
   const decision = state?.decision || null;
   const attackButtonTransition = useDeclareAttackersButtonTransition(decision);
@@ -1355,7 +1357,7 @@ function MobileDecisionDock({
             disabled={secondaryDisabled}
             onClick={onSecondary}
           >
-            {secondaryLabel}
+            {ui(secondaryLabel)}
           </Button>
         ) : null}
         <PeerWaitPopover peerWait={peerWait}>
@@ -1379,11 +1381,11 @@ function MobileDecisionDock({
             ) : (
               <>
                 <span className="mobile-decision-primary-label">
-                  {primaryText}
+                  {ui(primaryText)}
                 </span>
                 {primaryAdvanceText ? (
                   <span className="mobile-decision-primary-subtitle">
-                    {primaryAdvanceText}
+                    {ui(primaryAdvanceText)}
                   </span>
                 ) : subtitleText ? (
                   <span className="mobile-decision-primary-subtitle">
@@ -1416,9 +1418,10 @@ export function MobileDecisionSheet({
   className = "",
   bodyClassName = "",
 }) {
+  const ui = useUiText();
   const resolvedHeaderTrailing = headerTrailing || (onClose ? (
     <MobileDecisionCloseButton
-      label={closeLabel}
+      label={ui(closeLabel)}
       onClick={onClose}
     />
   ) : null);
@@ -1445,8 +1448,8 @@ export function MobileDecisionSheet({
         >
           <MobileDecisionHeader
             eyebrow={eyebrow}
-            title={title}
-            subtitle={subtitle}
+            title={ui(title)}
+            subtitle={ui(subtitle)}
             details={headerDetails}
             trailing={resolvedHeaderTrailing}
             compact={inline && compactInline}
@@ -1479,6 +1482,7 @@ function MobileDecisionOverlay({
   className = "",
   bodyClassName = "",
 }) {
+  const ui = useUiText();
   return (
     <>
       <div
@@ -1490,8 +1494,8 @@ function MobileDecisionOverlay({
         <section className={cn("mobile-decision-overlay", className)} aria-modal="true" role="dialog">
           <MobileDecisionHeader
             eyebrow={eyebrow}
-            title={title}
-            subtitle={subtitle}
+            title={ui(title)}
+            subtitle={ui(subtitle)}
             details={headerDetails}
             trailing={headerTrailing}
             className={headerClassName}
@@ -1515,10 +1519,11 @@ export function MobileDecisionActionList({
   emptyText = "No additional actions.",
   horizontal = false,
 }) {
+  const ui = useUiText();
   if (!items.length) {
     return (
       <div className={cn("mobile-decision-empty-state", horizontal && "mobile-decision-empty-state--inline-strip")}>
-        {emptyText}
+        {ui(emptyText)}
       </div>
     );
   }
@@ -1536,7 +1541,7 @@ export function MobileDecisionActionList({
           onMouseLeave={item.onMouseLeave}
         >
           <span className="mobile-decision-action-text">
-            <SymbolText text={normalizeDecisionText(item.label || "Action")} />
+            <SymbolText text={ui(normalizeDecisionText(item.label || "Action"))} />
           </span>
           {item.trailing || null}
         </button>
@@ -1580,6 +1585,7 @@ function MobileBattleDecisionLayer({
   dockHidden = false,
   dockOrientation = "horizontal",
 }) {
+  const ui = useUiText();
   const {
     state,
     multiplayer,
@@ -1704,7 +1710,7 @@ function MobileBattleDecisionLayer({
         ? "Resolve"
         : hasCustomPassLabel
           ? passAction.label
-          : `Go to ${nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize)}`
+          : priorityAdvanceButtonLabel(state?.phase, state?.step, stackSize, t)
     )
     : passAdvanceLabel;
   const objectNameById = useMemo(
@@ -1763,10 +1769,10 @@ function MobileBattleDecisionLayer({
     if (toolbarDecisionSummary) return toolbarDecisionSummary;
     if (hasCustomPassLabel) return "";
     if (stackSize > 0) {
-      return `Resolve ${stackSize}`;
+      return ui("Resolve {0}", { 0: stackSize });
     }
-    return nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize);
-  }, [hasCustomPassLabel, stackSize, state?.phase, state?.step, toolbarDecisionSummary]);
+    return nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize, t);
+  }, [hasCustomPassLabel, stackSize, state?.phase, state?.step, toolbarDecisionSummary, t, ui]);
 
   const triggerPriorityAction = useCallback(
     (action) => {
@@ -1859,12 +1865,12 @@ function MobileBattleDecisionLayer({
     return renderMobileBattlePortal(
       <MobileDecisionOverlay
         eyebrow={canAct ? "Your Action" : "Opponent Action"}
-        title="Opening"
-        subtitle={peerWaitPreviewDescription || peerWait?.operation || ""}
+        title={ui("Opening")}
+        subtitle={ui(peerWaitPreviewDescription || peerWait?.operation || "")}
       >
         <ViewedCardsStrip
-          label="Opening"
-          description={peerWaitPreviewDescription}
+          label={ui("Opening")}
+          description={ui(peerWaitPreviewDescription)}
           sourceName={peerWait?.operation || ""}
           cards={peerWaitOpeningPreviewEntries}
           players={state?.players || []}
@@ -1895,12 +1901,12 @@ function MobileBattleDecisionLayer({
     return renderMobileBattlePortal(
       <MobileDecisionOverlay
         eyebrow={canAct ? "Your Action" : "Opponent Action"}
-        title={viewedCardsLabel}
-        subtitle={viewedCards?.description || viewedCardsSourceName}
+        title={ui(viewedCardsLabel)}
+        subtitle={ui(viewedCards?.description || viewedCardsSourceName)}
       >
         <ViewedCardsStrip
-          label={viewedCardsLabel}
-          description={viewedCards?.description || ""}
+          label={ui(viewedCardsLabel)}
+          description={ui(viewedCards?.description || "")}
           sourceName={viewedCardsSourceName}
           cards={viewedCardEntries}
           players={state?.players || []}
@@ -1920,7 +1926,7 @@ function MobileBattleDecisionLayer({
             disabled={!decision}
             onClick={completeViewedCardsStep}
           >
-            <span className="mobile-decision-primary-label">Done</span>
+            <span className="mobile-decision-primary-label">{ui("Done")}</span>
           </Button>
         </div>
       </MobileDecisionOverlay>
@@ -1991,7 +1997,7 @@ function MobileBattleDecisionLayer({
       <>
         {renderMobileBattlePortal(
           <MobileDecisionDock
-            subtitle={resolvedDockSubtitle}
+            subtitle={ui(resolvedDockSubtitle)}
             primaryLabel={passCurrentLabel}
             primaryAdvanceLabel={showPriorityAdvanceButton ? passAdvanceLabel : ""}
             primaryDisabled={primaryDisabled}
@@ -2007,11 +2013,11 @@ function MobileBattleDecisionLayer({
         {actionsSheetOpen ? (
           <MobileDecisionSheet
             eyebrow={dockTitle}
-            title="Available Actions"
-            subtitle={`${visibleActionGroups.length} action${visibleActionGroups.length === 1 ? "" : "s"}`}
+            title={ui("Available Actions")}
+            subtitle={ui("{0} action{1}", { 0: visibleActionGroups.length, 1: visibleActionGroups.length === 1 ? "" : "s" })}
             onBackdropClick={() => setActionsSheetState({ key: decisionIdentity, open: false })}
             onClose={() => setActionsSheetState({ key: decisionIdentity, open: false })}
-            closeLabel="Close available actions"
+            closeLabel={ui("Close available actions")}
             inline={false}
             className="mobile-decision-sheet--action-list"
             bodyClassName="mobile-decision-sheet-body--action-list"
@@ -2026,9 +2032,7 @@ function MobileBattleDecisionLayer({
                   cancelDecision();
                   setActionsSheetState({ key: decisionIdentity, open: false });
                 }}
-              >
-                Cancel
-              </Button>
+              >{ui("Cancel")}</Button>
             ) : null}
           >
             <MobilePriorityActionList
@@ -2083,21 +2087,21 @@ function MobileBattleDecisionLayer({
     return renderMobileBattlePortal(
       <MobileDecisionSheet
         eyebrow={canAct ? "Your Action" : "Opponent Action"}
-        title={resolveDecisionTitle(decision, t)}
-        subtitle={decision?.source_name || ""}
+        title={ui(resolveDecisionTitle(decision, t))}
+        subtitle={ui(decision?.source_name || "")}
         headerClassName="mobile-select-options-header"
         headerDetails={optionHeaderDetails}
         className="mobile-decision-sheet--select-options"
         bodyClassName="mobile-decision-sheet-body--select-options"
         onClose={canCancelDecision ? () => cancelDecision() : null}
-        closeLabel="Close option picker"
+        closeLabel={ui("Close option picker")}
         inline={false}
         onBackdropClick={canCancelDecision ? () => cancelDecision() : null}
       >
         {showInlineViewedCards ? (
           <ViewedCardsStrip
-            label={viewedCardsLabel}
-            description={viewedCards?.description || ""}
+            label={ui(viewedCardsLabel)}
+            description={ui(viewedCards?.description || "")}
             sourceName={viewedCardsSourceName}
             cards={viewedCardEntries}
             players={state?.players || []}
@@ -2134,8 +2138,8 @@ function MobileBattleDecisionLayer({
     return renderMobileBattlePortal(
       <>
         <MobileDecisionDock
-          title={canAct ? "Your Action" : "Opponent Action"}
-          subtitle={boardSelectionSubtitle}
+          title={ui(canAct ? "Your Action" : "Opponent Action")}
+          subtitle={ui(boardSelectionSubtitle)}
           primaryLabel={effectiveSubmitAction?.label || t("decision.submitPlain")}
           primaryDisabled={!canSubmitFocused}
           onPrimary={() => effectiveSubmitAction?.onSubmit?.()}
@@ -2171,7 +2175,7 @@ function MobileBattleDecisionLayer({
         <MobileDecisionDock
           primaryLabel={
             combatAction?.label
-            || (decision.kind === "attackers" ? "Confirm Attackers (0)" : "Confirm Blockers (0)")
+            || ui(decision.kind === "attackers" ? "Confirm Attackers (0)" : "Confirm Blockers (0)")
           }
           primaryDisabled={combatAction?.disabled ?? !canAct}
           onPrimary={combatAction?.onSubmit}
@@ -2208,9 +2212,7 @@ function MobileBattleDecisionLayer({
           className="mobile-decision-secondary-button"
           disabled={!canCancelDecision}
           onClick={() => cancelDecision()}
-        >
-          Cancel
-        </Button>
+        >{ui("Cancel")}</Button>
       ) : null}
       {effectiveSubmitAction ? (
         <Button
@@ -2233,13 +2235,13 @@ function MobileBattleDecisionLayer({
     <MobileDecisionSheet
       eyebrow={canAct ? "Your Action" : "Opponent Action"}
       title={
-        decision.kind === "attackers"
+        ui(decision.kind === "attackers"
           ? "Declare Attackers"
           : decision.kind === "blockers"
             ? "Declare Blockers"
-            : resolveDecisionTitle(decision, t)
+            : resolveDecisionTitle(decision, t))
       }
-      subtitle={decision?.source_name || ""}
+      subtitle={ui(decision?.source_name || "")}
       inline={false}
       onBackdropClick={canCancelDecision ? () => cancelDecision() : null}
       footer={footer}
@@ -2266,6 +2268,7 @@ function PriorityControlStack({
   showActionCount = true,
   className = "",
 }) {
+  const ui = useUiText();
   const compactLandscapeViewport = typeof window !== "undefined"
     && window.matchMedia("(max-width: 720px) and (orientation: landscape)").matches;
   const advanceLabelText = safeInlineLabel(advanceControlLabel);
@@ -2276,13 +2279,13 @@ function PriorityControlStack({
         <div className="priority-control-count pointer-events-none pl-[18px] text-[11px] font-bold uppercase tracking-[0.14em] text-[#d9c18b]">
           <span className="priority-control-count-number">{actionCount}</span>
           <span className="priority-control-count-label">
-            {actionCount === 1 ? "Action" : "Actions"}
+            {actionCount === 1 ? ui("Action") : ui("Actions")}
           </span>
         </div>
       )}
       <div className="priority-control-toggles flex items-center gap-3">
         {advanceLabelText ? (
-          <span className="priority-control-advance-label" title={advanceLabelText}>
+          <span className="priority-control-advance-label" title={ui(advanceLabelText)}>
             {advanceLabelText}
           </span>
         ) : null}
@@ -2301,49 +2304,51 @@ const PAYMENT_POOL_SYMBOLS = [
 ];
 
 function ManaPaymentToolbarPool({ label, pool }) {
+  const ui = useUiText();
   const entries = PAYMENT_POOL_SYMBOLS
     .map(([key, symbol]) => ({ symbol, amount: Number(pool?.[key] || 0) }))
     .filter((entry) => entry.amount > 0);
   return (
-    <span className="mana-payment-toolbar-pool" aria-label={`${label} ${entries.length ? "mana" : "Empty"}`}>
-      <span className="mana-payment-toolbar-pool-label">{label}</span>
+    <span className="mana-payment-toolbar-pool" aria-label={ui("{0} {1}", { 0: label, 1: entries.length ? "mana" : "Empty" })}>
+      <span className="mana-payment-toolbar-pool-label">{ui(label)}</span>
       <span className="mana-payment-toolbar-pool-value">
         {entries.length ? entries.map(({ symbol, amount }) => (
           <span key={symbol} className="mana-payment-toolbar-pool-symbol">
             <ManaSymbol sym={symbol} size={15} />
             {amount > 1 ? <span>×{amount}</span> : null}
           </span>
-        )) : <span>Empty</span>}
+        )) : <span>{ui("Empty")}</span>}
       </span>
     </span>
   );
 }
 
 function ManaPaymentToolbarMeta({ payment, sourceObjectId = null, onInspectObject = null, showCost = false }) {
+  const ui = useUiText();
   if (!payment) return null;
   const sourceName = payment.source_name || "mana cost";
   return (
     <div className="mana-payment-toolbar-meta">
-      <div className="mana-payment-toolbar-title" title={`Pay for ${sourceName}`}>
-        {showCost ? <span className="inline-flex items-center gap-1" aria-label="Mana cost">
+      <div className="mana-payment-toolbar-title" title={ui("Pay for {0}", { 0: sourceName })}>
+        {showCost ? <span className="inline-flex items-center gap-1" aria-label={ui("Mana cost")}>
           {buildManaPaymentGroups(payment).map(group => <ManaSymbol key={group.key} sym={group.kind === "generic" ? String(group.displayCount) : group.displayCode} size={16} />)}
         </span> : null}
-        <span>Pay for </span>
+        <span>{ui("Pay for") + " "}</span>
         <DecisionCardNameTrigger objectId={sourceObjectId} onInspect={onInspectObject}>
           {sourceName}
         </DecisionCardNameTrigger>
       </div>
-      <div className="mana-payment-toolbar-pools" aria-label="Mana pool payment preview">
-        <ManaPaymentToolbarPool label="Pool" pool={payment.pool_before} />
+      <div className="mana-payment-toolbar-pools" aria-label={ui("Mana pool payment preview")}>
+        <ManaPaymentToolbarPool label={ui("Pool")} pool={payment.pool_before} />
         <span className="mana-payment-toolbar-arrow">→</span>
-        <ManaPaymentToolbarPool label="Sources" pool={payment.pool_after_activations} />
+        <ManaPaymentToolbarPool label={ui("Sources")} pool={payment.pool_after_activations} />
         <span className="mana-payment-toolbar-arrow">→</span>
-        <ManaPaymentToolbarPool label="After" pool={payment.pool_after_payment} />
+        <ManaPaymentToolbarPool label={ui("After")} pool={payment.pool_after_payment} />
       </div>
       {!payment.planning_complete ? (
-        <span className="mana-payment-toolbar-planning" title="Checking for a better payment plan">
+        <span className="mana-payment-toolbar-planning" title={ui("Checking for a better payment plan")}>
           <LoaderCircle size={15} className="animate-spin" />
-          <span>Planning</span>
+          <span>{ui("Planning")}</span>
         </span>
       ) : null}
     </div>
@@ -2392,6 +2397,7 @@ function PriorityBar({
   replaceMiddleControls = false,
   selectedObjectId = null,
 }) {
+  const ui = useUiText();
   const {
     state,
     dispatch,
@@ -2452,7 +2458,7 @@ function PriorityBar({
     : (
       hasCustomPassLabel
         ? passAction.label
-        : `Go to ${nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize)}`
+        : priorityAdvanceButtonLabel(state?.phase, state?.step, stackSize, t)
     );
   const battlefieldFamilies = useMemo(
     () => buildBattlefieldFamilies(state?.players),
@@ -2732,7 +2738,7 @@ function PriorityBar({
           data-local-action={localDecisionButton ? "true" : "false"}
           aria-disabled={peerWaitLocked || (showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused)}
           disabled={peerWaiting ? false : (showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused)}
-          title={peerWaiting ? t("decision.waitingForPeers") : (showViewedCardsStep ? t("decision.done") : (effectiveSubmitAction?.label || t("decision.submitPlain")))}
+          title={ui(peerWaiting ? t("decision.waitingForPeers") : (showViewedCardsStep ? t("decision.done") : (effectiveSubmitAction?.label || t("decision.submitPlain"))))}
           onPointerDown={(event) => {
             if (peerWaitLocked) return;
             if (showViewedCardsStep) {
@@ -2921,7 +2927,7 @@ function PriorityBar({
                           completeViewedCardsStep();
                         }}
                       >
-                        {peerWaiting ? <PeerWaitButtonContent /> : "Done"}
+                        {peerWaiting ? <PeerWaitButtonContent /> : ui("Done")}
                       </Button>
                     </PeerWaitPopover>
                   </div>
@@ -2949,21 +2955,21 @@ function PriorityBar({
                           data-local-action={localDecisionButton ? "true" : "false"}
                           disabled={!canAct}
                           aria-disabled={peerWaitLocked || !canAct}
-                          aria-label={peerWaiting ? "Waiting for peers" : passCurrentLabel}
+                          aria-label={ui(peerWaiting ? "Waiting for peers" : passCurrentLabel)}
                           onPointerDown={peerWaiting ? undefined : triggerPassActionFromPointer}
                           onClick={peerWaiting ? undefined : triggerPassActionFromClick}
                         >
                           {peerWaiting ? (
                             <PeerWaitButtonContent />
                           ) : (
-                            <span className="sr-only">{passCurrentLabel}</span>
+                            <span className="sr-only">{ui(passCurrentLabel)}</span>
                           )}
                         </Button>
                       </PeerWaitPopover>
                       {!peerWaiting && (
                         <div className="action-strip-main-text-stack absolute left-2 top-2 z-20">
                           <div className="action-strip-main-title-row">
-                            <ActionStripMainTitleText>{passCurrentLabel}</ActionStripMainTitleText>
+                            <ActionStripMainTitleText>{ui(passCurrentLabel)}</ActionStripMainTitleText>
                           </div>
                           <div
                             className="action-strip-main-controls"
@@ -2992,17 +2998,17 @@ function PriorityBar({
                         data-local-action={localDecisionButton ? "true" : "false"}
                         disabled={!canAct}
                         aria-disabled={peerWaitLocked || !canAct}
-                        aria-label={openingHandMulliganLabel}
+                        aria-label={ui(openingHandMulliganLabel)}
                         onClick={() => {
                           if (peerWaitLocked) return;
                           triggerPriorityAction(openingHandMulliganAction);
                         }}
                       >
-                        <span className="sr-only">{openingHandMulliganLabel}</span>
+                        <span className="sr-only">{ui(openingHandMulliganLabel)}</span>
                       </Button>
                       <div className="action-strip-main-text-stack action-strip-main-text-stack--centered absolute left-2 top-2 z-20">
                         <div className="action-strip-main-title-row">
-                          <ActionStripMainTitleText>{openingHandMulliganLabel}</ActionStripMainTitleText>
+                          <ActionStripMainTitleText>{ui(openingHandMulliganLabel)}</ActionStripMainTitleText>
                         </div>
                       </div>
                     </div>
@@ -3039,7 +3045,7 @@ function PriorityBar({
                           secondarySubmitAction.onSubmit();
                         }}
                       >
-                        {secondarySubmitAction.label || "Plan"}
+                        {secondarySubmitAction.label || ui("Plan")}
                       </Button>
                     ) : null}
                     {!topbarMainDecisionHost ? renderCancelControl() : null}
@@ -3060,7 +3066,7 @@ function PriorityBar({
                         </div>
                         {toolbarDecisionSummary && (
                           <div className="action-strip-decision-inline-summary truncate text-[11px]">
-                            {toolbarDecisionSummary}
+                            {ui(toolbarDecisionSummary)}
                           </div>
                         )}
                       </div>
@@ -3086,8 +3092,8 @@ function PriorityBar({
               <div className="action-strip-decision-content min-w-0 flex-1 overflow-hidden">
                 {showPeerWaitOpeningPreviews ? (
                   <ViewedCardsStrip
-                    label="Opening"
-                    description={peerWaitPreviewDescription}
+                    label={ui("Opening")}
+                    description={ui(peerWaitPreviewDescription)}
                     sourceName={peerWait?.operation || ""}
                     cards={peerWaitOpeningPreviewEntries}
                     players={state?.players || []}
@@ -3102,8 +3108,8 @@ function PriorityBar({
                 ) : canAct ? (
                   showViewedCardsStep ? (
                     <ViewedCardsStrip
-                      label={viewedCardsLabel}
-                      description={viewedCards?.description || ""}
+                      label={ui(viewedCardsLabel)}
+                      description={ui(viewedCards?.description || "")}
                       sourceName={viewedCardsSourceName}
                       cards={viewedCardEntries}
                       players={state?.players || []}
@@ -3119,8 +3125,8 @@ function PriorityBar({
                     <>
                       {showInlineViewedCards ? (
                         <ViewedCardsStrip
-                          label={viewedCardsLabel}
-                          description={viewedCards?.description || ""}
+                          label={ui(viewedCardsLabel)}
+                          description={ui(viewedCards?.description || "")}
                           sourceName={viewedCardsSourceName}
                           cards={viewedCardEntries}
                           players={state?.players || []}
@@ -3146,8 +3152,7 @@ function PriorityBar({
                     </>
                   ))
                 ) : (
-                  <span className="action-strip-waiting text-[12px] whitespace-nowrap">
-                    Waiting for {playerDisplayName(state?.players || [], decision?.player)}
+                  <span className="action-strip-waiting text-[12px] whitespace-nowrap">{ui("Waiting for") + " "}{playerDisplayName(state?.players || [], decision?.player)}
                   </span>
                 )}
               </div>
@@ -3206,7 +3211,7 @@ function PriorityBar({
                       completeViewedCardsStep();
                     }}
                   >
-                    {peerWaiting ? <PeerWaitButtonContent /> : "Done"}
+                    {peerWaiting ? <PeerWaitButtonContent /> : ui("Done")}
                   </Button>
                 </PeerWaitPopover>
               </div>
@@ -3227,21 +3232,21 @@ function PriorityBar({
                         data-local-action={localDecisionButton ? "true" : "false"}
                         disabled={!canAct}
                         aria-disabled={peerWaitLocked || !canAct}
-                        aria-label={peerWaiting ? "Waiting for peers" : passCurrentLabel}
+                        aria-label={ui(peerWaiting ? "Waiting for peers" : passCurrentLabel)}
                         onPointerDown={peerWaiting ? undefined : triggerPassActionFromPointer}
                         onClick={peerWaiting ? undefined : triggerPassActionFromClick}
                       >
                         {peerWaiting ? (
                           <PeerWaitButtonContent />
                         ) : (
-                          <span className="sr-only">{passCurrentLabel}</span>
+                          <span className="sr-only">{ui(passCurrentLabel)}</span>
                         )}
                       </Button>
                     </PeerWaitPopover>
                     {!peerWaiting && (
                       <div className="action-strip-main-text-stack absolute left-2 top-2 z-20">
                         <div className="action-strip-main-title-row">
-                          <ActionStripMainTitleText>{passCurrentLabel}</ActionStripMainTitleText>
+                          <ActionStripMainTitleText>{ui(passCurrentLabel)}</ActionStripMainTitleText>
                         </div>
                         <div
                           className="action-strip-main-controls"
@@ -3266,10 +3271,10 @@ function PriorityBar({
                       className="pass-priority-btn decision-main-button action-strip-mulligan-button h-full min-w-[132px] rounded-none px-3 text-[14px] font-bold uppercase"
                       data-local-action={localDecisionButton ? "true" : "false"}
                       disabled={!canAct || peerWaitLocked}
-                      aria-label={openingHandMulliganLabel}
+                      aria-label={ui(openingHandMulliganLabel)}
                       onClick={() => triggerPriorityAction(openingHandMulliganAction)}
                     >
-                      {openingHandMulliganLabel}
+                      {ui(openingHandMulliganLabel)}
                     </Button>
                   )}
               </>
@@ -3348,7 +3353,7 @@ function PriorityBar({
                           secondarySubmitAction.onSubmit();
                         }}
                       >
-                        {secondarySubmitAction.label || "Plan"}
+                        {secondarySubmitAction.label || ui("Plan")}
                       </Button>
                     ) : null}
                     {renderCancelControl()}
@@ -3396,8 +3401,8 @@ function PriorityBar({
         {isPriorityDecision ? (
           showViewedCardsStep ? (
             <ViewedCardsStrip
-              label={viewedCardsLabel}
-              description={viewedCards?.description || ""}
+              label={ui(viewedCardsLabel)}
+              description={ui(viewedCards?.description || "")}
               sourceName={viewedCardsSourceName}
               cards={viewedCardEntries}
               players={state?.players || []}
@@ -3438,8 +3443,8 @@ function PriorityBar({
           <div className="action-strip-decision-content min-w-0 h-full">
             {showPeerWaitOpeningPreviews ? (
               <ViewedCardsStrip
-                label="Opening"
-                description={peerWaitPreviewDescription}
+                label={ui("Opening")}
+                description={ui(peerWaitPreviewDescription)}
                 sourceName={peerWait?.operation || ""}
                 cards={peerWaitOpeningPreviewEntries}
                 players={state?.players || []}
@@ -3453,8 +3458,8 @@ function PriorityBar({
               />
             ) : showViewedCardsStep ? (
               <ViewedCardsStrip
-                label={viewedCardsLabel}
-                description={viewedCards?.description || ""}
+                label={ui(viewedCardsLabel)}
+                description={ui(viewedCards?.description || "")}
                 sourceName={viewedCardsSourceName}
                 cards={viewedCardEntries}
                 players={state?.players || []}
@@ -3470,8 +3475,8 @@ function PriorityBar({
               <>
                 {showInlineViewedCards ? (
                   <ViewedCardsStrip
-                    label={viewedCardsLabel}
-                    description={viewedCards?.description || ""}
+                    label={ui(viewedCardsLabel)}
+                    description={ui(viewedCards?.description || "")}
                     sourceName={viewedCardsSourceName}
                     cards={viewedCardEntries}
                     players={state?.players || []}
@@ -3505,6 +3510,7 @@ function PriorityBar({
 }
 
 function CombatBar({ anchor = null, inline = false, replaceMiddleControls = false, decision, canAct }) {
+  const ui = useUiText();
   const { t } = useI18n();
   const {
     state,
@@ -3558,7 +3564,7 @@ function CombatBar({ anchor = null, inline = false, replaceMiddleControls = fals
         disabled={primaryDisabled} aria-disabled={primaryDisabled}
         onClick={() => { if (!primaryDisabled) combatAction?.onSubmit?.(); }}>
         {peerWaiting ? <PeerWaitButtonContent /> : (
-          combatAction?.label || (decision.kind === "attackers" ? "Declare no attackers" : "Confirm Blockers (0)")
+          combatAction?.label || (decision.kind === "attackers" ? ui("Declare no attackers") : ui("Confirm Blockers (0)"))
         )}
       </Button>
     </PeerWaitPopover>
@@ -3575,7 +3581,7 @@ function CombatBar({ anchor = null, inline = false, replaceMiddleControls = fals
           <div className="action-strip-decision-toolbar combat-decision-toolbar">
             {!topbarHost ? primaryControl : null}
             <div className="combat-decision-meta">
-              <span className="decision-stage-chip">{decision.kind === "attackers" ? "Attack" : "Block"}</span>
+              <span className="decision-stage-chip">{decision.kind === "attackers" ? ui("Attack") : ui("Block")}</span>
               <span className="action-strip-decision-title">{t(decision.kind === "attackers" ? "decision.chooseAttackers" : "decision.chooseBlockers")}</span>
               <span className="action-strip-decision-inline-summary">{!canAct ? t("decision.waitingForOpponent") : t(decision.kind === "attackers"
                 ? "decision.attackersHint"

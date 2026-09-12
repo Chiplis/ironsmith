@@ -1,8 +1,10 @@
+import useUiText from "@/i18n/useUiText";
 import { useGame } from "@/context/GameContext";
 import { formatPhase, formatStep } from "@/lib/constants";
 import { playerDisplayName, samePlayerId } from "@/lib/player-display";
 
 export default function TurnPane() {
+  const ui = useUiText();
   const { state } = useGame();
   if (!state) return null;
 
@@ -21,33 +23,26 @@ export default function TurnPane() {
 
   return (
     <section className="mt-auto border-t border-game-line-2 bg-[#0b121a] p-2 grid gap-1.5 content-start shrink-0">
-      <h4 className="m-0 uppercase text-[12px] tracking-wider text-muted-foreground font-bold">
-        Turn Summary
-      </h4>
+      <h4 className="m-0 uppercase text-[12px] tracking-wider text-muted-foreground font-bold">{ui("Turn Summary")}</h4>
       <div className="border border-[#203247] bg-[#0a1118] p-1.5 flex flex-wrap gap-1.5 text-[12px] text-[#d3e5fb]">
-        <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-none">
-          Turn {state.turn_number}
+        <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-none">{ui("Turn") + " "}{state.turn_number}
         </span>
         <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-none">
-          {formatPhase(state.phase)}
+          {ui(formatPhase(state.phase))}
         </span>
         <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-none">
-          {formatStep(state.step)}
+          {ui(formatStep(state.step))}
         </span>
-        <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-none">
-          Active: {playerDisplayName(players, activePlayer)}
+        <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-none">{ui("Active:") + " "}{playerDisplayName(players, activePlayer)}
         </span>
         {decisionOwnerDiffersFromPriority ? (
-          <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-none">
-            Decision: {playerDisplayName(players, decisionPlayer)}
+          <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-none">{ui("Decision:") + " "}{playerDisplayName(players, decisionPlayer)}
           </span>
         ) : priorityPlayer && (
-          <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-none">
-            Priority: {playerDisplayName(players, priorityPlayer)}
+          <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-none">{ui("Priority:") + " "}{playerDisplayName(players, priorityPlayer)}
           </span>
         )}
-        <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-none">
-          Stack: {state.stack_size}
+        <span className="border border-[#1e3044] bg-[#0c151f] px-1.5 rounded-none">{ui("Stack:") + " "}{state.stack_size}
         </span>
       </div>
     </section>

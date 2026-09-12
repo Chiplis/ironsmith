@@ -1731,7 +1731,16 @@ pub(super) fn extract_target_requirements_from_effect_internal(
             return;
         }
         declare_target(&extracted, declared_targets);
-        let mut legal_targets = compute_legal_targets(game, extracted.spec, caster, source_id);
+        let relaxed_spec = if matches!(extracted.spec.base(), ChooseSpec::Object(_))
+            && prior_relative_target_requirement(extracted.spec, requirements).is_some()
+        {
+            Some(relax_relative_object_target_source_exclusion(extracted.spec))
+        } else {
+            None
+        };
+        let mut legal_targets = compute_legal_targets(
+            game, relaxed_spec.as_ref().unwrap_or(extracted.spec), caster, source_id,
+        );
         retain_targets_satisfying_announcement_condition(
             game,
             effect,
@@ -1762,7 +1771,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
             .is_none_or(|constraint| constraint.supports_minimum(min_targets));
         if has_enough_targets || extracted.chooser.is_some() {
             let distinct_player_group =
-                link_relative_player_target_to_prior_requirement(extracted.spec, requirements);
+                link_relative_target_to_prior_requirement(extracted.spec, requirements);
             requirements.push(TargetRequirement {
                 spec: extracted.spec.clone(),
                 chooser: extracted.chooser.cloned(),
@@ -1784,17 +1793,42 @@ fn relative_target_player_exclusion_base(filter: &PlayerFilter) -> Option<&Playe
     filter.relative_target_exclusion_base()
 }
 
-fn link_relative_player_target_to_prior_requirement(
+fn relax_relative_object_target_source_exclusion(spec: &ChooseSpec) -> ChooseSpec {
+    match spec {
+        ChooseSpec::Target(inner) => ChooseSpec::Target(Box::new(relax_relative_object_target_source_exclusion(inner))),
+        ChooseSpec::WithCount(inner, count) => ChooseSpec::WithCount(Box::new(relax_relative_object_target_source_exclusion(inner)), *count),
+        ChooseSpec::WithCountValue(inner, count, value) => ChooseSpec::WithCountValue(Box::new(relax_relative_object_target_source_exclusion(inner)), *count, value.clone()),
+        ChooseSpec::SurfaceHinted { spec, hints } => ChooseSpec::SurfaceHinted {
+            spec: Box::new(relax_relative_object_target_source_exclusion(spec)), hints: hints.clone(),
+        },
+        ChooseSpec::Object(filter) => {
+            let mut filter = filter.clone();
+            filter.other = false;
+            ChooseSpec::Object(filter)
+        }
+        _ => spec.clone(),
+    }
+}
+
+fn prior_relative_target_requirement(spec: &ChooseSpec, requirements: &[TargetRequirement]) -> Option<usize> {
+    match spec.base() {
+        ChooseSpec::Player(filter) => {
+            relative_target_player_exclusion_base(filter)?;
+            requirements.iter().rposition(|requirement| matches!(requirement.spec.base(), ChooseSpec::Player(_)))
+        }
+        ChooseSpec::Object(filter) if filter.other && filter.source_surface.is_none()
+            && filter.tagged_constraints.is_empty() => {
+            requirements.iter().rposition(|requirement| matches!(requirement.spec.base(), ChooseSpec::Object(_)))
+        }
+        _ => None,
+    }
+}
+
+fn link_relative_target_to_prior_requirement(
     spec: &ChooseSpec,
     requirements: &mut [TargetRequirement],
 ) -> Option<usize> {
-    let ChooseSpec::Player(filter) = spec.base() else {
-        return None;
-    };
-    relative_target_player_exclusion_base(filter)?;
-    let prior_index = requirements
-        .iter()
-        .rposition(|requirement| matches!(requirement.spec.base(), ChooseSpec::Player(_)))?;
+    let prior_index = prior_relative_target_requirement(spec, requirements)?;
     let next_group = requirements
         .iter()
         .filter_map(|requirement| requirement.distinct_player_group)
@@ -3599,6 +3633,19 @@ pub(super) fn validate_stack_entry_targets_with_view(
                 entry.triggering_event.as_ref(),
             );
             let mut resolved_spec = choose_spec_for_resolution_target_validation(&resolved_spec);
+            let prior_object_targets: Vec<_> = entry.target_assignments[..assignment_index]
+                .iter()
+                .filter(|prior| matches!(prior.spec.base(), ChooseSpec::Object(_)))
+                .flat_map(|prior| entry.targets[prior.range.clone()].iter())
+                .copied()
+                .collect();
+            let relative_object_target = !prior_object_targets.is_empty()
+                && matches!(resolved_spec.base(), ChooseSpec::Object(filter)
+                    if filter.other && filter.source_surface.is_none()
+                        && filter.tagged_constraints.is_empty());
+            if relative_object_target {
+                resolved_spec = relax_relative_object_target_source_exclusion(&resolved_spec);
+            }
             if let Some(player) =
                 prior_player_or_planeswalker_target(game, entry, assignment_index, view)
             {
@@ -3639,7 +3686,8 @@ pub(super) fn validate_stack_entry_targets_with_view(
 
             let start = valid_targets.len();
             for target in &entry.targets[assignment.range.clone()] {
-                if legal_targets.contains(target)
+                if (legal_targets.contains(target)
+                    && (!relative_object_target || !prior_object_targets.contains(target)))
                     || (contains_exchange_control
                         && exchange_control_target_still_targetable(game, entry, target, view))
                 {

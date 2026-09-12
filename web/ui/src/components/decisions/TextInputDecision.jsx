@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useCallback, useEffect, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ export default function TextInputDecision({
   hideDescription = false,
   layout = "panel",
 }) {
+  const ui = useUiText();
   const { dispatch, game } = useGame();
   const stripLayout = layout === "strip";
   const initialValue = String(decision.value || "");
@@ -91,7 +93,7 @@ export default function TextInputDecision({
       <div className="flex items-center gap-2">
         <Input
           type="text"
-          aria-label={decision.description || decision.placeholder || "Enter text"}
+          aria-label={ui(decision.description || decision.placeholder || "Enter text")}
           aria-invalid={requiresKnownValue && validationStatus === "unknown"}
           className={cn(
             "decision-inline-input h-8 bg-transparent",
@@ -107,7 +109,7 @@ export default function TextInputDecision({
               handleSubmit();
             }
           }}
-          placeholder={decision.placeholder || "Enter text"}
+          placeholder={ui(decision.placeholder || "Enter text")}
           disabled={!canAct}
           autoFocus
         />
@@ -115,10 +117,10 @@ export default function TextInputDecision({
       {requiresKnownValue && trimmedValue ? (
         <div role="status" className="px-1 text-[12px] text-muted-foreground">
           {validationStatus === "checking"
-            ? "Checking card name..."
+            ? ui("Checking card name...")
             : validationStatus === "unknown"
-              ? "Unknown card name"
-              : "Known card name"}
+              ? ui("Unknown card name")
+              : ui("Known card name")}
         </div>
       ) : null}
     </div>
@@ -152,9 +154,7 @@ export default function TextInputDecision({
             )}
             disabled={!canSubmit}
             onClick={handleSubmit}
-          >
-            Submit
-          </Button>
+          >{ui("Submit")}</Button>
         </div>
       )}
     </div>

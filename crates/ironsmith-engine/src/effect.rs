@@ -236,6 +236,7 @@ impl OutcomeObjectMemory {
                 is_token: self.is_token,
                 tapped: false,
                 attacking: false,
+                goaded: None,
                 flipped: false,
                 face_down: false,
                 transform_count: 0,

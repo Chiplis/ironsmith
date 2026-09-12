@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useGame } from "@/context/GameContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
@@ -103,6 +104,7 @@ export default function AttackersDecision({
   compact = false,
   onCompactActionChange = null,
 }) {
+  const ui = useUiText();
   const { dispatch, state, multiplayer, playerAccentOverrides } = useGame();
   const { updateArrows, clearArrows, startDragArrow, updateDragArrow, endDragArrow, setCombatMode } = useCombatArrows();
   const options = useMemo(() => decision.attacker_options || [], [decision.attacker_options]);
@@ -396,7 +398,7 @@ export default function AttackersDecision({
     <div className="flex h-full min-h-0 w-full flex-col gap-2 overflow-x-hidden">
       <ScrollArea className="flex-1 min-h-0 w-full overflow-x-hidden">
         <div className="flex flex-col gap-2 pr-1 overflow-x-hidden">
-          <div className="px-0.5 text-[13px] font-bold uppercase tracking-wider text-[#d8c18c]">Declare attackers</div>
+          <div className="px-0.5 text-[13px] font-bold uppercase tracking-wider text-[#d8c18c]">{ui("Declare attackers")}</div>
           {options.map((opt) => {
             const creatureId = Number(opt.creature);
             const attacking = isAttacking(creatureId);
@@ -436,14 +438,14 @@ export default function AttackersDecision({
                   onClick={() => toggleAttacker(opt)}
                 >
                   <span className="block min-w-0 truncate">
-                    {attacking ? "[ATK] " : ""}{name}
-                    {opt.must_attack && " (must attack)"}
+                    {attacking ? ui("[ATK] ") : ""}{name}
+                    {opt.must_attack && ui(" (must attack)")}
                   </span>
                 </Button>
 
                 {attacking && decl && (
                   <div className="mt-1.5 px-1 text-[14px] text-[#d6c8ac] min-w-0 truncate">
-                    -&gt; {attackTargetLabel(decl.target, players)}
+                    -&gt; {ui(attackTargetLabel(decl.target, players))}
                   </div>
                 )}
 
@@ -477,7 +479,7 @@ export default function AttackersDecision({
                             onClick={() => selectTarget(creatureId, target)}
                           >
                             <span className="min-w-0 truncate">
-                              {attackTargetLabel(decodedTarget, players)}
+                              {ui(attackTargetLabel(decodedTarget, players))}
                             </span>
                           </Button>
                         );
@@ -513,7 +515,7 @@ export default function AttackersDecision({
             {peerWaiting ? (
               <PeerWaitButtonContent />
             ) : (
-              <>{attackerSubmitLabel(declarations.length)}</>
+              <>{ui(attackerSubmitLabel(declarations.length))}</>
             )}
           </Button>
         </PeerWaitPopover>

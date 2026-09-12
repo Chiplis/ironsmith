@@ -3848,7 +3848,7 @@ button:disabled,
   }
 }
 
-/* Keep the turn summary with the right-aligned brand. */
+/* Keep the brand aligned with the table tools. */
 .topbar-brand-stack {
   display: flex;
   flex-direction: column;
@@ -4053,64 +4053,8 @@ button:disabled,
   background: #090c0e;
 }
 .table-persistent-utility-strip .table-tools-toggle { margin-left: auto; flex-shrink: 0; }
-.table-header-tools-strip {
-  position: absolute;
-  inset: 26px 0 auto;
-  z-index: 116;
-  min-height: 32px;
-  padding: 0 8px;
-  background: transparent;
-  pointer-events: none;
-}
-.table-header-tools-strip > .table-header-tools-popover-wrap { pointer-events: auto; margin-left: auto; }
-.table-header-tools-popover-wrap { position: relative; flex: 0 0 auto; z-index: 181; }
-.table-header-tools-popover-wrap,
-.table-header-tools-popover-wrap * { pointer-events: auto; }
 .table-header-tools-toggle { display: inline-flex; align-items: center; justify-content: center; width: 26px; min-height: 26px; padding: 0; }
 .table-header-tools-toggle svg { width: 14px; height: 14px; }
-.table-header-tools-popover {
-  position: fixed;
-  z-index: 180;
-  display: grid;
-  grid-template-columns: 136px minmax(0, 1fr);
-  align-items: stretch;
-  gap: 8px;
-  width: min(1120px, calc(100vw - 24px));
-  max-width: calc(100vw - 24px);
-  min-width: 0;
-  padding: 8px;
-  background: rgba(9, 12, 14, 0.97);
-  border: 1px solid rgba(205, 178, 122, 0.36);
-  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.48);
-  pointer-events: auto;
-  isolation: isolate;
-}
-@media (max-width: 720px) {
-  .table-header-tools-popover {
-    width: calc(100vw - 16px);
-    max-width: calc(100vw - 16px);
-    grid-template-columns: 1fr;
-    max-height: calc(100vh - 92px);
-    overflow-y: auto;
-  }
-}
-.table-header-tools-popover > .table-zone-action-controls {
-  display: grid;
-  flex: 1 1 auto;
-  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
-  align-items: stretch;
-  min-width: 0;
-  width: auto;
-  gap: 6px;
-}
-.table-header-tools-popover > .table-zone-action-button,
-.table-header-tools-popover > .table-zone-action-controls .table-zone-action-button {
-  flex: 0 1 auto;
-  width: auto;
-  min-width: 112px;
-  min-height: 34px;
-  white-space: nowrap;
-}
 .table-inline-utility-actions {
   flex: 1 1 0;
   min-width: 0;
@@ -4173,4 +4117,146 @@ button:disabled,
   min-height: 0 !important;
   padding: 2px 8px !important;
   overflow: auto !important;
+}
+
+/* The current phase and turn summary share the former full phase strip. */
+.table-toolbar .topbar-phase-shell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.topbar-phase-shell .phase-track.phase-track--single {
+  display: block;
+  flex: 0 0 auto;
+  width: 150px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.phase-track-window {
+  position: relative;
+  height: 28px;
+  overflow: hidden;
+}
+
+.phase-track-label {
+  display: flex;
+  position: absolute;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  color: #fff7e6;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.phase-track-label--incoming {
+  animation: phase-roll-in 350ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.phase-track-label--outgoing {
+  animation: phase-roll-out 350ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.topbar-phase-shell .topbar-phase-status {
+  position: static;
+  flex: 1 1 auto;
+  max-width: none;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  row-gap: 5px;
+  transform: none;
+  pointer-events: auto;
+}
+
+@keyframes phase-roll-in {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes phase-roll-out {
+  from { transform: translateY(0); }
+  to { transform: translateY(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .phase-track-label--incoming,
+  .phase-track-label--outgoing {
+    animation-duration: 1ms;
+  }
+}
+
+/* Expand table tools inline beside the existing GitHub/settings controls. */
+.table-toolbar .topbar-brand-stack {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding-right: 0;
+}
+
+.table-shared-player-header [data-my-zone-header-content],
+.player-header-utility-controls,
+.player-header-utility-controls .topbar-minor-controls--utility {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.table-inline-header-tools {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(64px, 100%), 1fr));
+  align-items: stretch;
+  gap: 3px;
+  min-width: 0;
+  flex: 1 1 auto;
+  container-type: inline-size;
+}
+
+.table-inline-header-tools[data-expanded="false"] {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.table-inline-header-tools .table-zone-action-controls {
+  display: contents;
+}
+
+.table-inline-header-tools .table-zone-action-button {
+  width: 100%;
+  min-width: 0;
+  min-height: 26px;
+  padding: 3px 4px !important;
+  gap: 3px;
+  font-size: clamp(8px, 1.5cqw, 11px) !important;
+  line-height: 1.15;
+  letter-spacing: 0 !important;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.table-inline-header-tools .table-zone-action-button svg {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+}
+
+/* Reserve the same tool-row space in both states to avoid moving the board. */
+.table-shell .table-shared-player-header:has(.table-inline-header-tools) {
+  height: auto !important;
+  padding-block: 3px !important;
+}
+
+.table-inline-header-tools .audit-replay-rail {
+  min-width: 0;
+  grid-column: 1 / -1;
+}
+
+/* A stationary pointer is dormant while arrow keys navigate the hand. */
+html[data-hand-pointer-suspended="true"],
+html[data-hand-pointer-suspended="true"] * {
+  cursor: none !important;
 }

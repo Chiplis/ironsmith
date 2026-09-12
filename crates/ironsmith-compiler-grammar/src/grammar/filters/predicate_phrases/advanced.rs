@@ -1642,6 +1642,21 @@ pub(super) fn parse_player_spell_cast_this_turn_predicate(
     let condition =
         crate::grammar::conditions::parse_player_spell_cast_this_turn_condition(tokens)?;
     match condition {
+        crate::grammar::conditions::PlayerSpellCastThisTurnConditionAst::AnotherSpell {
+            player,
+            negated,
+        } => {
+            let predicate = PredicateAst::ValueComparison {
+                left: Value::SpellsCastThisTurnMatching {
+                    player,
+                    filter: ObjectFilter::spell(),
+                    exclude_source: true,
+                },
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(1),
+            };
+            Some(if negated { PredicateAst::Not(Box::new(predicate)) } else { predicate })
+        }
         crate::grammar::conditions::PlayerSpellCastThisTurnConditionAst::CountAtLeast {
             player,
             count,

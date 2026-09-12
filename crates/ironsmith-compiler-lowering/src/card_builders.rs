@@ -894,6 +894,42 @@ impl CardDefinitionBuilder {
         })
     }
 
+    pub fn encore(self, cost: ManaCost) -> Self {
+        let cost = TotalCost::from_costs(vec![
+            crate::costs::Cost::mana(cost),
+            crate::costs::Cost::exile_self(),
+        ]);
+        let mut copy = crate::effects::CreateTokenCopyEffect::new(
+            crate::target::ChooseSpec::Source,
+            1,
+            crate::target::PlayerFilter::You,
+        )
+        .sacrifice_at_next_end_step(true);
+        copy.must_attack_player_this_turn = Some(crate::target::PlayerFilter::IteratedPlayer);
+        let effects = vec![
+            crate::effect::Effect::for_each_opponent(vec![
+                crate::effect::Effect::new(copy).tag("encore_tokens"),
+            ]),
+            crate::effect::Effect::new(crate::effects::ApplyContinuousEffect::new(
+                crate::continuous::EffectTarget::Filter(crate::target::ObjectFilter::tagged(
+                    "encore_tokens",
+                )),
+                crate::continuous::Modification::AddAbility(
+                    crate::static_abilities::StaticAbility::haste(),
+                ),
+                crate::effect::Until::Forever,
+            )),
+        ];
+        self.with_ability(
+            crate::ability::Ability::activated_with_timing(
+                cost,
+                effects,
+                crate::ability::ActivationTiming::SorcerySpeed,
+            )
+            .in_zones(vec![crate::zone::Zone::Graveyard]),
+        )
+    }
+
     pub fn eternalize(self, cost: TotalCost) -> Self {
         fn append_exile_source(cost: &TotalCost) -> TotalCost {
             match cost.kind() {

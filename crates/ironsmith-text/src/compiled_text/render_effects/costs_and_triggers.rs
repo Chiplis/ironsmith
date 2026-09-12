@@ -4884,13 +4884,13 @@ pub(in crate::compiled_text) fn describe_for_players_choose_then_exile(
             "{subject} {choose_verb} {selection} and {exile_verb} it"
         ));
     }
-    let move_to_zone = exile_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let move_to_zone = move_to_zone_surface_view(unwrap_basic_tag_wrappers(exile_effect))?;
     if choose_primary_zone(choose) == Some(Zone::Hand)
         && choose.additional_zones.contains(&Zone::Battlefield)
         && !choose.is_search
         && choose.chooser == PlayerFilter::IteratedPlayer
         && choose_filter_is_iterated_hand_card_or_permanent(choose)
-        && move_to_exile_uses_chosen_tag(move_to_zone, choose.tag.as_str())
+        && move_to_exile_uses_chosen_tag(&move_to_zone, choose.tag.as_str())
     {
         let (subject, actor, possessive, singular_object) = match for_players.filter {
             PlayerFilter::Any => (
@@ -4928,7 +4928,7 @@ pub(in crate::compiled_text) fn describe_for_players_choose_then_exile(
         || !choose.count.is_single()
         || choose.chooser != PlayerFilter::IteratedPlayer
         || choose.filter.controller != Some(PlayerFilter::IteratedPlayer)
-        || !move_to_exile_uses_chosen_tag(move_to_zone, choose.tag.as_str())
+        || !move_to_exile_uses_chosen_tag(&move_to_zone, choose.tag.as_str())
     {
         return None;
     }

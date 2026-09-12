@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { createContext, useContext } from "react";
 import { Loader2 } from "lucide-react";
 import { ComicTooltip } from "@/components/ui/comic-tooltip";
@@ -115,6 +116,7 @@ function peerWaitButtonDetail(peerWait) {
 }
 
 export function PeerWaitButtonContent({ className = "", peerWait: peerWaitProp = null }) {
+  const ui = useUiText();
   const contextPeerWait = useContext(PeerWaitContext);
   const { inspectorDebug } = useGame();
   const peerWait = peerWaitProp || contextPeerWait;
@@ -131,7 +133,7 @@ export function PeerWaitButtonContent({ className = "", peerWait: peerWaitProp =
         )}
       >
         <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-        <span className="sr-only">{peerWaitTitle(peerWait)}</span>
+        <span className="sr-only">{ui(peerWaitTitle(peerWait))}</span>
       </span>
     );
   }
@@ -144,11 +146,11 @@ export function PeerWaitButtonContent({ className = "", peerWait: peerWaitProp =
       )}
     >
       <span className="peer-wait-button-label min-w-0 truncate text-[11px] font-bold uppercase leading-tight">
-        {peerWaitButtonLabel(peerWait)}
+        {ui(peerWaitButtonLabel(peerWait))}
       </span>
       {detail ? (
         <span className="peer-wait-button-detail max-w-full truncate text-[10px] font-semibold uppercase leading-none opacity-80">
-          {detail}
+          {ui(detail)}
         </span>
       ) : null}
     </span>
@@ -163,6 +165,7 @@ export default function PeerWaitPopover({
   sideOffset = 7,
   contentClassName = "max-w-[320px]",
 }) {
+  const ui = useUiText();
   if (!peerWait) {
     return (
       <PeerWaitContext.Provider value={null}>
@@ -175,8 +178,8 @@ export default function PeerWaitPopover({
     <PeerWaitContext.Provider value={peerWait}>
       <ComicTooltip
         disabled={false}
-        title={peerWaitTitle(peerWait)}
-        description={peerWaitDescription(peerWait)}
+        title={ui(peerWaitTitle(peerWait))}
+        description={ui(peerWaitDescription(peerWait))}
         side={side}
         align={align}
         sideOffset={sideOffset}

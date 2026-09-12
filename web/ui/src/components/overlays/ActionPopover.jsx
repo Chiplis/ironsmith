@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHoverActions } from "@/context/HoverContext";
@@ -40,6 +41,7 @@ export default function ActionPopover({
   onMouseEnter = null,
   onMouseLeave = null,
 }) {
+  const ui = useUiText();
   const ref = useRef(null);
   const openedAtRef = useRef(0);
   const closeTimerRef = useRef(null);
@@ -175,7 +177,7 @@ export default function ActionPopover({
       className="fixed z-[32000]"
       data-action-popover="true"
       role={ariaLabel ? "dialog" : undefined}
-      aria-label={ariaLabel || undefined}
+      aria-label={ui(ariaLabel || undefined)}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       onFocus={onMouseEnter}
@@ -213,12 +215,12 @@ export default function ActionPopover({
           >
             {title && (
               <div className="text-[13px] font-bold leading-tight" style={{ color: palette.titleText }}>
-                {title}
+                {ui(title)}
               </div>
             )}
             {subtitle && (
               <div className="mt-0.5 text-[12px] leading-snug" style={{ color: palette.subtitleText }}>
-                {subtitle}
+                {ui(subtitle)}
               </div>
             )}
           </div>

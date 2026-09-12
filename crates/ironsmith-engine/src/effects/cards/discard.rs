@@ -170,7 +170,62 @@ fn tracks_same_selected_objects(count: &Value, card_filter: Option<&ObjectFilter
     !count_tags.is_empty() && count_tags == card_tags
 }
 
+/// A nonrandom discard choice frozen before any participant's cards move.
+#[derive(Debug)]
+struct DiscardProposal {
+    effect: DiscardEffect,
+    selected: Vec<crate::ids::ObjectId>,
+}
+
+impl crate::effects::SimultaneousEffectProposal for DiscardProposal {
+    fn commit(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<EffectOutcome, ExecutionError> {
+        let mut effect = self.effect;
+        effect.count = Value::Fixed(self.selected.len() as i32);
+        let mut filter = ObjectFilter::default();
+        filter.any_of = self.selected.iter().copied().map(ObjectFilter::specific).collect();
+        effect.card_filter = Some(filter);
+        let previous_targets = std::mem::replace(&mut ctx.targets,
+            self.selected.iter().copied().map(crate::effects::ResolvedTarget::Object).collect());
+        let outcome = effect.execute(game, ctx);
+        ctx.targets = previous_targets;
+        outcome
+    }
+}
+
 impl EffectExecutor for DiscardEffect {
+    fn supports_simultaneous_player_action(&self) -> bool {
+        !self.random && !self.any_number && self.card_filter.is_none()
+    }
+
+    fn prepare_simultaneous_player_action(&self, game: &GameState, ctx: &mut ExecutionContext)
+        -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        use crate::decisions::{make_decision, specs::ChooseObjectsSpec};
+        if !self.supports_simultaneous_player_action() {
+            return Err(ExecutionError::Impossible("discard shape lacks simultaneous preparation".into()));
+        }
+        let player = resolve_player_filter(game, &self.player, ctx)?;
+        let hand = game.player(player).map(|player| player.hand.to_vec()).unwrap_or_default();
+        let count = (resolve_value(game, &self.count, ctx)?.max(0) as usize).min(hand.len());
+        let explicit = ctx.targets.iter().filter_map(|target| match target {
+            crate::effects::ResolvedTarget::Object(id) => Some(*id),
+            _ => None,
+        }).collect::<Vec<_>>();
+        let selected = if count == 0 { Vec::new() }
+        else if !explicit.is_empty() { normalize_object_selection(explicit, &hand, count) }
+        else {
+            let spec = ChooseObjectsSpec::new(ctx.source,
+                format!("Choose {} card{} to discard", count, if count == 1 { "" } else { "s" }),
+                hand.clone(), count, Some(count));
+            let chosen = make_decision(game, ctx.decision_maker, player, Some(ctx.source), spec);
+            if ctx.decision_maker.awaiting_choice() { Vec::new() }
+            else { normalize_object_selection(chosen, &hand, count) }
+        };
+        let mut effect = self.clone();
+        effect.player = PlayerFilter::Specific(player);
+        Ok(Box::new(DiscardProposal { effect, selected }))
+    }
+
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
     }

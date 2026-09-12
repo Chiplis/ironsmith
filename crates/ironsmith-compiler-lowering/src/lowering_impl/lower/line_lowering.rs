@@ -715,8 +715,10 @@ fn fuse_repeatable_mana_payment_prevention_until_end_of_turn(
         }
         _ => return false,
     };
+    let initial_tagged = initial_effect.downcast_ref::<crate::effects::TaggedEffect>();
+    let initial_body = initial_tagged.map_or(initial_effect, |tagged| tagged.effect.as_ref());
     let Some(initial_prevention) =
-        initial_effect.downcast_ref::<crate::effects::PreventDamageEffect>()
+        initial_body.downcast_ref::<crate::effects::PreventDamageEffect>()
     else {
         return false;
     };
@@ -793,11 +795,13 @@ fn fuse_repeatable_mana_payment_prevention_until_end_of_turn(
     };
     if prevention.amount.unhinted() != &crate::effect::Value::Fixed(1)
         || prevention.until != crate::effect::Until::EndOfTurn
-        || !matches!(
+        || !(matches!(
             prevention.target.unhinted(),
             ChooseSpec::ObjectOrPlayer(object, PlayerFilter::Any)
                 if is_exact_permanent_or_player_object_filter(object)
-        )
+        ) || initial_tagged.is_some_and(|initial| {
+            matches!(prevention.target.base(), ChooseSpec::Tagged(tag) if tag == &initial.tag)
+        }))
         || !prevention.follow_up_effects.is_empty()
         || prevention.source_of_your_choice
         || prevention.protect_you_and_permanents_you_control

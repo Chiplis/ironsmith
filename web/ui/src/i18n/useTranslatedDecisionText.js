@@ -1,3 +1,4 @@
+import { translateUiText } from "./catalog.js";
 import { useCallback, useEffect, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { findObjectCardInState } from "@/lib/inspector-selection";
@@ -63,7 +64,7 @@ export function useTranslatedDecisionText(decision) {
           cardName: translatedName,
           englishCardName: cardName,
           quote,
-        }) || text
+        }) || translateUiText(text, null, locale)
       );
     },
     [cardName, englishText, locale, t, translatedName, translatedText]

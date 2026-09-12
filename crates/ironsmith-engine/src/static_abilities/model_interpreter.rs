@@ -909,6 +909,7 @@ impl StaticAbilityModelInterpreter {
                     StaticAbility::legend_rule_doesnt_apply_to_controller_matching(filter.clone())
                 }
             }
+            ironsmith_core::StaticAbilityPayload::GoadMatching { filter } => StaticAbility::new(super::combat::GoadMatching { filter: filter.clone() }),
             ironsmith_core::StaticAbilityPayload::Anthem(anthem) => {
                 let mut converted = match &anthem.filter {
                     Some(filter) => crate::static_abilities::Anthem::new(filter.clone(), 0, 0)
@@ -2472,6 +2473,13 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         match self.payload() {
             ironsmith_core::StaticAbilityPayload::HexproofFrom(filter) => Some(filter),
             _ => self.leaf_static_ability()?.hexproof_from_filter(),
+        }
+    }
+
+    fn goads_matching(&self) -> Option<&crate::target::ObjectFilter> {
+        match self.payload() {
+            ironsmith_core::StaticAbilityPayload::GoadMatching { filter } => Some(filter),
+            _ => self.leaf_static_ability()?.goads_matching(),
         }
     }
 

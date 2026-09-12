@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useCallback, useEffect, useId, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ export default function NumberDecision({
   hideDescription = false,
   layout = "panel",
 }) {
+  const ui = useUiText();
   const { dispatch } = useGame();
   const stripLayout = layout === "strip";
   const inputId = useId();
@@ -57,7 +59,7 @@ export default function NumberDecision({
             stripLayout ? "w-[88px] text-[14px]" : "w-28 text-[16px]"
           )}
           id={inputId}
-          aria-label={decision.description || "Choose a number"}
+          aria-label={ui(decision.description || "Choose a number")}
           aria-describedby={`${inputId}-range`}
           aria-invalid={!valid}
           min={min}
@@ -111,9 +113,7 @@ export default function NumberDecision({
             )}
             disabled={!canSubmit}
             onClick={handleSubmit}
-          >
-            Submit
-          </Button>
+          >{ui("Submit")}</Button>
         </div>
       )}
     </div>

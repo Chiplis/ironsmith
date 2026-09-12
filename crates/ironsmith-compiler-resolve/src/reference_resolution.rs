@@ -598,6 +598,10 @@ fn resolve_definite_object_references_in_effect(
     }
     if let EffectAst::SubjectVerb(subject_verb) = effect {
         match &mut subject_verb.action {
+            SubjectVerbActionAst::Control(ControlActionAst::Attach { object, target }) => {
+                resolve_definite_object_target_from_bindings(object, bindings);
+                resolve_definite_object_target_from_bindings(target, bindings);
+            }
             SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fight {
                 creature1,
                 creature2,
@@ -1375,10 +1379,15 @@ fn advance_reference_frame_for_effect(
                 | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
                     source: target,
                 })
-                | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage { target, .. })
                 | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamageToTargetPutCounters { target, .. })
                 | SubjectVerbActionAst::Counters(CounterActionAst::PutOrRemoveCounters { target, .. }) => {
                     maybe_tag_target(target, frame, id_gen, "targeted")?;
+                }
+                SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage { target, .. }) => {
+                    maybe_tag_target(target, frame, id_gen, "targeted")?;
+                    if target_is_any_damage_target(target) && frame.auto_tag_object_targets {
+                        frame.last_object_tag = Some(next_reference_tag(id_gen, "targeted"));
+                    }
                 }
                 SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllDamageToTarget {
                     target,
@@ -2252,6 +2261,25 @@ fn annotate_effect_sequence_with_env_internal(
             _ => None,
         };
         let mut resolution_env = in_env.clone();
+        // A positive follow-up to a turn-order offer refers to the accepting
+        // participant. Its result carries per-player outcomes, which the
+        // conditional executor uses to bind this local player reference.
+        let is_offer_followup = matches!(
+            &effect,
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                predicate: IfResultPredicate::Did,
+                ..
+            })
+        ) && matches!(
+            annotated.last(),
+            Some(AnnotatedEffect {
+                effect: EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay { .. }),
+                ..
+            })
+        );
+        if is_offer_followup {
+            resolution_env.last_player_filter = RefState::Known(PlayerFilter::IteratedPlayer);
+        }
         if let Some(tag) = source_exiled_condition_tag.as_ref() {
             resolution_env.last_object_tag = RefState::Known(tag.clone());
         }
@@ -2330,6 +2358,12 @@ fn annotate_effect_sequence_with_env_internal(
             auto_tag_object_targets_for_env,
             suppress_force_auto_tag_object_targets,
         )?;
+        if is_offer_followup {
+            // The participant is local to the positive branch. In
+            // particular, a following "otherwise" is one collective
+            // fallback, not an action for each earlier declining player.
+            out_env.last_player_filter = in_env.last_player_filter.clone();
+        }
         // Keep the surface-shaped choice available while advancing the frame:
         // a hand choice written as "a card from it" uses that original `it`
         // marker to preserve the revealed player's antecedent. Once the frame
@@ -2362,6 +2396,25 @@ fn annotate_effect_sequence_with_env_internal(
             // damaged-player fallback used for an otherwise-unbound `it`.
             out_env.source_object_antecedent = true;
             out_env.last_object_tag = in_env.last_object_tag.clone();
+        }
+        // A positive result gate's "otherwise" is the complement of its
+        // original condition. Whether the true arm itself changes the game
+        // (or is prevented) must not decide whether the fallback runs.
+        if let EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult {
+            condition,
+            predicate: IfResultPredicate::Otherwise,
+            ..
+        }) = &mut effect
+            && let Some(AnnotatedEffect {
+                effect: EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult {
+                    condition: prior_condition,
+                    predicate: IfResultPredicate::Did,
+                    ..
+                }),
+                ..
+            }) = annotated.last()
+        {
+            *condition = *prior_condition;
         }
         let exports_result_for_fallback =
             result_gate_exports_outcome_to_fallback(&effect, remaining.first());
@@ -3344,6 +3397,7 @@ fn visit_filter_values(filter: &ObjectFilter, visit: &mut impl FnMut(&Value)) {
         filter.toughness.as_ref(),
         filter.mana_value.as_ref(),
         filter.color_count.as_ref(),
+        filter.card_type_count.as_ref(),
     ]
     .into_iter()
     .flatten()
@@ -6298,6 +6352,9 @@ fn bind_unresolved_it_in_filter(filter: &mut ObjectFilter, seed_tag: &TagKey) ->
     }
     if let Some(color_count) = filter.color_count.as_mut() {
         replacements += bind_unresolved_it_in_comparison(color_count, seed_tag);
+    }
+    if let Some(card_type_count) = filter.card_type_count.as_mut() {
+        replacements += bind_unresolved_it_in_comparison(card_type_count, seed_tag);
     }
     if let Some(owner) = filter.owner.as_mut() {
         replacements += bind_unresolved_it_in_player_filter(owner, seed_tag);

@@ -83,6 +83,7 @@ pub fn object_filter_mentions_iterated_player(filter: &ObjectFilter) -> bool {
             filter.total_power_toughness.as_ref(),
             filter.mana_value.as_ref(),
             filter.color_count.as_ref(),
+            filter.card_type_count.as_ref(),
         ]
         .into_iter()
         .flatten()
@@ -120,6 +121,7 @@ fn object_filter_contains_pending_effect_metric(filter: &ObjectFilter) -> bool {
             filter.total_power_toughness.as_ref(),
             filter.mana_value.as_ref(),
             filter.color_count.as_ref(),
+            filter.card_type_count.as_ref(),
         ]
         .into_iter()
         .flatten()

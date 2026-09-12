@@ -1413,6 +1413,12 @@ pub(super) fn try_compile_stack_and_condition_effect(
             predicate,
             effects,
         }) => {
+            // A correlated follow-up outside a participant loop needs the
+            // result's player partition to bind its accepting participant.
+            // This is reference context, not an announced target: damage to
+            // "that player" deliberately exposes no target requirement.
+            let per_player_result = !ctx.iterated_player
+                && ctx.last_player_filter == Some(PlayerFilter::IteratedPlayer);
             let (inner_effects, inner_choices) = with_preserved_lowering_context(
                 ctx,
                 |ctx| {
@@ -1421,7 +1427,10 @@ pub(super) fn try_compile_stack_and_condition_effect(
                 |ctx| compile_effects(effects, ctx),
             )?;
             let predicate = effect_predicate_from_if_result(predicate.clone());
-            let effect = Effect::if_then(*condition, predicate, inner_effects);
+            let effect = Effect::new(
+                crate::effects::IfEffect::if_then(*condition, predicate, inner_effects)
+                    .with_per_player_result(per_player_result),
+            );
             (vec![effect], inner_choices)
         }
         EffectAst::Conditionals(ConditionalEffectAst::ResolvedWhenResult {

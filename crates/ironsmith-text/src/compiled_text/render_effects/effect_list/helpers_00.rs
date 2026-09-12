@@ -4432,9 +4432,13 @@ pub(crate) fn describe_shape_anew_like_bundle(effects: &[&Effect]) -> Option<Str
         &consult.player,
         PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)
             | PlayerFilter::AliasedControllerOf(crate::filter::ObjectRef::Target)
-    );
+    ) || matches!(&consult.player,
+        PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(tag))
+            | PlayerFilter::AliasedControllerOf(crate::filter::ObjectRef::Tagged(tag))
+            if wrapped_effect_tag(sacrifice_effect) == Some(tag));
     if consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Reveal
-        || consult.stop_rule != crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
+        || !matches!(consult.stop_rule, crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
+            | crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)))
         || !controller_reference_matches
         || consult.filter.card_types != vec![CardType::Artifact]
     {
@@ -4447,6 +4451,13 @@ pub(crate) fn describe_shape_anew_like_bundle(effects: &[&Effect]) -> Option<Str
         || !matches!(&move_to_zone.target, ChooseSpec::Tagged(tag) if tag == &consult.match_tag)
     {
         return None;
+    }
+    if is_exact_consult_remainder_shuffle(shuffle_effect, consult) {
+        let target_text = describe_choose_spec(&sacrifice.target);
+        let selection = describe_single_search_filter_in_zone(&consult.filter, Zone::Library);
+        return Some(format!(
+            "The controller of {target_text} sacrifices it, then reveals cards from the top of their library until they reveal {selection}. That player puts that card onto the battlefield, then shuffles all other cards revealed this way into their library"
+        ));
     }
     let shuffle = shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
     let shuffle_returns_to_consulting_player = matches!(

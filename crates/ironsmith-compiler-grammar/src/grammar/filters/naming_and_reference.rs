@@ -599,6 +599,23 @@ pub(super) fn parse_color_count_phrase_words(words: &[&str]) -> Option<(u32, usi
         .then_some((count, used + 1))
 }
 
+pub(super) fn try_apply_card_type_count_phrase(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+) -> bool {
+    let found = all_words.iter().enumerate().find_map(|(index, _)| {
+        let (count, used) = parse_min_color_count_quantity_prefix(&all_words[index..])?;
+        (all_words.get(index + used..index + used + 2) == Some(&["card", "types"][..]))
+            .then_some((index, count, used + 2))
+    });
+    let Some((index, count, consumed)) = found else {
+        return false;
+    };
+    filter.card_type_count = Some(crate::filter::Comparison::GreaterThanOrEqual(count as i32));
+    all_words.drain(index..index + consumed);
+    true
+}
+
 pub(super) fn try_apply_color_count_phrase(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&str>,

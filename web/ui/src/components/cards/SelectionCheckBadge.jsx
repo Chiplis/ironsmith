@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { requestObjectSelection } from "@/lib/object-selection";
@@ -13,6 +14,7 @@ export default function SelectionCheckBadge({
   className = "",
   label = "Deselect card",
 }) {
+  const ui = useUiText();
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
 
   const deselect = (event) => {
@@ -25,8 +27,8 @@ export default function SelectionCheckBadge({
     <span
       role="button"
       tabIndex={-1}
-      aria-label={label}
-      title={label}
+      aria-label={ui(label)}
+      title={ui(label)}
       className={cn("card-selection-check", className)}
       onPointerDown={(event) => {
         event.stopPropagation();

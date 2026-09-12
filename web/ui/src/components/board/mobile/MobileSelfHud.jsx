@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import PriorityHoldControl from "@/components/decisions/PriorityHoldControl";
 import { useCastPlayerHovered } from "@/context/DragContext";
 import { useCallback } from "react";
@@ -33,6 +34,7 @@ export default function MobileSelfHud({
   manaPool = null,
   className,
 }) {
+  const ui = useUiText();
   const { state, playerAccentOverrides } = useGame();
   const castPlayerHovered = useCastPlayerHovered(me?.index ?? me?.id);
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
@@ -81,8 +83,8 @@ export default function MobileSelfHud({
       >
         <PlayerAvatar player={me} accentHex={accent?.hex} isActiveTurn={isActiveTurn} />
         <span className="mobile-mtga-hud-identity">
-          <span className="mobile-mtga-hud-name">{me.name || "You"}</span>
-          <span className="mobile-mtga-hud-life" aria-label={`Life ${me.life}`}>
+          <span className="mobile-mtga-hud-name">{me.name || ui("You")}</span>
+          <span className="mobile-mtga-hud-life" aria-label={ui("Life {0}", { 0: me.life })}>
             {me.life ?? 0}
           </span>
         </span>

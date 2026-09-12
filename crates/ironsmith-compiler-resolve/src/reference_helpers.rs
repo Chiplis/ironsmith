@@ -529,6 +529,7 @@ fn replace_it_tag_in_filter(filter: &mut ObjectFilter, tag: &TagKey) {
         filter.toughness.as_mut(),
         filter.mana_value.as_mut(),
         filter.color_count.as_mut(),
+        filter.card_type_count.as_mut(),
     ]
     .into_iter()
     .flatten()
@@ -590,6 +591,9 @@ fn resolve_object_filter_player_refs(
     }
     if let Some(color_count) = resolved.color_count.as_mut() {
         *color_count = resolve_object_filter_comparison(color_count, refs)?;
+    }
+    if let Some(card_type_count) = resolved.card_type_count.as_mut() {
+        *card_type_count = resolve_object_filter_comparison(card_type_count, refs)?;
     }
     if let Some(targets_player) = resolved.targets_player.as_mut() {
         *targets_player = resolve_contextual_player_filter(targets_player, refs)?;

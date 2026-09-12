@@ -638,8 +638,10 @@ fn read_complete_simple_subject_verb(
     {
         return Ok(Some(effects));
     }
-    if crate::grammar::effects::counter_marker_shapes::parse_shared_counter_target_tokens(sentence)
+    if (crate::grammar::effects::counter_marker_shapes::parse_shared_counter_target_tokens(sentence)
         .is_some()
+        || crate::grammar::effects::counter_marker_shapes::parse_counter_placement_sequence_tokens(sentence)
+            .is_some())
         && let Some(effects) = super::subject_verb_primitives::parse_sentence_put_counter_sequence(
             super::SubjectVerbPrimitiveClause::new(sentence),
         )?

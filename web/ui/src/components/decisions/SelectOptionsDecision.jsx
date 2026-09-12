@@ -1,3 +1,5 @@
+import useUiText from "@/i18n/useUiText";
+import { translateUiText as ui } from "@/i18n/catalog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useGame } from "@/context/GameContext";
@@ -281,7 +283,7 @@ function optionLabelContent(
 
   return (
     <span className="flex min-w-0 flex-col items-start gap-0.5 whitespace-normal leading-tight">
-      {label}
+      {ui(label)}
       <span className="max-w-full truncate text-[11px] font-medium opacity-75">
         {relatedText}
       </span>
@@ -582,6 +584,7 @@ function SingleSelectDecision({
   layout = "panel",
   toolbarSearchTarget = null,
 }) {
+  const ui = useUiText();
   const { dispatch, state, playerAccentOverrides } = useGame();
   const { t } = useI18n();
   // Option labels quote the source card's costs, so they follow its localized text.
@@ -767,11 +770,11 @@ function SingleSelectDecision({
         onChange={(event) =>
           setSearchState({ key: searchResetKey, query: event.target.value })
         }
-        placeholder={searchPlaceholder}
+        placeholder={ui(searchPlaceholder)}
         className="decision-inline-input h-8 w-full bg-transparent text-[13px]"
       />
       <div className={cn("px-1 pt-1 text-[11px] text-[#bfae8e]", stripLayout && toolbarSearchTarget && "sr-only")}>
-        {searchSummary}
+        {ui(searchSummary)}
       </div>
     </div>
   ) : null;
@@ -905,7 +908,7 @@ function SingleSelectDecision({
               />
             )}
             {!stripLayout && showHoverHint && (
-              <HoverHint text="Hover or select a related card to show its available choices." />
+              <HoverHint text={ui("Hover or select a related card to show its available choices.")} />
             )}
           </div>
         )}
@@ -948,7 +951,7 @@ function SingleSelectDecision({
                       {opt.group_count > 1 && (
                         <span
                           className="decision-option-group-count ml-auto shrink-0"
-                          aria-label={`${opt.group_count} equivalent options`}
+                          aria-label={ui("{0} equivalent options", { 0: opt.group_count })}
                         >
                           x{opt.group_count}
                         </span>
@@ -987,10 +990,10 @@ function SingleSelectDecision({
                 )}
               >
                 {paymentDecision
-                  ? "No additional payment actions."
+                  ? ui("No additional payment actions.")
                   : manaAbilityWindowDecision
-                    ? "No mana abilities available."
-                  : "No legal choices."}
+                    ? ui("No mana abilities available.")
+                  : ui("No legal choices.")}
               </div>
             )}
           </div>
@@ -1010,6 +1013,7 @@ function MultiSelectDecision({
   hideDescription = false,
   layout = "panel",
 }) {
+  const ui = useUiText();
   const { dispatch, state, playerAccentOverrides } = useGame();
   const { t } = useI18n();
   // Option labels quote the source card's costs, so they follow its localized text.
@@ -1168,7 +1172,7 @@ function MultiSelectDecision({
               />
             )}
             {!stripLayout && showHoverHint && (
-              <HoverHint text="Hover or select a related card to show its choices. You can keep previous selections." />
+              <HoverHint text={ui("Hover or select a related card to show its choices. You can keep previous selections.")} />
             )}
           </div>
         )}
@@ -1231,8 +1235,7 @@ function MultiSelectDecision({
                   stripLayout ? "px-2 py-1 whitespace-nowrap" : "px-2.5 py-1",
                 )}
               >
-                {hiddenSelectedCount} selected option(s) from other cards.
-              </div>
+                {hiddenSelectedCount}{" " + ui("selected option(s) from other cards.")}</div>
             )}
             {!showHoverHint && visibleOptions.length === 0 && (
               <div
@@ -1240,9 +1243,7 @@ function MultiSelectDecision({
                   "decision-empty-note text-[12px] italic",
                   stripLayout ? "px-2 py-1 whitespace-nowrap" : "px-2.5 py-2",
                 )}
-              >
-                No legal choices.
-              </div>
+              >{ui("No legal choices.")}</div>
             )}
           </div>
         </div>
@@ -1259,7 +1260,7 @@ function MultiSelectDecision({
             disabled={!canSubmit}
             onClick={handleSubmit}
           >
-            {submitLabel}
+            {ui(submitLabel)}
           </Button>
         </div>
       )}
@@ -1275,6 +1276,7 @@ function OrderingDecision({
   hideDescription = false,
   layout = "panel",
 }) {
+  const ui = useUiText();
   const {
     dispatch,
     state,
@@ -1436,13 +1438,8 @@ function OrderingDecision({
         stripLayout ? "min-w-[280px] px-3 py-2" : "px-3 py-2.5",
       )}
     >
-      <div className="decision-section-header text-[12px] font-bold uppercase tracking-[0.14em]">
-        Order In Stack
-      </div>
-      <div className="mt-1 text-[13px] leading-snug text-[#e5d6b8]">
-        Use the arrows on the stack cards to arrange these triggers. The
-        leftmost arrow moves a trigger closer to the top of the stack.
-      </div>
+      <div className="decision-section-header text-[12px] font-bold uppercase tracking-[0.14em]">{ui("Order In Stack")}</div>
+      <div className="mt-1 text-[13px] leading-snug text-[#e5d6b8]">{ui("Use the arrows on the stack cards to arrange these triggers. The leftmost arrow moves a trigger closer to the top of the stack.")}</div>
     </div>
   );
 
@@ -1473,7 +1470,7 @@ function OrderingDecision({
                 />
               </div>
             )}
-            <SectionHeader text={triggerOrdering ? "Stack Order" : "Order"} />
+            <SectionHeader text={ui(triggerOrdering ? "Stack Order" : "Order")} />
             {triggerOrdering ? triggerOrderingHint : standardRows}
           </div>
         </div>
@@ -1487,7 +1484,7 @@ function OrderingDecision({
                 layout={layout}
               />
             )}
-            <SectionHeader text={triggerOrdering ? "Stack Order" : "Order"} />
+            <SectionHeader text={ui(triggerOrdering ? "Stack Order" : "Order")} />
             {triggerOrdering ? triggerOrderingHint : standardRows}
           </div>
         </ScrollArea>
@@ -1499,9 +1496,7 @@ function OrderingDecision({
             stripLayout ? "pt-0" : "border-t border-game-line-2/70 pt-1",
           )}
         >
-          <SubmitButton canAct={canAct} onClick={handleSubmit}>
-            Submit Order
-          </SubmitButton>
+          <SubmitButton canAct={canAct} onClick={handleSubmit}>{ui("Submit Order")}</SubmitButton>
         </div>
       )}
     </div>
@@ -1516,6 +1511,7 @@ function DistributeDecision({
   hideDescription = false,
   layout = "panel",
 }) {
+  const ui = useUiText();
   const { dispatch, setStatus, state, playerAccentOverrides } = useGame();
   const { t } = useI18n();
   const { hoverCard, clearHover } = useHover();
@@ -1671,7 +1667,7 @@ function DistributeDecision({
             disabled={assigned !== total}
             onClick={handleSubmit}
           >
-            {submitLabel}
+            {ui(submitLabel)}
           </SubmitButton>
         </div>
       )}
@@ -1687,6 +1683,7 @@ function CountersDecision({
   hideDescription = false,
   layout = "panel",
 }) {
+  const ui = useUiText();
   const { dispatch, state, playerAccentOverrides } = useGame();
   const { hoverCard, clearHover } = useHover();
   const stripLayout = layout === "strip";
@@ -1806,7 +1803,7 @@ function CountersDecision({
                 />
               </div>
             )}
-            <SectionHeader text="Counters" />
+            <SectionHeader text={ui("Counters")} />
             {rows}
           </div>
         </div>
@@ -1820,7 +1817,7 @@ function CountersDecision({
                 layout={layout}
               />
             )}
-            <SectionHeader text="Counters" />
+            <SectionHeader text={ui("Counters")} />
             {rows}
           </div>
         </ScrollArea>
@@ -1837,7 +1834,7 @@ function CountersDecision({
             disabled={total > maxTotal}
             onClick={handleSubmit}
           >
-            {submitLabel}
+            {ui(submitLabel)}
           </SubmitButton>
         </div>
       )}
@@ -1853,6 +1850,7 @@ function RepeatableDecision({
   hideDescription = false,
   layout = "panel",
 }) {
+  const ui = useUiText();
   const { dispatch, state, playerAccentOverrides } = useGame();
   const { t } = useI18n();
   const { hoverCard, clearHover } = useHover();
@@ -2005,7 +2003,7 @@ function RepeatableDecision({
             disabled={total < min || total > maxTotal}
             onClick={handleSubmit}
           >
-            {submitLabel}
+            {ui(submitLabel)}
           </SubmitButton>
         </div>
       )}

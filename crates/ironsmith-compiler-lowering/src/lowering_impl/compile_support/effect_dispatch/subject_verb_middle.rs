@@ -2620,7 +2620,10 @@ pub(super) fn compile_subject_verb_middle(
                         )],
                     })
                     .collect::<Vec<_>>();
-                Effect::choose_one(modes)
+                Effect::new(
+                    crate::effects::ChooseModeEffect::choose_one(modes)
+                        .with_chooser(crate::target::PlayerFilter::You),
+                )
             })
         }
         SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {

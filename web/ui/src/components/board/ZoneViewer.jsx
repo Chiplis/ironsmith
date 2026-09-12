@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useI18n } from "@/i18n/I18nContext";
 
@@ -24,6 +25,7 @@ export default function ZoneViewer({
   onOpenDecklist = null,
   embedded = false,
 }) {
+  const ui = useUiText();
   const { t } = useI18n();
   const activeZones = normalizeZones(zoneViews);
 
@@ -60,7 +62,7 @@ export default function ZoneViewer({
     <div className="flex items-center gap-2 shrink-0">
       <span
         className="zone-viewer-eye shrink-0 cursor-help"
-        title="Toggles the visibility of zones for your local view only."
+        title={ui("Toggles the visibility of zones for your local view only.")}
         aria-hidden="true"
       >
         <svg
@@ -82,8 +84,7 @@ export default function ZoneViewer({
         </svg>
       </span>
       {battlefieldCount != null ? (
-        <span className="zone-viewer-core-count" title="Battlefield cards">
-          BF <strong className="tabular-nums">{battlefieldCount}</strong>
+        <span className="zone-viewer-core-count" title={ui("Battlefield cards")}>{ui("BF") + " "}<strong className="tabular-nums">{battlefieldCount}</strong>
         </span>
       ) : null}
       <div className="flex items-center gap-2 flex-wrap">
@@ -112,15 +113,14 @@ export default function ZoneViewer({
         <button
           type="button"
           className="zone-viewer-core-count zone-viewer-core-count--button"
-          title={typeof onOpenDecklist === "function" ? "Open decklist" : "Library cards"}
+          title={ui(typeof onOpenDecklist === "function" ? "Open decklist" : "Library cards")}
           onClick={(event) => {
             if (typeof onOpenDecklist !== "function") return;
             event.preventDefault();
             event.stopPropagation();
             onOpenDecklist(player);
           }}
-        >
-          Deck <strong className="tabular-nums">{libraryCount}</strong>
+        >{ui("Deck") + " "}<strong className="tabular-nums">{libraryCount}</strong>
         </button>
       ) : null}
     </div>

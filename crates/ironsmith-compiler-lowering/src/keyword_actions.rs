@@ -59,6 +59,7 @@ pub fn apply_keyword_action(
         KeywordAction::Scavenge(cost) => builder.scavenge(cost),
         KeywordAction::Unearth(cost) => builder.unearth(cost),
         KeywordAction::Embalm(cost) => builder.embalm(cost),
+        KeywordAction::Encore(cost) => builder.encore(cost),
         KeywordAction::Eternalize(cost) => builder.eternalize(
             crate::lowering::cost_materialization::materialize_compiler_core_total_cost(&cost)
                 .expect("compiler-owned eternalize cost must materialize"),

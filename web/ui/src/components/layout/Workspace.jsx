@@ -1,9 +1,10 @@
+import useUiText from "@/i18n/useUiText";
 import { zoneHasLegalTargets } from "@/lib/zone-piles";
 import { objectExistsInState } from "@/lib/inspector-selection";
 import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
-import { useDragActions, useDragState, usePlacementActions } from "@/context/DragContext";
+import { useDragActions, useDragSession, usePlacementActions } from "@/context/DragContext";
 import { useHoverActions } from "@/context/HoverContext";
 import useViewportLayout from "@/hooks/useViewportLayout";
 import useManabrewHandScale from "@/hooks/useManabrewHandScale";
@@ -735,6 +736,7 @@ export default function Workspace({
   middleAddCardBar = null,
   zoneActionControls = null,
 }) {
+  const ui = useUiText();
   const [selectedObjectId, setSelectedObjectId] = useState(null);
   const [focusedStackObjectId, setFocusedStackObjectId] = useState(null);
   const [pinnedInspectorObjectId, setPinnedInspectorObjectId] = useState(null);
@@ -766,7 +768,7 @@ export default function Workspace({
   } = useGame();
   const { updateStackArrows, clearStackArrows } = useCombatArrows();
   const { endDrag, markCastIntent, resumeDrag, setCastTargetPreview, startDrag } = useDragActions();
-  const dragState = useDragState();
+  const dragState = useDragSession();
   const {
     clearPendingPlacement,
     commitPlacementSlot,
@@ -1371,19 +1373,22 @@ export default function Workspace({
       return undefined;
     }
 
-    const beginIntentIfOutsideHand = () => {
+    const beginIntentIfOutsideHand = (event) => {
       if (dragState.castIntent || !shouldBeginTargetCastIntent(dragState.actions)) return;
       if (!pointIsOutsideRect(
         dragState.sourceContainerRect,
-        dragState.currentX,
-        dragState.currentY,
+        event?.clientX ?? dragState.currentX,
+        event?.clientY ?? dragState.currentY,
       )) return;
 
       const action = dragState.actions[0];
       const dispatchKey = `${dragState.objectId}:${dragState.startX}:${dragState.startY}`;
       if (castIntentDispatchKeyRef.current === dispatchKey) return;
       castIntentDispatchKeyRef.current = dispatchKey;
-      const sourcePoint = castIntentSourcePoint(dragState);
+      const sourcePoint = castIntentSourcePoint({ ...dragState,
+        currentX: event?.clientX ?? dragState.currentX,
+        currentY: event?.clientY ?? dragState.currentY,
+      });
       markCastIntent(sourcePoint);
       // A unique cast can enter the engine's targeting decision immediately.
       // When several payment/cast paths exist, keep this as a provisional
@@ -1622,6 +1627,8 @@ export default function Workspace({
 
       if (!isOverTable && !isOverMobileSelfZoneDropTarget) return;
 
+      window.dispatchEvent(new CustomEvent("ironsmith:hand-card-dropped"));
+
       const currentActionIndices = new Set(
         (currentDecision.actions || []).map((action) => Number(action?.index))
       );
@@ -1771,7 +1778,7 @@ export default function Workspace({
           collapseEquivalentActions={false}
           focusOnOpen={Boolean(handActionMenu.keyboard)}
           ariaLabel={handActionMenu.keyboard
-            ? `Ways to play ${handActionMenu.cardName || "this card"}`
+            ? ui("Ways to play {0}", { 0: handActionMenu.cardName || ui("this card") })
             : null}
           onAction={(action) => {
             const plan = handActionMenu.keyboard && !handActionMenu.placementSlot
@@ -1839,25 +1846,25 @@ export default function Workspace({
                     type="button"
                     className="workspace-notice-body w-full px-3 py-2 pr-9 text-left transition-colors"
                     onClick={() => handleNoticeCopy(notice)}
-                    title="Click to copy"
+                    title={ui("Click to copy")}
                   >
                     <div className="workspace-notice-title text-[13px] font-bold uppercase tracking-wide">
-                      {notice.title}
+                      {ui(notice.title)}
                     </div>
                     {notice.body ? (
                       <div className="workspace-notice-text mt-1 text-[13px] font-semibold leading-tight">
-                        {notice.body}
+                        {ui(notice.body)}
                       </div>
                     ) : null}
                   </button>
                 ) : (
                   <div className="workspace-notice-body px-3 py-2 pr-9 text-left">
                     <div className="workspace-notice-title text-[13px] font-bold uppercase tracking-wide">
-                      {notice.title}
+                      {ui(notice.title)}
                     </div>
                     {notice.body ? (
                       <div className="workspace-notice-text mt-1 text-[13px] font-semibold leading-tight">
-                        {notice.body}
+                        {ui(notice.body)}
                       </div>
                     ) : null}
                   </div>
@@ -1870,9 +1877,9 @@ export default function Workspace({
                         type="button"
                         className="workspace-notice-action shrink-0 border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide transition-colors"
                         onClick={() => handleNoticeCopy(action)}
-                        title={action.label}
+                        title={ui(action.label)}
                       >
-                        {action.label}
+                        {ui(action.label)}
                       </button>
                     ))}
                   </div>
@@ -1881,7 +1888,7 @@ export default function Workspace({
                   type="button"
                   className="workspace-notice-dismiss absolute right-1.5 top-1.5 px-1 text-[12px] font-bold text-current opacity-80 transition-opacity hover:opacity-100"
                   onClick={() => onDismissNotice?.(notice.id)}
-                  aria-label={`Dismiss ${notice.title}`}
+                  aria-label={ui("Dismiss {0}", { 0: notice.title })}
                 >
                   x
                 </button>

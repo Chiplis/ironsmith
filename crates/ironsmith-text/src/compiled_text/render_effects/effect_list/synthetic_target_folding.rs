@@ -340,6 +340,9 @@ fn effect_references_identity(effect: &Effect, identity: &SyntheticTargetIdentit
     if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
         return choose_spec_references_identity(&move_to_zone.target, identity);
     }
+    if let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>() {
+        return choose_spec_references_identity(&exile.spec, identity);
+    }
     if let Some(attach) = effect.downcast_ref::<crate::effects::AttachObjectsEffect>() {
         return choose_spec_references_identity(&attach.objects, identity)
             || choose_spec_references_identity(&attach.target, identity);

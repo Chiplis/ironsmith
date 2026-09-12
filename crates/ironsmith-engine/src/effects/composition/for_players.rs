@@ -398,12 +398,10 @@ impl EffectExecutor for ForPlayersEffect {
                         outcomes_by_player[player_index].push(outcome.clone());
                         outcomes.push(outcome);
                     }
-                    let count = EffectOutcome::aggregate_summing_counts(
+                    let iteration_outcome = EffectOutcome::aggregate_summing_counts(
                         outcomes_by_player[player_index].iter().cloned(),
-                    )
-                    .as_count()
-                    .unwrap_or(0);
-                    stop = self.stop_after_first_happened && count > 0;
+                    );
+                    stop = self.stop_after_first_happened && iteration_outcome.something_happened();
                     Ok::<(), ExecutionError>(())
                 })?;
                 if self.sequential {
@@ -614,9 +612,13 @@ impl EffectExecutor for ForPlayersEffect {
             }
             let iteration_outcome =
                 EffectOutcome::aggregate_summing_counts(player_outcomes.iter().cloned());
-            let count = iteration_outcome
-                .as_count()
-                .unwrap_or_else(|| i32::from(iteration_outcome.something_happened()));
+            let count = if self.stop_after_first_happened {
+                i32::from(iteration_outcome.something_happened())
+            } else {
+                iteration_outcome
+                    .as_count()
+                    .unwrap_or_else(|| i32::from(iteration_outcome.something_happened()))
+            };
             player_counts.push((player_id, count));
             if let Some(memory) = iteration_outcome.affected_object_memory()
                 && !memory.is_empty()
@@ -625,7 +627,20 @@ impl EffectExecutor for ForPlayersEffect {
             }
         }
 
-        Ok(EffectOutcome::aggregate_summing_counts(outcomes)
+        // An offer's collective result is the accepted action, or a declined
+        // result when nobody acts. Earlier declines must not negate a later
+        // acceptance; all participants remain available through PlayerCounts.
+        let outcome = if self.stop_after_first_happened {
+            outcomes_by_player
+                .iter()
+                .filter(|iteration| !iteration.is_empty())
+                .map(|iteration| EffectOutcome::aggregate_summing_counts(iteration.iter().cloned()))
+                .find(EffectOutcome::something_happened)
+                .unwrap_or_else(|| EffectOutcome::aggregate_summing_counts(outcomes))
+        } else {
+            EffectOutcome::aggregate_summing_counts(outcomes)
+        };
+        Ok(outcome
             .with_player_counts(player_counts)
             .with_player_affected_object_memory(player_affected_memory))
     }

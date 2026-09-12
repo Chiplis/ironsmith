@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { useGame } from "@/context/GameContext";
@@ -121,6 +122,7 @@ export default function MobileBattleScene({
   mobilePhaseStops,
   setMobilePhaseStops,
 }) {
+  const ui = useUiText();
   void legalTargetObjectIds; // legality already derived from decision; keep prop for parity
   const { state, dispatch, cancelDecision, setExternalAutoPassGate } = useGame();
   const { combatModeRef } = useCombatArrows();
@@ -827,7 +829,7 @@ export default function MobileBattleScene({
             }}
             actions={actionPopoverState.actions}
             collapseEquivalentActions={actionPopoverState.collapseEquivalentActions !== false}
-            title={actionPopoverState.cardName}
+            title={ui(actionPopoverState.cardName)}
             variant="game"
             onAction={handlePopoverAction}
             onClose={() => {
@@ -855,7 +857,7 @@ export default function MobileBattleScene({
             data-card-inspector="true"
             role="dialog"
             aria-modal="true"
-            aria-label="Card inspector"
+            aria-label={ui("Card inspector")}
             onPointerDown={(e) => e.stopPropagation()}
             onPointerUp={(e) => e.stopPropagation()}
             onClick={(e) => {
@@ -885,7 +887,7 @@ export default function MobileBattleScene({
               <button
                 type="button"
                 className="mobile-battle-inspect-overlay-close"
-                aria-label="Close inspector"
+                aria-label={ui("Close inspector")}
                 onClick={closeInspector}
               >
                 <X className="size-4" aria-hidden="true" />

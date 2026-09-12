@@ -1,3 +1,7 @@
+import { useI18n } from "@/i18n/I18nContext";
+import { localeCatalogs } from "@/i18n/catalog";
+import useUiText from "@/i18n/useUiText";
+import { translateUiText as ui } from "@/i18n/catalog";
 import { MANA_SYMBOL_SVGS as SVG_DATA } from './mana-symbol-svg.js';
 import { createContext, useContext } from "react";
 import { ComicTooltip } from "@/components/ui/comic-tooltip";
@@ -17,7 +21,7 @@ function fallbackCircle(label, size) {
       <circle cx="50" cy="50" r="50" fill="#CAC5C0" />
       <text x="50" y="50" dy="0.36em" textAnchor="middle" fill="#0D0F0F"
         fontSize={label.length > 2 ? 38 : label.length > 1 ? 44 : 55}
-        fontWeight="bold" fontFamily="serif">{label}</text>
+        fontWeight="bold" fontFamily="serif">{ui(label)}</text>
     </svg>
   );
 }
@@ -46,14 +50,14 @@ function symbolGraphicStyle() {
   return { display: "inline-block", verticalAlign: "-0.15em" };
 }
 
-function wrapSymbolWithTooltip(sym, rendered) {
-  const tooltip = describeGameSymbol(sym);
+function wrapSymbolWithTooltip(sym, rendered, ui) {
+  const tooltip = describeGameSymbol(sym, ui);
   const label = tooltip?.title || `{${String(sym || "").toUpperCase()}}`;
 
   const wrapped = (
     <span
       className="inline-flex shrink-0 items-center justify-center align-middle"
-      aria-label={label}
+      aria-label={ui(label)}
     >
       {rendered}
     </span>
@@ -63,8 +67,8 @@ function wrapSymbolWithTooltip(sym, rendered) {
 
   return (
     <ComicTooltip
-      title={tooltip.title}
-      description={tooltip.description}
+      title={ui(tooltip.title)}
+      description={ui(tooltip.description)}
       sideOffset={6}
     >
       {wrapped}
@@ -72,24 +76,24 @@ function wrapSymbolWithTooltip(sym, rendered) {
   );
 }
 
-function describeHybridSymbol(left, right) {
+function describeHybridSymbol(left, right, ui) {
   if (left === "2") {
-    const rightInfo = describeGameSymbol(right);
+    const rightInfo = describeGameSymbol(right, ui);
     return {
-      title: `${rightInfo?.title || right} / Two Hybrid`,
-      description: `This symbol can be paid with either two generic mana or one ${rightInfo?.title?.toLowerCase() || right} mana.`,
+      title: ui("{0} / Two Hybrid", { 0: ui(rightInfo?.title || right).toLowerCase() }),
+      description: ui("This symbol can be paid with either two generic mana or one {0}.", { 0: ui(rightInfo?.title || right).toLowerCase() }),
     };
   }
 
-  const leftInfo = describeGameSymbol(left);
-  const rightInfo = describeGameSymbol(right);
+  const leftInfo = describeGameSymbol(left, ui);
+  const rightInfo = describeGameSymbol(right, ui);
   return {
-    title: `${leftInfo?.title || left} / ${rightInfo?.title || right} Hybrid`,
-    description: `This hybrid symbol can be paid with either ${leftInfo?.title?.toLowerCase() || left} mana or ${rightInfo?.title?.toLowerCase() || right} mana.`,
+    title: ui("{0} / {1} Hybrid", { 0: ui(leftInfo?.title || left).toLowerCase(), 1: ui(rightInfo?.title || right).toLowerCase().toLowerCase() }),
+    description: ui("This hybrid symbol can be paid with either {0} or {1}.", { 0: ui(leftInfo?.title || left).toLowerCase(), 1: ui(rightInfo?.title || right).toLowerCase().toLowerCase() }),
   };
 }
 
-function describeGameSymbol(sym) {
+function describeGameSymbol(sym, ui) {
   const key = String(sym || "").trim().toUpperCase();
   if (!key) return null;
 
@@ -162,15 +166,15 @@ function describeGameSymbol(sym) {
 
   const hybridMatch = key.match(/^([WUBRGC2])\/([WUBRG])$/);
   if (hybridMatch) {
-    return describeHybridSymbol(hybridMatch[1], hybridMatch[2]);
+    return describeHybridSymbol(hybridMatch[1], hybridMatch[2], ui);
   }
 
   const phyrexianMatch = key.match(/^([WUBRG])\/P$/);
   if (phyrexianMatch) {
-    const baseInfo = describeGameSymbol(phyrexianMatch[1]);
+    const baseInfo = describeGameSymbol(phyrexianMatch[1], ui);
     return {
-      title: `${baseInfo?.title || phyrexianMatch[1]} Phyrexian`,
-      description: `This symbol can be paid with either one ${baseInfo?.title?.toLowerCase() || phyrexianMatch[1]} mana or 2 life.`,
+      title: ui("{0} Phyrexian", { 0: ui(baseInfo?.title || phyrexianMatch[1]) }),
+      description: ui("This symbol can be paid with either one {0} or 2 life.", { 0: ui(baseInfo?.title || phyrexianMatch[1]).toLowerCase() }),
     };
   }
 
@@ -182,13 +186,15 @@ function describeGameSymbol(sym) {
 
 
 export function ManaSymbol({ sym, size = 14 }) {
+  const ui = useUiText();
+  const withTooltip = rendered => wrapSymbolWithTooltip(sym, rendered, ui);
   if (!sym) return null;
   const key = sym.toUpperCase();
 
   // Check for exact match in SVG_DATA
   const data = SVG_DATA[key];
   if (data) {
-    return wrapSymbolWithTooltip(sym, (
+    return withTooltip((
       <svg
         width={size}
         height={size}
@@ -201,23 +207,23 @@ export function ManaSymbol({ sym, size = 14 }) {
   }
 
   // Generic mana numbers (11+)
-  if (/^\d+$/.test(key)) return wrapSymbolWithTooltip(sym, fallbackCircle(key, size));
+  if (/^\d+$/.test(key)) return withTooltip(fallbackCircle(key, size));
 
   // Y, Z variables
-  if (/^[YZ]$/.test(key)) return wrapSymbolWithTooltip(sym, fallbackCircle(key, size));
+  if (/^[YZ]$/.test(key)) return withTooltip(fallbackCircle(key, size));
 
   // Hybrid: W/U, U/B, 2/W, etc. → Scryfall CDN
   const hybridMatch = key.match(/^([WUBRGC2])\/([WUBRG])$/);
   if (hybridMatch) {
-    return wrapSymbolWithTooltip(sym, scryfallImg(`${hybridMatch[1]}${hybridMatch[2]}`, size));
+    return withTooltip(scryfallImg(`${hybridMatch[1]}${hybridMatch[2]}`, size));
   }
 
   // Phyrexian: W/P, U/P, etc. → Scryfall CDN
   const phyMatch = key.match(/^([WUBRG])\/P$/);
-  if (phyMatch) return wrapSymbolWithTooltip(sym, scryfallImg(`${phyMatch[1]}P`, size));
+  if (phyMatch) return withTooltip(scryfallImg(`${phyMatch[1]}P`, size));
 
   // Fallback
-  return wrapSymbolWithTooltip(sym, fallbackCircle(sym, size));
+  return withTooltip(fallbackCircle(sym, size));
 }
 
 const SYMBOL_RE = /\{([^}]+)\}/g;
@@ -232,13 +238,16 @@ export function KeywordHelpersProvider({ enabled = true, children }) {
 }
 
 function KeywordHelperText({ text, rule }) {
+  const ui = useUiText();
+  const { locale } = useI18n({ optional: true });
   if (!rule) return text;
-  const title = `${rule.title} (${rule.rule})`;
+  const localizedRule = localeCatalogs[locale]?.rules?.[rule.id] || rule;
+  const title = `${localizedRule.title} (${rule.rule})`;
 
   return (
     <ComicTooltip
-      title={title}
-      description={rule.summary}
+      title={ui(title)}
+      description={localizedRule.summary}
       sideOffset={7}
       contentClassName="max-w-[300px]"
     >
@@ -246,7 +255,7 @@ function KeywordHelperText({ text, rule }) {
         className="mtg-keyword-helper"
         role="button"
         tabIndex={0}
-        aria-label={`${rule.title} rules helper`}
+        aria-label={ui("{0} rules helper", { 0: localizedRule.title })}
         data-keyword-helper={rule.id}
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => event.stopPropagation()}
@@ -258,10 +267,10 @@ function KeywordHelperText({ text, rule }) {
   );
 }
 
-function keywordTextParts(text, nextKey, keywordHelpersEnabled) {
+function keywordTextParts(text, nextKey, keywordHelpersEnabled, locale) {
   if (!keywordHelpersEnabled) return [text];
 
-  return splitTextWithMtgKeywordRules(text).map((segment) => {
+  return splitTextWithMtgKeywordRules(text, locale).map((segment) => {
     if (segment.type !== "keyword") return segment.text;
     return (
       <KeywordHelperText
@@ -295,6 +304,7 @@ export function SymbolText({
   noWrap = false,
   keywordHelpers = null,
 }) {
+  const { locale } = useI18n({ optional: true });
   const contextKeywordHelpersEnabled = useContext(KeywordHelpersEnabledContext);
   if (!text) return null;
   const keywordHelpersEnabled = keywordHelpers ?? contextKeywordHelpersEnabled;
@@ -304,7 +314,7 @@ export function SymbolText({
   const nextKey = () => `keyword-${key++}`;
   const appendText = (value) => {
     if (!value) return;
-    parts.push(...keywordTextParts(value, nextKey, keywordHelpersEnabled));
+    parts.push(...keywordTextParts(value, nextKey, keywordHelpersEnabled, locale));
   };
 
   const appendSegment = (segment) => {

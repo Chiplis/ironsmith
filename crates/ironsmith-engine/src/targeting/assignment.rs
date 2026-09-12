@@ -60,8 +60,7 @@ fn selected_targets_satisfy_distinct_player_group(
     let mut selected_in_requirement = HashSet::new();
 
     selected.iter().all(|target| {
-        matches!(target, Target::Player(_))
-            && selected_in_requirement.insert(*target)
+        selected_in_requirement.insert(*target)
             && !already_used.is_some_and(|used| used.contains(target))
     })
 }

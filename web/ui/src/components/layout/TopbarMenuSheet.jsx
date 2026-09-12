@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useEffect, useMemo, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import useViewportLayout from "@/hooks/useViewportLayout";
@@ -33,17 +34,18 @@ const sectionClass =
   "fantasy-sheet-section settings-sheet-section grid gap-3 py-5";
 
 function MenuSection({ eyebrow, title, description, children }) {
+  const ui = useUiText();
   return (
     <section className={sectionClass}>
       <div className="grid gap-1">
         <span className="text-[10px] uppercase tracking-[0.24em] text-[#c3a774]">
-          {eyebrow}
+          {ui(eyebrow)}
         </span>
         <div className="text-[16px] font-bold uppercase tracking-[0.16em] text-foreground">
-          {title}
+          {ui(title)}
         </div>
         {description ? (
-          <p className="m-0 text-[13px] leading-5 text-muted-foreground">{description}</p>
+          <p className="m-0 text-[13px] leading-5 text-muted-foreground">{ui(description)}</p>
         ) : null}
       </div>
       {children}
@@ -68,6 +70,7 @@ export default function TopbarMenuSheet({
   triggerIcon = "settings",
   showQuickActions = false,
 }) {
+  const ui = useUiText();
   const [open, setOpen] = useState(false);
   const { nonDesktopViewport } = useViewportLayout();
   const {
@@ -181,8 +184,8 @@ export default function TopbarMenuSheet({
           variant="secondary"
           size="icon-xs"
           className="stone-pill topbar-menu-trigger rounded-none text-[#d8c8a7] hover:text-[#fff1cd]"
-          aria-label={triggerIcon === "menu" ? t("app.openNavigationMenu") : t("app.openGameMenu")}
-          title={triggerIcon === "menu" ? t("app.menu") : t("app.settings")}
+          aria-label={ui(triggerIcon === "menu" ? t("app.openNavigationMenu") : t("app.openGameMenu"))}
+          title={ui(triggerIcon === "menu" ? t("app.menu") : t("app.settings"))}
         >
           {triggerGlyph}
         </Button>
@@ -344,7 +347,7 @@ export default function TopbarMenuSheet({
               >
                 {locales.map((entry) => (
                   <option key={entry.id} value={entry.id}>
-                    {entry.label}
+                    {ui(entry.label)}
                   </option>
                 ))}
               </select>
@@ -389,7 +392,7 @@ export default function TopbarMenuSheet({
                 </span>
               </span>
               <Slider
-                aria-label="Card fidelity threshold"
+                aria-label={ui("Card fidelity threshold")}
                 min={0}
                 max={100}
                 step={1}
@@ -486,13 +489,13 @@ export default function TopbarMenuSheet({
                   {t("settings.cardsCompiled")}
                 </span>
                 <Badge variant="secondary" className="fantasy-sheet-badge text-[12px] uppercase">
-                  {compiledLabel}
+                  {ui(compiledLabel)}
                 </Badge>
               </div>
               <div className="fantasy-sheet-stat flex items-center justify-between gap-3 px-3 py-2">
                 <span className="uppercase tracking-[0.16em] text-muted-foreground">{t("settings.lobby")}</span>
                 <Badge variant="secondary" className="fantasy-sheet-badge text-[12px] uppercase">
-                  {lobbyLabel}
+                  {ui(lobbyLabel)}
                 </Badge>
               </div>
               {multiplayer.matchStarted && offlinePlayers.length > 0 ? (

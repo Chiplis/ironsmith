@@ -755,7 +755,15 @@ fn granted_ability_conjunction_is_keyword_list(abilities: &[GrantedAbilityAst]) 
     !abilities.is_empty()
         && abilities
             .iter()
-            .all(|ability| matches!(ability, GrantedAbilityAst::KeywordAction(_)))
+            .all(|ability| match ability {
+                GrantedAbilityAst::KeywordAction(_) => true,
+                // Enchant's object filter must not swallow a following
+                // independent keyword in a granted Aura ability list.
+                GrantedAbilityAst::StaticAbility(ability) => {
+                    matches!(ability.as_ref(), StaticAbilityAst::AttachmentRestriction { .. })
+                }
+                _ => false,
+            })
 }
 
 fn split_quoted_granted_ability_list(tokens: &[OwnedLexToken]) -> Option<Vec<&[OwnedLexToken]>> {

@@ -112,3 +112,38 @@ test("a card chosen inside a closed zone still shows its check on the pile", asy
     await vite.close();
   }
 });
+
+
+test("Look shows the latest remaining choice when the pointer leaves", async () => {
+  const vite = await createServer({server: {host: "127.0.0.1", port: 0}, logLevel: "silent"});
+  await vite.listen();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({viewport: {width: 1200, height: 900}});
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-selection-check.html?look`);
+    const pile = page.locator('[data-zone-pile="look"]');
+    const check = page.locator('.player-look-pile .zone-pile-check');
+    await pile.hover();
+    const strip = page.locator('.zone-pile-menu--look');
+    await strip.locator('[data-object-id="20"]').click();
+    await strip.locator('[data-object-id="21"]').click();
+    // Selection must not reorder cards under the pointer in the open strip.
+    assert.deepEqual(await strip.locator('[data-zone-card]').evaluateAll((cards) => cards.map((card) => card.dataset.objectId)), ["21", "20"]);
+    await page.mouse.move(1150, 60);
+    await strip.waitFor({state: "hidden"});
+    assert.equal(await check.getAttribute("title"), "Deselect Swamp");
+    const swampArt = await pile.locator('img').getAttribute('src');
+    await check.click();
+    await page.mouse.move(1150, 60);
+    await strip.waitFor({state: "hidden"});
+    assert.equal(await check.getAttribute("title"), "Deselect Island");
+    assert.notEqual(await pile.locator('img').getAttribute('src'), swampArt);
+    await check.click();
+    await page.mouse.move(1150, 60);
+    await strip.waitFor({state: "hidden"});
+    assert.equal(await check.count(), 0);
+  } finally {
+    await browser.close();
+    await vite.close();
+  }
+});

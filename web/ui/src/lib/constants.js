@@ -141,6 +141,12 @@ export function nextPriorityAdvanceLabel(phase, step, stackSize, t = null) {
   }
 }
 
+export function priorityAdvanceButtonLabel(phase, step, stackSize, t) {
+  const destination = nextPriorityAdvanceLabel(phase, step, stackSize, t);
+  if (stackSize > 0) return destination;
+  return t("action.goToPhase", { phase: destination });
+}
+
 export function currentPriorityPhaseLabel(phase, step, t = null) {
   const normalizedStep = normalizeStepKey(step);
   if (normalizedStep) {

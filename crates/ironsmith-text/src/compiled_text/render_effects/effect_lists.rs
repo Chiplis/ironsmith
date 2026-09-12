@@ -171,6 +171,7 @@ use targeted_opponent_consult::describe_targeted_opponent_consult_may_cast_remai
 use tempting_offer_copy::describe_tempting_offer_copy_spell_bundle;
 use tempting_offer_draw_token::describe_tempting_offer_draw_and_token;
 use token_followup_sentences::describe_token_followup_sentence_surface;
+pub(super) use token_followup_sentences::describe_quantified_created_tokens_goaded_forever;
 
 pub(in crate::compiled_text) fn structural_unwrap_render_wrappers(effect: &Effect) -> &Effect {
     if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
@@ -2857,9 +2858,8 @@ fn describe_exile_all_then_each_player_may_deploy_and_return_exiled(
         return None;
     }
 
-    let source_exile = structural_unwrap_render_wrappers(source_exile_effect)
-        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
-    if !move_to_zone_is_plain_exile(source_exile)
+    let source_exile = move_to_zone_surface_view(structural_unwrap_render_wrappers(source_exile_effect))?;
+    if !move_to_zone_is_plain_exile(&source_exile)
         || !matches!(source_exile.target.base(), ChooseSpec::Source)
     {
         return None;
@@ -3136,14 +3136,13 @@ fn describe_exile_top_choose_one_play_next_turn(effects: &[Effect]) -> Option<St
     };
     let look = structural_unwrap_render_wrappers(look_effect)
         .downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
-    let move_to_exile = structural_unwrap_render_wrappers(move_effect)
-        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let move_to_exile = move_to_zone_surface_view(structural_unwrap_render_wrappers(move_effect))?;
     let choose = structural_unwrap_render_wrappers(choose_effect)
         .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let grant = structural_unwrap_render_wrappers(grant_effect)
         .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
     if look.reveal
-        || !tagged_move_to_zone(move_to_exile, &look.tag, Zone::Exile, move_to_exile.to_top)
+        || !tagged_move_to_zone(&move_to_exile, &look.tag, Zone::Exile, move_to_exile.to_top)
         || move_to_exile.enters_face_down
         || choose.chooser != PlayerFilter::You
         || choose_primary_zone(choose) != Some(Zone::Exile)
@@ -5006,6 +5005,31 @@ pub(super) fn describe_create_token_attached_to_target(
     ))
 }
 
+fn describe_targeted_token_attachments(effects: &[Effect]) -> Option<String> {
+    let [declaration, iteration] = effects else { return None; };
+    let (tag, target) = tagged_target_only_effect(declaration)?;
+    let iteration = iteration.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    if iteration.tag != *tag || target.explicit_declaration || target.chooser.is_some()
+        || !target.target.is_target()
+    {
+        return None;
+    }
+    let ChooseSpec::Object(filter) = target.target.base() else { return None; };
+    let [create, attach] = iteration.effects.as_slice() else { return None; };
+    let attachment = unwrap_for_each_attachment_wrappers(attach)
+        .downcast_ref::<crate::effects::AttachObjectsEffect>()?;
+    if attachment.target != ChooseSpec::Iterated { return None; }
+    // The existing pair renderer checks the token's flags and the exact
+    // created-object tag. The declaration above supplies its typed target set.
+    let rendered = describe_create_token_attached_to_target(create, attach)?;
+    let rendered = rendered.strip_prefix("Create ")?;
+    let (token, rules) = rendered.split_once(" attached to it")?;
+    let noun = describe_iterated_object_reference_noun(filter);
+    let rules = rules.replacen(". The token has ", ". Those tokens have ", 1);
+    Some(format!("For each of {}, create {token} attached to that {noun}{rules}",
+        describe_choose_spec(&target.target)))
+}
+
 /// Render a tagged single-target selection followed by an until-end-of-turn
 /// cast grant on the same tag. Graveyard targets use the compact Oracle surface
 /// "You may cast target ... from your graveyard this turn"; other structural
@@ -6827,7 +6851,7 @@ pub(super) fn describe_conditional_action_on_tagged_target(
         effect
     };
 
-    if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
+    if let Some(move_to_zone) = move_to_zone_surface_view(effect)
         && (matches!(move_to_zone.target.base(), ChooseSpec::Tagged(found) if found == tag)
             || target_specs_select_same_objects(&move_to_zone.target, target))
     {
@@ -12758,7 +12782,34 @@ mod destroyed_same_object_no_regeneration_tests {
     }
 }
 
+fn describe_complementary_subtype_returns(effects: &[Effect]) -> Option<String> {
+    let split = effects.len().checked_sub(2)?;
+    let first = unwrap_basic_tag_wrappers(&effects[split])
+        .downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>()?;
+    let second = unwrap_basic_tag_wrappers(&effects[split + 1])
+        .downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>()?;
+    let [subtype] = first.filter.excluded_subtypes.as_slice() else { return None; };
+    if !first.filter.subtypes.is_empty() || second.filter.subtypes.as_slice() != [*subtype]
+        || !second.filter.excluded_subtypes.is_empty()
+    {
+        return None;
+    }
+    let mut expected = first.clone();
+    expected.filter.excluded_subtypes.clear();
+    expected.filter.subtypes.push(*subtype);
+    if expected != *second { return None; }
+    let first_text = describe_effect(&effects[split]);
+    let pair = format!("{}, then do the same for {subtype} cards",
+        first_text.trim_end_matches('.'));
+    if split == 0 { return Some(pair); }
+    let prefix = describe_effect_list(&effects[..split]);
+    Some(format!("{}. {pair}", prefix.trim_end_matches('.')))
+}
+
 pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
+    if let Some(text) = describe_complementary_subtype_returns(effects) {
+        return text;
+    }
     if let Some(compact) = describe_group_pump_then_conditional_extra_bonus(effects) {
         return compact;
     }
@@ -13013,6 +13064,9 @@ pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
         return describe_effect(effect);
     }
     if let Some(compact) = describe_repeated_explore_pair(effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_targeted_token_attachments(effects) {
         return compact;
     }
     if let Some(compact) = describe_each_player_reveal_matching_tapped_and_exile_rest(effects) {
@@ -17623,6 +17677,11 @@ fn describe_search_reveal_nested_may_move_else_hand(effects: &[Effect]) -> Optio
 pub(in crate::compiled_text) fn describe_linked_resolution_program(
     effects: &[Effect],
 ) -> Option<String> {
+    if let Some(text) =
+        describe_hand_choose_then_library_placement(&effects.iter().collect::<Vec<_>>())
+    {
+        return Some(text);
+    }
     if let [effect] = effects
         && let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
         && sequence.surface == ironsmith_core::SequenceSurface::Coordinated

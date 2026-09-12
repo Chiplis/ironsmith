@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { cloneElement, isValidElement, useRef, useState } from "react";
 import {
   AlertTriangle,
@@ -113,6 +114,7 @@ export default function VerifyMatchSheet({
   trigger,
   triggerClassName = defaultTriggerClassName,
 }) {
+  const ui = useUiText();
   const {
     game,
     state,
@@ -403,7 +405,7 @@ export default function VerifyMatchSheet({
           style={{ width: "min(96vw, 720px)", maxWidth: "720px" }}
         >
           <SheetHeader className="fantasy-sheet-header verify-match-header pr-12">
-            <div className="verify-match-eyebrow">Audit</div>
+            <div className="verify-match-eyebrow">{ui("Audit")}</div>
             <SheetTitle className="verify-match-title">
               {t("action.verifyMatch")}
             </SheetTitle>
@@ -419,9 +421,7 @@ export default function VerifyMatchSheet({
                 disabled={!canVerifyMatch || verificationBusy}
                 onClick={openFilePicker}
               >
-                <Upload className="size-3.5" aria-hidden="true" />
-                Open JSON
-              </Button>
+                <Upload className="size-3.5" aria-hidden="true" />{ui("Open JSON")}</Button>
               <Button
                 type="button"
                 variant="secondary"
@@ -430,9 +430,7 @@ export default function VerifyMatchSheet({
                 disabled={!canVerifyMatch || !canVerifyCurrentMatch || verificationBusy}
                 onClick={() => void handleVerifyCurrentMatch()}
               >
-                <ShieldCheck className="size-3.5" aria-hidden="true" />
-                Current Match
-              </Button>
+                <ShieldCheck className="size-3.5" aria-hidden="true" />{ui("Current Match")}</Button>
             </div>
 
             <section
@@ -456,13 +454,13 @@ export default function VerifyMatchSheet({
               </div>
               <div className="verify-match-result-copy">
                 <div className="verify-match-result-title">
-                  {verification.summary || "No audit loaded"}
+                  {verification.summary || ui("No audit loaded")}
                 </div>
                 {verification.sourceLabel ? (
-                  <div className="verify-match-source">{verification.sourceLabel}</div>
+                  <div className="verify-match-source">{ui(verification.sourceLabel)}</div>
                 ) : null}
                 {verification.error ? (
-                  <div className="verify-match-error">{verification.error}</div>
+                  <div className="verify-match-error">{ui(verification.error)}</div>
                 ) : null}
               </div>
             </section>
@@ -471,8 +469,8 @@ export default function VerifyMatchSheet({
               <dl className="verify-match-facts">
                 {facts.map(([label, value]) => (
                   <div className="verify-match-fact" key={label}>
-                    <dt>{label}</dt>
-                    <dd title={value}>{value}</dd>
+                    <dt>{ui(label)}</dt>
+                    <dd title={ui(value)}>{value}</dd>
                   </div>
                 ))}
               </dl>
@@ -482,11 +480,11 @@ export default function VerifyMatchSheet({
               <section className="verify-match-replay">
                 <div className="verify-match-replay-head">
                   <div>
-                    <div className="verify-match-replay-eyebrow">Replay</div>
+                    <div className="verify-match-replay-eyebrow">{ui("Replay")}</div>
                     <div className="verify-match-replay-title">
                       {replayActive
-                        ? `Action ${replayPosition} of ${replayActionCount}`
-                        : "Load into table"}
+                        ? ui("Action {0} of {1}", { 0: replayPosition, 1: replayActionCount })
+                        : ui("Load into table")}
                     </div>
                   </div>
                   <Button
@@ -501,15 +499,13 @@ export default function VerifyMatchSheet({
                       <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
                     ) : (
                       <Play className="size-3.5" aria-hidden="true" />
-                    )}
-                    Start
-                  </Button>
+                    )}{ui("Start")}</Button>
                 </div>
 
                 {replayActive ? (
                   <>
-                    <div className="verify-match-replay-current" title={replayLabel}>
-                      {replayLabel}
+                    <div className="verify-match-replay-current" title={ui(replayLabel)}>
+                      {ui(replayLabel)}
                     </div>
                     <div className="verify-match-replay-controls">
                       <Button
@@ -519,7 +515,7 @@ export default function VerifyMatchSheet({
                         className="stone-icon-button verify-match-replay-button"
                         disabled={replayBusy || replayPosition <= 0}
                         onClick={() => void moveReplay(0)}
-                        title="Jump to start"
+                        title={ui("Jump to start")}
                       >
                         <ChevronsLeft className="size-4" aria-hidden="true" />
                       </Button>
@@ -530,7 +526,7 @@ export default function VerifyMatchSheet({
                         className="stone-icon-button verify-match-replay-button"
                         disabled={replayBusy || replayPosition <= 0}
                         onClick={() => void moveReplay(replayPosition - 1)}
-                        title="Previous action"
+                        title={ui("Previous action")}
                       >
                         <StepBack className="size-4" aria-hidden="true" />
                       </Button>
@@ -541,7 +537,7 @@ export default function VerifyMatchSheet({
                         className="stone-icon-button verify-match-replay-button"
                         disabled={replayBusy || replayPosition >= replayActionCount}
                         onClick={() => void moveReplay(replayPosition + 1)}
-                        title="Next action"
+                        title={ui("Next action")}
                       >
                         {replayBusy ? (
                           <Loader2 className="size-4 animate-spin" aria-hidden="true" />
@@ -556,7 +552,7 @@ export default function VerifyMatchSheet({
                         className="stone-icon-button verify-match-replay-button"
                         disabled={replayBusy || replayPosition >= replayActionCount}
                         onClick={() => void moveReplay(replayActionCount)}
-                        title="Jump to end"
+                        title={ui("Jump to end")}
                       >
                         <ChevronsRight className="size-4" aria-hidden="true" />
                       </Button>
@@ -567,9 +563,7 @@ export default function VerifyMatchSheet({
                         className="stone-pill verify-match-command"
                         disabled={replayBusy}
                         onClick={() => setVerifyOpen(false)}
-                      >
-                        View Table
-                      </Button>
+                      >{ui("View Table")}</Button>
                       <Button
                         type="button"
                         variant="secondary"
@@ -578,15 +572,13 @@ export default function VerifyMatchSheet({
                         disabled={replayBusy}
                         onClick={() => void exitReplay()}
                       >
-                        <PauseCircle className="size-3.5" aria-hidden="true" />
-                        Exit
-                      </Button>
+                        <PauseCircle className="size-3.5" aria-hidden="true" />{ui("Exit")}</Button>
                     </div>
                   </>
                 ) : null}
 
                 {auditReplay?.error ? (
-                  <div className="verify-match-replay-error">{auditReplay.error}</div>
+                  <div className="verify-match-replay-error">{ui(auditReplay.error)}</div>
                 ) : null}
               </section>
             ) : null}

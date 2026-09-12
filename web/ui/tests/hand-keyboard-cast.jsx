@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { GameContext } from "../src/context/GameContext.shared";
 import { HoverProvider } from "../src/context/HoverContext";
-import { DragProvider, useDragState } from "../src/context/DragContext";
+import { DragProvider, useDragState, useDragSession } from "../src/context/DragContext";
 import { I18nProvider } from "../src/i18n/I18nContext";
 import HandZone from "../src/components/board/HandZone";
 import DragOverlay from "../src/components/overlays/DragOverlay";
@@ -26,6 +26,8 @@ window.addEventListener(HAND_KEYBOARD_CAST_EVENT, (event) => {
 /** The provider owns the hold, so the probe reads it the way the board does. */
 export function DragProbe() {
   const dragState = useDragState();
+  const session = useDragSession();
+  useEffect(() => { window.__dragSessionUpdates = (window.__dragSessionUpdates || 0) + 1; }, [session]);
   useEffect(() => {
     window.__dragState = dragState
       ? {

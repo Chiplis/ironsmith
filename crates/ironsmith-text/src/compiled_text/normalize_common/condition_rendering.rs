@@ -621,6 +621,13 @@ fn describe_turn_history_value_comparison(
                 .unwrap_or_else(|| "counter".to_string());
             if let Some(player) = source_controller {
                 let actor = describe_history_player_subject(player);
+                if is_present {
+                    return Some(format!(
+                        "{actor} put {} on {} this turn",
+                        with_indefinite_article(&counter),
+                        with_indefinite_article(&subject)
+                    ));
+                }
                 let action = if player == &PlayerFilter::You {
                     "you've put".to_string()
                 } else {
@@ -1496,6 +1503,28 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         } => {
             let subject = describe_player_filter(player);
             if *count == 0 {
+                if let [constraint] = filter.tagged_constraints.as_slice()
+                    && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+                {
+                    let mut noun_filter = filter.clone();
+                    noun_filter.tagged_constraints.clear();
+                    if noun_filter.controller.as_ref() == Some(player) {
+                        noun_filter.controller = None;
+                    }
+                    let described = noun_filter.description();
+                    let noun = pluralize_noun_phrase(strip_indefinite_article(&described));
+                    return format!("{subject} {} none of those {noun}", player_verb(&subject, "control", "controls"));
+                }
+                // No objects outside one color is the same universal
+                // predicate as the existing negated-existence form.
+                if *player == PlayerFilter::You && filter.excluded_colors.count() == 1
+                    && matches!(filter.zone, None | Some(Zone::Battlefield))
+                    && matches!(filter.controller, None | Some(PlayerFilter::You))
+                {
+                    return describe_condition(&Condition::Not(Box::new(
+                        Condition::PlayerControls { player: player.clone(), filter: filter.clone() },
+                    )));
+                }
                 let mut described_filter = filter.clone();
                 if described_filter
                     .controller
@@ -3739,16 +3768,22 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 Value::SpellsCastThisTurnMatching {
                     player,
                     filter,
-                    exclude_source: false,
+                    exclude_source,
                 },
                 crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                 Value::Fixed(1),
             ) = (left, operator, right)
             {
+                let object = describe_spell_cast_condition_object(filter);
+                let object = if *exclude_source {
+                    format!("another {}", strip_indefinite_article(&object))
+                } else {
+                    object
+                };
                 if *player == PlayerFilter::You {
                     return format!(
                         "you've cast {} this turn",
-                        describe_spell_cast_condition_object(filter)
+                        object
                     );
                 }
                 let subject = describe_player_filter(player);
@@ -3756,7 +3791,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     "{} {} cast {} this turn",
                     subject,
                     player_verb(&subject, "have", "has"),
-                    describe_spell_cast_condition_object(filter)
+                    object
                 );
             }
             if let (

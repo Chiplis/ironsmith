@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { SymbolText } from "@/lib/mana-symbols";
@@ -130,6 +131,7 @@ export default function DecisionMiniInspector({
   stackObject = null,
   className = "",
 }) {
+  const ui = useUiText();
   const { game } = useGame();
   const inspectorSourceId = Number(
     stackObject?.inspect_object_id ?? stackObject?.id ?? decision?.source_id
@@ -340,7 +342,7 @@ export default function DecisionMiniInspector({
         }}
       >
         <div className="shrink-0 whitespace-nowrap text-[13px] font-bold uppercase tracking-[0.08em] text-[#edf5ff]">
-          {renderedPanel?.sourceName || "Source"}
+          {renderedPanel?.sourceName || ui("Source")}
         </div>
         {renderedPanel?.combinedText && (
           <SymbolText

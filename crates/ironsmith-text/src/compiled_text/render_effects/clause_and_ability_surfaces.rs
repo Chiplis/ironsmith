@@ -4003,7 +4003,7 @@ fn describe_coordinated_action_then_you_gain_life(effects: &[Effect]) -> Option<
     ))
 }
 
-fn describe_permanent_size_free_animation(
+fn describe_size_free_animation(
     sequence: &crate::effects::SequenceEffect,
 ) -> Option<String> {
     use crate::continuous::Modification;
@@ -4038,7 +4038,7 @@ fn describe_permanent_size_free_animation(
     let Some(Modification::AddCardTypes(types)) = &first.modification else {
         return None;
     };
-    if !types.contains(&CardType::Creature) || first.until != Until::Forever {
+    if !types.contains(&CardType::Creature) {
         return None;
     }
     if applies.iter().any(|apply| {
@@ -4148,7 +4148,7 @@ fn describe_referenced_unblockable_then_characteristics(effects: &[Effect]) -> O
 pub(super) fn describe_coordinated_sequence(
     sequence: &crate::effects::SequenceEffect,
 ) -> Option<String> {
-    if let Some(text) = describe_permanent_size_free_animation(sequence) {
+    if let Some(text) = describe_size_free_animation(sequence) {
         return Some(text);
     }
     if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
@@ -4813,7 +4813,24 @@ pub(super) fn describe_shared_target_end_of_turn_modifications(
     if !target.is_target() || first.until != Until::EndOfTurn || first.condition.is_some() {
         return None;
     }
-    for effect in &sequence.effects[1..] {
+    fn collect_modifiers<'a>(effects: &'a [Effect], leaves: &mut Vec<&'a Effect>) -> Option<()> {
+        for effect in effects {
+            if let Some(inner) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+                if inner.surface != ironsmith_core::SequenceSurface::Coordinated
+                    || inner.result_label.is_some()
+                {
+                    return None;
+                }
+                collect_modifiers(&inner.effects, leaves)?;
+            } else {
+                leaves.push(effect);
+            }
+        }
+        Some(())
+    }
+    let mut following = Vec::new();
+    collect_modifiers(&sequence.effects[1..], &mut following)?;
+    for effect in following {
         let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
         let apply = tagged
             .effect
@@ -8922,6 +8939,9 @@ pub(crate) fn describe_as_enters_counter_phrase_on_it(
             describe_value(amount)
         );
     }
+    if let Some(count) = describe_effect_count_backref(amount) {
+        return format!("{count} {} counters on it", counter_type.description());
+    }
     if let Some((multiplier, basis)) = describe_for_each_multiplier_and_basis(amount)
         && multiplier > 0
     {
@@ -9190,6 +9210,17 @@ pub(crate) fn describe_static_ability_with_subject(
     static_ability: &crate::static_abilities::StaticAbility,
     subject: &str,
 ) -> String {
+    if let Some(ironsmith_core::StaticAbilityPayload::GoadMatching { filter }) =
+        static_ability.compiled_model().map(|model| &model.payload)
+    {
+        let mut filter = filter.clone();
+        let relation = filter.power_relative_to_source.take();
+        let mut affected = capitalize_first(&describe_count_filter_value_subject(&filter));
+        if relation == Some(ironsmith_core::SourcePowerRelation::LessThanSource) {
+            affected.push_str(&format!(" with power less than {subject}'s power"));
+        }
+        return format!("{affected} are goaded");
+    }
     if let Some(tax) = static_ability.attack_cost_model() {
         let mut attackers = tax.attackers().clone();
         if attackers.zone == Some(crate::zone::Zone::Battlefield) {
@@ -12121,9 +12152,7 @@ fn describe_optional_self_exile_collect_evidence_then_return(
     };
     let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let source_exile = source_exile_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
-    let source_move = source_exile
-        .effect
-        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let source_move = move_to_zone_surface_view(&source_exile.effect)?;
     let evidence_loop =
         evidence_exile_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
     let [evidence_move_effect] = evidence_loop.effects.as_slice() else {
@@ -12759,6 +12788,12 @@ pub(super) fn describe_triggered_resolution_text(
     subject: &str,
     rewrite_it_deals: bool,
 ) -> Option<String> {
+    if triggered.effects.segments.iter().all(|segment| segment.self_replacements.is_empty()) {
+        let effects = triggered.effects.flattened_default_effects();
+        if let Some(text) = describe_quantified_created_tokens_goaded_forever(effects) {
+            return Some(text);
+        }
+    }
     if let Some((_, text)) = describe_triggered_power_difference_counters(triggered) {
         return Some(text);
     }

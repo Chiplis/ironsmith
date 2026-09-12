@@ -347,6 +347,10 @@ pub enum SpellContextConditionAst {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PlayerSpellCastThisTurnConditionAst {
+    AnotherSpell {
+        player: PlayerFilter,
+        negated: bool,
+    },
     MatchingFilters {
         player: PlayerFilter,
         filters: Vec<ObjectFilter>,
@@ -1524,11 +1528,11 @@ fn parse_player_spell_cast_this_turn_shape(
 ) -> Option<PlayerSpellCastThisTurnConditionAst> {
     let shape = event_shapes::parse_spell_cast_this_turn(tokens)?;
     let player = parse_spell_cast_this_turn_subject_clause(LexedClause::new(shape.subject_tokens))?;
-    if !shape.negated
-        && player == PlayerFilter::You
-        && event_shapes::is_another_spell(shape.object_tokens)
-    {
-        return Some(PlayerSpellCastThisTurnConditionAst::CountAtLeast { player, count: 2 });
+    if event_shapes::is_another_spell(shape.object_tokens) {
+        return Some(PlayerSpellCastThisTurnConditionAst::AnotherSpell {
+            player,
+            negated: shape.negated,
+        });
     }
     if !shape.negated
         && let Some((count, used)) =

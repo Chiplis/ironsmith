@@ -816,6 +816,8 @@ pub struct EffectStore {
     /// Active goad effects (a creature attacks each combat and attacks a player
     /// other than the goader if able).
     pub goad_effects: Vec<GoadEffectInstance>,
+    /// (permanent identity, required defender, turn). These are requirements, not restrictions.
+    pub attack_player_requirements: Vec<(ObjectId, PlayerId, u32)>,
     /// Latest resolved removal of the goaded designation for each permanent.
     pub goad_cleared_at: HashMap<ObjectId, u64>,
 }
@@ -841,6 +843,7 @@ impl Default for EffectStore {
             repeatable_mana_payment_actions: Vec::new(),
             restriction_effects: Vec::new(),
             goad_effects: Vec::new(),
+            attack_player_requirements: Vec::new(),
             goad_cleared_at: HashMap::new(),
         }
     }
@@ -5281,7 +5284,37 @@ impl GameState {
             }
         }
 
+        // Goad is a designation, not an ability granted to the creature.
+        // Evaluate these live predicates after characteristics, so power
+        // modifications and removal of the source's ability are respected.
+        if let Some(candidate) = self.object(creature) {
+            for source in &self.battlefield {
+                if self.is_phased_out(*source)
+                    || !view.object_has_static_ability_id(*source, crate::static_abilities::StaticAbilityId::GoadMatching)
+                { continue; }
+                let Some(chars) = view.calculated_characteristics(*source) else { continue };
+                let controller = chars.controller;
+                let ctx = self.filter_context_for(controller, Some(*source));
+                if chars.static_abilities.iter().any(|ability| {
+                    ability.goads_matching().is_some_and(|filter| filter.matches(candidate, &ctx, self))
+                }) {
+                    goaders.insert(controller);
+                }
+            }
+        }
         goaders
+    }
+
+    pub fn required_attack_players_this_turn(
+        &self,
+        creature: ObjectId,
+    ) -> impl Iterator<Item = PlayerId> + '_ {
+        self.effect_store
+            .attack_player_requirements
+            .iter()
+            .filter_map(move |&(id, player, turn)| {
+                (id == creature && turn == self.turn.turn_number).then_some(player)
+            })
     }
 
     pub fn is_goaded(&self, creature: ObjectId) -> bool {

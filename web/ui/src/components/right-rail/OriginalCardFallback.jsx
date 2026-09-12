@@ -1,3 +1,4 @@
+import useUiText from "@/i18n/useUiText";
 import { SymbolText } from '@/lib/mana-symbols';
 import { useState } from 'react';
 import GroupedManaAbility from './GroupedManaAbility';
@@ -46,12 +47,13 @@ function repairPrintingCorners(image) {
 }
 
 function PrintingImage({ imageUrl, name }) {
+  const ui = useUiText();
   const [repaired, setRepaired] = useState(null);
   const displayedUrl = repaired?.source === imageUrl ? repaired.url || imageUrl : imageUrl;
   return <img
     key={`${imageUrl}-corner-repair-v1`}
     src={displayedUrl}
-    alt={name || 'Card'}
+    alt={name || ui('Card')}
     crossOrigin="anonymous"
     referrerPolicy="no-referrer"
     decoding="async"
@@ -66,10 +68,11 @@ function PrintingImage({ imageUrl, name }) {
 // When text regions cannot be masked, preserve the printing. Live rules and
 // actions remain available in an explicit details panel, not a fake card frame.
 export default function OriginalCardFallback({ imageUrl, name, rulesView, onActivate, highlighted, flavorText, stats, counters, detailsLabel }) {
-  return <article className="original-card-fallback" aria-label={name || 'Card details'}>
+  const ui = useUiText();
+  return <article className="original-card-fallback" aria-label={name || ui('Card details')}>
     {imageUrl && <PrintingImage imageUrl={imageUrl} name={name} />}
     <details className="original-card-details" open={!imageUrl || undefined}>
-      <summary>{detailsLabel}</summary>
+      <summary>{ui(detailsLabel)}</summary>
       <div className="original-card-details__body">
         <strong>{name}</strong>
         {(stats || counters) && <p>{[stats, counters].filter(Boolean).join(' · ')}</p>}
@@ -81,14 +84,14 @@ export default function OriginalCardFallback({ imageUrl, name, rulesView, onActi
             {rulesView.manaGroups.has(index) ? <GroupedManaAbility group={rulesView.manaGroups.get(index)} name={name} onActivate={onActivate} />
               : actions.length || /[:：]/u.test(line) ? <button type="button" className="inspector-oracle-line-action"
                 data-available={available ? 'true' : 'false'} disabled={!available}
-                aria-label={`${name || 'Card'}: ${line}`}
+                aria-label={ui("{0}: {1}", { 0: name || 'Card', 1: line })}
                 onPointerDown={event => event.stopPropagation()}
                 onClick={event => { event.stopPropagation(); if (available) onActivate(action); }}>
                 <SymbolText text={line} />
               </button> : <SymbolText text={line} />}
           </div>;
         })}
-        {flavorText && <p aria-label="Flavor text"><em>{flavorText}</em></p>}
+        {flavorText && <p aria-label={ui("Flavor text")}><em>{flavorText}</em></p>}
       </div>
     </details>
   </article>;
