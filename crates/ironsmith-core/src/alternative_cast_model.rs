@@ -138,7 +138,8 @@ where
 {
     /// Alternative casting instructions which use the linked back face.
     pub fn casts_transformed(&self) -> bool {
-        matches!(self, Self::Disturb { .. }) || matches!(self, Self::Composed { name, .. } if name.eq_ignore_ascii_case("More than meets the eye"))
+        matches!(self, Self::Disturb { .. })
+            || matches!(self, Self::Composed { name, .. } if name.eq_ignore_ascii_case("More than meets the eye"))
     }
 
     pub fn cast_from_zone(&self) -> Zone {
@@ -174,9 +175,7 @@ where
             } => *exiles_after_resolution,
             _ => matches!(
                 self,
-                Self::Flashback { .. }
-                    | Self::Harmonize { .. }
-                    | Self::JumpStart { .. }
+                Self::Flashback { .. } | Self::Harmonize { .. } | Self::JumpStart { .. }
             ),
         }
     }

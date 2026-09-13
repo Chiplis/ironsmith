@@ -306,6 +306,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "WithIdEffect" => Some(EffectFamily::CompositionMZ),
         "ImprintFromHandEffect" => Some(EffectFamily::ZoneLibrary),
         "ScaleXValueEffect" => Some(EffectFamily::StackEvent),
+        "RevealChosenSubtypeEffect" => Some(EffectFamily::Player),
         _ => None,
     }
 }

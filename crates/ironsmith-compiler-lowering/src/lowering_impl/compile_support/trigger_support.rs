@@ -226,10 +226,12 @@ fn repeated_intro_branch_description(trigger: &TriggerSpec) -> Option<String> {
         ),
         _ => {
             let description = compile_trigger_spec((**trigger).clone()).display();
-            ["Whenever ", "When ", "At "].into_iter()
+            ["Whenever ", "When ", "At "]
+                .into_iter()
                 .find_map(|prefix| description.strip_prefix(prefix))
-                .unwrap_or(&description).to_string()
-        },
+                .unwrap_or(&description)
+                .to_string()
+        }
     };
     Some(format!("{intro} {body}"))
 }
@@ -328,15 +330,26 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::StateBased { display, .. } => Trigger::state_based(display),
         TriggerSpec::AnyOf(branches) => {
             let play_description = match branches.as_slice() {
-                [TriggerSpec::SpellCast {
-                    filter: Some(cast_filter), caster, mana_source_filter: None,
-                    timing: None, during_turn: None, min_spells_this_turn: None,
-                    exact_spells_this_turn: None, from_not_hand: false,
-                }, TriggerSpec::PlayerPlaysLand { player, filter }]
-                    if caster == player && cast_filter == filter => {
+                [
+                    TriggerSpec::SpellCast {
+                        filter: Some(cast_filter),
+                        caster,
+                        mana_source_filter: None,
+                        timing: None,
+                        during_turn: None,
+                        min_spells_this_turn: None,
+                        exact_spells_this_turn: None,
+                        from_not_hand: false,
+                    },
+                    TriggerSpec::PlayerPlaysLand { player, filter },
+                ] if caster == player && cast_filter == filter => {
                     let object = filter.description().replacen("permanent", "card", 1);
                     let object = indefinite_subject_description(object);
-                    let verb = if player == &PlayerFilter::You { "play" } else { "plays" };
+                    let verb = if player == &PlayerFilter::You {
+                        "play"
+                    } else {
+                        "plays"
+                    };
                     Some(format!("Whenever {} {verb} {object}", player.description()))
                 }
                 _ => None,
@@ -609,6 +622,9 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         } => Trigger::player_shuffles_library(player, caused_by_effect, source_controller_shuffles),
         TriggerSpec::PlayerTapsForMana { player, filter } => {
             Trigger::player_taps_for_mana(player, filter)
+        }
+        TriggerSpec::PlayerRollsToVisitAttractions { player } => {
+            Trigger::player_rolls_to_visit_attractions(player)
         }
         TriggerSpec::PlayerRollsResult { player, result } => {
             Trigger::player_rolls_result(player, result)
@@ -966,6 +982,9 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             exact_spells_this_turn,
             from_not_hand,
         ),
+        TriggerSpec::SpellCastSameNameCardInZone { filter, caster, zone, owner } => {
+            Trigger::spell_cast_same_name_card_in_zone(filter, caster, zone, owner)
+        }
         TriggerSpec::NthSpellOfTurnCast { spell_number } => {
             Trigger::nth_spell_of_turn_cast(spell_number)
         }
@@ -1287,6 +1306,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => trigger_binds_iterated_player(trigger),
         TriggerSpec::SpellCast { .. }
+        | TriggerSpec::SpellCastSameNameCardInZone { .. }
         | TriggerSpec::NthSpellOfTurnCast { .. }
         | TriggerSpec::SpellCopied { .. }
         | TriggerSpec::SpellCountered { .. }
@@ -1307,6 +1327,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::PlayerSearchesLibrary(_)
         | TriggerSpec::PlayerShufflesLibrary { .. }
         | TriggerSpec::PlayerTapsForMana { .. }
+        | TriggerSpec::PlayerRollsToVisitAttractions { .. }
         | TriggerSpec::PlayerRollsResult { .. }
         | TriggerSpec::PlayerRollsHighestNaturalResult { .. }
         | TriggerSpec::PlayerRollsDie { .. }
@@ -1365,12 +1386,24 @@ pub fn trigger_binds_player_reference_context(trigger: &TriggerSpec) -> bool {
 
 pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec) -> bool {
     match spec {
+        EventValueSpec::DieResult => match trigger {
+            TriggerSpec::WithIntro { trigger, .. } => trigger_supports_event_value(trigger, spec),
+            TriggerSpec::PlayerRollsToVisitAttractions { .. }
+            | TriggerSpec::PlayerRollsResult { .. }
+            | TriggerSpec::PlayerRollsHighestNaturalResult { .. }
+            | TriggerSpec::PlayerRollsDie { .. } => true,
+            TriggerSpec::Either(left, right) => {
+                trigger_supports_event_value(left, spec)
+                    && trigger_supports_event_value(right, spec)
+            }
+            _ => false,
+        },
         EventValueSpec::Amount | EventValueSpec::LifeAmount => match trigger {
             TriggerSpec::WithIntro { trigger, .. } => trigger_supports_event_value(trigger, spec),
             TriggerSpec::SpellCast {
                 filter: Some(filter),
                 ..
-            } if spell_cast_filter_binds_target_count(filter) => true,
+            } | TriggerSpec::SpellCastSameNameCardInZone { filter: Some(filter), .. } if spell_cast_filter_binds_target_count(filter) => true,
             TriggerSpec::YouGainLife
             | TriggerSpec::YouGainLifeCausedBy(_)
             | TriggerSpec::YouGainLifeDuringTurn(_)

@@ -74,6 +74,18 @@ pub fn strip_attached_condition_pronoun(tokens: &[OwnedLexToken]) -> Option<&[Ow
     Some(tail)
 }
 
+/// The counterpart in the current, symmetric blocking relation of the host.
+pub fn parse_attached_combat_partner_condition_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    let tail = strip_attached_condition_pronoun(tokens).or_else(|| {
+        // The lexer normalizes the one-token contraction "it's" to `its`.
+        primitives::parse_prefix(tokens, semantic_phrase(&["its"])).map(|(_, tail)| tail)
+    })?;
+    let (_, partner) = primitives::parse_prefix(
+        tail, semantic_phrase(&["blocking", "or", "blocked", "by"]),
+    )?;
+    (!partner.is_empty()).then_some(partner)
+}
+
 impl<'a> AttachedConditionSuffix<'a> {
     pub fn ability_tokens(self) -> &'a [OwnedLexToken] {
         match self {

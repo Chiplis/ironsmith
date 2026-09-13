@@ -186,6 +186,15 @@ pub(crate) fn resolve_source_object_id(
             })
         });
     }
+    // Non-zone-change triggers retain the object that owned the ability.
+    // A later independent zone change does not authorize following the same
+    // physical card. Explicit moves within a resolution update ctx.source;
+    // zone-change triggers use their recorded destination above.
+    if ctx.triggering_event.as_ref().is_some_and(|event| {
+        event.downcast::<crate::events::ZoneChangeEvent>().is_none()
+    }) {
+        return None;
+    }
     ctx.source_snapshot
         .as_ref()
         .and_then(|snapshot| game.find_object_by_stable_id(snapshot.stable_id))

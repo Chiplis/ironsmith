@@ -1,6 +1,7 @@
 use crate::cards::builders::CharacteristicActionAst;
 fn split_attached_keyword_condition_suffix(
     ability_tokens: &[OwnedLexToken],
+    subject: attached_grammar::AttachedSubject,
 ) -> Result<(Vec<OwnedLexToken>, Option<PredicateAst>), CardTextError> {
     let ability_tokens = trim_edge_punctuation(ability_tokens);
     let parsed = attached_grammar::split_attached_condition_suffix_tokens(&ability_tokens);
@@ -8,7 +9,23 @@ fn split_attached_keyword_condition_suffix(
         attached_grammar::AttachedConditionSuffix::None { .. } => None,
         attached_grammar::AttachedConditionSuffix::Clause {
             condition_tokens, ..
-        } => Some(parse_static_condition_clause(condition_tokens)?),
+        } => Some(if let Some(partner_tokens) = attached_grammar::parse_attached_combat_partner_condition_tokens(condition_tokens) {
+            let mut filter = parse_object_filter(partner_tokens, false)?;
+            filter.zone = Some(Zone::Battlefield);
+            let host_tag = if subject.is_equipped() {
+                crate::tag::CompilerReferenceTag::Equipped
+            } else {
+                crate::tag::CompilerReferenceTag::Enchanted
+            };
+            filter.in_combat_with = Some(crate::filter::ObjectRef::tagged(host_tag.bind()));
+            PredicateAst::CountComparison {
+                count: AnthemCountExpression::MatchingFilter(filter),
+                comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+                display: None,
+            }
+        } else {
+            parse_static_condition_clause(condition_tokens)?
+        }),
         attached_grammar::AttachedConditionSuffix::YourTurn { .. } => {
             Some(PredicateAst::YourTurn)
         }
@@ -473,7 +490,7 @@ fn parse_attached_has_keyword_condition_sentence(
     if ability_tokens.is_empty() {
         return Ok(None);
     }
-    let (ability_tokens, condition) = split_attached_keyword_condition_suffix(&ability_tokens)?;
+    let (ability_tokens, condition) = split_attached_keyword_condition_suffix(&ability_tokens, has.subject)?;
     let Some(condition) = condition.map(bind_condition_to_attached_object) else {
         return Ok(None);
     };
@@ -967,7 +984,7 @@ pub fn parse_equipped_creature_has_line(
     if ability_tokens.is_empty() {
         return Ok(None);
     }
-    let (ability_tokens, condition) = split_attached_keyword_condition_suffix(&ability_tokens)?;
+    let (ability_tokens, condition) = split_attached_keyword_condition_suffix(&ability_tokens, has.subject)?;
     parse_attached_keyword_action_grants(
         "equipped creature",
         &ability_tokens,
@@ -1036,7 +1053,7 @@ pub fn parse_enchanted_creature_has_line(
 
     let mut condition: Option<PredicateAst> = None;
     let (parsed_ability_tokens, parsed_condition) =
-        split_attached_keyword_condition_suffix(&ability_tokens)?;
+        split_attached_keyword_condition_suffix(&ability_tokens, has.subject)?;
     if parsed_condition.is_some() {
         condition = parsed_condition;
         ability_tokens = parsed_ability_tokens;
@@ -1425,6 +1442,19 @@ pub fn parse_attached_has_and_loses_keywords_line(
 pub fn parse_attached_cant_attack_or_block_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    if let Some((restriction_tokens, condition_tokens)) =
+        crate::grammar::primitives::split_lexed_once_on_separator(tokens, || {
+            use winnow::Parser as _;
+            crate::grammar::primitives::kw("if").void()
+        })
+        && let Some(mut restriction) = parse_attached_cant_attack_or_block_line(restriction_tokens)?
+        && let StaticAbilityAst::AttachedStaticAbilityGrant { condition, .. } = &mut restriction
+    {
+        *condition = Some(bind_condition_to_attached_object(
+            parse_static_condition_clause(condition_tokens)?,
+        ));
+        return Ok(Some(restriction));
+    }
     if let Some((subject, actions)) =
         attached_grammar::parse_attached_action_restriction_list_tokens(tokens).filter(|_| {
             attached_grammar::parse_attached_combat_restriction_tokens(tokens).is_none()

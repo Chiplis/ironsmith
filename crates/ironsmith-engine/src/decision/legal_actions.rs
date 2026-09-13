@@ -173,20 +173,43 @@ fn append_granted_play_from_actions_for_card(
     };
     let adventure_play_from_grants =
         view.granted_play_from_for_card_view(card_id, &adventure_view, source_zone, player);
-    if adventure_play_from_grants.is_empty()
-        || !can_cast_spell_with_view(game, player, card, &CastingMethod::SplitOtherHalf, view)
-    {
-        return;
-    }
+    let face_alternatives = view.granted_alternative_casts_for_card_view(
+        card_id, &adventure_view, source_zone, player,
+    );
+    let face_alternative_base = card.alternative_casts.len()
+        + view.granted_alternative_casts_for_card(card_id, source_zone, player).len();
     for grant in adventure_play_from_grants {
         if !grant_usage_limit_allows(game, player, grant.source_id, grant.usage_limit) {
             continue;
         }
-        actions.push(LegalAction::CastSpell {
-            spell_id: card_id,
-            from_zone: grant.zone,
-            casting_method: CastingMethod::SplitOtherHalf,
-        });
+        let has_same_source_alternative = face_alternatives.iter()
+            .any(|alternative| alternative.source_id == grant.source_id);
+        if !has_same_source_alternative
+            && can_cast_spell_with_view(game, player, card, &CastingMethod::SplitOtherHalf, view)
+        {
+            actions.push(LegalAction::CastSpell {
+                spell_id: card_id,
+                from_zone: grant.zone,
+                casting_method: CastingMethod::SplitOtherHalf,
+            });
+        }
+        for (offset, alternative) in face_alternatives.iter().enumerate() {
+            if alternative.source_id != grant.source_id {
+                continue;
+            }
+            let casting_method = CastingMethod::SplitOtherHalfPlayFrom {
+                source: grant.source_id,
+                zone: grant.zone,
+                use_alternative: face_alternative_base + offset,
+            };
+            if can_cast_spell_with_view(game, player, card, &casting_method, view) {
+                actions.push(LegalAction::CastSpell {
+                    spell_id: card_id,
+                    from_zone: grant.zone,
+                    casting_method,
+                });
+            }
+        }
     }
 }
 

@@ -2593,9 +2593,11 @@ pub(crate) fn propose_spell_cast(
             zone,
             ..
         } => crate::decision::resolve_play_from_alternative_method(game, caster, obj, *zone, *idx),
-        CastingMethod::GrantedFlashback => Some(crate::alternative_cast::AlternativeCastingMethod::Flashback {
-            total_cost: crate::cost::TotalCost::mana(obj.mana_cost_owned().unwrap_or_default()),
-        }),
+        CastingMethod::GrantedFlashback => Some(
+            crate::alternative_cast::AlternativeCastingMethod::Flashback {
+                total_cost: crate::cost::TotalCost::mana(obj.mana_cost_owned().unwrap_or_default()),
+            },
+        ),
         _ => None,
     });
     let selected_method_for_overlay = selected_method.clone();

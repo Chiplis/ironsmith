@@ -1714,15 +1714,6 @@ pub(super) fn triggered_to_stack_entry_with_effects(
                 .downcast::<ZoneChangeEvent>()
                 .and_then(|zc| zc.snapshot.clone())
                 .filter(|snapshot| snapshot.object_id == trigger.source)
-        })
-        .or_else(|| {
-            game.find_object_by_stable_id(trigger.source_stable_id)
-                .and_then(|id| game.object(id))
-                .map(|obj| {
-                    ObjectSnapshot::from_object_with_calculated_characteristics_and_effects(
-                        obj, game, effects,
-                    )
-                })
         });
 
     // Create an ability stack entry with the effects from the triggered ability

@@ -16,6 +16,9 @@ pub(crate) fn synthetic_chosen_name_snapshot(
     name: String,
 ) -> ObjectSnapshot {
     ObjectSnapshot {
+        chosen_subtype: None,
+        secret_chosen_subtype: None,
+        chosen_object: None,
         object_id: source,
         stable_id: StableId::from(source),
         kind: ObjectKind::Card,
@@ -58,6 +61,7 @@ pub(crate) fn synthetic_chosen_name_snapshot(
         transform_count: 0,
         attached_to: None,
         attachments: Vec::new(),
+        attachment_snapshots: Vec::new(),
         was_enchanted: false,
         is_monstrous: false,
         is_prepared: false,

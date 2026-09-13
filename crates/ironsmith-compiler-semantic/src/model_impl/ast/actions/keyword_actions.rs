@@ -67,6 +67,9 @@ pub enum KeywordActionAst {
         exile_at_end_of_combat: bool,
         sacrifice_at_end_of_combat: bool,
     },
+    Airbend {
+        target: TargetAst,
+    },
     Explore {
         target: TargetAst,
     },

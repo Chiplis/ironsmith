@@ -28,6 +28,13 @@ pub fn predicate_object_filter_antecedent(predicate: &PredicateAst) -> Option<Ob
         // "if enchanted creature is untapped, tap it": the tagged condition
         // subject is the antecedent for "it" in the body effects.
         PredicateAst::TaggedMatches(tag, _) => Some(ObjectFilter::tagged(tag.clone())),
+        PredicateAst::AttachedToSourceMatches(_) => {
+            // The attachment's host is the referent; the tested property
+            // (for example flying) is not a restriction on later references.
+            let mut host = ObjectFilter::default();
+            host.with_attached_object = Some(Box::new(ObjectFilter::source()));
+            Some(host)
+        }
         PredicateAst::TurnHistory(crate::cards::builders::TurnHistoryPredicateAst::AnotherOpponentControlsPotentialTarget { filter }) => {
             let mut candidates = filter.clone();
             candidates.controller = Some(crate::filter::PlayerFilter::Opponent);
@@ -878,6 +885,9 @@ pub fn bind_condition_filter_antecedent(filter: &mut ObjectFilter, antecedent: &
     });
     let mut replacement = antecedent.clone();
     merge_filter_overlay(&mut replacement, overlay);
+    // Binding the executable identity must retain the authored noun used by
+    // this reference (for example "that creature" after an attached-host test).
+    replacement.source_surface = filter.source_surface.clone().or(replacement.source_surface);
     *filter = replacement;
 }
 

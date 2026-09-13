@@ -344,6 +344,9 @@ pub enum TriggerSpec {
         player: PlayerFilter,
         filter: ObjectFilter,
     },
+    PlayerRollsToVisitAttractions {
+        player: PlayerFilter,
+    },
     PlayerRollsResult {
         player: PlayerFilter,
         result: u32,
@@ -510,6 +513,13 @@ pub enum TriggerSpec {
         min_spells_this_turn: Option<u32>,
         exact_spells_this_turn: Option<u32>,
         from_not_hand: bool,
+    },
+    /// Name comparison against cards in a zone, evaluated at cast time.
+    SpellCastSameNameCardInZone {
+        filter: Option<ObjectFilter>,
+        caster: PlayerFilter,
+        zone: Zone,
+        owner: PlayerFilter,
     },
     /// Passive "the Nth spell of a turn is cast" trigger. Unlike a player's
     /// Nth-spell trigger, this count spans spells cast by every player.

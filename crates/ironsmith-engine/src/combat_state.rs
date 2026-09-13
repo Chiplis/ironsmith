@@ -25,6 +25,8 @@ pub struct CombatState {
     pub attackers: Vec<AttackerInfo>,
     /// Mapping from attacker to their blockers.
     pub blockers: HashMap<ObjectId, Vec<ObjectId>>,
+    /// CR 509.1h: becoming blocked persists when the last blocker leaves.
+    pub blocked_attackers: HashSet<ObjectId>,
     /// Damage assignment order: attacker -> ordered list of blockers.
     pub damage_assignment_order: HashMap<ObjectId, Vec<ObjectId>>,
     /// Attacking bands declared for the current combat.
@@ -34,6 +36,13 @@ pub struct CombatState {
 }
 
 impl CombatState {
+    pub fn remember_blocked_attackers(&mut self) {
+        self.blocked_attackers.extend(
+            self.blockers.iter()
+                .filter(|(_, blockers)| !blockers.is_empty())
+                .map(|(attacker, _)| *attacker),
+        );
+    }
     pub fn creature_had_to_attack_this_combat(&self, creature: ObjectId) -> bool {
         self.had_to_attack_this_combat.contains(&creature)
     }
@@ -276,6 +285,7 @@ pub fn new_combat() -> CombatState {
 pub fn end_combat(combat: &mut CombatState) {
     combat.attackers.clear();
     combat.blockers.clear();
+    combat.blocked_attackers.clear();
     combat.damage_assignment_order.clear();
     combat.attacking_bands.clear();
     combat.had_to_attack_this_combat.clear();
@@ -876,6 +886,9 @@ fn declare_blockers_internal(
 
     // Third pass: apply declarations
     for (attacker_id, blocker_list) in blockers_by_attacker {
+        if !blocker_list.is_empty() {
+            combat.blocked_attackers.insert(attacker_id);
+        }
         combat.blockers.insert(attacker_id, blocker_list);
     }
 
@@ -1605,9 +1618,9 @@ pub fn get_blocked_attacker(combat: &CombatState, blocker: ObjectId) -> Option<O
     None
 }
 
-/// Returns true if the attacker is blocked (has at least one blocker assigned).
+/// Blocked status lasts until the attacker leaves combat, even with no blockers left.
 pub fn is_blocked(combat: &CombatState, attacker: ObjectId) -> bool {
-    combat
+    combat.blocked_attackers.contains(&attacker) || combat
         .blockers
         .get(&attacker)
         .is_some_and(|blockers| !blockers.is_empty())

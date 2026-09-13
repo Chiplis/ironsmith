@@ -1,14 +1,14 @@
-pub use ironsmith_core::ConditionConjunction;
 use crate::ability::{ActivationTiming, PresentationKeyword, PresentationLabel};
 use crate::card::{CardBuilder, LinkedFaceLayout, PowerToughness};
 pub use crate::cards::CardDefinition;
 use crate::color::ColorSet;
-use ironsmith_core::ConditionConjunction as _;
 pub use crate::cost::OptionalCost;
 use crate::cost::TotalCost;
 pub use crate::diagnostics::{CardTextError, ParseAnnotations, TextSpan};
 pub use crate::effect::EffectPredicate;
 pub use crate::effect::{ChoiceCount, EventValueSpec, Value};
+pub use ironsmith_core::ConditionConjunction;
+use ironsmith_core::ConditionConjunction as _;
 
 use crate::mana::ManaCost;
 pub use crate::model::compiler_semantic::{
@@ -1854,22 +1854,50 @@ impl CardDefinitionBuilder {
 
     pub fn impending(self, time: u32, cost: ManaCost) -> Self {
         let paid = crate::ConditionExpr::ThisSpellPaidLabel(ironsmith_core::OptionalCostRef::new(
-            ironsmith_core::OptionalCostKind::AlternativeCast(ironsmith_core::AlternativeCostReference::by_name("Impending", Some(&cost)))));
-        let active = paid.clone().and(crate::ConditionExpr::SourceHasCounterAtLeast {
-            counter_type: crate::object::CounterType::Time, count: 1, surface: Default::default(),
-        });
+            ironsmith_core::OptionalCostKind::AlternativeCast(
+                ironsmith_core::AlternativeCostReference::by_name("Impending", Some(&cost)),
+            ),
+        ));
+        let active = paid
+            .clone()
+            .and(crate::ConditionExpr::SourceHasCounterAtLeast {
+                counter_type: crate::object::CounterType::Time,
+                count: 1,
+                surface: Default::default(),
+            });
         let mut countdown = crate::ability::Ability::triggered(
             crate::triggers::Trigger::beginning_of_end_step(crate::target::PlayerFilter::You),
-            vec![crate::effect::Effect::remove_counters(crate::object::CounterType::Time, 1, crate::target::ChooseSpec::Source)]);
+            vec![crate::effect::Effect::remove_counters(
+                crate::object::CounterType::Time,
+                1,
+                crate::target::ChooseSpec::Source,
+            )],
+        );
         if let crate::ability::AbilityKind::Triggered(triggered) = &mut countdown.kind {
             triggered.intervening_if = Some(active.clone());
         }
-        self.alternative_cast(crate::alternative_cast::AlternativeCastingMethod::alternative_cost("Impending", Some(cost), vec![]))
-            .with_ability(crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::enters_with_counters_value(crate::object::CounterType::Time, time.into()).with_condition(paid)))
-            .with_ability(crate::ability::Ability::static_ability(
-                crate::static_abilities::StaticAbility::remove_card_types(crate::target::ObjectFilter::source(), vec![CardType::Creature], Some(active))))
-            .with_ability(countdown)
+        self.alternative_cast(
+            crate::alternative_cast::AlternativeCastingMethod::alternative_cost(
+                "Impending",
+                Some(cost),
+                vec![],
+            ),
+        )
+        .with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::enters_with_counters_value(
+                crate::object::CounterType::Time,
+                time.into(),
+            )
+            .with_condition(paid),
+        ))
+        .with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::remove_card_types(
+                crate::target::ObjectFilter::source(),
+                vec![CardType::Creature],
+                Some(active),
+            ),
+        ))
+        .with_ability(countdown)
     }
 
     pub fn vanishing(self, amount: u32) -> Self {

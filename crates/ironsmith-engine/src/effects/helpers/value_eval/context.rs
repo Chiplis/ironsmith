@@ -150,6 +150,24 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
             return prevented.max(0);
         }
         let filter_ctx = ctx.filter_context(self.game);
+        // A count tied specifically to a departed source uses the source's
+        // final attachment set, including Auras that have since left play.
+        // Unions retain this meaning only when every arm has that relation.
+        fn requires_source_attachment(filter: &ObjectFilter) -> bool {
+            filter.attached_to_object.as_ref().is_some_and(|host| host.source)
+                || (!filter.any_of.is_empty()
+                    && filter.any_of.iter().all(requires_source_attachment))
+        }
+        if requires_source_attachment(filter)
+            && let Some(snapshot) = ctx.source_snapshot.as_ref()
+            && self.game.object(ctx.source).is_none_or(|object| {
+                object.id != snapshot.object_id || object.zone != snapshot.zone
+            })
+        {
+            return snapshot.attachment_snapshots.iter()
+                .filter(|attachment| filter.matches_snapshot(attachment, &filter_ctx, self.game))
+                .count() as i32;
+        }
         if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
             let count = snapshots
                 .iter()

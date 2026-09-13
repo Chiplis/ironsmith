@@ -229,9 +229,19 @@ fn emerge_alternative_cost_reduces_generic_by_sacrificed_creature_mana_value() {
     )
     .expect("emerge cost should resolve");
 
-    assert_eq!(reduced.to_oracle(), "{5}{U}", "the alternative cost is announced before resource reduction");
-    let total = calculate_effective_mana_cost_with_view_for_casting_method(&game, alice, spell_obj,
-        &reduced, &CastingMethod::Alternative(0), &DerivedGameView::new(&game));
+    assert_eq!(
+        reduced.to_oracle(),
+        "{5}{U}",
+        "the alternative cost is announced before resource reduction"
+    );
+    let total = calculate_effective_mana_cost_with_view_for_casting_method(
+        &game,
+        alice,
+        spell_obj,
+        &reduced,
+        &CastingMethod::Alternative(0),
+        &DerivedGameView::new(&game),
+    );
     assert_eq!(total.to_oracle(), "{3}{U}");
 }
 
@@ -3002,18 +3012,51 @@ fn selected_source_actions_match_full_menu_without_hiding_payment_sources() {
 fn delve_pays_the_total_after_trinisphere_without_reducing_it() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
-    let card = CardBuilder::new(CardId::new(), "Payment rule probe").card_types(vec![CardType::Artifact]).build();
+    let card = CardBuilder::new(CardId::new(), "Payment rule probe")
+        .card_types(vec![CardType::Artifact])
+        .build();
     let minimum = game.create_object_from_card(&card, alice, Zone::Battlefield);
-    game.object_mut(minimum).unwrap().abilities_mut().push(Ability::static_ability(StaticAbility::minimum_spell_total_mana(3)));
+    game.object_mut(minimum)
+        .unwrap()
+        .abilities_mut()
+        .push(Ability::static_ability(
+            StaticAbility::minimum_spell_total_mana(3),
+        ));
     let spell = game.create_object_from_card(&card, alice, Zone::Stack);
-    game.object_mut(spell).unwrap().abilities_mut().push(Ability::static_ability(StaticAbility::delve()));
+    game.object_mut(spell)
+        .unwrap()
+        .abilities_mut()
+        .push(Ability::static_ability(StaticAbility::delve()));
     game.create_object_from_card(&card, alice, Zone::Graveyard);
     game.create_object_from_card(&card, alice, Zone::Graveyard);
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Blue, 1);
-    let total = calculate_effective_mana_cost(&game, alice, game.object(spell).unwrap(),
-        &ManaCost::from_symbols(vec![ManaSymbol::Blue]));
+    game.player_mut(alice)
+        .unwrap()
+        .mana_pool
+        .add(ManaSymbol::Blue, 1);
+    let total = calculate_effective_mana_cost(
+        &game,
+        alice,
+        game.object(spell).unwrap(),
+        &ManaCost::from_symbols(vec![ManaSymbol::Blue]),
+    );
     assert_eq!(total.mana_value(), 3);
-    let request = crate::mana_payment::ManaPaymentRequest::new(alice, spell, crate::costs::PaymentReason::CastSpell, total);
-    let plan = crate::mana_payment::plan_mana_payment(&game, &request).unwrap().remove(0);
-    assert_eq!(plan.allocations.iter().filter(|pip| matches!(pip.payment, crate::mana_payment::PlannedPipPayment::Delve(_))).count(), 2);
+    let request = crate::mana_payment::ManaPaymentRequest::new(
+        alice,
+        spell,
+        crate::costs::PaymentReason::CastSpell,
+        total,
+    );
+    let plan = crate::mana_payment::plan_mana_payment(&game, &request)
+        .unwrap()
+        .remove(0);
+    assert_eq!(
+        plan.allocations
+            .iter()
+            .filter(|pip| matches!(
+                pip.payment,
+                crate::mana_payment::PlannedPipPayment::Delve(_)
+            ))
+            .count(),
+        2
+    );
 }

@@ -28,6 +28,8 @@ use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, SourceReferenceSurfa
 use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
 
+mod ability_origins;
+pub use ability_origins::{AbilityEffectOrigin, AbilityOrigin, CalculatedAbilities};
 mod layer_resolution;
 pub(crate) mod value_context;
 pub(crate) use layer_resolution::resolve_value_direct;
@@ -1356,7 +1358,7 @@ pub struct CalculatedCharacteristics {
     pub world_supertype_since: Option<u64>,
     pub colors: ColorSet,
     pub loyalty: Option<u32>,
-    pub abilities: SharedVec<Ability>,
+    pub abilities: CalculatedAbilities,
     /// Static abilities that this object currently has (including from effects)
     pub static_abilities: SharedVec<StaticAbility>,
     /// Ability templates that this object is prohibited from having or gaining
@@ -1574,6 +1576,7 @@ fn copy_characteristics_from_copiable_values(
     name_override: &Option<String>,
     name_override_surface: &Option<SourceReferenceSurface>,
     add_supertypes: &[Supertype],
+    origin: Option<AbilityEffectOrigin>,
 ) {
     let preserved_abilities = preserve_source_abilities.then(|| chars.abilities.clone());
 
@@ -1588,12 +1591,13 @@ fn copy_characteristics_from_copiable_values(
     chars.colors = values.colors;
     chars.loyalty = values.loyalty;
     chars.abilities = values.abilities.as_ref().clone().into();
+    chars.abilities.rebind_origin(origin);
     chars.aura_attach_filter = values.aura_attach_filter.clone();
 
     if let Some(preserved_abilities) = preserved_abilities {
-        for ability in preserved_abilities {
-            if !chars.abilities.contains(&ability) {
-                chars.abilities.push(ability);
+        for (index, ability) in preserved_abilities.iter().enumerate() {
+            if !chars.abilities.contains(ability) {
+                chars.abilities.push_with_origin(ability.clone(), preserved_abilities.origin(index).unwrap().clone());
             }
         }
     }
@@ -1608,7 +1612,7 @@ fn apply_face_down_layer(object: &Object, chars: &mut CalculatedCharacteristics)
         return;
     }
     let values = CopiableValues::from_object(object);
-    copy_characteristics_from_copiable_values(&values, chars, false, &None, &None, &[]);
+    copy_characteristics_from_copiable_values(&values, chars, false, &None, &None, &[], None);
 }
 
 pub(crate) fn update_world_supertype_since(
@@ -2080,8 +2084,7 @@ fn calculate_characteristics_layer_batch_with_effects(
                 };
                 let mut removed = abilities_removed.contains(id);
                 let had_world = chars.supertypes.contains(&Supertype::World);
-                apply_modification_to_chars(
-                    &effect.modification,
+                apply_modification_to_chars(effect,
                     chars,
                     objects,
                     &mut removed,
@@ -2257,8 +2260,7 @@ fn calculate_characteristics_layer_batch_with_effects(
                     continue;
                 };
                 let mut removed = abilities_removed.contains(id);
-                apply_modification_to_chars(
-                    &effect.modification,
+                apply_modification_to_chars(effect,
                     chars,
                     objects,
                     &mut removed,
@@ -2464,7 +2466,7 @@ pub(crate) fn copiable_values_with_effects(
                 continue;
             }
             mark_continuous_effect_group_started(effect, &mut started_groups);
-            apply_text_box_modification_to_chars(&effect.modification, &mut chars, objects);
+            apply_text_box_modification_to_chars(effect, &mut chars, objects);
             calc_guard.update(&chars);
         }
     }
@@ -2583,7 +2585,7 @@ pub fn text_box_characteristics_with_effects(
             }
 
             mark_continuous_effect_group_started(effect, &mut started_groups);
-            apply_text_box_modification_to_chars(&effect.modification, &mut chars, objects);
+            apply_text_box_modification_to_chars(effect, &mut chars, objects);
             calc_guard.update(&chars);
         }
 
@@ -2597,11 +2599,12 @@ pub fn text_box_characteristics_with_effects(
 }
 
 fn apply_text_box_modification_to_chars(
-    modification: &Modification,
+    effect: &ContinuousEffect,
     chars: &mut CalculatedCharacteristics,
     _objects: &ObjectMap,
 ) {
-    match modification {
+    chars.abilities.begin_effect(effect);
+    match &effect.modification {
         Modification::CopyOf {
             copiable_values,
             preserve_source_abilities,
@@ -2617,6 +2620,7 @@ fn apply_text_box_modification_to_chars(
                 name_override,
                 name_override_surface,
                 add_supertypes,
+                Some(effect.into()),
             );
         }
         Modification::ChangeController(new_controller) => {
@@ -2626,6 +2630,7 @@ fn apply_text_box_modification_to_chars(
         Modification::SetTextBox(overlay) => {
             chars.compiled_card_text = overlay.compiled_card_text.clone();
             chars.abilities = overlay.abilities.clone().into();
+            chars.abilities.rebind(effect);
             chars.static_abilities = extract_static_abilities(&overlay.abilities).into();
         }
         Modification::SetName(name) => {
@@ -2831,8 +2836,7 @@ fn calculate_with_layers_direct_internal(
 
             mark_continuous_effect_group_started(effect, &mut started_groups);
             let had_world = chars.supertypes.contains(&Supertype::World);
-            apply_modification_to_chars(
-                &effect.modification,
+            apply_modification_to_chars(effect,
                 &mut chars,
                 objects,
                 &mut abilities_removed,
@@ -2989,8 +2993,7 @@ fn calculate_with_layers_direct_internal(
             }
 
             mark_continuous_effect_group_started(effect, &mut started_groups);
-            apply_modification_to_chars(
-                &effect.modification,
+            apply_modification_to_chars(effect,
                 &mut chars,
                 objects,
                 &mut abilities_removed,
@@ -4287,7 +4290,7 @@ pub(crate) fn prune_ability_gain_prohibitions(chars: &mut CalculatedCharacterist
 
 /// Apply a modification to calculated characteristics.
 fn apply_modification_to_chars(
-    modification: &Modification,
+    effect: &ContinuousEffect,
     chars: &mut CalculatedCharacteristics,
     objects: &ObjectMap,
     abilities_removed: &mut bool,
@@ -4299,7 +4302,8 @@ fn apply_modification_to_chars(
     commanders: &HashSet<ObjectId>,
     game: &crate::game_state::GameState,
 ) {
-    match modification {
+    chars.abilities.begin_effect(effect);
+    match &effect.modification {
         // Layer 1: Copy
         Modification::CopyOf {
             copiable_values,
@@ -4316,6 +4320,7 @@ fn apply_modification_to_chars(
                 name_override,
                 name_override_surface,
                 add_supertypes,
+                Some(effect.into()),
             );
         }
 
@@ -4329,6 +4334,7 @@ fn apply_modification_to_chars(
         Modification::SetTextBox(overlay) => {
             chars.compiled_card_text = overlay.compiled_card_text.clone();
             chars.abilities = overlay.abilities.clone().into();
+            chars.abilities.rebind(effect);
             chars.static_abilities = extract_static_abilities(&overlay.abilities).into();
         }
         Modification::SetName(name) => {
@@ -4415,6 +4421,7 @@ fn apply_modification_to_chars(
         }
         Modification::SetAbilities(abilities) => {
             chars.abilities = abilities.clone().into();
+            chars.abilities.rebind(effect);
             chars.static_abilities.clear();
             for ability in abilities {
                 if let AbilityKind::Static(ref sa) = ability.kind {
@@ -4479,7 +4486,7 @@ fn apply_modification_to_chars(
                     continue;
                 }
 
-                for ability in &candidate_chars.abilities {
+                for (ability_index, ability) in candidate_chars.abilities.iter().enumerate() {
                     let AbilityKind::Activated(activated) = &ability.kind else {
                         continue;
                     };
@@ -4495,7 +4502,10 @@ fn apply_modification_to_chars(
                     {
                         activated.timing = crate::ability::ActivationTiming::OncePerTurn;
                     }
-                    chars.abilities.push(copied);
+                    chars.abilities.push_with_origin(copied, AbilityOrigin::Borrowed {
+                        effect: effect.into(), source: candidate.id,
+                        origin: Box::new(candidate_chars.abilities.origin(ability_index).unwrap().clone()),
+                    });
                 }
             }
         }
@@ -4848,7 +4858,7 @@ fn apply_modification_to_chars(
             chars.colors = ColorSet::new();
         }
     }
-    enforce_ability_gain_prohibitions(chars, modification);
+    enforce_ability_gain_prohibitions(chars, &effect.modification);
 }
 
 /// Blank underscore lines are not words (CR 123.6); punctuation inside a word is.

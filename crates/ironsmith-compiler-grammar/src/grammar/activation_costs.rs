@@ -119,6 +119,7 @@ pub enum ActivationCostSegmentCst {
     ExileTopLibrary {
         count: u32,
     },
+    RevealChosenSubtype,
     RevealSourceFromHand,
     RevealFromHand {
         count: Value,

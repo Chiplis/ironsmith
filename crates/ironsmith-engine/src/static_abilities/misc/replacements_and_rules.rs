@@ -218,7 +218,10 @@ impl DamageAmountReplacementMatcher {
         damage: &DamageEvent,
         ctx: &crate::events::context::EventContext<'_>,
     ) -> bool {
-        let current = ctx.game.object(damage.source).is_some_and(|source| {
+        // Use LKI only when the source no longer exists. A still-live source
+        // may have changed controller or types since its ability was put on
+        // the stack; an older snapshot cannot make it match again.
+        if let Some(source) = ctx.game.object(damage.source) {
             let filter_ctx = if source.zone == Zone::Stack {
                 ctx.filter_ctx
                     .clone()
@@ -226,9 +229,9 @@ impl DamageAmountReplacementMatcher {
             } else {
                 ctx.filter_ctx.clone()
             };
-            self.source_filter.matches(source, &filter_ctx, ctx.game)
-        });
-        let lki = ctx
+            return self.source_filter.matches(source, &filter_ctx, ctx.game);
+        }
+        ctx
             .event_source_snapshot
             .filter(|snapshot| snapshot.object_id == damage.source)
             .is_some_and(|snapshot| {
@@ -241,8 +244,7 @@ impl DamageAmountReplacementMatcher {
                 };
                 self.source_filter
                     .matches_snapshot(snapshot, &filter_ctx, ctx.game)
-            });
-        current || lki
+            })
     }
 
     fn target_matches(

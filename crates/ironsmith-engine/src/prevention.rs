@@ -188,6 +188,10 @@ pub struct PreventionEffectManager {
     /// Follow-ups produced by shields selected in the unified CR 616 loop.
     pending_follow_ups: Vec<PendingPreventionFollowUp>,
 
+    /// Nested damage applications postpone additional prevention effects until
+    /// their damage and its results have been committed.
+    follow_up_deferral_depth: usize,
+
     /// Damage actually prevented by each shield. Entries outlive exhausted
     /// shields so delayed "prevented this way" effects can read the total.
     prevented_totals: HashMap<PreventionShieldId, u32>,
@@ -313,6 +317,24 @@ impl PreventionEffectManager {
     }
 
     /// Drain follow-ups produced by the unified replacement loop.
+    pub(crate) fn begin_follow_up_deferral(&mut self) -> usize {
+        self.follow_up_deferral_depth += 1;
+        self.pending_follow_ups.len()
+    }
+
+    pub(crate) fn end_follow_up_deferral(&mut self, start: usize) -> Vec<PendingPreventionFollowUp> {
+        self.follow_up_deferral_depth -= 1;
+        self.pending_follow_ups.split_off(start)
+    }
+
+    pub(crate) fn has_pending_follow_ups(&self) -> bool {
+        !self.pending_follow_ups.is_empty()
+    }
+
+    pub(crate) fn follow_ups_are_deferred(&self) -> bool {
+        self.follow_up_deferral_depth > 0
+    }
+
     pub fn take_pending_follow_ups(&mut self) -> Vec<PendingPreventionFollowUp> {
         std::mem::take(&mut self.pending_follow_ups)
     }

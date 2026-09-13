@@ -157,6 +157,9 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
             decode_as::<ironsmith_core::VentureIntoDungeonEffect>(payload).map(Some)
         }
         "WinTheGameEffect" => decode_as::<ironsmith_core::WinTheGameEffect>(payload).map(Some),
+        "RevealChosenSubtypeEffect" => {
+            decode_as::<ironsmith_core::RevealChosenSubtypeEffect>(payload).map(Some)
+        }
         _ => Ok(None),
     }
 }

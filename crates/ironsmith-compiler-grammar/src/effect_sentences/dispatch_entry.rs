@@ -11272,6 +11272,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Bolster { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Support { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Adapt { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Exploit)
@@ -11965,6 +11966,9 @@ pub fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
                     target: effect_target,
                 })
                 | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Convert {
+                    target: effect_target,
+                })
+                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend {
                     target: effect_target,
                 })
                 | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore {

@@ -4748,6 +4748,12 @@ pub(crate) fn describe_prior_effect_metric_value(
 }
 
 pub(crate) fn describe_explicit_where_x_surface(value: &Value) -> Option<&'static str> {
+    if value.has_surface_hint(ValueSurfaceHint::LifeGainedAmount)
+        && matches!(value.unhinted(), Value::EventValue(EventValueSpec::LifeAmount)
+            | Value::EffectMetric { metric: crate::effect::EffectMetric::LifeGained, .. })
+    {
+        return Some("the amount of life you gained");
+    }
     if value.has_surface_hint(ValueSurfaceHint::CardsDrawnThisWay) {
         return Some("the number of cards drawn this way");
     }
@@ -6249,6 +6255,16 @@ pub(crate) fn describe_value(value: &Value) -> String {
         | Value::PendingPriorEffectMetric(query) => describe_prior_effect_metric_value(query),
         Value::EventValue(EventValueSpec::Amount)
         | Value::EventValue(EventValueSpec::LifeAmount) => "that much".to_string(),
+        Value::EventValue(EventValueSpec::DieResult) => "the result of that roll".to_string(),
+        Value::EventValueOffset(EventValueSpec::DieResult, offset) => {
+            if *offset == 0 {
+                "the result of that roll".to_string()
+            } else if *offset > 0 {
+                format!("the result of that roll plus {offset}")
+            } else {
+                format!("the result of that roll minus {}", -offset)
+            }
+        }
         Value::EventValueOffset(EventValueSpec::Amount, offset)
         | Value::EventValueOffset(EventValueSpec::LifeAmount, offset) => {
             if *offset == 0 {

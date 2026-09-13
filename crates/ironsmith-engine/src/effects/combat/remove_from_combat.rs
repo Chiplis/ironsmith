@@ -44,6 +44,7 @@ impl EffectExecutor for RemoveFromCombatEffect {
             result_policy,
             |game, _ctx, object_id| {
                 let removed = if let Some(combat) = game.combat.as_mut() {
+                    combat.remember_blocked_attackers();
                     let was_attacking = combat
                         .attackers
                         .iter()
@@ -56,6 +57,7 @@ impl EffectExecutor for RemoveFromCombatEffect {
                     if was_attacking {
                         combat.attackers.retain(|info| info.creature != object_id);
                         combat.blockers.remove(&object_id);
+                        combat.blocked_attackers.remove(&object_id);
                         combat.damage_assignment_order.remove(&object_id);
                         for band in &mut combat.attacking_bands {
                             band.retain(|member| *member != object_id);

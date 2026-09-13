@@ -637,6 +637,9 @@ pub enum TriggerKind {
         counter_number: u32,
     },
     CounterRemovedFrom(CounterRemovedFromTrigger),
+    PlayerRollsToVisitAttractions {
+        player: PlayerFilter,
+    },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1347,6 +1350,9 @@ impl Trigger {
             "player_taps_for_mana",
             TriggerKind::PlayerTapsForMana { player, filter },
         )
+    }
+    pub fn player_rolls_to_visit_attractions(player: PlayerFilter) -> Self {
+        Self::typed("player_rolls_to_visit_attractions", TriggerKind::PlayerRollsToVisitAttractions { player })
     }
     pub fn player_rolls_result(player: PlayerFilter, result: u32) -> Self {
         Self::typed(

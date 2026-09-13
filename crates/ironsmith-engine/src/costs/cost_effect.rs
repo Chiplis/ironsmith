@@ -498,13 +498,11 @@ impl CostPayer for CostEffect {
     }
 
     fn is_sacrifice(&self) -> bool {
-        self.effect
-            .downcast_ref::<crate::effects::SacrificeEffect>()
-            .is_some()
+        self.sacrifice_filter().is_some()
     }
 
     fn sacrifice_filter(&self) -> Option<&crate::filter::ObjectFilter> {
-        self.effect
+        transparent_cost_effect(&self.effect)
             .downcast_ref::<crate::effects::SacrificeEffect>()
             .map(|effect| &effect.filter)
     }

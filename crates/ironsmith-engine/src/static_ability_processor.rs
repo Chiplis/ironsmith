@@ -469,7 +469,7 @@ fn generate_static_effects_for_source(
 }
 
 /// Resolution-granted static abilities may themselves generate effects in
-/// later layers. Read their recipients after ability grants/removals without
+/// the ability layer or later layers. Read their recipients after grants/removals without
 /// replacing the earlier text-box abilities used for layers before six.
 fn generate_granted_late_static_effects(
     game: &GameState,
@@ -478,7 +478,12 @@ fn generate_granted_late_static_effects(
     text_abilities: &[crate::ability::Ability],
 ) -> Vec<ContinuousEffect> {
     use crate::continuous::{Modification, PtSublayer};
-    if !registered.iter().any(|effect| {
+    let level_grants_continuous = text_abilities.iter().any(|ability| {
+        let AbilityKind::Static(ability) = &ability.kind else { return false; };
+        ability.level_abilities().is_some_and(|levels| levels.iter().any(|tier|
+            tier.abilities.iter().any(|ability| ability.may_generate_continuous_effects())))
+    });
+    if !level_grants_continuous && !registered.iter().any(|effect| {
         // Flag-only keywords and nonstatic abilities cannot emit later-layer
         // effects. Avoid a full characteristic calculation for every recipient
         // merely because an ordinary ability grant exists on the battlefield.
@@ -524,7 +529,7 @@ fn generate_granted_late_static_effects(
             continue;
         }
         for mut effect in granted.generate_effects(object_id, chars.controller, game) {
-            if effect.modification.layer() <= Layer::Ability {
+            if effect.modification.layer() < Layer::Ability {
                 continue;
             }
             // An ability acquired through a grant is not an intrinsic CDA.

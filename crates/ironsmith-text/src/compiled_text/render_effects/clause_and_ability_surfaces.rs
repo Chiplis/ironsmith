@@ -1632,7 +1632,28 @@ fn describe_coordinated_same_object_modifiers(
     // Later children are rebuilt from their typed continuous clauses below.
     // Requiring their fully rendered text to place the shared duration at the
     // end breaks quoted abilities whose text contains the same duration.
-    let first_rendered = describe_effect(&effects[0]);
+    // A shared set subject may retain its quantifier on the keyword child
+    // after lowering. Carry it onto the common head only for identical filters.
+    let mut shared_subject = first.clone();
+    let inherit_each = first.set_quantifier_surface.is_none()
+        && first.target_spec.is_none()
+        && matches!(first.target, crate::continuous::EffectTarget::Filter(_))
+        && applies.iter().skip(1).all(|apply| {
+            apply.target == first.target
+                && apply.target_spec.is_none()
+                && apply.set_quantifier_surface.is_none_or(|surface| {
+                    surface == ironsmith_core::SetQuantifierSurface::Each
+                })
+        })
+        && applies.iter().skip(1).any(|apply| {
+            apply.set_quantifier_surface == Some(ironsmith_core::SetQuantifierSurface::Each)
+        });
+    let first_rendered = if inherit_each {
+        shared_subject.set_quantifier_surface = Some(ironsmith_core::SetQuantifierSurface::Each);
+        describe_apply_continuous_effect(&shared_subject)?
+    } else {
+        describe_effect(&effects[0])
+    };
     let (head, first_where_clause) = split_coordinated_duration(&first_rendered, duration)?;
     let mut where_clause: Option<String> = None;
     for (index, (effect, apply)) in effects.iter().zip(applies.iter()).enumerate() {
@@ -1656,7 +1677,7 @@ fn describe_coordinated_same_object_modifiers(
     if head.contains(". ") {
         return None;
     }
-    let (_, plural_subject) = describe_apply_continuous_target(first);
+    let (_, plural_subject) = describe_apply_continuous_target(&shared_subject);
     let mut parts = vec![head];
     for apply in applies.iter().skip(1) {
         let clauses = describe_apply_continuous_clauses(apply, plural_subject);
@@ -8724,6 +8745,24 @@ pub(super) fn activation_condition_without_presentation_label(
     activated: &crate::ability::ActivatedAbility,
 ) -> Option<crate::ConditionExpr> {
     let condition = activated.activation_condition.as_ref()?;
+    if let Some(range) = activated.additional_restrictions.iter()
+        .find_map(|restriction| restriction.strip_prefix("__ironsmith_level_range:"))
+        && let Some((minimum, maximum)) = range.split_once(':')
+        && let Ok(minimum) = minimum.parse::<u32>()
+    {
+        let lower = |condition: &crate::ConditionExpr| matches!(condition,
+            crate::ConditionExpr::SourceHasCounterAtLeast { counter_type: CounterType::Level, count, .. } if *count == minimum);
+        let upper = |condition: &crate::ConditionExpr| matches!(condition,
+            crate::ConditionExpr::ValueComparison { left: Value::CountersOnSource(CounterType::Level), operator: crate::effect::ValueComparisonOperator::LessThanOrEqual, right: Value::Fixed(count) }
+                if maximum.parse::<i32>().ok() == Some(*count));
+        // The level heading already expresses these exact executable bounds.
+        // Retain any condition that contains an additional restriction.
+        if (maximum == "+" && lower(condition))
+            || matches!(condition, crate::ConditionExpr::And(left, right) if lower(left) && upper(right))
+        {
+            return None;
+        }
+    }
     let Some(label) = activated_presentation_label(activated) else {
         return Some(condition.clone());
     };
@@ -9269,6 +9308,32 @@ pub(crate) fn describe_static_ability_with_subject(
     static_ability: &crate::static_abilities::StaticAbility,
     subject: &str,
 ) -> String {
+    if let Some(tax) = static_ability.block_cost_model()
+        && !tax.is_attached_to_source()
+        && tax.blockers() == &ObjectFilter::creature()
+    {
+        let mut attached = ObjectFilter::creature();
+        attached.with_attached_object = Some(Box::new(ObjectFilter::source()));
+        let attacker = if tax.attackers() == &attached {
+            Some("Enchanted creature")
+        } else if tax.attackers() == &ObjectFilter::source() {
+            Some(subject)
+        } else { None };
+        if let Some(attacker) = attacker {
+            return format!("{attacker} can't be blocked unless defending player pays {} for each creature they control that's blocking it", describe_total_cost(tax.cost()));
+        }
+    }
+    if let Some(ironsmith_core::StaticAbilityPayload::EntersWithCountersIfCondition {
+        counter, count, condition: Condition::Not(condition), added_abilities, ..
+    }) = static_ability.compiled_model().map(|model| &model.payload)
+        && added_abilities.is_empty()
+    {
+        return format!(
+            "{subject} enters with {} on it unless {}",
+            describe_put_counter_phrase(count, *counter),
+            lowercase_first(&describe_condition(condition))
+        );
+    }
     if let Some(ironsmith_core::StaticAbilityPayload::GoadMatching { filter }) =
         static_ability.compiled_model().map(|model| &model.payload)
     {
@@ -16091,6 +16156,20 @@ pub(super) fn describe_trigger_intervening_condition(
     triggered: &crate::ability::TriggeredAbility,
     self_subject: Option<&str>,
 ) -> String {
+    if let Condition::AttachedToSourceMatches(filter) = condition
+        && filter.card_types == [CardType::Creature]
+        && (self_subject.is_some_and(|subject| subject.eq_ignore_ascii_case("this aura"))
+            || triggered.trigger.downcast_ref::<crate::triggers::ZoneChangeTrigger>()
+                .and_then(|entry| entry.this_object_surface.as_ref())
+                .is_some_and(|surface| surface.display_text().eq_ignore_ascii_case("this aura")))
+    {
+        let mut property = filter.clone();
+        property.card_types.clear();
+        if property.zone == Some(Zone::Battlefield) { property.zone = None; }
+        if let Some(text) = describe_exact_keyword_condition("enchanted creature", &property) {
+            return text;
+        }
+    }
     if triggered.intervening_if.as_ref() == Some(condition)
         && let Some((text, _)) = describe_triggered_power_difference_counters(triggered)
     {

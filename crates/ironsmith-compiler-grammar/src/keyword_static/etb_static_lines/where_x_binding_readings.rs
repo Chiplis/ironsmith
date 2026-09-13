@@ -360,6 +360,8 @@ fn read_where_x_known_value(input: &BindingClause<'_>) -> Option<Value> {
             }
             WhereXKnownValue::YourSpeed => Value::Speed(PlayerFilter::You),
             WhereXKnownValue::EventDamageAmount => Value::EventValue(EventValueSpec::Amount),
+            WhereXKnownValue::EventLifeAmount => Value::EventValue(EventValueSpec::LifeAmount)
+                .with_surface_hint(ValueSurfaceHint::LifeGainedAmount),
             WhereXKnownValue::OpponentCount => Value::CountPlayers(PlayerFilter::Opponent),
             WhereXKnownValue::PlayersBeingAttacked => Value::PlayersBeingAttacked,
             WhereXKnownValue::TargetPlayerLifeTotal | WhereXKnownValue::ThatPlayerLifeTotal => {

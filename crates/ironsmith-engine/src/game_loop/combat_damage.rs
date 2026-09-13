@@ -7,6 +7,9 @@ use super::*;
 /// Combat damage event for trigger processing.
 #[derive(Debug, Clone)]
 pub struct CombatDamageEvent {
+    /// Event-time characteristics when prevention follow-ups can move objects.
+    pub source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+    pub target_snapshot: Option<crate::snapshot::ObjectSnapshot>,
     /// The source dealing damage.
     pub source: ObjectId,
     /// The target receiving damage.
@@ -157,6 +160,35 @@ pub(crate) fn try_execute_combat_damage_step_with_first_step_snapshot(
 }
 
 fn try_execute_combat_damage_step_with_dm_and_first_step_snapshot(
+    game: &mut GameState,
+    combat: &CombatState,
+    first_strike: bool,
+    first_step_strikers: Option<&std::collections::HashSet<ObjectId>>,
+    dm: &mut dyn crate::decision::DecisionMaker,
+) -> Result<Vec<CombatDamageEvent>, CombatDamageAssignmentError> {
+    crate::events::processing::with_deferred_prevention_follow_ups(game, dm, |game, dm| {
+        let mut result = apply_combat_damage_step_with_dm_and_first_step_snapshot(
+            game, combat, first_strike, first_step_strikers, dm,
+        );
+        if game.effect_store.prevention_effects.has_pending_follow_ups()
+            && let Ok(events) = &mut result
+        {
+            for event in events.iter_mut().filter(|event| event.amount > 0) {
+                event.source_snapshot = game.object(event.source).map(|obj| {
+                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
+                });
+                if let DamageEventTarget::Object(target) = event.target {
+                    event.target_snapshot = game.object(target).map(|obj| {
+                        crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
+                    });
+                }
+            }
+        }
+        result
+    })
+}
+
+fn apply_combat_damage_step_with_dm_and_first_step_snapshot(
     game: &mut GameState,
     combat: &CombatState,
     first_strike: bool,
@@ -374,6 +406,8 @@ fn execute_legacy_general_combat_damage_step(
         apply_combat_lifelink(game, controller, &damage_result, applied.total_damage_dealt);
 
         damage_events.push(CombatDamageEvent {
+            source_snapshot: None,
+            target_snapshot: None,
             source: blocker_id,
             target: DamageEventTarget::Object(attacker_id),
             amount: applied.damage_dealt,
@@ -736,6 +770,8 @@ fn execute_general_combat_damage_batch_path(
             EventDamageTarget::Object(object) => DamageEventTarget::Object(object),
         };
         events.push(CombatDamageEvent {
+            source_snapshot: None,
+            target_snapshot: None,
             source: planned.source,
             target: event_target,
             amount: damage_to_original,
@@ -1015,6 +1051,8 @@ fn execute_unblocked_player_damage_batch_path(
             total_damage_dealt,
         );
         events.push(CombatDamageEvent {
+            source_snapshot: None,
+            target_snapshot: None,
             source: planned.source,
             target: DamageEventTarget::Player(planned.target),
             amount: damage_to_original,
@@ -1065,6 +1103,8 @@ fn apply_planned_unblocked_player_damage(
     );
 
     CombatDamageEvent {
+        source_snapshot: None,
+        target_snapshot: None,
         source: planned.source,
         target: DamageEventTarget::Player(planned.target),
         amount: total_damage_dealt,
@@ -1500,6 +1540,8 @@ pub(super) fn deal_damage_to_blockers(
         apply_combat_lifelink(game, controller, &damage_result, applied.total_damage_dealt);
 
         events.push(CombatDamageEvent {
+            source_snapshot: None,
+            target_snapshot: None,
             source: attacker_id,
             target: DamageEventTarget::Object(blocker_id),
             amount: applied.damage_dealt,
@@ -1516,6 +1558,8 @@ pub(super) fn deal_damage_to_blockers(
         apply_combat_lifelink(game, controller, &damage_result, applied.total_damage_dealt);
 
         events.push(CombatDamageEvent {
+            source_snapshot: None,
+            target_snapshot: None,
             source: attacker_id,
             target: DamageEventTarget::Player(player_id),
             amount: applied.damage_dealt,
@@ -1559,6 +1603,8 @@ pub(super) fn deal_damage_to_defender(
             apply_combat_lifelink(game, controller, &damage_result, applied.total_damage_dealt);
 
             Some(CombatDamageEvent {
+                source_snapshot: None,
+                target_snapshot: None,
                 source: attacker_id,
                 target: DamageEventTarget::Player(*player_id),
                 amount: applied.damage_dealt,
@@ -1632,6 +1678,8 @@ pub(super) fn deal_damage_to_defender(
             apply_combat_lifelink(game, controller, &damage_result, total_damage_dealt);
 
             Some(CombatDamageEvent {
+                source_snapshot: None,
+                target_snapshot: None,
                 source: attacker_id,
                 target: DamageEventTarget::Object(*pw_id),
                 amount: final_damage,

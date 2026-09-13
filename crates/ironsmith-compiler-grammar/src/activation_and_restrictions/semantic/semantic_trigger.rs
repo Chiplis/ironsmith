@@ -3586,6 +3586,9 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         if let Some(player) = parse_trigger_subject_player_filter(subject_words) {
             use crate::grammar::trigger_clauses::RollResultShape;
             match trigger_grammar::parse_roll_result_words(result_words) {
+                Some(RollResultShape::ToVisitAttractions) => {
+                    return Ok(TriggerSpec::PlayerRollsToVisitAttractions { player });
+                }
                 Some(RollResultShape::HighestNatural) => {
                     return Ok(TriggerSpec::PlayerRollsHighestNaturalResult { player });
                 }

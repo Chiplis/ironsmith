@@ -99,7 +99,7 @@ fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
         TriggerSpec::SpellCast {
             filter: Some(filter),
             ..
-        } => spell_cast_filter_binds_target_count(filter),
+        } | TriggerSpec::SpellCastSameNameCardInZone { filter: Some(filter), .. } => spell_cast_filter_binds_target_count(filter),
         trigger => {
             matches!(
                 trigger,
@@ -891,6 +891,9 @@ fn advance_reference_frame_for_effect(
                 }
                 SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount }) => {
                     maybe_tag_value_object_target(amount, frame, id_gen, "targeted");
+                }
+                SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { target }) => {
+                    maybe_tag_target(target, frame, id_gen, "airbent")?;
                 }
                 SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target }) => {
                     maybe_tag_target(target, frame, id_gen, "explored")?;
@@ -4312,6 +4315,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Bolster { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Support { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Adapt { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Exploit)
@@ -4919,7 +4923,19 @@ fn resolve_effect_result_value(
             resolve_effect_result_value(inner, state)?;
         }
         Value::SurfaceHinted { value, hints } => {
-            if hints.contains(&ValueSurfaceHint::PriorEffectResult)
+            if hints.contains(&ValueSurfaceHint::LifeGainedAmount)
+                && !state.allow_life_event_value
+                && matches!(value.unhinted(), Value::EventValue(EventValueSpec::LifeAmount))
+            {
+                let id = state.pinned_effect_metric_id.or(state.last_effect_id).ok_or_else(|| {
+                    CardTextError::ParseError("life-gain amount requires a triggering event or prior effect".to_string())
+                })?;
+                **value = Value::EffectMetric {
+                    effect_id: id,
+                    source: EffectMetricSource::Outcome,
+                    metric: EffectMetric::LifeGained,
+                };
+            } else if hints.contains(&ValueSurfaceHint::PriorEffectResult)
                 && matches!(value.unhinted(), Value::EventValue(EventValueSpec::Amount))
             {
                 let id = state
@@ -5444,6 +5460,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseIn { target })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Transform { target })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Convert { target })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Connive { target, .. })

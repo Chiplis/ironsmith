@@ -832,6 +832,8 @@ pub(super) fn test_monarch_changes_when_creature_deals_combat_damage_to_monarch(
     game.monarch = Some(bob);
 
     let events = vec![CombatDamageEvent {
+        source_snapshot: None,
+        target_snapshot: None,
         source: attacker_id,
         target: DamageEventTarget::Player(bob),
         amount: 3,

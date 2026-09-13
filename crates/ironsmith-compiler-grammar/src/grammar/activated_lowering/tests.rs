@@ -44,3 +44,9 @@ fn infers_command_zone_with_optional_article_from_typed_effect_tokens() {
         );
     }
 }
+
+#[test]
+fn power_up_label_is_a_typed_activation_kind() {
+    let tokens = crate::lexer::lex_line("Power-up — {5}{R/G}{R/G}: Put a +1/+1 counter on this creature.",0).unwrap();
+    assert_eq!(super::parse_activated_presentation_kind_tokens(&tokens),Some(crate::ir::ActivatedPresentationKind::PowerUp),"{tokens:#?}");
+}

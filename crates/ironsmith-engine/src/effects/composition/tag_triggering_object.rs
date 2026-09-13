@@ -77,19 +77,27 @@ impl EffectExecutor for TagTriggeringObjectEffect {
                 return Ok(EffectOutcome::count(1));
             }
 
+            if zone_change.to == crate::zone::Zone::Battlefield {
+                // Entry events without explicit result_objects identify their
+                // destination objects in objects. Preserve those incarnations:
+                // a later blink of the same physical card is a different object.
+                let tagged: Vec<_> = zone_change.objects.iter().filter_map(|&id| {
+                    game.object(id)
+                        .filter(|object| object.zone == zone_change.to)
+                        .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
+                        .or_else(|| latest_zone_lki_snapshot(game, id, zone_change.to))
+                }).collect();
+                let count = tagged.len() as i32;
+                set_triggering_object_tags(ctx, self.tag.as_str(), tagged);
+                return Ok(EffectOutcome::count(count));
+            }
+
             let tagged = game
                 .find_object_by_stable_id(snapshot.stable_id)
                 .and_then(|id| game.object(id))
                 .filter(|obj| obj.zone == zone_change.to)
                 .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
             if let Some(tagged) = tagged {
-                set_triggering_object_tags(ctx, self.tag.as_str(), vec![tagged]);
-                return Ok(EffectOutcome::count(1));
-            }
-            if zone_change.to == crate::zone::Zone::Battlefield
-                && let Some(tagged) =
-                    latest_zone_lki_snapshot(game, snapshot.stable_id, zone_change.to)
-            {
                 set_triggering_object_tags(ctx, self.tag.as_str(), vec![tagged]);
                 return Ok(EffectOutcome::count(1));
             }
@@ -155,7 +163,7 @@ impl EffectExecutor for TagTriggeringObjectEffect {
 
 fn latest_zone_lki_snapshot(
     game: &GameState,
-    stable_id: crate::ids::StableId,
+    object_id: crate::ids::ObjectId,
     zone: crate::zone::Zone,
 ) -> Option<ObjectSnapshot> {
     game.turn_store
@@ -169,8 +177,8 @@ fn latest_zone_lki_snapshot(
                 .event
                 .downcast::<crate::events::zones::ZoneChangeEvent>()
         })
-        .filter_map(|event| event.snapshot.as_ref())
-        .find(|snapshot| snapshot.stable_id == stable_id && snapshot.zone == zone)
+        .flat_map(|event| event.snapshots())
+        .find(|snapshot| snapshot.object_id == object_id && snapshot.zone == zone)
         .cloned()
 }
 
@@ -532,6 +540,9 @@ mod tests {
                 Zone::Graveyard,
                 crate::events::cause::EventCause::from_sba(),
                 Some(ObjectSnapshot {
+                    chosen_subtype: None,
+                    secret_chosen_subtype: None,
+                    chosen_object: None,
                     object_id: ObjectId::from_raw(999),
                     stable_id: StableId::from(ObjectId::from_raw(999)),
                     kind: crate::object::ObjectKind::Card,
@@ -574,6 +585,7 @@ mod tests {
                     transform_count: 0,
                     attached_to: None,
                     attachments: Vec::new(),
+        attachment_snapshots: Vec::new(),
                     was_enchanted: false,
                     is_monstrous: false,
                     is_prepared: false,

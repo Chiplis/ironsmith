@@ -354,7 +354,7 @@ fn parse_where_x_player_metric_lexed<'a>(input: &mut LexStream<'a>) -> WResult<W
             primitives::phrase(&["lost", "this", "turn"]),
         )
             .value(WhereXPlayerMetric::LifeLostByYouThisTurn),
-        primitives::phrase(&[
+        alt((primitives::phrase(&[
             "total",
             "life",
             "lost",
@@ -363,7 +363,9 @@ fn parse_where_x_player_metric_lexed<'a>(input: &mut LexStream<'a>) -> WResult<W
             "opponents",
             "this",
             "turn",
-        ])
+        ]), primitives::phrase(&[
+            "total", "amount", "of", "life", "your", "opponents", "have", "lost", "this", "turn",
+        ])))
         .value(WhereXPlayerMetric::LifeLostByOpponentsThisTurn),
         primitives::phrase(&[
             "number",

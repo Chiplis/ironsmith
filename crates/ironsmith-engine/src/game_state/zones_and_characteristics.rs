@@ -1085,8 +1085,8 @@ impl GameState {
             .enters_as_copy_of
             .and_then(|copy_source| self.object(copy_source))
             .or_else(|| self.object(old_id));
-        let prospective_controller = entering_controller
-            .or(result.controller_override)
+        let prospective_controller = result.controller_override
+            .or(entering_controller)
             .or_else(|| self.current_controller(old_id))
             .or_else(|| self.object(old_id).map(|object| object.owner))?;
         let mut prospective_card_types = prospective_source
@@ -1754,8 +1754,8 @@ impl GameState {
         let aura_entry_checkpoint = prospective_aura_entry.then(|| self.clone());
 
         if choices.discard_hand {
-            let controller = entering_controller
-                .or(result.controller_override)
+            let controller = result.controller_override
+                .or(entering_controller)
                 .or_else(|| self.current_controller(old_id))
                 .or_else(|| self.object(old_id).map(|object| object.owner))?;
             let hand = self
@@ -1833,7 +1833,7 @@ impl GameState {
                 self.imprint_card(new_id, imprinted_card);
             }
         }
-        if let Some(controller) = entering_controller.or(result.controller_override) {
+        if let Some(controller) = result.controller_override.or(entering_controller) {
             self.set_current_controller(new_id, controller);
         }
 
@@ -3496,16 +3496,13 @@ impl GameState {
 
     /// Set an object's controller as derived state rather than object storage.
     pub fn set_current_controller(&mut self, id: ObjectId, controller: PlayerId) {
-        let Some(owner) = self.object(id).map(|object| object.owner) else {
+        let Some(_) = self.object(id) else {
             return;
         };
         if self.current_controller(id) == Some(controller) {
             return;
         }
         self.set_summoning_sick(id);
-        if owner == controller {
-            return;
-        }
         let effect = ContinuousEffect::new(
             id,
             controller,

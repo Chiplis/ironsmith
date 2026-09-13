@@ -341,6 +341,9 @@ pub fn recognize_unique_source_action_surface(
             SubjectVerbActionAst::PermanentState(
                 crate::cards::builders::PermanentStateActionAst::Untap { target },
             ) if action_word == "untap" => Some(target),
+            SubjectVerbActionAst::KeywordActions(
+                crate::cards::builders::KeywordActionAst::Regenerate { target, .. },
+            ) if action_word == "regenerate" => Some(target),
             _ => None,
         }
     }
@@ -376,6 +379,9 @@ pub fn recognize_unique_source_action_surface(
                     SubjectVerbActionAst::PermanentState(
                         crate::cards::builders::PermanentStateActionAst::Untap { target },
                     ) if action_word == "untap" => Some(target),
+                    SubjectVerbActionAst::KeywordActions(
+                        crate::cards::builders::KeywordActionAst::Regenerate { target, .. },
+                    ) if action_word == "regenerate" => Some(target),
                     _ => None,
                 };
                 if let Some(target) = target

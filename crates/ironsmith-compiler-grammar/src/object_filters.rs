@@ -860,6 +860,42 @@ fn preserve_terminal_characteristic_union_domain(
     }
 }
 
+/// A singular chosen-object noun identifies the earlier choice (CR 700.7).
+/// Keep its authored noun for rendering without imposing a current card type.
+/// Qualified or plural filters retain their ordinary type predicates.
+pub(crate) fn preserve_chosen_object_reference_noun(
+    filter: &mut ObjectFilter,
+    tokens: &[OwnedLexToken],
+) {
+    let Some(chosen) = crate::grammar::targets::parse_chosen_object_target(tokens) else {
+        return;
+    };
+    let words = crate::lexer::token_word_refs(chosen.filter_tokens);
+    use crate::types::CardType;
+    let card_type = match words.as_slice() {
+        ["creature"] => CardType::Creature,
+        ["artifact"] => CardType::Artifact,
+        ["enchantment"] => CardType::Enchantment,
+        ["land"] => CardType::Land,
+        ["planeswalker"] => CardType::Planeswalker,
+        ["battle"] => CardType::Battle,
+        _ => return,
+    };
+    if filter.card_types.as_slice() == [card_type]
+        && filter.all_card_types.is_empty()
+        && filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str()
+                == crate::tag::CompilerReferenceTag::ChosenObjects
+                    .key()
+                    .as_str()
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        })
+    {
+        filter.card_types.clear();
+        filter.set_explicit_card_type_noun(Some(card_type));
+    }
+}
+
 fn finalize_public_object_filter(
     mut filter: ObjectFilter,
     tokens: &[OwnedLexToken],
@@ -869,6 +905,7 @@ fn finalize_public_object_filter(
     preserve_combat_role_disjunction(&mut filter, tokens);
     preserve_public_spell_filter_facts(&mut filter, tokens);
     preserve_terminal_characteristic_union_domain(&mut filter, tokens);
+    preserve_chosen_object_reference_noun(&mut filter, tokens);
     deduplicate_tagged_constraints(filter)
 }
 

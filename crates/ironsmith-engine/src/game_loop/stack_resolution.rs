@@ -906,6 +906,15 @@ pub(super) fn resolve_stack_entry_full(
         ctx = ctx.with_source_snapshot(source_snapshot);
     }
     let mut tagged_objects = entry.tagged_objects.clone();
+    // Linked choices belong to the original source, including its last known
+    // state after a leaves-the-battlefield trigger has been put on the stack.
+    if let Some(chosen) = entry.source_snapshot.as_ref()
+        .and_then(|snapshot| snapshot.chosen_object.as_deref())
+        .or_else(|| game.chosen_object(execution_source))
+    {
+        tagged_objects.entry(crate::tag::CHOSEN_OBJECTS_TAG.into())
+            .or_insert_with(|| vec![chosen.clone()]);
+    }
     let source_exiled = game
         .get_exiled_with_source_links(execution_source)
         .iter()
@@ -1639,7 +1648,7 @@ pub(super) fn resolve_stack_entry_full(
                     .map(|m| m.exiles_after_resolution())
                     .unwrap_or(false),
                 CastingMethod::GrantedEscape { .. } => false,
-                CastingMethod::GrantedFlashback => true,     // Granted flashback always exiles
+                CastingMethod::GrantedFlashback => true, // Granted flashback always exiles
                 CastingMethod::PlayFrom {
                     use_alternative: Some(idx),
                     zone,

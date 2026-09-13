@@ -527,6 +527,8 @@ struct SyncGrandMeleeMarker {
 struct SyncGrandMeleeCombat {
     attackers: Vec<(u64, SyncGrandMeleeAttackTarget)>,
     blockers: Vec<(u64, Vec<u64>)>,
+    #[serde(default)]
+    blocked_attackers: Vec<u64>,
     damage_assignment_order: Vec<(u64, Vec<u64>)>,
     attacking_bands: Vec<Vec<u64>>,
     had_to_attack_this_combat: Vec<u64>,
@@ -976,6 +978,8 @@ fn sync_grand_melee_combat(combat: &ironsmith::combat_state::CombatState) -> Syn
         .map(|(attacker, blockers)| (attacker.0, raw_ids(blockers)))
         .collect::<Vec<_>>();
     blockers.sort_by_key(|(attacker, _)| *attacker);
+    let mut blocked_attackers = combat.blocked_attackers.iter().map(|id| id.0).collect::<Vec<_>>();
+    blocked_attackers.sort_unstable();
     let mut damage_assignment_order = combat
         .damage_assignment_order
         .iter()
@@ -1008,6 +1012,7 @@ fn sync_grand_melee_combat(combat: &ironsmith::combat_state::CombatState) -> Syn
             })
             .collect(),
         blockers,
+        blocked_attackers,
         damage_assignment_order,
         attacking_bands: combat
             .attacking_bands
@@ -1022,6 +1027,7 @@ fn grand_melee_combat_from_sync(
     combat: &SyncGrandMeleeCombat,
 ) -> ironsmith::combat_state::CombatState {
     ironsmith::combat_state::CombatState {
+        blocked_attackers: combat.blocked_attackers.iter().map(|id| ObjectId::from_raw(*id)).collect(),
         attackers: combat
             .attackers
             .iter()
@@ -3036,6 +3042,31 @@ impl WasmGame {
 #[cfg(test)]
 mod sync_checkpoint_tests {
     use super::*;
+
+    #[test]
+    fn combat_checkpoint_preserves_blocked_status_after_the_last_blocker_leaves() {
+        let attacker = ObjectId::from_raw(71);
+        let combat = ironsmith::combat_state::CombatState {
+            attackers: vec![ironsmith::combat_state::AttackerInfo {
+                creature: attacker,
+                target: AttackTarget::Player(PlayerId::from_index(1)),
+            }],
+            blocked_attackers: std::collections::HashSet::from([attacker]),
+            ..Default::default()
+        };
+        let encoded = serde_json::to_value(sync_grand_melee_combat(&combat)).unwrap();
+        let decoded: SyncGrandMeleeCombat = serde_json::from_value(encoded.clone()).unwrap();
+        let restored = grand_melee_combat_from_sync(&decoded);
+        assert!(ironsmith::combat_state::is_blocked(&restored, attacker));
+        assert!(restored.blockers.is_empty());
+
+        // Older checkpoints lack the persistent set but still carry blockers.
+        let mut legacy = encoded;
+        legacy.as_object_mut().unwrap().remove("blockedAttackers");
+        legacy["blockers"] = serde_json::json!([[71, [72]]]);
+        let decoded: SyncGrandMeleeCombat = serde_json::from_value(legacy).unwrap();
+        assert!(ironsmith::combat_state::is_blocked(&grand_melee_combat_from_sync(&decoded), attacker));
+    }
 
     #[test]
     fn normalized_shuffle_after_order_uses_live_order_when_remap_duplicates_ids() {

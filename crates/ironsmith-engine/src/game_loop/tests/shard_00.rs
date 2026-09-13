@@ -2225,6 +2225,8 @@ pub(super) fn deal_test_combat_damage_to_player(
     }
 
     CombatDamageEvent {
+        source_snapshot: None,
+        target_snapshot: None,
         source,
         target: DamageEventTarget::Player(player),
         amount: damage_dealt,

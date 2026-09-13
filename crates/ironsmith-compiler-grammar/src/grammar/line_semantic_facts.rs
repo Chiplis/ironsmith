@@ -192,6 +192,13 @@ fn parse_statement_semantic_facts(
             semantics: instead_semantics,
             conditional_intro: instead.conditional_intro,
             leading_instead_surface: instead.leading_instead_surface,
+            previous_mixed_damage_recipients: primitives::find_prefix(tokens, || {
+                primitives::any_phrase(&[
+                    &["damage", "to", "each", "of", "those", "permanents", "and/or", "players", "instead"],
+                    &["damage", "to", "each", "of", "those", "permanents", "and", "players", "instead"],
+                    &["damage", "to", "each", "of", "those", "permanents", "or", "players", "instead"],
+                ])
+            }).is_some(),
         },
         trailing_instead_if_predicate: parse_trailing_instead_if_predicate(tokens).map(Box::new),
         replacement_surfaces,

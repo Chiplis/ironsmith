@@ -352,6 +352,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::KeywordActions(KeywordActionAst::Populate { count, .. }) => {
                 f.debug_tuple("Populate").field(count).finish()
             }
+            Self::KeywordActions(KeywordActionAst::Airbend { target }) => {
+                f.debug_tuple("Airbend").field(target).finish()
+            }
             Self::KeywordActions(KeywordActionAst::Explore { target }) => {
                 f.debug_tuple("Explore").field(target).finish()
             }
@@ -450,10 +453,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 f.debug_tuple("ChooseNamedOption").field(options).finish()
             }
             Self::Choices(ChoiceActionAst::ChooseCreatureType {
+                allowed_subtypes, secretly,
                 excluded_subtypes,
                 family,
             }) => f
                 .debug_struct("ChooseCreatureType")
+                .field("allowed_subtypes", allowed_subtypes)
+                .field("secretly", secretly)
                 .field("excluded_subtypes", excluded_subtypes)
                 .field("family", family)
                 .finish(),

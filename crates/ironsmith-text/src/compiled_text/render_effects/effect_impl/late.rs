@@ -4788,6 +4788,23 @@
                 duration
             );
         }
+        if let crate::grant::Grantable::AlternativeCast(
+            method @ AlternativeCastingMethod::Composed {
+                condition: None,
+                prototype_power_toughness: None,
+                ..
+            },
+        ) = &grant.grantable
+            && method.non_mana_costs().is_empty()
+            && let Some(cost) = method.mana_cost()
+        {
+            return format!(
+                "{} has an alternative casting cost of {}{}",
+                describe_choose_spec(&grant.target),
+                cost.to_oracle(),
+                duration
+            );
+        }
         let granted_text = match &grant.grantable {
             crate::grant::Grantable::Ability(ability) => ability
                 .granted_inline_ability()

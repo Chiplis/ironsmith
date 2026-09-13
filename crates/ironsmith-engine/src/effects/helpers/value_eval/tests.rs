@@ -199,3 +199,26 @@ fn absent_numeric_stats_keep_context_specific_outcomes() {
         -3
     );
 }
+
+#[test]
+fn triggering_die_result_uses_its_event_and_rejects_missing_or_planar_rolls() {
+    use crate::events::other::DieRolledEvent;
+    use crate::triggers::TriggerEvent;
+    let (mut game, source, alice) = fixture();
+    let mut exec = ExecutionContext::new_default(source, alice);
+    let value = Value::EventValue(EventValueSpec::DieResult);
+    exec.event_value_amount = Some(99);
+    assert!(resolve(&value, &EvaluationContext::execution_context(&game, &exec)).is_err());
+    exec.triggering_event = Some(TriggerEvent::new_with_provenance(
+        DieRolledEvent::new_with_natural_result(alice, source, 5, 6, 6).for_attraction_visit(),
+        Default::default(),
+    ));
+    game.turn_store.turn_history.record_die_roll(alice, 2);
+    assert_eq!(resolve(&value, &EvaluationContext::execution_context(&game, &exec)).unwrap(), 6);
+    assert_eq!(resolve(&Value::EventValueOffset(EventValueSpec::DieResult, -1),
+        &EvaluationContext::execution_context(&game, &exec)).unwrap(), 5);
+    exec.triggering_event = Some(TriggerEvent::new_with_provenance(
+        DieRolledEvent::new_planar(alice, source, 6), Default::default(),
+    ));
+    assert!(resolve(&value, &EvaluationContext::execution_context(&game, &exec)).is_err());
+}

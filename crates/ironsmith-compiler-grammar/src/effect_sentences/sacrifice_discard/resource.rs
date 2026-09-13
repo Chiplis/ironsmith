@@ -93,10 +93,23 @@ pub fn parse_sacrifice(
         )));
     }
 
-    let player = match extract_subject_player(subject) {
-        None | Some(PlayerAst::Implicit) => PlayerAst::You,
-        Some(player) => player,
-    };
+    // Preserve an omitted actor until surrounding optional/player clauses
+    // have bound it. Lowering supplies You when no outer actor exists.
+    let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
+
+    // A definite singular choice reference identifies the previously chosen
+    // object; it does not ask the player to make a new sacrifice choice.
+    if let Some(chosen) = crate::grammar::targets::parse_chosen_object_target(tokens) {
+        let noun = crate::lexer::token_word_refs(chosen.filter_tokens);
+        if matches!(noun.as_slice(), ["creature" | "artifact" | "enchantment" | "land" | "planeswalker" | "battle" | "permanent" | "object"])
+        {
+            let target = parse_target_phrase(tokens)?;
+            return Ok(wrap_unless_escaped(
+                EffectAst::subject_verb_sacrifice(player, ObjectFilter::default(), 1, Some(target)),
+                unless_escaped,
+            ));
+        }
+    }
 
     if let Some(fraction) =
         sacrifice_discard_grammar::parse_sacrifice_fraction_rounded_shape(tokens)

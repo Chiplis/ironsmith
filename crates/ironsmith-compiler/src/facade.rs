@@ -329,7 +329,15 @@ impl CompilerFacade {
     ) -> Result<CompiledCardText<crate::cards::CardDefinition>, CardTextError> {
         let compiled =
             crate::compile_card_text_with_policy(builder, text, policy.allow_unsupported)?;
-        reject_compiled_parser_fallbacks(&compiled.definition)?;
+        if let Err(error) = reject_compiled_parser_fallbacks(&compiled.definition) {
+            if crate::parse_trace::is_enabled() {
+                crate::parse_trace::event(format!(
+                    "rejected intermediate definition: {:#?}",
+                    compiled.definition
+                ));
+            }
+            return Err(error);
+        }
         Ok(CompiledCardText {
             definition: compiled.definition,
             annotations: compiled.annotations,

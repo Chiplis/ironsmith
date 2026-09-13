@@ -168,6 +168,9 @@ mod tests {
         ctx.set_tagged_objects(
             "__chosen_name__",
             vec![ObjectSnapshot {
+                    chosen_subtype: None,
+                    secret_chosen_subtype: None,
+                    chosen_object: None,
                 object_id: source,
                 stable_id: crate::ids::StableId::from(source),
                 kind: crate::object::ObjectKind::Card,
@@ -210,6 +213,7 @@ mod tests {
                 transform_count: 0,
                 attached_to: None,
                 attachments: Vec::new(),
+        attachment_snapshots: Vec::new(),
                 was_enchanted: false,
                 is_monstrous: false,
                 is_prepared: false,

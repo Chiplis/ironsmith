@@ -533,6 +533,7 @@ fn blocked_by_tagged_filter_matches_current_combat_relationship() {
         blockers: std::collections::HashMap::from([(attacker.id, vec![blocker.id])]),
         damage_assignment_order: std::collections::HashMap::new(),
         attacking_bands: Vec::new(),
+        blocked_attackers: Default::default(),
         had_to_attack_this_combat: Default::default(),
     });
 

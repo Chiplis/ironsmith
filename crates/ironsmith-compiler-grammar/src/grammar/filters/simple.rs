@@ -418,6 +418,15 @@ fn parse_simple_object_filter_words_with_list_marker(
     other: bool,
     saw_type_list_separator: bool,
 ) -> Option<ObjectFilter> {
+    if input_words.starts_with(&["one", "or", "more"]) {
+        let mut filter = parse_simple_object_filter_words_with_list_marker(
+            &input_words[3..],
+            other,
+            saw_type_list_separator,
+        )?;
+        filter.set_union_one_or_more(true);
+        return Some(filter);
+    }
     let mut words = non_article_word_refs(input_words);
     words.retain(|word| *word != "instead");
     if words.is_empty() {

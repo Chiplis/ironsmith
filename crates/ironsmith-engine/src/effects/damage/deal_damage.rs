@@ -83,28 +83,30 @@ pub(crate) fn apply_processed_damage_outcome_opts(
     cause: crate::events::cause::EventCause,
     dm: &mut dyn crate::decision::DecisionMaker,
 ) -> EffectOutcome {
-    let processed = process_damage_assignments_with_event_with_source_snapshot_opts_with_dm(
-        game,
-        source,
-        initial_target,
-        amount,
-        source_is_combat,
-        unpreventable,
-        cause.clone(),
-        source_snapshot,
-        dm,
-    );
+    crate::events::processing::with_deferred_prevention_follow_ups(game, dm, |game, dm| {
+        let processed = process_damage_assignments_with_event_with_source_snapshot_opts_with_dm(
+            game,
+            source,
+            initial_target,
+            amount,
+            source_is_combat,
+            unpreventable,
+            cause.clone(),
+            source_snapshot,
+            dm,
+        );
 
-    apply_processed_damage_results(
-        game,
-        source,
-        source_snapshot,
-        std::iter::once(processed),
-        None,
-        source_is_combat,
-        provenance,
-        cause,
-    )
+        apply_processed_damage_results(
+            game,
+            source,
+            source_snapshot,
+            std::iter::once(processed),
+            None,
+            source_is_combat,
+            provenance,
+            cause,
+        )
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -120,32 +122,35 @@ fn apply_simultaneous_damage_outcome_opts(
     cause: crate::events::cause::EventCause,
     dm: &mut dyn crate::decision::DecisionMaker,
 ) -> EffectOutcome {
-    let events = initial_targets
-        .into_iter()
-        .map(|target| SimultaneousDamageEvent {
-            source,
-            target,
-            amount,
-            is_combat: source_is_combat,
-            unpreventable,
-            cause: cause.clone(),
-            source_snapshot: source_snapshot.cloned(),
-        })
-        .collect::<Vec<_>>();
-    let processed = process_simultaneous_damage_assignments_with_event_with_dm(game, &events, dm);
-    let simultaneous_batch =
-        game.alloc_child_event_provenance(provenance, crate::events::EventKind::Damage);
+    crate::events::processing::with_deferred_prevention_follow_ups(game, dm, |game, dm| {
+        let events = initial_targets
+            .into_iter()
+            .map(|target| SimultaneousDamageEvent {
+                source,
+                target,
+                amount,
+                is_combat: source_is_combat,
+                unpreventable,
+                cause: cause.clone(),
+                source_snapshot: source_snapshot.cloned(),
+            })
+            .collect::<Vec<_>>();
+        let processed =
+            process_simultaneous_damage_assignments_with_event_with_dm(game, &events, dm);
+        let simultaneous_batch =
+            game.alloc_child_event_provenance(provenance, crate::events::EventKind::Damage);
 
-    apply_processed_damage_results(
-        game,
-        source,
-        source_snapshot,
-        processed,
-        Some(simultaneous_batch),
-        source_is_combat,
-        provenance,
-        cause,
-    )
+        apply_processed_damage_results(
+            game,
+            source,
+            source_snapshot,
+            processed,
+            Some(simultaneous_batch),
+            source_is_combat,
+            provenance,
+            cause,
+        )
+    })
 }
 
 #[allow(clippy::too_many_arguments)]

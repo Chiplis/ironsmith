@@ -574,7 +574,10 @@ fn build_counter_spec(
                 consume_inline_entry_surface(amount),
                 surface,
             )
-            .for_matching_object_optional(inferred_filter)
+            // The producer's selector is checked before the zone change.
+            // An unconditional entry counter must not acquire that selector
+            // as a new entry-time condition: characteristics can change as
+            // the selected object enters the battlefield.
         }
         CounterFollowup::ObjectConditional {
             counter_type,
@@ -619,17 +622,6 @@ fn build_counter_spec(
             spec.object_filter = inferred_filter;
             spec
         }
-    }
-}
-
-trait OptionalObjectFilter {
-    fn for_matching_object_optional(self, filter: Option<ObjectFilter>) -> Self;
-}
-
-impl OptionalObjectFilter for BattlefieldEntryCounterSpec {
-    fn for_matching_object_optional(mut self, filter: Option<ObjectFilter>) -> Self {
-        self.object_filter = filter;
-        self
     }
 }
 
@@ -687,22 +679,22 @@ fn fuse_nested_effect(effect: &Effect) -> Effect {
     effect.clone()
 }
 
-/// The source's own put-counters follow-up, in either the bare or the
-/// tag/id-wrapped spelling.
-fn source_put_counters(
+/// A bound object's put-counters follow-up, including tag/id wrappers.
+fn bound_put_counters(
     effect: &Effect,
+    target: &ChooseSpec,
 ) -> Option<(crate::object::CounterType, crate::effect::Value)> {
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
-        return source_put_counters(&tagged.effect);
+        return bound_put_counters(&tagged.effect, target);
     }
     if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
-        return source_put_counters(&with_id.effect);
+        return bound_put_counters(&with_id.effect, target);
     }
     let put = effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
     if put.distributed || put.target_count.is_some() {
         return None;
     }
-    if !matches!(put.target.base(), ChooseSpec::Source) {
+    if put.target.base() != target.base() {
         return None;
     }
     Some((put.counter_type, put.amount.clone()))
@@ -729,7 +721,9 @@ fn fuse_source_zone_move_entry_counters(effects: &mut Vec<Effect>) {
             index += 1;
             continue;
         }
-        let Some((counter_type, amount)) = source_put_counters(&effects[index + 1]) else {
+        let Some((counter_type, amount)) =
+            bound_put_counters(&effects[index + 1], &ChooseSpec::Source)
+        else {
             index += 1;
             continue;
         };
@@ -762,7 +756,8 @@ fn fuse_source_zone_move_entry_counters(effects: &mut Vec<Effect>) {
 /// lower the counter target as `Source` while leaving the move untagged. The
 /// typed inline marker still proves that the counters are part of the entry
 /// event, so attach them directly to the immediately preceding battlefield
-/// move. Unmarked later counter sentences remain separate.
+/// move. A selected-object loop can instead use the same `Iterated` reference
+/// for both instructions. Unmarked later counter sentences remain separate.
 fn fuse_source_bound_battlefield_entry_counters(effects: &mut Vec<Effect>) {
     let mut index = 0usize;
     while index + 1 < effects.len() {
@@ -779,7 +774,14 @@ fn fuse_source_bound_battlefield_entry_counters(effects: &mut Vec<Effect>) {
             index += 1;
             continue;
         }
-        let Some((counter_type, amount)) = source_put_counters(&effects[index + 1]) else {
+        let counter = bound_put_counters(&effects[index + 1], &ChooseSpec::Source).or_else(|| {
+            // Inside a selected-object loop, both instructions can name
+            // the same iterated object instead of using a result tag.
+            matches!(move_effect.target.base(), ChooseSpec::Iterated)
+                .then(|| bound_put_counters(&effects[index + 1], &ChooseSpec::Iterated))
+                .flatten()
+        });
+        let Some((counter_type, amount)) = counter else {
             index += 1;
             continue;
         };

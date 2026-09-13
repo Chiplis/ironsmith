@@ -129,10 +129,9 @@ impl TriggerMatcher for DealsDamageTrigger {
                 return false;
             }
         }
-        let Some(obj) = ctx.game.object(e.source) else {
-            return false;
-        };
-        if !self.filter.matches(obj, &ctx.filter_ctx, ctx.game) {
+        if e.amount == 0 || !super::damage_object_matches_filter(
+            e.source, event.source_snapshot(), &self.filter, ctx,
+        ) {
             return false;
         }
         if self.filter.union_is_one_or_more()

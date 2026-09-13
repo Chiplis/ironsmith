@@ -4466,6 +4466,14 @@ pub(super) fn may_causative_clause(inner: &str) -> Option<String> {
         return None;
     }
 
+    if let Some(idx) = lower.find(" become a copy of ") {
+        let subject = lowercase_first(trimmed[..idx].trim());
+        let rest = trimmed[idx + " become a copy of ".len()..].trim();
+        if !subject.is_empty() && !rest.is_empty() {
+            return Some(format!("have {subject} become copies of {rest}"));
+        }
+    }
+
     let base_pt_marker = " has base power and toughness ";
     if let Some(idx) = lower.find(base_pt_marker) {
         let subject = lowercase_first(trimmed[..idx].trim());

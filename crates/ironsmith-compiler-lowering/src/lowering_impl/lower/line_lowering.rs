@@ -952,6 +952,7 @@ fn redirect_coordinated_damage_replacement(
 fn redirect_amount_replacement(
     default_effect: &crate::effect::Effect,
     replacement_effects: &[crate::effect::Effect],
+    previous_mixed_damage_recipients: bool,
 ) -> Option<Vec<crate::effect::Effect>> {
     if let Some(replacement) =
         redirect_coordinated_damage_replacement(default_effect, replacement_effects)
@@ -959,6 +960,20 @@ fn redirect_amount_replacement(
         return Some(replacement);
     }
     let (default_tag, default_damage) = tagged_damage_target(default_effect)?;
+    if previous_mixed_damage_recipients
+        && let [replacement] = replacement_effects
+        && let Some(each) = replacement.downcast_ref::<crate::effects::ForEachObject>()
+        && each.filter == ObjectFilter::permanent_card()
+            .in_zone(Zone::Battlefield)
+            .match_tagged(default_tag.clone(), crate::target::TaggedOpbjectRelation::IsTaggedObject)
+        && let [damage] = each.effects.as_slice()
+        && damage_target(damage).is_some_and(|target| matches!(target.base(), ChooseSpec::Iterated))
+    {
+        // This typed mixed reference denotes the original target declaration,
+        // including player targets. The replaced damage does not run first to
+        // produce an object-only result set for a later iteration.
+        return Some(vec![redirect_damage_effect(damage, default_damage.target.clone())?]);
+    }
     let (declared_target, replacement) = match replacement_effects {
         [target_only, replacement] => (
             Some(
@@ -1259,7 +1274,7 @@ fn attach_cross_line_self_replacement(
     let Some(default_effect) = existing_segment.default_effects.last() else {
         return false;
     };
-    let replacement_effects = redirect_amount_replacement(default_effect, &conditional.if_true)
+    let replacement_effects = redirect_amount_replacement(default_effect, &conditional.if_true, facts.instead_followup.previous_mixed_damage_recipients)
         .unwrap_or_else(|| conditional.if_true.clone());
     let replacement_effects = if link_local_target_condition {
         link_runtime_cross_line_target_condition(default_effect, &replacement_effects)

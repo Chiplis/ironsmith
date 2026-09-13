@@ -1773,12 +1773,17 @@ where
             payload.exclude_basic,
         )));
     }
+    if M::downcast_ref::<ironsmith_core::RevealChosenSubtypeEffect>(&effect).is_some() {
+        return Ok(Effect::new(crate::effects::RevealChosenSubtypeEffect));
+    }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ChooseCreatureTypeEffect>(&effect) {
         let mut runtime = crate::effects::ChooseCreatureTypeEffect::for_family(
             payload.chooser.clone(),
             payload.family,
         );
         runtime.excluded_subtypes = payload.excluded_subtypes.clone();
+        runtime.allowed_subtypes = payload.allowed_subtypes.clone();
+        runtime.secretly = payload.secretly;
         return Ok(Effect::new(runtime));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::FlipCoinEffect>(&effect) {

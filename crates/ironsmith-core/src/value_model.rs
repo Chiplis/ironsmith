@@ -168,6 +168,9 @@ pub enum ValueSurfaceHint {
     /// "any number," whose minimum is zero.
     OneOrMoreChoice,
     WhereXIs,
+    /// An explicit life-gain amount reference. Its executable value selects
+    /// the triggering event or an earlier life-gain effect from context.
+    LifeGainedAmount,
     EqualTo,
     /// Preserve an authored exact-equality comparison ("is exactly N") as
     /// distinct from the semantically equivalent "is equal to N" surface.
@@ -1841,6 +1844,8 @@ pub enum Condition {
     SourceIsInZone(Zone),
     ActivationTiming(ActivationTiming),
     MaxActivationsPerTurn(u32),
+    /// Lifetime activation cap for the current object instance and ability.
+    MaxActivationsPerObject(u32),
     SourceIsEquipped,
     SourceIsEnchanted,
     EnchantedPermanentIsCreature,

@@ -333,8 +333,22 @@ impl<'a> HandCardSummary<'a> {
 pub(crate) fn spell_has_intrinsic_cost_adjustments(spell: &crate::object::Object) -> bool {
     use crate::ability::AbilityKind;
 
-    if spell.alternative_casts.iter().chain(spell.cast_alternative_method.iter().map(|method| method.as_ref())).any(|method|
-        matches!(method, crate::alternative_cast::AlternativeCastingMethod::Harmonize { .. }) || method.name().eq_ignore_ascii_case("Emerge")) {
+    if spell
+        .alternative_casts
+        .iter()
+        .chain(
+            spell
+                .cast_alternative_method
+                .iter()
+                .map(|method| method.as_ref()),
+        )
+        .any(|method| {
+            matches!(
+                method,
+                crate::alternative_cast::AlternativeCastingMethod::Harmonize { .. }
+            ) || method.name().eq_ignore_ascii_case("Emerge")
+        })
+    {
         return true;
     }
 

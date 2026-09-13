@@ -802,37 +802,7 @@ pub fn grant_subject_with_set_quantifier(
 }
 
 fn describe_filter_comparison(cmp: &crate::filter::Comparison) -> String {
-    let describe_values = |values: &[i32]| -> String {
-        match values.len() {
-            0 => String::new(),
-            1 => values[0].to_string(),
-            2 => format!("{} or {}", values[0], values[1]),
-            _ => {
-                let head = values[..values.len() - 1]
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                format!("{head}, or {}", values[values.len() - 1])
-            }
-        }
-    };
-
-    match cmp {
-        crate::filter::Comparison::Equal(v) => v.to_string(),
-        crate::filter::Comparison::OneOf(values) => describe_values(values),
-        crate::filter::Comparison::NotEqual(v) => format!("not equal to {v}"),
-        crate::filter::Comparison::LessThan(v) => format!("less than {v}"),
-        crate::filter::Comparison::LessThanOrEqual(v) => format!("{v} or less"),
-        crate::filter::Comparison::GreaterThan(v) => format!("greater than {v}"),
-        crate::filter::Comparison::GreaterThanOrEqual(v) => format!("{v} or greater"),
-        crate::filter::Comparison::EqualExpr(_)
-        | crate::filter::Comparison::NotEqualExpr(_)
-        | crate::filter::Comparison::LessThanExpr(_)
-        | crate::filter::Comparison::LessThanOrEqualExpr(_)
-        | crate::filter::Comparison::GreaterThanExpr(_)
-        | crate::filter::Comparison::GreaterThanOrEqualExpr(_) => "a dynamic value".to_string(),
-    }
+    crate::filter::describe_comparison(cmp)
 }
 
 fn spell_grant_subject_text(filter: &ObjectFilter) -> Option<String> {

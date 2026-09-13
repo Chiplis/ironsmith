@@ -314,3 +314,28 @@ fn object_unions_and_where_bindings_are_not_action_boundaries() {
         "the where binding must stay with the pump action: {segments:#?}"
     );
 }
+
+#[test]
+fn enumerated_reanimation_target_count_is_not_an_action_boundary() {
+    use crate::grammar::effects::coordination::recognize_coordination;
+    use crate::recognition::ParseOutcome;
+    for count in ["one, two, or three", "one, two or three", "one or two"] {
+        let source = format!("Put {count} target creature cards from graveyards onto the battlefield under your control.");
+        let tokens = crate::lexer::lex_line(&source, 0).unwrap();
+        let parts = crate::grammar::effects::chain_splitting::split_segments_on_comma_effect_head_tokens(vec![&tokens]);
+        assert_eq!(parts.len(), 1, "{parts:#?}");
+        let plan = recognize_coordination(&tokens);
+        assert!(matches!(plan, ParseOutcome::NoMatch), "{source}: {plan:#?}");
+    }
+    for tail in [", then draw a card", ", draw a card", " or draw a card"] {
+        let source = format!("Put one, two, or three target creature cards from graveyards onto the battlefield under your control{tail}.");
+        let tokens = crate::lexer::lex_line(&source, 0).unwrap();
+        let ParseOutcome::Match(plan) = recognize_coordination(&tokens) else {
+            panic!("authored follow-up must remain a separate action: {source}");
+        };
+        let segments = plan.value.members.iter().map(|member| member.tokens).collect::<Vec<_>>();
+        assert_eq!(segments.len(), 2, "{source}: {segments:#?}");
+        assert!(segments[0].iter().any(|token| token.is_word("three")));
+        assert!(segments[1].iter().any(|token| token.is_word("draw")));
+    }
+}

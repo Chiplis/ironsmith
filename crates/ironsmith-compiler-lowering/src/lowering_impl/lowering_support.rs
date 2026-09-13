@@ -1091,7 +1091,7 @@ fn spell_cast_trigger_targets_source(trigger: &TriggerSpec) -> bool {
         TriggerSpec::SpellCast {
             filter: Some(filter),
             ..
-        } => filter
+        } | TriggerSpec::SpellCastSameNameCardInZone { filter: Some(filter), .. } => filter
             .targets_object
             .as_deref()
             .is_some_and(|target_filter| target_filter.source),
@@ -1102,7 +1102,7 @@ fn spell_cast_trigger_targets_source(trigger: &TriggerSpec) -> bool {
 fn trigger_is_spell_cast(trigger: &TriggerSpec) -> bool {
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => trigger_is_spell_cast(trigger),
-        TriggerSpec::SpellCast { .. } | TriggerSpec::NthSpellOfTurnCast { .. } => true,
+        TriggerSpec::SpellCast { .. } | TriggerSpec::SpellCastSameNameCardInZone { .. } | TriggerSpec::NthSpellOfTurnCast { .. } => true,
         _ => false,
     }
 }
@@ -1113,6 +1113,7 @@ fn triggering_stack_object_kind(trigger: &TriggerSpec) -> Option<crate::filter::
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => triggering_stack_object_kind(trigger),
         TriggerSpec::SpellCast { .. }
+        | TriggerSpec::SpellCastSameNameCardInZone { .. }
         | TriggerSpec::NthSpellOfTurnCast { .. }
         | TriggerSpec::SpellCopied { .. }
         | TriggerSpec::SpellCountered { .. } => Some(StackObjectKind::Spell),
@@ -1196,7 +1197,7 @@ fn spell_cast_trigger_caster(trigger: &TriggerSpec) -> Option<&PlayerFilter> {
     match trigger {
         TriggerSpec::WithIntro { trigger, .. }
         | TriggerSpec::ConditionQualified { trigger, .. } => spell_cast_trigger_caster(trigger),
-        TriggerSpec::SpellCast { caster, .. } => Some(caster),
+        TriggerSpec::SpellCast { caster, .. } | TriggerSpec::SpellCastSameNameCardInZone { caster, .. } => Some(caster),
         _ => None,
     }
 }
@@ -1665,7 +1666,7 @@ fn resolve_bare_it_effect_targets_to_source(effect: &mut EffectAst) {
 fn trigger_provides_stack_object(trigger: &TriggerSpec) -> bool {
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => trigger_provides_stack_object(trigger),
-        TriggerSpec::SpellCast { .. } | TriggerSpec::AbilityActivated { .. } => true,
+        TriggerSpec::SpellCast { .. } | TriggerSpec::SpellCastSameNameCardInZone { .. } | TriggerSpec::AbilityActivated { .. } => true,
         // Becomes-targeted triggers record the TARGETING spell or ability as
         // the triggering event object ("counter that spell", "choose new
         // targets for that spell").
@@ -2691,12 +2692,22 @@ pub fn stage_additional_cost_effects_for_lowering(
     )
 }
 
+fn trigger_has_source_attack_antecedent(trigger: &TriggerSpec) -> bool {
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => trigger_has_source_attack_antecedent(trigger),
+        TriggerSpec::ThisAttacks | TriggerSpec::ThisAttacksAndIsntBlocked => true,
+        TriggerSpec::Attacks(filter) | TriggerSpec::AttacksAndIsntBlocked(filter) => filter.source,
+        _ => false,
+    }
+}
+
 pub fn stage_effects_with_trigger_context_for_lowering(
     trigger: Option<&TriggerSpec>,
     effects: &[EffectAst],
     imports: impl Into<ReferenceImports>,
 ) -> Result<PreparedEffectsForLowering, CardTextError> {
-    let imports = imports.into();
+    let mut imports = imports.into();
+    imports.source_object_antecedent |= trigger.is_some_and(trigger_has_source_attack_antecedent);
     let mut normalized = normalize_effects_ast(effects);
     if let Some(trigger) = trigger {
         preserve_copy_reference_kind_from_trigger(&mut normalized, trigger);
@@ -2808,7 +2819,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
     fn trigger_object_is_stack_object(trigger: &TriggerSpec) -> bool {
         match trigger {
             TriggerSpec::WithIntro { trigger, .. } => trigger_object_is_stack_object(trigger),
-            TriggerSpec::SpellCast { .. } | TriggerSpec::NthSpellOfTurnCast { .. } => true,
+            TriggerSpec::SpellCast { .. } | TriggerSpec::SpellCastSameNameCardInZone { .. } | TriggerSpec::NthSpellOfTurnCast { .. } => true,
             _ => false,
         }
     }
@@ -2979,6 +2990,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
     }
 
     let mut imports = imports.into();
+    imports.source_object_antecedent |= trigger_has_source_attack_antecedent(&trigger);
     let mut trigger = trigger;
     ensure_concrete_trigger_spec(&trigger)?;
 

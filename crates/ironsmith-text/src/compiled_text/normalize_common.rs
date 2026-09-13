@@ -662,6 +662,7 @@ pub(super) fn lowercase_may_clause(text: &str) -> String {
             | "Gain"
             | "Lose"
             | "Mill"
+            | "Move"
             | "Pay"
             | "Play"
             | "Put"

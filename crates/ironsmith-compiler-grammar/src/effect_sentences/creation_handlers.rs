@@ -198,6 +198,14 @@ fn parse_create_equal_to_dynamic_count(
     let Some(spec) = creation_grammar::parse_equal_to_count_clause_tokens(tail_tokens) else {
         return Ok(None);
     };
+    let mut equal_tokens = super::super::lexer::synthetic_word_tokens(["equal", "to"]);
+    equal_tokens.extend_from_slice(spec.value_tokens);
+    if crate::grammar::etb_static_lines::parse_equal_to_mana_spent_to_cast_tokens(&equal_tokens) {
+        return Ok(Some((
+            Value::ManaSpentToCastThisSpell.with_surface_hint(ValueSurfaceHint::EqualTo),
+            spec.cut_token,
+        )));
+    }
     let references_prior_result = spec
         .value_tokens
         .iter()
@@ -3441,6 +3449,27 @@ mod tests {
                 Some(*intro)
             });
             assert_eq!(typed_intro, Some(expected), "{granted_abilities:#?}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod mana_spent_token_count_tests {
+    use super::*;
+    #[test]
+    fn create_count_keeps_exact_mana_spent_reference_and_rejects_residue() {
+        let tokens=crate::lexer::lex_line("Create a number of 1/1 black Fungus Zombie creature tokens named Cordyceps Infected equal to the amount of mana spent to cast it.",0).unwrap();
+        let effect=parse_create(&tokens,None).expect("complete mana-spent token clause");
+        let debug=format!("{effect:#?}");
+        for required in ["ManaSpentToCastThisSpell","Cordyceps Infected","Fungus","Zombie"] {
+            assert!(debug.contains(required),"missing {required}: {debug}");
+        }
+        for text in [
+            "equal to the amount of mana spent to cast that permanent",
+            "equal to the amount of mana spent to cast it nonsense",
+        ] {
+            let tokens=crate::lexer::lex_line(text,0).unwrap();
+            assert!(!matches!(parse_create_equal_to_dynamic_count(&tokens),Ok(Some(_))),"accepted wrong reference or residue: {text}");
         }
     }
 }

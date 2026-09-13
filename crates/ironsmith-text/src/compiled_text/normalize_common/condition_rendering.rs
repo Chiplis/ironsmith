@@ -1280,6 +1280,22 @@ pub(crate) fn source_status_alternatives(condition: &Condition) -> Option<String
 }
 
 pub(crate) fn describe_condition(condition: &Condition) -> String {
+    if let Condition::CountComparison {
+        count: crate::static_abilities::AnthemCountExpression::MatchingFilter(filter),
+        comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+        ..
+    } = condition
+        && filter.zone == Some(Zone::Battlefield)
+        && matches!(&filter.in_combat_with, Some(crate::filter::ObjectRef::Tagged(tag)) if matches!(tag.as_str(), "equipped" | "enchanted"))
+        && !filter.blocking && !filter.attacking
+    {
+        let mut partner = filter.clone();
+        partner.zone = None;
+        partner.in_combat_with = None;
+        let described = partner.description();
+        let article = if described.starts_with("a ") || described.starts_with("an ") { "" } else { "a " };
+        return format!("it's blocking or blocked by {article}{described}");
+    }
     if let Some(attachment) = describe_attachment_state_disjunction(condition) {
         return attachment;
     }
@@ -2270,6 +2286,14 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::SourceIsFaceDown => "this source is transformed".to_string(),
         Condition::SourceMatches(filter) => {
+            if filter.modified {
+                let mut state = filter.clone();
+                state.modified = false;
+                if state.zone == Some(Zone::Battlefield) { state.zone = None; }
+                if state == ObjectFilter::default() {
+                    return "this source is modified".to_string();
+                }
+            }
             let exact_zone_branch = |branch: &ObjectFilter, zone: Zone| {
                 let mut expected = ObjectFilter::default();
                 expected.zone = Some(zone);
@@ -3280,6 +3304,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 }
             };
             format!("timing restriction: {label}")
+        }
+        Condition::MaxActivationsPerObject(limit) => {
+            format!("this ability has been activated fewer than {limit} times on this object")
         }
         Condition::MaxActivationsPerTurn(limit) => {
             format!("this ability has been activated fewer than {limit} times this turn")

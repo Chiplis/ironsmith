@@ -2214,6 +2214,14 @@ impl GameState {
         cost: &crate::mana::ManaCost,
         reason: crate::costs::PaymentReason,
     ) -> Option<crate::mana::ManaSymbol> {
+        fn contains_mana_cost(total: &crate::cost::TotalCost, mana: &crate::mana::ManaCost) -> bool {
+            if let Some(branches) = total.as_one_of() {
+                return branches.iter().any(|branch| contains_mana_cost(branch, mana));
+            }
+            total.costs().iter().any(|component| {
+                component.mana_cost_ref().is_some_and(|cost| cost == mana)
+            })
+        }
         if reason != crate::costs::PaymentReason::ActivateAbility {
             return None;
         }
@@ -2223,11 +2231,8 @@ impl GameState {
             let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {
                 return false;
             };
-            activated.mana_cost.costs().iter().any(|component| {
-                component
-                    .mana_cost_ref()
-                    .is_some_and(|activation_cost| activation_cost == cost)
-            }) && activated.additional_restrictions.iter().any(|restriction| {
+            contains_mana_cost(&activated.mana_cost, cost)
+                && activated.additional_restrictions.iter().any(|restriction| {
                 restriction.eq_ignore_ascii_case(
                     "spend only mana of the chosen color to activate this ability",
                 )

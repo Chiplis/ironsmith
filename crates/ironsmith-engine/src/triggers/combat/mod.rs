@@ -63,3 +63,18 @@ pub use this_blocks_object::ThisBlocksObjectTrigger;
 pub use this_deals_combat_damage_to_player::ThisDealsCombatDamageToPlayerTrigger;
 pub use this_deals_damage::ThisDealsDamageTrigger;
 pub use this_deals_damage_to::ThisDealsDamageToTrigger;
+
+/// Damage triggers use the participants as they were when damage was dealt,
+/// including when an additional prevention effect has since moved them.
+pub(crate) fn damage_object_matches_filter(
+    object_id: crate::ids::ObjectId,
+    snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+    filter: &crate::target::ObjectFilter,
+    ctx: &crate::triggers::matcher_trait::TriggerContext,
+) -> bool {
+    use crate::filter::ObjectFilterExt as _;
+    if let Some(snapshot) = snapshot.filter(|snapshot| snapshot.object_id == object_id) {
+        return filter.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game);
+    }
+    ctx.game.object(object_id).is_some_and(|object| filter.matches(object, &ctx.filter_ctx, ctx.game))
+}

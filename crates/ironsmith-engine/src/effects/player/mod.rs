@@ -130,3 +130,6 @@ pub use take_initiative::TakeInitiativeEffect;
 pub use ticket_counters::TicketCountersEffect;
 pub use venture_into_dungeon::VentureIntoDungeonEffect;
 pub use win_the_game::WinTheGameEffect;
+
+mod reveal_chosen_subtype;
+pub use reveal_chosen_subtype::RevealChosenSubtypeEffect;

@@ -816,6 +816,7 @@ impl GameState {
             choices
                 .chosen_land_types
                 .retain(|source, _| !removed_ids.contains(source));
+            choices.secret_chosen_subtypes.retain(|source, _| !removed_ids.contains(source));
             choices
                 .chosen_creature_types
                 .retain(|source, _| !removed_ids.contains(source));
@@ -926,6 +927,8 @@ impl GameState {
         }
 
         if let Some(combat) = self.combat.as_mut() {
+            combat.remember_blocked_attackers();
+            combat.blocked_attackers.retain(|attacker| !removed_ids.contains(attacker));
             combat
                 .attackers
                 .retain(|attacker| !removed_ids.contains(&attacker.creature));
@@ -2040,6 +2043,21 @@ impl GameState {
     /// Records that an activated ability was used.
     /// Used for OncePerTurn timing restrictions.
     pub fn record_ability_activation(&mut self, source: ObjectId, ability_index: usize) {
+        let origin = self.current_characteristics(source)
+            .and_then(|chars| chars.abilities.origin(ability_index).cloned());
+        self.record_ability_activation_with_origin(source, ability_index, origin);
+    }
+
+    pub(crate) fn record_ability_activation_with_origin(
+        &mut self,
+        source: ObjectId,
+        ability_index: usize,
+        origin: Option<crate::continuous::AbilityOrigin>,
+    ) {
+        if let Some(origin) = origin {
+            let total = self.turn_store.ability_activations_per_object.entry((source, origin)).or_default();
+            *total = total.saturating_add(1);
+        }
         let exhaust_controller = self.object(source).and_then(|object| {
             object
                 .abilities

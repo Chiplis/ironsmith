@@ -3663,6 +3663,14 @@ impl EffectAst {
         )
     }
 
+    pub fn subject_verb_airbend(target: TargetAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { target }),
+        )
+    }
+
     pub fn subject_verb_explore(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -4548,10 +4556,20 @@ impl EffectAst {
             SubjectVerbRoleAst::Chooser,
             player,
             SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType {
+                allowed_subtypes: Vec::new(),
+                secretly: false,
                 excluded_subtypes,
                 family: SubtypeFamily::Creature,
             }),
         )
+    }
+
+    pub fn subject_verb_choose_subtype_options(player: PlayerAst, options: Vec<Subtype>, secretly: bool) -> Self {
+        Self::subject_verb(SubjectVerbRoleAst::Chooser, player,
+            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType {
+                allowed_subtypes: options, secretly, excluded_subtypes: Vec::new(),
+                family: SubtypeFamily::Creature,
+            }))
     }
 
     pub fn subject_verb_choose_subtype_type(player: PlayerAst, family: SubtypeFamily) -> Self {
@@ -4559,6 +4577,8 @@ impl EffectAst {
             SubjectVerbRoleAst::Chooser,
             player,
             SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType {
+                allowed_subtypes: Vec::new(),
+                secretly: false,
                 excluded_subtypes: Vec::new(),
                 family,
             }),

@@ -91,7 +91,8 @@ fn parse_keyword_prefix_shape_lexed<'a>(input: &mut LexStream<'a>) -> WResult<Ke
         primitives::kw("freerunning").value(KeywordPrefixShape::Freerunning),
         primitives::kw("web-slinging").value(KeywordPrefixShape::WebSlinging),
         primitives::kw("mayhem").value(KeywordPrefixShape::Mayhem),
-        primitives::phrase(&["more", "than", "meets", "the", "eye"]).value(KeywordPrefixShape::MoreThanMeetsTheEye),
+        primitives::phrase(&["more", "than", "meets", "the", "eye"])
+            .value(KeywordPrefixShape::MoreThanMeetsTheEye),
         primitives::kw("sneak").value(KeywordPrefixShape::Sneak),
         primitives::kw("exploit").value(KeywordPrefixShape::Exploit),
     ))

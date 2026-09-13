@@ -709,7 +709,8 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         // lexical subject. Their typed grammars accept source references (and
         // the counter family also accepts a leading condition), so indexing
         // them only under the derived word `enters` makes them unreachable.
-        "parse_enters_prepared_line"
+        "parse_enters_under_chosen_control_line"
+        | "parse_enters_prepared_line"
         | "parse_enters_tapped_line"
         | "parse_enters_tapped_with_choose_color_line" => vec![
             StaticAbilityLineHeadHint::Single("this"),
@@ -1497,6 +1498,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         ),
         single_static_ability_ast_rule!(parse_prevent_all_damage_dealt_to_creatures_line),
         single_static_ability_ast_passthrough_rule!(parse_creatures_cant_block_line),
+        single_static_ability_ast_rule!(parse_enters_under_chosen_control_line),
         multi_static_ability_ast_rule!(parse_enters_tapped_with_counters_line),
         single_static_ability_ast_rule!(parse_enters_with_additional_counter_for_filter_line),
         multi_static_ability_ast_rule!(parse_enters_with_counters_line),
@@ -4103,13 +4105,16 @@ pub fn parse_double_damage_amount_replacement_line(
     let Some(spec) = keyword_static_lines::parse_damage_multiplier_tokens(&tokens) else {
         return Ok(None);
     };
-    let damaged_words = parser_token_word_refs(spec.damaged_tokens);
-
-    let (target_player_filter, target_object_filter) =
-        parse_damage_amount_replacement_target_filters(&damaged_words)?;
-    if target_player_filter.is_none() && target_object_filter.is_none() {
-        return Ok(None);
-    }
+    let (target_player_filter, target_object_filter) = if let Some(damaged_tokens) = spec.damaged_tokens {
+        let damaged_words = parser_token_word_refs(damaged_tokens);
+        let filters = parse_damage_amount_replacement_target_filters(&damaged_words)?;
+        if filters.0.is_none() && filters.1.is_none() {
+            return Ok(None);
+        }
+        filters
+    } else {
+        (Some(PlayerFilter::Any), Some(ObjectFilter::default()))
+    };
 
     let source_filter = damage_source_filter_from_shape(spec.source)?;
 

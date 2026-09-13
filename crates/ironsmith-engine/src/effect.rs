@@ -197,6 +197,9 @@ impl OutcomeObjectMemory {
             .object(self.object_id)
             .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
             .unwrap_or_else(|| ObjectSnapshot {
+            chosen_subtype: None,
+            secret_chosen_subtype: None,
+            chosen_object: None,
                 object_id: self.object_id,
                 stable_id: self.stable_id,
                 kind: if self.is_token {
@@ -243,6 +246,7 @@ impl OutcomeObjectMemory {
                 transform_count: 0,
                 attached_to: None,
                 attachments: Vec::new(),
+        attachment_snapshots: Vec::new(),
                 was_enchanted: false,
                 is_monstrous: false,
                 is_prepared: false,

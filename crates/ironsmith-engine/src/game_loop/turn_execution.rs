@@ -292,13 +292,14 @@ fn combat_damage_trigger_events(
     let damage_event_provenance = game
         .provenance_graph_mut()
         .alloc_root_event(crate::events::EventKind::Damage);
-    let cause = game
-        .object(event.source)
-        .map(|obj| {
-            crate::events::cause::EventCause::from_combat_damage(
-                event.source,
-                game.controller_of(obj),
-            )
+    let source_controller = event
+        .source_snapshot
+        .as_ref()
+        .map(|snapshot| snapshot.controller)
+        .or_else(|| game.object(event.source).map(|obj| game.controller_of(obj)));
+    let cause = source_controller
+        .map(|controller| {
+            crate::events::cause::EventCause::from_combat_damage(event.source, controller)
         })
         .unwrap_or_else(crate::events::cause::EventCause::effect);
     let mut damage_event = DamageEvent::with_cause(
@@ -308,14 +309,19 @@ fn combat_damage_trigger_events(
         true, // is_combat
         cause,
     );
-    if let DamageEventTarget::Object(object_id) = event.target
+    if let Some(snapshot) = &event.target_snapshot {
+        damage_event = damage_event.with_target_snapshot(snapshot.clone());
+    } else if let DamageEventTarget::Object(object_id) = event.target
         && let Some(obj) = game.object(object_id)
     {
         damage_event = damage_event.with_target_snapshot(
             crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(obj, game),
         );
     }
-    let damage_event = TriggerEvent::new_with_provenance(damage_event, damage_event_provenance);
+    let mut damage_event = TriggerEvent::new_with_provenance(damage_event, damage_event_provenance);
+    if let Some(snapshot) = &event.source_snapshot {
+        damage_event = damage_event.with_source_snapshot(snapshot.clone());
+    }
 
     let life_loss_event = match event.target {
         DamageEventTarget::Player(player_id) if event.life_lost > 0 => {
@@ -373,6 +379,8 @@ mod tests {
         assert!(can_batch_combat_damage_trigger_events(&game));
         let events = vec![
             CombatDamageEvent {
+                source_snapshot: None,
+                target_snapshot: None,
                 source: ObjectId::from_raw(101),
                 target: DamageEventTarget::Player(bob),
                 amount: 3,
@@ -380,6 +388,8 @@ mod tests {
                 result: DamageResult::default(),
             },
             CombatDamageEvent {
+                source_snapshot: None,
+                target_snapshot: None,
                 source: ObjectId::from_raw(102),
                 target: DamageEventTarget::Player(bob),
                 amount: 4,
@@ -454,6 +464,8 @@ mod tests {
 
         let events = vec![
             CombatDamageEvent {
+                source_snapshot: None,
+                target_snapshot: None,
                 source: attacker_one,
                 target: DamageEventTarget::Player(bob),
                 amount: 2,
@@ -461,6 +473,8 @@ mod tests {
                 result: DamageResult::default(),
             },
             CombatDamageEvent {
+                source_snapshot: None,
+                target_snapshot: None,
                 source: attacker_two,
                 target: DamageEventTarget::Player(charlie),
                 amount: 2,

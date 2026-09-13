@@ -850,6 +850,42 @@ fn parse_union_subject_keyword_grants(
 pub fn parse_granted_keyword_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if let Some(where_index) = tokens.iter().position(|token| token.is_word("where")) {
+        let binding_tokens = trim_edge_punctuation(&tokens[where_index..]);
+        let Some(value) = parse_value_binding_clause(&binding_tokens) else {
+            return Ok(None);
+        };
+        let body = trim_commas(&tokens[..where_index]);
+        let Some(mut abilities) = parse_granted_keyword_static_line(&body)? else {
+            return Ok(None);
+        };
+        let mut bound = false;
+        for ability in &mut abilities {
+            if let StaticAbilityAst::GrantKeywordAction { filter, .. }
+                | StaticAbilityAst::GrantStaticAbility { filter, .. } = ability
+            {
+                use crate::filter::Comparison;
+                let expression = match filter.mana_value.as_mut() {
+                    Some(Comparison::EqualExpr(expr)
+                        | Comparison::LessThanExpr(expr)
+                        | Comparison::LessThanOrEqualExpr(expr)
+                        | Comparison::GreaterThanExpr(expr)
+                        | Comparison::GreaterThanOrEqualExpr(expr)) => Some(expr),
+                    _ => None,
+                };
+                if let Some(expression) = expression
+                    && matches!(expression.unhinted(), Value::X)
+                {
+                    **expression = value.clone();
+                    bound = true;
+                }
+            }
+        }
+        if !bound {
+            return Err(CardTextError::ParseError("where-X grant binding has no supported X threshold".into()));
+        }
+        return Ok(Some(abilities));
+    }
     // A full characteristic-setting bundle owns its type, color and P/T
     // together; interpreting only a descriptor as a grant loses that bundle.
     if crate::grammar::static_keyword_facts::type_and_color::parse_power_toughness_type_addition_tokens(tokens).is_some() {
@@ -4183,6 +4219,29 @@ mod dynamic_anthem_tests {
         assert_eq!(constraint.counter_type, Some(CounterType::PlusOnePlusOne));
         assert_eq!(constraint.source_controller, PlayerFilter::You);
         assert_eq!(constraint.minimum, 1);
+    }
+
+    #[test]
+    fn life_loss_bound_cascade_grant_preserves_complete_filter() {
+        let tokens = lex_line("During your turn, spells you cast from your hand with mana value X or less have cascade, where X is the total amount of life your opponents have lost this turn.", 0).unwrap();
+        let abilities = parse_granted_keyword_static_line(&tokens)
+            .expect("complete grant with bound threshold should parse")
+            .expect("grant should match");
+        let [StaticAbilityAst::GrantKeywordAction {filter,action:KeywordAction::Cascade,condition}] = abilities.as_slice() else {
+            panic!("expected one cascade grant: {abilities:#?}");
+        };
+        assert_eq!(filter.zone,Some(Zone::Hand));
+        assert_eq!(filter.cast_by,Some(PlayerFilter::You));
+        assert_eq!(filter.mana_value,Some(crate::filter::Comparison::LessThanOrEqualExpr(Box::new(Value::LifeLostThisTurn(PlayerFilter::Opponent)))));
+        assert!(format!("{condition:#?}").contains("DuringYourTurn"));
+        for text in [
+            "During your turn, spells you cast from your hand with mana value X or less have cascade, where X is the total amount of life your opponents have lost this turn nonsense.",
+            "During your turn, spells you cast from your hand with mana value X or less have cascade, where X is the total amount of life your opponents have lost this turn and draw a card.",
+            "During your turn, spells you cast from your hand with mana value 3 or less have cascade, where X is the total amount of life your opponents have lost this turn.",
+        ] {
+            let tokens=lex_line(text,0).unwrap();
+            assert!(!matches!(parse_granted_keyword_static_line(&tokens),Ok(Some(_))),"accepted incomplete or unbound grant: {text}");
+        }
     }
 
     #[test]

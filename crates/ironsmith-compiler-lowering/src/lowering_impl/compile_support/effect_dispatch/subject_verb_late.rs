@@ -2377,12 +2377,25 @@ pub(super) fn compile_subject_verb_late(
             one_of_referenced_set,
         }) => {
             if let Some(target) = target {
+                let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
+                let chooser = subject.clone_player_filter();
+                let mut target = target.clone();
+                // A persistent choice names an object, but the named actor can
+                // sacrifice it only while controlling it. Keep that actor in
+                // the resolving filter rather than choosing a different object.
+                if let TargetAst::Object(filter, ..) = &mut target
+                    && filter.controller.is_none()
+                    && filter.tagged_constraints.iter().any(|constraint| {
+                        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::ChosenObjects.as_str()
+                            && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                    })
+                {
+                    filter.controller = Some(chooser.clone());
+                }
                 let (effects, mut choices) =
-                    compile_tagged_effect_for_target(target, ctx, "sacrificed", |spec| {
+                    compile_tagged_effect_for_target(&target, ctx, "sacrificed", |spec| {
                         Effect::new(crate::effects::SacrificeTargetEffect::new(spec))
                     })?;
-                let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
-                let chooser = subject.into_player_filter();
                 ctx.last_player_filter = Some(chooser);
                 for choice in subject.into_choices() {
                     push_choice(&mut choices, choice);

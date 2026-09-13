@@ -253,8 +253,19 @@ pub(in crate::compiled_text) fn describe_for_players_unless_pays(
     let each_player = strip_leading_article(&player_filter_text);
     let consequence = describe_effect_list(&unless_pays.effects);
     let payment = describe_total_cost_payment(&unless_pays.cost);
+    let payment_action = if let Some([cost]) = unless_pays.cost.as_all()
+        && let Some(effect) = cost.effect_ref()
+        && let Some(sacrifice) = sacrifice_view(structural_unwrap_render_wrappers(effect))
+        && sacrifice.player == &PlayerFilter::You
+        && *sacrifice.count == Value::Fixed(1)
+        && let Some(object) = payment.strip_prefix("Sacrifice ")
+    {
+        format!("sacrifice {object} of their choice")
+    } else {
+        format!("pay {payment}")
+    };
     Some(format!(
-        "For each {each_player}, {consequence} unless they pay {payment}"
+        "For each {each_player}, {consequence} unless they {payment_action}"
     ))
 }
 

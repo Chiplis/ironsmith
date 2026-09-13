@@ -79,6 +79,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileWhenSourceLeaves { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Exploit)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { .. })
             | SubjectVerbActionAst::Game(GameActionAst::ExtraTurnAfterTurn { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fateseal { .. })
@@ -749,6 +750,58 @@ pub(super) fn compile_subject_verb_early(
             }
             Ok((vec![effect], Vec::new()))
         }
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { target }) => {
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let tag = ctx.next_tag("airbent");
+            let move_effect = Effect::move_to_zone(spec, Zone::Exile, true).tag_all(tag.clone());
+            let grant = Effect::grant(
+                crate::grant::Grantable::AlternativeCast(
+                    crate::alternative_cast::AlternativeCastingMethod::alternative_cost(
+                        "Airbend",
+                        Some(crate::mana::ManaCost::from_pips(vec![vec![crate::mana::ManaSymbol::Generic(2)]])),
+                        vec![],
+                    ),
+                ),
+                ChooseSpec::Iterated,
+                crate::grant::GrantDuration::Forever,
+            );
+            let mut play = crate::effects::GrantPlayTaggedEffect::new(
+                (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                PlayerFilter::OwnerOf(crate::target::ObjectRef::tagged(
+                    crate::tag::CompilerReferenceTag::It.key(),
+                )),
+                crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled,
+                false,
+                false,
+            );
+            let mut spell_filter = ObjectFilter::default();
+            spell_filter.excluded_card_types.push(CardType::Land);
+            play.spell_filter = Some(spell_filter);
+            let play = Effect::new(play);
+            ctx.last_object_tag = Some(tag.clone());
+            let mut exiled = ObjectFilter::default();
+            exiled.zone = Some(Zone::Exile);
+            let grant = Effect::conditional(
+                Condition::TaggedObjectMatchedLastKnown(
+                    (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                    exiled.clone(),
+                ),
+                vec![play, grant],
+                Vec::new(),
+            );
+            // The destination snapshots come only from this move's results.
+            // A prevented move or a replacement into another zone is not an
+            // airbend event (CR 701.65b), even if the target still exists.
+            let event = Effect::conditional(
+                Condition::TaggedObjectMatchedLastKnown(tag.clone().into(), exiled),
+                vec![Effect::new(crate::effects::EmitKeywordActionEffect::new(
+                    crate::events::KeywordActionKind::Airbend, 1,
+                ))],
+                Vec::new(),
+            );
+            Ok((vec![move_effect, Effect::for_each_tagged(tag, vec![grant]), event], choices))
+        }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target }) => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -1054,6 +1107,7 @@ pub(super) fn compile_subject_verb_early(
             })
         }
         SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType {
+            allowed_subtypes, secretly,
             excluded_subtypes,
             family,
         }) => compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
@@ -1062,6 +1116,8 @@ pub(super) fn compile_subject_verb_early(
                 *family,
             );
             effect.excluded_subtypes = excluded_subtypes.clone();
+            effect.allowed_subtypes = allowed_subtypes.clone();
+            effect.secretly = *secretly;
             Effect::new(effect)
         }),
         SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType { exclude_basic }) => {

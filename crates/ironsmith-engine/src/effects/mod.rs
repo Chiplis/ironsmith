@@ -178,7 +178,7 @@ pub use permanents::{
 pub use player::{
     AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, AscendEffect,
     BecomeMonarchEffect, CascadeEffect, CastSourceEffect, CastTaggedEffect, ChooseCardNameEffect,
-    ChooseCardTypeEffect, ChooseColorEffect, ChooseCreatureTypeEffect, ChooseLandTypeEffect,
+    ChooseCardTypeEffect, ChooseColorEffect, ChooseCreatureTypeEffect, RevealChosenSubtypeEffect, ChooseLandTypeEffect,
     ChooseNamedOptionEffect, ChoosePlayerEffect, ControlCombatChoicesThisTurnEffect,
     ControlPlayerEffect, CreateEmblemEffect, DiscoverEffect, DrawTheGameEffect,
     EndCombatPhaseEffect, EndTurnEffect, EnergyCountersEffect, ExileInsteadOfGraveyardEffect,

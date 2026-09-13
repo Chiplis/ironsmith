@@ -596,7 +596,7 @@ fn is_equipped_keyword_grant_line(tokens: &[OwnedLexToken]) -> Result<bool, Card
     if ability_tokens.is_empty() {
         return Ok(false);
     }
-    let (ability_tokens, _) = split_attached_keyword_condition_suffix(&ability_tokens)?;
+    let (ability_tokens, _) = split_attached_keyword_condition_suffix(&ability_tokens, has.subject)?;
     Ok(parse_ability_line(&ability_tokens).is_some_and(|actions| {
         actions.iter().any(|action| {
             action.lowers_to_static_ability()

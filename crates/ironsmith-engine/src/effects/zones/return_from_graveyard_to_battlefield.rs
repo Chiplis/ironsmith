@@ -135,6 +135,11 @@ impl EffectExecutor for ReturnFromGraveyardToBattlefieldEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if matches!(self.target.base(), ChooseSpec::Source)
+            && crate::effects::helpers::resolve_source_object_id(game, ctx).is_none()
+        {
+            return Ok(EffectOutcome::target_invalid());
+        }
         let target_ids = resolve_graveyard_return_targets(game, ctx, &self.target)?;
         if target_ids.is_empty() {
             return Ok(EffectOutcome::target_invalid());

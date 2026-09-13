@@ -24,7 +24,8 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
         | TriggerSpec::EntersBattlefieldUntapped { .. } => Some(PlayerFilter::AliasedControllerOf(
             ObjectRef::tagged(crate::tag::CompilerReferenceTag::Triggering.bind()),
         )),
-        TriggerSpec::SpellCast { caster, .. } => {
+        TriggerSpec::SpellCast { caster, .. }
+        | TriggerSpec::SpellCastSameNameCardInZone { caster, .. } => {
             if *caster == PlayerFilter::Any {
                 Some(PlayerFilter::IteratedPlayer)
             } else if *caster == PlayerFilter::You {
@@ -67,7 +68,8 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
         TriggerSpec::PlayerSearchesLibrary(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerShufflesLibrary { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerTapsForMana { .. } => Some(PlayerFilter::IteratedPlayer),
-        TriggerSpec::PlayerRollsResult { .. }
+        TriggerSpec::PlayerRollsToVisitAttractions { .. }
+        | TriggerSpec::PlayerRollsResult { .. }
         | TriggerSpec::PlayerRollsHighestNaturalResult { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerRollsDie { .. } | TriggerSpec::PlayerCoinFlipResult { .. } => {
             Some(PlayerFilter::IteratedPlayer)

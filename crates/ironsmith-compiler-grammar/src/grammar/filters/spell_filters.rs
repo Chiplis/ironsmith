@@ -36,10 +36,81 @@ fn classify_object_filter_grammar_domain(tokens: &[OwnedLexToken]) -> ObjectFilt
         ],
     );
 
+    // The noun-only grammar cannot own references, player/zone scope,
+    // event history, attachment/combat relations, or characteristic predicates.
+    // Select their established relational grammar before noun/union readers can
+    // discard those operands. This is classification, not a fallback after an
+    // unsupported characteristic suffix has already been rejected.
+    let has_relational_operand = words.iter().any(|word| {
+        matches!(
+            *word,
+            "this"
+                | "that"
+                | "those"
+                | "it"
+                | "its"
+                | "them"
+                | "their"
+                | "you"
+                | "your"
+                | "other"
+                | "another"
+                | "chosen"
+                | "rest"
+                | "among"
+                | "control"
+                | "controls"
+                | "controlled"
+                | "owner"
+                | "owners"
+                | "opponent"
+                | "opponents"
+                | "player"
+                | "players"
+                | "battlefield"
+                | "graveyard"
+                | "graveyards"
+                | "hand"
+                | "hands"
+                | "library"
+                | "libraries"
+                | "exile"
+                | "entered"
+                | "milled"
+                | "revealed"
+                | "exiled"
+                | "discarded"
+                | "cast"
+                | "turn"
+                | "turns"
+                | "each"
+                | "attached"
+                | "enchanted"
+                | "equipped"
+                | "attacking"
+                | "blocking"
+                | "blocked"
+                | "defending"
+                | "attacked"
+                | "mana"
+                | "power"
+                | "toughness"
+                | "counter"
+                | "counters"
+                | "ability"
+                | "abilities"
+                | "type"
+                | "types"
+                | "kicked"
+                | "freerunning"
+                | "convoke"
+        )
+    }) || crate::util::is_source_reference_words(&words);
     let has_protector_relation = words
         .iter()
         .any(|word| matches!(*word, "protect" | "protects" | "protected"));
-    if has_protector_relation
+    if has_relational_operand
+        || has_protector_relation
         || has_temporal_graveyard_history
         || has_power_toughness_relation
         || has_supertype_subtype_disjunction
@@ -55,6 +126,12 @@ pub fn parse_object_filter_with_grammar_entrypoint(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    // An extremum owns the outer comparison and parses its comparison set
+    // independently. Preserve that structure before classifying its operands.
+    if let Some(mut filter) = parse_extremum_object_filter_lexed(tokens, other)? {
+        preserve_filter_counter_constraint_surface_tokens(&mut filter, tokens);
+        return Ok(filter);
+    }
     // Relationship-bearing phrases and characteristic-only phrases are
     // disjoint grammar domains. Classify the complete token slice before
     // invoking either parser so a tolerant noun parser is never a competing
@@ -80,16 +157,17 @@ pub fn parse_object_filter_with_grammar_entrypoint(
         && let Some(filter) = parse_domain_union_object_filter_lexed(tokens, other)
     {
         filter
-    } else if let Some(filter) = parse_extremum_object_filter_lexed(tokens, other)? {
-        filter
     } else if let Some(filter) = parse_simple_object_filter_lexed(tokens, other) {
         filter
     } else {
-        // A characteristic-domain phrase can still require the complete
-        // relational parser for less common modifiers not owned by a narrow
-        // leaf. Reaching this branch means every characteristic candidate
-        // reported no match; it is not a registration-order decision.
-        parse_object_filter(tokens, other)?
+        // The complete phrase was classified as characteristic-only, but no
+        // characteristic grammar consumed it. The relational scanner can
+        // recognize a noun while silently ignoring an unknown suffix; it
+        // must not turn this failure into a successful partial filter.
+        return Err(CardTextError::ParseError(format!(
+            "unsupported complete object filter: {}",
+            crate::lexer::render_token_slice(tokens)
+        )));
     };
     preserve_filter_counter_constraint_surface_tokens(&mut filter, tokens);
     Ok(filter)

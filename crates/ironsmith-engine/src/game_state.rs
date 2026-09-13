@@ -758,6 +758,8 @@ pub struct TurnStore {
     pub grant_cast_uses_this_turn: HashSet<(PlayerId, ObjectId)>,
     /// Exhaust activated abilities that have been activated by this object instance.
     pub exhaust_abilities_activated: HashSet<(ObjectId, usize)>,
+    /// Activation totals that survive turns and control changes, but not object identity changes.
+    pub ability_activations_per_object: HashMap<(ObjectId, crate::continuous::AbilityOrigin), u32>,
     /// Explicit combat damage assignments keyed by attacker then damage recipient.
     pub combat_damage_assignments: HashMap<ObjectId, HashMap<ObjectId, u32>>,
     /// Objects that assign no combat damage for the rest of the current turn.
@@ -866,6 +868,8 @@ pub struct ChoiceStore {
     pub chosen_land_types: HashMap<ObjectId, crate::types::Subtype>,
     /// Chosen creature types for permanents ("as this enters, choose a creature type").
     pub chosen_creature_types: HashMap<ObjectId, crate::types::Subtype>,
+    /// Unrevealed choices are separate from public chosen characteristics.
+    pub(crate) secret_chosen_subtypes: HashMap<ObjectId, (PlayerId, crate::types::Subtype)>,
     /// All subtype choices made for one source. This supplements the ordinary
     /// singular chosen subtype for instructions where multiple players each
     /// choose a type during the same resolution.
@@ -2311,12 +2315,22 @@ impl CantEffectTracker {
             return true;
         };
 
+        self.can_target_object_from_subject(game, object, crate::filter::ObjectSubject::Live(source))
+    }
+
+    pub(crate) fn can_target_object_from_subject(
+        &self,
+        game: &GameState,
+        object: ObjectId,
+        source: crate::filter::ObjectSubject<'_>,
+    ) -> bool {
         !self.cant_be_targeted_from.iter().any(|restriction| {
             if restriction.object != object {
                 return false;
             }
-            let filter_ctx = game.filter_context_for(restriction.controller, Some(source_id));
-            restriction.source_filter.matches(source, &filter_ctx, game)
+            let filter_ctx =
+                game.filter_context_for(restriction.controller, Some(source.object_id()));
+            source.matches(&restriction.source_filter, &filter_ctx, game)
         })
     }
 

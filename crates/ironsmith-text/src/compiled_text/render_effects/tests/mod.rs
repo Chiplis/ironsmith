@@ -2,6 +2,8 @@ use super::*;
 use crate::tag::TagKey;
 use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
 
+mod cohort_relational_counts_and_targets;
+
 mod activation_restriction_surfaces;
 mod anaphoric_opponent_actor_surfaces;
 mod any_number_cast_surfaces;
@@ -329,3 +331,8 @@ mod cohort_spell_unions_and_related_subjects;
 mod cohort_counter_choices_and_kicked_history;
 
 mod cohort_prevention_and_historical_counts;
+mod cohort_named_sources_and_persistent_choices;
+mod cohort_life_events_and_host_states;
+mod cohort_damage_sources_and_entry_conditions;
+mod cohort_entry_lists_and_payment_actors;
+mod cohort_chapters_levels_and_name_relations;

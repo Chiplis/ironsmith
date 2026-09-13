@@ -14,6 +14,9 @@ pub struct ChooseCreatureTypeEffect {
     pub chooser: PlayerFilter,
     pub excluded_subtypes: Vec<Subtype>,
     pub family: SubtypeFamily,
+    /// Restrict the choice to these subtypes; empty means every type in the family.
+    pub allowed_subtypes: Vec<Subtype>,
+    pub secretly: bool,
 }
 
 impl ChooseCreatureTypeEffect {
@@ -21,6 +24,8 @@ impl ChooseCreatureTypeEffect {
         Self {
             chooser,
             excluded_subtypes,
+            allowed_subtypes: Vec::new(),
+            secretly: false,
             family: SubtypeFamily::Creature,
         }
     }
@@ -29,6 +34,8 @@ impl ChooseCreatureTypeEffect {
         Self {
             chooser,
             excluded_subtypes: Vec::new(),
+            allowed_subtypes: Vec::new(),
+            secretly: false,
             family,
         }
     }
@@ -39,6 +46,9 @@ impl ChooseCreatureTypeEffect {
             .iter()
             .copied()
             .filter(|subtype| !self.excluded_subtypes.contains(subtype))
+            .filter(|subtype| {
+                self.allowed_subtypes.is_empty() || self.allowed_subtypes.contains(subtype)
+            })
             .collect()
     }
 
@@ -62,7 +72,11 @@ impl ChooseCreatureTypeEffect {
         let choice_ctx = SelectOptionsContext::new(
             chooser,
             Some(ctx.source),
-            format!("Choose a {}", self.family.type_phrase()),
+            format!(
+                "{}choose a {}",
+                if self.secretly { "Secretly " } else { "" },
+                self.family.type_phrase()
+            ),
             options,
             1,
             1,
@@ -111,12 +125,21 @@ impl EffectExecutor for ChooseCreatureTypeEffect {
         let Some(chosen) = self.choose_subtype(game, ctx)? else {
             return Ok(EffectOutcome::count(0));
         };
-        game.set_chosen_subtype(ctx.source, chosen);
+        if self.secretly {
+            let chooser = crate::effects::helpers::resolve_player_filter_as_chooser(
+                game,
+                &self.chooser,
+                ctx,
+            )?;
+            game.set_secret_chosen_subtype(ctx.source, chooser, chosen);
+        } else {
+            game.set_chosen_subtype(ctx.source, chosen);
+        }
         Ok(EffectOutcome::count(1))
     }
 
     fn supports_simultaneous_player_action(&self) -> bool {
-        true
+        !self.secretly
     }
 
     fn prepare_simultaneous_player_action(
@@ -209,5 +232,59 @@ mod tests {
             .expect("choose-planeswalker-type should execute");
 
         assert_eq!(game.chosen_subtype(source), Some(Subtype::Jace));
+    }
+    #[test]
+    fn secret_subtype_choice_is_constrained_private_and_source_specific() {
+        struct ChooseHuman;
+        impl DecisionMaker for ChooseHuman {
+            fn decide_options(
+                &mut self,
+                _game: &GameState,
+                ctx: &SelectOptionsContext,
+            ) -> Vec<usize> {
+                let mut labels = ctx
+                    .options
+                    .iter()
+                    .map(|o| o.description.as_str())
+                    .collect::<Vec<_>>();
+                labels.sort();
+                assert_eq!(labels, ["Goblin", "Human", "Merfolk"]);
+                vec![
+                    ctx.options
+                        .iter()
+                        .find(|o| o.description == "Human")
+                        .unwrap()
+                        .index,
+                ]
+            }
+        }
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = ObjectId::new();
+        let other = ObjectId::new();
+        game.set_secret_chosen_subtype(other, alice, Subtype::Goblin);
+        let mut effect = ChooseCreatureTypeEffect::new(PlayerFilter::You, vec![]);
+        effect.allowed_subtypes = vec![Subtype::Human, Subtype::Merfolk, Subtype::Goblin];
+        effect.secretly = true;
+        let mut dm = ChooseHuman;
+        effect
+            .execute(
+                &mut game,
+                &mut ExecutionContext::new(source, alice, &mut dm),
+            )
+            .unwrap();
+        assert_eq!(
+            game.secret_chosen_subtype(source, alice),
+            Some(Subtype::Human)
+        );
+        assert_eq!(game.secret_chosen_subtype(source, bob), None);
+        assert_eq!(game.chosen_subtype(source), None);
+        assert_eq!(game.chosen_subtypes(source), None);
+        assert_eq!(
+            game.secret_chosen_subtype(other, alice),
+            Some(Subtype::Goblin)
+        );
+        assert_eq!(game.secret_chosen_subtype(ObjectId::new(), alice), None);
     }
 }

@@ -1769,6 +1769,7 @@ fn grant_filter_context(
 ) -> crate::filter::FilterContext {
     let mut ctx = ctx.clone();
     let source_id = grant.source.source_id();
+    ctx.source = Some(source_id);
     let source_exiled = game
         .get_exiled_with_source_links(source_id)
         .iter()

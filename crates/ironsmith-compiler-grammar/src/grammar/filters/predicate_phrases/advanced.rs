@@ -1666,28 +1666,32 @@ pub(super) fn parse_player_spell_cast_this_turn_predicate(
         })),
         crate::grammar::conditions::PlayerSpellCastThisTurnConditionAst::MatchingFilterCountAtLeast {
             player,
-            filter,
+            mut filter,
             count,
-        } => Some(PredicateAst::ValueComparison {
+        } => {
+            let exclude_source = std::mem::take(&mut filter.other);
+            Some(PredicateAst::ValueComparison {
             left: Value::SpellsCastThisTurnMatching {
                 player,
                 filter,
-                exclude_source: false,
+                exclude_source,
             },
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
             right: Value::Fixed(count as i32),
-        }),
+        })
+        },
         crate::grammar::conditions::PlayerSpellCastThisTurnConditionAst::MatchingFilters {
             player,
             filters,
             negated,
         } => {
-            let mut predicates = filters.into_iter().map(|filter| {
+            let mut predicates = filters.into_iter().map(|mut filter| {
+                let exclude_source = std::mem::take(&mut filter.other);
                 PredicateAst::ValueComparison {
                     left: Value::SpellsCastThisTurnMatching {
                         player: player.clone(),
                         filter,
-                        exclude_source: false,
+                        exclude_source,
                     },
                     operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                     right: Value::Fixed(1),

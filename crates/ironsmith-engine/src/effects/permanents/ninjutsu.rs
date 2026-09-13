@@ -133,6 +133,7 @@ impl EffectExecutor for NinjutsuCostEffect {
                 .attackers
                 .retain(|info| info.creature != chosen_attacker);
             combat.blockers.remove(&chosen_attacker);
+            combat.blocked_attackers.remove(&chosen_attacker);
             combat.damage_assignment_order.remove(&chosen_attacker);
             for blockers in combat.blockers.values_mut() {
                 blockers.retain(|id| *id != chosen_attacker);
@@ -274,6 +275,7 @@ impl EffectExecutor for SneakCostEffect {
                 .attackers
                 .retain(|info| info.creature != chosen_attacker);
             combat.blockers.remove(&chosen_attacker);
+            combat.blocked_attackers.remove(&chosen_attacker);
             combat.damage_assignment_order.remove(&chosen_attacker);
             for blockers in combat.blockers.values_mut() {
                 blockers.retain(|id| *id != chosen_attacker);

@@ -883,9 +883,13 @@ impl GrantRegistry {
                 false
             };
 
-            if matches && grant.filter.as_ref().is_none_or(|filter| {
-                card.is_some_and(|card| filter.matches(card, &grant_filter_context(&ctx, grant, game), game))
-            }) {
+            if matches
+                && grant.filter.as_ref().is_none_or(|filter| {
+                    card.is_some_and(|card| {
+                        filter.matches(card, &grant_filter_context(&ctx, grant, game), game)
+                    })
+                })
+            {
                 result.push(grant.clone());
             }
         }
@@ -909,9 +913,11 @@ impl GrantRegistry {
                 false
             };
 
-            if matches && grant.filter.as_ref().is_none_or(|filter| {
-                filter.matches(card, &grant_filter_context(&ctx, &grant, game), game)
-            }) {
+            if matches
+                && grant.filter.as_ref().is_none_or(|filter| {
+                    filter.matches(card, &grant_filter_context(&ctx, &grant, game), game)
+                })
+            {
                 result.push(grant);
             }
         }
@@ -1179,9 +1185,13 @@ impl GrantRegistry {
             } else {
                 false
             };
-            if !applies || grant.filter.as_ref().is_some_and(|filter| {
-                card.is_none_or(|card| !filter.matches(card, &grant_filter_context(&ctx, grant, game), game))
-            }) {
+            if !applies
+                || grant.filter.as_ref().is_some_and(|filter| {
+                    card.is_none_or(|card| {
+                        !filter.matches(card, &grant_filter_context(&ctx, grant, game), game)
+                    })
+                })
+            {
                 continue;
             }
             if matches!(grant.grantable, Grantable::PlayFrom) {
@@ -1222,7 +1232,7 @@ impl GrantRegistry {
                     continue;
                 };
 
-                let is_source_self_grant = spec.filter == ObjectFilter::source();
+                let is_source_self_grant = spec.filter.source;
                 if !source_is_battlefield
                     && source.zone != Zone::Command
                     && (!is_source_self_grant || spec.zone != source.zone)
@@ -1244,7 +1254,7 @@ impl GrantRegistry {
                     grants.push(Grant {
                         target_id: is_source_self_grant.then_some(source_id),
                         target_stable_id: None,
-                        filter: (!is_source_self_grant)
+                        filter: (spec.filter != ObjectFilter::source())
                             .then(|| normalize_grant_filter(spec.filter.clone())),
                         zone: spec.zone,
                         player: player.id,
@@ -1330,6 +1340,7 @@ fn grant_filter_context(
 ) -> crate::filter::FilterContext {
     let mut ctx = ctx.clone();
     let source_id = grant.source.source_id();
+    ctx.source = Some(source_id);
     let source_exiled = game
         .get_exiled_with_source_links(source_id)
         .iter()

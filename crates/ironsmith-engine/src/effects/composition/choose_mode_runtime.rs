@@ -146,6 +146,35 @@ pub(crate) fn run_choose_mode(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
 ) -> Result<EffectOutcome, ExecutionError> {
+    // A resolving counter-kind choice has no decision to make when its shared
+    // recipient was omitted. Casting-time modes still follow the normal path.
+    if effect.chooser.is_some() && effect.common_prefix_effects.is_empty() {
+        let placements = effect
+            .modes
+            .iter()
+            .map(|mode| {
+                let [placement] = mode.effects.as_slice() else {
+                    return None;
+                };
+                placement.downcast_ref::<crate::effects::PutCountersEffect>()
+            })
+            .collect::<Option<Vec<_>>>();
+        if let Some(placements) = placements
+            && let Some(first) = placements.first()
+            && (first.target.is_target()
+                || matches!(first.target.base(), crate::target::ChooseSpec::Tagged(_)))
+            && placements
+                .iter()
+                .all(|placement| placement.target == first.target)
+            && match crate::effects::helpers::resolve_objects_from_spec(game, &first.target, ctx) {
+                Ok(objects) => objects.is_empty(),
+                Err(ExecutionError::InvalidTarget | ExecutionError::TagNotFound(_)) => true,
+                Err(_) => false,
+            }
+        {
+            return Ok(EffectOutcome::resolved());
+        }
+    }
     let chooser = effect
         .chooser
         .as_ref()

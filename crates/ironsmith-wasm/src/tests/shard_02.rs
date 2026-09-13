@@ -1934,3 +1934,42 @@ pub(super) fn snapshot_uses_exile_look_permissions_instead_of_card_ownership() {
     assert_eq!(bob_view.exile_cards.len(), 1);
     assert_eq!(bob_view.exile_cards[0].name, "Hidden card");
 }
+
+#[test]
+fn canonical_abby_entry_choice_resumes_without_premature_entry() {
+    let mut wasm = WasmGame::new();
+    let alice = PlayerId::from_index(0);
+    let cara = PlayerId::from_index(2);
+    wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into(), "Cara".into()], 20, 17);
+    wasm.game.turn.active_player = alice;
+    wasm.game.turn.priority_player = Some(alice);
+    wasm.game.turn.phase = Phase::FirstMain;
+    wasm.game.turn.step = None;
+    let payloads = ironsmith_tools::load_card_payloads_by_name(
+        ironsmith_tools::default_cards_path().to_str().unwrap(), "Abby, Merciless Soldier",
+    ).unwrap();
+    let definition = ironsmith_tools::compile_definition_from_payload(&payloads[0]).unwrap();
+    let source = wasm.game.create_object_from_definition(&definition, alice, Zone::Stack);
+    let stable = wasm.game.object(source).unwrap().stable_id;
+    wasm.game.push_to_stack(ironsmith::game_state::StackEntry::new(source, alice));
+    wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+    wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+        alice, compute_legal_actions(&wasm.game, alice),
+    )));
+    for _ in 0..3 { dispatch_pass_priority(&mut wasm); }
+    match wasm.pending_decision.as_ref() {
+        Some(DecisionContext::SelectOptions(ctx)) => {
+            assert_eq!(ctx.player, alice);
+            assert_eq!(ctx.options.iter().map(|option| option.index).collect::<Vec<_>>(), vec![1, 2]);
+        }
+        other => panic!("expected entry-controller prompt, got {other:?}"),
+    }
+    assert!(wasm.game.permanents_controlled_by(alice).is_empty());
+    assert!(wasm.game.permanents_controlled_by(cara).is_empty());
+    dispatch_select_options(&mut wasm, &[2]);
+    let entered = wasm.game.find_object_by_stable_id(stable).unwrap();
+    assert_eq!(wasm.game.object(entered).unwrap().zone, Zone::Battlefield);
+    assert_eq!(wasm.game.object(entered).unwrap().owner, alice);
+    assert_eq!(wasm.game.current_controller(entered), Some(cara));
+    assert!(wasm.game.stack.is_empty());
+}

@@ -1266,6 +1266,44 @@ pub(crate) fn describe_reveal_hand_exile_same_name_search_bundle(
     )
 }
 
+pub(crate) fn describe_reveal_hand_choose_prefix(filtered: &[&Effect]) -> Option<String> {
+    let [look_effect, choose_effect, tail @ ..] = filtered else {
+        return None;
+    };
+    let look = look_effect.downcast_ref::<crate::effects::LookAtHandEffect>()?;
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if !look.reveal
+        || choose.chooser != PlayerFilter::You
+        || choose_exact_count(choose) != Some(1)
+        || choose_primary_zone(choose) != Some(Zone::Hand)
+        || !choose.additional_zones.is_empty()
+        || choose.is_search
+        || !choose.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == "__revealed_this_way__"
+        })
+    {
+        return None;
+    }
+    // The revealed-set constraint connects this choice to the preceding hand.
+    // Render the complete typed selection so its other restrictions survive.
+    let choice_text = describe_effect(choose_effect);
+    let choice = choice_text
+        .trim_end_matches('.')
+        .strip_prefix("You choose ")?
+        .strip_suffix(" revealed this way")?;
+    let mut text = format!(
+        "{}. You choose {choice} from it.",
+        describe_effect(look_effect).trim_end_matches('.')
+    );
+    if !tail.is_empty() {
+        let effects: Vec<Effect> = tail.iter().map(|effect| (**effect).clone()).collect();
+        text.push(' ');
+        text.push_str(&capitalize_first(&describe_effect_list(&effects)));
+    }
+    Some(text)
+}
+
 pub(crate) fn describe_reveal_hand_choose_shuffle_into_library_bundle(
     filtered: &[&Effect],
 ) -> Option<String> {

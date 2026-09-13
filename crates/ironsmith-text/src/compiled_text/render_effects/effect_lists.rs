@@ -125,6 +125,7 @@ pub(in crate::compiled_text) use helpers_01::describe_create_token_then_set_base
 pub(in crate::compiled_text) use helpers_01::describe_declared_target_for_each_pump_unblockable_bundle;
 use helpers_01::describe_linked_graveyard_choices_then_may_return_bundle as describe_effect_list_linked_graveyard_choices_then_may_return_bundle;
 pub(in crate::compiled_text) use helpers_01::describe_reveal_hand_choose_shuffle_into_library_bundle;
+pub(in crate::compiled_text) use helpers_01::describe_reveal_hand_choose_prefix;
 pub(in crate::compiled_text) use helpers_01::describe_tagged_die_exile_replacement_followup;
 pub(in crate::compiled_text) use helpers_01::describe_target_pump_unblockable_bundle;
 pub(in crate::compiled_text) use helpers_01::render_remove_abilities_then_destroy_matching_creatures;
@@ -16782,6 +16783,9 @@ pub(crate) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
     }
     if let Some(compact) = describe_reveal_hand_choose_graveyard_exile_bundle(&bundle_refs) {
         return Some(compact);
+    }
+    if let Some(compact) = describe_reveal_hand_choose_prefix(&bundle_refs) {
+        return Some(lowercase_first(&compact));
     }
     if let Some(compact) = describe_choose_name_reveal_hand_discard_named_bundle(&bundle_refs) {
         return Some(compact);

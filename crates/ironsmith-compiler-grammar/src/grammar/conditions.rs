@@ -1890,9 +1890,15 @@ fn split_both_spell_cast_filter_tokens(
 }
 
 fn parse_spell_cast_filter_tokens_single(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
-    crate::grammar::primitives::probe_shape(parse_object_filter_with_grammar_entrypoint(
+    let mut filter = crate::grammar::primitives::probe_shape(parse_object_filter_with_grammar_entrypoint(
         tokens, false,
-    ))
+    ))?;
+    if tokens.iter().take_while(|token| !token.is_word("spell") && !token.is_word("spells"))
+        .any(|token| token.is_word("another") || token.is_word("other"))
+    {
+        filter.other = true;
+    }
+    Some(filter)
 }
 
 fn parse_life_change_subject_clause(clause: LexedClause<'_>) -> Option<PlayerFilter> {

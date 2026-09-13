@@ -693,10 +693,12 @@ pub(crate) fn resolve(
             Ok(devotion as i32)
         }
         Value::ManaSpentToCastThisSpell => {
-            let Some(source_obj) = game.object(context.source) else {
-                return Ok(0);
-            };
-            Ok(source_obj.mana_spent_to_cast.total() as i32)
+            let spent = game.object(context.source)
+                .map(|source| &source.mana_spent_to_cast)
+                .or_else(|| context.execution()
+                    .and_then(|ctx| ctx.source_snapshot.as_ref())
+                    .map(|snapshot| &snapshot.mana_spent_to_cast));
+            Ok(spent.map_or(0, |mana| mana.total() as i32))
         }
         Value::ManaSymbolSpentToCastThisSpell { symbol, .. } => {
             let Some(source_obj) = game.object(context.source) else {
@@ -1057,6 +1059,17 @@ fn resolve_event_value(
     spec: &EventValueSpec,
 ) -> Result<i32, ExecutionError> {
     match spec {
+        EventValueSpec::DieResult => {
+            let roll = ctx.triggering_event.as_ref()
+                .and_then(|event| event.downcast::<crate::events::other::DieRolledEvent>())
+                .filter(|event| !event.is_planar)
+                .ok_or_else(|| ExecutionError::UnresolvableValue(
+                    "EventValue(DieResult) requires a numeric die-roll triggering event".to_string()
+                ))?;
+            i32::try_from(roll.result).map_err(|_| ExecutionError::UnresolvableValue(
+                "die-roll result exceeds the supported value range".to_string()
+            ))
+        }
         EventValueSpec::Amount | EventValueSpec::LifeAmount => {
             if let Some(amount) = ctx.event_value_amount {
                 return Ok(amount);

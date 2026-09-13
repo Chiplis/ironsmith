@@ -381,21 +381,42 @@ pub fn execute_mana_payment_plan(
     }
     for allocation in &current.allocations {
         let (permanent_id, effect, action) = match allocation.payment {
-            super::PlannedPipPayment::Convoke(id) => (id, crate::decision::AlternativePaymentEffect::Convoke,
-                crate::events::KeywordActionKind::Convoke),
-            super::PlannedPipPayment::Improvise(id) => (id, crate::decision::AlternativePaymentEffect::Improvise,
-                crate::events::KeywordActionKind::Improvise),
+            super::PlannedPipPayment::Convoke(id) => (
+                id,
+                crate::decision::AlternativePaymentEffect::Convoke,
+                crate::events::KeywordActionKind::Convoke,
+            ),
+            super::PlannedPipPayment::Improvise(id) => (
+                id,
+                crate::decision::AlternativePaymentEffect::Improvise,
+                crate::events::KeywordActionKind::Improvise,
+            ),
             _ => continue,
         };
         if let Some(spell) = game.object_mut(request.source) {
-            let contribution = crate::decision::KeywordPaymentContribution { permanent_id, effect };
-            if !spell.keyword_payment_contributions_to_cast.contains(&contribution) {
-                spell.keyword_payment_contributions_to_cast.push(contribution);
+            let contribution = crate::decision::KeywordPaymentContribution {
+                permanent_id,
+                effect,
+            };
+            if !spell
+                .keyword_payment_contributions_to_cast
+                .contains(&contribution)
+            {
+                spell
+                    .keyword_payment_contributions_to_cast
+                    .push(contribution);
             }
         }
-        let provenance = game.provenance_graph_mut().alloc_root_event(crate::events::EventKind::KeywordAction);
-        game.queue_trigger_event(provenance, crate::triggers::TriggerEvent::new_with_provenance(
-            crate::events::KeywordActionEvent::new(action, request.payer, request.source, 1), provenance));
+        let provenance = game
+            .provenance_graph_mut()
+            .alloc_root_event(crate::events::EventKind::KeywordAction);
+        game.queue_trigger_event(
+            provenance,
+            crate::triggers::TriggerEvent::new_with_provenance(
+                crate::events::KeywordActionEvent::new(action, request.payer, request.source, 1),
+                provenance,
+            ),
+        );
     }
     Ok(super::ManaPaymentExecution::Paid)
 }
@@ -517,7 +538,8 @@ impl ManaPaymentPlanner {
                 let mut payment_request = request.clone();
                 for allocation in &selection.allocations {
                     match allocation.payment {
-                        super::PlannedPipPayment::Convoke(source) | super::PlannedPipPayment::Improvise(source) => {
+                        super::PlannedPipPayment::Convoke(source)
+                        | super::PlannedPipPayment::Improvise(source) => {
                             payment_request.reserved_tap_sources.push(source);
                         }
                         super::PlannedPipPayment::Delve(source) => {
@@ -1481,11 +1503,25 @@ fn positive_pool_delta(before: &ManaPool, after: &ManaPool) -> ManaPool {
 }
 
 fn can_pay_request(game: &GameState, request: &ManaPaymentRequest) -> bool {
-    if request.reserved_permanent_sources.iter().any(|id| !game.object(*id).is_some_and(|object|
-        object.zone == crate::zone::Zone::Battlefield && game.controller_of(object) == request.payer)) { return false; }
-    if request.reserved_tap_sources.iter().any(|id| game.is_tapped(*id) || !game.object(*id).is_some_and(|object|
-        object.zone == crate::zone::Zone::Battlefield && game.controller_of(object) == request.payer))
-        || request.reserved_graveyard_sources.iter().any(|id| !game.player(request.payer).is_some_and(|player| player.graveyard.contains(id))) {
+    if request.reserved_permanent_sources.iter().any(|id| {
+        !game.object(*id).is_some_and(|object| {
+            object.zone == crate::zone::Zone::Battlefield
+                && game.controller_of(object) == request.payer
+        })
+    }) {
+        return false;
+    }
+    if request.reserved_tap_sources.iter().any(|id| {
+        game.is_tapped(*id)
+            || !game.object(*id).is_some_and(|object| {
+                object.zone == crate::zone::Zone::Battlefield
+                    && game.controller_of(object) == request.payer
+            })
+    }) || request.reserved_graveyard_sources.iter().any(|id| {
+        !game
+            .player(request.payer)
+            .is_some_and(|player| player.graveyard.contains(id))
+    }) {
         return false;
     }
 
@@ -2237,22 +2273,48 @@ mod tests {
     #[test]
     fn reserved_cost_resources_are_not_spent_by_mana_abilities() {
         let (mut game, alice) = game();
-        let card = CardBuilder::new(CardId::new(), "Reserved resource").card_types(vec![CardType::Creature]).build();
+        let card = CardBuilder::new(CardId::new(), "Reserved resource")
+            .card_types(vec![CardType::Creature])
+            .build();
         let creature = game.create_object_from_card(&card, alice, Zone::Battlefield);
         game.remove_summoning_sickness(creature);
-        game.object_mut(creature).unwrap().abilities_mut().push(crate::ability::Ability::mana(
-            crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()), vec![ManaSymbol::Green]));
+        game.object_mut(creature)
+            .unwrap()
+            .abilities_mut()
+            .push(crate::ability::Ability::mana(
+                crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()),
+                vec![ManaSymbol::Green],
+            ));
         let source = game.new_object_id();
-        let mut request = request(&game, alice, source, ManaCost::from_symbols(vec![ManaSymbol::Green]));
+        let mut request = request(
+            &game,
+            alice,
+            source,
+            ManaCost::from_symbols(vec![ManaSymbol::Green]),
+        );
         request.reserved_tap_sources.push(creature);
-        assert!(plan_mana_payment(&game, &request).is_err(), "Harmonize cannot share a tap with a mana ability");
+        assert!(
+            plan_mana_payment(&game, &request).is_err(),
+            "Harmonize cannot share a tap with a mana ability"
+        );
         request.reserved_tap_sources.clear();
         request.reserved_permanent_sources.push(creature);
-        assert!(plan_mana_payment(&game, &request).is_ok(), "an Emerge or Offering sacrifice may tap for mana first");
+        assert!(
+            plan_mana_payment(&game, &request).is_ok(),
+            "an Emerge or Offering sacrifice may tap for mana first"
+        );
         game.object_mut(creature).unwrap().abilities_mut().clear();
-        game.object_mut(creature).unwrap().abilities_mut().push(crate::ability::Ability::mana(
-            crate::cost::TotalCost::from_cost(crate::costs::Cost::sacrifice_self()), vec![ManaSymbol::Green]));
-        assert!(plan_mana_payment(&game, &request).is_err(), "a mana ability cannot consume a reserved sacrifice");
+        game.object_mut(creature)
+            .unwrap()
+            .abilities_mut()
+            .push(crate::ability::Ability::mana(
+                crate::cost::TotalCost::from_cost(crate::costs::Cost::sacrifice_self()),
+                vec![ManaSymbol::Green],
+            ));
+        assert!(
+            plan_mana_payment(&game, &request).is_err(),
+            "a mana ability cannot consume a reserved sacrifice"
+        );
     }
 
     #[test]

@@ -59,6 +59,10 @@ pub(super) fn target_phrase_excludes_chooser_controller(tokens: &[OwnedLexToken]
 }
 
 pub fn parse_choose_target_shape(tokens: &[OwnedLexToken]) -> Option<ChooseTargetShape<'_>> {
+    if crate::grammar::effects::chain_splitting::has_authored_comma_then_surface_tokens(tokens) {
+        return None;
+    }
+
     let (chooser, tail) = if let Some((_, tail)) = primitives::parse_prefix(
         tokens,
         (

@@ -4332,6 +4332,24 @@ fn evaluate_condition_in_context(
                 game.ability_activation_count_this_turn(ctx.source, ability_index) < *limit
             })
         }
+        Condition::MaxActivationsPerObject(limit) => {
+            let Some(ctx) = ctx.external() else {
+                return Ok(false);
+            };
+            Ok({
+                if ctx.options.ignore_activation_limits {
+                    return Ok(true);
+                }
+                let Some(ability_index) = ctx.ability_index else {
+                    return Ok(false);
+                };
+                let Some(origin) = game.current_characteristics(ctx.source)
+                    .and_then(|chars| chars.abilities.origin(ability_index).cloned()) else {
+                    return Ok(false);
+                };
+                game.turn_store.ability_activations_per_object.get(&(ctx.source, origin)).copied().unwrap_or(0) < *limit
+            })
+        }
         Condition::SourceIsEquipped => {
             if ctx.is_cast_time() {
                 return Ok(false);

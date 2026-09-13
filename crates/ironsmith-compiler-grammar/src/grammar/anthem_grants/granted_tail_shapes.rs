@@ -83,8 +83,13 @@ pub fn parse_granted_subject_facts(tokens: &[OwnedLexToken]) -> GrantedSubjectFa
         .iter()
         .filter_map(OwnedLexToken::as_word)
         .collect::<Vec<_>>();
+    // Here "counter" is a noun in the subject's qualification, not the
+    // imperative action rejected by this static-grant family.
+    let action_tokens = if words.ends_with(&["with", "a", "counter", "on", "it"]) {
+        &tokens[..tokens.len() - 5]
+    } else { tokens };
     GrantedSubjectFacts {
-        rejected_action: contains_parser(tokens, || parse_rejected_subject_action),
+        rejected_action: contains_parser(action_tokens, || parse_rejected_subject_action),
         has_may: contains_parser(tokens, || primitives::kw("may").void()),
         attached_subject: primitives::parse_prefix(tokens, parse_attached_subject_head).is_some(),
         unbound_pronoun: crate::word_primitives::parse_any_sequence_complete(

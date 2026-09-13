@@ -811,6 +811,33 @@ pub fn resolve_it_tag(
         return Ok(resolved);
     }
 
+        if refs.has_source_object_antecedent()
+            && refs.known_last_object_tag().is_none_or(|tag| {
+                tag.as_str() == crate::tag::CompilerReferenceTag::Triggering.as_str()
+            })
+            && resolved.attached_to_object.is_none()
+            && resolved.tagged_constraints.iter().any(|constraint| {
+                constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                    && constraint.relation == TaggedOpbjectRelation::AttachedToTaggedObject
+            })
+        {
+            // In a source-triggered clause, "attached to it" relates the
+            // counted objects to the source; it is not a disposable identity
+            // qualifier on those objects.
+            resolved.attached_to_object = Some(Box::new(ObjectFilter {
+                source: true,
+                ..ObjectFilter::default()
+            }));
+            resolved.tagged_constraints.retain(|constraint| {
+                constraint.tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str()
+                    || constraint.relation != TaggedOpbjectRelation::AttachedToTaggedObject
+            });
+            if !resolved.tagged_constraints.iter().any(|constraint| {
+                constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+            }) {
+                return Ok(resolved);
+            }
+        }
     let Some(tag) = refs.known_last_object_tag() else {
         let mut saw_it_constraint = false;
         let mut preserved_runtime_it_constraint = false;
@@ -1283,6 +1310,23 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
             Box::new(resolve_value_it_tag(value, refs)?),
             *multiplier,
         )),
+        Value::SurfaceHinted { value, hints }
+            if hints.contains(&ironsmith_core::ValueSurfaceHint::LifeGainedAmount)
+                && !refs.allow_life_event_value
+                && matches!(value.unhinted(), Value::EventValue(EventValueSpec::LifeAmount)) =>
+        {
+            let id = refs.known_last_effect_id().ok_or_else(|| {
+                CardTextError::ParseError("life-gain amount requires a triggering event or prior effect".to_string())
+            })?;
+            Ok(Value::SurfaceHinted {
+                value: Box::new(Value::EffectMetric {
+                    effect_id: id,
+                    source: ironsmith_core::EffectMetricSource::Outcome,
+                    metric: ironsmith_core::EffectMetric::LifeGained,
+                }),
+                hints: hints.clone(),
+            })
+        }
         Value::SurfaceHinted { value, hints } => Ok(Value::SurfaceHinted {
             value: Box::new(resolve_value_it_tag(value, refs)?),
             hints: hints.clone(),

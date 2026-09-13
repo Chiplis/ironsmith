@@ -120,14 +120,24 @@ pub trait DecisionMaker {
         ctx: &crate::decisions::context::ManaPaymentContext,
     ) -> crate::mana_payment::ManaPaymentResponse {
         let options = crate::decisions::context::SelectOptionsContext::new(
-            ctx.player, Some(ctx.source), format!("Confirm mana payment for {}", ctx.subject),
-            vec![crate::decisions::context::SelectableOption::new(1, "Confirm payment"),
-                 crate::decisions::context::SelectableOption::new(0, "Cancel")], 1, 1);
+            ctx.player,
+            Some(ctx.source),
+            format!("Confirm mana payment for {}", ctx.subject),
+            vec![
+                crate::decisions::context::SelectableOption::new(1, "Confirm payment"),
+                crate::decisions::context::SelectableOption::new(0, "Cancel"),
+            ],
+            1,
+            1,
+        );
         if self.decide_options(game, &options).first().copied() == Some(1) {
             crate::mana_payment::ManaPaymentResponse::Confirm {
-                plan_id: ctx.plan.id, request_hash: ctx.plan.request_hash,
+                plan_id: ctx.plan.id,
+                request_hash: ctx.plan.request_hash,
             }
-        } else { crate::mana_payment::ManaPaymentResponse::Cancel }
+        } else {
+            crate::mana_payment::ManaPaymentResponse::Cancel
+        }
     }
 
     /// Ordering (blockers, attackers, scry, surveil).

@@ -68,6 +68,20 @@ fn etb_starts_with_trigger_intro_after_label(tokens: &[OwnedLexToken]) -> bool {
     etb_grammar::parse_etb_trigger_intro_prefix_tokens(body_tokens).is_some()
 }
 
+pub fn parse_enters_under_chosen_control_line(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>,CardTextError> {
+    let tokens=trim_edge_punctuation(tokens);
+    let Some(enters)=tokens.iter().position(|token|token.is_word("enters")) else {return Ok(None);};
+    if !starts_with_etb_source_reference(&tokens[..enters]) {return Ok(None);}
+    let words=crate::grammar::primitives::TokenWordView::new(&tokens[enters+1..]).to_word_refs();
+    let words=words.strip_prefix(&["the","battlefield"]).unwrap_or(&words);
+    let players=match words {
+        ["under","the","control","of","an","opponent","of","your","choice"] => PlayerFilter::Opponent,
+        ["under","the","control","of","a","player","of","your","choice"] => PlayerFilter::Any,
+        _ => return Ok(None),
+    };
+    Ok(Some(StaticAbility::enters_under_chosen_control(players)))
+}
+
 pub fn parse_enters_tapped_with_counters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
@@ -437,8 +451,11 @@ fn parse_enters_with_counter_conjunction_tail_tokens(
     while rest
         .first()
         .is_some_and(|token| etb_token_word_is(token, ETB_AND_WORD))
+        || parse_value(&rest).is_some()
     {
-        rest = trim_commas(&rest[1..]);
+        if rest.first().is_some_and(|token| etb_token_word_is(token, ETB_AND_WORD)) {
+            rest = trim_commas(&rest[1..]);
+        }
         let (count, used) = if rest
             .first()
             .is_some_and(|token| etb_token_word_is_any(token, ETB_ARTICLE_WORDS))
@@ -3819,6 +3836,15 @@ mod party_value_tests {
     }
 
     #[test]
+    fn opponent_total_life_lost_binding_consumes_complete_clause() {
+        assert_eq!(
+            parse_value_binding_clause(&lex("where X is the total amount of life your opponents have lost this turn")),
+            Some(Value::LifeLostThisTurn(PlayerFilter::Opponent)),
+        );
+        assert!(parse_value_binding_clause(&lex("where X is the total amount of life your opponents have lost this turn nonsense")).is_none());
+    }
+
+    #[test]
     fn value_binding_dispatch_prioritizes_qualified_players_over_all_cards_in_hands() {
         assert_eq!(
             parse_value_binding_clause(&lex(
@@ -4060,5 +4086,22 @@ mod spell_cast_history_aggregate_tests {
             format!("{left:?}").contains("Age"),
             "expected age-counter basis, got {left:?}"
         );
+    }
+}
+
+#[cfg(test)]
+mod chosen_entry_controller_grammar_tests {
+    use super::*;
+    #[test]
+    fn source_entry_controller_choice_consumes_complete_clause() {
+        for text in ["This creature enters under the control of an opponent of your choice.","This permanent enters the battlefield under the control of an opponent of your choice."] {
+            let tokens=crate::lexer::lex_line(text,0).unwrap();
+            let ability=parse_enters_under_chosen_control_line(&tokens).unwrap().expect("source entry choice");
+            assert!(matches!(ability.payload,ironsmith_core::StaticAbilityPayload::EntersUnderChosenControl(PlayerFilter::Opponent)));
+        }
+        for text in ["Another creature enters under the control of an opponent of your choice.","This creature enters under the control of an opponent of your choice and draw a card.","This creature enters under the control of an opponent of their choice."] {
+            let tokens=crate::lexer::lex_line(text,0).unwrap();
+            assert!(parse_enters_under_chosen_control_line(&tokens).unwrap().is_none(),"accepted wrong subject, residue, or chooser: {text}");
+        }
     }
 }

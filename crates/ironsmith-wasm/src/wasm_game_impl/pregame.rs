@@ -4693,3 +4693,139 @@ mod conspiracy_setup_tests {
         assert!(game.game.conspiracy.is_none());
     }
 }
+
+#[cfg(test)]
+mod abby_survivors_pair_tests {
+    use super::*;
+
+    #[test]
+    fn canonical_abby_requires_matching_survivors_partner_group() {
+        let payloads = ironsmith_tools::load_card_payloads_by_name(
+            ironsmith_tools::default_cards_path().to_str().unwrap(),
+            "Abby, Merciless Soldier",
+        ).unwrap();
+        assert_eq!(payloads.len(), 1);
+        let abby = ironsmith_tools::compile_definition_from_payload(&payloads[0]).unwrap();
+        for (keyword, legendary, expected) in [
+            ("Partner—Survivors", true, true),
+            ("Partner—Friends forever", true, false),
+            ("Partner", true, false),
+            ("Partner—Survivors", false, false),
+        ] {
+            let partner = ironsmith_registry_test::cards::builders::CardDefinitionBuilder::new(
+                CardId::new(), "Commander Pair Fixture",
+            )
+            .card_types(vec![CardType::Creature])
+            .supertypes(if legendary { vec![Supertype::Legendary] } else { vec![] })
+            .parse_text(keyword).expect("partner fixture must compile");
+            assert_eq!(WasmGame::commander_pair_is_legal(&abby, &partner), expected,
+                "{keyword}, legendary={legendary}");
+            assert_eq!(WasmGame::commander_pair_is_legal(&partner, &abby), expected,
+                "pair order must not change legality: {keyword}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod abby_native_replay_tests {
+    use super::*;
+    #[test]
+    fn canonical_abby_native_entry_choice_replays_selected_opponent() {
+        let _guard = crate::test_id_counter_guard();
+        let mut wasm = WasmGame::new();
+        let alice = PlayerId::from_index(0);
+        let cara = PlayerId::from_index(2);
+        wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into(), "Cara".into()], 20, 17);
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+        wasm.game.turn.step = None;
+        let payloads = ironsmith_tools::load_card_payloads_by_name(
+            ironsmith_tools::default_cards_path().to_str().unwrap(), "Abby, Merciless Soldier",
+        ).unwrap();
+        let definition = ironsmith_tools::compile_definition_from_payload(&payloads[0]).unwrap();
+        let source = wasm.game.create_object_from_definition(&definition, alice, Zone::Stack);
+        let stable = wasm.game.object(source).unwrap().stable_id;
+        wasm.game.push_to_stack(StackEntry::new(source, alice));
+        let root = ReplayRoot::Response(PriorityResponse::PriorityAction(LegalAction::PassPriority));
+        let mut prompt_checkpoint = None;
+        for _ in 0..3 {
+            let checkpoint = wasm.capture_replay_checkpoint();
+            let outcome = wasm.execute_with_replay(&checkpoint, &root, &[]).unwrap();
+            if let ReplayOutcome::NeedsDecision(DecisionContext::SelectOptions(ctx)) = outcome {
+                assert_eq!(ctx.player, alice);
+                assert_eq!(ctx.options.iter().map(|option| option.index).collect::<Vec<_>>(), vec![1, 2]);
+                prompt_checkpoint = Some(checkpoint);
+                break;
+            }
+        }
+        let checkpoint = prompt_checkpoint.expect("entry controller must require a decision");
+        for player in [alice, PlayerId::from_index(1), cara] {
+            assert!(wasm.game.permanents_controlled_by(player).is_empty(),
+                "entry cannot commit before the controller choice is answered");
+        }
+        let outcome = wasm.execute_with_replay(&checkpoint, &root, &[ReplayDecisionAnswer::Options(vec![2])]).unwrap();
+        assert!(matches!(outcome, ReplayOutcome::Complete(_)));
+        let entered = wasm.game.find_object_by_stable_id(stable).unwrap();
+        assert_eq!(wasm.game.object(entered).unwrap().zone, Zone::Battlefield);
+        assert_eq!(wasm.game.object(entered).unwrap().owner, alice);
+        assert_eq!(wasm.game.current_controller(entered), Some(cara));
+        assert!(wasm.game.stack.is_empty());
+        assert_eq!(wasm.game.permanents_controlled_by(cara), vec![entered]);
+        assert!(wasm.game.permanents_controlled_by(PlayerId::from_index(1)).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod power_up_native_replay_tests {
+    use super::*;
+    #[test]
+    fn canonical_power_up_replays_each_hybrid_reduction_choice() {
+        let _guard = crate::test_id_counter_guard();
+        let mut wasm = WasmGame::new();
+        let alice = PlayerId::from_index(0);
+        wasm.initialize_empty_match(vec!["Alice".into(),"Bob".into()],20,17);
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+        wasm.game.turn.step = None;
+        let payloads = ironsmith_tools::load_card_payloads_by_name(
+            ironsmith_tools::default_cards_path().to_str().unwrap(),"Abomination, Terrifying Titan").unwrap();
+        let definition = ironsmith_tools::compile_definition_from_payload(&payloads[0]).unwrap();
+        let source = wasm.game.create_object_from_definition(&definition,alice,Zone::Hand);
+        let source = wasm.game.move_object_with_etb_processing(source,Zone::Battlefield).unwrap().new_id;
+        for (symbol,amount) in [(ironsmith::mana::ManaSymbol::Colorless,10),(ironsmith::mana::ManaSymbol::Red,4),(ironsmith::mana::ManaSymbol::Green,4)] {
+            wasm.game.player_mut(alice).unwrap().mana_pool.add(symbol,amount);
+        }
+        let action = ironsmith::decision::compute_legal_actions(&wasm.game,alice).into_iter()
+            .find(|action| matches!(action,LegalAction::ActivateAbility{source:id,..} if *id==source)).unwrap();
+        let root = ReplayRoot::Response(PriorityResponse::PriorityAction(action));
+        let checkpoint = wasm.capture_replay_checkpoint();
+        let outcome = wasm.execute_with_replay(&checkpoint,&root,&[]).unwrap();
+        let ReplayOutcome::NeedsDecision(DecisionContext::SelectOptions(ctx)) = outcome else {panic!("expected reduction choice")};
+        assert_eq!(ctx.player,alice);
+        let mut descriptions = ctx.options.iter().map(|option| option.description.as_str()).collect::<Vec<_>>();
+        descriptions.sort();
+        assert_eq!(descriptions,vec!["{1}{G}{G}","{1}{R}{R}","{2}{G}","{2}{R}"]);
+        assert!(wasm.game.stack.is_empty());
+        assert_eq!(wasm.game.player(alice).unwrap().mana_pool.total(),18,"no payment before answer");
+        assert!(wasm.game.turn_store.ability_activations_per_object.is_empty(),"no use before answer");
+        for option in ctx.options {
+            let outcome = wasm.execute_with_replay(&checkpoint,&root,&[ReplayDecisionAnswer::Options(vec![option.index])]).unwrap();
+            let ReplayOutcome::Complete(mut progress) = outcome else {panic!("answer should resolve reduction choice")};
+            if let Some(pending) = wasm.priority_state.pending_activation.as_ref() {
+                assert_eq!(pending.mana_cost_to_pay.as_ref().unwrap().to_oracle(),option.description);
+            }
+            let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
+            for _ in 0..24 {
+                if !wasm.game.stack.is_empty() {break;}
+                let GameProgress::NeedsDecisionCtx(context) = progress else {panic!("{progress:?}")};
+                progress = ironsmith::game_loop::apply_decision_context_with_dm(
+                    &mut wasm.game,&mut wasm.trigger_queue,&mut wasm.priority_state,&context,&mut dm).unwrap();
+            }
+            assert_eq!(wasm.game.stack.len(),1);
+            assert_eq!(wasm.game.player(alice).unwrap().mana_pool.total(),15);
+            assert_eq!(wasm.game.turn_store.ability_activations_per_object.values().sum::<u32>(),1);
+        }
+    }
+}

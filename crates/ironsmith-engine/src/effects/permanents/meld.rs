@@ -381,6 +381,7 @@ mod tests {
             blockers: Default::default(),
             damage_assignment_order: Default::default(),
             attacking_bands: Default::default(),
+            blocked_attackers: Default::default(),
             had_to_attack_this_combat: Default::default(),
         });
 

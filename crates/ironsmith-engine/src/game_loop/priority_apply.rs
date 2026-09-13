@@ -744,6 +744,8 @@ pub fn apply_priority_response_with_dm(
                 let pending = PendingActivation::new(
                     *source,
                     *ability_index,
+                    game.current_characteristics(*source)
+                        .and_then(|chars| chars.abilities.origin(*ability_index).cloned()),
                     player,
                     activation_provenance,
                     stage,
@@ -772,9 +774,7 @@ pub fn apply_priority_response_with_dm(
                 continue_activation(game, trigger_queue, state, pending, &mut *decision_maker)
             } else {
                 // No choices needed - put ability on stack directly
-                if is_turn_capped {
-                    game.record_ability_activation(*source, *ability_index);
-                }
+                game.record_ability_activation(*source, *ability_index);
                 if is_loyalty_ability {
                     game.record_loyalty_ability_activation(*source);
                 }

@@ -656,53 +656,34 @@ impl TurnHistory {
     pub fn object_was_discarded_or_cycled_by_this_turn(
         &self,
         object_id: ObjectId,
-        stable_id: StableId,
+        _stable_id: StableId,
         player: PlayerId,
     ) -> bool {
-        let discarded = self
-            .projected_records()
-            .filter_map(|record| record.event.downcast::<CardDiscardedEvent>())
-            .filter(|event| event.player == player)
-            .any(|event| {
-                event.card == object_id
-                    || event
-                        .snapshot
-                        .as_ref()
-                        .is_some_and(|snapshot| snapshot.stable_id == stable_id)
-                    || event
-                        .batch_snapshots
-                        .iter()
-                        .any(|snapshot| snapshot.stable_id == stable_id)
-                    || event.batch_cards.contains(&object_id)
-            });
-        if discarded {
-            return true;
-        }
-
-        self.projected_records()
-            .filter_map(|record| {
-                record
-                    .event
-                    .downcast::<KeywordActionEvent>()
-                    .map(|event| (record, event))
+        // Discard history may find the object created by that hand departure,
+        // but must not follow the physical card through later zone changes.
+        let is_discard_result = |hand_id: ObjectId| {
+            object_id == hand_id || self.projected_records().any(|record| {
+                record.event.downcast::<ZoneChangeEvent>().is_some_and(|event| {
+                    event.from == Zone::Hand
+                        && event.snapshots().iter().any(|snapshot| snapshot.object_id == hand_id)
+                        && if event.result_objects.is_empty() {
+                            event.objects.contains(&object_id)
+                        } else {
+                            event.result_objects.contains(&object_id)
+                        }
+                })
             })
-            .filter(|(_, event)| event.action == KeywordActionKind::Cycle && event.player == player)
-            .any(|(record, event)| {
-                event.source == object_id
-                    || event
-                        .snapshot
-                        .as_ref()
-                        .is_some_and(|snapshot| snapshot.stable_id == stable_id)
-                    || record
-                        .source_snapshot
-                        .as_ref()
-                        .is_some_and(|snapshot| snapshot.stable_id == stable_id)
-                    || event.object_tags.values().any(|snapshots| {
-                        snapshots
-                            .iter()
-                            .any(|snapshot| snapshot.stable_id == stable_id)
-                    })
+        };
+        self.projected_records().any(|record| {
+            if let Some(event) = record.event.downcast::<CardDiscardedEvent>() {
+                return event.player == player && is_discard_result(event.card);
+            }
+            record.event.downcast::<KeywordActionEvent>().is_some_and(|event| {
+                event.action == KeywordActionKind::Cycle
+                    && event.player == player
+                    && is_discard_result(event.source)
             })
+        })
     }
 
     pub fn player_was_dealt_damage_by_creature_this_turn(&self, player: PlayerId) -> bool {

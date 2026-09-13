@@ -767,6 +767,13 @@ fn parse_mixed_target_and_all_exile_list(
     let mut effects = Vec::new();
     let mut target = parse_target_phrase(&first_segment)?;
     apply_exile_subject_hand_owner_context(&mut target, subject);
+    // A comma-separated source permanent and universal sets are one exile
+    // instruction. Select their complete union before moving any member.
+    let source_words = crate::lexer::token_word_refs(&first_segment);
+    let coordinated_source = !until_source_leaves
+        && matches!(&target, TargetAst::Source(_))
+        && matches!(source_words.as_slice(), ["this", "artifact" | "creature" | "enchantment" | "land" | "planeswalker" | "battle" | "permanent"]);
+    let mut coordinated_filters = vec![ObjectFilter::source().in_zone(Zone::Battlefield)];
     effects.push(if until_source_leaves {
         EffectAst::subject_verb_exile_until_source_leaves(target, face_down)
     } else {
@@ -783,6 +790,9 @@ fn parse_mixed_target_and_all_exile_list(
         }
         let mut filter = parse_object_filter_lexed(&filter_tokens, false)?;
         apply_exile_subject_owner_context(&mut filter, subject);
+        if coordinated_source {
+            coordinated_filters.push(filter.clone());
+        }
         effects.push(if until_source_leaves {
             EffectAst::subject_verb_exile_all_until_source_leaves(
                 TargetAst::Object(filter, None, None),
@@ -793,6 +803,12 @@ fn parse_mixed_target_and_all_exile_list(
         });
     }
 
+    if coordinated_source {
+        let mut union = ObjectFilter::default();
+        union.any_of = coordinated_filters;
+        union.set_conjunctive_set_surface(true);
+        return Ok(Some(EffectAst::subject_verb_exile_all(union, face_down)));
+    }
     Ok(Some(EffectAst::Sequence { effects }))
 }
 

@@ -159,6 +159,7 @@ pub(super) fn recognize_named_source_action_surfaces(info: &LineInfo, effects: &
     apply(info, effects);
     recognize_delayed_source_characteristic_surface(info, effects);
     crate::util::recognize_unique_source_action_surface(effects, &info.source_tokens, "exile");
+    crate::util::recognize_unique_source_action_surface(effects, &info.source_tokens, "regenerate");
     crate::util::recognize_transformed_source_return_pronoun(effects, &info.source_tokens);
 }
 
@@ -196,7 +197,7 @@ fn recognize_delayed_source_characteristic_surface(info: &LineInfo, effects: &mu
             TriggerSpec::AnyOf(branches) => {
                 for branch in branches { trigger(branch, power, visit); }
             }
-            TriggerSpec::SpellCast { filter: Some(f), .. } => filter(f, power, visit),
+            TriggerSpec::SpellCast { filter: Some(f), .. } | TriggerSpec::SpellCastSameNameCardInZone { filter: Some(f), .. } => filter(f, power, visit),
             _ => {}
         }
     }

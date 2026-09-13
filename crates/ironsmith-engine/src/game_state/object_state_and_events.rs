@@ -1175,8 +1175,10 @@ impl GameState {
         let Some(combat) = self.combat.as_mut() else {
             return;
         };
+        combat.remember_blocked_attackers();
         combat.attackers.retain(|attacker| attacker.creature != id);
         combat.blockers.remove(&id);
+        combat.blocked_attackers.remove(&id);
         combat.damage_assignment_order.remove(&id);
         combat
             .attacking_bands
@@ -1353,6 +1355,7 @@ impl GameState {
             choices.chosen_basic_land_types.remove(&id);
             choices.chosen_land_types.remove(&id);
             choices.chosen_creature_types.remove(&id);
+            choices.secret_chosen_subtypes.remove(&id);
             choices.chosen_creature_type_sets.remove(&id);
             choices.chosen_card_types.remove(&id);
             choices.chosen_players.remove(&id);
@@ -1727,6 +1730,21 @@ impl GameState {
             .entry(permanent_id)
             .or_default()
             .insert(subtype);
+    }
+
+    /// Store a hidden choice on this exact object, without publishing it as a characteristic.
+    pub fn set_secret_chosen_subtype(&mut self, source: ObjectId, chooser: PlayerId, subtype: crate::types::Subtype) {
+        self.choice_store_mut().secret_chosen_subtypes.insert(source, (chooser, subtype));
+    }
+
+    pub(crate) fn secret_subtype_snapshot(&self, source: ObjectId) -> Option<(PlayerId, crate::types::Subtype)> {
+        self.choice_store.secret_chosen_subtypes.get(&source).copied()
+    }
+
+    /// A hidden choice can be inspected only by the player who made it.
+    pub fn secret_chosen_subtype(&self, source: ObjectId, viewer: PlayerId) -> Option<crate::types::Subtype> {
+        self.choice_store.secret_chosen_subtypes.get(&source)
+            .filter(|(chooser, _)| *chooser == viewer).map(|(_, subtype)| *subtype)
     }
 
     /// Get a chosen creature type for a permanent, if any.

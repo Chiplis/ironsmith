@@ -87,7 +87,7 @@ pub use effect::{
     BecomeMonarchEffect, BecomeSaddledUntilEotEffect, BeholdEffect, BidLifeEffect, BolsterEffect,
     CantEffect, CastSourceEffect, CastTaggedEffect, ChoiceAggregateConstraint,
     ChoiceAggregateMetric, ChoiceCount, ChooseCardNameEffect, ChooseCardTypeEffect,
-    ChooseColorEffect, ChooseCreatureTypeEffect, ChooseLandTypeEffect, ChooseModeEffect,
+    ChooseColorEffect, ChooseCreatureTypeEffect, RevealChosenSubtypeEffect, ChooseLandTypeEffect, ChooseModeEffect,
     ChooseNamedOptionEffect, ChooseNewTargetsEffect, ChooseObjectsEffect, ChoosePlayerEffect,
     ChooseSpellCastHistoryEffect, CipherEffect, ClashEffect, ClashOpponentMode, ClearGoadEffect,
     ClearSuspectedEffect, CoinFace, CoinFlipKind, CombatDamagePreventionTarget, ConditionalEffect,

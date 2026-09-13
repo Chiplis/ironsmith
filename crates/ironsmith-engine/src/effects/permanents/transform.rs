@@ -102,7 +102,14 @@ fn execute_transform_like_action(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
 ) -> Result<EffectOutcome, ExecutionError> {
-    let target_id = if let ChooseSpec::Tagged(tag) = target {
+    let target_id = if matches!(target.base(), ChooseSpec::Source) {
+        // A source that left the battlefield is a different object if it
+        // returns. An old transform ability cannot follow that incarnation.
+        if !game.object(ctx.source).is_some_and(|object| object.zone == Zone::Battlefield) {
+            return Ok(EffectOutcome::resolved());
+        }
+        ctx.source
+    } else if let ChooseSpec::Tagged(tag) = target {
         ctx.get_tagged_all(tag)
             .and_then(|snapshots| {
                 snapshots

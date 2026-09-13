@@ -210,6 +210,7 @@ pub(super) fn calculate_with_layers(
             // how long each permanent has continuously had the World
             // supertype, including type- and copy-changing effects.
             let had_world = chars.supertypes.contains(&Supertype::World);
+            chars.abilities.begin_effect(effect);
             match &effect.modification {
                 // Layer 1: Copy
                 Modification::CopyOf {
@@ -231,6 +232,7 @@ pub(super) fn calculate_with_layers(
                         name_override,
                         name_override_surface,
                         add_supertypes,
+                        Some(effect.into()),
                     );
                 }
 
@@ -244,6 +246,7 @@ pub(super) fn calculate_with_layers(
                 Modification::SetTextBox(overlay) => {
                     chars.compiled_card_text = overlay.compiled_card_text.clone();
                     chars.abilities = overlay.abilities.clone().into();
+                    chars.abilities.rebind(effect);
                     chars.static_abilities = extract_static_abilities(&overlay.abilities).into();
                 }
                 Modification::SetName(name) => {
@@ -361,6 +364,7 @@ pub(super) fn calculate_with_layers(
                 }
                 Modification::SetAbilities(abilities) => {
                     chars.abilities = abilities.clone().into();
+                    chars.abilities.rebind(effect);
                     chars.static_abilities = extract_static_abilities(abilities).into();
                 }
                 Modification::CopyActivatedAbilities {
@@ -417,7 +421,7 @@ pub(super) fn calculate_with_layers(
                             continue;
                         }
 
-                        for ability in &candidate_chars.abilities {
+                        for (ability_index, ability) in candidate_chars.abilities.iter().enumerate() {
                             let AbilityKind::Activated(activated) = &ability.kind else {
                                 continue;
                             };
@@ -435,7 +439,10 @@ pub(super) fn calculate_with_layers(
                             {
                                 activated.timing = crate::ability::ActivationTiming::OncePerTurn;
                             }
-                            chars.abilities.push(copied);
+                            chars.abilities.push_with_origin(copied, AbilityOrigin::Borrowed {
+                        effect: effect.into(), source: candidate.id,
+                        origin: Box::new(candidate_chars.abilities.origin(ability_index).unwrap().clone()),
+                    });
                         }
                     }
                 }

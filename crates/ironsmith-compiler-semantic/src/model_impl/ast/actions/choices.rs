@@ -13,6 +13,8 @@ pub enum ChoiceActionAst {
         options: Vec<String>,
     },
     ChooseCreatureType {
+        allowed_subtypes: Vec<Subtype>,
+        secretly: bool,
         excluded_subtypes: Vec<Subtype>,
         family: SubtypeFamily,
     },

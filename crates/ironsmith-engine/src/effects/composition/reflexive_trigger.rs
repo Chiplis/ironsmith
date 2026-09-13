@@ -161,6 +161,9 @@ fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> Objec
         .object(memory.object_id)
         .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game))
         .unwrap_or_else(|| ObjectSnapshot {
+            chosen_subtype: None,
+            secret_chosen_subtype: None,
+            chosen_object: None,
             object_id: memory.object_id,
             stable_id: memory.stable_id,
             kind: if memory.is_token {
@@ -207,6 +210,7 @@ fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> Objec
             transform_count: 0,
             attached_to: None,
             attachments: Vec::new(),
+        attachment_snapshots: Vec::new(),
             was_enchanted: false,
             is_monstrous: false,
             is_prepared: false,

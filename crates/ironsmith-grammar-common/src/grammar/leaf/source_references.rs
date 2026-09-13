@@ -74,6 +74,13 @@ pub fn parse_leaf_source_reference_aliases_for_name(name: &str) -> Vec<LeafSourc
     }
 
     for full_name in &full_names {
+        if let Some(short_name) = parse_multiword_name_before_of(full_name) {
+            push_leaf_source_reference_alias(
+                &mut aliases,
+                short_name,
+                SourceReferenceSurface::ShortName(short_name.to_string()),
+            );
+        }
         if let Some(short_name) = parse_name_prefix(full_name, parse_comma_short_name) {
             let short_name = short_name.trim();
             push_leaf_source_reference_alias(
@@ -109,6 +116,15 @@ pub fn parse_leaf_source_reference_aliases_for_name(name: &str) -> Vec<LeafSourc
 
     sort_leaf_source_reference_aliases(&mut aliases);
     aliases
+}
+
+/// A multiword personal name can precede an epithet introduced by "of".
+/// Keep the whole personal name so replacing its first word cannot strand
+/// the rest of that name in a source-reference clause.
+pub fn parse_multiword_name_before_of(name: &str) -> Option<&str> {
+    let (prefix, epithet) = name.split_once(" of ")?;
+    (prefix.split_whitespace().count() >= 2 && !epithet.trim().is_empty())
+        .then_some(prefix.trim())
 }
 
 pub fn push_leaf_source_reference_alias(

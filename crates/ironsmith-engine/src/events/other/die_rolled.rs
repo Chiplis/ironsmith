@@ -17,6 +17,9 @@ pub struct DieRolledEvent {
     /// Planar-die rolls trigger generic roll observers but have no numerical
     /// result for effects that compare or inspect die numbers (CR 901.9d).
     pub is_planar: bool,
+    /// True only for a roll made to visit Attractions, including rolls caused
+    /// by an effect. An ordinary d6 roll is not an Attraction visit roll.
+    pub is_attraction_visit: bool,
 }
 
 impl DieRolledEvent {
@@ -38,6 +41,7 @@ impl DieRolledEvent {
             result,
             sides,
             is_planar: false,
+            is_attraction_visit: false,
         }
     }
 
@@ -49,7 +53,13 @@ impl DieRolledEvent {
             result: encoded_face,
             sides: 6,
             is_planar: true,
+            is_attraction_visit: false,
         }
+    }
+
+    pub fn for_attraction_visit(mut self) -> Self {
+        self.is_attraction_visit = true;
+        self
     }
 }
 

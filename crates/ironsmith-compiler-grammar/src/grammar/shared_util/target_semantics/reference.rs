@@ -312,6 +312,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
             crate::tag::CompilerReferenceTag::ChosenObjects.bind(),
             TaggedOpbjectRelation::IsTaggedObject,
         );
+        crate::object_filters::preserve_chosen_object_reference_noun(&mut filter, tokens);
         return Ok(wrap_target_count(
             TargetAst::Object(filter, None, None),
             target_count,
@@ -1008,6 +1009,17 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     }
     let reference_span =
         if let Some(surface) = typed_demonstrative_reference_surface(remaining) {
+            let words = TokenWordView::new(remaining).to_word_refs();
+            // A bare reference such as "that creature card" identifies the
+            // earlier card in its own zone. The creature noun must not add
+            // an implicit battlefield constraint to a hand/graveyard card.
+            if filter.zone == Some(Zone::Battlefield)
+                && words.len() >= 2
+                && matches!(words.last(), Some(&"card" | &"cards"))
+                && words[1..words.len() - 1].iter().all(|word| crate::util::parse_card_type(word).is_some())
+            {
+                filter.zone = None;
+            }
             filter = filter.match_tagged(
                 crate::tag::CompilerReferenceTag::It.bind(),
                 TaggedOpbjectRelation::IsTaggedObject,

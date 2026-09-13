@@ -61,6 +61,7 @@ pub enum KeywordActionKind {
     UnlockDoor,
     VisitAttraction,
     Vote,
+    Airbend,
 }
 
 impl KeywordActionKind {
@@ -101,6 +102,7 @@ impl KeywordActionKind {
             "discover" | "discovers" | "discovered" | "discovering" => Some(Self::Discover),
             "complete" | "completes" | "completed" | "completing" => Some(Self::CompleteDungeon),
             "evolve" | "evolves" | "evolved" | "evolving" => Some(Self::Evolve),
+            "airbend" | "airbends" | "airbent" | "airbending" => Some(Self::Airbend),
             "earthbend" | "earthbends" => Some(Self::Earthbend),
             "enlist" | "enlists" | "enlisted" | "enlisting" => Some(Self::Enlist),
             "explore" | "explores" | "explored" | "exploring" => Some(Self::Explore),
@@ -162,6 +164,7 @@ impl KeywordActionKind {
             Self::Discover => "discover",
             Self::CompleteDungeon => "complete a dungeon",
             Self::Evolve => "evolve",
+            Self::Airbend => "airbend",
             Self::Earthbend => "earthbend",
             Self::Enlist => "enlist",
             Self::Explore => "explore",
@@ -225,6 +228,7 @@ impl KeywordActionKind {
             Self::Discover => "discovers",
             Self::CompleteDungeon => "completes a dungeon",
             Self::Evolve => "evolves",
+            Self::Airbend => "airbends",
             Self::Earthbend => "earthbends",
             Self::Enlist => "enlists",
             Self::Explore => "explores",

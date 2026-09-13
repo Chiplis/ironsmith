@@ -141,6 +141,9 @@
     if let Some(compact) = describe_reveal_hand_exile_same_name_search_bundle(&filtered) {
         return compact;
     }
+    if let Some(compact) = describe_reveal_hand_choose_prefix(&filtered) {
+        return compact;
+    }
     if let Some(compact) = describe_tempting_offer_creature_return_bundle(&filtered) {
         return compact;
     }

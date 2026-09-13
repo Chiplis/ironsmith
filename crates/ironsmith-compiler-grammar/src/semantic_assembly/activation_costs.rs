@@ -154,6 +154,7 @@ fn assemble_segment(segment: &ActivationCostSegmentCst) -> CompilerCost {
         ActivationCostSegmentCst::ExileTopLibrary { count } => {
             CompilerCost::ExileTopLibrary { count: *count }
         }
+        ActivationCostSegmentCst::RevealChosenSubtype => CompilerCost::RevealChosenSubtype,
         ActivationCostSegmentCst::RevealSourceFromHand => CompilerCost::RevealSourceFromHand,
         ActivationCostSegmentCst::RevealFromHand {
             count,

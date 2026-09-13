@@ -1,5 +1,32 @@
 use super::*;
 
+/// A result clause refers to the triggering roll, not any matching roll from
+/// earlier in the turn. Require the same explicit player on both clauses.
+fn parse_trigger_roll_result_predicate(
+    trigger_tokens: &[OwnedLexToken],
+    predicate_tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    use crate::cards::builders::TriggerSpec;
+    let trigger = crate::clause_support::parse_trigger_clause_lexed(trigger_tokens).ok()?;
+    let player = match trigger {
+        TriggerSpec::PlayerRollsToVisitAttractions { player }
+        | TriggerSpec::PlayerRollsDie { player, .. }
+        | TriggerSpec::PlayerRollsResult { player, .. } => player,
+        _ => return None,
+    };
+    let TriggerSpec::PlayerRollsResult { player: result_player, result } =
+        crate::clause_support::parse_trigger_clause_lexed(predicate_tokens).ok()?
+    else { return None; };
+    if player != result_player {
+        return None;
+    }
+    Some(PredicateAst::ValueComparison {
+        left: Value::EventValue(crate::effect::EventValueSpec::DieResult),
+        operator: ValueComparisonOperator::Equal,
+        right: Value::Fixed(i32::try_from(result).ok()?),
+    })
+}
+
 pub fn split_triggered_conditional_clause_lexed<'a>(
     tokens: &'a [OwnedLexToken],
     start_idx: usize,
@@ -110,7 +137,8 @@ pub fn split_triggered_conditional_clause_lexed<'a>(
         ) {
             continue;
         }
-        if let Some(predicate) = parse_modeled_predicate(predicate_tokens) {
+        if let Some(predicate) = parse_trigger_roll_result_predicate(trigger_tokens, predicate_tokens)
+            .or_else(|| parse_modeled_predicate(predicate_tokens)) {
             if let Some(next_comma_position) =
                 crate::slice_primitives::select_position(&comma_indices, |next_idx| {
                     *next_idx > comma_idx
@@ -185,4 +213,28 @@ pub fn split_state_triggered_clause_lexed<'a>(
         predicate,
         effects_tokens,
     })
+}
+
+#[cfg(test)]
+mod roll_result_tests {
+    use super::*;
+
+    #[test]
+    fn attraction_roll_condition_keeps_event_result_and_complete_body() {
+        let tokens = crate::lexer::lex_line(
+            "Whenever you roll to visit your Attractions, if you roll a 6, you may return this card from your graveyard to the battlefield.", 0).unwrap();
+        let spec = split_triggered_conditional_clause_lexed(&tokens, 1).unwrap();
+        assert_eq!(spec.predicate, PredicateAst::ValueComparison {
+            left: Value::EventValue(crate::effect::EventValueSpec::DieResult),
+            operator: ValueComparisonOperator::Equal,
+            right: Value::Fixed(6),
+        });
+        assert_eq!(spec.effects_tokens[0].parser_text(), "you");
+        assert_eq!(spec.effects_tokens[1].parser_text(), "may");
+        for predicate in ["an opponent rolls a 6", "you roll a 6 and draw a card"] {
+            let header = crate::lexer::lex_line("you roll to visit your Attractions", 0).unwrap();
+            let condition = crate::lexer::lex_line(predicate, 0).unwrap();
+            assert!(parse_trigger_roll_result_predicate(&header, &condition).is_none());
+        }
+    }
 }

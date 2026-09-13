@@ -61,6 +61,7 @@ pub enum EventValueSpec {
     Amount,
     LifeAmount,
     BlockersBeyondFirst { multiplier: i32 },
+    DieResult,
 }
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
 //! "Whenever [source] deals exactly N damage to [object] or [player]" trigger.
 
 use crate::events::{DamageEvent, DamageTarget, EventKind};
-use crate::filter::{ObjectFilterExt as _, PlayerFilterExt as _};
+use crate::filter::PlayerFilterExt as _;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
@@ -79,20 +79,15 @@ impl TriggerMatcher for DealsExactDamageToObjectOrPlayerTrigger {
         if damage.amount != self.amount {
             return false;
         }
-        let Some(source) = ctx.game.object(damage.source) else {
-            return false;
-        };
-        if !self
-            .source_filter
-            .matches(source, &ctx.filter_ctx, ctx.game)
-        {
+        if damage.amount == 0 || !super::damage_object_matches_filter(
+            damage.source, event.source_snapshot(), &self.source_filter, ctx,
+        ) {
             return false;
         }
         match damage.target {
-            DamageTarget::Object(target) => ctx.game.object(target).is_some_and(|object| {
-                self.object_filter
-                    .matches(object, &ctx.filter_ctx, ctx.game)
-            }),
+            DamageTarget::Object(target) => super::damage_object_matches_filter(
+                target, damage.target_snapshot.as_ref(), &self.object_filter, ctx,
+            ),
             DamageTarget::Player(player) => {
                 self.player_filter.matches_player(player, &ctx.filter_ctx)
             }

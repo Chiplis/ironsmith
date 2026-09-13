@@ -280,6 +280,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseIn { target })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Transform { target })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Convert { target })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Connive { target, .. })
@@ -1014,14 +1015,8 @@ pub fn value_references_tag(value: &Value, tag: &str) -> bool {
         | Value::DistinctCounterTypesAmong(filter)
         | Value::DistinctNames(filter)
         | Value::DistinctManaValues(filter)
-        | Value::DistinctPowers(filter) => filter
-            .tagged_constraints
-            .iter()
-            .any(|constraint| constraint.tag.as_str() == tag),
-        Value::StaticAbilitiesAmong { filter, .. } => filter
-            .tagged_constraints
-            .iter()
-            .any(|constraint| constraint.tag.as_str() == tag),
+        | Value::DistinctPowers(filter) => filter_references_tag(filter, tag),
+        Value::StaticAbilitiesAmong { filter, .. } => filter_references_tag(filter, tag),
         Value::PowerOf(spec) | Value::ToughnessOf(spec) => choose_spec_references_tag(spec, tag),
         Value::ManaValueOf(spec) | Value::ManaSymbolsInManaCostOf { spec, .. } => {
             choose_spec_references_tag(spec, tag)
@@ -1397,7 +1392,8 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Bolster { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Support { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Adapt { .. })
-        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { .. })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Exploit)
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ConniveIterated)

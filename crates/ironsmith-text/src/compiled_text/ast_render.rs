@@ -31488,6 +31488,51 @@ fn describe_structural_each_combat_keyword_grant_ladder(
     ))
 }
 
+fn describe_structural_attached_combat_partner_keyword(ability: &Ability) -> Option<String> {
+    let (recipient, condition, keyword) = if let Some((recipient, condition, keyword)) =
+        modeled_unquantified_object_static_grant(ability)
+    {
+        (Some(recipient), condition?, keyword)
+    } else {
+        if ability.functional_zones.as_slice() != [Zone::Battlefield] { return None; }
+        let AbilityKind::Static(static_ability) = &ability.kind else { return None; };
+        let model = static_ability.compiled_model()?;
+        let ironsmith_core::StaticAbilityPayload::AttachedAbilityGrant(grant) = &model.payload
+            else { return None; };
+        if !grant.additional_abilities.is_empty()
+            || grant.ability.functional_zones.as_slice() != [Zone::Battlefield]
+            || grant.protection_does_not_remove_controlled_attachments
+        { return None; }
+        let ironsmith_core::AbilityKind::Static(granted) = &grant.ability.kind
+            else { return None; };
+        (None, grant.condition.as_ref()?, crate::static_abilities::StaticAbility::from_model(granted.clone()))
+    };
+    if !keyword.is_keyword() { return None; }
+    let Condition::CountComparison {
+        count: ironsmith_core::AnthemCountExpression::MatchingFilter(partners),
+        comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+        ..
+    } = condition else { return None; };
+    let Some(crate::filter::ObjectRef::Tagged(attachment_tag)) = &partners.in_combat_with
+        else { return None; };
+    if !matches!(attachment_tag.as_str(), "equipped" | "enchanted")
+        || partners.zone != Some(Zone::Battlefield)
+        || partners.blocking || partners.attacking
+    {
+        return None;
+    }
+    if let Some(recipient) = recipient
+        && recipient != &ObjectFilter::creature().in_zone(Zone::Battlefield)
+            .match_tagged(attachment_tag.clone(), crate::filter::TaggedOpbjectRelation::IsTaggedObject)
+    { return None; }
+    Some(format!(
+        "{} creature has {} as long as {}",
+        capitalize_first(attachment_tag.as_str()),
+        lowercase_first(keyword.display().trim().trim_end_matches('.')),
+        describe_condition(condition),
+    ))
+}
+
 fn describe_structural_attached_characteristic_keyword(ability: &Ability) -> Option<String> {
     let AbilityKind::Static(static_ability) = &ability.kind else { return None; };
     let model = static_ability.compiled_model()?;
@@ -32357,6 +32402,11 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 continue;
             }
             if let Some(text) = describe_structural_conditional_additional_land_play(ability) {
+                output.push(format!("Static ability {}: {text}", ability_idx + 1));
+                ability_idx += 1;
+                continue;
+            }
+            if let Some(text) = describe_structural_attached_combat_partner_keyword(ability) {
                 output.push(format!("Static ability {}: {text}", ability_idx + 1));
                 ability_idx += 1;
                 continue;
@@ -33953,6 +34003,19 @@ fn describe_source_line_conditional_type_addition_activated_grant_group(
     ))
 }
 
+fn describe_source_line_entry_counter_list(abilities: &[Ability], subject: &str) -> Option<String> {
+    let first = abilities.first()?;
+    let mut counters = Vec::new();
+    for ability in abilities {
+        if ability.functional_zones != first.functional_zones { return None; }
+        let AbilityKind::Static(ability) = &ability.kind else { return None; };
+        let ironsmith_core::StaticAbilityPayload::EntersWithCountersValue { counter, count } =
+            &ability.compiled_model()?.payload else { return None; };
+        counters.push(describe_put_counter_phrase(count, *counter));
+    }
+    Some(format!("{} enters with {} on it", capitalize_first(subject), join_english_list(&counters)))
+}
+
 fn describe_source_line_static_group(
     abilities: &[Ability],
     member_count: usize,
@@ -33969,7 +34032,9 @@ fn describe_source_line_static_group(
                 .and_then(|(text, consumed)| (consumed == member_count).then_some(text))
         })
         .or_else(|| describe_source_line_blitz_from_card_mana_cost_group(members))
+        .or_else(|| describe_source_line_entry_counter_list(members, subject))
         .or_else(|| describe_source_line_chosen_object_anthem_keyword_grant_group(members))
+        .or_else(|| describe_source_line_conditioned_player_object_hexproof_group(members, subject))
         .or_else(|| describe_carried_attached_additional_grant(members))
         .or_else(|| describe_source_line_attached_anthem_reach_shadow_permission_group(members))
         .or_else(|| describe_source_line_first_spell_cost_reduction_and_flash_group(members))
@@ -34013,10 +34078,65 @@ fn describe_source_line_static_group(
         })
 }
 
-/// Rejoin two differently shaped abilities granted to the source under one
-/// typed condition.  This covers an authored keyword plus quoted activated
-/// ability without weakening either executable grant or relying on its display
-/// string for identity.
+/// Rejoin a player restriction and an object keyword grant only when they
+/// express the same hexproof protection under the same executable condition.
+fn describe_source_line_conditioned_player_object_hexproof_group(
+    abilities: &[Ability],
+    subject: &str,
+) -> Option<String> {
+    let [player_ability, object_ability] = abilities else {
+        return None;
+    };
+    if player_ability.functional_zones.as_slice() != [Zone::Battlefield]
+        || object_ability.functional_zones != player_ability.functional_zones
+    {
+        return None;
+    }
+    let AbilityKind::Static(player_static) = &player_ability.kind else {
+        return None;
+    };
+    let ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } =
+        &player_static.compiled_model()?.payload
+    else {
+        return None;
+    };
+    let ironsmith_core::StaticAbilityPayload::RuleRestriction {
+        restriction: crate::effect::Restriction::BeTargetedPlayerFrom(player, source_filter),
+        additional_restrictions,
+        ..
+    } = &ability.payload
+    else {
+        return None;
+    };
+    let (filter, grant_condition, keyword) = modeled_object_static_grant(object_ability)?;
+    if *player != PlayerFilter::You
+        || source_filter != &ObjectFilter::default().controlled_by(PlayerFilter::Opponent)
+        || !additional_restrictions.is_empty()
+        || grant_condition != Some(condition)
+        || keyword.id() != crate::static_abilities::StaticAbilityId::Hexproof
+        || filter.zone != Some(Zone::Battlefield)
+        || filter.source
+    {
+        return None;
+    }
+    let mut population = filter.clone();
+    let other = population.other;
+    population.other = false;
+    let description = population.description();
+    let population = pluralize_noun_phrase(
+        description
+            .trim_start_matches("a ")
+            .trim_start_matches("an "),
+    );
+    let condition = source_counter_threshold_condition_surface(condition, subject)
+        .unwrap_or_else(|| describe_condition(condition));
+    Some(format!(
+        "As long as {condition}, you and {}{population} have hexproof",
+        if other { "other " } else { "" }
+    ))
+}
+
+/// Rejoin a prevention rule and keyword grant under one typed condition.
 fn describe_source_line_conditioned_prevention_and_keyword(
     abilities: &[Ability],
     subject: &str,
@@ -34368,7 +34488,9 @@ fn describe_source_line_chosen_object_anthem_keyword_grant_group(
         || grant_condition.is_some()
         || constraint.tag.as_str() != ironsmith_core::CHOSEN_OBJECTS_TAG
         || constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
-        || semantic_filter != ObjectFilter::creature().in_zone(Zone::Battlefield)
+        || !(semantic_filter == ObjectFilter::creature().in_zone(Zone::Battlefield)
+            || (semantic_filter == ObjectFilter::default().in_zone(Zone::Battlefield)
+                && anthem_filter.explicit_card_type_noun() == Some(CardType::Creature)))
         || anthem.condition.is_some()
         || anthem.set_quantifier_surface.is_some()
         || anthem.count_uses_where_x

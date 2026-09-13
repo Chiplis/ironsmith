@@ -1076,7 +1076,7 @@ pub(super) fn describe_filter_static_ability(ability_id: StaticAbilityId) -> Opt
 }
 
 #[allow(dead_code)]
-pub(super) fn describe_comparison(cmp: &Comparison) -> String {
+pub(crate) fn describe_comparison(cmp: &Comparison) -> String {
     fn describe_value_expr(value: &crate::effect::Value) -> String {
         use crate::effect::Value;
         match value {
@@ -1205,6 +1205,9 @@ pub(super) fn describe_comparison(cmp: &Comparison) -> String {
                     filter.description()
                 };
                 format!("the number of basic land types among {among}")
+            }
+            Value::LifeLostThisTurn(crate::target::PlayerFilter::Opponent) => {
+                "the total amount of life your opponents have lost this turn".to_string()
             }
             _ => "a dynamic value".to_string(),
         }

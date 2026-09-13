@@ -7,6 +7,7 @@ use std::collections::HashMap;
 
 use crate::ability::extract_static_abilities;
 use crate::filter::ObjectFilterExt as _;
+use crate::filter::ObjectSubject;
 use crate::filter::player_filter_matches_game;
 use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId};
@@ -362,19 +363,17 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
         return TargetingResult::Invalid(TargetingInvalidReason::DoesntExist);
     }
 
-    let Some(source) = game.object(source_id) else {
-        // Rule 608.2b: if the source of an ability has left its expected zone,
-        // resolution-time target legality uses that source's last known information.
-        let Some(source_snapshot) = source_snapshot else {
-            return TargetingResult::legal();
-        };
-        return can_target_object_from_source_snapshot_with_view(
-            game,
-            target_id,
-            source_snapshot,
-            caster,
-            view,
-        );
+    // Prefer the live source; use retained characteristics only after it leaves.
+    let source = match (game.object(source_id), source_snapshot) {
+        (Some(object), _) => ObjectSubject::Live(object),
+        (None, Some(snapshot)) => ObjectSubject::Snapshot(snapshot),
+        (None, None) => return TargetingResult::legal(),
+    };
+    // Historically, permission to ignore shroud/hexproof is queried for the
+    // caster with a live source and the retained controller with LKI.
+    let permission_player = match source {
+        ObjectSubject::Live(_) => caster,
+        ObjectSubject::Snapshot(snapshot) => snapshot.controller,
     };
 
     // Most targeting restrictions in this function apply only to permanents
@@ -394,7 +393,7 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
         .ignores_target_ability_for_object(
             game,
             target_id,
-            caster,
+            permission_player,
             crate::static_abilities::StaticAbilityId::Shroud,
         );
     let ignores_hexproof = game
@@ -403,7 +402,7 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
         .ignores_target_ability_for_object(
             game,
             target_id,
-            caster,
+            permission_player,
             crate::static_abilities::StaticAbilityId::Hexproof,
         );
 
@@ -421,10 +420,14 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
     }
 
     // Check for HexproofFrom
-    if game.controller_of(target) != game.controller_of(source) {
+    if game.controller_of(target) != source.protection_controller(game) {
         for ability in target_abilities.iter() {
             if let Some(filter) = ability.hexproof_from_filter()
-                && source_matches_hexproof_from(game, source_id, filter, caster)
+                && source.matches(
+                    filter,
+                    &game.filter_context_for(caster, Some(source.object_id())),
+                    game,
+                )
             {
                 return TargetingResult::Invalid(TargetingInvalidReason::HasHexproofFrom);
             }
@@ -432,7 +435,7 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
     }
 
     // Check for protection
-    if has_protection_from_source_with_view(game, target_id, source_id, view) {
+    if has_protection_from_subject_with_view(game, target_id, source, view) {
         return TargetingResult::Invalid(TargetingInvalidReason::HasProtection);
     }
 
@@ -445,131 +448,24 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
     {
         return TargetingResult::Invalid(TargetingInvalidReason::CantBeTargeted);
     }
-    if !game.can_target_object_from_source(target_id, source_id) {
+    if source.is_live()
+        && !game.object_is_within_range(
+            source.protection_controller(game),
+            target_id,
+            Some(source.object_id()),
+        )
+    {
+        return TargetingResult::Invalid(TargetingInvalidReason::CantBeTargeted);
+    }
+    if !game
+        .effect_store
+        .cant_effects
+        .can_target_object_from_subject(game, target_id, source)
+    {
         return TargetingResult::Invalid(TargetingInvalidReason::CantBeTargeted);
     }
 
     TargetingResult::legal()
-}
-
-fn can_target_object_from_source_snapshot_with_view(
-    game: &GameState,
-    target_id: ObjectId,
-    source_snapshot: &ObjectSnapshot,
-    caster: PlayerId,
-    view: &crate::derived_view::DerivedGameView<'_>,
-) -> TargetingResult {
-    let Some(target) = game.object(target_id) else {
-        return TargetingResult::Invalid(TargetingInvalidReason::DoesntExist);
-    };
-    if game.grand_melee().is_some()
-        && target.zone == Zone::Stack
-        && !game.object_is_on_current_stack(target_id)
-    {
-        return TargetingResult::Invalid(TargetingInvalidReason::DoesntExist);
-    }
-
-    if target.zone != Zone::Battlefield && target.zone != Zone::Stack {
-        return TargetingResult::legal();
-    }
-
-    let target_abilities = view
-        .static_abilities_rc(target_id)
-        .unwrap_or_else(|| std::rc::Rc::new(extract_static_abilities(&target.abilities)));
-    let ignores_shroud = game
-        .effect_store
-        .cant_effects
-        .ignores_target_ability_for_object(
-            game,
-            target_id,
-            source_snapshot.controller,
-            crate::static_abilities::StaticAbilityId::Shroud,
-        );
-    let ignores_hexproof = game
-        .effect_store
-        .cant_effects
-        .ignores_target_ability_for_object(
-            game,
-            target_id,
-            source_snapshot.controller,
-            crate::static_abilities::StaticAbilityId::Hexproof,
-        );
-
-    if target_abilities.iter().any(|a| a.has_shroud()) && !ignores_shroud {
-        return TargetingResult::Invalid(TargetingInvalidReason::HasShroud);
-    }
-
-    if target_abilities.iter().any(|a| a.has_hexproof())
-        && game.controller_of(target) != caster
-        && !ignores_hexproof
-    {
-        return TargetingResult::Invalid(TargetingInvalidReason::HasHexproof);
-    }
-
-    if game.controller_of(target) != source_snapshot.controller {
-        for ability in target_abilities.iter() {
-            if let Some(filter) = ability.hexproof_from_filter()
-                && source_snapshot_matches_hexproof_from(game, source_snapshot, filter, caster)
-            {
-                return TargetingResult::Invalid(TargetingInvalidReason::HasHexproofFrom);
-            }
-        }
-    }
-
-    if has_protection_from_source_snapshot_with_view(game, target_id, source_snapshot, view) {
-        return TargetingResult::Invalid(TargetingInvalidReason::HasProtection);
-    }
-
-    if game.is_untargetable(target_id)
-        && game.controller_of(target) != caster
-        && !ignores_hexproof
-        && !ignores_shroud
-    {
-        return TargetingResult::Invalid(TargetingInvalidReason::CantBeTargeted);
-    }
-
-    for restriction in &game.effect_store.cant_effects.cant_be_targeted_from {
-        if restriction.object != target_id {
-            continue;
-        }
-        let filter_ctx =
-            game.filter_context_for(restriction.controller, Some(source_snapshot.object_id));
-        if restriction
-            .source_filter
-            .matches_snapshot(source_snapshot, &filter_ctx, game)
-        {
-            return TargetingResult::Invalid(TargetingInvalidReason::CantBeTargeted);
-        }
-    }
-
-    TargetingResult::legal()
-}
-
-/// Check if a source matches a HexproofFrom filter.
-fn source_matches_hexproof_from(
-    game: &GameState,
-    source_id: ObjectId,
-    filter: &ObjectFilter,
-    caster: PlayerId,
-) -> bool {
-    let Some(source) = game.object(source_id) else {
-        return false;
-    };
-
-    // Build a filter context for the source
-    let filter_ctx = game.filter_context_for(caster, Some(source_id));
-
-    filter.matches(source, &filter_ctx, game)
-}
-
-fn source_snapshot_matches_hexproof_from(
-    game: &GameState,
-    source_snapshot: &ObjectSnapshot,
-    filter: &ObjectFilter,
-    caster: PlayerId,
-) -> bool {
-    let filter_ctx = game.filter_context_for(caster, Some(source_snapshot.object_id));
-    filter.matches_snapshot(source_snapshot, &filter_ctx, game)
 }
 
 /// Check if a permanent has protection from a source.
@@ -632,10 +528,19 @@ pub(crate) fn has_protection_from_source_with_view(
     source_id: ObjectId,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> bool {
-    let Some(target) = game.object(target_id) else {
+    let Some(source) = game.object(source_id) else {
         return false;
     };
-    let Some(source) = game.object(source_id) else {
+    has_protection_from_subject_with_view(game, target_id, ObjectSubject::Live(source), view)
+}
+
+fn has_protection_from_subject_with_view(
+    game: &GameState,
+    target_id: ObjectId,
+    source: ObjectSubject<'_>,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> bool {
+    let Some(target) = game.object(target_id) else {
         return false;
     };
 
@@ -651,70 +556,25 @@ pub(crate) fn has_protection_from_source_with_view(
             let matches = match protection_from {
                 crate::ability::ProtectionFrom::ChosenPlayer => game
                     .chosen_player(target_id)
-                    .is_some_and(|chosen| game.controller_of(source) == chosen),
+                    .is_some_and(|chosen| source.protection_controller(game) == chosen),
                 crate::ability::ProtectionFrom::ChosenColor => {
                     game.chosen_color(target_id)
-                        .is_some_and(|chosen| view.object_colors(source_id).contains(chosen))
+                        .is_some_and(|chosen| source.protection_colors(view).contains(chosen))
                         || attached_grant_protects_from_chosen_color(
                             game,
                             target,
-                            view.object_colors(source_id),
+                            source.protection_colors(view),
                         )
                 }
                 crate::ability::ProtectionFrom::EachManaValueAmong(filter) => {
-                    source_mana_value_matches_scope(game, target_id, source, filter)
-                }
-                _ => source_matches_protection_with_view(source, protection_from, game, view),
-            };
-            if matches {
-                return true;
-            }
-        }
-    }
-
-    false
-}
-
-fn has_protection_from_source_snapshot_with_view(
-    game: &GameState,
-    target_id: ObjectId,
-    source_snapshot: &ObjectSnapshot,
-    view: &crate::derived_view::DerivedGameView<'_>,
-) -> bool {
-    let Some(target) = game.object(target_id) else {
-        return false;
-    };
-
-    let target_abilities = view
-        .static_abilities_rc(target_id)
-        .unwrap_or_else(|| std::rc::Rc::new(extract_static_abilities(&target.abilities)));
-
-    for ability in target_abilities.iter() {
-        if ability.has_protection()
-            && let Some(protection_from) = ability.protection_from()
-        {
-            let matches = match protection_from {
-                crate::ability::ProtectionFrom::ChosenPlayer => game
-                    .chosen_player(target_id)
-                    .is_some_and(|chosen| source_snapshot.controller == chosen),
-                crate::ability::ProtectionFrom::ChosenColor => {
-                    game.chosen_color(target_id)
-                        .is_some_and(|chosen| source_snapshot.colors.contains(chosen))
-                        || attached_grant_protects_from_chosen_color(
-                            game,
-                            target,
-                            source_snapshot.colors,
-                        )
-                }
-                crate::ability::ProtectionFrom::EachManaValueAmong(filter) => {
-                    source_snapshot_mana_value_matches_scope(
+                    mana_value_matches_scope(
                         game,
                         target_id,
-                        source_snapshot,
+                        source.protection_mana_value(),
                         filter,
                     )
                 }
-                _ => source_snapshot_matches_protection(source_snapshot, protection_from, game),
+                _ => subject_matches_protection(source, protection_from, game, view),
             };
             if matches {
                 return true;
@@ -741,10 +601,19 @@ pub(crate) fn source_matches_protection_with_view(
     game: &GameState,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> bool {
+    subject_matches_protection(ObjectSubject::Live(source), protection, game, view)
+}
+
+fn subject_matches_protection(
+    source: ObjectSubject<'_>,
+    protection: &crate::ability::ProtectionFrom,
+    game: &GameState,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> bool {
     use crate::ability::ProtectionFrom;
 
     // Get calculated characteristics for the source
-    let source_colors = view.object_colors(source.id);
+    let source_colors = source.protection_colors(view);
 
     match protection {
         // Protection from a color or set of colors
@@ -755,20 +624,20 @@ pub(crate) fn source_matches_protection_with_view(
         // Protection from all colors
         ProtectionFrom::AllColors => !source_colors.is_empty(),
         // Protection from creatures
-        ProtectionFrom::Creatures => view.object_has_card_type(source.id, CardType::Creature),
+        ProtectionFrom::Creatures => source.protection_has_card_type(view, CardType::Creature),
         // Protection from the chosen player is target-specific and handled by the caller.
         ProtectionFrom::ChosenPlayer => false,
         ProtectionFrom::ChosenColor => false,
         // Protection from a card type
-        ProtectionFrom::CardType(card_type) => view.object_has_card_type(source.id, *card_type),
+        ProtectionFrom::CardType(card_type) => source.protection_has_card_type(view, *card_type),
         // Protection from permanents matching a filter
         ProtectionFrom::Permanents(filter) => {
-            let controller = game.controller_of(source);
-            let mut filter_ctx = game.filter_context_for(controller, Some(source.id));
-            if source.zone == Zone::Stack {
+            let controller = source.protection_controller(game);
+            let mut filter_ctx = game.filter_context_for(controller, Some(source.object_id()));
+            if source.zone() == Zone::Stack {
                 filter_ctx.caster = Some(controller);
             }
-            filter.matches(source, &filter_ctx, game)
+            source.matches(filter, &filter_ctx, game)
         }
         ProtectionFrom::EachManaValueAmong(_) => false,
         // Protection from everything
@@ -776,53 +645,6 @@ pub(crate) fn source_matches_protection_with_view(
         // Protection from colorless (sources with no colors)
         ProtectionFrom::Colorless => source_colors.is_empty(),
     }
-}
-
-fn source_snapshot_matches_protection(
-    source: &ObjectSnapshot,
-    protection: &crate::ability::ProtectionFrom,
-    game: &GameState,
-) -> bool {
-    use crate::ability::ProtectionFrom;
-
-    match protection {
-        ProtectionFrom::Color(color_set) => !source.colors.intersection(*color_set).is_empty(),
-        ProtectionFrom::AllColors => !source.colors.is_empty(),
-        ProtectionFrom::Creatures => source.card_types.contains(&CardType::Creature),
-        ProtectionFrom::ChosenPlayer => false,
-        ProtectionFrom::ChosenColor => false,
-        ProtectionFrom::CardType(card_type) => source.card_types.contains(card_type),
-        ProtectionFrom::Permanents(filter) => {
-            let mut filter_ctx = game.filter_context_for(source.controller, Some(source.object_id));
-            if source.zone == Zone::Stack {
-                filter_ctx.caster = Some(source.controller);
-            }
-            filter.matches_snapshot(source, &filter_ctx, game)
-        }
-        ProtectionFrom::EachManaValueAmong(_) => false,
-        ProtectionFrom::Everything => true,
-        ProtectionFrom::Colorless => source.colors.is_empty(),
-    }
-}
-
-fn source_mana_value_matches_scope(
-    game: &GameState,
-    protected_id: ObjectId,
-    source: &Object,
-    scope: &ObjectFilter,
-) -> bool {
-    object_mana_value(source)
-        .is_some_and(|mana_value| mana_value_matches_scope(game, protected_id, mana_value, scope))
-}
-
-fn source_snapshot_mana_value_matches_scope(
-    game: &GameState,
-    protected_id: ObjectId,
-    source: &ObjectSnapshot,
-    scope: &ObjectFilter,
-) -> bool {
-    snapshot_mana_value(source)
-        .is_some_and(|mana_value| mana_value_matches_scope(game, protected_id, mana_value, scope))
 }
 
 fn mana_value_matches_scope(
@@ -853,13 +675,39 @@ fn object_mana_value(object: &Object) -> Option<i32> {
     )
 }
 
-fn snapshot_mana_value(snapshot: &ObjectSnapshot) -> Option<i32> {
-    Some(
-        snapshot
-            .mana_cost
-            .as_ref()
-            .map_or(0, |cost| cost.mana_value() as i32),
-    )
+// These adapters choose characteristics only; protection rules are interpreted
+// once above, for both live sources and retained last-known information.
+impl ObjectSubject<'_> {
+    fn protection_controller(self, game: &GameState) -> PlayerId {
+        match self {
+            Self::Live(object) => game.controller_of(object),
+            Self::Snapshot(snapshot) => snapshot.controller,
+        }
+    }
+    fn protection_colors(
+        self,
+        view: &crate::derived_view::DerivedGameView<'_>,
+    ) -> crate::color::ColorSet {
+        match self {
+            Self::Live(object) => view.object_colors(object.id),
+            Self::Snapshot(snapshot) => snapshot.colors,
+        }
+    }
+    fn protection_has_card_type(
+        self,
+        view: &crate::derived_view::DerivedGameView<'_>,
+        card_type: CardType,
+    ) -> bool {
+        match self {
+            Self::Live(object) => view.object_has_card_type(object.id, card_type),
+            Self::Snapshot(snapshot) => snapshot.card_types.contains(&card_type),
+        }
+    }
+    fn protection_mana_value(self) -> i32 {
+        // Preserve this targeting query's printed-cost policy, rather than the
+        // stack-X/split-card policy used by numeric ObjectFilter predicates.
+        self.mana_cost().map_or(0, |cost| cost.mana_value() as i32)
+    }
 }
 
 /// Compute all legal targets for a target specification.
@@ -2126,6 +1974,7 @@ mod tests {
             blockers: Default::default(),
             damage_assignment_order: Default::default(),
             attacking_bands: Default::default(),
+            blocked_attackers: Default::default(),
             had_to_attack_this_combat: Default::default(),
         });
 
@@ -2164,6 +2013,7 @@ mod tests {
             blockers: Default::default(),
             damage_assignment_order: Default::default(),
             attacking_bands: Default::default(),
+            blocked_attackers: Default::default(),
             had_to_attack_this_combat: Default::default(),
         });
 
@@ -2196,6 +2046,7 @@ mod tests {
             blockers: Default::default(),
             damage_assignment_order: Default::default(),
             attacking_bands: Default::default(),
+            blocked_attackers: Default::default(),
             had_to_attack_this_combat: Default::default(),
         });
 
@@ -2568,3 +2419,7 @@ mod tests {
         assert!(matches!(result, TargetingResult::Legal { .. }));
     }
 }
+
+#[cfg(test)]
+#[path = "subject_tests.rs"]
+mod subject_tests;

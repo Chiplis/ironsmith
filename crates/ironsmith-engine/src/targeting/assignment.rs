@@ -67,10 +67,11 @@ fn selected_targets_satisfy_distinct_player_group(
             chosen_player = Some(*player);
         }
     }
-    let Some(group) = req.distinct_player_group else {
-        return true;
-    };
-    let already_used = used_by_group.distinct.get(&group);
+    // CR 115.3: one instance of "target" cannot select an object/player
+    // twice, even without an authored cross-requirement distinctness group.
+    // Separate requirements may still reuse a target unless grouped.
+    let already_used = req.distinct_player_group
+        .and_then(|group| used_by_group.distinct.get(&group));
     let mut selected_in_requirement = HashSet::new();
 
     selected.iter().all(|target| {

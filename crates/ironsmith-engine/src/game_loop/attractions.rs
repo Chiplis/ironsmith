@@ -66,7 +66,7 @@ pub fn roll_to_visit_attractions(
                 roll.natural_result,
                 roll.result,
                 6,
-            ),
+            ).for_attraction_visit(),
             provenance,
         ),
         true,

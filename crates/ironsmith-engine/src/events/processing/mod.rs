@@ -20,7 +20,7 @@ use crate::ability::ActivatedAbilityRuntimeExt as _;
 use crate::decisions::replacement_option_description;
 use crate::events::DamageTarget;
 use crate::events::{Event, EventContext, ReplacementMatcher as _};
-use crate::filter::ObjectFilterExt as _;
+use crate::filter::{ObjectFilterExt as _, PlayerFilterExt as _};
 use crate::game_state::{GameState, UiBattlefieldTransitionKind};
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
@@ -33,6 +33,26 @@ use application::{
     apply_trait_enter_tapped, apply_trait_enter_with_counters, apply_trait_replacement,
     find_matching_cards_in_hand, find_matching_sacrificable_permanents,
 };
+
+fn entry_controller_candidates(game: &GameState, controller: PlayerId, players: &crate::target::PlayerFilter) -> Vec<PlayerId> {
+    let ctx=game.filter_context_for(controller,None);
+    game.players.iter().filter(|player|player.is_in_game() && players.matches_player(player.id,&ctx)).map(|player|player.id).collect()
+}
+
+fn entry_controller_choice_context(game: &GameState, source: ObjectId, controller: PlayerId, players: &crate::target::PlayerFilter) -> crate::decisions::context::DecisionContext {
+    let options=entry_controller_candidates(game,controller,players).into_iter().map(|player| {
+        crate::decisions::context::SelectableOption::new(player.index(),game.player(player).unwrap().name.to_string())
+    }).collect();
+    crate::decisions::context::DecisionContext::SelectOptions(crate::decisions::context::SelectOptionsContext::new(controller,Some(source),"Choose the entering permanent's controller",options,1,1))
+}
+
+fn apply_entry_controller_choice(game: &GameState,event: &Event,response: &InteractiveReplacementResponse,controller: PlayerId,players: &crate::target::PlayerFilter) -> Option<Event> {
+    let InteractiveReplacementResponse::Options(selected)=response else { return None; };
+    let [selected]=selected.as_slice() else { return None; };
+    let selected=*selected;
+    let player=entry_controller_candidates(game,controller,players).into_iter().find(|player|player.index()==selected)?;
+    application::apply_trait_enter_under_control(event,player)
+}
 
 fn apply_tribute_response(
     game: &GameState,
@@ -3609,10 +3629,45 @@ pub fn process_damage_with_event_with_source_snapshot(
 }
 
 fn execute_pending_prevention_follow_ups(game: &mut GameState, dm: &mut dyn DecisionMaker) {
+    if game
+        .effect_store
+        .prevention_effects
+        .follow_ups_are_deferred()
+    {
+        return;
+    }
     let pending = game
         .effect_store
         .prevention_effects
         .take_pending_follow_ups();
+    execute_prevention_follow_ups(game, dm, pending);
+}
+
+/// Commit one damage application before executing its additional prevention
+/// effects (CR 615.5). Nested damage owns only the follow-ups it produces.
+pub(crate) fn with_deferred_prevention_follow_ups<R>(
+    game: &mut GameState,
+    dm: &mut dyn DecisionMaker,
+    apply_damage: impl FnOnce(&mut GameState, &mut dyn DecisionMaker) -> R,
+) -> R {
+    let start = game
+        .effect_store
+        .prevention_effects
+        .begin_follow_up_deferral();
+    let result = apply_damage(game, dm);
+    let pending = game
+        .effect_store
+        .prevention_effects
+        .end_follow_up_deferral(start);
+    execute_prevention_follow_ups(game, dm, pending);
+    result
+}
+
+fn execute_prevention_follow_ups(
+    game: &mut GameState,
+    dm: &mut dyn DecisionMaker,
+    pending: Vec<crate::prevention::PendingPreventionFollowUp>,
+) {
     for pending in pending {
         let follow_up = pending.follow_up;
         let prevented_event =
@@ -4293,6 +4348,20 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
                         current_event = Event::new_with_provenance(prepared_event, e.provenance());
                         continue;
                     }
+                    // Entry counters are counter placement (CR 122.6), so
+                    // prohibitions apply to them as well. Use the completed
+                    // prospective entry: copy/control/choice modifications and
+                    // the entrant's own static abilities must be accounted for
+                    // before the batch commits any permanent.
+                    let mut event_result = event_result;
+                    if !event_result.enters_with_counters.is_empty()
+                        && let Some(mut prospective) = etb.prospective_game_state(game)
+                    {
+                        prospective.update_cant_effects();
+                        if !prospective.can_have_counters_placed(object) {
+                            event_result.enters_with_counters.clear();
+                        }
+                    }
                     return event_result;
                 }
                 if let Some(zone_change) = downcast_event::<ZoneChangeEvent>(e.inner()) {
@@ -4471,6 +4540,13 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
                             );
                             continue;
                         }
+                        if let ReplacementAction::EnterUnderChosenControl { players } = &chosen_effect.replacement {
+                            let Some(modified)=apply_entry_controller_choice(game,&current_event,&response,chosen_effect.controller,players) else {
+                                return EtbEventResult { prevented:true,..Default::default() };
+                            };
+                            current_event=modified;
+                            continue;
+                        }
                         if let ReplacementAction::EnterWithCounterChoice {
                             counter_types,
                             count,
@@ -4567,6 +4643,15 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
                         &mut paid_labels,
                         dm,
                     );
+                    continue;
+                }
+                if let Some(effect) = find_effect_for_choice(game, &current_additional_effects, effect_id)
+                    && let ReplacementAction::EnterUnderChosenControl { players } = &effect.replacement
+                {
+                    let Some(modified)=apply_entry_controller_choice(game,&event,&response,effect.controller,players) else {
+                        return EtbEventResult { prevented:true,..Default::default() };
+                    };
+                    current_event=modified;
                     continue;
                 }
                 if let Some(ReplacementAction::EnterWithCounterChoice {
@@ -5297,6 +5382,74 @@ mod tests {
             result.enters_tapped,
             "continuous effects already present must apply to the provisional battlefield object"
         );
+    }
+
+    #[test]
+    fn compiled_entry_controller_model_materializes_typed_replacement() {
+        let model=crate::static_abilities::CompiledStaticAbility::enters_under_chosen_control(crate::target::PlayerFilter::Opponent);
+        let ability=crate::static_abilities::StaticAbility::from_model(model.clone());
+        assert_eq!(ability.compiled_model(),Some(&model));
+        let mut game=crate::tests::test_helpers::setup_two_player_game();
+        let alice=PlayerId::from_index(0);
+        let entering=create_creature_in_zone(&mut game,"Model entry fixture",alice,Zone::Hand,4,4);
+        let effect=ability.generate_replacement_effect(entering,alice).expect("typed model must generate replacement");
+        assert!(matches!(effect.replacement,ReplacementAction::EnterUnderChosenControl{players:crate::target::PlayerFilter::Opponent}));
+        assert_eq!(effect.priority_override,Some(crate::events::ReplacementPriority::ControlChanging));
+        game.effect_store.replacement_effects.add_effect(effect);
+        let mut dm=crate::decision::SelectFirstDecisionMaker;
+        let result=process_etb_with_event_and_dm(&mut game,entering,Zone::Hand,&mut dm);
+        assert_eq!(result.controller_override,Some(PlayerId::from_index(1)));
+        assert!(!result.prevented);
+    }
+
+    #[test]
+    fn chosen_entry_controller_applies_before_controller_relative_replacements() {
+        let mut game=crate::tests::test_helpers::setup_two_player_game();
+        let alice=PlayerId::from_index(0);let bob=PlayerId::from_index(1);
+        let entering=create_creature_in_zone(&mut game,"Chosen controller entrant",alice,Zone::Hand,4,4);
+        game.effect_store.replacement_effects.add_effect(
+            ReplacementEffect::with_matcher(entering,alice,crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+                ReplacementAction::EnterUnderChosenControl{players:crate::target::PlayerFilter::Opponent})
+                .with_priority_override(crate::events::ReplacementPriority::ControlChanging));
+        game.effect_store.replacement_effects.add_effect(ReplacementEffect::enters_tapped(entering,bob,ObjectFilter::creature().you_control()));
+        let mut dm=crate::decision::SelectFirstDecisionMaker;
+        let result=process_etb_with_event_and_dm(&mut game,entering,Zone::Hand,&mut dm);
+        assert!(!result.prevented);
+        assert_eq!(result.controller_override,Some(bob));
+        assert!(result.enters_tapped,"later replacements must use selected entry controller");
+    }
+
+    #[test]
+    fn chosen_entry_controller_preserves_multiplayer_choice_and_rejects_ineligible_player() {
+        struct Choose { selected:usize, calls:usize }
+        impl crate::DecisionMaker for Choose {
+            fn decide_options(&mut self,_game:&GameState,ctx:&crate::decisions::context::SelectOptionsContext)->Vec<usize> {
+                assert_eq!(ctx.player,PlayerId::from_index(0));
+                assert_eq!(ctx.options.iter().map(|o|o.index).collect::<Vec<_>>(),vec![1,2]);
+                self.calls+=1;
+                if self.selected==4 {vec![1,2]} else {vec![self.selected]}
+            }
+        }
+        for selected in [1,2,0,3,4] {
+            let mut game=GameState::new(vec!["Alice".into(),"Bob".into(),"Cara".into(),"Departed".into()],20);
+            let alice=PlayerId::from_index(0);
+            game.player_mut(PlayerId::from_index(3)).unwrap().has_left_game=true;
+            let entering=create_creature_in_zone(&mut game,"Chosen controller entrant",alice,Zone::Hand,4,4);
+            game.effect_store.replacement_effects.add_effect(
+                ReplacementEffect::with_matcher(entering,alice,crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+                    ReplacementAction::EnterUnderChosenControl{players:crate::target::PlayerFilter::Opponent})
+                    .with_priority_override(crate::events::ReplacementPriority::ControlChanging));
+            let mut dm=Choose{selected,calls:0};
+            let result=process_etb_with_event_and_dm(&mut game,entering,Zone::Hand,&mut dm);
+            assert_eq!(dm.calls,1);
+            if selected==1 || selected==2 {
+                assert!(!result.prevented);
+                assert_eq!(result.controller_override,Some(PlayerId::from_index(selected as u8)));
+            } else {
+                assert!(result.prevented,"invalid choice must not select an arbitrary opponent");
+                assert_eq!(result.controller_override,None);
+            }
+        }
     }
 
     #[test]

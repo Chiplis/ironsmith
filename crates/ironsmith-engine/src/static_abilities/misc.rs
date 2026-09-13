@@ -1109,6 +1109,22 @@ impl StaticAbilityKind for EntersPrepared {
     }
 }
 
+/// Select the controller before this permanent enters the battlefield.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EntersUnderChosenControl(pub crate::target::PlayerFilter);
+
+impl StaticAbilityKind for EntersUnderChosenControl {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::EntersUnderChosenControl }
+    fn display(&self) -> String {
+        format!("This enters under the control of {} of your choice", self.0.description())
+    }
+    fn generate_replacement_effect(&self, source:ObjectId, controller:PlayerId) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(source,controller,ThisWouldEnterBattlefieldMatcher,
+            ReplacementAction::EnterUnderChosenControl {players:self.0.clone()})
+            .with_priority_override(ReplacementPriority::ControlChanging))
+    }
+}
+
 /// Enters the battlefield tapped.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct EntersTapped;

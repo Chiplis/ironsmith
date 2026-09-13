@@ -818,6 +818,8 @@ pub struct PendingActivation {
     pub source: ObjectId,
     /// Index of the ability being activated.
     pub ability_index: usize,
+    /// Identity announced before mana abilities or other payment effects can change the source.
+    pub ability_origin: Option<crate::continuous::AbilityOrigin>,
     /// The player activating the ability.
     pub activator: PlayerId,
     /// Provenance parent for costs/effects emitted by this activation flow.
@@ -909,6 +911,7 @@ impl PendingActivation {
     pub fn new(
         source: ObjectId,
         ability_index: usize,
+        ability_origin: Option<crate::continuous::AbilityOrigin>,
         activator: PlayerId,
         provenance: ProvNodeId,
         stage: ActivationStage,
@@ -936,6 +939,7 @@ impl PendingActivation {
         Self {
             source,
             ability_index,
+            ability_origin,
             activator,
             provenance,
             stage,

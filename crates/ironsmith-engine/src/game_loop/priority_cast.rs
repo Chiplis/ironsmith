@@ -585,7 +585,7 @@ pub(super) fn compute_spell_cast_x_bounds(
                 allow_black_life,
             );
         max_x = Some(
-            crate::decision::max_x_payable_with_assist(game, caster, stack_id, cost)
+            crate::decision::max_x_payable_with_payment_resources(game, caster, stack_id, cost)
                 .unwrap_or(caster_only_max),
         );
     }
@@ -1840,51 +1840,164 @@ pub(super) fn get_pips_requiring_announcement(
 /// announcements and preserve the pending proposal while the choice is made.
 fn cast_resource_sacrifice_filter(game: &GameState, pending: &PendingCast) -> Option<ObjectFilter> {
     let spell = game.object(pending.spell_id)?;
-    if let Some(optional) = spell.optional_costs.iter().find(|cost| cost.kind == ironsmith_core::OptionalCostKind::Offering
-        && pending.optional_costs_paid.was_paid_label(cost.cost_ref())) {
-        return optional.cost.non_mana_costs().find_map(|cost| cost.sacrifice_filter().cloned());
+    if let Some(optional) = spell.optional_costs.iter().find(|cost| {
+        cost.kind == ironsmith_core::OptionalCostKind::Offering
+            && pending.optional_costs_paid.was_paid_label(cost.cost_ref())
+    }) {
+        return optional
+            .cost
+            .non_mana_costs()
+            .find_map(|cost| cost.sacrifice_filter().cloned());
     }
-    crate::decision::alternative_method_for_casting_method(game, pending.caster, spell, &pending.casting_method)?
-        .non_mana_costs().into_iter().find_map(|cost| cost.sacrifice_filter().cloned())
+    crate::decision::alternative_method_for_casting_method(
+        game,
+        pending.caster,
+        spell,
+        &pending.casting_method,
+    )?
+    .non_mana_costs()
+    .into_iter()
+    .find_map(|cost| cost.sacrifice_filter().cloned())
 }
 
-pub(super) fn cast_cost_resource_candidates(game: &GameState, pending: &PendingCast) -> Option<(bool, Vec<ObjectId>)> {
+pub(super) fn cast_cost_resource_candidates(
+    game: &GameState,
+    pending: &PendingCast,
+) -> Option<(bool, Vec<ObjectId>)> {
     let spell = game.object(pending.spell_id)?;
-    if let Some(cost) = spell.optional_costs.iter().find(|cost| cost.kind == ironsmith_core::OptionalCostKind::Offering
-        && pending.optional_costs_paid.was_paid_label(cost.cost_ref())) {
-        let filter = cost.cost.non_mana_costs().find_map(|cost| cost.sacrifice_filter().cloned())?;
-        return Some((false, get_legal_sacrifice_targets(game, pending.caster, pending.spell_id, &filter, crate::costs::PaymentReason::CastSpell)));
+    if let Some(cost) = spell.optional_costs.iter().find(|cost| {
+        cost.kind == ironsmith_core::OptionalCostKind::Offering
+            && pending.optional_costs_paid.was_paid_label(cost.cost_ref())
+    }) {
+        let filter = cost
+            .cost
+            .non_mana_costs()
+            .find_map(|cost| cost.sacrifice_filter().cloned())?;
+        return Some((
+            false,
+            get_legal_sacrifice_targets(
+                game,
+                pending.caster,
+                pending.spell_id,
+                &filter,
+                crate::costs::PaymentReason::CastSpell,
+            ),
+        ));
     }
-    let method = crate::decision::alternative_method_for_casting_method(game, pending.caster, spell, &pending.casting_method)?;
-    if matches!(method, crate::alternative_cast::AlternativeCastingMethod::Harmonize { .. }) {
-        return Some((true, crate::decision::get_convoke_creatures(game, pending.caster).into_iter().map(|(id, _)| id).collect()));
+    let method = crate::decision::alternative_method_for_casting_method(
+        game,
+        pending.caster,
+        spell,
+        &pending.casting_method,
+    )?;
+    if matches!(
+        method,
+        crate::alternative_cast::AlternativeCastingMethod::Harmonize { .. }
+    ) {
+        return Some((
+            true,
+            crate::decision::get_convoke_creatures(game, pending.caster)
+                .into_iter()
+                .map(|(id, _)| id)
+                .collect(),
+        ));
     }
     if method.name().eq_ignore_ascii_case("Emerge") {
-        let filter = method.non_mana_costs().into_iter().find_map(|cost| cost.sacrifice_filter().cloned())?;
-        return Some((false, get_legal_sacrifice_targets(game, pending.caster, pending.spell_id, &filter,
-            crate::costs::PaymentReason::CastSpell)));
+        let filter = method
+            .non_mana_costs()
+            .into_iter()
+            .find_map(|cost| cost.sacrifice_filter().cloned())?;
+        return Some((
+            false,
+            get_legal_sacrifice_targets(
+                game,
+                pending.caster,
+                pending.spell_id,
+                &filter,
+                crate::costs::PaymentReason::CastSpell,
+            ),
+        ));
     }
     None
 }
 
-pub(super) fn apply_cost_resource_response(game: &mut GameState, trigger_queue: &mut TriggerQueue,
-    state: &mut PriorityLoopState, choice: usize, decision_maker: &mut impl DecisionMaker) -> Result<GameProgress, GameLoopError> {
-    let mut pending = state.pending_cast.take().ok_or_else(|| GameLoopError::InvalidState("missing cost proposal".into()))?;
+fn offering_resource_choices(
+    game: &GameState,
+    pending: &PendingCast,
+) -> Option<Vec<(ObjectId, crate::mana::ManaCost)>> {
+    let spell = game.object(pending.spell_id)?;
+    if !spell.optional_costs.iter().any(|cost| {
+        cost.kind == ironsmith_core::OptionalCostKind::Offering
+            && pending.optional_costs_paid.was_paid_label(cost.cost_ref())
+    }) {
+        return None;
+    }
+    let (_, candidates) = cast_cost_resource_candidates(game, pending)?;
+    Some(
+        candidates
+            .into_iter()
+            .flat_map(|id| {
+                let cost = game
+                    .object(id)
+                    .and_then(|object| object.mana_cost_owned())
+                    .unwrap_or_default();
+                crate::decision::offering_mana_reduction_choices(&cost)
+                    .into_iter()
+                    .map(move |reduction| (id, reduction))
+            })
+            .collect(),
+    )
+}
+
+pub(super) fn apply_cost_resource_response(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    state: &mut PriorityLoopState,
+    choice: usize,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<GameProgress, GameLoopError> {
+    let mut pending = state
+        .pending_cast
+        .take()
+        .ok_or_else(|| GameLoopError::InvalidState("missing cost proposal".into()))?;
     let (is_tap, candidates) = cast_cost_resource_candidates(game, &pending)
         .ok_or_else(|| GameLoopError::InvalidState("missing cost resource choices".into()))?;
-    let selected = if is_tap && choice == 0 { None } else {
-        Some(*candidates.get(choice.saturating_sub(usize::from(is_tap)))
-            .ok_or_else(|| GameLoopError::InvalidState("invalid cost resource".into()))?)
+    let offering = offering_resource_choices(game, &pending);
+    let offered = offering
+        .as_ref()
+        .map(|choices| {
+            choices
+                .get(choice)
+                .ok_or_else(|| GameLoopError::InvalidState("invalid offering reduction".into()))
+        })
+        .transpose()?;
+    let selected = if let Some((source, _)) = offered {
+        Some(*source)
+    } else if is_tap && choice == 0 {
+        None
+    } else {
+        Some(
+            *candidates
+                .get(choice.saturating_sub(usize::from(is_tap)))
+                .ok_or_else(|| GameLoopError::InvalidState("invalid cost resource".into()))?,
+        )
     };
     pending.cost_resource_announced = true;
     pending.cost_resource = selected;
     pending.cost_resource_is_tap = is_tap;
-    pending.cost_resource_reduction = selected.map_or(0, |id| if is_tap {
-        game.current_power(id).unwrap_or(0).max(0) as u32
-    } else { game.object(id).unwrap().mana_cost.as_ref().map_or(0, |cost| cost.mana_value()) });
-    if game.object(pending.spell_id).is_some_and(|spell| spell.optional_costs.iter().any(|cost|
-        cost.kind == ironsmith_core::OptionalCostKind::Offering && pending.optional_costs_paid.was_paid_label(cost.cost_ref()))) {
-        pending.cost_resource_mana_reduction = selected.and_then(|id| game.object(id).and_then(|obj| obj.mana_cost_owned()));
+    pending.cost_resource_reduction = selected.map_or(0, |id| {
+        if is_tap {
+            game.current_power(id).unwrap_or(0).max(0) as u32
+        } else {
+            game.object(id)
+                .unwrap()
+                .mana_cost
+                .as_ref()
+                .map_or(0, |cost| cost.mana_value())
+        }
+    });
+    if let Some((_, reduction)) = offered {
+        pending.cost_resource_mana_reduction = Some(reduction.clone());
         pending.cost_resource_reduction = 0;
     }
     check_x_or_continue(game, trigger_queue, state, pending, decision_maker)
@@ -1900,16 +2013,62 @@ pub(super) fn check_x_or_continue(
     if !pending.cost_resource_announced {
         if let Some((is_tap, candidates)) = cast_cost_resource_candidates(game, &pending) {
             let mut options = Vec::new();
-            if is_tap { options.push(crate::decisions::context::SelectableOption::new(0, "Do not tap a creature")); }
+            if is_tap {
+                options.push(crate::decisions::context::SelectableOption::new(
+                    0,
+                    "Do not tap a creature",
+                ));
+            }
             options.extend(candidates.iter().enumerate().map(|(index, id)| {
-                crate::decisions::context::SelectableOption::new(index + usize::from(is_tap),
-                    format!("{} {}", if is_tap { "Tap" } else { "Sacrifice" }, game.object(*id).unwrap().name))
+                crate::decisions::context::SelectableOption::new(
+                    index + usize::from(is_tap),
+                    format!(
+                        "{} {} (reduce generic by {})",
+                        if is_tap { "Tap" } else { "Sacrifice" },
+                        game.object(*id).unwrap().name,
+                        if is_tap {
+                            game.current_power(*id).unwrap_or(0).max(0) as u32
+                        } else {
+                            game.object(*id)
+                                .unwrap()
+                                .mana_cost
+                                .as_ref()
+                                .map_or(0, |cost| cost.mana_value())
+                        }
+                    ),
+                )
+                .with_object(*id)
             }));
-            let context = crate::decisions::context::SelectOptionsContext::new(pending.caster,
-                Some(pending.spell_id), "Choose a cost reduction resource", options, 1, 1);
+            if let Some(offerings) = offering_resource_choices(game, &pending) {
+                options = offerings
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (id, reduction))| {
+                        crate::decisions::context::SelectableOption::new(
+                            index,
+                            format!(
+                                "Sacrifice {} (reduce by {})",
+                                game.object(*id).unwrap().name,
+                                reduction.to_oracle()
+                            ),
+                        )
+                        .with_object(*id)
+                    })
+                    .collect();
+            }
+            let context = crate::decisions::context::SelectOptionsContext::new(
+                pending.caster,
+                Some(pending.spell_id),
+                "Choose a cost reduction resource",
+                options,
+                1,
+                1,
+            );
             pending.stage = CastStage::ChoosingCostResource;
             state.pending_cast = Some(pending);
-            return Ok(GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::SelectOptions(context)));
+            return Ok(GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectOptions(context),
+            ));
         }
         pending.cost_resource_announced = true;
     }
@@ -1949,7 +2108,13 @@ pub(super) fn check_x_or_continue(
     );
 
     if needs_x && pending.cost_resource_reduction > 0 {
-        let x_pips = mana_cost.as_ref().map_or(1, |cost| cost.pips().iter().filter(|pip| pip.contains(&crate::mana::ManaSymbol::X)).count().max(1)) as u32;
+        let x_pips = mana_cost.as_ref().map_or(1, |cost| {
+            cost.pips()
+                .iter()
+                .filter(|pip| pip.contains(&crate::mana::ManaSymbol::X))
+                .count()
+                .max(1)
+        }) as u32;
         max_x = max_x.saturating_add(pending.cost_resource_reduction / x_pips);
     }
     if needs_x && pending.x_value.is_none() {
@@ -2811,11 +2976,18 @@ pub(super) fn spell_mana_payment_request(
     if let Some(existing) = pending.pending_mana_payment.as_ref() {
         request.preferences = existing.request.preferences.clone();
     }
-    if pending.cost_resource_is_tap && let Some(resource) = pending.cost_resource && !game.is_tapped(resource) {
+    if pending.cost_resource_is_tap
+        && let Some(resource) = pending.cost_resource
+        && !game.is_tapped(resource)
+    {
         request.reserved_tap_sources.push(resource);
     }
-    if !pending.cost_resource_is_tap && let Some(resource) = pending.cost_resource
-        && game.object(resource).is_some_and(|object| object.zone == Zone::Battlefield) {
+    if !pending.cost_resource_is_tap
+        && let Some(resource) = pending.cost_resource
+        && game
+            .object(resource)
+            .is_some_and(|object| object.zone == Zone::Battlefield)
+    {
         request.reserved_permanent_sources.push(resource);
     }
     Ok(request)
@@ -3470,10 +3642,9 @@ pub(super) fn continue_to_mana_payment(
             if pending.cost_resource_is_tap {
                 pending.remaining_cost_steps.push(ActivationCostStep::Cost(crate::costs::Cost::validated_effect(
                     crate::effect::Effect::tap(ChooseSpec::SpecificObject(resource)))));
-            } else if let Some(ActivationCostStep::Sacrifice { filter, cost, .. }) = pending.remaining_cost_steps.iter_mut()
+            } else if let Some(ActivationCostStep::Sacrifice { filter, .. }) = pending.remaining_cost_steps.iter_mut()
                 .find(|step| matches!(step, ActivationCostStep::Sacrifice { filter, .. } if Some(filter) == original_filter.as_ref())) {
                 *filter = ObjectFilter::specific(resource);
-                *cost = crate::costs::Cost::sacrifice(filter.clone());
             }
         }
     }
@@ -5563,10 +5734,11 @@ pub(super) fn continue_activation(
                 ));
             }
             ActivationStage::ReadyToFinalize => {
-                // Record activation for per-turn-limited abilities
-                if pending.is_once_per_turn {
-                    game.record_ability_activation(pending.source, pending.ability_index);
-                }
+                // Record every committed activation. Lifetime limits and
+                // activation-history effects need the same event as turn caps.
+                game.record_ability_activation_with_origin(
+                    pending.source, pending.ability_index, pending.ability_origin.clone(),
+                );
                 if pending.is_loyalty_ability {
                     game.record_loyalty_ability_activation(pending.source);
                 }

@@ -360,7 +360,7 @@ fn search_put_attachment_target(
     {
         return Ok(Some(TargetAst::Player(
             PlayerFilter::TaggedPlayer((crate::tag::CompilerReferenceTag::Enchanted.bind()).into()),
-            span_from_tokens(&target_tokens),
+            None,
         )));
     }
     parse_target_phrase(&target_tokens).map(Some)
@@ -1400,6 +1400,28 @@ pub fn parse_conditional_sentence_with_grammar_entrypoint_lexed(
     tokens: &[OwnedLexToken],
     parse_effect_chain_lexed: fn(&[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError>,
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    // A condition can introduce a target without making its predicate part of
+    // target legality. Declare that target first, then test the chosen type at
+    // resolution. The whole consequence remains inside the condition.
+    if tokens.first().is_some_and(|token| token.is_word("if"))
+        && tokens.get(1).is_some_and(|token| token.is_word("target"))
+        && let Some(comma) = tokens.iter().position(|token| token.is_comma())
+        && let Some(is_index) = tokens[..comma].iter().position(|token| token.is_word("is")) {
+        let predicate_words = parser_token_word_refs(&tokens[is_index + 1..comma]);
+        if matches!(predicate_words.as_slice(), ["chosen", "type"] | ["the", "chosen", "type"]) {
+            let target = parse_target_phrase(&tokens[1..is_index])?;
+            let mut matching = ObjectFilter::default();
+            matching.chosen_creature_type = true;
+            return Ok(vec![
+                EffectAst::subject_verb_explicit_target_only(target),
+                EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                    predicate: PredicateAst::TargetMatches(matching),
+                    if_true: parse_effect_chain_lexed(&tokens[comma + 1..])?,
+                    if_false: Vec::new(),
+                }),
+            ]);
+        }
+    }
     let split = split_if_clause_lexed(tokens, parse_effect_chain_lexed)?;
 
     Ok(vec![match split.predicate {

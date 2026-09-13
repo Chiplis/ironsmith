@@ -1642,6 +1642,11 @@ pub struct ChooseCreatureTypeEffect {
     pub chooser: PlayerFilter,
     pub excluded_subtypes: Vec<Subtype>,
     pub family: crate::types::SubtypeFamily,
+    /// Restrict the choice to these subtypes; empty means every type in the family.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub allowed_subtypes: Vec<Subtype>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub secretly: bool,
 }
 
 impl ChooseCreatureTypeEffect {
@@ -1649,6 +1654,8 @@ impl ChooseCreatureTypeEffect {
         Self {
             chooser,
             excluded_subtypes,
+            allowed_subtypes: Vec::new(),
+            secretly: false,
             family: crate::types::SubtypeFamily::Creature,
         }
     }
@@ -1657,6 +1664,8 @@ impl ChooseCreatureTypeEffect {
         Self {
             chooser,
             excluded_subtypes: Vec::new(),
+            allowed_subtypes: Vec::new(),
+            secretly: false,
             family,
         }
     }
@@ -4747,3 +4756,8 @@ pub struct ReflexiveTriggerEffect<E> {
     pub effects: Vec<E>,
     pub choices: Vec<ChooseSpec>,
 }
+
+/// Reveal the subtype previously chosen secretly for this source by the payer.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Default, TagKeyWalk)]
+pub struct RevealChosenSubtypeEffect;

@@ -1201,7 +1201,9 @@ pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
             strip_leading_keyword_cost_separator(&trim_commas(&tokens[cost.clone()])).to_vec();
         let text = cumulative_upkeep_text(&cost_tokens);
 
-        match parse_compiler_activation_cost(&cost_tokens) {
+        match parse_compiler_activation_cost(&cost_tokens).or_else(|error| {
+            parse_payment_clause_as_total_cost(&cost_tokens)?.ok_or(error)
+        }) {
             Ok(total_cost) => {
                 return Some(KeywordAction::CumulativeUpkeep { total_cost, text });
             }
@@ -1373,8 +1375,12 @@ pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
 
     if keyword_head_is(head, "impending") {
         if let Some(time) = words.get(1).and_then(|word| parse_named_number(word))
-            && let Some(prefix) = keyword_mana_cost_prefix(phrase_tokens, 2) {
-            return Some(KeywordAction::Impending { time, cost: prefix.cost });
+            && let Some(prefix) = keyword_mana_cost_prefix(phrase_tokens, 2)
+        {
+            return Some(KeywordAction::Impending {
+                time,
+                cost: prefix.cost,
+            });
         }
         if words.len() == 1 {
             return Some(KeywordAction::MarkerText("Impending".to_string()));
@@ -1397,7 +1403,9 @@ pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
     }
 
     if keyword_head_is(head, "airbend") {
-        return marker_text_from_words(&words).map(KeywordAction::MarkerText);
+        // Airbend is an instruction with an object operand, not an ability
+        // that can be granted to the source. Its typed clause parser owns it.
+        return None;
     }
 
     if let KeywordAbilityHead::Echo { cost } = &surface.head {

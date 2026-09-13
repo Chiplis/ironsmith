@@ -1678,7 +1678,14 @@ pub(super) fn try_apply_leading_tagged_reference_prefix(
             is_demonstrative_object_head(word)
                 || (demonstrative_reference && parse_subtype_flexible(word).is_some())
         }) {
-            push_it_tagged_object_constraint(filter);
+            if all_words[0] == "chosen" {
+                filter.tagged_constraints.push(TaggedObjectConstraint {
+                    tag: crate::tag::CompilerReferenceTag::ChosenObjects.key(),
+                    relation: TaggedOpbjectRelation::IsTaggedObject,
+                });
+            } else {
+                push_it_tagged_object_constraint(filter);
+            }
             if plural_demonstrative {
                 filter.set_plural_object_noun_surface(true);
             }

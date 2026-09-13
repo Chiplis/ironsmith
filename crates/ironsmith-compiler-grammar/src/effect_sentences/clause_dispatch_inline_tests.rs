@@ -128,6 +128,7 @@ fn explicit_opponent_creature_type_choice_keeps_typed_chooser() {
             SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType {
                 excluded_subtypes,
                 family: crate::types::SubtypeFamily::Creature,
+                ..
             }),
     }) = parsed
     else {
@@ -848,4 +849,40 @@ fn face_down_return_if_permanent_then_turn_stays_a_resolution_condition() {
         !format!("{predicate:#?}").contains("face_down: Some(false)"),
         "the follow-up words must not leak into the permanent-card predicate"
     );
+}
+
+#[test]
+fn secret_subtype_choice_retains_complete_options_and_secrecy() {
+    let cost = crate::grammar::activation_costs::parse_activation_cost_rewrite("Reveal the creature type you chose")
+        .expect("reveal chosen subtype is a cost");
+    assert!(matches!(cost.segments.as_slice(), [crate::grammar::activation_costs::ActivationCostSegmentCst::RevealChosenSubtype]));
+
+    let parsed = parse_effect_clause(&lex_tail("Secretly choose Human, Merfolk, or Goblin."))
+        .expect("strict secret subtype choice");
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst { subject, action:
+        SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType {
+            allowed_subtypes, excluded_subtypes, secretly, family,
+        }) }) = parsed else { panic!("expected subtype choice: {parsed:#?}") };
+    assert_eq!(subject.player, PlayerAst::You);
+    assert!(secretly);
+    assert_eq!(family, crate::types::SubtypeFamily::Creature);
+    assert!(excluded_subtypes.is_empty());
+    assert_eq!(allowed_subtypes, [crate::types::Subtype::Human, crate::types::Subtype::Merfolk, crate::types::Subtype::Goblin]);
+    for text in ["Secretly choose Human or nonsense.", "Secretly choose Human or Goblin draw a card."] {
+        assert!(parse_effect_clause(&lex_tail(text)).is_err(), "must not swallow: {text}");
+    }
+}
+
+#[test]
+fn airbend_clause_is_a_targeted_action_with_complete_operand() {
+    let effect = parse_effect_clause(&lex_tail("Airbend another target creature."))
+        .expect("airbend is an executable object action");
+    let debug = format!("{effect:#?}");
+    assert!(debug.contains("Airbend"), "{debug}");
+    assert!(debug.contains("Creature") && debug.contains("other: true"), "{debug}");
+    assert!(!debug.contains("Marker") && !debug.contains("GrantedAbility"), "{debug}");
+    for invalid in ["Airbend.", "Airbend another target creature nonsense."] {
+        let result = parse_effect_clause(&lex_tail(invalid));
+        assert!(result.is_err(), "{invalid}: {result:#?}");
+    }
 }

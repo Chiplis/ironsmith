@@ -372,7 +372,7 @@ pub fn parse_become_body_surface_shape(tokens: &[OwnedLexToken]) -> BecomeBodySu
     };
 
     let copy_source = if let Some((_, source_tokens)) =
-        primitives::parse_prefix(body_tokens, primitives::phrase(&["copy", "of"]).void())
+        primitives::strip_lexed_prefix_phrases(body_tokens, &[&["copy", "of"], &["copies", "of"]])
     {
         let source_tokens = trim_lexed_commas(source_tokens);
         if source_tokens.is_empty() {

@@ -202,7 +202,7 @@ fn public_two_line_damage_replacement_reuses_both_announced_targets() {
     assert_eq!(damage_targets(default), damage_targets(replacement));
     assert!(matches!(
         branch.presentation_label,
-        Some(ironsmith_compiler::cards::builders::PresentationLabel::AbilityWord(ref label)) if label == "Landfall"
+        Some(ironsmith_compiler::ability::PresentationLabel::AbilityWord(ref label)) if label == "Landfall"
     ));
 }
 

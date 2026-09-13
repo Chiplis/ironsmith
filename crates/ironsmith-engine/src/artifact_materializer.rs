@@ -120,6 +120,7 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "ChooseCardNameEffect" => decode_as::<T, ironsmith_core::ChooseCardNameEffect>(effect),
         "ChooseCardTypeEffect" => decode_as::<T, ironsmith_core::ChooseCardTypeEffect>(effect),
         "ChooseColorEffect" => decode_as::<T, ironsmith_core::ChooseColorEffect>(effect),
+        "RevealChosenSubtypeEffect" => decode_as::<T, ironsmith_core::RevealChosenSubtypeEffect>(effect),
         "ChooseCreatureTypeEffect" => {
             decode_as::<T, ironsmith_core::ChooseCreatureTypeEffect>(effect)
         }

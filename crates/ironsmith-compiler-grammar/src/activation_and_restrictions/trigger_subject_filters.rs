@@ -381,6 +381,7 @@ pub fn parse_trigger_subject_filter_lexed(
             crate::tag::CompilerReferenceTag::ChosenObjects.bind(),
             crate::filter::TaggedOpbjectRelation::IsTaggedObject,
         );
+        crate::object_filters::preserve_chosen_object_reference_noun(&mut filter, subject_tokens);
         return Ok(Some(filter));
     }
 
@@ -826,6 +827,21 @@ pub fn parse_spell_activity_trigger(
 
     if let Some(cast) = cast_idx {
         let suffix_tokens = tokens.get(cast + 1..).unwrap_or_default();
+        if timing.is_none() && during_turn.is_none() && min_spells_this_turn.is_none()
+            && exact_spells_this_turn.is_none() && !from_not_hand
+        {
+            for (index, _) in suffix_tokens.iter().enumerate() {
+                let Some(relation) = suffix_tokens.get(index..index + 6) else { continue; };
+                if crate::lexer::token_word_refs(relation) != ["that", "has", "the", "same", "name", "as"] { continue; }
+                let reference = trim_commas(&suffix_tokens[index + 6..]);
+                let words = crate::lexer::token_word_refs(&reference);
+                if words != ["a", "card", "in", "your", "graveyard"] { continue; }
+                let filter = parse_filter(&suffix_tokens[..index])?;
+                return Ok(Some(TriggerSpec::SpellCastSameNameCardInZone {
+                    filter, caster: actor, zone: Zone::Graveyard, owner: PlayerFilter::You,
+                }));
+            }
+        }
         let suffix_envelope =
             crate::grammar::trigger_subjects::parse_spell_filter_envelope(suffix_tokens);
         let mut filter_tokens = &suffix_tokens[..suffix_envelope.end];

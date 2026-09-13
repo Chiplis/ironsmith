@@ -108,6 +108,10 @@ impl CopiableValues {
 /// It captures all relevant fields from an Object for LKI purposes.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ObjectSnapshot {
+    /// Noncopiable choices needed by abilities after this exact object leaves.
+    pub chosen_subtype: Option<Subtype>,
+    pub chosen_object: Option<Box<ObjectSnapshot>>,
+    pub(crate) secret_chosen_subtype: Option<(PlayerId, Subtype)>,
     // === Identity ===
     /// The object's ID at the time of snapshot.
     pub object_id: ObjectId,
@@ -204,6 +208,9 @@ pub struct ObjectSnapshot {
     pub attached_to: Option<AttachmentTarget>,
     /// What was attached to the object.
     pub attachments: Vec<ObjectId>,
+    /// One level of attachment characteristics captured for last-known counts.
+    /// Nested snapshots do not recursively capture their own attachments.
+    pub attachment_snapshots: Vec<ObjectSnapshot>,
     /// Whether the object had any Auras attached.
     pub was_enchanted: bool,
     /// Whether the permanent was monstrous.
@@ -265,6 +272,9 @@ impl ObjectSnapshot {
             defense: obj.base_defense,
             abilities: obj.abilities.clone(),
             aura_attach_filter: obj.aura_attach_filter_owned(),
+            chosen_subtype: game.chosen_subtype(obj.id),
+            chosen_object: game.chosen_object(obj.id).cloned().map(Box::new),
+            secret_chosen_subtype: game.secret_subtype_snapshot(obj.id),
             copiable_values: CopiableValues::from_object(obj),
             x_value: obj.x_value,
             cast_order_this_turn: game.turn_store.turn_history.spell_cast_order(obj.id),
@@ -291,6 +301,7 @@ impl ObjectSnapshot {
             transform_count: game.transform_count(obj.id),
             attached_to: obj.attached_to,
             attachments: obj.attachments.clone(),
+            attachment_snapshots: Vec::new(),
             was_enchanted,
             is_monstrous: game.is_monstrous(obj.id),
             is_prepared: game.is_prepared(obj.id),
@@ -407,6 +418,23 @@ impl ObjectSnapshot {
             snapshot.copiable_values = copiable_values;
         }
 
+        snapshot.apply_calculated_characteristics(obj, calculated);
+        if !obj.attachments.is_empty() {
+            let effects = game.all_continuous_effects();
+            snapshot.attachment_snapshots = obj.attachments.iter()
+                .filter_map(|id| game.object(*id))
+                .map(|attachment| {
+                    let mut child = Self::from_object(attachment, game);
+                    let calculated = game.calculated_characteristics_with_effects(attachment.id, &effects);
+                    child.apply_calculated_characteristics(attachment, calculated.as_ref());
+                    child
+                }).collect();
+        }
+        snapshot
+    }
+
+    fn apply_calculated_characteristics(&mut self, obj: &Object, calculated: Option<&CalculatedCharacteristics>) {
+        let snapshot = self;
         if let Some(calculated) = calculated {
             if calculated.name.as_str() != obj.name.as_ref() {
                 snapshot.first_printed_set_name = None;
@@ -423,7 +451,6 @@ impl ObjectSnapshot {
             snapshot.abilities = Arc::new(calculated.abilities.to_vec());
         }
 
-        snapshot
     }
 
     // === Type checks ===
@@ -601,6 +628,9 @@ impl ObjectSnapshot {
         Self {
             object_id,
             stable_id: object_id.into(),
+            chosen_subtype: None,
+            secret_chosen_subtype: None,
+            chosen_object: None,
             kind: ObjectKind::Card,
             card: None,
             controller,
@@ -644,6 +674,7 @@ impl ObjectSnapshot {
             transform_count: 0,
             attached_to: None,
             attachments: vec![],
+            attachment_snapshots: Vec::new(),
             was_enchanted: false,
             is_monstrous: false,
             is_prepared: false,

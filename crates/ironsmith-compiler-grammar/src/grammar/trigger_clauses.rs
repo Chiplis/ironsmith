@@ -155,6 +155,7 @@ pub struct YouOrControlledObjectSubject {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RollResultShape {
+    ToVisitAttractions,
     HighestNatural,
     Fixed(u32),
     UnspecifiedDie,
@@ -431,6 +432,12 @@ fn parse_roll_result_word_slice(
             primitives::word_slice_exact("result"),
         )
             .value(RollResultShape::HighestNatural),
+        (
+            primitives::word_slice_exact("to"),
+            primitives::word_slice_exact("visit"),
+            alt((primitives::word_slice_exact("your"), primitives::word_slice_exact("their"))),
+            primitives::word_slice_exact("attractions"),
+        ).value(RollResultShape::ToVisitAttractions),
         (
             primitives::word_slice_exact("one"),
             primitives::word_slice_exact("or"),

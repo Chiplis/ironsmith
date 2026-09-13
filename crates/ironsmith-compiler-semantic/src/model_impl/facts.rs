@@ -72,6 +72,9 @@ pub struct InsteadFollowupFacts {
     pub semantics: crate::cards::builders::InsteadSemantics,
     pub conditional_intro: bool,
     pub leading_instead_surface: bool,
+    /// A damage replacement explicitly refers to the earlier mixed set of
+    /// permanent and player recipients, rather than just its object subset.
+    pub previous_mixed_damage_recipients: bool,
 }
 
 impl Default for InsteadFollowupFacts {
@@ -80,6 +83,7 @@ impl Default for InsteadFollowupFacts {
             semantics: crate::cards::builders::InsteadSemantics::NonReplacement,
             conditional_intro: false,
             leading_instead_surface: false,
+            previous_mixed_damage_recipients: false,
         }
     }
 }

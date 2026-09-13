@@ -301,24 +301,7 @@ pub(crate) fn calculate_effective_activation_total_cost_with_view(
             .collect()
     }
 
-    let mut costs = Vec::with_capacity(cost.costs().len());
-    for component in cost.costs() {
-        if let Some(mana_cost) = component.mana_cost_ref() {
-            let reduced = calculate_effective_activation_mana_cost_with_view(
-                game,
-                activator,
-                ability_source,
-                mana_cost,
-                chosen_targets,
-                view,
-            );
-            costs.push(crate::costs::Cost::mana(reduced));
-        } else {
-            costs.push(component.clone());
-        }
-    }
-
-    let mut adjusted = crate::cost::TotalCost::from_costs(costs);
+    let mut adjusted = cost.clone();
     let Some(ability_source_object) = game.object(ability_source) else {
         return adjusted;
     };
@@ -387,7 +370,77 @@ pub(crate) fn calculate_effective_activation_total_cost_with_view(
         }
     }
 
-    adjusted
+
+    // Mana added by a cost increase is part of the same total. Merge it before
+    // reductions; separate payment components otherwise overwrite one another
+    // when the priority loop constructs its single mana payment.
+    let components = adjusted.costs();
+    let dynamic_indices = components.iter().enumerate()
+        .filter_map(|(index,cost)| cost.dynamic_mana_cost_ref().map(|_| index))
+        .collect::<Vec<_>>();
+    let merge_index = match dynamic_indices.as_slice() {
+        [] => components.iter().position(|cost| cost.mana_cost_ref().is_some()),
+        [index] => {
+            let mut probe = components[*index].dynamic_mana_cost_ref().unwrap().clone();
+            probe.source_mana_cost_reduction_condition = None;
+            probe.resolved_static_base().map(|_| *index)
+        }
+        _ => None,
+    };
+    if let Some(merge_index) = merge_index {
+        let mut pips = Vec::new();
+        for (index,component) in components.iter().enumerate() {
+            if let Some(mana) = component.mana_cost_ref() {
+                pips.extend_from_slice(mana.pips());
+            } else if index == merge_index {
+                pips.extend_from_slice(component.dynamic_mana_cost_ref().unwrap().base.pips());
+            }
+        }
+        let mana = crate::mana::ManaCost::from_pips(pips);
+        let merged = if let Some(dynamic) = components[merge_index].dynamic_mana_cost_ref() {
+            let mut dynamic = dynamic.clone();
+            dynamic.base = mana;
+            crate::costs::Cost::dynamic_mana(dynamic)
+        } else { crate::costs::Cost::mana(mana) };
+        adjusted = crate::cost::TotalCost::from_costs(components.iter().enumerate()
+            .filter_map(|(index,component)| {
+                if index == merge_index { Some(merged.clone()) }
+                else if component.mana_cost_ref().is_some() { None }
+                else { Some(component.clone()) }
+            }).collect());
+    }
+    let cost = &adjusted;
+    let mut costs = Vec::with_capacity(cost.costs().len());
+    for component in cost.costs() {
+        if let Some(mana_cost) = component.mana_cost_ref() {
+            let reduced = calculate_effective_activation_mana_cost_with_view(
+                game,
+                activator,
+                ability_source,
+                mana_cost,
+                chosen_targets,
+                view,
+            );
+            costs.push(crate::costs::Cost::mana(reduced));
+        } else if let Some(dynamic) = component.dynamic_mana_cost_ref() {
+            let mut adjusted_dynamic = dynamic.clone();
+            let mut base_probe = dynamic.clone();
+            base_probe.source_mana_cost_reduction_condition = None;
+            if let Some(base) = base_probe.resolved_static_base() {
+                // Apply ordinary activation modifiers to the known base first;
+                // the conditional source-cost reduction keeps its payer choices
+                // until the activation's dynamic payment step.
+                adjusted_dynamic.base = calculate_effective_activation_mana_cost_with_view(
+                    game, activator, ability_source, &base, chosen_targets, view,
+                );
+            }
+            costs.push(crate::costs::Cost::dynamic_mana(adjusted_dynamic));
+        } else {
+            costs.push(component.clone());
+        }
+    }
+
+    crate::cost::TotalCost::from_costs(costs)
 }
 
 /// Calculate the effective mana portion of an activated ability's cost.
@@ -773,7 +826,10 @@ fn spell_view_for_cost_filter_match(
             _ => spell.cast_alternative_method_owned(),
         };
 
-        if method.as_ref().is_some_and(|method| method.casts_transformed()) {
+        if method
+            .as_ref()
+            .is_some_and(|method| method.casts_transformed())
+        {
             if let Some(disturb_view) = spell_view_for_disturb_cast(game, spell) {
                 view = disturb_view;
                 changed = true;
@@ -1124,7 +1180,7 @@ where
                     &mana_spend_policy,
                     allow_black_life,
                 );
-                max_x_payable_with_assist(hypothetical, player, proposal.id, cost)
+                max_x_payable_with_payment_resources(hypothetical, player, proposal.id, cost)
                     .unwrap_or(caster_only)
             })
             .unwrap_or(0);
@@ -1570,10 +1626,22 @@ fn casting_method_grants_library_search_timing(
         )
 }
 
-fn offering_grants_timing(game: &GameState, player: PlayerId, spell: &crate::object::Object) -> bool {
-    spell.optional_costs.iter().any(|optional| optional.kind == ironsmith_core::OptionalCostKind::Offering
-        && (spell.zone != Zone::Stack || spell.optional_costs_paid.was_paid_label(optional.cost_ref()))
-        && optional.cost.non_mana_costs().all(|cost| can_pay_cost_with_spell_exclusion(game, player, cost, Some(spell.id))))
+fn offering_grants_timing(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+) -> bool {
+    spell.optional_costs.iter().any(|optional| {
+        optional.kind == ironsmith_core::OptionalCostKind::Offering
+            && (spell.zone != Zone::Stack
+                || spell
+                    .optional_costs_paid
+                    .was_paid_label(optional.cost_ref()))
+            && optional
+                .cost
+                .non_mana_costs()
+                .all(|cost| can_pay_cost_with_spell_exclusion(game, player, cost, Some(spell.id)))
+    })
 }
 
 fn casting_method_grants_special_timing(
@@ -2158,12 +2226,17 @@ fn mana_cost_can_be_paid_with_view_at_x(
     x_value: u32,
     view: &DerivedGameView<'_>,
 ) -> bool {
-    if game.object(spell_id).is_some_and(|spell| game.controller_of(spell) == player
-        && (has_delve(spell) || has_convoke(spell) || has_improvise(spell)))
-    {
-        let mut request = crate::mana_payment::ManaPaymentRequest::new(player, spell_id,
-            crate::costs::PaymentReason::CastSpell, cost.clone())
-            .with_spend_policy(game.mana_spend_policy(player, Some(spell_id)));
+    if game.object(spell_id).is_some_and(|spell| {
+        game.controller_of(spell) == player
+            && (has_delve(spell) || has_convoke(spell) || has_improvise(spell))
+    }) {
+        let mut request = crate::mana_payment::ManaPaymentRequest::new(
+            player,
+            spell_id,
+            crate::costs::PaymentReason::CastSpell,
+            cost.clone(),
+        )
+        .with_spend_policy(game.mana_spend_policy(player, Some(spell_id)));
         request.x_value = x_value;
         return crate::mana_payment::check_mana_payment(game, &request).is_ok();
     }
@@ -2283,36 +2356,72 @@ fn mana_cost_can_be_paid_by_caster_or_assist_with_view(
     mana_cost_can_be_paid_by_caster_or_assist_with_view_at_x(game, caster, spell_id, cost, 0, view)
 }
 
-pub(crate) fn max_x_payable_with_assist(
+pub(crate) fn max_x_payable_with_payment_resources(
     game: &GameState,
     caster: PlayerId,
     spell_id: ObjectId,
     cost: &crate::mana::ManaCost,
 ) -> Option<u32> {
-    if !game
-        .current_has_static_ability_id(spell_id, crate::static_abilities::StaticAbilityId::Assist)
-        || !cost.has_x()
-    {
+    let spell = game.object(spell_id)?;
+    let assist = game
+        .current_has_static_ability_id(spell_id, crate::static_abilities::StaticAbilityId::Assist);
+    let delve = has_delve(spell);
+    let convoke = has_convoke(spell);
+    let improvise = has_improvise(spell);
+    if !cost.has_x() || !(assist || delve || convoke || improvise) {
         return None;
     }
     let view = DerivedGameView::new(game);
-    let upper_bound = game
-        .turn_store
-        .turn_order
-        .iter()
-        .copied()
-        .map(|player| view.potential_mana(player).total())
-        .sum::<u32>();
-    Some(
-        (0..=upper_bound)
-            .rev()
-            .find(|x_value| {
-                mana_cost_can_be_paid_by_caster_or_assist_with_view_at_x(
-                    game, caster, spell_id, cost, *x_value, &view,
-                )
-            })
-            .unwrap_or(0),
-    )
+    let mut upper_bound = if assist {
+        game.turn_store
+            .turn_order
+            .iter()
+            .copied()
+            .map(|player| view.potential_mana(player).total())
+            .sum::<u32>()
+    } else {
+        view.potential_mana(caster).total()
+    };
+    let mut tap_resources = std::collections::HashSet::new();
+    if convoke {
+        tap_resources.extend(
+            get_convoke_creatures(game, caster)
+                .into_iter()
+                .map(|(id, _)| id),
+        );
+    }
+    if improvise {
+        tap_resources.extend(get_improvise_artifacts(game, caster));
+    }
+    upper_bound = upper_bound.saturating_add(tap_resources.len() as u32);
+    if delve {
+        upper_bound = upper_bound.saturating_add(game.player(caster).map_or(0, |player| {
+            player
+                .graveyard
+                .iter()
+                .filter(|id| {
+                    **id != spell_id
+                        && game
+                            .object(**id)
+                            .is_some_and(|card| card.kind != crate::object::ObjectKind::Token)
+                })
+                .count() as u32
+        }));
+    }
+    // Paying the fixed cost plus X is monotone; the planner verifies shared
+    // resources jointly rather than assuming every possible source can stack.
+    let mut lower = 0;
+    while lower < upper_bound {
+        let middle = lower + (upper_bound - lower).div_ceil(2);
+        if mana_cost_can_be_paid_by_caster_or_assist_with_view_at_x(
+            game, caster, spell_id, cost, middle, &view,
+        ) {
+            lower = middle;
+        } else {
+            upper_bound = middle - 1;
+        }
+    }
+    Some(lower)
 }
 
 fn effective_cost_with_affordable_optional_cost_hypothesis(
@@ -2816,24 +2925,54 @@ pub(crate) fn can_cast_with_cost_with_context(
         ctx.add_cost_adjustment_ms(cost_started_at.elapsed_ms());
 
         let affordability_started_at = PerfTimer::start();
-        let selected_method = alternative_method_for_casting_method(game, player, spell_for_checks, casting_method);
-        let can_pay_adjusted = if selected_method.as_ref().is_some_and(|method| matches!(method,
-            crate::alternative_cast::AlternativeCastingMethod::Harmonize { .. })) {
-            let full_cost = calculate_effective_mana_cost_with_targets_internal(game, player, spell_for_checks,
-                cost, 0, &[], false, casting_method, None, view);
-            std::iter::once(None).chain(get_convoke_creatures(game, player).into_iter().map(|(id, _)| Some(id)))
+        let selected_method =
+            alternative_method_for_casting_method(game, player, spell_for_checks, casting_method);
+        let can_pay_adjusted = if selected_method.as_ref().is_some_and(|method| {
+            matches!(
+                method,
+                crate::alternative_cast::AlternativeCastingMethod::Harmonize { .. }
+            )
+        }) {
+            let full_cost = calculate_effective_mana_cost_with_targets_internal(
+                game,
+                player,
+                spell_for_checks,
+                cost,
+                0,
+                &[],
+                false,
+                casting_method,
+                None,
+                view,
+            );
+            std::iter::once(None)
+                .chain(
+                    get_convoke_creatures(game, player)
+                        .into_iter()
+                        .map(|(id, _)| Some(id)),
+                )
                 .any(|resource| {
-                    let reduction = resource.map_or(0, |id| game.current_power(id).unwrap_or(0).max(0) as u32);
-                    let reduced = apply_minimum_spell_total_mana_with_view(view, &full_cost.reduce_generic(reduction));
-                    let mut request = crate::mana_payment::ManaPaymentRequest::new(player, spell_id,
-                        crate::costs::PaymentReason::CastSpell, reduced)
-                        .with_spend_policy(game.mana_spend_policy(player, Some(spell_id)));
+                    let reduction =
+                        resource.map_or(0, |id| game.current_power(id).unwrap_or(0).max(0) as u32);
+                    let reduced = apply_minimum_spell_total_mana_with_view(
+                        view,
+                        &full_cost.reduce_generic(reduction),
+                    );
+                    let mut request = crate::mana_payment::ManaPaymentRequest::new(
+                        player,
+                        spell_id,
+                        crate::costs::PaymentReason::CastSpell,
+                        reduced,
+                    )
+                    .with_spend_policy(game.mana_spend_policy(player, Some(spell_id)));
                     request.reserved_tap_sources = resource.into_iter().collect();
                     crate::mana_payment::check_mana_payment(game, &request).is_ok()
                 })
-        } else { mana_cost_can_be_paid_by_caster_or_assist_with_view(
-            game, player, spell_id, &adjusted, view,
-        ) };
+        } else {
+            mana_cost_can_be_paid_by_caster_or_assist_with_view(
+                game, player, spell_id, &adjusted, view,
+            )
+        };
         let can_pay_with_optional_reduction = !can_pay_adjusted
             && effective_cost_with_affordable_optional_cost_hypothesis(
                 game,
@@ -2925,8 +3064,14 @@ pub(crate) fn spell_view_for_disturb_cast(
     game: &GameState,
     spell: &crate::object::Object,
 ) -> Option<crate::object::Object> {
-    let already_overlaid_disturb_spell = spell.cast_alternative_method.as_deref().is_some_and(|method| method.casts_transformed())
-        && !spell.alternative_casts.iter().any(|method| method.casts_transformed());
+    let already_overlaid_disturb_spell = spell
+        .cast_alternative_method
+        .as_deref()
+        .is_some_and(|method| method.casts_transformed())
+        && !spell
+            .alternative_casts
+            .iter()
+            .any(|method| method.casts_transformed());
     if already_overlaid_disturb_spell {
         let mut view = spell.clone();
         view.ensure_aura_cast_spell_effect();
@@ -3052,12 +3197,10 @@ pub(crate) fn can_cast_with_alternative_with_context(
     let player = ctx.player;
 
     let disturbed_view = match method {
-        method if method.casts_transformed() => {
-            match spell_view_for_disturb_cast(game, spell) {
-                Some(view) => Some(view),
-                None => return false,
-            }
-        }
+        method if method.casts_transformed() => match spell_view_for_disturb_cast(game, spell) {
+            Some(view) => Some(view),
+            None => return false,
+        },
         _ => None,
     };
     let base_spell_for_checks = disturbed_view.as_ref().unwrap_or(spell);
@@ -3164,6 +3307,12 @@ fn tagged_dependency_satisfied_by_prior_cost(
         &sacrifice.filter.tagged_constraints
     } else if let Some(sacrifice) = effect.downcast_ref::<ironsmith_core::SacrificePlayerEffect>() {
         &sacrifice.filter.tagged_constraints
+    } else if let Some(returned) = effect.downcast_ref::<crate::effects::ReturnToHandEffect>() {
+        match returned.spec.base() {
+            ChooseSpec::Object(filter) | ChooseSpec::All(filter) => &filter.tagged_constraints,
+            ChooseSpec::Tagged(tag) => return available_tags.contains(tag),
+            _ => return false,
+        }
     } else {
         return false;
     };
@@ -3459,14 +3608,9 @@ pub(crate) fn apply_minimum_spell_total_mana_with_view(
 // Cost Modifier Helpers (Tier 9)
 // ============================================================================
 
-/// Calculate the effective mana cost after applying cost reduction abilities.
-///
-/// This handles abilities like:
-/// - Affinity for artifacts: Reduce generic cost by 1 for each artifact you control
-/// - Delve: Preview the maximum available generic reduction for action discovery
-/// - Convoke: Tap creatures to pay for mana (colored or generic)
-///
-/// Returns the reduced mana cost.
+/// Calculate the total mana cost after increases, reductions, and minimums.
+/// Delve, Convoke, and Improvise pay that total through the mana planner;
+/// their resources are not subtracted here.
 pub fn calculate_effective_mana_cost(
     game: &GameState,
     player: PlayerId,
@@ -3769,22 +3913,55 @@ pub(crate) fn calculate_effective_mana_cost_with_targets_internal(
 
     if preview_resource_reductions {
         if spell.zone != Zone::Stack {
-            if let Some(method) = alternative_method_for_casting_method(game, player, spell, casting_method) {
-                let reduction = if matches!(method, crate::alternative_cast::AlternativeCastingMethod::Harmonize { .. }) {
-                    get_convoke_creatures(game, player).iter().map(|(id, _)| game.current_power(*id).unwrap_or(0).max(0) as u32).max().unwrap_or(0)
-                } else { maximum_emerge_reduction(game, player, spell.id, &method) };
+            if let Some(method) =
+                alternative_method_for_casting_method(game, player, spell, casting_method)
+            {
+                let reduction = if matches!(
+                    method,
+                    crate::alternative_cast::AlternativeCastingMethod::Harmonize { .. }
+                ) {
+                    get_convoke_creatures(game, player)
+                        .iter()
+                        .map(|(id, _)| game.current_power(*id).unwrap_or(0).max(0) as u32)
+                        .max()
+                        .unwrap_or(0)
+                } else {
+                    maximum_emerge_reduction(game, player, spell.id, &method)
+                };
                 current_cost = current_cost.reduce_generic(reduction);
             }
         }
-        for optional in spell.optional_costs.iter().filter(|optional| optional.kind == ironsmith_core::OptionalCostKind::Offering
-            && spell.optional_costs_paid.was_paid_label(optional.cost_ref())) {
-            if let Some(filter) = optional.cost.non_mana_costs().find_map(|cost| cost.sacrifice_filter()) {
+        for optional in spell.optional_costs.iter().filter(|optional| {
+            optional.kind == ironsmith_core::OptionalCostKind::Offering
+                && spell
+                    .optional_costs_paid
+                    .was_paid_label(optional.cost_ref())
+        }) {
+            if let Some(filter) = optional
+                .cost
+                .non_mana_costs()
+                .find_map(|cost| cost.sacrifice_filter())
+            {
                 let ctx = game.filter_context_for(player, Some(spell.id));
-                current_cost = game.battlefield.iter().filter_map(|id| game.object(*id))
-                    .filter(|object| filter.matches(object, &ctx, game) && game.can_be_sacrificed(object.id))
+                current_cost = game
+                    .battlefield
+                    .iter()
+                    .filter_map(|id| game.object(*id))
+                    .filter(|object| {
+                        filter.matches(object, &ctx, game) && game.can_be_sacrificed(object.id)
+                    })
                     .filter_map(|object| object.mana_cost.as_ref())
-                    .map(|reduction| reduce_offering_mana_cost(&current_cost, reduction))
-                    .min_by_key(|cost| cost.mana_value()).unwrap_or(current_cost);
+                    .flat_map(|cost| offering_mana_reduction_choices(cost))
+                    .map(|reduction| reduce_offering_mana_cost(&current_cost, &reduction))
+                    .min_by_key(|cost| {
+                        (
+                            !mana_cost_can_be_paid_by_caster_or_assist_with_view(
+                                game, player, spell.id, cost, view,
+                            ),
+                            cost.mana_value(),
+                        )
+                    })
+                    .unwrap_or(current_cost);
             }
         }
     }
@@ -4646,16 +4823,67 @@ fn coalesce_plain_generic_pips(
 
 /// CR 702.48c: unlike ordinary colored reductions, excess typed mana from
 /// an offering reduces generic mana as well.
-pub(crate) fn reduce_offering_mana_cost(cost: &crate::mana::ManaCost, reduction: &crate::mana::ManaCost) -> crate::mana::ManaCost {
+/// CR 118.7e–g: choose hybrid halves, ignore Phyrexian life halves,
+/// and treat snow in a reduction as generic. Each returned cost is fixed.
+pub(crate) fn offering_mana_reduction_choices(
+    cost: &crate::mana::ManaCost,
+) -> Vec<crate::mana::ManaCost> {
+    let mut choices = vec![crate::mana::ManaCost::new()];
+    for pip in cost.pips() {
+        let halves: Vec<_> = pip
+            .iter()
+            .copied()
+            .filter(|symbol| !matches!(symbol, ManaSymbol::Life(_) | ManaSymbol::X))
+            .map(|symbol| {
+                if symbol == ManaSymbol::Snow {
+                    ManaSymbol::Generic(1)
+                } else {
+                    symbol
+                }
+            })
+            .collect();
+        if halves.is_empty() {
+            continue;
+        }
+        let mut next = Vec::new();
+        for previous in &choices {
+            for half in &halves {
+                let mut pips = previous.pips().to_vec();
+                pips.push(vec![*half]);
+                pips.sort_by_key(|pip| format!("{:?}", pip));
+                let candidate = crate::mana::ManaCost::from_pips(pips);
+                if !next.contains(&candidate) {
+                    next.push(candidate);
+                }
+            }
+        }
+        choices = next;
+    }
+    choices
+}
+
+pub(crate) fn reduce_offering_mana_cost(
+    cost: &crate::mana::ManaCost,
+    reduction: &crate::mana::ManaCost,
+) -> crate::mana::ManaCost {
     let mut result = cost.clone();
     let mut generic = 0u32;
     for pip in reduction.pips() {
-        if let Some(ManaSymbol::Generic(amount)) = pip.first() { generic += *amount as u32; continue; }
-        if let Some(index) = result.pips().iter().position(|candidate| candidate.iter().any(|symbol| pip.contains(symbol))) {
+        if let Some(ManaSymbol::Generic(amount)) = pip.first() {
+            generic += *amount as u32;
+            continue;
+        }
+        if let Some(index) = result
+            .pips()
+            .iter()
+            .position(|candidate| candidate.iter().any(|symbol| pip.contains(symbol)))
+        {
             let mut remaining = result.pips().to_vec();
             remaining.remove(index);
             result = crate::mana::ManaCost::from_pips(remaining);
-        } else if pip.iter().any(|symbol| !matches!(symbol, ManaSymbol::X)) { generic += 1; }
+        } else if pip.iter().any(|symbol| !matches!(symbol, ManaSymbol::X)) {
+            generic += 1;
+        }
     }
     result.reduce_generic(generic)
 }

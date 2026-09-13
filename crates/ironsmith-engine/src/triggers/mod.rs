@@ -1281,6 +1281,9 @@ impl Trigger {
     }
 
     /// Create a "whenever [player] rolls [result]" trigger.
+    pub fn player_rolls_to_visit_attractions(player: PlayerFilter) -> Self {
+        Self::new(PlayerRollsDieTrigger::for_attraction_visit(player))
+    }
     pub fn player_rolls_result(player: PlayerFilter, result: u32) -> Self {
         Self::new(PlayerRollsResultTrigger::new(player, result))
     }

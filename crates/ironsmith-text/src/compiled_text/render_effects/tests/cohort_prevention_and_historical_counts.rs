@@ -69,7 +69,7 @@ fn cohort_experience_cost_reduction_preserves_colored_mana_and_spell_trigger_thr
         crate::compiled_text::compiled_text_lines(&card).join("\n"),
         oracle
     );
-    for experience in [0, 2, 5] {
+    for experience in [0, 2, 4, 5] {
         for kind in [CardType::Instant, CardType::Sorcery, CardType::Creature] {
             for opponent in [false, true] {
                 let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
@@ -353,41 +353,68 @@ fn cohort_damage_prevention_followup_matches_combat_source_and_returns_only_reci
 
 #[test]
 fn cohort_first_strike_prevention_removes_blocker_without_dealing_combat_damage() {
-    let card=crate::CardDefinitionBuilder::new(CardId::new(),"Voranel").card_types(vec![CardType::Artifact,CardType::Creature]).power_toughness(PowerToughness::fixed(2,2))
+    for opposing_first_strike in [false, true] {
+        let card=crate::CardDefinitionBuilder::new(CardId::new(),"Voranel").card_types(vec![CardType::Artifact,CardType::Creature]).power_toughness(PowerToughness::fixed(2,2))
         .parse_text("First strike\nIf this creature would deal combat damage to a creature, prevent that damage and that creature's owner shuffles it into their library.").unwrap();
-    let body = crate::CardDefinitionBuilder::new(CardId::new(), "Zoravel")
-        .card_types(vec![CardType::Creature])
-        .power_toughness(PowerToughness::fixed(4, 5))
-        .build();
-    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
-    let (alice, bob) = (game.players[0].id, game.players[1].id);
-    let source = game.create_object_from_definition(&card, alice, Zone::Battlefield);
-    let blocker = game.create_object_from_definition(&body, bob, Zone::Battlefield);
-    let stable = game.object(blocker).unwrap().stable_id;
-    let combat = crate::combat_state::CombatState {
-        attackers: vec![crate::combat_state::AttackerInfo {
-            creature: source,
-            target: crate::combat_state::AttackTarget::Player(bob),
-        }],
-        blockers: std::collections::HashMap::from([(source, vec![blocker])]),
-        ..Default::default()
-    };
-    game.take_pending_trigger_events();
-    let events = crate::game_loop::execute_combat_damage_step(&mut game, &combat, true);
-    assert!(events.iter().all(|event| event.amount == 0));
-    assert!(
-        game.player(bob)
-            .unwrap()
-            .library
-            .iter()
-            .any(|id| game.object(*id).unwrap().stable_id == stable)
-    );
-    assert_eq!(game.damage_on(source), 0);
-    assert!(
-        game.take_pending_trigger_events()
-            .iter()
-            .all(|event| event.downcast::<crate::events::DamageEvent>().is_none())
-    );
+        let body = crate::CardDefinitionBuilder::new(CardId::new(), "Zoravel")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(4, 5))
+            .parse_text(if opposing_first_strike {
+                "First strike, lifelink"
+            } else {
+                ""
+            })
+            .unwrap();
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let (alice, bob) = (game.players[0].id, game.players[1].id);
+        let source = game.create_object_from_definition(&card, alice, Zone::Battlefield);
+        let blocker = game.create_object_from_definition(&body, bob, Zone::Battlefield);
+        let stable = game.object(blocker).unwrap().stable_id;
+        let combat = crate::combat_state::CombatState {
+            attackers: vec![crate::combat_state::AttackerInfo {
+                creature: source,
+                target: crate::combat_state::AttackTarget::Player(bob),
+            }],
+            blockers: std::collections::HashMap::from([(source, vec![blocker])]),
+            ..Default::default()
+        };
+        game.take_pending_trigger_events();
+        let events = crate::game_loop::execute_combat_damage_step(&mut game, &combat, true);
+        assert!(
+            events
+                .iter()
+                .filter(|event| event.source == source)
+                .all(|event| event.amount == 0)
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.source == blocker)
+                .map(|event| event.amount)
+                .sum::<u32>(),
+            if opposing_first_strike { 4 } else { 0 }
+        );
+        assert_eq!(
+            game.player(bob).unwrap().life,
+            if opposing_first_strike { 24 } else { 20 }
+        );
+        assert!(
+            game.player(bob)
+                .unwrap()
+                .library
+                .iter()
+                .any(|id| game.object(*id).unwrap().stable_id == stable)
+        );
+        assert_eq!(
+            game.damage_on(source),
+            if opposing_first_strike { 4 } else { 0 }
+        );
+        assert!(
+            game.take_pending_trigger_events()
+                .iter()
+                .all(|event| event.downcast::<crate::events::DamageEvent>().is_none())
+        );
+    }
 }
 
 #[test]
@@ -469,7 +496,7 @@ fn cohort_unpreventable_combat_damage_happens_before_prevention_followup() {
     let card = crate::CardDefinitionBuilder::new(CardId::new(), "Voranel")
         .card_types(vec![CardType::Artifact, CardType::Creature])
         .power_toughness(PowerToughness::fixed(2, 2))
-        .parse_text("First strike, lifelink\nDamage can't be prevented.\nIf this creature would deal combat damage to a creature, prevent that damage and that creature's owner shuffles it into their library.").unwrap();
+        .parse_text("First strike, lifelink\nDamage can't be prevented.\nWhenever this creature deals combat damage to a creature, draw a card.\nWhenever a creature you control deals combat damage to a creature, draw a card.\nIf this creature would deal combat damage to a creature, prevent that damage and that creature's owner shuffles it into their library.").unwrap();
     let body = crate::CardDefinitionBuilder::new(CardId::new(), "Zoravel")
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(4, 5))
@@ -479,6 +506,8 @@ fn cohort_unpreventable_combat_damage_happens_before_prevention_followup() {
     let source = game.create_object_from_definition(&card, alice, Zone::Battlefield);
     let blocker = game.create_object_from_definition(&body, bob, Zone::Battlefield);
     let stable = game.object(blocker).unwrap().stable_id;
+    game.create_object_from_definition(&body, alice, Zone::Library);
+    game.create_object_from_definition(&body, alice, Zone::Library);
     let combat = crate::combat_state::CombatState {
         attackers: vec![crate::combat_state::AttackerInfo {
             creature: source,
@@ -497,4 +526,48 @@ fn cohort_unpreventable_combat_damage_happens_before_prevention_followup() {
             .iter()
             .any(|id| game.object(*id).unwrap().stable_id == stable)
     );
+    let mut queue = crate::triggers::TriggerQueue::new();
+    crate::game_loop::queue_combat_damage_triggers(&mut game, &events, &mut queue);
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut queue).unwrap();
+    assert_eq!(
+        game.stack.len(),
+        2,
+        "damage still triggers after its recipient is shuffled away"
+    );
+    crate::game_loop::resolve_stack_entry(&mut game).unwrap();
+    crate::game_loop::resolve_stack_entry(&mut game).unwrap();
+    assert_eq!(game.player(alice).unwrap().hand.len(), 2);
+}
+
+#[test]
+fn cohort_prevention_followup_regression_gains_only_actual_prevented_damage_once() {
+    let spell = crate::CardDefinitionBuilder::new(CardId::new(), "Ravelon Shelter")
+        .card_types(vec![CardType::Instant])
+        .parse_text("The next time target creature would deal damage this turn, prevent that damage. You gain life equal to the damage prevented this way.").unwrap();
+    for protected in 0..2 {
+        for unpreventable in [false, true] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let (alice, bob) = (game.players[0].id, game.players[1].id);
+            game.player_mut(alice).unwrap().life = 2;
+            let creature = crate::CardDefinitionBuilder::new(CardId::new(), "Ravelon Attacker")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(5, 5))
+                .parse_text(if unpreventable { "Damage can't be prevented." } else { "" }).unwrap();
+            let attackers = (0..2).map(|_| game.create_object_from_definition(&creature, bob, Zone::Battlefield)).collect::<Vec<_>>();
+            let source = game.create_object_from_definition(&spell, alice, Zone::Stack);
+            game.stack.push(StackEntry::new(source, alice).with_targets(vec![crate::game_state::Target::Object(attackers[protected])]));
+            crate::game_loop::resolve_stack_entry(&mut game).unwrap();
+            assert_eq!(game.player(alice).unwrap().life, 2, "life gain waits for prevention");
+            let combat = crate::combat_state::CombatState {
+                attackers: attackers.iter().map(|id| crate::combat_state::AttackerInfo { creature: *id, target: crate::combat_state::AttackTarget::Player(alice) }).collect(),
+                ..Default::default()
+            };
+            let events = crate::game_loop::execute_combat_damage_step(&mut game, &combat, false);
+            assert_eq!(events.iter().map(|event| event.amount).sum::<u32>(), if unpreventable { 10 } else { 5 });
+            assert_eq!(game.player(alice).unwrap().life, if unpreventable { -8 } else { 2 }, "protected={protected}, unpreventable={unpreventable}");
+            let before = game.player(alice).unwrap().life;
+            crate::game_loop::execute_combat_damage_step(&mut game, &combat, false);
+            assert_eq!(game.player(alice).unwrap().life, before - 10, "next-time prevention is consumed");
+        }
+    }
 }

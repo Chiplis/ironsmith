@@ -24,6 +24,10 @@ pub struct DynamicManaCost {
     /// being paid for. This preserves colored and hybrid pips, unlike a mana
     /// value expression, and intentionally fails for cards with no mana cost.
     pub source_mana_cost: bool,
+    /// Reduce this cost by the source object's mana cost when this predicate holds.
+    /// Reduction preserves colored symbols and the payer's hybrid choices.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub source_mana_cost_reduction_condition: Option<Box<crate::Condition>>,
     pub x_value: Option<Value>,
     pub additional_generic: Option<Value>,
     pub multiplier: Option<Value>,
@@ -41,6 +45,7 @@ impl DynamicManaCost {
         Self {
             base,
             source_mana_cost: false,
+            source_mana_cost_reduction_condition: None,
             x_value,
             additional_generic,
             multiplier,
@@ -72,6 +77,7 @@ impl DynamicManaCost {
         Self {
             base: ManaCost::new(),
             source_mana_cost: true,
+            source_mana_cost_reduction_condition: None,
             x_value: None,
             additional_generic: None,
             multiplier: None,
@@ -81,6 +87,7 @@ impl DynamicManaCost {
 
     pub fn resolved_static_base(&self) -> Option<ManaCost> {
         if !self.source_mana_cost
+            && self.source_mana_cost_reduction_condition.is_none()
             && self.x_value.is_none()
             && self.additional_generic.is_none()
             && self.multiplier.is_none()

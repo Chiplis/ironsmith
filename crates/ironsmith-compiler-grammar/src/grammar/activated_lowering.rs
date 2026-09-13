@@ -109,6 +109,9 @@ pub fn parse_activated_presentation_kind_tokens(
         ),
         "boast" => Some(ActivatedPresentationKind::Boast),
         "exhaust" => Some(ActivatedPresentationKind::Exhaust),
+        "power" if label_words.parses_complete_at(0, &["power", "up"]) => {
+            Some(ActivatedPresentationKind::PowerUp)
+        },
         "renew" => Some(ActivatedPresentationKind::Renew),
         "channel" => Some(ActivatedPresentationKind::Channel),
         "cohort" => Some(ActivatedPresentationKind::Cohort),

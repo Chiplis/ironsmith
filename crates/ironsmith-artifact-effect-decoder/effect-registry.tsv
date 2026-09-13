@@ -285,3 +285,4 @@ WinTheGameEffect	ironsmith_core::WinTheGameEffect
 WithIdEffect	ironsmith_core::WithIdEffect<wire::WireEffect>
 ImprintFromHandEffect	wire::WireImprintFromHandEffect
 ScaleXValueEffect	wire::WireScaleXValueEffect
+RevealChosenSubtypeEffect	ironsmith_core::RevealChosenSubtypeEffect

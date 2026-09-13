@@ -1459,18 +1459,10 @@ pub(super) fn describe_mana_usage_restriction(
             ability_source_filter,
         } => {
             let spell_text =
-                describe_mana_usage_spell_filter_target_with_options(spell_filter, true)?;
+                describe_mana_usage_spell_filter_target_with_options(spell_filter, false)?;
             let source_text = describe_mana_usage_ability_source_filter(ability_source_filter)?;
-            let source_text = source_text
-                .strip_prefix("a ")
-                .or_else(|| source_text.strip_prefix("an "))
-                .unwrap_or(&source_text);
-            let source_text = source_text
-                .strip_suffix(" source")
-                .map(|prefix| format!("{prefix}s"))
-                .unwrap_or_else(|| source_text.to_string());
             Some(format!(
-                "Spend this mana only to cast {spell_text} or activate abilities of {source_text}"
+                "Spend this mana only to cast {spell_text} or activate an ability of {source_text}"
             ))
         }
         crate::ability::ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp {
@@ -3350,6 +3342,9 @@ pub(super) fn describe_structural_cumulative_upkeep_keyword(
 }
 
 pub(super) fn cumulative_upkeep_payment_text(payment: &[Effect]) -> Option<String> {
+    if let Some(text) = cumulative_upkeep_chosen_player_token_payment(payment) {
+        return Some(text);
+    }
     if let Some(text) = cumulative_upkeep_chosen_put_counters_text(payment) {
         return Some(text);
     }
@@ -3448,6 +3443,52 @@ pub(super) fn cumulative_upkeep_payment_text(payment: &[Effect]) -> Option<Strin
     } else {
         Some(parts.join(" and "))
     }
+}
+
+fn cumulative_upkeep_chosen_player_token_payment(payment: &[Effect]) -> Option<String> {
+    fn unwrap(effect: &Effect) -> &Effect {
+        if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            unwrap(&with_id.effect)
+        } else {
+            effect
+        }
+    }
+    let payment = if let [effect] = payment {
+        let sequence = unwrap(effect).downcast_ref::<crate::effects::SequenceEffect>()?;
+        if sequence.surface != ironsmith_core::SequenceSurface::Sequential
+            || sequence.result_label.is_some()
+        {
+            return None;
+        }
+        sequence.effects.as_slice()
+    } else {
+        payment
+    };
+    let [choose, create] = payment else {
+        return None;
+    };
+    let choose = unwrap(choose).downcast_ref::<crate::effects::ChoosePlayerEffect>()?;
+    let create = unwrap(create).downcast_ref::<crate::effects::CreateTokenEffect>()?;
+    if choose.chooser != PlayerFilter::You
+        || choose.random
+        || !choose.excluded_tags.is_empty()
+        || choose.remember_as_chosen_player
+        || create.controller != PlayerFilter::TaggedPlayer(choose.tag.clone())
+        || create.controller_target.is_some()
+    {
+        return None;
+    }
+    let recipient = match choose.filter {
+        PlayerFilter::Opponent => "an opponent",
+        PlayerFilter::Any => "a player",
+        _ => return None,
+    };
+    let mut creation = create.clone();
+    creation.controller = PlayerFilter::You;
+    creation.actor_surface_explicit = false;
+    let text = describe_effect(&Effect::new(creation));
+    let object = text.strip_prefix("Create ")?;
+    Some(format!("Have {recipient} create {object}"))
 }
 
 pub(super) fn cumulative_upkeep_move_to_zone_text(

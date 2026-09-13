@@ -404,6 +404,22 @@ pub fn recognize_coordination(tokens: &[OwnedLexToken]) -> ParseOutcome<Coordina
     let mut member_start = 0usize;
 
     for candidate in candidates {
+        // Numeric alternatives in an explicit target head belong to one
+        // selector, e.g. `one, two, or three target creature cards`.
+        // Let the target grammar prove the complete prefix before treating
+        // punctuation inside it as executable coordination.
+        if matches!(candidate.operator, CoordinationOperatorAst::Comma | CoordinationOperatorAst::Or)
+            && (member_start..candidate.start).any(|start| {
+                crate::grammar::leaf::parse_leaf_target_head_tokens(&tokens[start..])
+                    .is_ok_and(|head| {
+                        head.prefix.count.is_some()
+                            && head.prefix.explicit_target_span.is_some()
+                            && start + head.prefix.consumed > candidate.end
+                    })
+            })
+        {
+            continue;
+        }
         let before = trim_lexed_commas(&tokens[member_start..candidate.start]);
         let after = trim_lexed_commas(&tokens[candidate.end..]);
         if before.is_empty() || after.is_empty() {

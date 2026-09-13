@@ -689,12 +689,13 @@ fn parse_devotion_comparison(input: &mut LexStream<'_>) -> WResult<ValueComparis
 }
 
 fn parse_existential_head(input: &mut LexStream<'_>) -> WResult<bool> {
-    primitives::kw("there").parse_next(input)?;
     alt((
-        primitives::kw("is").value(true),
-        primitives::kw("are").value(false),
-    ))
-    .parse_next(input)
+        alt((primitives::kw("theres"), primitives::kw("there's"))).value(true),
+        (primitives::kw("there"), alt((
+            primitives::kw("is").value(true),
+            primitives::kw("are").value(false),
+        ))).map(|(_, singular)| singular),
+    )).parse_next(input)
 }
 
 fn is_card_types_in_graveyard_metric(tokens: &[OwnedLexToken]) -> bool {

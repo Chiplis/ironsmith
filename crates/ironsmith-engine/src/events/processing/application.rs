@@ -252,6 +252,18 @@ pub(super) fn apply_trait_replacement(
             }
         }
 
+        ReplacementAction::EnterUnderChosenControl { players } => {
+            TraitApplyResult::NeedsInteraction {
+                decision_ctx: super::entry_controller_choice_context(game,effect.source,effect.controller,players),
+                redirect_zone: Zone::Battlefield,
+                effect_id: effect.id,
+                object_id: effect.source,
+                filter: None,
+                sacrifice_count: None,
+                destinations: None,
+            }
+        }
+
         ReplacementAction::EnterUnderControl(controller) => {
             let modified = apply_trait_enter_under_control(&event, *controller);
             match modified {
@@ -741,7 +753,7 @@ fn queue_damage_prevented_event(
     );
 }
 
-fn apply_trait_enter_under_control(event: &Event, controller: PlayerId) -> Option<Event> {
+pub(super) fn apply_trait_enter_under_control(event: &Event, controller: PlayerId) -> Option<Event> {
     use crate::events::{EnterBattlefieldEvent, ZoneChangeEvent, downcast_event};
 
     match event.kind() {

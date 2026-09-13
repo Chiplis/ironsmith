@@ -119,6 +119,10 @@ pub fn parse_short_self_reference_name_tokens(name: &str, tokens: &[OwnedLexToke
         }
     }
 
+    if let Some(alias) = crate::grammar::leaf::parse_multiword_name_before_of(trimmed) {
+        return alias.to_string();
+    }
+
     let words = TokenWordView::new(tokens);
     if words.len() <= 1 {
         return trimmed.to_string();

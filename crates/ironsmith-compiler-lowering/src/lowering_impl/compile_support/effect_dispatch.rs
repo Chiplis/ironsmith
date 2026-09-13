@@ -1953,6 +1953,14 @@ fn compile_become_copy(
 
     let refs = current_reference_env(ctx);
     let (target_spec, mut choices) = resolve_target_spec_with_choices(target, &refs)?;
+    // A bare, non-targeted copy subject describes the affected set. It is
+    // not a selection from the spell's separately announced targets.
+    let target_spec = match target_spec {
+        ChooseSpec::Object(filter) if !filter.source && filter.tagged_constraints.is_empty() => {
+            ChooseSpec::All(filter)
+        }
+        spec => spec,
+    };
     let (source_spec, source_choices) = resolve_target_spec_with_choices(source, &refs)?;
     let source_spec = with_target_reference_surface_hint(source_spec, source);
     for choice in source_choices {
@@ -1971,7 +1979,8 @@ fn compile_become_copy(
             copy_exception_surface: copy_exception_surface.clone(),
         },
         duration.clone(),
-    );
+    )
+    .lock_filter_at_resolution();
     if !remove_supertypes.is_empty() {
         apply = apply.with_additional_modification(
             crate::continuous::Modification::RemoveSupertypes(remove_supertypes.clone()),

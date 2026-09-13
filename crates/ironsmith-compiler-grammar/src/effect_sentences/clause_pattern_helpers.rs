@@ -199,8 +199,17 @@ pub fn parse_choose_target_and_verb_clause(
     if verb_idx != 0 {
         return Ok(None);
     }
-    let effect = parse_effect_with_verb(verb, None, shape.target_tokens)?;
-    Ok(Some(effect))
+    let target = parse_target_phrase(shape.target_tokens)?;
+    let choice = EffectAst::TagAffected {
+        effect: Box::new(EffectAst::subject_verb_explicit_target_only(target)),
+        tag: crate::tag::CompilerReferenceTag::ChosenObjects.bind(),
+    };
+    let effect = parse_effect_with_verb(verb, None, &shape.action_tokens[1..])?;
+    Ok(Some(EffectAst::Coordinated {
+        effects: vec![choice, effect],
+        leading_duration: false,
+        result_conjunction: false,
+    }))
 }
 
 pub fn parse_copy_spell_clause(
@@ -1774,6 +1783,11 @@ fn parse_kicked_additional_targets_prelude(
 pub fn parse_choose_target_prelude_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // A comma-then continuation belongs to the sequence parser, not the
+    // target declaration. Preserve its subsequent executable instruction.
+    if crate::grammar::effects::chain_splitting::has_authored_comma_then_surface_tokens(tokens) {
+        return Ok(None);
+    }
     if crate::lexer::split_lexed_sentences(tokens).len() != 1 {
         return Ok(None);
     }
@@ -1807,6 +1821,24 @@ pub fn parse_choose_target_prelude_sentence(
 #[cfg(test)]
 mod choose_target_prelude_tests {
     use super::*;
+
+    #[test]
+    fn target_declaration_does_not_consume_comma_then_roll() {
+        let standalone = crate::lexer::lex_line(
+            "Choose target instant or sorcery card in your graveyard.", 0,
+        ).unwrap();
+        assert!(parse_choose_target_prelude_sentence(&standalone).unwrap().is_some());
+        for continuation in ["roll a d20", "draw a card", "unrecognized instruction"] {
+            let tokens = crate::lexer::lex_line(&format!(
+                "Choose target instant or sorcery card in your graveyard, then {continuation}."
+            ), 0).unwrap();
+            assert!(parse_choose_target_prelude_sentence(&tokens).unwrap().is_none(),
+                "a target-only reading cannot swallow continuation: {continuation}");
+            assert!(crate::grammar::effects::clause_dispatch_shapes::parse_choose_target_shape(&tokens).is_none(),
+                "the direct target shape cannot consume continuation: {continuation}");
+        }
+    }
+
 
     #[test]
     fn preserves_three_repeated_optional_target_slots_under_one_chosen_tag() {
@@ -2148,6 +2180,18 @@ pub fn parse_keyword_mechanic_clause(
     };
     Ok(Some(effect))
 }
+pub fn parse_airbend_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+    if !token_slice_first_is(tokens, "airbend") {
+        return Ok(None);
+    }
+    let target_tokens = &tokens[1..];
+    if target_tokens.is_empty() {
+        return Err(CardTextError::ParseError("airbend requires an object".into()));
+    }
+    let target = parse_target_phrase(target_tokens)?;
+    Ok(Some(EffectAst::subject_verb_airbend(target)))
+}
+
 pub fn parse_connive_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
     let Some(shape) = clause_shapes::parse_connive_clause_shape_tokens(tokens) else {
         return Ok(None);

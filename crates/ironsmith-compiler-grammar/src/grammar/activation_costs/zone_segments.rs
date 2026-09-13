@@ -140,7 +140,17 @@ fn unsupported(tokens: &[OwnedLexToken], label: &str) -> CardTextError {
 
 fn parse_reveal_segment_lexed<'a>(input: &mut LexStream<'a>) -> WResult<ActivationCostSegmentCst> {
     primitives::kw("reveal").parse_next(input)?;
-    alt((parse_reveal_source_from_hand, parse_reveal_cards_from_hand)).parse_next(input)
+    alt((parse_reveal_chosen_subtype, parse_reveal_source_from_hand, parse_reveal_cards_from_hand)).parse_next(input)
+}
+
+fn parse_reveal_chosen_subtype<'a>(input: &mut LexStream<'a>) -> WResult<ActivationCostSegmentCst> {
+    primitives::kw("the").parse_next(input)?;
+    primitives::kw("creature").parse_next(input)?;
+    primitives::kw("type").parse_next(input)?;
+    primitives::kw("you").parse_next(input)?;
+    primitives::kw("chose").parse_next(input)?;
+    eof.parse_next(input)?;
+    Ok(ActivationCostSegmentCst::RevealChosenSubtype)
 }
 
 fn parse_reveal_source_from_hand<'a>(

@@ -1907,6 +1907,9 @@ impl StaticAbilityModelInterpreter {
                 counter_types,
                 count,
             } => StaticAbility::enters_with_counter_choice(counter_types.clone(), count.clone()),
+            ironsmith_core::StaticAbilityPayload::EntersUnderChosenControl(players) => {
+                StaticAbility::new(super::misc::EntersUnderChosenControl(players.clone()))
+            }
             ironsmith_core::StaticAbilityPayload::EntersTappedForFilter(filter) => {
                 StaticAbility::enters_tapped_for_filter(filter.clone())
             }

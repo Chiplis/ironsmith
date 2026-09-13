@@ -4669,6 +4669,8 @@ impl ObjectFilter {
                 };
                 Some((true, card_type_phrase))
             }
+        } else if has_chosen_tag && self.explicit_card_type_noun().is_some() {
+            Some((true, self.explicit_card_type_noun().unwrap().name().to_string()))
         } else if !self.token && !subtype_implies_type {
             let default_noun = if self.source {
                 match self.zone {
@@ -7110,6 +7112,7 @@ fn describe_comparison(cmp: &Comparison) -> String {
                 )
             }
             Value::EventValue(EventValueSpec::Amount) => "that damage".to_string(),
+            Value::EventValue(EventValueSpec::DieResult) => "the result of that roll".to_string(),
             Value::EventValue(EventValueSpec::LifeAmount) => "that much life".to_string(),
             Value::EventValue(EventValueSpec::BlockersBeyondFirst { .. }) => {
                 "a dynamic blocker count".to_string()
@@ -7145,6 +7148,9 @@ fn describe_comparison(cmp: &Comparison) -> String {
                     filter.description()
                 };
                 format!("the number of basic land types among {among}")
+            }
+            Value::LifeLostThisTurn(PlayerFilter::Opponent) => {
+                "the total amount of life your opponents have lost this turn".to_string()
             }
             _ => "a dynamic value".to_string(),
         }

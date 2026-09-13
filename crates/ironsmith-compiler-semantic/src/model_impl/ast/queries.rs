@@ -111,6 +111,7 @@ pub fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseIn { target })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Transform { target })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Convert { target })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Connive { target, .. })
@@ -372,7 +373,13 @@ pub fn choose_spec_for_target(target: &TargetAst) -> ChooseSpec {
                 ChooseSpec::Object(filter.clone())
             };
             let _ = reference_span;
-            source_reference_hinted_spec(spec, filter.source_surface.clone())
+            // In an exclusion, the surface names the excluded source, not
+            // the selected object. The filter renderer retains that suffix.
+            if filter.other {
+                spec
+            } else {
+                source_reference_hinted_spec(spec, filter.source_surface.clone())
+            }
         }
         TargetAst::Tagged(tag, _) => ChooseSpec::Tagged(tag.clone().into()),
         TargetAst::WithCount(inner, count) => choose_spec_for_target(inner).with_count(*count),

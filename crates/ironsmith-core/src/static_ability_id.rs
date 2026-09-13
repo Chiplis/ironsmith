@@ -318,6 +318,7 @@ pub enum StaticAbilityId {
     RuleFallbackText,
     UnsupportedParserLine,
     Grants,
+    EntersUnderChosenControl,
 }
 
 impl StaticAbilityId {
@@ -633,7 +634,8 @@ impl StaticAbilityId {
             | KeywordFallbackText
             | RuleFallbackText
             | UnsupportedParserLine
-            | Grants => {}
+            | Grants
+            | EntersUnderChosenControl => {}
         }
     }
 

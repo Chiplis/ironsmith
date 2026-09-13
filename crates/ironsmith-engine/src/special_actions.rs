@@ -1083,16 +1083,27 @@ fn can_play_land(game: &GameState, player: PlayerId, card_id: ObjectId) -> Resul
 
     // Check the object exists
     let object = game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
+    let land_face = if object.has_card_type(CardType::Land) {
+        None
+    } else {
+        let definition = crate::decision::linked_other_face_land_definition(game, object)
+            .ok_or(ActionError::NotALand)?;
+        let mut face = object.clone();
+        face.apply_definition_face(&definition);
+        Some(face)
+    };
+    let proposed_land = land_face.as_ref().unwrap_or(object);
+    let permission_view = crate::derived_view::DerivedGameView::new(game);
     let can_play_from_zone = object.zone == Zone::Hand
         || (object.zone == Zone::Exile
             && game.is_adventure_exiled(card_id)
             && game.controller_of(object) == player)
-        || game.effect_store.grant_registry.card_can_play_from_zone(
-            game,
+        || !permission_view.granted_play_from_for_card_view(
             card_id,
+            proposed_land,
             object.zone,
             player,
-        );
+        ).is_empty();
     if !can_play_from_zone {
         return Err(ActionError::WrongZone {
             expected: Zone::Hand,
@@ -3403,7 +3414,31 @@ pub(crate) fn resolve_dynamic_mana_cost(
         .transpose()?
         .unwrap_or(1);
 
-    Ok(expand_dynamic_mana_base(&base, x_value, multiplier).add_generic(additional_generic))
+    let expanded = expand_dynamic_mana_base(&base, x_value, multiplier).add_generic(additional_generic);
+    let Some(condition) = dynamic_mana.source_mana_cost_reduction_condition.as_deref() else {
+        return Ok(expanded);
+    };
+    let applies = crate::condition_eval::evaluate_condition_resolution(game, condition, execution_ctx)
+        .map_err(|error| CostPaymentError::Other(format!("failed to evaluate mana reduction: {error:?}")))?;
+    if !applies { return Ok(expanded); }
+    // A source with no mana cost contributes no reduction (CR 702.193b).
+    let reduction = game.current_characteristics(execution_ctx.source)
+        .and_then(|characteristics| characteristics.mana_cost)
+        .unwrap_or_default();
+    let options = expanded.reduced_by_mana_cost_options(&reduction);
+    if options.len() == 1 { return Ok(options[0].clone()); }
+    use crate::decisions::context::{SelectOptionsContext, SelectableOption};
+    let choice = SelectOptionsContext::new(execution_ctx.controller, Some(execution_ctx.source),
+        "Choose mana cost after reduction", options.iter().enumerate()
+            .map(|(index,cost)| SelectableOption::new(index,cost.to_oracle())).collect(),1,1);
+    let selected = execution_ctx.decision_maker.decide_options(game,&choice);
+    if execution_ctx.decision_maker.awaiting_choice() {
+        return Err(CostPaymentError::Other("awaiting mana reduction payment choice".into()));
+    }
+    match selected.as_slice() {
+        [index] => options.get(*index).cloned().ok_or_else(|| CostPaymentError::Other("invalid mana reduction choice".into())),
+        _ => Err(CostPaymentError::Other("mana reduction requires one payment choice".into())),
+    }
 }
 
 fn resolve_dynamic_u32(

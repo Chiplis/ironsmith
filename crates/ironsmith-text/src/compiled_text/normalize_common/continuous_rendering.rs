@@ -1823,6 +1823,12 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
                     ability_text.push('.');
                 }
                 clauses.push(format!("{add_ability_verb} \"{ability_text}\""));
+            } else if !ability.is_keyword() {
+                let text = describe_static_ability_with_subject(ability, self_subject);
+                clauses.push(format!(
+                    "{add_ability_verb} \"{}.\"",
+                    capitalize_first(text.trim_end_matches('.'))
+                ));
             } else {
                 clauses.push(format!(
                     "{add_ability_verb} {}",

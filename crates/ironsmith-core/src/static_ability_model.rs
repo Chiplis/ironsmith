@@ -1058,6 +1058,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         otherwise_count: Option<Value>,
         subtypes: Vec<Subtype>,
     },
+    EntersUnderChosenControl(PlayerFilter),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -2482,6 +2483,7 @@ where
                 counter_types,
                 count,
             },
+            StaticAbilityPayload::EntersUnderChosenControl(players) => StaticAbilityPayload::EntersUnderChosenControl(players),
             StaticAbilityPayload::EntersTappedForFilter(filter) => {
                 StaticAbilityPayload::EntersTappedForFilter(filter)
             }
@@ -5974,6 +5976,9 @@ impl<
         }
     }
 
+    pub fn enters_under_chosen_control(players: PlayerFilter) -> Self {
+        Self { id:Some(StaticAbilityId::EntersUnderChosenControl), label:"enters under chosen control".into(), payload:StaticAbilityPayload::EntersUnderChosenControl(players) }
+    }
     pub fn enters_tapped_for_filter(filter: ObjectFilter) -> Self {
         Self {
             id: Some(StaticAbilityId::EnterTappedForFilter),

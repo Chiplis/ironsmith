@@ -14,6 +14,7 @@ pub enum WhereXKnownValue<'a> {
     HalfYourLifeTotalRoundedDown,
     YourSpeed,
     EventDamageAmount,
+    EventLifeAmount,
     OpponentCount,
     PlayersBeingAttacked,
     TargetPlayerLifeTotal,
@@ -117,6 +118,11 @@ fn parse_life_and_speed_value<'a>(input: &mut LexStream<'a>) -> WResult<WhereXKn
 
 fn parse_event_and_attack_value<'a>(input: &mut LexStream<'a>) -> WResult<WhereXKnownValue<'a>> {
     alt((
+        (
+            opt(semantic_kw("the")),
+            semantic_phrase(&["amount", "of", "life", "you", "gained"]),
+        )
+            .value(WhereXKnownValue::EventLifeAmount),
         (
             opt(semantic_kw("the")),
             semantic_phrase(&[

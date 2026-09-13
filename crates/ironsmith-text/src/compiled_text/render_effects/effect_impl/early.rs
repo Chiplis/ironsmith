@@ -1505,14 +1505,24 @@
             "Starting with you and proceeding in the chosen direction, each player chooses {object} controlled by the next player in that direction. Each player gains control of the {chosen_object} they chose"
         );
     }
+    if effect.downcast_ref::<crate::effects::RevealChosenSubtypeEffect>().is_some() {
+        return "Reveal the creature type you chose".to_string();
+    }
     if let Some(choose_creature_type) =
         effect.downcast_ref::<crate::effects::ChooseCreatureTypeEffect>()
     {
         let chooser = describe_player_filter(&choose_creature_type.chooser);
         let choose_verb = player_verb(&chooser, "choose", "chooses");
+        let secrecy = if choose_creature_type.secretly { "secretly " } else { "" };
+        if !choose_creature_type.allowed_subtypes.is_empty() {
+            let options = choose_creature_type.allowed_subtypes.iter()
+                .filter(|subtype| !choose_creature_type.excluded_subtypes.contains(subtype))
+                .map(ToString::to_string).collect::<Vec<_>>();
+            return format!("{chooser} {secrecy}{choose_verb} {}", join_with_or(&options));
+        }
         let type_phrase = choose_creature_type.family.type_phrase();
         if choose_creature_type.excluded_subtypes.is_empty() {
-            return format!("{chooser} {choose_verb} a {type_phrase}");
+            return format!("{chooser} {secrecy}{choose_verb} a {type_phrase}");
         }
         let excluded = choose_creature_type
             .excluded_subtypes
@@ -1520,7 +1530,7 @@
             .map(|subtype| subtype.to_string().to_ascii_lowercase())
             .collect::<Vec<_>>();
         return format!(
-            "{chooser} {choose_verb} a {type_phrase} other than {}",
+            "{chooser} {secrecy}{choose_verb} a {type_phrase} other than {}",
             join_with_or(&excluded)
         );
     }
@@ -2121,6 +2131,25 @@
         return text;
     }
     if let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>() {
+        if !exile.face_down && !exile.turn_face_up
+            && let ChooseSpec::All(filter) = &exile.spec
+            && let Some(rendered) = (|| {
+                let mut outer = filter.clone();
+                let branches = std::mem::take(&mut outer.any_of);
+                if outer != ObjectFilter::default() || branches.len() < 2
+                    || branches.first()? != &ObjectFilter::source().in_zone(Zone::Battlefield)
+                {
+                    return None;
+                }
+                let mut operands = vec!["this permanent".to_string()];
+                operands.extend(branches.into_iter().skip(1).map(|branch| {
+                    describe_choose_spec(&ChooseSpec::All(branch))
+                }));
+                Some(format!("Exile {}", join_with_and(&operands)))
+            })()
+        {
+            return rendered;
+        }
         if !exile.face_down && !exile.turn_face_up
             && let ChooseSpec::WithCount(inner, count) = &exile.spec
             && count.is_single() && !count.random
@@ -4519,13 +4548,18 @@
         );
     }
     if let Some(add_mana) = effect.downcast_ref::<crate::effects::AddManaEffect>() {
-        let mana = add_mana
+        let mana = if add_mana.mana.len() >= 5
+            && add_mana.mana.iter().all(|symbol| symbol == &add_mana.mana[0])
+        {
+            let count = add_mana.mana.len() as i32;
+            format!("{} {}", number_word(count).unwrap_or_else(|| count.to_string()), describe_mana_symbol(add_mana.mana[0]))
+        } else { add_mana
             .mana
             .iter()
             .copied()
             .map(describe_mana_symbol)
             .collect::<Vec<_>>()
-            .join("");
+            .join("") };
         if matches!(add_mana.player, PlayerFilter::ChosenPlayer) {
             return format!(
                 "A player of your choice adds {}",
@@ -6560,6 +6594,11 @@
         }
         let false_branch = describe_effect_clause_list(&conditional.if_false)
             .unwrap_or_else(|| describe_effect_list(&conditional.if_false));
+        // Internal event bookkeeping has no printed instruction. Its guard
+        // must not leave a dangling condition when both branches are hidden.
+        if true_branch.is_empty() && false_branch.is_empty() {
+            return String::new();
+        }
         if !false_branch.is_empty()
             && let Some((may_branch, did_not_branch)) = true_branch.split_once(". If you don't, ")
             && did_not_branch.eq_ignore_ascii_case(&false_branch)

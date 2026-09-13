@@ -71,6 +71,7 @@ enum MaterializationCost {
     ExileTopLibrary {
         count: u32,
     },
+    RevealChosenSubtype,
     RevealSourceFromHand,
     RevealSourceFromHandUntilUpkeepEnds,
     RevealFromHand {
@@ -324,6 +325,7 @@ fn materialization_cost(cost: &CompilerCost) -> MaterializationCost {
         CompilerCost::ExileTopLibrary { count } => {
             MaterializationCost::ExileTopLibrary { count: *count }
         }
+        CompilerCost::RevealChosenSubtype => MaterializationCost::RevealChosenSubtype,
         CompilerCost::RevealSourceFromHand => MaterializationCost::RevealSourceFromHand,
         CompilerCost::RevealSourceFromHandUntilUpkeepEnds => {
             MaterializationCost::RevealSourceFromHandUntilUpkeepEnds
@@ -812,6 +814,10 @@ fn lower_materialization_costs(
                     crate::tag::CompilerReferenceTag::CostExiledTop.bind(),
                     None,
                 )));
+            }
+            MaterializationCost::RevealChosenSubtype => {
+                flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                costs.push(Cost::validated_effect(Effect::new(crate::effects::RevealChosenSubtypeEffect)));
             }
             MaterializationCost::RevealSourceFromHand => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
