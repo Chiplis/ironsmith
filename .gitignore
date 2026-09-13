@@ -46,3 +46,6 @@ web/relay/.wrangler/
 !/web/relay/package.json
 !/web/relay/package-lock.json
 !/web/ui/src/lib/relay/format-catalog.generated.json
+
+# Generated bilingual frame comparison galleries (pinned fixtures live in tests).
+/web/ui/test-results/bilingual-*/

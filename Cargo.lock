@@ -1642,6 +1642,7 @@ version = "0.1.0"
 dependencies = [
  "csv",
  "ironsmith-compiler",
+ "ironsmith-core",
  "ironsmith-registry",
  "ironsmith-runtime",
  "rayon",
