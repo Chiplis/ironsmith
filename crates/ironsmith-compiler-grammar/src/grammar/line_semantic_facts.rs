@@ -238,7 +238,15 @@ fn parse_line_semantic_facts_tokens_with_optional_context(
     let trigger_frequency = trigger_surface::parse_trigger_frequency_tokens(tokens);
 
     LineSemanticFacts {
+        station_creature_threshold: None,
+        supported_sneak_form: false,
         static_ability: StaticLineSemanticFacts {
+            leading_as_long_as_your_turn: {
+                let words = crate::lexer::token_word_refs(tokens);
+                words.starts_with(&["as", "long", "as", "its", "your", "turn"])
+                    || words.starts_with(&["as", "long", "as", "it's", "your", "turn"])
+                    || words.starts_with(&["as", "long", "as", "it", "is", "your", "turn"])
+            },
             explicit_functional_zones: functional_zones::parse_static_functional_zones_tokens(
                 tokens,
             ),

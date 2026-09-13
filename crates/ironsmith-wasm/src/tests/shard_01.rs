@@ -2295,6 +2295,7 @@ pub(super) fn target_prompt_snapshot_shows_all_queued_targeted_triggers_while_sp
             min_targets: 1,
             max_targets: Some(1),
             distinct_player_group: None,
+            shared_player_group: None,
         }],
     )));
 
@@ -2477,6 +2478,7 @@ pub(super) fn priority_decision_routing_uses_replay_for_generic_modal_choices() 
             min_targets: 1,
             max_targets: Some(1),
             distinct_player_group: None,
+            shared_player_group: None,
         }],
     ));
     let select_objects = DecisionContext::SelectObjects(SelectObjectsContext::new(

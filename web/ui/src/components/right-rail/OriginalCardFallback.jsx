@@ -46,7 +46,7 @@ function repairPrintingCorners(image) {
   return canvas.toDataURL('image/webp', 0.98);
 }
 
-function PrintingImage({ imageUrl, name }) {
+function PrintingImage({ imageUrl, name, imageOnly = false }) {
   const ui = useUiText();
   const [repaired, setRepaired] = useState(null);
   const displayedUrl = repaired?.source === imageUrl ? repaired.url || imageUrl : imageUrl;
@@ -57,6 +57,7 @@ function PrintingImage({ imageUrl, name }) {
     crossOrigin="anonymous"
     referrerPolicy="no-referrer"
     decoding="async"
+    onError={imageOnly ? event => { event.currentTarget.style.visibility = 'hidden'; } : undefined}
     onLoad={(event) => {
       if (displayedUrl !== imageUrl) return;
       try { setRepaired({ source: imageUrl, url: repairPrintingCorners(event.currentTarget) }); }
@@ -67,11 +68,11 @@ function PrintingImage({ imageUrl, name }) {
 
 // When text regions cannot be masked, preserve the printing. Live rules and
 // actions remain available in an explicit details panel, not a fake card frame.
-export default function OriginalCardFallback({ imageUrl, name, rulesView, onActivate, highlighted, flavorText, stats, counters, detailsLabel }) {
+export default function OriginalCardFallback({ imageUrl, name, rulesView, onActivate, highlighted, flavorText, stats, counters, detailsLabel, showDetails = true }) {
   const ui = useUiText();
-  return <article className="original-card-fallback" aria-label={name || ui('Card details')}>
-    {imageUrl && <PrintingImage imageUrl={imageUrl} name={name} />}
-    <details className="original-card-details" open={!imageUrl || undefined}>
+  return <article className="original-card-fallback" data-image-only={!showDetails || undefined} aria-label={name || ui('Card details')}>
+    {imageUrl && <PrintingImage imageUrl={imageUrl} name={name} imageOnly={!showDetails} />}
+    {showDetails && <details className="original-card-details" open={!imageUrl || undefined}>
       <summary>{ui(detailsLabel)}</summary>
       <div className="original-card-details__body">
         <strong>{name}</strong>
@@ -93,6 +94,6 @@ export default function OriginalCardFallback({ imageUrl, name, rulesView, onActi
         })}
         {flavorText && <p aria-label={ui("Flavor text")}><em>{flavorText}</em></p>}
       </div>
-    </details>
+    </details>}
   </article>;
 }

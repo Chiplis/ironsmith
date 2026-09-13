@@ -30,6 +30,9 @@ macro_rules! define_keyword {
                 $display.to_string()
             }
 
+            fn may_generate_continuous_effects(&self) -> bool {
+                false
+            }
 
             fn is_keyword(&self) -> bool {
                 true
@@ -237,6 +240,9 @@ impl StaticAbilityKind for Defender {
     }
 
     fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, _controller: PlayerId) {
+        if game.current_has_static_ability_id(source, StaticAbilityId::CanAttackAsThoughNoDefender) {
+            return;
+        }
         let mut tracker = CantEffectTracker::default();
         Restriction::attack(ObjectFilter::specific(source)).apply(
             game,

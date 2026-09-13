@@ -187,7 +187,9 @@ pub(super) fn contains_shared_characteristic_comparison_union(tokens: &[OwnedLex
         words[share_idx + 1..with_idx]
             .iter()
             .any(|word| matches!(*word, "type" | "types" | "color" | "colors"))
-            && words[with_idx + 1..]
+            // A disjunction may join the compared characteristics themselves
+            // (color or mana value), as well as the comparison objects.
+            && words[share_idx + 1..]
                 .iter()
                 .any(|word| matches!(*word, "or" | "and/or"))
     })

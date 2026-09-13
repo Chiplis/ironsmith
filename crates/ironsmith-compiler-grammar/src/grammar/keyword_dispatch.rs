@@ -57,6 +57,9 @@ impl KeywordDispatchHint {
                 "if",
                 "prowl",
                 "sneak",
+                "web-slinging",
+                "more",
+                "mayhem",
                 "aftermath",
                 "encore",
                 "jump-start",
@@ -107,6 +110,9 @@ pub fn parse_keyword_dispatch_hint_tokens(tokens: &[OwnedLexToken]) -> Option<Ke
 
     let words = primitives::TokenWordView::new(tokens).word_refs();
     let first = words.first().copied()?;
+    if words.starts_with(&["emerge", "from"]) { return Some(KeywordDispatchHint::AlternativeOrExertFamily); }
+    if words.len() == 2 && words[1] == "offering" { return Some(KeywordDispatchHint::AlternativeOrExertFamily); }
+
     let fallback = parse_keyword_fallback_kind_tokens(tokens);
     if fallback == Some(KeywordFallbackKind::BasicLandcycling) {
         return Some(KeywordDispatchHint::Cycling);
@@ -146,7 +152,7 @@ fn parse_keyword_dispatch_hint_lexed<'a>(
                 "spell",
             ])
             .value(KeywordDispatchHint::AdditionalCostFamily),
-            primitives::kw("you").value(KeywordDispatchHint::AlternativeOrExertFamily),
+            alt((primitives::kw("you"), primitives::kw("more"))).value(KeywordDispatchHint::AlternativeOrExertFamily),
             primitives::kw("if").value(KeywordDispatchHint::AlternativeOrExertFamily),
             primitives::kw("bestow").value(KeywordDispatchHint::Bestow),
             primitives::kw("blitz").value(KeywordDispatchHint::Blitz),
@@ -193,7 +199,7 @@ fn parse_keyword_dispatch_hint_lexed<'a>(
             primitives::kw("gift").value(KeywordDispatchHint::Gift),
             primitives::kw("warp").value(KeywordDispatchHint::Warp),
             primitives::kw("prowl").value(KeywordDispatchHint::AlternativeOrExertFamily),
-            primitives::kw("sneak").value(KeywordDispatchHint::AlternativeOrExertFamily),
+            alt((primitives::kw("sneak"), primitives::kw("web-slinging"), primitives::kw("mayhem"))).value(KeywordDispatchHint::AlternativeOrExertFamily),
             primitives::kw("escalate").value(KeywordDispatchHint::Escalate),
             primitives::kw("evoke").value(KeywordDispatchHint::Evoke),
             primitives::kw("epic").value(KeywordDispatchHint::Epic),

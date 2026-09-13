@@ -119,8 +119,10 @@ pub(super) fn recognize_named_source_action_surfaces(info: &LineInfo, effects: &
     }
 
     fn apply_counter_target(info: &LineInfo, target: &mut TargetAst) {
-        let TargetAst::Source(span) = target else {
-            return;
+        let span = match target {
+            TargetAst::Source(span) => *span,
+            TargetAst::Object(filter, None, span) if filter.source => *span,
+            _ => return,
         };
         let surface = span
             .and_then(|span| named_surface_for_span(info, span))
@@ -128,7 +130,7 @@ pub(super) fn recognize_named_source_action_surfaces(info: &LineInfo, effects: &
         let Some(surface) = surface else {
             return;
         };
-        *target = TargetAst::Object(ObjectFilter::source_with_surface(surface), None, *span);
+        *target = TargetAst::Object(ObjectFilter::source_with_surface(surface), None, span);
     }
 
     fn apply(info: &LineInfo, effects: &mut [EffectAst]) {
@@ -155,8 +157,75 @@ pub(super) fn recognize_named_source_action_surfaces(info: &LineInfo, effects: &
     }
 
     apply(info, effects);
+    recognize_delayed_source_characteristic_surface(info, effects);
     crate::util::recognize_unique_source_action_surface(effects, &info.source_tokens, "exile");
     crate::util::recognize_transformed_source_return_pronoun(effects, &info.source_tokens);
+}
+
+/// The parser has already bound a delayed spell filter to source power or
+/// toughness. Transport its one unambiguous authored name into that value.
+fn recognize_delayed_source_characteristic_surface(info: &LineInfo, effects: &mut [EffectAst]) {
+    use crate::cards::builders::{DelayedEffectAst, TriggerSpec};
+    use crate::filter::Comparison;
+    use crate::target::{ChooseSpec, ChooseSpecSurfaceHint, SourceReferenceSurface};
+
+    fn value(v: &mut Value, power: bool, visit: &mut impl FnMut(&mut Value)) {
+        if let Value::SurfaceHinted { value: inner, .. } = v {
+            value(inner, power, visit);
+        } else if matches!((&*v, power), (Value::SourcePower, true) | (Value::SourceToughness, false))
+            || matches!((&*v, power), (Value::PowerOf(spec), true) | (Value::ToughnessOf(spec), false) if matches!(spec.base(), ChooseSpec::Source))
+        {
+            visit(v);
+        }
+    }
+    fn filter(f: &mut ObjectFilter, power: bool, visit: &mut impl FnMut(&mut Value)) {
+        for comparison in [&mut f.mana_value, &mut f.power, &mut f.toughness].into_iter().flatten() {
+            match comparison {
+                Comparison::EqualExpr(v) | Comparison::NotEqualExpr(v)
+                | Comparison::LessThanExpr(v) | Comparison::LessThanOrEqualExpr(v)
+                | Comparison::GreaterThanExpr(v) | Comparison::GreaterThanOrEqualExpr(v) => value(v, power, visit),
+                _ => {}
+            }
+        }
+        for branch in &mut f.any_of { filter(branch, power, visit); }
+    }
+    fn trigger(t: &mut TriggerSpec, power: bool, visit: &mut impl FnMut(&mut Value)) {
+        match t {
+            TriggerSpec::WithIntro { trigger: inner, .. }
+            | TriggerSpec::ConditionQualified { trigger: inner, .. } => trigger(inner, power, visit),
+            TriggerSpec::AnyOf(branches) => {
+                for branch in branches { trigger(branch, power, visit); }
+            }
+            TriggerSpec::SpellCast { filter: Some(f), .. } => filter(f, power, visit),
+            _ => {}
+        }
+    }
+    fn walk(effects: &mut [EffectAst], power: bool, visit: &mut impl FnMut(&mut Value)) {
+        for effect in effects {
+            if let EffectAst::Delayed(
+                DelayedEffectAst::DelayedTriggerThisTurn { trigger: t, .. }
+                | DelayedEffectAst::DelayedTriggerForDuration { trigger: t, .. }
+            ) = effect {
+                trigger(t, power, visit);
+            }
+            for_each_nested_effects_mut(effect, true, |nested| walk(nested, power, visit));
+        }
+    }
+    for (characteristic, power) in [("power", true), ("toughness", false)] {
+        let Some(shape) = crate::grammar::source_surface_shapes::parse_unique_named_characteristic_operand(
+            &info.source_tokens, characteristic,
+        ) else { continue };
+        let mut count = 0;
+        walk(effects, power, &mut |_| count += 1);
+        if count != 1 { continue; }
+        let surface: SourceReferenceSurface = shape.surface;
+        walk(effects, power, &mut |value| {
+            let spec = ChooseSpec::Source.with_surface_hint(
+                ChooseSpecSurfaceHint::SourceReference(surface.clone()),
+            );
+            *value = if power { Value::PowerOf(Box::new(spec)) } else { Value::ToughnessOf(Box::new(spec)) };
+        });
+    }
 }
 
 #[cfg(test)]

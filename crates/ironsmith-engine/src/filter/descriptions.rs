@@ -253,7 +253,9 @@ pub(super) fn attacking_defending_player_for_object(
         crate::combat_state::AttackTarget::Planeswalker(planeswalker_id) => game
             .object(*planeswalker_id)
             .map(|object| game.controller_of(object)),
-        crate::combat_state::AttackTarget::Battle(battle_id) => game.battle_protector(*battle_id),
+        // This relation explicitly includes players and planeswalkers;
+        // a battle's protector does not make the battle a planeswalker.
+        crate::combat_state::AttackTarget::Battle(_) => None,
     }
 }
 
@@ -616,6 +618,9 @@ pub(super) fn object_has_static_ability_id(object: &Object, ability_id: StaticAb
 }
 
 pub(super) fn object_has_ability_marker(object: &Object, marker: &str) -> bool {
+    if marker.trim().eq_ignore_ascii_case("kicked") {
+        return object.optional_costs_paid.was_kicked();
+    }
     if aura_attachment_has_ability_marker(object.aura_attach_filter.as_deref(), marker) {
         return true;
     }
@@ -792,6 +797,9 @@ pub(super) fn snapshot_has_ability_marker(
     use crate::ability::AbilityKind;
 
     let normalized_marker = marker.trim().to_ascii_lowercase();
+    if normalized_marker == "kicked" {
+        return snapshot.optional_costs_paid.was_kicked();
+    }
     if aura_attachment_has_ability_marker(snapshot.aura_attach_filter.as_ref(), marker) {
         return true;
     }

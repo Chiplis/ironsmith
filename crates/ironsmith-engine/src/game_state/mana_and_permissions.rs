@@ -620,6 +620,7 @@ impl GameState {
             ),
             Modification::ChangeController(_)
             | Modification::SetName(_)
+            | Modification::InsertNameWords { .. }
             | Modification::AddCardTypes(_)
             | Modification::RemoveCardTypes(_)
             | Modification::SetCardTypes(_)
@@ -2907,6 +2908,7 @@ impl GameState {
             | Modification::CopyStaticAbilityVariants { .. }
             | Modification::ChangeController(_)
             | Modification::SetName(_)
+            | Modification::InsertNameWords { .. }
             | Modification::AddCardTypes(_)
             | Modification::RemoveCardTypes(_)
             | Modification::SetCardTypes(_)

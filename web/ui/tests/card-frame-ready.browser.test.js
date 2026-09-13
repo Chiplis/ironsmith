@@ -14,6 +14,6 @@ test('card previews show artwork during preparation and dissolve into ready fram
     await page.waitForFunction(() => /ALL CHECKS PASSED|FAIL /.test(document.querySelector('[aria-label="Readiness results"]').textContent), null, {timeout:45000});
     const results = await page.getByLabel('Readiness results').textContent();
     assert.ok(results.includes('ALL CHECKS PASSED'), results);
-    assert.equal(results.match(/^PASS /gm)?.length, 9, results);
+    assert.equal(results.match(/^PASS /gm)?.length, 10, results);
   } finally {await browser.close();await vite.close();}
 });

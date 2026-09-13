@@ -4867,6 +4867,12 @@
     }
     if let Some(grant_play_tagged) = effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
     {
+        if let Some(filter) = &grant_play_tagged.spell_filter {
+            let mut permission = grant_play_tagged.clone();
+            permission.spell_filter = None;
+            let spell = describe_cast_spell_filter(filter, CastSpellFilterContext::EnclosingPermission);
+            return format!("{} if it's {}", describe_effect(&Effect::new(permission)), with_indefinite_article(&spell));
+        }
         if let Some(reduction) = &grant_play_tagged.spell_cost_reduction {
             let mut permission = grant_play_tagged.clone();
             permission.spell_cost_reduction = None;
@@ -4897,6 +4903,7 @@
         }
         let timing = match grant_play_tagged.duration {
             crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn => "this turn".to_string(),
+            crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnStart => "until your next turn".to_string(),
             crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd => {
                 "until the end of your next turn".to_string()
             }
@@ -5150,6 +5157,7 @@
         };
         let timing_text = match grant_tagged_spell_free_cast.duration {
             crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn => "this turn",
+            crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnStart => "until your next turn",
             crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd => {
                 "until the end of your next turn"
             }

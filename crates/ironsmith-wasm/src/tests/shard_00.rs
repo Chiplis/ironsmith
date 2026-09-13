@@ -368,6 +368,7 @@ pub(super) fn convert_and_validate_targets_rejects_wrong_requirement_order() {
                 min_targets: 1,
                 max_targets: Some(1),
                 distinct_player_group: None,
+                shared_player_group: None,
             },
             TargetRequirementContext {
                 description: "second target".to_string(),
@@ -376,6 +377,7 @@ pub(super) fn convert_and_validate_targets_rejects_wrong_requirement_order() {
                 min_targets: 1,
                 max_targets: Some(1),
                 distinct_player_group: None,
+                shared_player_group: None,
             },
         ],
     );
@@ -412,6 +414,7 @@ pub(super) fn convert_and_validate_targets_accepts_unbounded_then_fixed_sequence
                 min_targets: 0,
                 max_targets: None,
                 distinct_player_group: None,
+                shared_player_group: None,
             },
             TargetRequirementContext {
                 description: "last target".to_string(),
@@ -420,6 +423,7 @@ pub(super) fn convert_and_validate_targets_accepts_unbounded_then_fixed_sequence
                 min_targets: 1,
                 max_targets: Some(1),
                 distinct_player_group: None,
+                shared_player_group: None,
             },
         ],
     );

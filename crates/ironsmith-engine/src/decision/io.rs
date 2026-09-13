@@ -116,13 +116,18 @@ pub trait DecisionMaker {
     /// Confirm, constrain, or cancel an authoritative whole-cost mana plan.
     fn decide_mana_payment(
         &mut self,
-        _game: &GameState,
+        game: &GameState,
         ctx: &crate::decisions::context::ManaPaymentContext,
     ) -> crate::mana_payment::ManaPaymentResponse {
-        crate::mana_payment::ManaPaymentResponse::Confirm {
-            plan_id: ctx.plan.id,
-            request_hash: ctx.plan.request_hash,
-        }
+        let options = crate::decisions::context::SelectOptionsContext::new(
+            ctx.player, Some(ctx.source), format!("Confirm mana payment for {}", ctx.subject),
+            vec![crate::decisions::context::SelectableOption::new(1, "Confirm payment"),
+                 crate::decisions::context::SelectableOption::new(0, "Cancel")], 1, 1);
+        if self.decide_options(game, &options).first().copied() == Some(1) {
+            crate::mana_payment::ManaPaymentResponse::Confirm {
+                plan_id: ctx.plan.id, request_hash: ctx.plan.request_hash,
+            }
+        } else { crate::mana_payment::ManaPaymentResponse::Cancel }
     }
 
     /// Ordering (blockers, attackers, scry, surveil).

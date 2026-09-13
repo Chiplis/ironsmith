@@ -4338,6 +4338,24 @@ pub(crate) fn lower_compiler_static_ability_core(
 ) -> Result<StaticAbility, CardTextError> {
     let crate::model::CompilerStaticAbilityCore { id, label, payload } = ability;
     match payload {
+        crate::model::CompilerStaticAbilityPayloadCore::DamagePreventionWithFollowUp {
+            source_filter, target_filter, combat_only, recipient_tag, effects,
+        } => {
+            let mut ctx = crate::model::facts::EffectLoweringContext::new();
+            ctx.last_object_tag = Some(recipient_tag.clone());
+            let mut lowered = Vec::new();
+            for effect in effects {
+                let (effects, choices) = crate::compile_support::compile_effect(&effect, &mut ctx)?;
+                if !choices.is_empty() {
+                    return Err(CardTextError::InvariantViolation("damage prevention follow-up cannot announce targets".into()));
+                }
+                lowered.extend(effects);
+            }
+            Ok(StaticAbility::damage_prevention_with_follow_up(
+                source_filter, target_filter, combat_only, recipient_tag, lowered,
+            ))
+        }
+
         crate::model::CompilerStaticAbilityPayloadCore::ExertAttack {
             only_if_not_exerted_this_turn,
             linked_trigger,
@@ -4374,10 +4392,13 @@ pub(crate) fn lower_compiler_static_ability_core(
                         name_override: spec.name_override,
                         added_colors: spec.added_colors,
                         added_card_types: spec.added_card_types,
+                        added_supertypes: spec.added_supertypes,
                         removed_supertypes: spec.removed_supertypes,
                         added_subtypes: spec.added_subtypes,
                         added_abilities,
                         set_base_power_toughness: spec.set_base_power_toughness,
+                        additional_counters: spec.additional_counters.clone(),
+                        additional_counters_source_filter: spec.additional_counters_source_filter.clone(),
                         added_abilities_source_filter: spec.added_abilities_source_filter.clone(),
                         set_base_power_toughness_from_self: spec.set_base_power_toughness_from_self,
                     },

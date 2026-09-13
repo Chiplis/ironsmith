@@ -1,7 +1,7 @@
 use super::grammar::effects::optional_companion_shapes::parse_shared_subject_optional_companion_shape;
 use super::grammar::structure::{MetadataLineKind, split_leading_result_prefix_lexed};
 use super::grammar::{line_semantic_facts, preprocess as preprocess_grammar};
-use super::lexer::{lex_line, render_token_slice, split_lexed_sentences};
+use super::lexer::{TokenKind, lex_line, render_token_slice, split_lexed_sentences};
 use super::parser_support::{
     looks_like_spell_resolution_followup_intro_lexed, spell_card_prefers_resolution_line_merge,
 };
@@ -69,6 +69,84 @@ fn collapse_whitespace_runs(text: &str) -> String {
         out.push(ch);
     }
     out
+}
+
+/// Authored rules tokens retain original byte spans and casing, but never
+/// expose reminder text to downstream semantic parsers. Raw text and CST
+/// provenance remain available separately for presentation and diagnostics.
+fn authored_rules_tokens(
+    raw: &str,
+    line_index: usize,
+) -> Result<Vec<OwnedLexToken>, CardTextError> {
+    let tokens = lex_line(raw, line_index)?;
+    match preprocess_grammar::parse_parenthetical_line_surface_tokens(&tokens) {
+        Some(preprocess_grammar::ParentheticalLineSurface::FullyWrapped) => {
+            // Parenthesized standalone abilities (such as a land's mana
+            // ability) are rules, not an appended reminder.
+            Ok(crate::util::strip_parenthetical_tokens(
+                &tokens[1..tokens.len() - 1],
+            ))
+        }
+        Some(preprocess_grammar::ParentheticalLineSurface::PreserveEnchantmentNotCreature) => {
+            // This parenthetical is a functional type-changing instruction.
+            let mut kept = Vec::new();
+            let mut depth = 0usize;
+            let mut start = 0usize;
+            for (index, token) in tokens.iter().enumerate() {
+                match token.kind {
+                    TokenKind::LParen => {
+                        if depth == 0 {
+                            start = index + 1;
+                        }
+                        depth += 1;
+                    }
+                    TokenKind::RParen => {
+                        depth = depth.saturating_sub(1);
+                        if depth == 0 {
+                            let body = &tokens[start..index];
+                            let words = crate::lexer::parser_token_word_refs(body);
+                            if words == ["it's", "not", "a", "creature"]
+                                || words == ["its", "not", "a", "creature"]
+                            {
+                                kept.extend_from_slice(body);
+                            }
+                        }
+                    }
+                    _ if depth == 0 => kept.push(token.clone()),
+                    _ => {}
+                }
+            }
+            Ok(kept)
+        }
+        None => Ok(crate::util::strip_parenthetical_tokens(&tokens)),
+    }
+}
+
+fn supported_sneak_reminder(raw: &str, line_index: usize) -> bool {
+    use crate::grammar::keyword_dispatch::{
+        KeywordSpecialFormShape, parse_keyword_special_form_shape_tokens,
+    };
+    if !raw
+        .trim_start()
+        .get(..5)
+        .is_some_and(|head| head.eq_ignore_ascii_case("sneak"))
+    {
+        return false;
+    }
+    lex_line(raw, line_index).ok().is_some_and(|tokens| {
+        matches!(
+            parse_keyword_special_form_shape_tokens(&tokens),
+            Some(KeywordSpecialFormShape::SpellSneak | KeywordSpecialFormShape::PermanentSneak)
+        )
+    })
+}
+
+fn station_reminder_threshold(raw: &str, line_index: usize) -> Option<i32> {
+    if !raw.trim_start().get(..7)?.eq_ignore_ascii_case("station") {
+        return None;
+    }
+    let tokens = lex_line(raw, line_index).ok()?;
+    crate::grammar::line_families::parse_station_keyword_line(&tokens, &tokens)?.creature_threshold
 }
 
 pub(super) fn strip_parenthetical_segments(line: &str) -> String {
@@ -1108,6 +1186,7 @@ pub fn preprocess_document_with_provenance(
         annotations: &mut ParseAnnotations,
         provenance: &mut ProvenanceStore,
     ) -> Result<Option<PreprocessedLine>, CardTextError> {
+        let source_tokens = authored_rules_tokens(raw_line.trim(), line_index)?;
         let stripped = strip_parenthetical_segments(raw_line);
         if stripped.trim().is_empty() {
             return Ok(None);
@@ -1167,9 +1246,10 @@ pub fn preprocess_document_with_provenance(
                 token.set_literal_surface(authored);
             }
         }
-        let source_tokens =
-            lex_line(raw_line.trim(), line_index).unwrap_or_else(|_| tokens.clone());
         let mut semantic_facts = line_semantic_facts::parse_line_semantic_facts_tokens(&tokens);
+        semantic_facts.supported_sneak_form = supported_sneak_reminder(raw_line.trim(), line_index);
+        semantic_facts.station_creature_threshold =
+            station_reminder_threshold(raw_line.trim(), line_index);
         // The normalized parse stream removes the trigger header's leading
         // `unless` clause before later lowering consumes line facts. Retain
         // only this grammar-proven punctuation fact from the authored stream;
@@ -1337,8 +1417,7 @@ pub fn preprocess_document_with_provenance(
                 // The authored stream follows the authored line: readers of
                 // `source_tokens` must see the merged line, not the first half.
                 previous.info.source_tokens =
-                    lex_line(combined_raw_line.trim(), previous.info.line_index)
-                        .unwrap_or_else(|_| previous.tokens.clone());
+                    authored_rules_tokens(combined_raw_line.trim(), previous.info.line_index)?;
                 previous.info.raw_line = combined_raw_line;
                 previous.info.normalized = normalized.clone();
                 continue;
@@ -1395,14 +1474,17 @@ pub fn make_line_info(
     normalized: NormalizedLine,
 ) -> LineInfo {
     let raw_line = raw_line.into();
-    let source_tokens = lex_line(raw_line.as_str(), line_index).unwrap_or_default();
+    let source_tokens = authored_rules_tokens(raw_line.as_str(), line_index).unwrap_or_default();
+    let mut semantic_facts = crate::model::facts::LineSemanticFacts::default();
+    semantic_facts.station_creature_threshold = station_reminder_threshold(&raw_line, line_index);
+    semantic_facts.supported_sneak_form = supported_sneak_reminder(&raw_line, line_index);
     LineInfo {
         line_index,
         display_line_index: line_index,
         raw_line,
         source_tokens,
         normalized,
-        semantic_facts: Default::default(),
+        semantic_facts,
     }
 }
 
@@ -1411,6 +1493,84 @@ mod tests {
     use super::*;
     use crate::ids::CardId;
     use ironsmith_core::card::CardBuilder;
+
+    #[test]
+    fn authored_rules_strip_reminders_before_keyword_recognition() {
+        let raw = "Flashback—Sacrifice a Mountain. (You may cast this card from your graveyard for its flashback cost. Then exile it.)";
+        let document =
+            preprocess_document(CardBuilder::new(CardId::new(), "Lava Dart"), raw).unwrap();
+        let PreprocessedItem::Line(line) = &document.items[0] else {
+            panic!("expected rules line")
+        };
+        let full_card = preprocess_document(
+            CardBuilder::new(CardId::new(), "Lava Dart"),
+            &format!("Lava Dart deals 1 damage to any target.\n{raw}"),
+        )
+        .unwrap();
+        crate::document_parser::recognize_document(&full_card, false)
+            .expect("the complete Lava Dart must recognize in strict mode");
+        assert_eq!(line.info.raw_line, raw);
+        assert_eq!(
+            render_token_slice(&line.info.source_tokens),
+            render_token_slice(&lex_line("Flashback—Sacrifice a Mountain.", 0).unwrap())
+        );
+        let keyword = crate::keyword_registry::recognize_keyword_line(line)
+            .unwrap()
+            .expect("flashback should parse with reminder text");
+        let crate::recognized_document::KeywordLinePayload::Ast(ast) = keyword.payload else {
+            panic!("expected AST")
+        };
+        assert!(matches!(
+            *ast,
+            crate::cards::builders::LineAst::AlternativeCastingMethod(
+                crate::model::CompilerAlternativeCastingMethod::Flashback { .. }
+            )
+        ));
+    }
+
+    #[test]
+    fn authored_rules_preserve_spans_after_nested_reminders() {
+        let raw = "Draw a card. (Reminder (nested).) Then discard a card.";
+        let tokens = authored_rules_tokens(raw, 3).unwrap();
+        assert!(!render_token_slice(&tokens).contains("Reminder"));
+        let then = tokens.iter().find(|token| token.slice == "Then").unwrap();
+        assert_eq!(then.span.start, raw.find("Then").unwrap());
+        assert_eq!(&raw[then.span.start..then.span.end], "Then");
+        let info = make_line_info(3, raw, NormalizedLine::identity(raw));
+        assert_eq!(
+            render_token_slice(&info.source_tokens),
+            render_token_slice(&tokens)
+        );
+    }
+
+    #[test]
+    fn authored_rules_keep_functional_parentheticals_only() {
+        let mana = "({T}: Add {G}.)";
+        assert_eq!(
+            render_token_slice(&authored_rules_tokens(mana, 0).unwrap()),
+            "{T}: Add {G}."
+        );
+        let text = "It's an enchantment in addition to its other types. (It's not a creature.) (Reminder.)";
+        let tokens = authored_rules_tokens(text, 0).unwrap();
+        let rendered = render_token_slice(&tokens);
+        assert!(rendered.contains("not a creature"), "{rendered}");
+        assert!(!rendered.contains("Reminder"), "{rendered}");
+    }
+
+    #[test]
+    fn preprocessing_extracts_station_fact_before_stripping_reminder() {
+        let raw = "Station (This artifact is an artifact creature at 12+.)";
+        let document =
+            preprocess_document(CardBuilder::new(CardId::new(), "Station Test"), raw).unwrap();
+        let PreprocessedItem::Line(line) = &document.items[0] else {
+            panic!("expected station")
+        };
+        assert_eq!(render_token_slice(&line.info.source_tokens), "Station");
+        assert_eq!(
+            line.info.semantic_facts.station_creature_threshold,
+            Some(12)
+        );
+    }
 
     #[test]
     fn parse_metadata_line_routes_supported_labels_through_structure_parser() {

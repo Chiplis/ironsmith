@@ -7,11 +7,16 @@ pub(super) fn contains_attacking_player_or_planeswalker_relation(tokens: &[Owned
         return false;
     };
     words[attacking..].iter().enumerate().any(|(index, word)| {
-        *word == "or"
-            && words
-                .get(attacking + index + 1)
-                .is_some_and(|article| matches!(*article, "a" | "an" | "the"))
-            && words.get(attacking + index + 2) == Some(&"planeswalker")
+        if *word != "or" {
+            return false;
+        }
+        let tail = &words[attacking + index + 1..];
+        let tail = if tail.first().is_some_and(|word| matches!(*word, "a" | "an" | "the")) {
+            &tail[1..]
+        } else {
+            tail
+        };
+        tail.first().is_some_and(|word| matches!(*word, "planeswalker" | "planeswalkers"))
     })
 }
 

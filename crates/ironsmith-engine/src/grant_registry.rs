@@ -432,7 +432,7 @@ pub struct Grant {
     /// Stable card identity for targeted grants that track "that card" across zone changes.
     pub target_stable_id: Option<StableId>,
     /// Filter for cards that receive this grant (for blanket grants like Underworld Breach).
-    /// Only used if target_id is None.
+    /// When target_id is present, both identity and filter must match.
     pub filter: Option<ObjectFilter>,
     /// The zone where this grant applies.
     pub zone: Zone,
@@ -883,7 +883,9 @@ impl GrantRegistry {
                 false
             };
 
-            if matches {
+            if matches && grant.filter.as_ref().is_none_or(|filter| {
+                card.is_some_and(|card| filter.matches(card, &grant_filter_context(&ctx, grant, game), game))
+            }) {
                 result.push(grant.clone());
             }
         }
@@ -907,7 +909,9 @@ impl GrantRegistry {
                 false
             };
 
-            if matches {
+            if matches && grant.filter.as_ref().is_none_or(|filter| {
+                filter.matches(card, &grant_filter_context(&ctx, &grant, game), game)
+            }) {
                 result.push(grant);
             }
         }
@@ -1175,7 +1179,9 @@ impl GrantRegistry {
             } else {
                 false
             };
-            if !applies {
+            if !applies || grant.filter.as_ref().is_some_and(|filter| {
+                card.is_none_or(|card| !filter.matches(card, &grant_filter_context(&ctx, grant, game), game))
+            }) {
                 continue;
             }
             if matches!(grant.grantable, Grantable::PlayFrom) {

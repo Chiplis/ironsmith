@@ -1109,7 +1109,20 @@ fn advance_reference_frame_for_effect(
                     }
                 }
                 SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { target, .. })
-                | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice { target, .. }) => {
+                => {
+                    let (spec, _) = resolve_target_spec_with_choices(target, &lowering_reference_frame(frame))?;
+                    let existing_subject = if !spec.is_target()
+                        && let ChooseSpec::Object(filter) = spec.base()
+                        && let [constraint] = filter.tagged_constraints.as_slice()
+                        && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+                    { Some(constraint.tag.clone()) } else { None };
+                    maybe_tag_target(target, frame, id_gen, "counters")?;
+                    // Counters do not change the referenced object's identity.
+                    // A type-qualified placement may do nothing, but a later
+                    // "it" still means the original object, not an empty result.
+                    if let Some(tag) = existing_subject { frame.last_object_tag = Some(tag); }
+                }
+                SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice { target, .. }) => {
                     maybe_tag_target(target, frame, id_gen, "counters")?;
                 }
                 SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters { target, .. })
@@ -2406,11 +2419,12 @@ fn annotate_effect_sequence_with_env_internal(
             ..
         }) = &mut effect
             && let Some(AnnotatedEffect {
-                effect: EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult {
-                    condition: prior_condition,
-                    predicate: IfResultPredicate::Did,
-                    ..
-                }),
+                effect:
+                    EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult {
+                        condition: prior_condition,
+                        predicate: IfResultPredicate::Did,
+                        ..
+                    }),
                 ..
             }) = annotated.last()
         {
@@ -4131,6 +4145,27 @@ fn resolve_effect_result_values_in_fields(
     effect: &mut EffectAst,
     state: EffectReferenceResolutionState,
 ) -> Result<(), CardTextError> {
+    fn resolve_target_count(
+        target: &mut TargetAst,
+        state: EffectReferenceResolutionState,
+    ) -> Result<(), CardTextError> {
+        match target {
+            TargetAst::WithCount(inner, _) => resolve_target_count(inner, state)?,
+            TargetAst::WithCountValue(inner, _, value) => {
+                resolve_target_count(inner, state)?;
+                resolve_effect_result_value(value, state)?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. }),
+        ..
+    }) = effect
+    {
+        resolve_target_count(target, state)?;
+    }
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
             SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count: amount })

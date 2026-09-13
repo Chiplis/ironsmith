@@ -2082,17 +2082,8 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "the creature you control gets +1/+0 and gains indestructible until end of turn",
         );
     }
-    if normalized.contains("When you next ") {
-        normalized = normalized
-            .replace(
-                "copy that spell. You may choose new targets for the copy",
-                "copy it and you may choose new targets for the copy",
-            )
-            .replace(
-                "copy that spell or ability. You may choose new targets for the copy",
-                "copy it and you may choose new targets for the copy",
-            );
-    }
+    // Delayed-copy rendering owns the typed spell/ability reference and its
+    // authored pronoun. A prose-only rewrite here would erase that decision.
     if let Some(compact) = compact_same_subject_pt_then_gain_surface(&normalized) {
         normalized = compact;
     }

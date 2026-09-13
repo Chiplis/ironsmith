@@ -2,7 +2,7 @@ use crate::cards::builders::{IfResultPredicate, OwnedLexToken};
 use crate::color::ColorSet;
 use crate::filter::CounterConstraint;
 use crate::grammar::{filters, leaf, primitives};
-use crate::lexer::{LexStream, parser_token_word_refs, trim_lexed_commas};
+use crate::lexer::{LexStream, TokenKind, parser_token_word_refs, trim_lexed_commas};
 use crate::object::CounterType;
 use crate::types::Subtype;
 use winnow::Parser as _;
@@ -67,6 +67,7 @@ pub enum WhereXReplacementScope {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WhereXUsageShape<'a> {
     pub binding_tokens: &'a [OwnedLexToken],
+    pub followup_tokens: Option<&'a [OwnedLexToken]>,
     pub scope: WhereXReplacementScope,
 }
 
@@ -252,11 +253,18 @@ fn where_x_split<'a>(
 pub fn parse_where_x_usage_shape_tokens(tokens: &[OwnedLexToken]) -> Option<WhereXUsageShape<'_>> {
     let (leading, full_binding_tokens) =
         crate::grammar::primitives::probe_all(tokens, where_x_split, "where X binding")?;
-    let binding_tokens =
-        crate::slice_primitives::find_window_by(full_binding_tokens, 2, |window| {
-            window[0].is_comma() && window[1].is_word("then")
-        })
-        .map_or(full_binding_tokens, |split| &full_binding_tokens[..split]);
+    let mut inside_quote = false;
+    let followup = full_binding_tokens.iter().enumerate().find_map(|(index, token)| {
+        if token.kind == TokenKind::Quote { inside_quote = !inside_quote; }
+        if inside_quote || !token.is_comma() { return None; }
+        let remaining = full_binding_tokens.get(index + 1..)?;
+        let body = if remaining.first().is_some_and(|t| t.is_any_word(&["and", "then"])) {
+            &remaining[1..]
+        } else { return None };
+        super::chain_splitting::starts_effect_clause_tokens(body).then_some(index)
+    });
+    let binding_tokens = followup.map_or(full_binding_tokens, |index| &full_binding_tokens[..index]);
+    let followup_tokens = followup.map(|index| &full_binding_tokens[index..]);
     let damage_or_life = marker_present(
         leading,
         alt((
@@ -288,6 +296,7 @@ pub fn parse_where_x_usage_shape_tokens(tokens: &[OwnedLexToken]) -> Option<Wher
     };
     Some(WhereXUsageShape {
         binding_tokens,
+        followup_tokens,
         scope,
     })
 }

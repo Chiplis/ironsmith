@@ -16,6 +16,7 @@ use super::render_effects::{
     describe_gain_control_aura_then_chosen_legal_attach_segments,
     describe_gain_life_shuffle_source_and_graveyard,
     describe_look_hand_choose_then_discard_or_exile,
+    describe_look_hand_choose_action_with_exile_boundary,
     describe_optional_looked_entry_with_counter_and_remainder,
     describe_optional_source_exiled_copy_then_cast_pair,
     describe_optional_sticker_aura_return_attach_sequence,
@@ -634,7 +635,7 @@ fn describe_mixed_target_exile_top_damage_program(
         if exile.player != PlayerFilter::You
             || exile.count.unhinted() != &Value::Fixed(1)
             || exile.face_down
-            || !exile.accumulated_tags.is_empty()
+            || exile.accumulated_tags.len() != 1
             || damage.target.unhinted() != expected_target
             || damage.source_is_combat
             || damage.unpreventable
@@ -653,7 +654,7 @@ fn describe_mixed_target_exile_top_damage_program(
         return None;
     }
     let permission = permission_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
-    if permission.tag != player_exiled_tag
+    if player_exile.accumulated_tags.first() != Some(&permission.tag)
         || permission.player != PlayerFilter::You
         || permission.duration != crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd
         || !permission.allow_land
@@ -8353,13 +8354,15 @@ fn describe_cross_segment_conditional_triggering_spell_copy_window(
         let [retarget] = may.effects.as_slice() else {
             return None;
         };
-        let tagged_retarget = retarget.downcast_ref::<crate::effects::TaggedEffect>()?;
-        if !tagged_retarget.tag.as_str().starts_with("retargeted_") {
-            return None;
-        }
-        let retarget = tagged_retarget
-            .effect
-            .downcast_ref::<crate::effects::RetargetStackObjectEffect>()?;
+        let retarget = if let Some(tagged) = retarget.downcast_ref::<crate::effects::TaggedEffect>() {
+            if !tagged.tag.as_str().starts_with("retargeted_") {
+                return None;
+            }
+            tagged.effect.as_ref()
+        } else {
+            retarget
+        };
+        let retarget = retarget.downcast_ref::<crate::effects::RetargetStackObjectEffect>()?;
         if retarget.chooser != PlayerFilter::You
             || !matches!(retarget.mode, crate::effects::RetargetMode::All)
             || retarget.require_change
@@ -10050,10 +10053,16 @@ fn describe_cross_segment_look_hand_choose_action_window(
     segments: &[crate::resolution::ResolutionSegment],
     start: usize,
 ) -> Option<(String, usize)> {
-    let window = segments.get(start..start + 2)?;
-    let flattened = flattened_cross_segment_effects(window)?;
-    let refs = flattened.iter().collect::<Vec<_>>();
-    describe_look_hand_choose_then_discard_or_exile(&refs).map(|rendered| (rendered, 2))
+    for consumed in (2..=3.min(segments.len().saturating_sub(start))).rev() {
+        let window = segments.get(start..start + consumed)?;
+        if window.iter().skip(1).any(|segment| segment.starts_new_source_line) { continue; }
+        let flattened = flattened_cross_segment_effects(window)?;
+        let refs = flattened.iter().collect::<Vec<_>>();
+        if let Some(rendered) = describe_look_hand_choose_action_with_exile_boundary(&refs, consumed == 3) {
+            return Some((rendered, consumed));
+        }
+    }
+    None
 }
 
 /// Rejoin an optional, causative hand reveal with the exact successful
@@ -24466,7 +24475,8 @@ fn describe_player_or_planeswalker_and_controlled_creature_damage_upgrade(
         let [sequence_effect] = effects else {
             return None;
         };
-        let sequence = sequence_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+        let sequence = structural_unwrap_render_wrappers(sequence_effect)
+            .downcast_ref::<crate::effects::SequenceEffect>()?;
         if sequence.surface != ironsmith_core::SequenceSurface::Coordinated {
             return None;
         }
@@ -30352,6 +30362,42 @@ fn structural_source_counter_threshold(condition: &Condition) -> Option<CounterT
     }
 }
 
+/// Collapse a damage-recipient binding only when the follow-up uses exactly
+/// that object and its owner. Every event selector remains in the sentence.
+fn describe_structural_damage_prevention_follow_up(
+    ability: &Ability,
+    subject: &str,
+) -> Option<String> {
+    let AbilityKind::Static(ability) = &ability.kind else {return None;};
+    let model = ability.compiled_model()?;
+    let ironsmith_core::StaticAbilityPayload::DamagePreventionWithFollowUp {
+        source_filter, target_filter, combat_only, recipient_tag, effects,
+    } = &model.payload else {return None;};
+    let [follow_up] = effects.as_slice() else {return None;};
+    let shuffle = structural_unwrap_render_wrappers(follow_up).downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()?;
+    if shuffle.target != ChooseSpec::Tagged(recipient_tag.clone())
+        || shuffle.player != PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(recipient_tag.clone()))
+        || !shuffle.owner_library_destination
+        || !shuffle.possessive_owner_subject
+        || shuffle.shuffle_subject_library
+    {return None;}
+    let source = if source_filter.source {
+        let mut stripped = source_filter.clone();
+        stripped.source = false;
+        stripped.source_surface = None;
+        if stripped != ObjectFilter::default() {return None;}
+        source_filter.source_surface.as_ref().map(|s| s.display_text()).unwrap_or_else(|| subject.to_string())
+    } else {
+        with_indefinite_article(strip_leading_article(&source_filter.description()))
+    };
+    let target = with_indefinite_article(strip_leading_article(&target_filter.description()));
+    let reference = if target_filter.card_types.len() == 1 {
+        target_filter.card_types[0].to_string().to_ascii_lowercase()
+    } else {"permanent".into()};
+    let damage = match combat_only {Some(true) => "combat damage", Some(false) => "noncombat damage", None => "damage"};
+    Some(format!("If {source} would deal {damage} to {target}, prevent that damage and that {reference}'s owner shuffles it into their library"))
+}
+
 fn describe_structural_counter_removal_damage_prevention(
     ability: &Ability,
     subject: &str,
@@ -31442,6 +31488,28 @@ fn describe_structural_each_combat_keyword_grant_ladder(
     ))
 }
 
+fn describe_structural_attached_characteristic_keyword(ability: &Ability) -> Option<String> {
+    let AbilityKind::Static(static_ability) = &ability.kind else { return None; };
+    let model = static_ability.compiled_model()?;
+    let ironsmith_core::StaticAbilityPayload::RuleRestriction {
+        restriction: ironsmith_core::Restriction::BeBlocked(filter), additional_restrictions, ..
+    } = &model.payload else { return None; };
+    if ability.functional_zones.as_slice() != [Zone::Battlefield] || !additional_restrictions.is_empty() { return None; }
+    let [attachment] = filter.tagged_constraints.as_slice() else { return None; };
+    if attachment.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        || !matches!(attachment.tag.as_str(), "equipped" | "enchanted")
+    { return None; }
+    let mut plain = filter.clone();
+    plain.tagged_constraints.clear();
+    let (characteristic, comparison) = match (plain.power.take(), plain.toughness.take()) {
+        (Some(comparison), None) => ("power", comparison),
+        (None, Some(comparison)) => ("toughness", comparison),
+        _ => return None,
+    };
+    if plain != ObjectFilter::creature().in_zone(Zone::Battlefield) { return None; }
+    Some(format!("{} creature can't be blocked as long as its {characteristic} {}", capitalize_first(attachment.tag.as_str()), describe_filter_comparison_clause(&comparison)))
+}
+
 fn describe_structural_attached_zero_life_rule(ability: &Ability) -> Option<String> {
     if ability.functional_zones.as_slice() != [Zone::Battlefield] {
         return None;
@@ -32293,6 +32361,11 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 ability_idx += 1;
                 continue;
             }
+            if let Some(text) = describe_structural_attached_characteristic_keyword(ability) {
+                output.push(format!("Static ability {}: {text}", ability_idx + 1));
+                ability_idx += 1;
+                continue;
+            }
             if let Some(text) = describe_structural_attached_zero_life_rule(ability) {
                 output.push(format!("Static ability {}: {text}", ability_idx + 1));
                 ability_idx += 1;
@@ -32367,6 +32440,11 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
             }
             if let Some(text) = describe_condition_collection_choice_trigger(ability) {
                 output.push(format!("Triggered ability {}: {text}", ability_idx + 1));
+                ability_idx += 1;
+                continue;
+            }
+            if let Some(text) = describe_structural_damage_prevention_follow_up(ability, subject) {
+                output.push(format!("Static ability {}: {text}", ability_idx + 1));
                 ability_idx += 1;
                 continue;
             }

@@ -330,6 +330,13 @@ pub(super) fn compile_put_counters_action(
         put_counters = put_counters.with_distributed(true);
     }
     let effect = tag_object_target_effect(Effect::new(put_counters), &spec, ctx, "counters");
+    if !spec.is_target()
+        && let ChooseSpec::Object(filter) = spec.base()
+        && let [constraint] = filter.tagged_constraints.as_slice()
+        && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+    {
+        ctx.last_object_tag = Some(constraint.tag.clone());
+    }
     let choices = if spec.is_target() {
         vec![spec.clone()]
     } else {

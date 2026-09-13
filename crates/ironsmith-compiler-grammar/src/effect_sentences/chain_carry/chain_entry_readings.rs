@@ -471,15 +471,15 @@ fn read_terminal_where_x_binding(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
     if let Some((leading_tokens, where_value)) = parse_terminal_where_x_binding(tokens) {
-        let mut effects = parse_effect_chain_lexed(leading_tokens)?;
+        let mut effects = parse_effect_chain_lexed(&leading_tokens)?;
         replace_unbound_x_in_effects_anywhere(
             &mut effects,
             &where_value,
             &token_word_refs(tokens).join(" "),
         )?;
-        ensure_explicit_target_player_subject_declarations(&mut effects, leading_tokens);
+        ensure_explicit_target_player_subject_declarations(&mut effects, &leading_tokens);
         dedupe_shared_target_player_draw_lose_x(&mut effects, tokens);
-        preserve_independent_target_player_coordination(&mut effects, leading_tokens);
+        preserve_independent_target_player_coordination(&mut effects, &leading_tokens);
         return Ok(Some(effects));
     }
     Ok(None)

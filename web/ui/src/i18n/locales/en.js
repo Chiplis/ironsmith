@@ -1235,6 +1235,7 @@ export const ui = {
   "Sync failed: {0}": "Sync failed: {0}",
   "Tap": "Tap",
   "Tap a highlighted card or player on the battlefield.": "Tap a highlighted card or player on the battlefield.",
+  "Exile for delve": "Exile for delve",
   "Tap for convoke": "Tap for convoke",
   "Tap for improvise": "Tap for improvise",
   "Tap highlighted permanents on the battlefield.": "Tap highlighted permanents on the battlefield.",

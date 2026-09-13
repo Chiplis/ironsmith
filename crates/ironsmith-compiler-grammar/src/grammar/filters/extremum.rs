@@ -182,6 +182,11 @@ pub fn parse_extremum_object_filter_words(
             .implicit_scope
             .then_some(ValueSurfaceHint::ExtremumImplicitScope)
             .into_iter()
+            .chain(
+                split.scope_words
+                    .is_some_and(|words| words.windows(3).any(|w| w == ["on", "the", "battlefield"]))
+                    .then_some(ValueSurfaceHint::ExtremumExplicitBattlefieldScope),
+            )
             .chain(split.tied_short.map(|short| {
                 if short {
                     ValueSurfaceHint::ExtremumTiedShort

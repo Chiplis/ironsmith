@@ -251,3 +251,5 @@ pub use value_model::{
     TurnHistoryCondition, TurnHistoryCount, Value, ValueSurfaceHint,
 };
 pub use zone::Zone;
+
+pub use filter_model::describe_filter_static_ability;

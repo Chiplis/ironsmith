@@ -10,7 +10,7 @@ use super::object_filters::merge_spell_filters;
 use super::token_primitives::{TurnDurationPhrase, parse_turn_duration_suffix};
 use super::util::{parse_target_phrase, strip_leading_token_words_any, trim_commas};
 use crate::cards::builders::ForEachEffectAst;
-use crate::cards::builders::GrantActionAst;
+use crate::cards::builders::{GrantActionAst, SubjectVerbActionAst};
 use crate::cards::builders::GrantedAbilityAst;
 use crate::effect::{Until, Value, ValueComparisonOperator};
 use crate::grammar::shared_util::value_semantics::{
@@ -1023,6 +1023,42 @@ pub fn parse_permission_clause_spec_lexed(
     };
     let player = lead.player;
     let allow_land = lead.allow_land;
+
+    // A condition on the spell being cast restricts the proposed spell face,
+    // rather than testing the exiled card once when the permission resolves.
+    if !allow_land && prefixed_lifetime.is_some()
+        && let Some((target, tail)) = parse_tagged_cast_or_play_target_tokens(rest_tokens)
+    {
+        let words = token_word_refs(tail);
+        let condition_len = if words.starts_with(&["if", "its", "an"])
+            || words.starts_with(&["if", "its", "a"])
+            || words.starts_with(&["if", "it's", "an"])
+            || words.starts_with(&["if", "it's", "a"])
+        { Some(3) } else if words.starts_with(&["if", "it", "is", "an"])
+            || words.starts_with(&["if", "it", "is", "a"])
+        { Some(4) } else { None };
+        if let Some(skip) = condition_len
+            && words.last() == Some(&"spell")
+        {
+            let condition_tokens = &tail[skip..];
+            if let Some(mut filter) = permission_subject_facts::parse_permission_subject_filter_tokens(condition_tokens)? {
+                filter.zone = None;
+                return Ok(Some(PermissionClauseSpec::Tagged {
+                    tag: target.tag,
+                    player,
+                    allow_land,
+                    as_copy: target.as_copy,
+                    max_plays: target.max_plays,
+                    without_paying_mana_cost: false,
+                    lifetime: prefixed_lifetime.unwrap(),
+                    filter: Some(filter),
+                    surface: Some(ironsmith_core::GrantPlayTaggedSurface::default()
+                        .with_leading_duration(true)
+                        .with_object(target.surface.unwrap_or(ironsmith_core::GrantPlayTaggedObjectSurface::It))),
+                }));
+            }
+        }
+    }
 
     if !allow_land
         && prefixed_lifetime.is_none()
@@ -2209,31 +2245,34 @@ pub fn parse_cast_or_play_tagged_clause(
             max_plays,
             without_paying_mana_cost: false,
             lifetime,
+            filter,
+            surface,
             ..
         }) if matches!(
             lifetime,
             PermissionLifetime::UntilYourNextTurn | PermissionLifetime::UntilYourNextEndStep
         ) && (player == PlayerAst::Implicit || player == PlayerAst::You) =>
         {
-            Ok(Some(
-                if lifetime == PermissionLifetime::UntilYourNextEndStep {
-                    EffectAst::subject_verb_grant_play_tagged_until_your_next_end_step(
-                        crate::tag::TagRef::of(tag),
-                        PlayerAst::Implicit,
-                        allow_land,
-                        mana_spend_mode,
-                    )
-                    .with_tagged_play_max_plays(max_plays)
-                } else {
-                    EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
-                        crate::tag::TagRef::of(tag),
-                        PlayerAst::Implicit,
-                        allow_land,
-                        mana_spend_mode,
-                    )
-                    .with_tagged_play_max_plays(max_plays)
-                },
-            ))
+            let mut effect = if lifetime == PermissionLifetime::UntilYourNextEndStep {
+                EffectAst::subject_verb_grant_play_tagged_until_your_next_end_step(
+                    crate::tag::TagRef::of(tag), PlayerAst::Implicit, allow_land, mana_spend_mode,
+                )
+            } else {
+                EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
+                    crate::tag::TagRef::of(tag), PlayerAst::Implicit, allow_land, mana_spend_mode,
+                )
+            }.with_tagged_play_max_plays(max_plays);
+            if let EffectAst::SubjectVerb(subject) = &mut effect
+                && let SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilYourNextTurn {
+                    until_next_turn_start, spell_filter, surface: grant_surface, ..
+                }) = &mut subject.action
+            {
+                *until_next_turn_start = lifetime == PermissionLifetime::UntilYourNextTurn
+                    && next_turn_permission_grant_duration(tokens)? == crate::grant::GrantDuration::UntilYourNextTurn;
+                *spell_filter = filter;
+                *grant_surface = surface;
+            }
+            Ok(Some(effect))
         }
         Some(PermissionClauseSpec::GrantBySpec {
             player,

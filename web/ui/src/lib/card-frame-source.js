@@ -1,7 +1,7 @@
 import {inpaintGlyphMask} from './card-frame-font-mask.js';
 // Keep the original printing everywhere except its editable text regions.
 // The caller supplies the existing glyph-removal/inpainting implementation.
-export function maskSourceFrame(scan, boxes, stats, statsPanel, cleanPanel, panels = {}) {
+function* maskSourceFrameSteps(scan, boxes, stats, statsPanel, panels = {}) {
   const {width,height,data}=scan, output=data.slice(), mask=new Uint8Array(width*height);
   const regions=[];
   for(const name of ['title','type','rules']) {
@@ -10,7 +10,14 @@ export function maskSourceFrame(scan, boxes, stats, statsPanel, cleanPanel, pane
     if(!b)return null;
     const text=panels.textBounds?.[name];
     if(text) {
-      regions.push({name,x:text.x-3,y:text.y-3,width:text.width+6,height:text.height+6});
+      // Recognition may miss a suffix. Keep its measured vertical band, but
+      // inspect the complete label up to the independently registered symbol.
+      const stop=name==='title'?panels.manaMatch?.symbols[0]?.x:panels.setSymbol?.x;
+      // Without a registered symbol, extending across unknown pixels can
+      // capture a boxed set logo as lettering. Use the complete measured line
+      // in that case; only an independent symbol anchor permits expansion.
+      const right=Math.floor(Math.min(b.x+b.width,stop!=null?stop-1:text.x+text.width+3));
+      regions.push({name,x:text.x-3,y:text.y-3,width:Math.max(1,right-(text.x-3)),height:text.height+6});
       continue;
     }
     const integrated=panels[name]==='integrated';
@@ -27,8 +34,14 @@ export function maskSourceFrame(scan, boxes, stats, statsPanel, cleanPanel, pane
     if(r.width<1||r.height<1)return null;
     const patch=new Uint8ClampedArray(r.width*r.height*4);
     for(let y=0;y<r.height;y++)patch.set(data.subarray(((r.y+y)*width+r.x)*4,((r.y+y)*width+r.x+r.width)*4),y*r.width*4);
-    let clean=cleanPanel({data:patch,width:r.width,height:r.height},{removeSeparators:r.name==='rules',minimumCleanFraction:.02,section:r.name});
+    const excludedPixels=new Uint8Array(r.width*r.height);
+    if(r.name==='rules'&&statsPanel)for(let y=0;y<r.height;y++)for(let x=0;x<r.width;x++)if(inStats(r.x+x,r.y+y))excludedPixels[y*r.width+x]=1;
+    let clean=yield {kind:'panel',scan:{data:patch,width:r.width,height:r.height},options:{removeSeparators:r.name==='rules',minimumCleanFraction:.02,section:r.name,excludedPixels,protectBottomBoundary:r.name==='rules'}};
     if (!clean) return null;
+    if (clean.quality?.safe === false) {
+      panels.onUnsafeMask?.({section:r.name,quality:clean.quality});
+      return null;
+    }
     if(r.name==='title'&&!panels.fontGuided) {
       const donors=[];
       for(let p=0;p<r.width*r.height;p++)if(!clean.mask[p]&&p%r.width<r.width*.65)donors.push(p);
@@ -61,7 +74,7 @@ export function maskSourceFrame(scan, boxes, stats, statsPanel, cleanPanel, pane
         if(svg.data[(v*svg.width+u)*4+3]>32)symbolMask[(y-y0)*w+x-x0]=1;
       }
     });
-    const filled=inpaintGlyphMask({data:pixels,width:w,height:h},symbolMask);
+    const filled=yield {kind:'inpaint',scan:{data:pixels,width:w,height:h},mask:symbolMask};
     for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(symbolMask[y*w+x]) {
       const p=(y+y0)*width+x+x0;output.set(filled.data.subarray((y*w+x)*4,(y*w+x)*4+4),p*4);mask[p]=1;
     }
@@ -79,4 +92,24 @@ export function maskSourceFrame(scan, boxes, stats, statsPanel, cleanPanel, pane
     if(y>0)queue.push(p-width);if(y<height-1)queue.push(p+width);
   }
   return {data:output,width,height,mask};
+}
+
+export function maskSourceFrame(scan, boxes, stats, statsPanel, cleanPanel, panels = {}) {
+  const steps = maskSourceFrameSteps(scan, boxes, stats, statsPanel, panels);
+  let step = steps.next();
+  while (!step.done) {
+    const job = step.value;
+    step = steps.next(job.kind === 'panel' ? cleanPanel(job.scan, job.options) : inpaintGlyphMask(job.scan, job.mask));
+  }
+  return step.value;
+}
+
+export async function maskSourceFrameAsync(scan, boxes, stats, statsPanel, cleanPanel, panels = {}, inpaint = inpaintGlyphMask) {
+  const steps = maskSourceFrameSteps(scan, boxes, stats, statsPanel, panels);
+  let step = steps.next();
+  while (!step.done) {
+    const job = step.value;
+    step = steps.next(await (job.kind === 'panel' ? cleanPanel(job.scan, job.options) : inpaint(job.scan, job.mask)));
+  }
+  return step.value;
 }

@@ -6,6 +6,14 @@
 @font-face { font-family: "MPlantin"; src: url('../assets/fonts/MPlantin.ttf') format('truetype'); font-weight: 400; font-display: swap; }
 @font-face { font-family: "MPlantin"; src: url('../assets/fonts/MPlantin-Italic.ttf') format('truetype'); font-weight: 400; font-style: italic; font-display: swap; }
 @font-face { font-family: "MPlantin"; src: url('../assets/fonts/Plantin-Semibold.otf') format('opentype'); font-weight: 600 900; font-display: swap; }
+/* Match the lighter scanned print on macOS, especially light ink on dark
+   panels. This changes rasterization without changing font metrics or wraps. */
+[data-card-era],
+[data-card-era] :not(svg):not(svg *) {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 [data-card-era] .interactive-card-frame__title,
 [data-card-era] .interactive-card-frame__title :not(svg):not(svg *) {
   font-family: var(--card-title-font) !important;
@@ -25,6 +33,7 @@
 [data-card-era] .interactive-card-frame__rule-line :not(svg):not(svg *) {
   font-family: var(--card-rules-font) !important;
   font-weight: 400;
+  letter-spacing: 0;
 }
 
 [data-card-era] [data-card-title] {

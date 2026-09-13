@@ -1379,6 +1379,17 @@ fn parse_source_has_counted_counter_predicate_with_binding(
     let counter_tail = counter_clause.tokens().get(used..)?;
     let counter_type = parse_terminal_counter_phrase(counter_tail)??;
     if !intrinsic_source && surface::exact(relation.subject_clause, &["it"]) {
+        let mut threshold = Value::Fixed(count);
+        if count == 1
+            && operator == crate::effect::ValueComparisonOperator::GreaterThanOrEqual
+            && counter_clause
+                .tokens()
+                .first()
+                .is_some_and(|token| token.is_any_word(&["a", "an"]))
+        {
+            threshold = threshold
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::IndefiniteCounterPresence);
+        }
         return Some(PredicateAst::ValueComparison {
             left: Value::CountersOn(
                 Box::new(crate::target::ChooseSpec::Tagged(
@@ -1387,7 +1398,7 @@ fn parse_source_has_counted_counter_predicate_with_binding(
                 Some(counter_type),
             ),
             operator,
-            right: Value::Fixed(count),
+            right: threshold,
         });
     }
     let source_count = match operator {
@@ -2282,6 +2293,12 @@ fn parse_player_does_not_control_predicate(
         .is_some_and(|token| token_word_is_any(token, OTHER_OR_ANOTHER_WORDS));
     let result = parse_object_filter(object_clause.tokens(), other).map(|mut filter| {
         filter.controller = Some(PlayerFilter::You);
+        if surface::exact(object_clause, &["it"]) {
+            filter.source_surface = Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+                "it".to_string(),
+            ));
+        }
+
         PredicateAst::Player(PlayerPredicateAst::PlayerControlsNo {
             player: PlayerAst::You,
             filter,

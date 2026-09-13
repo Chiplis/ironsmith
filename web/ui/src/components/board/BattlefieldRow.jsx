@@ -8,6 +8,7 @@ import { useCombatArrows } from "@/context/useCombatArrows";
 import {
   placementSlotForCard,
   useDragActions,
+  useDragSession,
   useDragState,
   usePendingPlacement,
   usePlacementActions,
@@ -903,7 +904,10 @@ export default function BattlefieldRow({
   const pendingLayoutSettlePositionsRef = useRef(null);
   const layoutHoldTimersRef = useRef(new Map());
   const { state, cancelDecision, dispatch, loading } = useGame();
-  const dragState = useDragState();
+  const dragSession = useDragSession();
+  // Targeting a spell does not move permanents or change placement slots.
+  // Keep the grid subscribed to session changes, not every aiming sample.
+  const dragState = useDragState({ trackPointer: !dragSession?.castIntent });
   const { startDrag, updateDrag, endDrag } = useDragActions();
   const pendingPlacement = usePendingPlacement();
   const placementSlots = usePlacementSlots();
@@ -1767,8 +1771,10 @@ export default function BattlefieldRow({
   }, [shouldFreezePaperLayout]);
 
   useEffect(() => {
-    scheduleSettledFit();
-  }, [scheduleSettledFit, state?.decision?.actions?.length, state?.decision?.kind]);
+    // Priority menus change every phase without changing the card grid.
+    // Check dimensions once rather than forcing three fits and snapshot scans.
+    scheduleFitCards();
+  }, [scheduleFitCards, state?.decision?.actions?.length, state?.decision?.kind]);
 
   useEffect(() => {
     if (!isMobileBattleBottomLayout) return undefined;
@@ -1871,7 +1877,7 @@ export default function BattlefieldRow({
       previousPositionsRef.current = new Map();
       previousCardsRef.current = displayCards;
       lastProcessedSnapshotIdRef.current = snapshotId;
-      setProcessedLayoutSnapshotId(snapshotId);
+      if (immediateLayoutHolds.length > 0) setProcessedLayoutSnapshotId(snapshotId);
       return;
     }
 
@@ -1937,7 +1943,10 @@ export default function BattlefieldRow({
       previousPaperLayoutRef.current = paperLayout;
     }
     lastProcessedSnapshotIdRef.current = snapshotId;
-    setProcessedLayoutSnapshotId(snapshotId);
+    // Only removing provisional leave holds changes the rendered layout. A
+    // phase-only snapshot must not force a second synchronous board render
+    // from this layout effect (which would block hover and animation updates).
+    if (immediateLayoutHolds.length > 0) setProcessedLayoutSnapshotId(snapshotId);
   }, [
     displayCards,
     isPaperBattlefieldLayout,
@@ -1948,6 +1957,7 @@ export default function BattlefieldRow({
     state?.battlefield_transitions,
     state?.zone_transitions,
     state?.snapshot_id,
+    immediateLayoutHolds.length,
   ]);
 
   useLayoutEffect(() => {

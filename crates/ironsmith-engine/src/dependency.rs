@@ -1588,7 +1588,7 @@ pub(crate) fn apply_modification_to_chars_for_dependency(
         }
         Modification::ChangeText { .. }
         | Modification::SetTextBox(_)
-        | Modification::SetName(_)
+        | Modification::SetName(_) | Modification::InsertNameWords { .. }
         | Modification::CantBeBlocked
         | Modification::CantAttack
         | Modification::CantBlock
@@ -1940,7 +1940,7 @@ fn non_pt_group_has_trivial_ordering(effects: &[&ContinuousEffect], game: &GameS
                 effect.modification,
                 Modification::ChangeText { .. }
                     | Modification::SetTextBox(_)
-                    | Modification::SetName(_)
+                    | Modification::SetName(_) | Modification::InsertNameWords { .. }
             )
     }) {
         return true;
@@ -2210,7 +2210,7 @@ fn modification_can_change_abilities_or_matching_characteristics(
         Modification::CopyOf { .. }
             | Modification::ChangeController(_)
             | Modification::SetTextBox(_)
-            | Modification::SetName(_)
+            | Modification::SetName(_) | Modification::InsertNameWords { .. }
             | Modification::AddCardTypes(_)
             | Modification::RemoveCardTypes(_)
             | Modification::SetCardTypes(_)
@@ -2272,7 +2272,7 @@ fn modification_can_affect_filter(modification: &Modification, filter: &ObjectFi
             Modification::ChangeText { .. } | Modification::SetTextBox(_) => {
                 filter_uses_ability_characteristics(filter)
             }
-            Modification::SetName(_) => {
+            Modification::SetName(_) | Modification::InsertNameWords { .. } => {
                 filter.name.is_some()
                     || filter.excluded_name.is_some()
                     || filter.name_originally_printed_in_set.is_some()

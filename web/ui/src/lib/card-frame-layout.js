@@ -5,6 +5,7 @@
 const segmentedLayouts = new Set(['split','flip','adventure','prepare','case','saga','class','leveler','prototype','mutate','planar','scheme','vanguard','augment','art_series']);
 export function sourceMaskLayoutGap(printing) {
   if (!printing) return 'printing-metadata';
+  if (printing.image_status === 'placeholder') return 'placeholder-image';
   if (segmentedLayouts.has(printing.layout)) return `layout-${printing.layout}`;
   if (printing.frame_effects?.includes('shatteredglass')) return 'shattered-glass-material';
   const type = printing.type_line || '';

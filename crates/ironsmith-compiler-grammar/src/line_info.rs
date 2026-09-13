@@ -11,6 +11,7 @@ pub struct GrammarLineInfo {
     pub line_index: usize,
     pub display_line_index: usize,
     pub raw_line: String,
+    /// Authored rules with reminder text removed; spans still index raw_line.
     pub source_tokens: Vec<OwnedLexToken>,
     pub normalized: NormalizedLine,
     pub semantic_facts: LineSemanticFacts,

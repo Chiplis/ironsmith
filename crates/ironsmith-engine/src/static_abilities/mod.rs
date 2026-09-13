@@ -364,6 +364,13 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         StaticAbilityKindClone::clone_boxed(self)
     }
 
+    /// Whether this ability may emit continuous effects. Returning false must
+    /// guarantee that `generate_effects` is empty in every game state.
+    /// Unclassified implementations conservatively retain effect generation.
+    fn may_generate_continuous_effects(&self) -> bool {
+        true
+    }
+
     /// Generate continuous effects for this ability.
     ///
     /// Called by the static ability processor to create effects that go through
@@ -1304,11 +1311,14 @@ pub struct EnterAsCopyAsEntersSpec {
     pub name_override: Option<String>,
     pub added_colors: crate::color::ColorSet,
     pub added_card_types: Vec<crate::types::CardType>,
+    pub added_supertypes: Vec<crate::types::Supertype>,
     pub removed_supertypes: Vec<crate::types::Supertype>,
     pub added_subtypes: Vec<crate::types::Subtype>,
     pub added_abilities: Vec<crate::ability::Ability>,
     pub set_base_power_toughness: Option<(i32, i32)>,
     /// Add the extra abilities only when the chosen copy source matches this filter.
+    pub additional_counters: Vec<(ironsmith_core::CounterType, u32)>,
+    pub additional_counters_source_filter: Option<crate::target::ObjectFilter>,
     pub added_abilities_source_filter: Option<crate::target::ObjectFilter>,
     pub set_base_power_toughness_from_self: bool,
 }
@@ -1595,6 +1605,10 @@ impl StaticAbility {
 
     pub fn with_condition(&self, condition: crate::ConditionExpr) -> Option<Self> {
         self.0.with_static_condition(condition)
+    }
+
+    pub(crate) fn may_generate_continuous_effects(&self) -> bool {
+        self.0.may_generate_continuous_effects()
     }
 
     /// Generate continuous effects for this ability.

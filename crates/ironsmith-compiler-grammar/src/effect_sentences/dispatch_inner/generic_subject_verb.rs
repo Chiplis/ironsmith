@@ -1941,7 +1941,7 @@ fn parse_attached_and_related_get_subject_verb(
     )]))
 }
 
-fn parse_target_gets_then_gains_subject_verb(
+pub(super) fn parse_attached_and_related_get_and_gain(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if let Some(shape) =
@@ -1966,6 +1966,15 @@ fn parse_target_gets_then_gains_subject_verb(
             ),
             EffectAst::subject_verb_grant_abilities_all(filter, abilities, shape.duration),
         ]));
+    }
+    Ok(None)
+}
+
+fn parse_target_gets_then_gains_subject_verb(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(effects) = parse_attached_and_related_get_and_gain(tokens)? {
+        return Ok(Some(effects));
     }
     let Some(shape) = effect_grammar::gain_ability_shapes::parse_get_then_ability_shape(tokens)
     else {

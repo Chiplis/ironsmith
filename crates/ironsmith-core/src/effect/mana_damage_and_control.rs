@@ -826,6 +826,9 @@ pub struct GrantPlayTaggedEffect {
     pub allow_any_color_for_cast: bool,
     pub while_on_top_of_library: bool,
     pub filter: Option<ObjectFilter>,
+    /// Restriction on the proposed spell, checked when casting a face.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub spell_filter: Option<ObjectFilter>,
     pub during_turns_counter_put_on_source: Option<CounterType>,
     /// Additional mana cost imposed on nonland cards cast through this exact
     /// tagged play permission.
@@ -865,6 +868,7 @@ impl GrantPlayTaggedEffect {
             allow_any_color_for_cast: mana_spend_mode.allows_any_color(),
             while_on_top_of_library: false,
             filter: None,
+            spell_filter: None,
             during_turns_counter_put_on_source: None,
             spell_cost_increase: None,
             spell_cost_reduction: None,

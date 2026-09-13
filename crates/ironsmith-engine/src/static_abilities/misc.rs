@@ -4548,3 +4548,35 @@ impl StaticAbilityKind for SuppressMatchingTriggeredAbilities {
         })
     }
 }
+
+/// A prevention shield whose additional effects receive the matching damage event.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DamagePreventionWithFollowUp {
+    pub source_filter: ObjectFilter,
+    pub target_filter: ObjectFilter,
+    pub combat_only: Option<bool>,
+    pub effects: Vec<Effect>,
+}
+
+impl StaticAbilityKind for DamagePreventionWithFollowUp {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::DamagePreventionWithFollowUp
+    }
+
+    fn display(&self) -> String {
+        "Damage prevention with follow-up".into()
+    }
+
+    fn generate_replacement_effect(
+        &self, source: ObjectId, controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source, controller,
+            crate::events::DamageFromSourceToObjectMatcher::new(
+                self.source_filter.clone(), self.target_filter.clone(),
+            ).with_combat_only(self.combat_only),
+            // Additional effects happen even when the damage cannot be prevented.
+            ReplacementAction::PreventDamageThen(self.effects.clone()),
+        ))
+    }
+}

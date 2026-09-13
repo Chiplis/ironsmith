@@ -93,6 +93,7 @@ test("preloading resolves and caches Scryfall image URLs by card name", async ()
       json: async () => ({
         scryfall: {
           standard_printing: true,
+          frame: "2015",
           image_uris: {
             normal: "https://cards.example.test/cache-test-normal.jpg",
             art_crop: "https://cards.example.test/cache-test-art.jpg",
@@ -224,6 +225,9 @@ for (const [label, treatment] of Object.entries({
   extended: { frame_effects: ["extendedart"] },
   textless: { textless: true },
   legacy: {},
+  retro: { standard_printing: true, frame: "1997" },
+  original: { standard_printing: true, frame: "1993" },
+  unverifiedFrame: { standard_printing: true },
 })) {
   test(`${label} local art cannot leak into the cache through metadata lookup`, async () => {
     const originalFetch = globalThis.fetch;
@@ -237,6 +241,7 @@ for (const [label, treatment] of Object.entries({
       assert.match(new URL(url).searchParams.get("q"), /-border:borderless.*-frame:showcase.*-frame:extendedart.*-is:textless/);
       return { ok: true, json: async () => ({ data: [
         { name, full_art: true, image_uris: { normal: "bad-search" } },
+        { name, frame: "1997", image_uris: { normal: "retro-search" } },
         { name, image_uris: { normal: "standard" } },
       ] }) };
     };
@@ -299,6 +304,7 @@ test("localized image selection filters treatments independently of translated t
       assert.match(q, /-is:fullart/);
       return { ok: true, json: async () => ({ data: [
         { border_color: "borderless", image_uris: { normal: "bad-localized" } },
+        { frame: "1997", image_uris: { normal: "retro-localized" } },
         { image_uris: { normal: "standard-localized" } },
       ] }) };
     }
@@ -357,5 +363,24 @@ test("a prepared card's spell face never hijacks the real card's printing", asyn
     assert.equal(await resolveScryfallLocalizedImageUrl(name, "es"), "raise-dead-es-scan");
     // The prepared card still resolves under its own name.
     assert.equal(await resolveScryfallImageUrl("Cheerful Osteomancer"), "prepared-scan");
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("retro printing remains available when no standard alternative exists", async () => {
+  const originalFetch = globalThis.fetch;
+  const name = "Retro Only Policy";
+  let searched = false;
+  globalThis.fetch = async url => {
+    if (String(url).startsWith("http://localhost/")) return { ok: false, status: 404 };
+    if (String(url).includes("/search?")) {
+      assert.match(new URL(url).searchParams.get("q"), /-frame:1993 -frame:1997/);
+      searched = true;
+      return { ok: false, status: 404 };
+    }
+    assert.ok(searched);
+    return { ok: true, json: async () => ({ name, frame: "1993", image_uris: { normal: "only-retro" } }) };
+  };
+  try {
+    assert.equal(await resolveScryfallImageUrl(name), "only-retro");
   } finally { globalThis.fetch = originalFetch; }
 });

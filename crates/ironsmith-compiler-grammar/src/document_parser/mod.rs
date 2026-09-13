@@ -5268,11 +5268,12 @@ mod tests {
                 assert_eq!(keyword.kind, KeywordLineKind::AlternativeCast);
                 assert_eq!(render_token_slice(&keyword.parse_tokens), "sneak {1}{b}");
                 assert!(
-                    render_token_slice(&keyword.full_parse_tokens)
+                    !render_token_slice(&keyword.full_parse_tokens)
                         .to_ascii_lowercase()
                         .contains("you may cast this spell for"),
-                    "full Sneak parse tokens should retain reminder text"
+                    "full Sneak parse tokens must exclude reminder text"
                 );
+                assert!(keyword.info.semantic_facts.supported_sneak_form);
             }
             other => panic!("expected sneak keyword plus statement line, got {other:?}"),
         }

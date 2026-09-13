@@ -232,6 +232,7 @@ impl OutcomeObjectMemory {
                 mana_spent_to_cast: crate::player::ManaPool::default(),
                 snow_mana_spent_to_cast: crate::player::ManaPool::default(),
                 mana_sources_spent_to_cast: Vec::new(),
+                optional_costs_paid: crate::cost::OptionalCostsPaid::default(),
                 counters: std::collections::HashMap::new(),
                 is_token: self.is_token,
                 tapped: false,
@@ -291,6 +292,10 @@ pub enum ExecutionFact {
     ChosenOptions(Vec<usize>),
     ChosenNumber(u32),
     OtherNumber(u32),
+    AppliedNameSticker {
+        sticker_id: u64,
+        name: String,
+    },
     /// A mana payment completed successfully at the given X value. This is
     /// distinct from the numeric payload so a legal X=0 payment still counts
     /// as having happened.

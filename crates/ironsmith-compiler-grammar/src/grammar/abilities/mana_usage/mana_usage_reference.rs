@@ -23,12 +23,35 @@ pub(super) fn parse_filter_cast_shape(tokens: &[OwnedLexToken]) -> Option<Filter
 }
 
 pub(super) fn parse_mana_usage_spell_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
-    parse_special_spell_filter(tokens)
+    parse_repeated_spell_domain_union(tokens)
+        .or_else(|| parse_special_spell_filter(tokens))
         .or_else(|| parse_simple_subtype_spell_filter(tokens))
         .or_else(|| {
             let filter = parse_spell_filter_with_grammar_entrypoint(tokens);
             (filter != ObjectFilter::default()).then_some(filter)
         })
+}
+
+/// Independently nouned spell alternatives retain their own predicates.
+/// A subtype on one arm must not swallow an ability requirement on another.
+fn parse_repeated_spell_domain_union(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    if !tokens.iter().any(|token| token.is_word("or"))
+        || tokens.iter().any(|token| token.is_word("and"))
+    {
+        return None;
+    }
+    let arms = tokens.split(|token| token.is_word("or"))
+        .map(trim_lexed_commas).collect::<Vec<_>>();
+    if arms.len() < 2 || !arms.iter().all(|arm| {
+        arm.iter().any(|token| token.is_any_word(&["spell", "spells"]))
+    }) {
+        return None;
+    }
+    let branches = arms.into_iter().map(|arm| {
+        let filter = crate::grammar::filters::parse_object_filter_with_grammar_entrypoint(arm, false).ok()?;
+        (filter.zone == Some(Zone::Stack)).then_some(filter)
+    }).collect::<Option<Vec<_>>>()?;
+    Some(ObjectFilter { any_of: branches, ..ObjectFilter::default() })
 }
 
 pub(super) fn parse_simple_subtype_spell_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {

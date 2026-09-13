@@ -157,6 +157,8 @@ pub struct TargetRequirement {
     /// Requirements in the same group must select different targets.
     /// The field retains its original player-only API name.
     pub distinct_player_group: Option<usize>,
+    /// Requirements in this group resolve to the same player or object controller.
+    pub shared_player_group: Option<crate::decisions::context::SharedTargetPlayerGroup>,
     /// Amount to divide among this requirement's selected targets during announcement.
     pub distribution_value: Option<crate::effect::Value>,
     /// Minimum amount assigned to each selected target.
@@ -176,6 +178,7 @@ impl TargetRequirement {
             min_targets: 1,
             max_targets: Some(1),
             distinct_player_group: None,
+            shared_player_group: None,
             distribution_value: None,
             distribution_min_per_target: 1,
         }
@@ -193,6 +196,7 @@ impl TargetRequirement {
             min_targets: 0,
             max_targets: None,
             distinct_player_group: None,
+            shared_player_group: None,
             distribution_value: None,
             distribution_min_per_target: 1,
         }
@@ -216,6 +220,7 @@ impl TargetRequirement {
             min_targets: min,
             max_targets: max,
             distinct_player_group: None,
+            shared_player_group: None,
             distribution_value: None,
             distribution_min_per_target: 1,
         }
@@ -327,6 +332,11 @@ impl<'a> HandCardSummary<'a> {
 
 pub(crate) fn spell_has_intrinsic_cost_adjustments(spell: &crate::object::Object) -> bool {
     use crate::ability::AbilityKind;
+
+    if spell.alternative_casts.iter().chain(spell.cast_alternative_method.iter().map(|method| method.as_ref())).any(|method|
+        matches!(method, crate::alternative_cast::AlternativeCastingMethod::Harmonize { .. }) || method.name().eq_ignore_ascii_case("Emerge")) {
+        return true;
+    }
 
     spell.abilities.iter().any(|ability| {
         let AbilityKind::Static(static_ability) = &ability.kind else {

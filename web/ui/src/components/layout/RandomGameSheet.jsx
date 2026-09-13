@@ -88,14 +88,6 @@ export default function RandomGameSheet({ trigger, onGenerate, disabled = false 
   const battlefieldImpossible = battlefieldCount > battlefieldBasics && !permanentChosen;
   const blocked = !anyTypeChosen || !anyColorChosen || battlefieldImpossible;
 
-  const cancel = useCallback(() => {
-    abortRef.current?.abort();
-    abortRef.current = null;
-    setBusy(false);
-    setProgress(null);
-    setOpen(false);
-  }, []);
-
   const handleGenerate = useCallback(async () => {
     if (busy || blocked) return;
     const seed = String(config.seed || "").trim() || randomSeed();
@@ -164,6 +156,17 @@ export default function RandomGameSheet({ trigger, onGenerate, disabled = false 
           <div className={sectionTitleClass}>{ui("Tools")}</div>
           <SheetTitle className="text-[22px] uppercase tracking-[0.18em] text-foreground">{ui("Random Game")}</SheetTitle>
           <SheetDescription className="max-w-[46ch] text-[13px] leading-5">{ui("Fill every player's zones with random cards. Only legal placements are generated, so spells never start on the battlefield.")}</SheetDescription>
+          <Button
+            type="button"
+            size="sm"
+            className="random-game-submit ui-primary-action w-full justify-center uppercase tracking-wide"
+            onClick={handleGenerate}
+            disabled={disabled || busy || blocked}
+          >
+            {busy
+              ? ui("Collecting {0}/{1}", { 0: progress?.collected ?? 0, 1: progress?.target ?? budget })
+              : ui("Generate")}
+          </Button>
         </SheetHeader>
 
         <div className="random-game-sheet-body grid max-h-[70vh] gap-4 overflow-y-auto p-4">
@@ -368,29 +371,6 @@ export default function RandomGameSheet({ trigger, onGenerate, disabled = false 
                   : ui("The battlefield can only hold permanents: pick a permanent type or fill it with basics.")}
             </p>
           ) : null}
-
-          <div className="random-game-sheet-footer grid gap-2 sm:grid-cols-2">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="stone-pill"
-              onClick={cancel}
-            >
-              {busy ? ui("Stop") : ui("Cancel")}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              className="random-game-submit ui-primary-action w-full justify-center uppercase tracking-wide"
-              onClick={handleGenerate}
-              disabled={disabled || busy || blocked}
-            >
-              {busy
-                ? ui("Collecting {0}/{1}", { 0: progress?.collected ?? 0, 1: progress?.target ?? budget })
-                : ui("Generate")}
-            </Button>
-          </div>
         </div>
       </SheetContent>
     </Sheet>

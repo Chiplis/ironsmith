@@ -361,6 +361,7 @@ impl PriorEffectResultSurface {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum GrantPlayTaggedDuration {
     UntilEndOfTurn,
+    UntilYourNextTurnStart,
     UntilYourNextTurnEnd,
     UntilYourNextEndStep,
     /// The permission remains active until the same source object next exiles

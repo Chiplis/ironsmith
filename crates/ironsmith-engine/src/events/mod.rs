@@ -335,6 +335,7 @@ impl Event {
                 copy_name_override: None,
                 added_colors: crate::color::ColorSet::new(),
                 added_card_types: Vec::new(),
+                added_supertypes: Vec::new(),
                 removed_supertypes: Vec::new(),
                 added_subtypes: Vec::new(),
                 added_abilities: Vec::new(),

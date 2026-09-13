@@ -1,5 +1,6 @@
 import { resolveScryfallEnglishPrinting, resolveScryfallFlavorText, resolveScryfallPrintingMetadata, resolveScryfallSetSymbol } from './scryfall';
-import { fullCardImageUrl, preloadCardFrameSource, sampleCardFrameColors } from './card-frame-colors';
+import { fullCardImageUrl, preloadCardFrameSource } from './card-frame-colors';
+import { sampleCardFrameColors } from './card-frame-processing';
 import { cardTypography } from './card-typography';
 import {registrationForImage, registrationForPrinting, registrationGeometryIsUsable} from './card-region-layout';
 
@@ -90,7 +91,8 @@ export function prepareCardFrame(imageUrl, typeLine = '') {
     if (!registration && !style?.['--source-frame-image'] && printing?.lang && printing.lang !== 'en') {
       try {
         const english = await resolveScryfallEnglishPrinting(imageUrl, printing);
-        const englishUrl = fullCardImageUrl(english?.image_uris?.normal || english?.image_uris?.large);
+        const englishUrl = english?.image_uris?.normal
+          || fullCardImageUrl(english?.image_uris?.art_crop);
         if (englishUrl && englishUrl !== scanUrl) {
           const englishTypography = await prepareTypography(english);
           const englishStyle = await sampleCardFrameColors(englishUrl, {

@@ -5831,6 +5831,21 @@ impl NamedCastCostDecisionMaker {
 }
 
 impl DecisionMaker for NamedCastCostDecisionMaker {
+    fn decide_mana_payment(&mut self, game: &GameState, ctx: &crate::decisions::context::ManaPaymentContext)
+        -> crate::mana_payment::ManaPaymentResponse {
+        use crate::mana_payment::{ManaPaymentResponse, ManaPaymentSourceKind, RequiredAlternativePayment};
+        if game.object(ctx.request.source).is_some_and(crate::decision::has_delve)
+            && let Some(name) = self.choices.pop_front() {
+            if name == "<cancel>" { return ManaPaymentResponse::Cancel; }
+            let source = game.player(ctx.request.payer).unwrap().graveyard.iter().copied()
+                .find(|id| game.object(*id).is_some_and(|card| card.name == name.as_str())).unwrap();
+            self.cost_prompts.push("Delve payment selection".into());
+            let mut preferences = ctx.request.preferences.clone();
+            preferences.required_alternatives.push(RequiredAlternativePayment { source, kind: ManaPaymentSourceKind::Delve });
+            return ManaPaymentResponse::Replan { preferences };
+        }
+        ManaPaymentResponse::Confirm { plan_id: ctx.plan.id, request_hash: ctx.plan.request_hash }
+    }
     fn decide_objects(
         &mut self,
         game: &GameState,
@@ -5943,6 +5958,10 @@ pub(super) fn native_escape_uses_exact_graveyard_choices_and_rolls_back_partial_
         !i061_zone_contains_name(&game, &game.exile, "Native Escape Probe"),
         "the Escape spell itself must not be offered as an exile-cost card"
     );
+
+    resolve_stack_entry(&mut game).expect("escaped spell resolves");
+    assert!(i061_zone_contains_name(&game, &game.player(alice).unwrap().graveyard, "Native Escape Probe"),
+        "Escape does not exile the spell after resolution");
 
     let (mut rollback_game, alice, spell_id) = setup();
     let mut cancel = NamedCastCostDecisionMaker::new(["Escape Fodder B", "<cancel>"]);

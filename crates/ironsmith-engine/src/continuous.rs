@@ -29,6 +29,7 @@ use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
 
 mod layer_resolution;
+pub(crate) mod value_context;
 pub(crate) use layer_resolution::resolve_value_direct;
 use layer_resolution::*;
 
@@ -367,6 +368,11 @@ pub enum Modification {
     SetTextBox(TextBoxOverlay),
     /// Set a permanent's name.
     SetName(String),
+    /// A name sticker inserts words at the remembered position in layer 3.
+    InsertNameWords {
+        words: String,
+        after_word_count: usize,
+    },
 
     // === Layer 4: Type ===
     /// Add card types
@@ -621,7 +627,8 @@ impl Modification {
 
             Modification::ChangeText { .. }
             | Modification::SetTextBox(_)
-            | Modification::SetName(_) => Layer::Text,
+            | Modification::SetName(_)
+            | Modification::InsertNameWords { .. } => Layer::Text,
 
             Modification::AddCardTypes(_)
             | Modification::RemoveCardTypes(_)
@@ -799,6 +806,21 @@ impl ContinuousEffectManager {
         effects.retain(|e| e.id != id);
         if effects.len() != before {
             self.latched_duration_states.get_mut().remove(&id);
+            self.revision += 1;
+        }
+    }
+
+    /// Move only the persistent sticker effect to the card's new public-zone identity.
+    pub fn retarget_sticker(&mut self, id: ContinuousEffectId, object: ObjectId) {
+        if let Some(effect) = Arc::make_mut(&mut self.effects)
+            .iter_mut()
+            .find(|effect| effect.id == id)
+        {
+            effect.source = object;
+            effect.applies_to = EffectTarget::Specific(object);
+            effect.source_type = EffectSourceType::Resolution {
+                locked_targets: vec![object],
+            };
             self.revision += 1;
         }
     }
@@ -1372,6 +1394,17 @@ pub(crate) fn replace_card_types_and_prune_subtypes(
         }
     }
     *card_types = replaced.into();
+    subtypes.retain(|subtype| card_types_support_subtype(card_types, *subtype));
+}
+
+/// Losing a card type also removes its subtypes unless a remaining type
+/// supports that subtype family (for example, Creature and Kindred).
+pub(crate) fn remove_card_types_and_prune_subtypes(
+    card_types: &mut SharedVec<CardType>,
+    subtypes: &mut SharedVec<Subtype>,
+    removed: &[CardType],
+) {
+    card_types.retain(|card_type| !removed.contains(card_type));
     subtypes.retain(|subtype| card_types_support_subtype(card_types, *subtype));
 }
 
@@ -2598,6 +2631,12 @@ fn apply_text_box_modification_to_chars(
         Modification::SetName(name) => {
             chars.name = name.clone().into();
         }
+        Modification::InsertNameWords {
+            words,
+            after_word_count,
+        } => {
+            chars.name = insert_name_sticker_words(&chars.name, words, *after_word_count).into();
+        }
         _ => {}
     }
 }
@@ -3122,7 +3161,8 @@ fn effect_target_definitely_excludes_object(
     objects: &ObjectMap,
 ) -> bool {
     if let EffectSourceType::Resolution { locked_targets } = &effect.source_type {
-        return object.zone != Zone::Battlefield || !locked_targets.contains(&object.id);
+        return !resolution_effect_zone_applies(effect, object.zone)
+            || !locked_targets.contains(&object.id);
     }
     match &effect.applies_to {
         EffectTarget::Specific(id) => *id != object.id,
@@ -3152,7 +3192,7 @@ fn effect_target_applies_to_direct(
         if !locked_targets.contains(&object.id) {
             return false;
         }
-        return object.zone == Zone::Battlefield;
+        return resolution_effect_zone_applies(effect, object.zone);
     }
 
     // For StaticAbility, CharacteristicDefining, Combat, and Copy effects,
@@ -3182,6 +3222,13 @@ fn effect_target_applies_to_direct(
             }
         }
     }
+}
+
+fn resolution_effect_zone_applies(effect: &ContinuousEffect, zone: Zone) -> bool {
+    // Name stickers remain on the same card through public-zone changes
+    // (CR 123.5); their stored effect is retargeted to its new object identity.
+    zone == Zone::Battlefield
+        || (matches!(effect.modification, Modification::InsertNameWords { .. }) && zone.is_public())
 }
 
 fn affected_objects_for_effect(
@@ -3797,7 +3844,10 @@ fn filter_matches_layered_fast(
     }
 
     if let Some(comparison) = &filter.card_type_count {
-        let count = chars.card_types.iter().enumerate()
+        let count = chars
+            .card_types
+            .iter()
+            .enumerate()
             .filter(|(index, card_type)| !chars.card_types[..*index].contains(card_type))
             .count() as i32;
         if !comparison.satisfies_with_context(count, game, filter_ctx, None) {
@@ -3907,6 +3957,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.cast_this_turn
         || filter.first_spell_cast_each_turn
         || filter.spell_cast_ordinal_each_turn.is_some()
+            || filter.spell_cast_minimum_each_turn.is_some()
         || filter.mana_from_source_spent_to_cast.is_some()
         || filter.single_graveyard
         || filter.targets_player.is_some()
@@ -4283,6 +4334,12 @@ fn apply_modification_to_chars(
         Modification::SetName(name) => {
             chars.name = name.clone().into();
         }
+        Modification::InsertNameWords {
+            words,
+            after_word_count,
+        } => {
+            chars.name = insert_name_sticker_words(&chars.name, words, *after_word_count).into();
+        }
 
         // Layer 4: Type changes
         Modification::AddCardTypes(types) => {
@@ -4293,7 +4350,7 @@ fn apply_modification_to_chars(
             }
         }
         Modification::RemoveCardTypes(types) => {
-            chars.card_types.retain(|t| !types.contains(t));
+            remove_card_types_and_prune_subtypes(&mut chars.card_types, &mut chars.subtypes, types);
         }
         Modification::SetCardTypes(types) => {
             replace_card_types_and_prune_subtypes(
@@ -4792,4 +4849,15 @@ fn apply_modification_to_chars(
         }
     }
     enforce_ability_gain_prohibitions(chars, modification);
+}
+
+/// Blank underscore lines are not words (CR 123.6); punctuation inside a word is.
+pub fn insert_name_sticker_words(name: &str, sticker: &str, after: usize) -> String {
+    let mut words: Vec<&str> = name
+        .split_whitespace()
+        .filter(|word| !word.chars().all(|ch| ch == '_'))
+        .collect();
+    let position = after.min(words.len());
+    words.splice(position..position, sticker.split_whitespace());
+    words.join(" ")
 }

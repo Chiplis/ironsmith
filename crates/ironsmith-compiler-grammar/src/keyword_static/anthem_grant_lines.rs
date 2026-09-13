@@ -403,6 +403,32 @@ pub fn parse_subject_cant_be_blocked_as_long_as_condition_line(
     let subject = first_spell_each_turn_subject(subject_tokens)
         .map(Ok)
         .unwrap_or_else(|| parse_anthem_subject(subject_tokens))?;
+    let condition = if attached_object_anthem_subject_filter(&subject).is_some() {
+        bind_condition_to_attached_object(condition)
+    } else {
+        condition
+    };
+    // Blocking restrictions apply to the finished characteristics. Keeping
+    // a host P/T predicate on a layer-six keyword grant tests it before
+    // counters and later P/T effects; the restriction's affected-object
+    // filter evaluates that same predicate when blocking legality is read.
+    if let (AnthemSubjectAst::Filter(filter), PredicateAst::AttachedToSourceMatches(host)) = (&subject, &condition) {
+        let mut rest = host.clone();
+        let power = rest.power.take();
+        let toughness = rest.toughness.take();
+        if rest == ObjectFilter::default()
+            && (power.is_some() || toughness.is_some())
+            && filter.power.is_none() && filter.toughness.is_none()
+        {
+            let mut affected = filter.clone();
+            affected.power = power;
+            affected.toughness = toughness;
+            let display = format!("{} can't be blocked", affected.description());
+            return Ok(Some(StaticAbilityAst::Static(StaticAbility::restriction(
+                crate::effect::Restriction::be_blocked(affected), display,
+            ))));
+        }
+    }
     let granted = match subject {
         AnthemSubjectAst::Source => StaticAbilityAst::ConditionalKeywordAction {
             action: KeywordAction::Unblockable,
@@ -2317,6 +2343,11 @@ pub fn parse_best_object_filter_suffix(tokens: &[OwnedLexToken]) -> Option<Objec
 }
 
 pub fn parse_anthem_subject(tokens: &[OwnedLexToken]) -> Result<AnthemSubjectAst, CardTextError> {
+    // An ability-word label belongs to the line, never to its affected-object
+    // subject. In particular, a labeled source reference must remain a source
+    // reference instead of falling through to the tolerant creature filter.
+    let tokens = crate::grammar::document_shapes::parse_statement_label_strip_tokens(tokens)
+        .body_tokens;
     let subject_words = crate::lexer::parser_token_word_refs(tokens);
     if let Some(subject) = first_spell_each_turn_subject_tokens(tokens)? {
         return Ok(subject);
@@ -2783,7 +2814,7 @@ pub fn parse_static_condition_clause(
             allow_defending_player: false,
             bind_filter_controller_to_subject: true,
             allow_different_powers_tail: false,
-            default_filter_zone: None,
+            default_filter_zone: Some(Zone::Battlefield),
         },
     ) {
         // In a per-player static grant, "that player" denotes the player

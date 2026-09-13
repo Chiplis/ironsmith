@@ -9,6 +9,8 @@
     "lan": "vite --mode lan --host 0.0.0.0",
     "build:lan": "pnpm build --mode lan",
     "preview:lan": "vite preview --mode lan --host 0.0.0.0",
+    "test:frame-benchmark": "FRAME_BENCHMARK_ASSERT=1 node tests/bilingual-frame-benchmark.mjs",
+    "cache:frame-benchmark": "node scripts/cache-bilingual-frame-benchmark.mjs",
     "test:lan": "node --test tests/lan-service.test.mjs tests/lan-browser.test.mjs tests/sha256.test.mjs",
     "build": "node ./scripts/build-scryfall-i18n.mjs --if-changed --locale es && vite build",
     "preview": "vite preview",

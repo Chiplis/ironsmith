@@ -876,7 +876,9 @@ pub(super) fn run_station_line_family(
         })
         .any(|line| line_grammar::parse_station_threshold_line(&line.tokens).is_some());
     if !has_explicit_station_threshold_rows
-        && let Some(threshold) = station_shape.creature_threshold
+        && let Some(threshold) = station_shape
+            .creature_threshold
+            .or(ctx.line.info.semantic_facts.station_creature_threshold)
         && let Some(pt) = ctx.preprocessed.card.power_toughness_ref()
     {
         let chosen_option = ChosenOptionContext::StationThresholdSupport(threshold);
@@ -1071,7 +1073,9 @@ fn station_threshold_is_creature_pt_threshold(
             return false;
         };
         line_grammar::parse_station_keyword_line(&line.tokens, &line.info.source_tokens)
-            .and_then(|shape| shape.creature_threshold)
+            .and_then(|shape| {
+                shape.creature_threshold.or(line.info.semantic_facts.station_creature_threshold)
+            })
             == Some(threshold)
     })
 }

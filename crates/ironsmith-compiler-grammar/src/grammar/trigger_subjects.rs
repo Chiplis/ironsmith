@@ -432,6 +432,20 @@ pub fn parse_spell_filter_envelope(tokens: &[OwnedLexToken]) -> SpellFilterEnvel
             continue;
         };
         saw_spell_noun |= matches!(word, "spell" | "spells");
+        // The ordinal clause constrains cast history, not the spell's types.
+        // Keep its repeated noun out of the object filter, where `other than`
+        // would otherwise become an excluded card type.
+        if saw_spell_noun && word == "other" {
+            let tail = input.as_ref();
+            if tail.len() >= 3
+                && tail[0].is_word("than")
+                && tail[1].is_any_word(&["the", "your"])
+                && tail[2].is_word("first")
+            {
+                return SpellFilterEnvelope { end };
+            }
+        }
+
         if word == "during"
             || (word == "other"
                 && !input

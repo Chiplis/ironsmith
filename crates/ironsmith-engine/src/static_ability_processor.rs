@@ -479,10 +479,17 @@ fn generate_granted_late_static_effects(
 ) -> Vec<ContinuousEffect> {
     use crate::continuous::{Modification, PtSublayer};
     if !registered.iter().any(|effect| {
-        matches!(
-            effect.modification,
-            Modification::AddAbility(_) | Modification::AddAbilityGeneric(_)
-        )
+        // Flag-only keywords and nonstatic abilities cannot emit later-layer
+        // effects. Avoid a full characteristic calculation for every recipient
+        // merely because an ordinary ability grant exists on the battlefield.
+        match &effect.modification {
+            Modification::AddAbility(ability) => ability.may_generate_continuous_effects(),
+            Modification::AddAbilityGeneric(ability) => match &ability.kind {
+                AbilityKind::Static(ability) => ability.may_generate_continuous_effects(),
+                _ => false,
+            },
+            _ => false,
+        }
     }) {
         return Vec::new();
     }
@@ -590,6 +597,89 @@ mod tests {
     use crate::static_abilities::StaticAbility;
     use crate::target::ObjectFilter;
 
+    #[test]
+    fn flag_only_grants_skip_late_static_characteristic_reads() {
+        use crate::ability::Ability;
+        use crate::card::{CardBuilder, PowerToughness};
+        use crate::ids::CardId;
+        use crate::types::CardType;
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id;
+        let card = CardBuilder::new(CardId::from_raw(99120), "Grant recipient")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        for modification in [
+            Modification::AddAbility(StaticAbility::flying()),
+            Modification::AddAbilityGeneric(Ability::static_ability(StaticAbility::from_model(
+                crate::static_abilities::CompiledStaticAbility::flying(),
+            ))),
+            Modification::AddAbilityGeneric(Ability::triggered(
+                crate::triggers::Trigger::this_attacks(),
+                vec![],
+            )),
+        ] {
+            let registered = vec![
+                ContinuousEffect::new(source, alice, EffectTarget::AllPermanents, modification)
+                    .with_condition(crate::ConditionExpr::YourTurn),
+            ];
+            let before = game.work_counters();
+            assert!(
+                generate_granted_late_static_effects(&game, source, &registered, &[]).is_empty()
+            );
+            assert_eq!(
+                game.work_counters().dependency_sorts,
+                before.dependency_sorts
+            );
+        }
+    }
+
+    #[test]
+    fn effect_generating_grants_still_apply_and_respect_ability_removal() {
+        use crate::ability::Ability;
+        use crate::card::{CardBuilder, PowerToughness};
+        use crate::ids::CardId;
+        use crate::types::CardType;
+        for generic in [false, true] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = game.players[0].id;
+            let card = CardBuilder::new(CardId::from_raw(99121), "Anthem recipient")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(2, 2))
+                .build();
+            let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+            let anthem = StaticAbility::anthem(ObjectFilter::creature().you_control(), 1, 1);
+            let modification = if generic {
+                Modification::AddAbilityGeneric(Ability::static_ability(anthem))
+            } else {
+                Modification::AddAbility(anthem)
+            };
+            game.effect_store
+                .continuous_effects
+                .add_effect(ContinuousEffect::from_resolution(
+                    source,
+                    alice,
+                    vec![source],
+                    modification,
+                ));
+            assert_eq!(game.calculated_power(source), Some(3));
+            game.refresh_continuous_state();
+            assert_eq!(game.calculated_power(source), Some(3));
+            game.effect_store
+                .continuous_effects
+                .add_effect(ContinuousEffect::from_resolution(
+                    source,
+                    alice,
+                    vec![source],
+                    Modification::RemoveAllAbilities,
+                ));
+            game.mark_continuous_state_dirty();
+            assert_eq!(game.calculated_power(source), Some(2));
+            game.refresh_continuous_state();
+            assert_eq!(game.calculated_power(source), Some(2));
+        }
+    }
     #[test]
     fn test_anthem_generates_effect() {
         let anthem = StaticAbility::anthem(ObjectFilter::creature().you_control(), 1, 1);

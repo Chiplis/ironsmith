@@ -35,6 +35,9 @@ impl EffectExecutor for PutStickerEffect {
             Err(ExecutionError::InvalidTarget) if self.target.is_target() => {
                 return Ok(EffectOutcome::target_invalid());
             }
+            Err(ExecutionError::InvalidTarget) if self.action == KeywordActionKind::NameSticker => {
+                return Ok(EffectOutcome::impossible());
+            }
             Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::count(0)),
             Err(err) => return Err(err),
         };
@@ -42,14 +45,100 @@ impl EffectExecutor for PutStickerEffect {
         let snapshot = game
             .object(object_id)
             .map(|object| ObjectSnapshot::from_object(object, game));
-        game.put_sticker_on_object(object_id, self.action);
+        let name_fact = if self.action == KeywordActionKind::NameSticker {
+            use crate::decisions::context::{SelectOptionsContext, SelectableOption};
+            let Some(object) = game.object(object_id) else {
+                return Ok(EffectOutcome::impossible());
+            };
+            if object.owner != ctx.controller || !object.zone.is_public() {
+                return Ok(EffectOutcome::impossible());
+            }
+            let controller = game.current_controller(object_id).unwrap_or(object.owner);
+            let available = game.available_name_stickers(ctx.controller);
+            if available.is_empty() {
+                return Ok(EffectOutcome::impossible());
+            }
+            let options = available
+                .iter()
+                .enumerate()
+                .map(|(i, (_, name))| SelectableOption::new(i, name.clone()))
+                .collect();
+            let choice = SelectOptionsContext::new(
+                ctx.controller,
+                Some(ctx.source),
+                "Choose a name sticker",
+                options,
+                1,
+                1,
+            );
+            let selected = ctx.decision_maker.decide_options(game, &choice);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            let Some((sticker_id, _)) = selected.first().and_then(|index| available.get(*index))
+            else {
+                return Ok(EffectOutcome::impossible());
+            };
+            let name = game.current_name(object_id).unwrap_or_default();
+            let word_count = name
+                .split_whitespace()
+                .filter(|word| !word.chars().all(|ch| ch == '_'))
+                .count();
+            let positions = (0..=word_count)
+                .map(|i| {
+                    SelectableOption::new(
+                        i,
+                        if i == 0 {
+                            "At the beginning".to_string()
+                        } else {
+                            format!("After word {i}")
+                        },
+                    )
+                })
+                .collect();
+            let choice = SelectOptionsContext::new(
+                controller,
+                Some(ctx.source),
+                "Choose the name sticker's position",
+                positions,
+                1,
+                1,
+            );
+            let selected = ctx.decision_maker.decide_options(game, &choice);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            let Some(position) = selected
+                .first()
+                .copied()
+                .filter(|position| *position <= word_count)
+            else {
+                return Ok(EffectOutcome::impossible());
+            };
+            let Some(name) =
+                game.apply_available_name_sticker(ctx.controller, object_id, *sticker_id, position)
+            else {
+                return Ok(EffectOutcome::impossible());
+            };
+            Some(crate::effect::ExecutionFact::AppliedNameSticker {
+                sticker_id: *sticker_id,
+                name,
+            })
+        } else {
+            game.put_sticker_on_object(object_id, self.action);
+            None
+        };
         let event = TriggerEvent::new_with_provenance(
             KeywordActionEvent::new(self.action, ctx.controller, ctx.source, 1)
                 .with_snapshot(snapshot),
             ctx.provenance,
         );
 
-        Ok(EffectOutcome::with_objects(vec![object_id]).with_event(event))
+        let mut outcome = EffectOutcome::with_objects(vec![object_id]).with_event(event);
+        if let Some(fact) = name_fact {
+            outcome = outcome.with_execution_fact(fact);
+        }
+        Ok(outcome)
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

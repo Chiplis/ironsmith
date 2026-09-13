@@ -330,9 +330,7 @@ pub(super) fn parse_effect_clause_unstacked(
         let filter = parse_object_filter(subject_tokens, false)?;
         return Ok(EffectAst::subject_verb_return_all_to_hand(filter));
     }
-    let relative_player_subject = if matches!(verb, Verb::Gain)
-        && rest.first().is_some_and(|token| token.is_word("control"))
-        && subject_tokens
+    let relative_player_subject = if subject_tokens
             .first()
             .is_some_and(|token| token.is_word(TARGET_WORD))
     {
@@ -366,13 +364,13 @@ pub(super) fn parse_effect_clause_unstacked(
         }
     } else if let Some(target) = relative_player_subject {
         let source_relative_target = target_player_mentions_source_object(&target);
-        let mut gain_control =
+        let mut action =
             parse_effect_with_verb(verb, Some(SubjectAst::Player(PlayerAst::That)), rest)?;
-        if source_relative_target {
-            bind_gain_control_pronoun_to_source(&mut gain_control);
+        if source_relative_target && matches!(verb, Verb::Gain) {
+            bind_gain_control_pronoun_to_source(&mut action);
         }
         EffectAst::Sequence {
-            effects: vec![EffectAst::subject_verb_target_only(target), gain_control],
+            effects: vec![EffectAst::subject_verb_target_only(target), action],
         }
     } else if matches!(verb, Verb::Become) {
         parse_become_clause(subject_tokens, rest)?

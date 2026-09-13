@@ -3222,8 +3222,8 @@ pub(super) fn test_delve_reduces_mana_cost() {
     let effective_cost = calculate_effective_mana_cost(&game, alice, tc_obj, base_cost);
     assert_eq!(
         effective_cost.mana_value(),
-        1,
-        "Effective cost should be 1 (just U) with 7 cards in graveyard to delve"
+        8,
+        "Delve pays the locked total; it does not reduce it"
     );
 
     // Compute legal actions - Treasure Cruise should be castable with 1 blue mana
@@ -3282,8 +3282,8 @@ pub(super) fn test_delve_partial_reduction() {
     let effective_cost = calculate_effective_mana_cost(&game, alice, tc_obj, base_cost);
     assert_eq!(
         effective_cost.mana_value(),
-        5,
-        "Effective cost should be 5 (4U) with 3 cards to delve"
+        8,
+        "Partial Delve also leaves the locked total unchanged"
     );
 
     // With only 3 mana (not enough), should NOT be able to cast
@@ -3697,8 +3697,8 @@ pub(super) fn test_convoke_reduces_mana_cost_with_creatures() {
     // With red creature paying {R} and colorless paying {1}, remaining should be {1}{R}
     assert_eq!(
         effective_cost.mana_value(),
-        2,
-        "Effective cost should be 2 (1 generic + 1 red) with 2 creatures to convoke"
+        4,
+        "Convoke pays the locked total; it does not reduce it"
     );
 
     // Compute legal actions - Stoke should be castable

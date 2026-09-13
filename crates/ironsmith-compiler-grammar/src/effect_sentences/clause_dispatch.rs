@@ -1119,7 +1119,8 @@ pub(crate) fn parse_get_pump_clause(
                         return Ok(None);
                     };
                     let directional_combat_relation =
-                        filter.blocking && filter.in_combat_with_source;
+                        (filter.blocking && filter.in_combat_with_source)
+                        || filter.attacking_player_or_planeswalker_controlled_by.is_some();
                     if filter == ObjectFilter::default()
                         || (mentions_this && !filter.other && !directional_combat_relation)
                         || (disallowed_pronoun && !filter.other && !directional_combat_relation)
@@ -1278,7 +1279,8 @@ pub(crate) fn parse_get_pump_clause(
             let Ok(filter) = parse_object_filter(filter_tokens, false) else {
                 return Ok(None);
             };
-            let directional_combat_relation = filter.blocking && filter.in_combat_with_source;
+            let directional_combat_relation = (filter.blocking && filter.in_combat_with_source)
+                        || filter.attacking_player_or_planeswalker_controlled_by.is_some();
             if filter == ObjectFilter::default()
                 || (mentions_this && !filter.other && !directional_combat_relation)
                 || (disallowed_pronoun && !filter.other && !directional_combat_relation)

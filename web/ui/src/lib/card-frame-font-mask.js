@@ -12,7 +12,7 @@ function glyphBank(family,weight,italic=false,text='') {
   }
   const key=`${family}|${weight}|${italic}|${[...extras].join('|')}`;
   if(banks.has(key))return banks.get(key);
-  const canvas=document.createElement('canvas');canvas.width=160;canvas.height=72;
+  const canvas=typeof document==='undefined'?new OffscreenCanvas(160,72):document.createElement('canvas');canvas.width=160;canvas.height=72;
   const ctx=canvas.getContext('2d',{willReadFrequently:true}),bank=[];
   ctx.font=`${italic?'italic ':''}${weight} 40px ${family}`;ctx.fillStyle='white';
   for(const char of [...alphabet,...extras]) {
@@ -37,6 +37,59 @@ export function glyphSimilarity(component, template) {
     if(a&&b)intersection++;if(a||b)union++;
   }
   return union?intersection/union:0;
+}
+
+// A scan can connect an entire word. Partition at low-ink columns using the
+// measured letter height, rather than discarding components by pixel width.
+export function splitJoinedGlyph(component) {
+  const {w,h,pixels}=component;
+  if(w<=h*1.8)return [component];
+  const parts=[];
+  let left=0;
+  while(left<w) {
+    let right=w;
+    if(w-left>h*1.5) {
+      const lo=left+Math.max(2,Math.floor(h*.35));
+      const hi=Math.min(w-1,left+Math.ceil(h*1.1));
+      let best=Infinity;
+      for(let x=lo;x<=hi;x++) {
+        let ink=0;for(let y=0;y<h;y++)ink+=pixels[y*w+x];
+        const cost=ink+Math.abs(x-left-h*.65)/h;
+        if(cost<best){best=cost;right=x;}
+      }
+    }
+    let top=h,bottom=-1;
+    for(let y=0;y<h;y++)for(let x=left;x<right;x++)if(pixels[y*w+x]){top=Math.min(top,y);bottom=Math.max(bottom,y);}
+    if(bottom>=top) {
+      const pw=right-left,ph=bottom-top+1,part=new Uint8Array(pw*ph);
+      for(let y=0;y<ph;y++)for(let x=0;x<pw;x++)part[y*pw+x]=pixels[(y+top)*w+x+left];
+      parts.push({w:pw,h:ph,pixels:part});
+    }
+    left=right;
+  }
+  return parts;
+}
+
+function sameTextLine(a,b) {
+  const overlap=Math.min(a.y1,b.y1)-Math.max(a.y0,b.y0)+1;
+  return overlap>=Math.min(a.h,b.h)*.5 && a.h<=b.h*1.8 && b.h<=a.h*1.8;
+}
+
+// Validate against the original paper estimate: recomputing it on damaged
+// output could mistake surviving text for the new background.
+export function residualTextQuality(scan, result, components, paperAt, {outlined=false}={}) {
+  let ink=0,residual=0;
+  for(const c of components) {
+    let remaining=0;
+    for(const p of c.points) {
+      const i=p*4;
+      if(isPanelInk(result.data[i],result.data[i+1],result.data[i+2],paperAt(p%scan.width,Math.floor(p/scan.width)),{outlined}))remaining++;
+    }
+    ink+=c.points.length;residual+=remaining;
+    // A small missed word must not disappear into a whole paragraph's average.
+    if(remaining>=4&&remaining/c.points.length>.08)return {safe:false,ink,residual};
+  }
+  return {safe:true,ink,residual};
 }
 
 // Frame material is not one colour. Split and gradient text boxes (dual-land
@@ -127,6 +180,31 @@ export function clearEdgeRules(ink,width,height,{band=3,coverage=.7}={}) {
   return ink;
 }
 
+// A bottom-edge-connected ornament (for example a security stamp) is not
+// editable text. Preserve its complete component before row-rule removal can
+// sever it into small shapes that resemble letters or mana symbols.
+export function protectBottomOrnaments(ink,width,height) {
+  const protectedPixels=new Uint8Array(ink.length),visited=new Uint8Array(ink.length);
+  for(let seed=(height-1)*width;seed<ink.length;seed++)if(ink[seed]&&!visited[seed]) {
+    const queue=[seed];let left=width,right=0,top=height;
+    while(queue.length) {
+      const p=queue.pop();if(visited[p])continue;visited[p]=1;
+      const x=p%width,y=Math.floor(p/width);left=Math.min(left,x);right=Math.max(right,x);top=Math.min(top,y);
+      for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++) {
+        const nx=x+dx,ny=y+dy,q=ny*width+nx;
+        if(nx>=0&&nx<width&&ny>=0&&ny<height&&ink[q]&&!visited[q])queue.push(q);
+      }
+    }
+    // A component spanning the text block is not a bottom ornament.
+    if(top<height*.8)continue;
+    // Protect the interior and antialiasing too: the bright foil inside a
+    // dark outline is decoration, not an independent punctuation glyph.
+    for(let y=Math.max(0,top-2);y<height;y++)for(let x=Math.max(0,left-2);x<=Math.min(width-1,right+2);x++)protectedPixels[y*width+x]=1;
+  }
+  for(let p=0;p<ink.length;p++)if(protectedPixels[p])ink[p]=0;
+  return protectedPixels;
+}
+
 // Keep edge-rule evidence from the original scan through mask expansion.
 // Otherwise dilation can erase the bevel beside an accepted letter even though
 // that bevel was excluded from glyph matching.
@@ -155,17 +233,18 @@ export function isPanelInk(r,g,b,paper,{outlined=false}={}) {
   return paleInk||(paper<115?value>paper+65:value<paper-55);
 }
 
-export function fontGuidedPanel(scan,{family,weight=400,italic=false,allowItalic=false,symbols=false,text='',section='',outlined=false}) {
+function* fontGuidedPanelSteps(scan,{family,weight=400,italic=false,allowItalic=false,symbols=false,text='',section='',outlined=false,excludedPixels,protectBottomBoundary=false}) {
   const {data,width,height}=scan;
   const paperAt=paperField(scan);
   const ink=new Uint8Array(width*height);
   for(let p=0;p<ink.length;p++) {
     const paper=paperAt(p%width,Math.floor(p/width));
-    ink[p]=isPanelInk(data[p*4],data[p*4+1],data[p*4+2],paper,{outlined})?1:0;
+    ink[p]=!excludedPixels?.[p]&&isPanelInk(data[p*4],data[p*4+1],data[p*4+2],paper,{outlined})?1:0;
   }
   const originalInk=ink.slice();
+  const bottomProtection=section==='rules'&&protectBottomBoundary?protectBottomOrnaments(ink,width,height):null;
   clearEdgeRules(ink,width,height);
-  const protectedPixels=originalInk.map((v,p)=>v&&!ink[p]?1:0);
+  const protectedPixels=originalInk.map((v,p)=>excludedPixels?.[p]||bottomProtection?.[p]||v&&!ink[p]?1:0);
   const bank=[...glyphBank(family,weight,italic,text),...(allowItalic?glyphBank(family,400,true,text):[])];
   const visited=new Uint8Array(ink.length),accepted=new Uint8Array(ink.length),components=[];
   for(let p=0;p<ink.length;p++)if(ink[p]&&!visited[p]) {
@@ -179,18 +258,43 @@ export function fontGuidedPanel(scan,{family,weight=400,italic=false,allowItalic
       }
     }
     const w=x1-x0+1,h=y1-y0+1;
-    if(w>42||h>42||points.length<1)continue;
     const pixels=new Uint8Array(w*h);for(const at of points)pixels[(Math.floor(at/width)-y0)*w+at%width-x0]=1;
     let best=0,char='';
-    for(const t of bank){const score=glyphSimilarity({w,h,pixels},t);if(score>best){best=score;char=t.char;}}
-    components.push({points,x0,x1,y0,y1,w,h,best,char});
+    // Avoid matching decorative rules as arbitrarily stretched letters.
+    if((w<=h*2 || h<=3&&w<=height*2)&&h>=2)for(const t of bank){const score=glyphSimilarity({w,h,pixels},t);if(score>best){best=score;char=t.char;}}
+    let joined=0;
+    if(w>h*1.8&&h>=4) {
+      const parts=splitJoinedGlyph({w,h,pixels});
+      let supported=0,total=0;
+      for(const part of parts) {
+        const count=part.pixels.reduce((a,b)=>a+b,0);total+=count;
+        if(bank.some(t=>glyphSimilarity(part,t)>=.38))supported+=count;
+      }
+      joined=total?supported/total:0;
+    }
+    components.push({points,x0,x1,y0,y1,w,h,best,char,joined});
   }
   const matches=components.filter(c=>c.best>=.43&&c.h>=4);
+  // A recognized connected word is also a valid neighbor for punctuation.
+  // Otherwise a period after a word such as "carta" has no letter anchor.
+  const punctuationAnchors=[...matches,...components.filter(c=>
+    c.joined>=.65&&matches.some(m=>sameTextLine(c,m)))];
   for(const c of components) {
-    const punctuation=c.h<=3&&c.w>3&&c.best>.4;
+    // Dashes scale with the line; a four-pixel em dash is still punctuation.
+    // Require a matching mark in the printed text and a neighboring baseline
+    // so horizontal frame ornament is not promoted to a word by segmentation.
+    const lineDash=/[-—–−]/.test(text)&&c.w>c.h*2&&punctuationAnchors.some(m=>
+      c.h<=m.h*.45&&c.w<=m.h*2
+      &&Math.abs((c.y0+c.y1)/2-(m.y0+m.h*.6))<=m.h*.3
+      &&Math.max(0,c.x0-m.x1,m.x0-c.x1)<=m.h*2);
+    const punctuation=lineDash||c.h<=3&&c.w>3&&c.best>.4;
     const tinyFooter=section==='footer'&&c.h<=7&&c.best>.25;
     const aligned=matches.some(m=>Math.abs(m.y1-c.y1)<4&&Math.min(Math.abs(m.x1-c.x0),Math.abs(c.x1-m.x0))<16);
-    const dot=c.h<=3&&c.w<=3&&matches.some(m=>c.x0<=m.x1+4&&c.x1>=m.x0-4&&c.y0>=m.y0-6&&c.y1<=m.y1+4);
+    // Printed periods can have a full side bearing after the preceding glyph.
+    // Scale that gap to the line's letter height, as for the word recognition.
+    const dot=c.h<=3&&c.w<=3&&punctuationAnchors.some(m=>
+      Math.max(0,c.x0-m.x1,m.x0-c.x1)<=Math.max(4,m.h*.6)
+      && c.y0>=m.y0-6&&c.y1<=m.y1+4);
     // Registered single-line labels can use a different cut of the source
     // font. Include adjacent letter-shaped components even when their template
     // score is low; otherwise shorter translations expose the original suffix.
@@ -200,7 +304,8 @@ export function fontGuidedPanel(scan,{family,weight=400,italic=false,allowItalic
       return overlap>=Math.min(c.h,m.h)*.5 && c.h<=m.h*1.8
         && c.w<=c.h*2 && gap<=Math.max(8,m.h);
     });
-    if(labelLetter||punctuation||tinyFooter||dot||c.best>=.38&&(c.h>=4||aligned)||symbols&&c.w>=6&&c.h>=6&&c.w/c.h>.65&&c.w/c.h<1.5)for(const p of c.points)accepted[p]=1;
+    const joinedWord=c.joined>=.65 && matches.some(m=>sameTextLine(c,m));
+    if(joinedWord||labelLetter||punctuation||tinyFooter||dot||c.best>=.38&&(c.h>=4||aligned)||symbols&&c.w>=6&&c.h>=6&&c.w/c.h>.65&&c.w/c.h<1.5)for(const p of c.points)accepted[p]=1;
   }
   if(symbols) {
     // Fit the complete circular disc, including its pale background, rather
@@ -231,6 +336,29 @@ export function fontGuidedPanel(scan,{family,weight=400,italic=false,allowItalic
     }
   }
   const mask=expandGlyphMask(accepted,width,height,protectedPixels,outlined?5:3);
-  const result=inpaintGlyphMask(scan,mask);
-  return {...result,matches:matches.length,method:'font-template'};
+  const result=yield {scan,mask};
+  const singleLine=['title','type','stats'].includes(section);
+  const textComponents=components.filter(c=>(c.h>=4 || c.best>=.4&&punctuationAnchors.some(m=>
+    Math.max(0,c.x0-m.x1,m.x0-c.x1)<=m.h&&c.y0>=m.y0-6&&c.y1<=m.y1+4)) && (
+    c.best>=.38 || c.joined>=.65&&matches.some(m=>sameTextLine(c,m)) || (singleLine
+      ? c.w>=2 && (matches.length===0 || matches.some(m=>sameTextLine(c,m)))
+      : matches.some(m=>sameTextLine(c,m)&&Math.max(0,c.x0-m.x1,m.x0-c.x1)<=m.h))
+  ));
+  const quality=residualTextQuality(scan,result,textComponents,paperAt,{outlined});
+  return {...result,quality,matches:matches.length,method:'font-template'};
+}
+
+export function fontGuidedPanel(scan, options) {
+  const steps = fontGuidedPanelSteps(scan, options);
+  const job = steps.next().value;
+  return steps.next(inpaintGlyphMask(job.scan, job.mask)).value;
+}
+
+export async function fontGuidedPanelAsync(scan, options, inpaint = inpaintGlyphMask) {
+  const steps = fontGuidedPanelSteps(scan, options);
+  const job = steps.next().value;
+  const result = steps.next(await inpaint(job.scan, job.mask)).value;
+  // GPU relaxation can differ slightly. Never let that turn a safe CPU mask
+  // into an erased frame or an unnecessary original-image fallback.
+  return result.quality.safe === false && inpaint !== inpaintGlyphMask ? fontGuidedPanel(scan, options) : result;
 }

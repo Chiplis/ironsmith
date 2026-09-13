@@ -10,6 +10,7 @@ pub use recognition::{
     is_token_creation_context_tokens, preserve_and_reason,
     starts_with_inline_token_rules_tail_tokens, starts_with_player_may_tokens,
     strip_leading_instead_tokens,
+    starts_effect_clause_tokens,
 };
 pub use split_rules::{
     has_authored_comma_then_surface_tokens, has_explicit_comma_then_boundary_tokens,

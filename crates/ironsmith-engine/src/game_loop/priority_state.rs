@@ -35,6 +35,7 @@ pub enum CastStage {
     ChoosingOptionalCosts,
     /// Need to choose X value (for spells with X in cost).
     ChoosingX,
+    ChoosingCostResource,
     /// Need to announce hybrid/Phyrexian mana payment choices (per 601.2b).
     /// These choices are locked in before targets are chosen.
     AnnouncingCost,
@@ -74,6 +75,7 @@ impl CastStage {
             CastStage::ChoosingModes => "choosing modes",
             CastStage::ChoosingSplices => "choosing splices",
             CastStage::ChoosingX => "choosing X",
+            CastStage::ChoosingCostResource => "choosing cost resource",
             CastStage::ChoosingOptionalCosts => "choosing optional costs",
             CastStage::AnnouncingCost => "announcing costs",
             CastStage::ChoosingCreatureType => "choosing creature type",
@@ -153,6 +155,12 @@ pub struct PendingCast {
     /// A resolving effect may impose a mandatory mana cost in addition to the
     /// spell's ordinary and optional costs.
     pub effect_additional_mana_cost: Option<crate::mana::ManaCost>,
+    /// CR 601.2b resource choice for a cost reduction, paid only in 601.2h.
+    pub cost_resource_announced: bool,
+    pub cost_resource: Option<ObjectId>,
+    pub cost_resource_reduction: u32,
+    pub cost_resource_mana_reduction: Option<crate::mana::ManaCost>,
+    pub cost_resource_is_tap: bool,
     /// A resolving effect may broaden which mana can pay the cast's colored
     /// or colorless requirements without creating a lasting permission.
     pub effect_mana_spend_mode: ironsmith_core::value_model::ManaSpendMode,
@@ -253,6 +261,11 @@ impl PendingCast {
             base_mana_cost_waived: false,
             effect_mana_cost_reduction: None,
             effect_additional_mana_cost: None,
+            cost_resource_announced: false,
+            cost_resource: None,
+            cost_resource_reduction: 0,
+            cost_resource_mana_reduction: None,
+            cost_resource_is_tap: false,
             effect_mana_spend_mode: ironsmith_core::value_model::ManaSpendMode::Normal,
             effect_driven: false,
             optional_costs_paid,

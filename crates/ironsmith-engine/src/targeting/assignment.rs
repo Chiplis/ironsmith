@@ -4,6 +4,12 @@ use std::ops::Range;
 use crate::decisions::context::TargetRequirementContext;
 use crate::game_state::Target;
 
+#[derive(Clone, Default)]
+struct TargetGroupSelections {
+    distinct: HashMap<usize, HashSet<Target>>,
+    players: HashMap<usize, crate::ids::PlayerId>,
+}
+
 fn selected_targets_satisfy_requirement(
     req: &TargetRequirementContext,
     selected: &[Target],
@@ -51,12 +57,20 @@ fn legal_pool_for_selected(
 fn selected_targets_satisfy_distinct_player_group(
     req: &TargetRequirementContext,
     selected: &[Target],
-    used_by_group: &HashMap<usize, HashSet<Target>>,
+    used_by_group: &TargetGroupSelections,
 ) -> bool {
+    if let Some(relation) = &req.shared_player_group {
+        let mut chosen_player = used_by_group.players.get(&relation.group).copied();
+        for target in selected {
+            let Some((_, player)) = relation.target_players.iter().find(|(candidate, _)| candidate == target) else { return false; };
+            if chosen_player.is_some_and(|chosen| chosen != *player) { return false; }
+            chosen_player = Some(*player);
+        }
+    }
     let Some(group) = req.distinct_player_group else {
         return true;
     };
-    let already_used = used_by_group.get(&group);
+    let already_used = used_by_group.distinct.get(&group);
     let mut selected_in_requirement = HashSet::new();
 
     selected.iter().all(|target| {
@@ -68,10 +82,17 @@ fn selected_targets_satisfy_distinct_player_group(
 fn add_distinct_player_group_targets(
     req: &TargetRequirementContext,
     selected: &[Target],
-    used_by_group: &mut HashMap<usize, HashSet<Target>>,
+    used_by_group: &mut TargetGroupSelections,
 ) {
+    if let Some(relation) = &req.shared_player_group {
+        for target in selected {
+            if let Some((_, player)) = relation.target_players.iter().find(|(candidate, _)| candidate == target) {
+                used_by_group.players.insert(relation.group, *player);
+            }
+        }
+    }
     if let Some(group) = req.distinct_player_group {
-        used_by_group
+        used_by_group.distinct
             .entry(group)
             .or_default()
             .extend(selected.iter().copied());
@@ -89,7 +110,7 @@ fn assign_target_counts(
         req_idx: usize,
         cursor: usize,
         allow_autofill: bool,
-        used_by_group: &mut HashMap<usize, HashSet<Target>>,
+        used_by_group: &mut TargetGroupSelections,
     ) -> Option<Vec<usize>> {
         if req_idx == requirements.len() {
             if cursor == targets.len() {
@@ -125,6 +146,7 @@ fn assign_target_counts(
                     continue;
                 }
 
+                let previous_groups = used_by_group.clone();
                 add_distinct_player_group_targets(req, slice, used_by_group);
                 let result = recurse(
                     requirements,
@@ -140,20 +162,14 @@ fn assign_target_counts(
                     counts.append(&mut rest);
                     return Some(counts);
                 }
-                if let Some(group) = req.distinct_player_group
-                    && let Some(used) = used_by_group.get_mut(&group)
-                {
-                    for target in slice {
-                        used.remove(target);
-                    }
-                }
+                *used_by_group = previous_groups;
             }
         }
 
         None
     }
 
-    let mut used_by_group = HashMap::new();
+    let mut used_by_group = TargetGroupSelections::default();
     recurse(
         requirements,
         targets,
@@ -177,7 +193,7 @@ pub fn normalize_targets_for_requirements(
     let proposed_preference = proposed.clone();
     let mut out = Vec::new();
     let mut cursor = 0usize;
-    let mut used_by_group = HashMap::new();
+    let mut used_by_group = TargetGroupSelections::default();
 
     for (req, count) in requirements.iter().zip(counts.into_iter()) {
         let mut selected = Vec::new();
@@ -345,6 +361,7 @@ mod tests {
                 min_targets: 0,
                 max_targets: None,
                 distinct_player_group: None,
+                shared_player_group: None,
             },
             TargetRequirementContext {
                 description: "final target".to_string(),
@@ -354,6 +371,7 @@ mod tests {
                 min_targets: 1,
                 max_targets: Some(1),
                 distinct_player_group: None,
+                shared_player_group: None,
             },
         ];
 
@@ -378,6 +396,7 @@ mod tests {
             min_targets: 1,
             max_targets: Some(1),
             distinct_player_group: None,
+            shared_player_group: None,
         }];
 
         let normalized =
@@ -399,6 +418,7 @@ mod tests {
                 min_targets: 1,
                 max_targets: Some(1),
                 distinct_player_group: None,
+                shared_player_group: None,
             },
             TargetRequirementContext {
                 description: "second".to_string(),
@@ -408,6 +428,7 @@ mod tests {
                 min_targets: 1,
                 max_targets: Some(1),
                 distinct_player_group: None,
+                shared_player_group: None,
             },
         ];
 
@@ -426,6 +447,7 @@ mod tests {
             min_targets: 1,
             max_targets: Some(1),
             distinct_player_group: None,
+            shared_player_group: None,
         }];
 
         assert!(assigned_target_ranges(&requirements, &[old_target]).is_none());
@@ -449,6 +471,7 @@ mod tests {
             min_targets: 2,
             max_targets: Some(2),
             distinct_player_group: None,
+            shared_player_group: None,
         }];
 
         assert!(validate_flat_target_assignment(&requirements, &[a, b]));
@@ -469,6 +492,7 @@ mod tests {
             min_targets: 2,
             max_targets: Some(2),
             distinct_player_group: None,
+            shared_player_group: None,
         }];
 
         let normalized = normalize_targets_for_requirements(&requirements, vec![c]).expect("valid");
@@ -493,6 +517,7 @@ mod tests {
             min_targets: 0,
             max_targets: None,
             distinct_player_group: None,
+            shared_player_group: None,
         }];
 
         assert!(!validate_flat_target_assignment(

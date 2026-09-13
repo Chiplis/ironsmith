@@ -7,7 +7,8 @@ import {
 } from "@/lib/action-diagnostics";
 import { mergePriorityAnalysis } from "@/lib/priority-analysis-scheduler.js";
 import { castingMethodChoiceForAction, finishExplicitCastingMethod } from "@/lib/casting-method-choice";
-import { useContext, useState, useCallback, useRef, useMemo, useEffect, useSyncExternalStore } from "react";
+import { startTransition, useContext, useState, useCallback, useRef, useMemo, useEffect, useSyncExternalStore } from "react";
+import { useGameSnapshot } from "@/hooks/useGameSnapshot";
 import { useWasmGame } from "@/hooks/useWasmGame";
 import { usePeerLobby } from "@/hooks/usePeerLobby";
 import {
@@ -825,7 +826,7 @@ export function GameProvider({ children }) {
     registryCount: wasmRegistryCount,
     registryTotal: wasmRegistryTotal,
   } = useWasmGame();
-  const [state, setState] = useState(null);
+  const { state, setState, stateRef, subscribeState, isSnapshotRendered } = useGameSnapshot();
   const [status, setStatusRaw] = useState({ msg: "Loading WASM...", isError: false });
   const [autoPassEnabled, setAutoPassEnabled] = useState(true);
   const [holdRule, setHoldRule] = useState("never");
@@ -844,7 +845,6 @@ export function GameProvider({ children }) {
   const [logEntries, setLogEntries] = useState([]);
   const gameRef = useRef(game);
   const semanticThresholdRef = useRef(semanticThreshold);
-  const stateRef = useRef(state);
   const auditReplaySessionRef = useRef(null);
   const auditReplayPreparedRef = useRef(null);
   const multiplayerActiveRef = useRef(false);
@@ -933,8 +933,12 @@ export function GameProvider({ children }) {
 
   const setStatus = useCallback(
     (msg, isError = false) => {
-      setStatusRaw({ msg, isError });
-      pushLog(msg, isError);
+      // Status shares the board context; publishing it urgently would still
+      // force the entire table to render synchronously after an engine action.
+      startTransition(() => {
+        setStatusRaw({ msg, isError });
+        pushLog(msg, isError);
+      });
     },
     [pushLog]
   );
@@ -955,7 +959,6 @@ export function GameProvider({ children }) {
   }, [game]);
 
   useEffect(() => {
-    stateRef.current = state;
     if (state?.viewed_cards && !isInspectorOnlyViewedCards(state.viewed_cards)) {
       stickyViewedCardsRef.current = state.viewed_cards;
     }
@@ -968,7 +971,7 @@ export function GameProvider({ children }) {
     }
     setState(visibleState);
     stateRef.current = visibleState;
-  }, []);
+  }, [setState, stateRef]);
 
   const moveTriggerOrderingItem = useCallback((position, direction) => {
     const decision = stateRef.current?.decision || null;
@@ -996,7 +999,7 @@ export function GameProvider({ children }) {
         order: nextOrder,
       };
     });
-  }, []);
+  }, [stateRef]);
 
   const activeTriggerOrderingState = useMemo(() => {
     const decision = state?.decision || null;
@@ -1547,6 +1550,8 @@ export function GameProvider({ children }) {
       return st;
     },
     [
+      setState,
+      stateRef,
       applyStickyViewedCards,
       autoResolveTrivialDecisions,
       settleNoop,
@@ -1705,7 +1710,7 @@ export function GameProvider({ children }) {
         throw errorToThrow;
       }
     },
-    [finalizeState]
+    [stateRef, finalizeState]
   );
 
   const {
@@ -1728,6 +1733,7 @@ export function GameProvider({ children }) {
     game,
     state,
     setState: setPeerState,
+    subscribeState,
     setStatus,
     applySyncedCommand,
   });
@@ -1771,7 +1777,7 @@ export function GameProvider({ children }) {
       setStatus(`Cancel failed: ${err}`, true);
       console.error(err);
     });
-  }, [multiplayer.matchStarted, multiplayer.submittingAction, setStatus, submitMultiplayerCommand]);
+  }, [stateRef, multiplayer.matchStarted, multiplayer.submittingAction, setStatus, submitMultiplayerCommand]);
 
   useEffect(() => {
     if (!game || typeof game.setAutoCleanupDiscard !== "function") return;
@@ -1875,6 +1881,8 @@ export function GameProvider({ children }) {
       }
     },
     [
+      setState,
+      stateRef,
       applyStickyViewedCards,
       finalizeState,
       game,
@@ -1896,7 +1904,7 @@ export function GameProvider({ children }) {
     const unsubscribe = game.subscribePriorityAnalysis(apply);
     apply(game.latestPriorityAnalysis());
     return unsubscribe;
-  }, [game, state?.__priority_revision, state?.decision?.analysis_complete]);
+  }, [setState, stateRef, game, state?.__priority_revision, state?.decision?.analysis_complete]);
 
   const automatedAnalysisRevisionRef = useRef(null);
   useEffect(() => {
@@ -1907,16 +1915,24 @@ export function GameProvider({ children }) {
     let timer;
     const resume = () => {
       if (stateRef.current?.__priority_revision !== revision) return;
-      if (wasmInteractionGateRef.current.isBlocked()) {
+      if (wasmInteractionGateRef.current.isInFlight()) {
         timer = setTimeout(resume, 25);
         return;
       }
       automatedAnalysisRevisionRef.current = revision;
-      void runWasmInteraction(() => refresh());
+      void wasmInteractionGateRef.current.runAutomatic(async () => {
+        try {
+          // The analysis was merged into this revision already; another
+          // uiState round trip just rebuilds the snapshot we have in hand.
+          await finalizeState(game, stateRef.current);
+        } catch (err) {
+          setStatus(`Refresh failed: ${err}`, true);
+        }
+      });
     };
     timer = setTimeout(resume, 0);
     return () => clearTimeout(timer);
-  }, [game, state?.__priority_revision, state?.decision?.analysis_complete, multiplayer.matchStarted, refresh, runWasmInteraction]);
+  }, [stateRef, game, state?.__priority_revision, state?.decision?.analysis_complete, multiplayer.matchStarted, finalizeState, setStatus]);
 
   const dispatch = useCallback(
     async (command, successMessage, { castingAction = null, waitForPaymentReady = false } = {}) => {
@@ -1934,6 +1950,9 @@ export function GameProvider({ children }) {
         })
         : runWasmInteraction;
       return runInteraction(async () => {
+        // A concurrent board render may still show the previous decision.
+        // Never apply a click from that view to the newer engine snapshot.
+        if (!isSnapshotRendered()) return;
         const isTargetSubmit = command?.type === "select_targets";
         const currentDecision = stateRef.current?.decision || null;
         const stopAfterTriggerOrderingSubmit = (
@@ -2133,7 +2152,10 @@ export function GameProvider({ children }) {
       });
     },
     [
+      setState,
+      stateRef,
       armTargetSubmitDebounce,
+      isSnapshotRendered,
       applyStickyViewedCards,
       clearTargetSubmitDebounce,
       finalizeState,
@@ -2172,7 +2194,7 @@ export function GameProvider({ children }) {
         return undefined;
       }
     },
-    [applyStickyViewedCards, dispatch, game, multiplayer.matchStarted]
+    [setState, stateRef, applyStickyViewedCards, dispatch, game, multiplayer.matchStarted]
   );
 
   const cancelDecision = useCallback(
@@ -2225,6 +2247,7 @@ export function GameProvider({ children }) {
       });
     },
     [
+      stateRef,
       finalizeState,
       game,
       multiplayer.matchStarted,
@@ -2249,7 +2272,7 @@ export function GameProvider({ children }) {
         cryptoImpl: globalThis.crypto,
       });
     }),
-    [runWasmInteraction]
+    [stateRef, runWasmInteraction]
   );
 
   const runAuditReplayWasmInteraction = useCallback(
@@ -2416,7 +2439,7 @@ export function GameProvider({ children }) {
         }
       });
     },
-    [prepareAuditReplaySession, replayTranscriptToPosition, runAuditReplayWasmInteraction, setStatus]
+    [setState, stateRef, prepareAuditReplaySession, replayTranscriptToPosition, runAuditReplayWasmInteraction, setStatus]
   );
 
   const setAuditReplayPosition = useCallback(
@@ -2473,7 +2496,7 @@ export function GameProvider({ children }) {
         }
       });
     },
-    [replayTranscriptToPosition, runAuditReplayWasmInteraction, setStatus]
+    [setState, stateRef, replayTranscriptToPosition, runAuditReplayWasmInteraction, setStatus]
   );
 
   const exitAuditReplaySession = useCallback(
@@ -2532,7 +2555,7 @@ export function GameProvider({ children }) {
         }
       }, "Replay restore failed");
     },
-    [runAuditReplayWasmInteraction, setStatus]
+    [setState, stateRef, runAuditReplayWasmInteraction, setStatus]
   );
 
   useEffect(() => startMainThreadMonitor(), []);
@@ -2752,6 +2775,7 @@ export function GameProvider({ children }) {
       setExternalAutoPassGate,
     }),
     [
+      setState,
       matchClockStore,
       game,
       state,

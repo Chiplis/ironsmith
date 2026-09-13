@@ -1162,6 +1162,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 allow_land,
                 allow_any_color_for_cast,
                 until_next_end_step,
+                until_next_turn_start,
+                spell_filter,
+                surface,
                 max_plays,
             }) => f
                 .debug_struct("GrantPlayTaggedUntilYourNextTurn")
@@ -1170,6 +1173,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("allow_land", allow_land)
                 .field("allow_any_color_for_cast", allow_any_color_for_cast)
                 .field("until_next_end_step", until_next_end_step)
+                .field("until_next_turn_start", until_next_turn_start)
+                .field("spell_filter", spell_filter)
+                .field("surface", surface)
                 .field("max_plays", max_plays)
                 .finish(),
             Self::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {

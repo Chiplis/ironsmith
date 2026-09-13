@@ -23,6 +23,7 @@ use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::PermanentStateActionAst;
 use crate::cards::builders::PermissionEffectAst;
 use crate::cards::builders::StatChangeActionAst;
+use crate::cards::builders::TriggerSpec;
 use crate::cards::builders::ZoneMoveActionAst;
 use crate::parse_trace;
 use crate::recognition::{ParseDiagnostic, ParseOutcome, RuleId};
@@ -479,6 +480,52 @@ fn preserve_named_source_unattach_surface(
     if candidate_count(effects) == 1 {
         apply(effects, &surface);
     }
+}
+
+fn preserve_named_source_entry_and_counter_exclusion(trigger: &mut TriggerSpec, effects: &mut [crate::model::ast::EffectAst], source: &[OwnedLexToken]) {
+    use crate::cards::builders::{EffectAst, SubjectVerbEffectAst, SubjectVerbActionAst, TargetAst};
+    use crate::target::SourceReferenceSurface;
+    fn entry_surface(source: &[OwnedLexToken]) -> Option<SourceReferenceSurface> {
+        if !source.first()?.is_any_word(&["when", "whenever"]) { return None; }
+        let end = source.iter().position(|token| token.is_word("enters"))?;
+        crate::grammar::source_surface_shapes::parse_named_surface(&source[1..end])
+    }
+    fn trigger_surface(trigger: &mut TriggerSpec, surface: &SourceReferenceSurface) {
+        match trigger {
+            TriggerSpec::WithIntro { trigger, .. } => trigger_surface(trigger, surface),
+            TriggerSpec::EntersBattlefield { filter, .. } if filter.source => {
+                filter.source_surface = Some(surface.clone());
+            }
+            TriggerSpec::ThisEntersBattlefield { origin_condition } => {
+                *trigger = TriggerSpec::ThisEntersBattlefieldWithSurface {
+                    surface: surface.clone(),
+                    subject_number: ironsmith_core::trigger_model::TriggerSubjectNumber::Singular,
+                    origin_condition: origin_condition.clone(),
+                };
+            }
+            TriggerSpec::ThisEntersBattlefieldWithSurface { surface: existing, .. } => *existing = surface.clone(),
+            _ => {}
+        }
+    }
+    fn counter_exclusion(effects: &mut [EffectAst], surface: &SourceReferenceSurface) {
+        for effect in effects {
+            if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Counters(crate::cards::builders::CounterActionAst::PutCounters {
+                    target: TargetAst::Object(filter, _, _), ..
+                }), ..
+            }) = effect
+                && filter.other && filter.source_surface.is_some()
+            {
+                filter.source_surface = Some(surface.clone());
+            }
+            crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| counter_exclusion(nested, surface));
+        }
+    }
+    let entry = entry_surface(source);
+    let exclusion = crate::grammar::source_surface_shapes::parse_unique_named_operand_after(None, source, "than")
+        .map(|shape| shape.surface);
+    if let Some(surface) = &entry { trigger_surface(trigger, surface); }
+    if let Some(surface) = &exclusion { counter_exclusion(effects, surface); }
 }
 
 fn preserve_named_source_put_counters_surface(
@@ -1041,7 +1088,7 @@ pub(super) fn attach_compiler_trigger_facts(
                 )
             })
         };
-        let (trigger, mut effects) = match direct {
+        let (mut trigger, mut effects) = match direct {
             Ok(Some(program)) => program,
             Ok(None) => fallback()?,
             Err(direct_error) => match fallback() {
@@ -1055,6 +1102,7 @@ pub(super) fn attach_compiler_trigger_facts(
             &triggered.full_parse_tokens,
             &mut effects,
         );
+        preserve_named_source_entry_and_counter_exclusion(&mut trigger, &mut effects, &triggered.info.source_tokens);
         preserve_named_source_exile_surface(context, &triggered.info.source_tokens, &mut effects);
         crate::util::recognize_unique_source_action_surface(
             &mut effects,

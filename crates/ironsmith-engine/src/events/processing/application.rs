@@ -465,6 +465,7 @@ pub(super) fn apply_trait_replacement(
             name_override,
             added_colors,
             added_card_types,
+            added_supertypes,
             removed_supertypes,
             added_subtypes,
             added_abilities,
@@ -480,6 +481,7 @@ pub(super) fn apply_trait_replacement(
                 name_override.clone(),
                 *added_colors,
                 added_card_types,
+                added_supertypes,
                 removed_supertypes,
                 added_subtypes,
                 added_abilities,
@@ -1234,6 +1236,7 @@ fn apply_trait_enter_as_copy(
     name_override: Option<String>,
     added_colors: crate::color::ColorSet,
     added_card_types: &[crate::types::CardType],
+    added_supertypes: &[crate::types::Supertype],
     removed_supertypes: &[crate::types::Supertype],
     added_subtypes: &[crate::types::Subtype],
     added_abilities: &[crate::ability::Ability],
@@ -1249,6 +1252,7 @@ fn apply_trait_enter_as_copy(
             .with_copy_name_override(name_override.clone())
             .with_added_colors(added_colors)
             .with_added_card_types(added_card_types)
+            .with_added_supertypes(added_supertypes)
             .with_removed_supertypes(removed_supertypes)
             .with_added_subtypes(added_subtypes)
             .with_added_abilities(added_abilities);

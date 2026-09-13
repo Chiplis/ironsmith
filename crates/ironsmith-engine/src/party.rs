@@ -4,7 +4,7 @@ use crate::game_state::GameState;
 use crate::ids::PlayerId;
 use crate::types::{CardType, Subtype};
 
-const PARTY_ROLES: [Subtype; 4] = [
+pub(crate) const PARTY_ROLES: [Subtype; 4] = [
     Subtype::Cleric,
     Subtype::Rogue,
     Subtype::Warrior,
@@ -16,23 +16,32 @@ const PARTY_ROLES: [Subtype; 4] = [
 /// A creature can fill at most one role, even when it has multiple party creature
 /// types. With only four roles, a bitmask dynamic program is both exact and tiny.
 pub(crate) fn party_size(game: &GameState, player_id: PlayerId) -> i32 {
-    // Bit `assignment` is set when that subset of the four roles is reachable.
-    let mut reachable_assignments = 1u16;
-
-    for object_id in game.battlefield.iter().copied() {
+    party_size_from_roles(game.battlefield.iter().copied().filter_map(|object_id| {
         if game.current_controller(object_id) != Some(player_id)
             || !game.current_has_card_type(object_id, CardType::Creature)
         {
-            continue;
+            return None;
         }
+        Some(
+            PARTY_ROLES
+                .iter()
+                .enumerate()
+                .fold(0u8, |roles, (index, role)| {
+                    roles
+                        | if game.current_has_subtype(object_id, *role) {
+                            1 << index
+                        } else {
+                            0
+                        }
+                }),
+        )
+    }))
+}
 
-        let mut creature_roles = 0u8;
-        for (index, role) in PARTY_ROLES.iter().copied().enumerate() {
-            if game.current_has_subtype(object_id, role) {
-                creature_roles |= 1 << index;
-            }
-        }
-
+/// Maximize distinct party roles, allowing each creature to fill one role.
+pub(crate) fn party_size_from_roles(creatures: impl IntoIterator<Item = u8>) -> i32 {
+    let mut reachable_assignments = 1u16;
+    for creature_roles in creatures {
         let previous_assignments = reachable_assignments;
         for assignment in 0u8..16 {
             if previous_assignments & (1u16 << assignment) == 0 {
@@ -47,7 +56,6 @@ pub(crate) fn party_size(game: &GameState, player_id: PlayerId) -> i32 {
             }
         }
     }
-
     (0u8..16)
         .filter(|assignment| reachable_assignments & (1u16 << assignment) != 0)
         .map(|assignment| assignment.count_ones() as i32)

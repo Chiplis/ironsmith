@@ -1223,6 +1223,9 @@ impl EffectAst {
                 allow_land,
                 allow_any_color_for_cast,
                 until_next_end_step: false,
+                until_next_turn_start: false,
+                spell_filter: None,
+                surface: None,
                 max_plays: None,
             }),
         )
@@ -1244,6 +1247,9 @@ impl EffectAst {
                 allow_land,
                 allow_any_color_for_cast,
                 until_next_end_step: true,
+                until_next_turn_start: false,
+                spell_filter: None,
+                surface: None,
                 max_plays: None,
             }),
         )

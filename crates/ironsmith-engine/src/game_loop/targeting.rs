@@ -41,7 +41,9 @@ pub fn requires_target_selection(spec: &ChooseSpec) -> bool {
     match spec {
         // Explicit target wrappers always require cast/activation-time selection.
         ChooseSpec::Target(_) => true,
-        ChooseSpec::WithCount(inner, _) | ChooseSpec::WithCountValue(inner, _, _) => {
+        ChooseSpec::SurfaceHinted { spec: inner, .. }
+        | ChooseSpec::WithCount(inner, _)
+        | ChooseSpec::WithCountValue(inner, _, _) => {
             requires_target_selection(inner)
         }
         // These require target selection during casting
@@ -1392,6 +1394,12 @@ fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
     require_full_mode_selection: bool,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> bool {
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return spell_effect_has_legal_targets_internal_with_preview_mode_selection(
+            game, &with_id.effect, caster, source_id, chosen_modes,
+            consumed_modal_selection, declared_targets, require_full_mode_selection, view,
+        );
+    }
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
         && matches!(
             sequence.surface,
@@ -1574,6 +1582,13 @@ pub(super) fn extract_target_requirements_from_effect_internal(
     declared_targets: &mut Vec<DeclaredTarget>,
     requirements: &mut Vec<TargetRequirement>,
 ) {
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        extract_target_requirements_from_effect_internal(
+            game, &with_id.effect, caster, source_id, chosen_modes,
+            consumed_modal_selection, declared_targets, requirements,
+        );
+        return;
+    }
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
         && matches!(
             sequence.surface,
@@ -1716,6 +1731,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                     min_targets: 1,
                     max_targets: Some(1),
                     distinct_player_group: None,
+                    shared_player_group: None,
                     distribution_value: None,
                     distribution_min_per_target: 1,
                 });
@@ -1772,6 +1788,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
         if has_enough_targets || extracted.chooser.is_some() {
             let distinct_player_group =
                 link_relative_target_to_prior_requirement(extracted.spec, requirements);
+            let shared_player_group = link_target_controller_requirement(game, extracted.spec, &legal_targets, requirements);
             requirements.push(TargetRequirement {
                 spec: extracted.spec.clone(),
                 chooser: extracted.chooser.cloned(),
@@ -1782,11 +1799,38 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                 min_targets,
                 max_targets,
                 distinct_player_group,
+                shared_player_group,
                 distribution_value: extracted.distribution_value.cloned(),
                 distribution_min_per_target: extracted.distribution_min_per_target,
             });
         }
     }
+}
+
+fn link_target_controller_requirement(
+    game: &GameState,
+    spec: &ChooseSpec,
+    candidates: &[Target],
+    requirements: &mut [TargetRequirement],
+) -> Option<crate::decisions::context::SharedTargetPlayerGroup> {
+    let ChooseSpec::Object(filter) = spec.base() else { return None; };
+    if filter.controller != Some(PlayerFilter::TargetPlayerOrControllerOfTarget) { return None; }
+    let prior_index = requirements.iter().rposition(|r| matches!(r.spec.base(),
+        ChooseSpec::Player(_) | ChooseSpec::PlayerOrPlaneswalker(_)))?;
+    let group = requirements.iter().filter_map(|r| r.shared_player_group.as_ref().map(|g| g.group)).max().map_or(0, |g| g + 1);
+    let map_players = |targets: &[Target]| targets.iter().filter_map(|target| {
+        let player = match target {
+            Target::Player(player) => *player,
+            Target::Object(id) => game.current_controller(*id)?,
+        };
+        Some((*target, player))
+    }).collect::<Vec<_>>();
+    let prior = &mut requirements[prior_index];
+    let group = prior.shared_player_group.as_ref().map_or(group, |g| g.group);
+    prior.shared_player_group = Some(crate::decisions::context::SharedTargetPlayerGroup {
+        group, target_players: map_players(&prior.legal_targets),
+    });
+    Some(crate::decisions::context::SharedTargetPlayerGroup { group, target_players: map_players(candidates) })
 }
 
 fn relative_target_player_exclusion_base(filter: &PlayerFilter) -> Option<&PlayerFilter> {
@@ -1946,6 +1990,7 @@ fn extract_target_requirements_from_iterated_effect(
                 min_targets,
                 max_targets,
                 distinct_player_group: None,
+                shared_player_group: None,
                 distribution_value: extracted.distribution_value.cloned(),
                 distribution_min_per_target: extracted.distribution_min_per_target,
             });

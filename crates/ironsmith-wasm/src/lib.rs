@@ -886,6 +886,7 @@ fn planned_mana_source_views(
         let (source, payment_kind) = match allocation.payment {
             ironsmith::mana_payment::PlannedPipPayment::Convoke(source) => (source, "convoke"),
             ironsmith::mana_payment::PlannedPipPayment::Improvise(source) => (source, "improvise"),
+            ironsmith::mana_payment::PlannedPipPayment::Delve(source) => (source, "delve"),
             _ => continue,
         };
         if sources
@@ -952,6 +953,12 @@ fn planned_pip_allocation_views(
                 ),
                 ironsmith::mana_payment::PlannedPipPayment::Improvise(source) => (
                     "improvise".to_string(),
+                    Some(source.0.to_string()),
+                    None,
+                    None,
+                ),
+                ironsmith::mana_payment::PlannedPipPayment::Delve(source) => (
+                    "delve".to_string(),
                     Some(source.0.to_string()),
                     None,
                     None,
@@ -3299,6 +3306,8 @@ enum ManaPaymentCommand {
         preserved_source_ids: Vec<String>,
         #[serde(default)]
         prefer_life: bool,
+        #[serde(default)]
+        required_life_pips: Vec<u32>,
     },
     Activate {
         source_id: String,
@@ -3342,6 +3351,7 @@ impl ManaPaymentCommand {
                 excluded_source_ids,
                 preserved_source_ids,
                 prefer_life,
+                required_life_pips,
             } => Ok(ironsmith::mana_payment::ManaPaymentResponse::Replan {
                 preferences: ironsmith::mana_payment::ManaPaymentPreferences {
                     required_sources: parse_mana_payment_source_ids(
@@ -3365,6 +3375,10 @@ impl ManaPaymentCommand {
                         "preserved",
                     )?,
                     prefer_life,
+                    required_life_pips: required_life_pips
+                        .into_iter()
+                        .map(ironsmith::mana_payment::ManaPipId)
+                        .collect(),
                 },
             }),
             Self::Activate {
@@ -3411,6 +3425,7 @@ impl ManaPaymentAlternativeCommand {
         let kind = match self.payment_kind.as_str() {
             "convoke" => ironsmith::mana_payment::ManaPaymentSourceKind::Convoke,
             "improvise" => ironsmith::mana_payment::ManaPaymentSourceKind::Improvise,
+            "delve" => ironsmith::mana_payment::ManaPaymentSourceKind::Delve,
             other => {
                 return Err(JsValue::from_str(&format!(
                     "invalid mana payment alternative kind: {other}"

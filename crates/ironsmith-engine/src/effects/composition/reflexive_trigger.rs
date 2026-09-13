@@ -141,6 +141,7 @@ fn choose_reflexive_targets(
                 min_targets: count.min,
                 max_targets: count.max,
                 distinct_player_group: None,
+                shared_player_group: None,
             }],
         );
         let selected = ctx.decision_maker.decide_targets(game, &targets_ctx);
@@ -195,6 +196,7 @@ fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> Objec
             mana_spent_to_cast: crate::player::ManaPool::default(),
             snow_mana_spent_to_cast: crate::player::ManaPool::default(),
             mana_sources_spent_to_cast: Vec::new(),
+            optional_costs_paid: crate::cost::OptionalCostsPaid::default(),
             counters: HashMap::new(),
             is_token: memory.is_token,
             tapped: false,

@@ -11,3 +11,7 @@ test('face type distinguishes a horizontal battle from its ordinary reverse',()=
   assert.equal(sourceMaskLayoutGap({layout:'transform',type_line:'Creature — Elemental'}),null);
   assert.equal(sourceMaskLayoutGap({layout:'normal',frame:'1997',type_line:'Land — Forest Island'}),null);
 });
+
+test('localized placeholder images request the original/English fallback path',()=>{
+  assert.equal(sourceMaskLayoutGap({layout:'normal',image_status:'placeholder'}),'placeholder-image');
+});

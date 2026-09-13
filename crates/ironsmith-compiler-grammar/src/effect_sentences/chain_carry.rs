@@ -716,7 +716,7 @@ fn parse_leading_action_then_shared_damage_fanout(
     Ok(None)
 }
 
-fn parse_terminal_where_x_binding(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLexToken], Value)> {
+fn parse_terminal_where_x_binding(tokens: &[OwnedLexToken]) -> Option<(Vec<OwnedLexToken>, Value)> {
     let shape =
         super::super::grammar::effects::dispatch_entry_shapes::parse_where_x_usage_shape_tokens(
             tokens,
@@ -724,7 +724,7 @@ fn parse_terminal_where_x_binding(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLe
     let view = TokenWordView::new(tokens);
     let where_word = view.parse_phrase_start(&["where", "x", "is"])?;
     let where_index = view.map_word_to_token_start(where_word)?;
-    if has_explicit_comma_then_boundary_lexed(&tokens[where_index..]) {
+    if shape.followup_tokens.is_none() && has_explicit_comma_then_boundary_lexed(&tokens[where_index..]) {
         return None;
     }
     let leading_tokens = trim_lexed_commas(&tokens[..where_index]);
@@ -747,8 +747,12 @@ fn parse_terminal_where_x_binding(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLe
                 .map(|(_, value)| value)
         })
         .or_else(|| crate::keyword_static::parse_value_binding_clause(binding_tokens))?;
+    let mut action_tokens = leading_tokens.to_vec();
+    if let Some(followup) = shape.followup_tokens {
+        action_tokens.extend_from_slice(followup);
+    }
     Some((
-        leading_tokens,
+        action_tokens,
         super::dispatch_entry::with_where_x_surface_hints(value, tokens),
     ))
 }
@@ -1290,6 +1294,12 @@ fn parse_effect_chain_inner_lexed_unstacked(
     tokens: &[OwnedLexToken],
     recognize_control_flow: bool,
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    // Conditional sentence readers enter here directly. A value definition
+    // between coordinated actions still belongs to the complete chain; the
+    // outer binding reader removes that definition before recursing here.
+    if parse_terminal_where_x_binding(tokens).is_some() {
+        return parse_effect_chain_lexed(tokens);
+    }
     if recognize_control_flow {
         let comma_then_segments = split_segments_on_comma_then_lexed(vec![tokens]);
         if comma_then_segments.len() > 1

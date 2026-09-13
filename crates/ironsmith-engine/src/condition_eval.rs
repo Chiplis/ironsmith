@@ -1,3 +1,4 @@
+mod context;
 use crate::effect::Condition;
 use crate::effect::Value;
 use crate::effects::helpers::resolve_value;
@@ -7,6 +8,7 @@ use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::target::PlayerFilter;
 use crate::zone::Zone;
+use context::ConditionContext;
 
 use crate::triggers::{TriggerEvent, TriggerIdentity};
 use ironsmith_core::DamagedBySource;
@@ -250,27 +252,6 @@ fn this_spell_was_cast_from_non_hand(
             .and_then(|obj| obj.alternative_casts.get(*idx))
             .is_some_and(|method| method.cast_from_zone() != Zone::Hand),
     }
-}
-
-fn this_spell_escaped(game: &GameState, source: ObjectId, ctx: &ExecutionContext) -> bool {
-    if ctx.optional_costs_paid.was_paid_label("Escape") || source_escaped(game, source) {
-        return true;
-    }
-
-    let Some(spell) = game.object(source) else {
-        return matches!(
-            ctx.casting_method,
-            crate::alternative_cast::CastingMethod::GrantedEscape { .. }
-        );
-    };
-
-    crate::decision::casting_method_matches_alternative_kind(
-        game,
-        ctx.controller,
-        spell,
-        &ctx.casting_method,
-        crate::filter::AlternativeCastKind::Escape,
-    )
 }
 
 fn source_escaped(game: &GameState, source: ObjectId) -> bool {
@@ -2711,591 +2692,6 @@ fn evaluate_turn_history_condition(
     }
 }
 
-fn evaluate_condition_shared_core(
-    game: &GameState,
-    condition: &Condition,
-    ctx: SharedConditionContext<'_>,
-) -> Option<bool> {
-    match condition {
-        Condition::TurnHistory(condition) => {
-            Some(evaluate_turn_history_condition(game, condition, ctx))
-        }
-        Condition::LifeTotalOrLess(threshold) => Some(
-            game.player(ctx.controller)
-                .map(|p| p.life <= *threshold)
-                .unwrap_or(false),
-        ),
-        Condition::LifeTotalOrGreater(threshold) => Some(
-            game.player(ctx.controller)
-                .map(|p| p.life >= *threshold)
-                .unwrap_or(false),
-        ),
-        Condition::CardsInHandOrMore(threshold) => Some(
-            game.player(ctx.controller)
-                .map(|p| p.hand.len() as i32 >= *threshold)
-                .unwrap_or(false),
-        ),
-        Condition::YouHaveCardInHandMatching(filter) => Some(player_has_card_in_hand_matching(
-            game,
-            ctx.controller,
-            filter,
-            ctx.filter_source,
-        )),
-        Condition::YourTurn => Some(game.is_active_player(ctx.controller)),
-        Condition::CurrentTurnIsExtra => Some(game.turn_store.current_turn_is_extra),
-        Condition::SourceControllersMainPhase => Some(
-            game.is_active_player(ctx.controller)
-                && matches!(
-                    game.turn.phase,
-                    crate::game_state::Phase::FirstMain | crate::game_state::Phase::NextMain
-                ),
-        ),
-        Condition::SourceControllersEndStep => Some(
-            game.is_active_player(ctx.controller)
-                && game.turn.phase == crate::game_state::Phase::Ending,
-        ),
-        Condition::YourFirstTurnsOfTheGameOrFewer(count) => {
-            Some(game.is_active_player(ctx.controller) && game.turn.turn_number <= *count)
-        }
-        Condition::CreatureDiedThisTurn => Some(
-            game.turn_store
-                .turn_history
-                .total_creatures_died_this_turn()
-                > 0,
-        ),
-        Condition::CreatureDiedThisTurnOrMore(count) => Some(
-            game.turn_store
-                .turn_history
-                .total_creatures_died_this_turn()
-                >= *count,
-        ),
-        Condition::CreatureDealtDamageBySourceDiedThisTurn {
-            victim,
-            damager,
-            count,
-        } => Some(
-            creatures_dealt_damage_by_source_died_this_turn(game, ctx, victim, damager) >= *count,
-        ),
-        Condition::CreatureCardPutIntoYourGraveyardThisTurn => Some(
-            creature_card_was_put_into_your_graveyard_this_turn(game, ctx.controller),
-        ),
-        Condition::CastSpellThisTurn => {
-            Some(game.turn_store.turn_history.any_spell_was_cast_this_turn())
-        }
-        Condition::AttackedThisTurn => Some(
-            game.turn_store
-                .turn_history
-                .players_attacked_this_turn
-                .contains(&ctx.controller),
-        ),
-        Condition::AttackedWithNOrMoreCreaturesThisTurn(count) => Some(
-            game.turn_store
-                .turn_history
-                .creatures_attacked_this_turn
-                .iter()
-                .filter(|id| game.current_controller(**id) == Some(ctx.controller))
-                .count() as u32
-                >= *count,
-        ),
-        Condition::OpponentLostLifeThisTurn => {
-            let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
-            Some(filter_ctx.opponents.iter().any(|opponent| {
-                game.turn_store
-                    .turn_history
-                    .player_lost_life_this_turn(*opponent)
-            }))
-        }
-        Condition::AnyPlayerLostLifeThisTurnOrMore { count } => {
-            Some(game.players.iter().any(|player| {
-                player.is_in_game()
-                    && game
-                        .turn_store
-                        .turn_history
-                        .total_life_lost_for_players(&[player.id])
-                        >= *count
-            }))
-        }
-        Condition::OpponentWasDealtDamageThisTurn => {
-            let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
-            Some(filter_ctx.opponents.iter().any(|opponent| {
-                game.turn_store
-                    .turn_history
-                    .player_was_dealt_damage_this_turn(*opponent)
-            }))
-        }
-        Condition::PermanentLeftBattlefieldThisTurn => Some(
-            game.turn_store
-                .turn_history
-                .permanents_left_battlefield_this_turn()
-                > 0,
-        ),
-        Condition::NonlandPermanentLeftBattlefieldThisTurn => Some(
-            game.turn_store
-                .turn_history
-                .nonland_permanents_left_battlefield_this_turn()
-                > 0,
-        ),
-        Condition::SpellWasWarpedThisTurn => {
-            Some(game.turn_store.turn_history.spell_was_warped_this_turn())
-        }
-        Condition::PermanentLeftBattlefieldUnderYourControlThisTurn { .. } => Some(
-            game.turn_store
-                .turn_history
-                .permanents_left_battlefield_under_controller(ctx.controller)
-                > 0,
-        ),
-        Condition::ObjectEnteredBattlefieldThisTurn(filter) => Some(
-            object_matching_entered_battlefield_this_turn(game, ctx, filter),
-        ),
-        Condition::ObjectEnteredBattlefieldLastTurn(filter) => Some(
-            object_matching_entered_battlefield_last_turn(game, ctx, filter),
-        ),
-        Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter) => Some(
-            object_matching_was_put_into_graveyard_from_battlefield_this_turn(game, ctx, filter),
-        ),
-        Condition::SourceWasCast => Some(source_was_cast(game, ctx.source, ctx.triggering_event)),
-        Condition::ThisSpellWasCastAtSorceryTiming => Some(
-            game.object(ctx.source)
-                .is_some_and(|object| object.optional_costs_paid.was_cast_at_sorcery_timing()),
-        ),
-        Condition::TaggedObjectWasCast(_) => None,
-        Condition::ThisSpellEscaped => Some(source_escaped(game, ctx.source)),
-        Condition::ThisSpellWasCastFromZone(_) => None,
-        Condition::ThisSpellWasCastFromNonHand => None,
-        Condition::NoSpellsWereCastLastTurn => {
-            Some(game.turn_store.spells_cast_last_turn_total == 0)
-        }
-        Condition::ItIsNight => Some(game.is_night),
-        Condition::FirstCombatPhaseOfTurn => Some(
-            game.turn.phase == crate::game_state::Phase::Combat
-                && game.turn_store.combat_phases_started_this_turn == 1,
-        ),
-        Condition::SourceIsRenowned => Some(game.is_renowned(ctx.source)),
-        Condition::SpellsWereCastLastTurnOrMore(count) => {
-            Some(game.turn_store.spells_cast_last_turn_total >= *count)
-        }
-        Condition::YouHaveFullParty => Some(player_has_full_party(game, ctx.controller)),
-        Condition::ManaSpentToCastThisSpellAtLeast { amount, symbol } => {
-            let Some(source_obj) = game.object(ctx.source) else {
-                return Some(false);
-            };
-            Some(mana_pool_amount(&source_obj.mana_spent_to_cast, *symbol) >= *amount)
-        }
-        Condition::TriggeringSpellManaSpentToCastAtLeast { amount, symbol } => Some(
-            triggering_spell_mana_spent_at_least(game, ctx.triggering_event, *amount, *symbol),
-        ),
-        Condition::ColoredManaSpentToCastThisSpellAtLeast(amount) => {
-            let Some(source_obj) = game.object(ctx.source) else {
-                return Some(false);
-            };
-            Some(mana_pool_colored_total(&source_obj.mana_spent_to_cast) >= *amount)
-        }
-        Condition::TriggeringSpellColoredManaSpentToCastAtLeast(amount) => Some(
-            triggering_spell_colored_mana_spent_at_least(game, ctx.triggering_event, *amount),
-        ),
-        Condition::SnowManaOfAnySpellColorSpentToCastThisSpell => {
-            Some(game.object(ctx.source).is_some_and(|object| {
-                let snapshot = crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game);
-                matching_snow_mana_was_spent(&snapshot)
-            }))
-        }
-        Condition::TriggeringSpellSnowManaOfAnySpellColorSpentToCast => {
-            Some(ctx.triggering_event
-                .and_then(|event| event.downcast::<crate::events::SpellCastEvent>())
-                .is_some_and(|cast| {
-                    game.object(cast.spell).filter(|object| object.zone == crate::zone::Zone::Stack)
-                        .map_or_else(|| cast.snapshot.as_ref().is_some_and(matching_snow_mana_was_spent), |object| {
-                            matching_snow_mana_was_spent(&crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
-                        })
-                }))
-        }
-        Condition::SameColorManaSpentToCastThisSpellAtLeast(amount) => {
-            let Some(source_obj) = game.object(ctx.source) else {
-                return Some(false);
-            };
-            let spent = &source_obj.mana_spent_to_cast;
-            let most_spent_of_one_color =
-                [spent.white, spent.blue, spent.black, spent.red, spent.green]
-                    .into_iter()
-                    .max()
-                    .unwrap_or(0);
-            Some(most_spent_of_one_color >= *amount)
-        }
-        Condition::ColorsOfManaSpentToCastThisSpellOrMore(amount) => {
-            let Some(source_obj) = game.object(ctx.source) else {
-                return Some(false);
-            };
-            let spent = &source_obj.mana_spent_to_cast;
-            let distinct_colors = [
-                spent.white > 0,
-                spent.blue > 0,
-                spent.black > 0,
-                spent.red > 0,
-                spent.green > 0,
-            ]
-            .into_iter()
-            .filter(|present| *present)
-            .count() as u32;
-            Some(distinct_colors >= *amount)
-        }
-        Condition::SourceHasNoCounter(counter_type) => Some(
-            game.object(ctx.source)
-                .map(|obj| obj.counters.get(counter_type).copied().unwrap_or(0) == 0)
-                .unwrap_or(false),
-        ),
-        Condition::SourceHasCounterAtLeast {
-            counter_type,
-            count,
-            ..
-        } => Some(
-            game.object(ctx.source)
-                .map(|obj| obj.counters.get(counter_type).copied().unwrap_or(0) >= *count)
-                .unwrap_or(false),
-        ),
-        Condition::SourceHasCountersAtLeast(count) => Some(
-            game.object(ctx.source)
-                .map(|obj| obj.counters.values().copied().sum::<u32>() >= *count)
-                .unwrap_or(false),
-        ),
-        Condition::SourcePowerAtLeast(min_power) => Some(
-            game.calculated_power(ctx.source)
-                .or_else(|| game.object(ctx.source).and_then(|obj| obj.power()))
-                .is_some_and(|power| power >= *min_power as i32),
-        ),
-        Condition::SourceDealtCombatDamageToPlayerThisTurn => {
-            Some(game.source_dealt_combat_damage_to_player_this_turn(ctx.source))
-        }
-        Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype } => {
-            let players = matching_condition_players_simple(game, ctx.controller, player);
-            Some(
-                game.turn_store
-                    .turn_history
-                    .player_was_dealt_combat_damage_by_creature_subtype_this_turn(
-                        &players, *subtype,
-                    ),
-            )
-        }
-        Condition::SourceMatches(filter) => {
-            let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
-            Some(
-                game.object(ctx.source)
-                    .is_some_and(|obj| filter.matches(obj, &filter_ctx, game)),
-            )
-        }
-        Condition::AttachedToSourceMatches(filter) => {
-            let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
-            Some(
-                game.object(ctx.source)
-                    .and_then(|source| source.attached_to)
-                    .and_then(|target| target.object_id())
-                    .and_then(|id| game.object(id))
-                    .is_some_and(|object| filter.matches(object, &filter_ctx, game)),
-            )
-        }
-        Condition::AttachmentCount {
-            attachment,
-            host,
-            comparison,
-            ..
-        } => {
-            let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
-            Some(attachment_count_condition_matches(
-                game,
-                ctx.source,
-                attachment,
-                host,
-                comparison,
-                &filter_ctx,
-            ))
-        }
-        Condition::SourceCameUnderYourControlThisTurn => {
-            Some(game.object(ctx.source).is_some_and(|obj| {
-                game.turn_store
-                    .turn_history
-                    .object_came_under_controller_this_turn(obj.stable_id, ctx.controller)
-            }))
-        }
-        Condition::SourceInGraveyardWithCardsAbove { filter, count } => {
-            Some(game.object(ctx.source).is_some_and(|source| {
-                if source.zone != crate::zone::Zone::Graveyard {
-                    return false;
-                }
-                let Some(graveyard) = game.player(source.owner).map(|player| &player.graveyard)
-                else {
-                    return false;
-                };
-                let Some(source_index) = graveyard.iter().position(|id| *id == ctx.source) else {
-                    return false;
-                };
-                let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
-                graveyard[source_index + 1..]
-                    .iter()
-                    .filter(|id| {
-                        game.object(**id)
-                            .is_some_and(|object| filter.matches(object, &filter_ctx, game))
-                    })
-                    .count()
-                    >= *count as usize
-            }))
-        }
-        Condition::SourceIsInZone(zone) => Some(
-            game.object(ctx.source)
-                .map(|obj| obj.zone == *zone)
-                .unwrap_or(false),
-        ),
-        Condition::PlayerGraveyardHasCardsAtLeast { player, count } => Some(
-            game.player(*player)
-                .is_some_and(|p| p.graveyard.len() >= *count),
-        ),
-        Condition::SourceIsRingBearer { player } => Some(
-            matching_condition_players_simple(game, ctx.controller, player)
-                .into_iter()
-                .any(|player_id| game.current_ring_bearer(player_id) == Some(ctx.source)),
-        ),
-        Condition::PlayerRingTemptedThisGameOrMore { player, count } => Some(
-            matching_condition_players_simple(game, ctx.controller, player)
-                .into_iter()
-                .any(|player_id| game.ring_temptations(player_id) >= *count),
-        ),
-        Condition::PlayerRemovedDraftCardMatching {
-            player,
-            filter,
-            with_cards_named,
-        } => Some(
-            matching_condition_players_simple(game, ctx.controller, player)
-                .into_iter()
-                .any(|player_id| {
-                    game.removed_from_draft_card_matches(
-                        player_id,
-                        with_cards_named,
-                        filter,
-                        ctx.filter_source,
-                    )
-                }),
-        ),
-        Condition::YouControlCommander => {
-            if let Some(player) = game.player(ctx.controller) {
-                let commanders = player.get_commanders();
-                for &commander_id in commanders {
-                    if game.battlefield.contains(&commander_id)
-                        && let Some(obj) = game.object(commander_id)
-                        && game.controller_of(obj) == ctx.controller
-                    {
-                        return Some(true);
-                    }
-                    for &bf_id in &game.battlefield {
-                        if let Some(obj) = game.object(bf_id)
-                            && game.controller_of(obj) == ctx.controller
-                            && obj.stable_id == StableId::from(commander_id)
-                        {
-                            return Some(true);
-                        }
-                    }
-                }
-            }
-            Some(false)
-        }
-        Condition::ThisAbilityResolvedThisTurnExactly(count) => {
-            Some(if let Some(ability_index) = ctx.ability_index {
-                game.activated_ability_resolution_count_this_turn(ctx.source, ability_index)
-                    == *count
-            } else {
-                ctx.trigger_identity.is_some_and(|trigger_identity| {
-                    game.triggered_ability_resolution_count_this_turn(ctx.source, trigger_identity)
-                        == *count
-                })
-            })
-        }
-        Condition::Custom(_) => Some(false),
-        _ => None,
-    }
-}
-
-fn assert_condition_variant_coverage(condition: &Condition) {
-    match condition {
-        Condition::YouControl(..) => {}
-        Condition::OpponentControls(..) => {}
-        Condition::PlayerControls { .. } => {}
-        Condition::PlayerHasAtLeast { .. } => {}
-        Condition::PlayerRemovedDraftCardMatching { .. } => {}
-        Condition::PlayerControlsExactly { .. } => {}
-        Condition::PlayerHasAtLeastWithDifferentPowers { .. } => {}
-        Condition::PlayerControlsMost { .. } => {}
-        Condition::PlayerControlsMoreThanEachOtherPlayer { .. } => {}
-        Condition::PlayerControlsMoreThanYou { .. } => {}
-        Condition::AnOpponentControlsMoreThanPlayer { .. } => {}
-        Condition::AnOpponentHasFewerThanPlayer { .. } => {}
-        Condition::PlayerLifeAtMostHalfStartingLifeTotal { .. } => {}
-        Condition::PlayerLifeLessThanHalfStartingLifeTotal { .. } => {}
-        Condition::LifeTotalOrLess(..) => {}
-        Condition::LifeTotalOrGreater(..) => {}
-        Condition::CardsInHandOrMore(..) => {}
-        Condition::YouHaveCardInHandMatching(..) => {}
-        Condition::YourTurn => {}
-        Condition::CurrentTurnIsExtra => {}
-        Condition::SourceControllersMainPhase => {}
-        Condition::SourceControllersEndStep => {}
-        Condition::YourFirstTurnsOfTheGameOrFewer(..) => {}
-        Condition::CreatureDiedThisTurn => {}
-        Condition::CreatureDiedThisTurnOrMore(..) => {}
-        Condition::CreatureDealtDamageBySourceDiedThisTurn { .. } => {}
-        Condition::CreatureCardPutIntoYourGraveyardThisTurn => {}
-        Condition::CastSpellThisTurn => {}
-        Condition::AttackedThisTurn => {}
-        Condition::AttackedWithNOrMoreCreaturesThisTurn(..) => {}
-        Condition::OpponentLostLifeThisTurn => {}
-        Condition::AnyPlayerLostLifeThisTurnOrMore { .. } => {}
-        Condition::OpponentWasDealtDamageThisTurn => {}
-        Condition::PermanentLeftBattlefieldThisTurn => {}
-        Condition::NonlandPermanentLeftBattlefieldThisTurn => {}
-        Condition::SpellWasWarpedThisTurn => {}
-        Condition::PermanentLeftBattlefieldUnderYourControlThisTurn { .. } => {}
-        Condition::ObjectEnteredBattlefieldThisTurn(..) => {}
-        Condition::ObjectEnteredBattlefieldLastTurn(..) => {}
-        Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(..) => {}
-        Condition::SourceWasCast => {}
-        Condition::ThisSpellWasCastAtSorceryTiming => {}
-        Condition::ThisSpellEscaped => {}
-        Condition::ThisSpellWasCastFromZone(..) => {}
-        Condition::ThisSpellWasCastFromNonHand => {}
-        Condition::NoSpellsWereCastLastTurn => {}
-        Condition::ItIsNight => {}
-        Condition::FirstCombatPhaseOfTurn => {}
-        Condition::SpellsWereCastLastTurnOrMore(..) => {}
-        Condition::YouHaveFullParty => {}
-        Condition::TargetIsTapped => {}
-        Condition::TargetIsAttacking => {}
-        Condition::TargetIsBlocked => {}
-        Condition::TargetWasKicked => {}
-        Condition::ThisSpellWasKicked => {}
-        Condition::ThisSpellPaidLabel(..) => {}
-        Condition::TargetSpellCastOrderThisTurn(..) => {}
-        Condition::TargetSpellControllerIsPoisoned => {}
-        Condition::TargetSpellManaSpentToCastAtLeast { .. } => {}
-        Condition::TriggeringSpellManaSpentToCastAtLeast { .. } => {}
-        Condition::ColoredManaSpentToCastThisSpellAtLeast(..) => {}
-        Condition::TriggeringSpellColoredManaSpentToCastAtLeast(..) => {}
-        Condition::YouControlMoreCreaturesThanTargetSpellController => {}
-        Condition::TargetHasGreatestPowerAmongCreatures => {}
-        Condition::TargetManaValueLteColorsSpentToCastThisSpell => {}
-        Condition::SourceIsTapped => {}
-        Condition::SourceIsSaddled => {}
-        Condition::SourceCrewedByExactly { .. } => {}
-        Condition::SourceDevouredCreaturesOrMore(..) => {}
-        Condition::SourceIsMonstrous => {}
-        Condition::SourceIsRenowned => {}
-        Condition::SourceIsFaceDown => {}
-        Condition::SourceMatches(..) => {}
-        Condition::AttachedToSourceMatches(..) => {}
-        Condition::AttachmentCount { .. } => {}
-        Condition::SourceHasNoCounter(..) => {}
-        Condition::SourceHasCounterAtLeast { .. } => {}
-        Condition::SourceHasCountersAtLeast(..) => {}
-        Condition::SourcePowerAtLeast(..) => {}
-        Condition::SourceDealtCombatDamageToPlayerThisTurn => {}
-        Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { .. } => {}
-        Condition::SourceAttackedOrBlockedThisTurn => {}
-        Condition::SourceInGraveyardWithCardsAbove { .. } => {}
-        Condition::SourceIsInZone(..) => {}
-        Condition::ManaSpentToCastThisSpellAtLeast { .. } => {}
-        Condition::SnowManaOfAnySpellColorSpentToCastThisSpell => {}
-        Condition::TriggeringSpellSnowManaOfAnySpellColorSpentToCast => {}
-        Condition::SameColorManaSpentToCastThisSpellAtLeast(..) => {}
-        Condition::ColorsOfManaSpentToCastThisSpellOrMore(..) => {}
-        Condition::YouControlCommander => {}
-        Condition::TaggedObjectMatches(..) => {}
-        Condition::TaggedObjectMatchedLastKnown(..) => {}
-        Condition::TaggedObjectIsTopOfLibrary { .. } => {}
-        Condition::StableObjectIsTopOfLibrary { .. } => {}
-        Condition::TaggedObjectWasCast(..) => {}
-        Condition::TaggedObjectIsSoulbondPaired(..) => {}
-        Condition::EnchantedPermanentAttackedThisTurn => {}
-        Condition::EnchantedPermanentAttackedOrBlockedSinceLastUpkeep => {}
-        Condition::SourceBlockedOrBecameBlockedSinceLastUpkeep => {}
-        Condition::TargetObjectsHaveDifferentColorSets => {}
-        Condition::TargetMatches(..) => {}
-        Condition::TargetIsSoulbondPaired => {}
-        Condition::PlayerTaggedObjectMatches { .. } => {}
-        Condition::PlayerTaggedObjectEnteredBattlefieldThisTurn { .. } => {}
-        Condition::PlayerOwnsCardNamedInZones { .. } => {}
-        Condition::ThisAbilityResolvedThisTurnExactly(..) => {}
-        Condition::FirstTimeThisTurn => {}
-        Condition::SourceFirstCrewedThisTurn => {}
-        Condition::MaxTimesEachTurn(..) => {}
-        Condition::DoThisMaxTimesEachTurn(..) => {}
-        Condition::TriggeringObjectWasEnchanted => {}
-        Condition::TriggeringObjectBecameTappedFirstTimeThisTurn => {}
-        Condition::TriggeringObjectHadCountersPutFirstTimeThisTurn => {}
-        Condition::TriggeringObjectHadToAttackThisCombat => {}
-        Condition::TriggeringObjectHadCounters { .. } => {}
-        Condition::ControlCreaturesTotalPowerAtLeast(..) => {}
-        Condition::CardInYourGraveyard { .. } => {}
-        Condition::ActivationTiming(..) => {}
-        Condition::MaxActivationsPerTurn(..) => {}
-        Condition::SourceIsEquipped => {}
-        Condition::SourceIsEnchanted => {}
-        Condition::SecretChoicesMatch => {}
-        Condition::VoteOptionGetsMoreVotes(..) => {}
-        Condition::VoteOptionGetsMoreVotesOrTied(..) => {}
-        Condition::EnchantedPermanentIsCreature => {}
-        Condition::EnchantedPermanentIsLand => {}
-        Condition::EnchantedPermanentIsEquipment => {}
-        Condition::EnchantedPermanentIsVehicle => {}
-        Condition::EquippedCreatureTapped => {}
-        Condition::EquippedCreatureUntapped => {}
-        Condition::EquippedCreatureAttacking => {}
-        Condition::SourceChosenOption(..) => {}
-        Condition::CountComparison { .. } => {}
-        Condition::CountParity { .. } => {}
-        Condition::OwnsCardExiledWithCounter(..) => {}
-        Condition::SourceAttackedThisTurn => {}
-        Condition::SourceAttackedBattleThisTurn => {}
-        Condition::SourceSuspected => {}
-        Condition::SourceCameUnderYourControlThisTurn => {}
-        Condition::SourceIsUntapped => {}
-        Condition::SourceIsAttacking => {}
-        Condition::SourceIsBlocking => {}
-        Condition::SourceIsSoulbondPaired => {}
-        Condition::SourceSoulbondPartnerMatches(_) => {}
-        Condition::TurnHistory(..) => {}
-        Condition::XValueAtLeast(..) => {}
-        Condition::Custom(..) => {}
-        Condition::Not(..) => {}
-        Condition::And(..) => {}
-        Condition::Or(..) => {}
-        Condition::PlayerCastSpellsThisTurnOrMore { .. } => {}
-        Condition::PlayerTappedLandForManaThisTurn { .. } => {}
-        Condition::PlayerGainedLifeThisTurnOrMore { .. } => {}
-        Condition::PlayerHadLandEnterBattlefieldThisTurn { .. } => {}
-        Condition::PlayerDescendedThisTurn { .. } => {}
-        Condition::ValueComparison { .. } => {}
-        Condition::ValueIsPrime(..) => {}
-        Condition::PlayerCardsInHandOrMore { .. } => {}
-        Condition::PlayerCardsInHandOrFewer { .. } => {}
-        Condition::PlayerCardsInHandAtTurnStartOrMore { .. } => {}
-        Condition::PlayerCardsInHandAtTurnStartOrFewer { .. } => {}
-        Condition::PlayerControlsBasicLandTypesAmongLandsOrMore { .. } => {}
-        Condition::PlayerHasCardTypesInGraveyardOrMore { .. } => {}
-        Condition::PlayerHasLessLifeThanYou { .. } => {}
-        Condition::PlayerHasMoreLifeThanYou { .. } => {}
-        Condition::PlayerHasNoOpponentWithMoreLifeThan { .. } => {}
-        Condition::PlayerHasMoreLifeThanEachOtherPlayer { .. } => {}
-        Condition::PlayerHasMoreCardsInHandThanYou { .. } => {}
-        Condition::PlayerHasMoreCardsInHandThanEachOtherPlayer { .. } => {}
-        Condition::PlayerHasPoisonCountersOrMore { .. } => {}
-        Condition::PlayerHasCountersOrMore { .. } => {}
-        Condition::PlayerIsMonarch { .. } => {}
-        Condition::PlayerHasInitiative { .. } => {}
-        Condition::PlayerHasCitysBlessing { .. } => {}
-        Condition::SourceIsRingBearer { .. } => {}
-        Condition::PlayerRingTemptedThisGameOrMore { .. } => {}
-        Condition::PlayerCommittedCrimeThisTurn { .. } => {}
-        Condition::PlayerRolledResultThisTurn { .. } => {}
-        Condition::PlayerCompletedDungeon { .. } => {}
-        Condition::PlayerGraveyardHasCardsAtLeast { .. } => {}
-    }
-}
-
 /// Condition evaluation mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConditionEvaluationMode {
@@ -3344,970 +2740,8 @@ pub fn evaluate_condition_external(
     condition: &Condition,
     ctx: &ExternalEvaluationContext<'_>,
 ) -> bool {
-    assert_condition_variant_coverage(condition);
-    use crate::types::{CardType, Subtype};
-
-    if let Condition::Not(inner) = condition {
-        return !evaluate_condition_external(game, inner, ctx);
-    }
-    if let Condition::And(a, b) = condition {
-        return evaluate_condition_external(game, a, ctx)
-            && evaluate_condition_external(game, b, ctx);
-    }
-    if let Condition::Or(a, b) = condition {
-        return evaluate_condition_external(game, a, ctx)
-            || evaluate_condition_external(game, b, ctx);
-    }
-    if let Some(result) = evaluate_condition_shared_core(
-        game,
-        condition,
-        SharedConditionContext {
-            controller: ctx.controller,
-            source: ctx.source,
-            filter_source: ctx.filter_source,
-            triggering_event: ctx.triggering_event,
-            trigger_identity: ctx.trigger_identity,
-            ability_index: ctx.ability_index,
-        },
-    ) {
-        return result;
-    }
-    if let Condition::TaggedObjectMatches(tag, filter) = condition
-        && tag.as_str() == "triggering"
-    {
-        return triggering_event_object_matches(game, ctx, filter);
-    }
-    if let Condition::TaggedObjectMatchedLastKnown(tag, filter) = condition
-        && tag.as_str() == "triggering"
-    {
-        return triggering_event_object_matched_last_known(game, ctx, filter);
-    }
-    if let Condition::ValueComparison {
-        left,
-        operator,
-        right,
-    } = condition
-    {
-        return evaluate_value_comparison(
-            game,
-            ctx.controller,
-            ctx.source,
-            left,
-            *operator,
-            right,
-            ctx.triggering_event,
-            ctx.defending_player,
-            ctx.attacking_player,
-        );
-    }
-    if let Condition::ValueIsPrime(value) = condition {
-        return evaluate_value_is_prime(
-            game,
-            ctx.controller,
-            ctx.source,
-            value,
-            ctx.triggering_event,
-        );
-    }
-
-    match condition {
-        // A spell on the stack retains the X chosen while it was cast. Static
-        // restrictions such as "if X is five or more, this spell can't be
-        // countered" are evaluated outside resolution, but still have that
-        // source-object value available.
-        Condition::XValueAtLeast(min) => {
-            game.object(ctx.source)
-                .and_then(|object| object.x_value)
-                .unwrap_or(0)
-                >= *min
-        }
-        Condition::ItIsNight => game.is_night,
-        Condition::FirstCombatPhaseOfTurn => {
-            game.turn.phase == crate::game_state::Phase::Combat
-                && game.turn_store.combat_phases_started_this_turn == 1
-        }
-        Condition::ThisSpellEscaped => source_escaped(game, ctx.source),
-        Condition::ThisSpellWasKicked => game
-            .object(ctx.source)
-            .is_some_and(|obj| obj.optional_costs_paid.was_kicked()),
-        Condition::ThisSpellWasCastFromZone(_) => false,
-        Condition::ThisSpellWasCastFromNonHand => false,
-        Condition::ThisSpellWasCastAtSorceryTiming => game
-            .object(ctx.source)
-            .is_some_and(|object| object.optional_costs_paid.was_cast_at_sorcery_timing()),
-        Condition::ThisSpellPaidLabel(label) => game
-            .object(ctx.source)
-            .is_some_and(|obj| obj.optional_costs_paid.was_paid_label(label.clone())),
-        Condition::YouHaveFullParty => player_has_full_party(game, ctx.controller),
-        Condition::YouControl(filter) => {
-            let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
-            game.battlefield.iter().any(|&obj_id| {
-                game.object(obj_id).is_some_and(|obj| {
-                    game.controller_of(obj) == ctx.controller
-                        && filter.matches(obj, &filter_ctx, game)
-                })
-            })
-        }
-        Condition::OpponentControls(filter) => {
-            let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
-            let opponents = &filter_ctx.opponents;
-            game.battlefield.iter().any(|&obj_id| {
-                game.object(obj_id).is_some_and(|obj| {
-                    opponents.contains(&game.controller_of(obj))
-                        && filter.matches(obj, &filter_ctx, game)
-                })
-            })
-        }
-        Condition::PlayerCastSpellsThisTurnOrMore { player, count } => {
-            let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
-            let players: Vec<PlayerId> = match player {
-                PlayerFilter::You => vec![ctx.controller],
-                PlayerFilter::Opponent => filter_ctx.opponents.clone(),
-                PlayerFilter::Specific(id) => vec![*id],
-                PlayerFilter::Any => game.players.iter().map(|p| p.id).collect(),
-                PlayerFilter::NotYou => game
-                    .players
-                    .iter()
-                    .filter_map(|p| (p.id != ctx.controller).then_some(p.id))
-                    .collect(),
-                _ => Vec::new(),
-            };
-            let cast_count: u32 = players
-                .iter()
-                .map(|pid| game.turn_store.turn_history.spells_cast_by_player(*pid))
-                .sum();
-            cast_count >= *count
-        }
-        Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype } => {
-            let players = matching_condition_players_external(game, ctx, player);
-            game.turn_store
-                .turn_history
-                .player_was_dealt_combat_damage_by_creature_subtype_this_turn(&players, *subtype)
-        }
-        Condition::PlayerTappedLandForManaThisTurn { player } => {
-            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
-                return false;
-            };
-            game.turn_store
-                .turn_history
-                .players_tapped_land_for_mana_this_turn
-                .contains(&player_id)
-        }
-        Condition::PlayerGainedLifeThisTurnOrMore { player, count } => {
-            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
-                return false;
-            };
-            game.turn_store
-                .turn_history
-                .total_life_gained_for_players(&[player_id])
-                >= *count
-        }
-        Condition::CreatureDiedThisTurnOrMore(count) => {
-            game.turn_store
-                .turn_history
-                .total_creatures_died_this_turn()
-                >= *count
-        }
-        Condition::CreatureDealtDamageBySourceDiedThisTurn {
-            victim,
-            damager,
-            count,
-        } => {
-            creatures_dealt_damage_by_source_died_this_turn(
-                game,
-                SharedConditionContext {
-                    controller: ctx.controller,
-                    source: ctx.source,
-                    filter_source: ctx.filter_source,
-                    triggering_event: ctx.triggering_event,
-                    trigger_identity: ctx.trigger_identity,
-                    ability_index: ctx.ability_index,
-                },
-                victim,
-                damager,
-            ) >= *count
-        }
-        Condition::CreatureCardPutIntoYourGraveyardThisTurn => {
-            creature_card_was_put_into_your_graveyard_this_turn(game, ctx.controller)
-        }
-        Condition::PlayerHadLandEnterBattlefieldThisTurn { player } => {
-            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
-                return false;
-            };
-            player_had_land_enter_battlefield_this_turn(game, player_id)
-        }
-        Condition::PlayerDescendedThisTurn { player } => {
-            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
-                return false;
-            };
-            game.turn_store
-                .turn_history
-                .player_descended_count_this_turn(player_id)
-                > 0
-        }
-        Condition::PlayerTaggedObjectEnteredBattlefieldThisTurn { player, tag } => {
-            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
-                return false;
-            };
-            let _ = (player_id, tag);
-            false
-        }
-        Condition::PlayerCardsInHandOrMore { player, count } => {
-            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
-                return false;
-            };
-            game.player(player_id)
-                .map(|p| p.hand.len() as i32 >= *count)
-                .unwrap_or(false)
-        }
-        Condition::PlayerCardsInHandOrFewer { player, count } => {
-            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
-                return false;
-            };
-            game.player(player_id)
-                .map(|p| p.hand.len() as i32 <= *count)
-                .unwrap_or(false)
-        }
-        Condition::PlayerCardsInHandAtTurnStartOrMore { player, count } => {
-            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
-                return false;
-            };
-            player_hand_count_at_turn_start(game, player_id)
-                .map(|hand_count| hand_count >= *count)
-                .unwrap_or(false)
-        }
-        Condition::PlayerCardsInHandAtTurnStartOrFewer { player, count } => {
-            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
-                return false;
-            };
-            player_hand_count_at_turn_start(game, player_id)
-                .map(|hand_count| hand_count <= *count)
-                .unwrap_or(false)
-        }
-        Condition::PlayerHasLessLifeThanYou { player } => {
-            let you_life = game.player(ctx.controller).map(|p| p.life).unwrap_or(0);
-            matching_condition_players_external(game, ctx, player)
-                .into_iter()
-                .any(|player_id| game.player(player_id).map(|p| p.life).unwrap_or(0) < you_life)
-        }
-        Condition::PlayerLifeAtMostHalfStartingLifeTotal { player } => {
-            matching_condition_players_external(game, ctx, player)
-                .into_iter()
-                .any(|player_id| player_life_compares_to_half_starting(game, player_id, true))
-        }
-        Condition::PlayerLifeLessThanHalfStartingLifeTotal { player } => {
-            matching_condition_players_external(game, ctx, player)
-                .into_iter()
-                .any(|player_id| player_life_compares_to_half_starting(game, player_id, false))
-        }
-        Condition::PlayerHasMoreLifeThanYou { player } => {
-            let you_life = game.player(ctx.controller).map(|p| p.life).unwrap_or(0);
-            matching_condition_players_external(game, ctx, player)
-                .into_iter()
-                .any(|player_id| game.player(player_id).map(|p| p.life).unwrap_or(0) > you_life)
-        }
-        Condition::PlayerHasNoOpponentWithMoreLifeThan { player } => {
-            matching_condition_players_external(game, ctx, player)
-                .into_iter()
-                .any(|player_id| player_has_no_opponent_with_more_life_than(game, player_id))
-        }
-        Condition::PlayerHasMoreLifeThanEachOtherPlayer { player } => {
-            matching_condition_players_external(game, ctx, player)
-                .into_iter()
-                .any(|player_id| player_has_more_life_than_each_other_player(game, player_id))
-        }
-        Condition::PlayerHasMoreCardsInHandThanYou { player } => {
-            let your_hand = game
-                .player(ctx.controller)
-                .map(|p| p.hand.len())
-                .unwrap_or(0);
-            matching_condition_players_external(game, ctx, player)
-                .into_iter()
-                .any(|player_id| {
-                    game.player(player_id).map(|p| p.hand.len()).unwrap_or(0) > your_hand
-                })
-        }
-        Condition::PlayerHasMoreCardsInHandThanEachOtherPlayer { player } => {
-            matching_condition_players_external(game, ctx, player)
-                .into_iter()
-                .any(|player_id| {
-                    let hand = game.player(player_id).map(|p| p.hand.len()).unwrap_or(0);
-                    game.players
-                        .iter()
-                        .filter(|candidate| candidate.is_in_game())
-                        .all(|candidate| candidate.id == player_id || hand > candidate.hand.len())
-                })
-        }
-        Condition::PlayerHasPoisonCountersOrMore { player, count } => {
-            matching_condition_players_external(game, ctx, player)
-                .into_iter()
-                .any(|player_id| player_poison_counters_or_more(game, player_id, *count))
-        }
-        Condition::PlayerHasCountersOrMore {
-            player,
-            counter_type,
-            count,
-        } => matching_condition_players_external(game, ctx, player)
-            .into_iter()
-            .any(|player_id| {
-                game.player(player_id)
-                    .is_some_and(|player| player.counter_count(*counter_type) >= *count)
-            }),
-        Condition::PlayerIsMonarch { player } => {
-            matching_condition_players_external(game, ctx, player)
-                .into_iter()
-                .any(|player_id| game.is_monarch(player_id))
-        }
-        Condition::PlayerHasInitiative { player } => {
-            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
-                return false;
-            };
-            game.has_initiative(player_id)
-        }
-        Condition::PlayerHasCitysBlessing { player } => {
-            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
-                return false;
-            };
-            game.has_citys_blessing(player_id)
-        }
-        Condition::PlayerCommittedCrimeThisTurn { player } => {
-            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
-                return false;
-            };
-            game.turn_store
-                .turn_history
-                .player_committed_crime_this_turn(player_id)
-        }
-        Condition::PlayerRolledResultThisTurn { player, result } => {
-            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
-                return false;
-            };
-            game.turn_store
-                .turn_history
-                .player_rolled_result_this_turn(player_id, *result)
-        }
-        Condition::PlayerCompletedDungeon {
-            player,
-            dungeon_name,
-        } => {
-            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
-                return false;
-            };
-            match dungeon_name {
-                Some(name) => game.has_completed_named_dungeon(player_id, name),
-                None => game.has_completed_dungeon(player_id),
-            }
-        }
-
-        Condition::FirstTimeThisTurn => ctx
-            .trigger_identity
-            .map(|id| game.trigger_fire_count_this_turn(ctx.source, id) == 0)
-            .unwrap_or(true),
-        Condition::SourceFirstCrewedThisTurn => {
-            source_first_crewed_this_turn(game, ctx.source, ctx.triggering_event)
-        }
-        Condition::MaxTimesEachTurn(limit) | Condition::DoThisMaxTimesEachTurn(limit) => ctx
-            .trigger_identity
-            .map(|id| game.trigger_fire_count_this_turn(ctx.source, id) < *limit)
-            .unwrap_or(true),
-        Condition::TriggeringObjectWasEnchanted => ctx
-            .triggering_event
-            .and_then(|event| event.snapshot())
-            .is_some_and(|snapshot| snapshot.was_enchanted),
-        Condition::TriggeringObjectBecameTappedFirstTimeThisTurn => {
-            triggering_object_became_tapped_first_time_this_turn(game, ctx.triggering_event)
-        }
-        Condition::TriggeringObjectHadCountersPutFirstTimeThisTurn => {
-            triggering_object_had_counters_put_first_time_this_turn(game, ctx.triggering_event)
-        }
-        Condition::TriggeringObjectHadToAttackThisCombat => {
-            triggering_object_had_to_attack_this_combat(game, ctx.triggering_event)
-        }
-        Condition::TriggeringObjectHadCounters {
-            counter_type,
-            min_count,
-        } => ctx
-            .triggering_event
-            .and_then(|event| event.snapshot())
-            .is_some_and(|snapshot| {
-                snapshot.counters.get(counter_type).copied().unwrap_or(0) >= *min_count
-            }),
-
-        Condition::ControlCreaturesTotalPowerAtLeast(required_power) => {
-            let total_power = game
-                .battlefield
-                .iter()
-                .copied()
-                .filter(|&id| {
-                    game.object(id).is_some_and(|obj| {
-                        game.controller_of(obj) == ctx.controller && game.current_is_creature(id)
-                    })
-                })
-                .map(|id| game.current_power(id).unwrap_or(0).max(0))
-                .sum::<i32>();
-            total_power >= *required_power as i32
-        }
-        Condition::PlayerControlsBasicLandTypesAmongLandsOrMore { player, count } => {
-            use crate::types::Subtype;
-            use std::collections::HashSet;
-
-            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
-                return false;
-            };
-
-            let mut seen: HashSet<Subtype> = HashSet::new();
-            for obj in game
-                .battlefield
-                .iter()
-                .filter_map(|&id| game.object(id))
-                .filter(|obj| game.controller_of(obj) == player_id && obj.is_land())
-            {
-                for subtype in game.calculated_subtypes(obj.id) {
-                    if matches!(
-                        subtype,
-                        Subtype::Plains
-                            | Subtype::Island
-                            | Subtype::Swamp
-                            | Subtype::Mountain
-                            | Subtype::Forest
-                    ) {
-                        seen.insert(subtype);
-                    }
-                }
-            }
-            seen.len() >= *count as usize
-        }
-        Condition::PlayerHasCardTypesInGraveyardOrMore { player, count } => {
-            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
-                return false;
-            };
-            count_distinct_card_types_in_graveyard(game, player_id) >= *count as usize
-        }
-        Condition::CardInYourGraveyard {
-            card_types,
-            subtypes,
-        } => game.player(ctx.controller).is_some_and(|player_state| {
-            player_state.graveyard.iter().any(|&card_id| {
-                if game.object(card_id).is_none() {
-                    return false;
-                }
-                let card_type_match = card_types.is_empty()
-                    || card_types
-                        .iter()
-                        .any(|card_type| game.current_has_card_type(card_id, *card_type));
-                let subtype_match = subtypes.is_empty()
-                    || subtypes
-                        .iter()
-                        .any(|subtype| game.current_has_subtype(card_id, *subtype));
-                card_type_match && subtype_match
-            })
-        }),
-        Condition::PlayerControls { player, filter } => {
-            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
-                return false;
-            };
-            let filter_ctx =
-                condition_filter_context(game, player_id, ctx.source, player, ctx.triggering_event);
-            condition_objects_for_zone(game, filter.zone)
-                .filter(|obj| {
-                    condition_object_matches_player_zone(game, obj, player_id, filter.zone)
-                })
-                .any(|obj| filter.matches(obj, &filter_ctx, game))
-        }
-        Condition::PlayerHasAtLeast {
-            player,
-            filter,
-            count,
-        } => matching_condition_players_external(game, ctx, player)
-            .into_iter()
-            .any(|player_id| {
-                let filter_ctx = condition_filter_context(
-                    game,
-                    player_id,
-                    ctx.source,
-                    player,
-                    ctx.triggering_event,
-                );
-                condition_objects_for_zone(game, filter.zone)
-                    .filter(|obj| {
-                        condition_object_matches_player_zone(game, obj, player_id, filter.zone)
-                    })
-                    .filter(|obj| filter.matches(obj, &filter_ctx, game))
-                    .count()
-                    >= *count as usize
-            }),
-        Condition::PlayerControlsExactly {
-            player,
-            filter,
-            count,
-        } => matching_condition_players_external(game, ctx, player)
-            .into_iter()
-            .any(|player_id| {
-                let filter_ctx = condition_filter_context(
-                    game,
-                    player_id,
-                    ctx.source,
-                    player,
-                    ctx.triggering_event,
-                );
-                condition_objects_for_zone(game, filter.zone)
-                    .filter(|obj| {
-                        condition_object_matches_player_zone(game, obj, player_id, filter.zone)
-                    })
-                    .filter(|obj| filter.matches(obj, &filter_ctx, game))
-                    .count()
-                    == *count as usize
-            }),
-        Condition::PlayerHasAtLeastWithDifferentPowers {
-            player,
-            filter,
-            count,
-        } => {
-            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
-                return false;
-            };
-            let filter_ctx =
-                condition_filter_context(game, player_id, ctx.source, player, ctx.triggering_event);
-            count_distinct_matching_powers(game, player_id, filter, &filter_ctx) >= *count as usize
-        }
-        Condition::PlayerControlsMost { player, filter } => {
-            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
-                return false;
-            };
-            let filter_ctx =
-                condition_filter_context(game, player_id, ctx.source, player, ctx.triggering_event);
-            let your_count = condition_objects_for_zone(game, filter.zone)
-                .filter(|obj| {
-                    condition_object_matches_player_zone(game, obj, player_id, filter.zone)
-                })
-                .filter(|obj| filter.matches(obj, &filter_ctx, game))
-                .count();
-            game.players.iter().filter(|p| p.id != player_id).all(|p| {
-                let other_id = p.id;
-                let other_ctx = condition_filter_context(
-                    game,
-                    other_id,
-                    ctx.source,
-                    player,
-                    ctx.triggering_event,
-                );
-                let other_count = condition_objects_for_zone(game, filter.zone)
-                    .filter(|obj| {
-                        condition_object_matches_player_zone(game, obj, other_id, filter.zone)
-                    })
-                    .filter(|obj| filter.matches(obj, &other_ctx, game))
-                    .count();
-                your_count >= other_count
-            })
-        }
-        Condition::PlayerControlsMoreThanEachOtherPlayer { player, filter } => {
-            matching_condition_players_external(game, ctx, player)
-                .into_iter()
-                .any(|player_id| {
-                    player_controls_more_than_each_other_player(
-                        game, ctx.source, player, player_id, filter,
-                    )
-                })
-        }
-        Condition::PlayerControlsMoreThanYou { player, filter } => {
-            let count_for = |candidate: PlayerId| {
-                let filter_ctx = condition_filter_context(
-                    game,
-                    candidate,
-                    ctx.source,
-                    player,
-                    ctx.triggering_event,
-                );
-                condition_objects_for_zone(game, filter.zone)
-                    .filter(|obj| {
-                        condition_object_matches_player_zone(game, obj, candidate, filter.zone)
-                    })
-                    .filter(|obj| filter.matches(obj, &filter_ctx, game))
-                    .count()
-            };
-            matching_condition_players_external(game, ctx, player)
-                .into_iter()
-                .any(|player_id| count_for(player_id) > count_for(ctx.controller))
-        }
-        Condition::AnOpponentControlsMoreThanPlayer { player, filter } => {
-            matching_condition_players_external(game, ctx, player)
-                .into_iter()
-                .any(|player_id| {
-                    any_opponent_controls_more_than_player(
-                        game, ctx.source, player, player_id, filter,
-                    )
-                })
-        }
-        Condition::AnOpponentHasFewerThanPlayer { player, filter } => {
-            matching_condition_players_external(game, ctx, player)
-                .into_iter()
-                .any(|player_id| {
-                    any_opponent_has_fewer_than_player(game, ctx.source, player, player_id, filter)
-                })
-        }
-        Condition::PlayerOwnsCardNamedInZones {
-            player,
-            name,
-            zones,
-        } => {
-            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
-                return false;
-            };
-            let opponents: Vec<PlayerId> = game
-                .players
-                .iter()
-                .filter(|p| p.id != player_id)
-                .map(|p| p.id)
-                .collect();
-            let mut filter_ctx = crate::filter::FilterContext::new(player_id)
-                .with_source(ctx.source)
-                .with_opponents(opponents);
-            if *player == PlayerFilter::IteratedPlayer {
-                filter_ctx = filter_ctx.with_iterated_player(Some(player_id));
-            }
-            if zones.is_empty() {
-                return false;
-            }
-
-            let mut filter = crate::target::ObjectFilter::default().named(name.clone());
-            for zone in zones {
-                filter.zone = Some(*zone);
-                let has_matching = condition_objects_for_zone(game, Some(*zone))
-                    .filter(|obj| obj.owner == player_id)
-                    .any(|obj| filter.matches(obj, &filter_ctx, game));
-                if !has_matching {
-                    return false;
-                }
-            }
-            true
-        }
-        Condition::ActivationTiming(timing) => {
-            if ctx.options.ignore_timing {
-                return true;
-            }
-            match timing {
-                crate::ability::ActivationTiming::AnyTime => true,
-                crate::ability::ActivationTiming::DuringCombat => {
-                    matches!(game.turn.phase, crate::game_state::Phase::Combat)
-                }
-                crate::ability::ActivationTiming::SorcerySpeed => {
-                    game.is_active_player(ctx.controller)
-                        && matches!(
-                            game.turn.phase,
-                            crate::game_state::Phase::FirstMain
-                                | crate::game_state::Phase::NextMain
-                        )
-                        && game.stack_is_empty()
-                }
-                crate::ability::ActivationTiming::OncePerTurn => {
-                    let Some(ability_index) = ctx.ability_index else {
-                        return false;
-                    };
-                    game.ability_activation_count_this_turn(ctx.source, ability_index) == 0
-                }
-                crate::ability::ActivationTiming::DuringYourTurn => {
-                    game.is_active_player(ctx.controller)
-                }
-                crate::ability::ActivationTiming::DuringOpponentsTurn => {
-                    !game.is_active_player(ctx.controller)
-                }
-                crate::ability::ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep => {
-                    game.is_active_player(ctx.controller)
-                        && game.turn.phase != crate::game_state::Phase::Ending
-                }
-                crate::ability::ActivationTiming::DuringSourceOwnersUpkeep => {
-                    game.object(ctx.source)
-                        .is_some_and(|object| game.is_active_player(object.owner))
-                        && game.turn.phase == crate::game_state::Phase::Beginning
-                        && game.turn.step == Some(crate::game_state::Step::Upkeep)
-                }
-            }
-        }
-        Condition::MaxActivationsPerTurn(limit) => {
-            if ctx.options.ignore_activation_limits {
-                return true;
-            }
-            let Some(ability_index) = ctx.ability_index else {
-                return false;
-            };
-            game.ability_activation_count_this_turn(ctx.source, ability_index) < *limit
-        }
-
-        Condition::SourceIsEquipped => game.object(ctx.source).is_some_and(|source_obj| {
-            source_obj.attachments.iter().any(|id| {
-                game.object(*id)
-                    .is_some_and(|obj| obj.subtypes.contains(&Subtype::Equipment))
-            })
-        }),
-        Condition::SourceIsEnchanted => game.object(ctx.source).is_some_and(|source_obj| {
-            source_obj.attachments.iter().any(|id| {
-                game.object(*id)
-                    .is_some_and(|obj| obj.subtypes.contains(&Subtype::Aura))
-            })
-        }),
-        Condition::EnchantedPermanentIsCreature => game
-            .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
-            .is_some_and(|attached| game.object_has_card_type(attached, CardType::Creature)),
-        Condition::EnchantedPermanentIsLand => game
-            .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
-            .is_some_and(|attached| game.object_has_card_type(attached, CardType::Land)),
-        Condition::EnchantedPermanentIsEquipment => game
-            .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
-            .is_some_and(|attached| {
-                game.calculated_subtypes(attached)
-                    .contains(&crate::types::Subtype::Equipment)
-            }),
-        Condition::EnchantedPermanentIsVehicle => game
-            .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
-            .is_some_and(|attached| {
-                game.calculated_subtypes(attached)
-                    .contains(&crate::types::Subtype::Vehicle)
-            }),
-        Condition::EquippedCreatureTapped => game
-            .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
-            .is_some_and(|attached| game.is_tapped(attached)),
-        Condition::EquippedCreatureUntapped => game
-            .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
-            .is_some_and(|attached| !game.is_tapped(attached)),
-        Condition::EquippedCreatureAttacking => game
-            .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
-            .is_some_and(|attached| {
-                game.combat
-                    .as_ref()
-                    .is_some_and(|combat| crate::combat_state::is_attacking(combat, attached))
-            }),
-        Condition::SourceChosenOption(expected) => game
-            .chosen_named_option(ctx.source)
-            .is_some_and(|chosen| chosen.eq_ignore_ascii_case(expected)),
-        Condition::SecretChoicesMatch => false,
-        Condition::CountComparison {
-            count, comparison, ..
-        } => comparison.evaluate(crate::static_abilities::resolve_anthem_count_expression(
-            count,
-            game,
-            ctx.source,
-            ctx.controller,
-        )),
-        Condition::CountParity { count, even, .. } => {
-            let value = crate::static_abilities::resolve_anthem_count_expression(
-                count,
-                game,
-                ctx.source,
-                ctx.controller,
-            );
-            value % 2 == if *even { 0 } else { 1 }
-        }
-        Condition::OwnsCardExiledWithCounter(counter) => game.exile.iter().any(|&id| {
-            game.object(id).is_some_and(|obj| {
-                obj.owner == ctx.controller && obj.counters.get(counter).copied().unwrap_or(0) > 0
-            })
-        }),
-
-        Condition::SourceAttackedThisTurn => game.creature_attacked_this_turn(ctx.source),
-        Condition::SourceAttackedBattleThisTurn => {
-            game.creature_attacked_battle_this_turn(ctx.source)
-        }
-        Condition::SourceSuspected => game.is_suspected(ctx.source),
-        Condition::SourceDealtCombatDamageToPlayerThisTurn => {
-            game.source_dealt_combat_damage_to_player_this_turn(ctx.source)
-        }
-        Condition::SourceCameUnderYourControlThisTurn => {
-            game.object(ctx.source).is_some_and(|obj| {
-                game.turn_store
-                    .turn_history
-                    .object_came_under_controller_this_turn(obj.stable_id, ctx.controller)
-            })
-        }
-        Condition::SourceAttackedOrBlockedThisTurn => {
-            game.creature_attacked_this_turn(ctx.source)
-                || game.creature_blocked_this_turn(ctx.source)
-        }
-        Condition::SourceIsTapped => game.is_tapped(ctx.source),
-        Condition::SourceIsSaddled => game.is_saddled(ctx.source),
-        Condition::SourceCrewedByExactly { count, filter } => source_crewed_by_exactly(
-            game,
-            ctx.controller,
-            ctx.source,
-            ctx.filter_source,
-            ctx.triggering_event,
-            *count,
-            filter,
-        ),
-        Condition::SourceDevouredCreaturesOrMore(count) => {
-            game.devoured_count(ctx.source) >= *count
-        }
-        Condition::SourceIsMonstrous => game.is_monstrous(ctx.source),
-        Condition::SourceIsFaceDown => source_is_face_down_or_alternate_face(game, ctx.source),
-        Condition::SourceMatches(filter) => {
-            let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
-            game.object(ctx.source)
-                .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
-        }
-        Condition::AttachedToSourceMatches(filter) => {
-            let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
-            game.object(ctx.source)
-                .and_then(|source| source.attached_to)
-                .and_then(|target| target.object_id())
-                .and_then(|id| game.object(id))
-                .is_some_and(|object| filter.matches(object, &filter_ctx, game))
-        }
-        Condition::AttachmentCount {
-            attachment,
-            host,
-            comparison,
-            ..
-        } => {
-            let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
-            attachment_count_condition_matches(
-                game,
-                ctx.source,
-                attachment,
-                host,
-                comparison,
-                &filter_ctx,
-            )
-        }
-        Condition::TargetMatches(filter) => {
-            let filter_ctx = condition_filter_context(
-                game,
-                ctx.controller,
-                ctx.source,
-                &PlayerFilter::You,
-                ctx.triggering_event,
-            );
-            let Some(event) = ctx.triggering_event else {
-                return false;
-            };
-            if let Some(snapshot) = event.snapshot() {
-                return filter.matches_snapshot(snapshot, &filter_ctx, game);
-            }
-            event.object_id().is_some_and(|object_id| {
-                game.object(object_id)
-                    .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
-            })
-        }
-        Condition::SourcePowerAtLeast(min_power) => game
-            .calculated_power(ctx.source)
-            .or_else(|| game.object(ctx.source).and_then(|obj| obj.power()))
-            .is_some_and(|power| power >= *min_power as i32),
-        Condition::SourceHasCountersAtLeast(count) => game
-            .object(ctx.source)
-            .is_some_and(|obj| obj.counters.values().copied().sum::<u32>() >= *count),
-        Condition::SourceIsUntapped => !game.is_tapped(ctx.source),
-        Condition::SourceIsAttacking => game
-            .combat
-            .as_ref()
-            .is_some_and(|combat| crate::combat_state::is_attacking(combat, ctx.source)),
-        Condition::SourceIsBlocking => game
-            .combat
-            .as_ref()
-            .is_some_and(|combat| crate::combat_state::is_blocking(combat, ctx.source)),
-        Condition::SourceIsSoulbondPaired => game.is_soulbond_paired(ctx.source),
-        Condition::SourceSoulbondPartnerMatches(filter) => game
-            .soulbond_partner(ctx.source)
-            .and_then(|id| game.object(id))
-            .is_some_and(|partner| {
-                filter.matches(
-                    partner,
-                    &crate::filter::FilterContext::new(ctx.controller).with_source(ctx.source),
-                    game,
-                )
-            }),
-        Condition::TurnHistory(_) => unreachable!("handled by shared condition evaluator"),
-        Condition::StableObjectIsTopOfLibrary {
-            stable_id,
-            player,
-            library_top_revision,
-        } => crate::grant_registry::stable_card_is_top_of_library_at_revision(
-            game,
-            *stable_id,
-            *player,
-            *library_top_revision,
-        ),
-
-        // Conditions requiring targets / effect execution context are not evaluable here.
-        Condition::TaggedObjectMatches(_, _)
-        | Condition::TaggedObjectMatchedLastKnown(_, _)
-        | Condition::TaggedObjectIsTopOfLibrary { .. }
-        | Condition::TaggedObjectWasCast(_)
-        | Condition::TaggedObjectIsSoulbondPaired(_)
-        | Condition::EnchantedPermanentAttackedThisTurn
-        | Condition::EnchantedPermanentAttackedOrBlockedSinceLastUpkeep
-        | Condition::SourceBlockedOrBecameBlockedSinceLastUpkeep
-        | Condition::TargetObjectsHaveDifferentColorSets
-        | Condition::TargetIsSoulbondPaired
-        | Condition::PlayerTaggedObjectMatches { .. }
-        | Condition::TargetIsTapped
-        | Condition::TargetIsAttacking
-        | Condition::TargetIsBlocked
-        | Condition::TargetWasKicked
-        | Condition::TargetSpellCastOrderThisTurn(_)
-        | Condition::TargetSpellControllerIsPoisoned
-        | Condition::TargetSpellManaSpentToCastAtLeast { .. }
-        | Condition::TriggeringSpellManaSpentToCastAtLeast { .. }
-        | Condition::TriggeringSpellColoredManaSpentToCastAtLeast(_)
-        | Condition::YouControlMoreCreaturesThanTargetSpellController
-        | Condition::TargetHasGreatestPowerAmongCreatures
-        | Condition::TargetManaValueLteColorsSpentToCastThisSpell
-        | Condition::VoteOptionGetsMoreVotes(_)
-        | Condition::VoteOptionGetsMoreVotesOrTied(_) => false,
-        Condition::Custom(_)
-        | Condition::LifeTotalOrLess(_)
-        | Condition::LifeTotalOrGreater(_)
-        | Condition::CardsInHandOrMore(_)
-        | Condition::YouHaveCardInHandMatching(_)
-        | Condition::YourTurn
-        | Condition::CurrentTurnIsExtra
-        | Condition::SourceControllersMainPhase
-        | Condition::SourceControllersEndStep
-        | Condition::SourceIsRenowned
-        | Condition::YourFirstTurnsOfTheGameOrFewer(_)
-        | Condition::CreatureDiedThisTurn
-        | Condition::CastSpellThisTurn
-        | Condition::AttackedThisTurn
-        | Condition::AttackedWithNOrMoreCreaturesThisTurn(_)
-        | Condition::OpponentLostLifeThisTurn
-        | Condition::AnyPlayerLostLifeThisTurnOrMore { .. }
-        | Condition::OpponentWasDealtDamageThisTurn
-        | Condition::PermanentLeftBattlefieldThisTurn
-        | Condition::NonlandPermanentLeftBattlefieldThisTurn
-        | Condition::SpellWasWarpedThisTurn
-        | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn { .. }
-        | Condition::ObjectEnteredBattlefieldThisTurn(_)
-        | Condition::ObjectEnteredBattlefieldLastTurn(_)
-        | Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(_)
-        | Condition::SourceWasCast
-        | Condition::NoSpellsWereCastLastTurn
-        | Condition::SpellsWereCastLastTurnOrMore(_)
-        | Condition::SourceHasNoCounter(_)
-        | Condition::SourceHasCounterAtLeast { .. }
-        | Condition::SourceInGraveyardWithCardsAbove { .. }
-        | Condition::SourceIsInZone(_)
-        | Condition::ManaSpentToCastThisSpellAtLeast { .. }
-        | Condition::ColoredManaSpentToCastThisSpellAtLeast(_)
-        | Condition::SnowManaOfAnySpellColorSpentToCastThisSpell
-        | Condition::TriggeringSpellSnowManaOfAnySpellColorSpentToCast
-        | Condition::SameColorManaSpentToCastThisSpellAtLeast(_)
-        | Condition::ColorsOfManaSpentToCastThisSpellOrMore(_)
-        | Condition::PlayerGraveyardHasCardsAtLeast { .. }
-        | Condition::SourceIsRingBearer { .. }
-        | Condition::PlayerRingTemptedThisGameOrMore { .. }
-        | Condition::PlayerRemovedDraftCardMatching { .. }
-        | Condition::ValueComparison { .. }
-        | Condition::ValueIsPrime(..)
-        | Condition::YouControlCommander
-        | Condition::ThisAbilityResolvedThisTurnExactly(_)
-        | Condition::Not(_)
-        | Condition::And(_, _)
-        | Condition::Or(_, _) => unreachable!("handled before external match"),
-    }
+    evaluate_condition_in_context(game, condition, &ConditionContext::external_context(ctx))
+        .unwrap_or(false)
 }
 
 /// Shared dispatcher for condition evaluation.
@@ -4473,693 +2907,12 @@ fn evaluate_condition_simple(
     controller: PlayerId,
     source: ObjectId,
 ) -> bool {
-    assert_condition_variant_coverage(condition);
-    // Build a simple filter context with opponents
-    let opponents: Vec<PlayerId> = game
-        .players
-        .iter()
-        .filter(|p| p.id != controller)
-        .map(|p| p.id)
-        .collect();
-    let filter_ctx = crate::filter::FilterContext::new(controller)
-        .with_source(source)
-        .with_opponents(opponents.clone());
-
-    if let Condition::Not(inner) = condition {
-        return !evaluate_condition_simple(game, inner, controller, source);
-    }
-    if let Condition::And(a, b) = condition {
-        return evaluate_condition_simple(game, a, controller, source)
-            && evaluate_condition_simple(game, b, controller, source);
-    }
-    if let Condition::Or(a, b) = condition {
-        return evaluate_condition_simple(game, a, controller, source)
-            || evaluate_condition_simple(game, b, controller, source);
-    }
-    if let Some(result) = evaluate_condition_shared_core(
+    evaluate_condition_in_context(
         game,
         condition,
-        SharedConditionContext {
-            controller,
-            source,
-            filter_source: Some(source),
-            triggering_event: None,
-            trigger_identity: None,
-            ability_index: None,
-        },
-    ) {
-        return result;
-    }
-    if let Condition::ValueComparison {
-        left,
-        operator,
-        right,
-    } = condition
-    {
-        return evaluate_value_comparison(
-            game, controller, source, left, *operator, right, None, None, None,
-        );
-    }
-    if let Condition::ValueIsPrime(value) = condition {
-        return evaluate_value_is_prime(game, controller, source, value, None);
-    }
-
-    match condition {
-        Condition::ItIsNight => game.is_night,
-        Condition::FirstCombatPhaseOfTurn => {
-            game.turn.phase == crate::game_state::Phase::Combat
-                && game.turn_store.combat_phases_started_this_turn == 1
-        }
-        Condition::ThisSpellWasKicked => game
-            .object(source)
-            .is_some_and(|obj| obj.optional_costs_paid.was_kicked()),
-        Condition::ThisSpellEscaped => source_escaped(game, source),
-        Condition::ThisSpellWasCastFromZone(_) => false,
-        Condition::ThisSpellWasCastFromNonHand => false,
-        Condition::ThisSpellWasCastAtSorceryTiming => game
-            .object(source)
-            .is_some_and(|object| object.optional_costs_paid.was_cast_at_sorcery_timing()),
-        Condition::ThisSpellPaidLabel(label) => game
-            .object(source)
-            .is_some_and(|obj| obj.optional_costs_paid.was_paid_label(label.clone())),
-        Condition::YouHaveFullParty => player_has_full_party(game, controller),
-        Condition::YouControl(filter) => game
-            .battlefield
-            .iter()
-            .filter_map(|&id| game.object(id))
-            .filter(|obj| game.controller_of(obj) == controller)
-            .any(|obj| filter.matches(obj, &filter_ctx, game)),
-        Condition::OpponentControls(filter) => game
-            .battlefield
-            .iter()
-            .filter_map(|&id| game.object(id))
-            .filter(|obj| opponents.contains(&game.controller_of(obj)))
-            .any(|obj| filter.matches(obj, &filter_ctx, game)),
-        Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype } => {
-            let players = matching_condition_players_simple(game, controller, player);
-            game.turn_store
-                .turn_history
-                .player_was_dealt_combat_damage_by_creature_subtype_this_turn(&players, *subtype)
-        }
-        Condition::PlayerControls { player, filter } => {
-            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
-                return false;
-            };
-            let opponents: Vec<PlayerId> = game
-                .players
-                .iter()
-                .filter(|p| p.id != player_id)
-                .map(|p| p.id)
-                .collect();
-            let mut ctx = crate::filter::FilterContext::new(player_id)
-                .with_source(source)
-                .with_opponents(opponents);
-            if *player == PlayerFilter::IteratedPlayer {
-                ctx = ctx.with_iterated_player(Some(player_id));
-            }
-            condition_objects_for_zone(game, filter.zone)
-                .filter(|obj| {
-                    condition_object_matches_player_zone(game, obj, player_id, filter.zone)
-                })
-                .any(|obj| filter.matches(obj, &ctx, game))
-        }
-        Condition::PlayerOwnsCardNamedInZones {
-            player,
-            name,
-            zones,
-        } => {
-            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
-                return false;
-            };
-            let opponents: Vec<PlayerId> = game
-                .players
-                .iter()
-                .filter(|p| p.id != player_id)
-                .map(|p| p.id)
-                .collect();
-            let mut ctx = crate::filter::FilterContext::new(player_id)
-                .with_source(source)
-                .with_opponents(opponents);
-            if *player == PlayerFilter::IteratedPlayer {
-                ctx = ctx.with_iterated_player(Some(player_id));
-            }
-
-            if zones.is_empty() {
-                return false;
-            }
-
-            let mut filter = crate::target::ObjectFilter::default().named(name.clone());
-            for zone in zones {
-                filter.zone = Some(*zone);
-                let has_matching = condition_objects_for_zone(game, Some(*zone))
-                    .filter(|obj| obj.owner == player_id)
-                    .any(|obj| filter.matches(obj, &ctx, game));
-                if !has_matching {
-                    return false;
-                }
-            }
-            true
-        }
-        Condition::PlayerHasAtLeast {
-            player,
-            filter,
-            count,
-        } => matching_condition_players_simple(game, controller, player)
-            .into_iter()
-            .any(|player_id| {
-                condition_count_for_player(game, source, player, player_id, filter)
-                    >= *count as usize
-            }),
-        Condition::PlayerControlsBasicLandTypesAmongLandsOrMore { player, count } => {
-            use crate::types::Subtype;
-            use std::collections::HashSet;
-
-            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
-                return false;
-            };
-
-            let mut seen: HashSet<Subtype> = HashSet::new();
-            for obj in game
-                .battlefield
-                .iter()
-                .filter_map(|&id| game.object(id))
-                .filter(|obj| game.controller_of(obj) == player_id && obj.is_land())
-            {
-                for subtype in game.calculated_subtypes(obj.id) {
-                    if matches!(
-                        subtype,
-                        Subtype::Plains
-                            | Subtype::Island
-                            | Subtype::Swamp
-                            | Subtype::Mountain
-                            | Subtype::Forest
-                    ) {
-                        seen.insert(subtype);
-                    }
-                }
-            }
-            seen.len() >= *count as usize
-        }
-        Condition::PlayerHasCardTypesInGraveyardOrMore { player, count } => {
-            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
-                return false;
-            };
-            count_distinct_card_types_in_graveyard(game, player_id) >= *count as usize
-        }
-        Condition::PlayerControlsExactly {
-            player,
-            filter,
-            count,
-        } => matching_condition_players_simple(game, controller, player)
-            .into_iter()
-            .any(|player_id| {
-                condition_count_for_player(game, source, player, player_id, filter)
-                    == *count as usize
-            }),
-        Condition::PlayerHasAtLeastWithDifferentPowers {
-            player,
-            filter,
-            count,
-        } => {
-            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
-                return false;
-            };
-            let opponents: Vec<PlayerId> = game
-                .players
-                .iter()
-                .filter(|p| p.id != player_id)
-                .map(|p| p.id)
-                .collect();
-            let mut ctx = crate::filter::FilterContext::new(player_id)
-                .with_source(source)
-                .with_opponents(opponents);
-            if *player == PlayerFilter::IteratedPlayer {
-                ctx = ctx.with_iterated_player(Some(player_id));
-            }
-            count_distinct_matching_powers(game, player_id, filter, &ctx) >= *count as usize
-        }
-        Condition::PlayerControlsMost { player, filter } => {
-            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
-                return false;
-            };
-
-            let count_for = |candidate: PlayerId| {
-                let opponents: Vec<PlayerId> = game
-                    .players
-                    .iter()
-                    .filter(|p| p.id != candidate)
-                    .map(|p| p.id)
-                    .collect();
-                let mut ctx = crate::filter::FilterContext::new(candidate)
-                    .with_source(source)
-                    .with_opponents(opponents);
-                if *player == PlayerFilter::IteratedPlayer {
-                    ctx = ctx.with_iterated_player(Some(candidate));
-                }
-                condition_objects_for_zone(game, filter.zone)
-                    .filter(|obj| {
-                        condition_object_matches_player_zone(game, obj, candidate, filter.zone)
-                    })
-                    .filter(|obj| filter.matches(obj, &ctx, game))
-                    .count()
-            };
-
-            let current = count_for(player_id);
-            let max_count = game
-                .players
-                .iter()
-                .map(|p| count_for(p.id))
-                .max()
-                .unwrap_or(0);
-            current == max_count
-        }
-        Condition::PlayerControlsMoreThanEachOtherPlayer { player, filter } => {
-            matching_condition_players_simple(game, controller, player)
-                .into_iter()
-                .any(|player_id| {
-                    player_controls_more_than_each_other_player(
-                        game, source, player, player_id, filter,
-                    )
-                })
-        }
-        Condition::PlayerControlsMoreThanYou { player, filter } => {
-            let count_for = |candidate: PlayerId| {
-                let opponents: Vec<PlayerId> = game
-                    .players
-                    .iter()
-                    .filter(|p| p.id != candidate)
-                    .map(|p| p.id)
-                    .collect();
-                let mut ctx = crate::filter::FilterContext::new(candidate)
-                    .with_source(source)
-                    .with_opponents(opponents);
-                if *player == PlayerFilter::IteratedPlayer {
-                    ctx = ctx.with_iterated_player(Some(candidate));
-                }
-                condition_objects_for_zone(game, filter.zone)
-                    .filter(|obj| {
-                        condition_object_matches_player_zone(game, obj, candidate, filter.zone)
-                    })
-                    .filter(|obj| filter.matches(obj, &ctx, game))
-                    .count()
-            };
-
-            matching_condition_players_simple(game, controller, player)
-                .into_iter()
-                .any(|player_id| count_for(player_id) > count_for(controller))
-        }
-        Condition::AnOpponentControlsMoreThanPlayer { player, filter } => {
-            matching_condition_players_simple(game, controller, player)
-                .into_iter()
-                .any(|player_id| {
-                    any_opponent_controls_more_than_player(game, source, player, player_id, filter)
-                })
-        }
-        Condition::AnOpponentHasFewerThanPlayer { player, filter } => {
-            matching_condition_players_simple(game, controller, player)
-                .into_iter()
-                .any(|player_id| {
-                    any_opponent_has_fewer_than_player(game, source, player, player_id, filter)
-                })
-        }
-        Condition::PlayerLifeAtMostHalfStartingLifeTotal { player } => {
-            matching_condition_players_simple(game, controller, player)
-                .into_iter()
-                .any(|player_id| player_life_compares_to_half_starting(game, player_id, true))
-        }
-        Condition::PlayerLifeLessThanHalfStartingLifeTotal { player } => {
-            matching_condition_players_simple(game, controller, player)
-                .into_iter()
-                .any(|player_id| player_life_compares_to_half_starting(game, player_id, false))
-        }
-        Condition::PlayerHasLessLifeThanYou { player } => {
-            let Some(you_life) = game.player(controller).map(|p| p.life) else {
-                return false;
-            };
-            matching_condition_players_simple(game, controller, player)
-                .into_iter()
-                .filter_map(|player_id| game.player(player_id).map(|p| p.life))
-                .any(|other_life| other_life < you_life)
-        }
-        Condition::PlayerHasNoOpponentWithMoreLifeThan { player } => {
-            matching_condition_players_simple(game, controller, player)
-                .into_iter()
-                .any(|player_id| player_has_no_opponent_with_more_life_than(game, player_id))
-        }
-        Condition::PlayerHasMoreLifeThanYou { player } => {
-            let Some(you_life) = game.player(controller).map(|p| p.life) else {
-                return false;
-            };
-            matching_condition_players_simple(game, controller, player)
-                .into_iter()
-                .filter_map(|player_id| game.player(player_id).map(|p| p.life))
-                .any(|other_life| other_life > you_life)
-        }
-        Condition::PlayerHasMoreLifeThanEachOtherPlayer { player } => {
-            matching_condition_players_simple(game, controller, player)
-                .into_iter()
-                .any(|player_id| player_has_more_life_than_each_other_player(game, player_id))
-        }
-        Condition::PlayerIsMonarch { player } => {
-            matching_condition_players_simple(game, controller, player)
-                .into_iter()
-                .any(|player_id| game.is_monarch(player_id))
-        }
-        Condition::PlayerHasInitiative { player } => {
-            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
-                return false;
-            };
-            game.has_initiative(player_id)
-        }
-        Condition::PlayerHasCitysBlessing { player } => {
-            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
-                return false;
-            };
-            game.has_citys_blessing(player_id)
-        }
-        Condition::PlayerCommittedCrimeThisTurn { player } => {
-            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
-                return false;
-            };
-            game.turn_store
-                .turn_history
-                .player_committed_crime_this_turn(player_id)
-        }
-        Condition::PlayerRolledResultThisTurn { player, result } => {
-            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
-                return false;
-            };
-            game.turn_store
-                .turn_history
-                .player_rolled_result_this_turn(player_id, *result)
-        }
-        Condition::PlayerCompletedDungeon {
-            player,
-            dungeon_name,
-        } => {
-            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
-                return false;
-            };
-            match dungeon_name {
-                Some(name) => game.has_completed_named_dungeon(player_id, name),
-                None => game.has_completed_dungeon(player_id),
-            }
-        }
-        Condition::PlayerCardsInHandOrMore { player, count } => {
-            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
-                return false;
-            };
-            let hand = game.player(player_id).map(|p| p.hand.len()).unwrap_or(0);
-            hand >= *count as usize
-        }
-        Condition::PlayerCardsInHandOrFewer { player, count } => {
-            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
-                return false;
-            };
-            let hand = game.player(player_id).map(|p| p.hand.len()).unwrap_or(0);
-            hand <= *count as usize
-        }
-        Condition::PlayerCardsInHandAtTurnStartOrMore { player, count } => {
-            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
-                return false;
-            };
-            player_hand_count_at_turn_start(game, player_id)
-                .map(|hand_count| hand_count >= *count)
-                .unwrap_or(false)
-        }
-        Condition::PlayerCardsInHandAtTurnStartOrFewer { player, count } => {
-            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
-                return false;
-            };
-            player_hand_count_at_turn_start(game, player_id)
-                .map(|hand_count| hand_count <= *count)
-                .unwrap_or(false)
-        }
-        Condition::PlayerHasMoreCardsInHandThanYou { player } => {
-            let your_hand = game.player(controller).map(|p| p.hand.len()).unwrap_or(0);
-            matching_condition_players_simple(game, controller, player)
-                .into_iter()
-                .any(|player_id| {
-                    game.player(player_id).map(|p| p.hand.len()).unwrap_or(0) > your_hand
-                })
-        }
-        Condition::PlayerHasMoreCardsInHandThanEachOtherPlayer { player } => {
-            matching_condition_players_simple(game, controller, player)
-                .into_iter()
-                .any(|player_id| {
-                    let hand = game.player(player_id).map(|p| p.hand.len()).unwrap_or(0);
-                    game.players
-                        .iter()
-                        .filter(|candidate| candidate.is_in_game())
-                        .all(|candidate| candidate.id == player_id || hand > candidate.hand.len())
-                })
-        }
-        Condition::PlayerHasPoisonCountersOrMore { player, count } => {
-            matching_condition_players_simple(game, controller, player)
-                .into_iter()
-                .any(|player_id| player_poison_counters_or_more(game, player_id, *count))
-        }
-        Condition::PlayerHasCountersOrMore {
-            player,
-            counter_type,
-            count,
-        } => matching_condition_players_simple(game, controller, player)
-            .into_iter()
-            .any(|player_id| {
-                game.player(player_id)
-                    .is_some_and(|player| player.counter_count(*counter_type) >= *count)
-            }),
-        Condition::PlayerCastSpellsThisTurnOrMore { player, count } => {
-            let filter_ctx = game.filter_context_for(controller, Some(source));
-            let players: Vec<PlayerId> = match player {
-                PlayerFilter::You => vec![controller],
-                PlayerFilter::Opponent => filter_ctx.opponents,
-                PlayerFilter::Specific(id) => vec![*id],
-                PlayerFilter::Any => game.players.iter().map(|p| p.id).collect(),
-                PlayerFilter::NotYou => game
-                    .players
-                    .iter()
-                    .filter_map(|p| (p.id != controller).then_some(p.id))
-                    .collect(),
-                _ => Vec::new(),
-            };
-            let cast_count: u32 = players
-                .iter()
-                .map(|pid| game.turn_store.turn_history.spells_cast_by_player(*pid))
-                .sum();
-            cast_count >= *count
-        }
-        Condition::PlayerTappedLandForManaThisTurn { player } => {
-            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
-                return false;
-            };
-            game.turn_store
-                .turn_history
-                .players_tapped_land_for_mana_this_turn
-                .contains(&player_id)
-        }
-        Condition::PlayerGainedLifeThisTurnOrMore { player, count } => {
-            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
-                return false;
-            };
-            game.turn_store
-                .turn_history
-                .total_life_gained_for_players(&[player_id])
-                >= *count
-        }
-        Condition::CreatureDiedThisTurnOrMore(count) => {
-            game.turn_store
-                .turn_history
-                .total_creatures_died_this_turn()
-                >= *count
-        }
-        Condition::CreatureDealtDamageBySourceDiedThisTurn {
-            victim,
-            damager,
-            count,
-        } => {
-            creatures_dealt_damage_by_source_died_this_turn(
-                game,
-                SharedConditionContext {
-                    controller,
-                    source,
-                    filter_source: Some(source),
-                    triggering_event: None,
-                    trigger_identity: None,
-                    ability_index: None,
-                },
-                victim,
-                damager,
-            ) >= *count
-        }
-        Condition::CreatureCardPutIntoYourGraveyardThisTurn => {
-            creature_card_was_put_into_your_graveyard_this_turn(game, controller)
-        }
-        Condition::PlayerHadLandEnterBattlefieldThisTurn { player } => {
-            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
-                return false;
-            };
-            player_had_land_enter_battlefield_this_turn(game, player_id)
-        }
-        Condition::PlayerDescendedThisTurn { player } => {
-            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
-                return false;
-            };
-            game.turn_store
-                .turn_history
-                .player_descended_count_this_turn(player_id)
-                > 0
-        }
-        Condition::FirstTimeThisTurn
-        | Condition::SourceFirstCrewedThisTurn
-        | Condition::MaxTimesEachTurn(_)
-        | Condition::DoThisMaxTimesEachTurn(_) => true,
-        Condition::TriggeringObjectWasEnchanted
-        | Condition::TriggeringObjectBecameTappedFirstTimeThisTurn
-        | Condition::TriggeringObjectHadCountersPutFirstTimeThisTurn
-        | Condition::TriggeringObjectHadToAttackThisCombat
-        | Condition::TriggeringObjectHadCounters { .. } => false,
-        Condition::SourceSoulbondPartnerMatches(filter) => game
-            .soulbond_partner(source)
-            .and_then(|id| game.object(id))
-            .is_some_and(|partner| {
-                filter.matches(
-                    partner,
-                    &crate::filter::FilterContext::new(controller).with_source(source),
-                    game,
-                )
-            }),
-        Condition::ControlCreaturesTotalPowerAtLeast(_)
-        | Condition::CardInYourGraveyard { .. }
-        | Condition::ActivationTiming(_)
-        | Condition::MaxActivationsPerTurn(_)
-        | Condition::SourceIsEquipped
-        | Condition::SourceIsEnchanted
-        | Condition::EnchantedPermanentIsCreature
-        | Condition::EnchantedPermanentIsLand
-        | Condition::EnchantedPermanentIsEquipment
-        | Condition::EnchantedPermanentIsVehicle
-        | Condition::EquippedCreatureTapped
-        | Condition::EquippedCreatureUntapped
-        | Condition::EquippedCreatureAttacking
-        | Condition::SourceChosenOption(_)
-        | Condition::CountComparison { .. }
-        | Condition::CountParity { .. }
-        | Condition::OwnsCardExiledWithCounter(_)
-        | Condition::SourceAttackedThisTurn
-        | Condition::SourceAttackedBattleThisTurn
-        | Condition::SourceSuspected
-        | Condition::SourceDealtCombatDamageToPlayerThisTurn
-        | Condition::SourceCameUnderYourControlThisTurn
-        | Condition::SourceAttackedOrBlockedThisTurn
-        | Condition::SourceIsUntapped
-        | Condition::SourceIsAttacking
-        | Condition::SourceIsBlocking
-        | Condition::SourceIsSoulbondPaired
-        | Condition::SecretChoicesMatch
-        | Condition::VoteOptionGetsMoreVotes(_)
-        | Condition::VoteOptionGetsMoreVotesOrTied(_)
-        | Condition::XValueAtLeast(_) => false,
-        Condition::TurnHistory(_) => unreachable!("handled by shared condition evaluator"),
-        Condition::TaggedObjectMatches(_, _)
-        | Condition::TaggedObjectMatchedLastKnown(_, _)
-        | Condition::TaggedObjectIsTopOfLibrary { .. }
-        | Condition::TaggedObjectWasCast(_) => false,
-        Condition::StableObjectIsTopOfLibrary {
-            stable_id,
-            player,
-            library_top_revision,
-        } => crate::grant_registry::stable_card_is_top_of_library_at_revision(
-            game,
-            *stable_id,
-            *player,
-            *library_top_revision,
-        ),
-        Condition::TaggedObjectIsSoulbondPaired(_) => false,
-        Condition::EnchantedPermanentAttackedThisTurn => false,
-        Condition::EnchantedPermanentAttackedOrBlockedSinceLastUpkeep => false,
-        Condition::SourceBlockedOrBecameBlockedSinceLastUpkeep => false,
-        Condition::TargetObjectsHaveDifferentColorSets => false,
-        Condition::TargetMatches(_) => false,
-        Condition::TargetIsSoulbondPaired => false,
-        Condition::PlayerTaggedObjectMatches { .. } => false,
-        Condition::PlayerTaggedObjectEnteredBattlefieldThisTurn { .. } => false,
-        // Target-dependent conditions default to false during casting
-        Condition::TargetIsTapped
-        | Condition::TargetIsAttacking
-        | Condition::TargetIsBlocked
-        | Condition::TargetWasKicked
-        | Condition::TargetSpellCastOrderThisTurn(_)
-        | Condition::TargetSpellControllerIsPoisoned
-        | Condition::TargetSpellManaSpentToCastAtLeast { .. }
-        | Condition::TriggeringSpellManaSpentToCastAtLeast { .. }
-        | Condition::TriggeringSpellColoredManaSpentToCastAtLeast(_)
-        | Condition::YouControlMoreCreaturesThanTargetSpellController
-        | Condition::TargetHasGreatestPowerAmongCreatures
-        | Condition::TargetManaValueLteColorsSpentToCastThisSpell
-        | Condition::SourceIsTapped
-        | Condition::SourceIsSaddled
-        | Condition::SourceCrewedByExactly { .. }
-        | Condition::SourceDevouredCreaturesOrMore(_)
-        | Condition::SourceIsMonstrous
-        | Condition::SourceIsFaceDown
-        | Condition::SourceMatches(_)
-        | Condition::AttachedToSourceMatches(_)
-        | Condition::AttachmentCount { .. }
-        | Condition::SourcePowerAtLeast(_) => false,
-        Condition::Custom(_)
-        | Condition::LifeTotalOrLess(_)
-        | Condition::LifeTotalOrGreater(_)
-        | Condition::CardsInHandOrMore(_)
-        | Condition::YouHaveCardInHandMatching(_)
-        | Condition::YourTurn
-        | Condition::CurrentTurnIsExtra
-        | Condition::SourceControllersMainPhase
-        | Condition::SourceControllersEndStep
-        | Condition::SourceIsRenowned
-        | Condition::YourFirstTurnsOfTheGameOrFewer(_)
-        | Condition::CreatureDiedThisTurn
-        | Condition::CastSpellThisTurn
-        | Condition::AttackedThisTurn
-        | Condition::AttackedWithNOrMoreCreaturesThisTurn(_)
-        | Condition::OpponentLostLifeThisTurn
-        | Condition::AnyPlayerLostLifeThisTurnOrMore { .. }
-        | Condition::OpponentWasDealtDamageThisTurn
-        | Condition::PermanentLeftBattlefieldThisTurn
-        | Condition::NonlandPermanentLeftBattlefieldThisTurn
-        | Condition::SpellWasWarpedThisTurn
-        | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn { .. }
-        | Condition::ObjectEnteredBattlefieldThisTurn(_)
-        | Condition::ObjectEnteredBattlefieldLastTurn(_)
-        | Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(_)
-        | Condition::SourceWasCast
-        | Condition::NoSpellsWereCastLastTurn
-        | Condition::SpellsWereCastLastTurnOrMore(_)
-        | Condition::SourceHasNoCounter(_)
-        | Condition::SourceHasCounterAtLeast { .. }
-        | Condition::SourceHasCountersAtLeast(_)
-        | Condition::SourceInGraveyardWithCardsAbove { .. }
-        | Condition::SourceIsInZone(_)
-        | Condition::ManaSpentToCastThisSpellAtLeast { .. }
-        | Condition::ColoredManaSpentToCastThisSpellAtLeast(_)
-        | Condition::SnowManaOfAnySpellColorSpentToCastThisSpell
-        | Condition::TriggeringSpellSnowManaOfAnySpellColorSpentToCast
-        | Condition::SameColorManaSpentToCastThisSpellAtLeast(_)
-        | Condition::ColorsOfManaSpentToCastThisSpellOrMore(_)
-        | Condition::PlayerGraveyardHasCardsAtLeast { .. }
-        | Condition::SourceIsRingBearer { .. }
-        | Condition::PlayerRingTemptedThisGameOrMore { .. }
-        | Condition::PlayerRemovedDraftCardMatching { .. }
-        | Condition::ValueComparison { .. }
-        | Condition::ValueIsPrime(..)
-        | Condition::YouControlCommander
-        | Condition::ThisAbilityResolvedThisTurnExactly(_)
-        | Condition::Not(_)
-        | Condition::And(_, _)
-        | Condition::Or(_, _) => {
-            unreachable!("handled before cast-time match")
-        }
-    }
+        &ConditionContext::cast_time(controller, source),
+    )
+    .unwrap_or(false)
 }
 
 fn resolve_condition_player_simple(
@@ -5314,86 +3067,37 @@ fn matching_condition_players_simple(
     }
 }
 
-fn matching_condition_players_external(
-    game: &GameState,
-    ctx: &ExternalEvaluationContext<'_>,
-    player: &PlayerFilter,
-) -> Vec<PlayerId> {
-    match player {
-        PlayerFilter::IteratedPlayer => ctx.iterated_player.into_iter().collect(),
-        PlayerFilter::Defending => ctx.defending_player.into_iter().collect(),
-        PlayerFilter::Attacking => Some(ctx.attacking_player.unwrap_or(ctx.controller))
-            .into_iter()
-            .collect(),
-        _ => matching_condition_players_simple(game, ctx.controller, player),
-    }
-}
-
-fn matching_condition_players_exec(
-    game: &GameState,
-    ctx: &ExecutionContext,
-    player: &PlayerFilter,
-) -> Result<Vec<PlayerId>, ExecutionError> {
-    match player {
-        PlayerFilter::Opponent | PlayerFilter::NotYou => Ok(game
-            .players
-            .iter()
-            .filter(|p| p.id != ctx.controller && p.is_in_game())
-            .map(|p| p.id)
-            .collect()),
-        PlayerFilter::Any => Ok(game
-            .players
-            .iter()
-            .filter(|p| p.is_in_game())
-            .map(|p| p.id)
-            .collect()),
-        _ => Ok(vec![crate::effects::helpers::resolve_player_filter(
-            game, player, ctx,
-        )?]),
-    }
-}
-
 /// Evaluate a condition.
 fn evaluate_condition(
     game: &GameState,
     condition: &Condition,
     ctx: &ExecutionContext,
 ) -> Result<bool, ExecutionError> {
-    assert_condition_variant_coverage(condition);
+    evaluate_condition_in_context(game, condition, &ConditionContext::resolution(ctx))
+}
 
-    if let Condition::Not(inner) = condition {
-        let inner_result = evaluate_condition(game, inner, ctx)?;
-        return Ok(!inner_result);
-    }
-    if let Condition::And(a, b) = condition {
-        let a_result = evaluate_condition(game, a, ctx)?;
-        if !a_result {
-            return Ok(false);
-        }
-        return evaluate_condition(game, b, ctx);
-    }
-    if let Condition::Or(a, b) = condition {
-        let a_result = evaluate_condition(game, a, ctx)?;
-        if a_result {
-            return Ok(true);
-        }
-        return evaluate_condition(game, b, ctx);
-    }
-    if let Some(result) = evaluate_condition_shared_core(
-        game,
-        condition,
-        SharedConditionContext {
-            controller: ctx.controller,
-            source: ctx.source,
-            filter_source: Some(ctx.source),
-            triggering_event: ctx.triggering_event.as_ref(),
-            trigger_identity: ctx.trigger_identity,
-            ability_index: ctx.ability_index,
-        },
-    ) {
-        return Ok(result);
-    }
+fn matching_snow_mana_was_spent(snapshot: &crate::snapshot::ObjectSnapshot) -> bool {
+    use crate::color::Color;
+    let spent = &snapshot.snow_mana_spent_to_cast;
+    [
+        (Color::White, spent.white),
+        (Color::Blue, spent.blue),
+        (Color::Black, spent.black),
+        (Color::Red, spent.red),
+        (Color::Green, spent.green),
+    ]
+    .into_iter()
+    .any(|(color, amount)| amount > 0 && snapshot.colors.contains(color))
+}
 
+/// One exhaustive interpreter for the condition language. Context adapters own
+/// binding and availability policies; each condition's rule is implemented here.
+fn evaluate_condition_in_context(
+    game: &GameState,
+    condition: &Condition,
+    ctx: &ConditionContext<'_, '_>,
+) -> Result<bool, ExecutionError> {
+    let shared = ctx.shared();
     match condition {
         Condition::ItIsNight => Ok(game.is_night),
         Condition::FirstCombatPhaseOfTurn => Ok(game.turn.phase
@@ -5423,18 +3127,20 @@ fn evaluate_condition(
                 .any(|obj| filter.matches(obj, &filter_ctx, game));
 
             Ok(has_matching)
-        }
+        } // These history predicates retain the shared core's pre-resolution
+          // player bindings, even when an execution context is available.
         Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype } => {
-            let players = matching_condition_players_exec(game, ctx, player)?;
+            let players = matching_condition_players_simple(game, shared.controller, player);
             Ok(game
                 .turn_store
                 .turn_history
                 .player_was_dealt_combat_damage_by_creature_subtype_this_turn(&players, *subtype))
         }
         Condition::PlayerControls { player, filter } => {
-            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
-            let mut filter_ctx = ctx.filter_context(game);
-            filter_ctx.iterated_player = Some(player_id);
+            let Some(player_id) = ctx.resolve_player(game, player)? else {
+                return Ok(false);
+            };
+            let filter_ctx = ctx.player_filter_context(game, player, player_id);
             let has_matching = condition_objects_for_zone(game, filter.zone)
                 .filter(|obj| {
                     condition_object_matches_player_zone(game, obj, player_id, filter.zone)
@@ -5447,9 +3153,10 @@ fn evaluate_condition(
             name,
             zones,
         } => {
-            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
-            let mut filter_ctx = ctx.filter_context(game);
-            filter_ctx.iterated_player = Some(player_id);
+            let Some(player_id) = ctx.resolve_player(game, player)? else {
+                return Ok(false);
+            };
+            let filter_ctx = ctx.owned_card_filter_context(game, player, player_id);
 
             if zones.is_empty() {
                 return Ok(false);
@@ -5472,11 +3179,11 @@ fn evaluate_condition(
             player,
             filter,
             count,
-        } => Ok(matching_condition_players_exec(game, ctx, player)?
+        } => Ok(ctx
+            .matching_players(game, player)?
             .into_iter()
             .any(|player_id| {
-                let mut filter_ctx = ctx.filter_context(game);
-                filter_ctx.iterated_player = Some(player_id);
+                let filter_ctx = ctx.player_filter_context(game, player, player_id);
                 condition_objects_for_zone(game, filter.zone)
                     .filter(|obj| {
                         condition_object_matches_player_zone(game, obj, player_id, filter.zone)
@@ -5489,7 +3196,9 @@ fn evaluate_condition(
             use crate::types::Subtype;
             use std::collections::HashSet;
 
-            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            let Some(player_id) = ctx.resolve_player(game, player)? else {
+                return Ok(false);
+            };
             let mut seen: HashSet<Subtype> = HashSet::new();
             for obj in game
                 .battlefield
@@ -5513,17 +3222,26 @@ fn evaluate_condition(
             Ok(seen.len() >= *count as usize)
         }
         Condition::PlayerHasCardTypesInGraveyardOrMore { player, count } => {
-            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            let Some(player_id) = ctx.resolve_player(game, player)? else {
+                return Ok(false);
+            };
             Ok(count_distinct_card_types_in_graveyard(game, player_id) >= *count as usize)
         }
         Condition::PlayerControlsExactly {
             player,
             filter,
             count,
-        } => Ok(matching_condition_players_exec(game, ctx, player)?
+        } => Ok(ctx
+            .matching_players(game, player)?
             .into_iter()
             .any(|player_id| {
-                condition_count_for_player(game, ctx.source, player, player_id, filter)
+                let filter_ctx = ctx.player_filter_context(game, player, player_id);
+                condition_objects_for_zone(game, filter.zone)
+                    .filter(|object| {
+                        condition_object_matches_player_zone(game, object, player_id, filter.zone)
+                    })
+                    .filter(|object| filter.matches(object, &filter_ctx, game))
+                    .count()
                     == *count as usize
             })),
         Condition::PlayerHasAtLeastWithDifferentPowers {
@@ -5531,17 +3249,19 @@ fn evaluate_condition(
             filter,
             count,
         } => {
-            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
-            let mut filter_ctx = ctx.filter_context(game);
-            filter_ctx.iterated_player = Some(player_id);
+            let Some(player_id) = ctx.resolve_player(game, player)? else {
+                return Ok(false);
+            };
+            let filter_ctx = ctx.player_filter_context(game, player, player_id);
             let distinct = count_distinct_matching_powers(game, player_id, filter, &filter_ctx);
             Ok(distinct >= *count as usize)
         }
         Condition::PlayerControlsMost { player, filter } => {
-            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            let Some(player_id) = ctx.resolve_player(game, player)? else {
+                return Ok(false);
+            };
             let count_for = |candidate: PlayerId| {
-                let mut filter_ctx = ctx.filter_context(game);
-                filter_ctx.iterated_player = Some(candidate);
+                let filter_ctx = ctx.player_filter_context(game, player, candidate);
                 condition_objects_for_zone(game, filter.zone)
                     .filter(|obj| {
                         condition_object_matches_player_zone(game, obj, candidate, filter.zone)
@@ -5556,21 +3276,23 @@ fn evaluate_condition(
                 .map(|player| count_for(player.id))
                 .max()
                 .unwrap_or(0);
-            Ok(current == max_count)
+            Ok(if ctx.external().is_some() {
+                current >= max_count
+            } else {
+                current == max_count
+            })
         }
-        Condition::PlayerControlsMoreThanEachOtherPlayer { player, filter } => {
-            Ok(matching_condition_players_exec(game, ctx, player)?
-                .into_iter()
-                .any(|player_id| {
-                    player_controls_more_than_each_other_player(
-                        game, ctx.source, player, player_id, filter,
-                    )
-                }))
-        }
+        Condition::PlayerControlsMoreThanEachOtherPlayer { player, filter } => Ok(ctx
+            .matching_players(game, player)?
+            .into_iter()
+            .any(|player_id| {
+                player_controls_more_than_each_other_player(
+                    game, ctx.source, player, player_id, filter,
+                )
+            })),
         Condition::PlayerControlsMoreThanYou { player, filter } => {
             let count_for = |candidate: PlayerId| {
-                let mut filter_ctx = ctx.filter_context(game);
-                filter_ctx.iterated_player = Some(candidate);
+                let filter_ctx = ctx.player_filter_context(game, player, candidate);
                 condition_objects_for_zone(game, filter.zone)
                     .filter(|obj| {
                         condition_object_matches_player_zone(game, obj, candidate, filter.zone)
@@ -5578,80 +3300,96 @@ fn evaluate_condition(
                     .filter(|obj| filter.matches(obj, &filter_ctx, game))
                     .count()
             };
-            Ok(matching_condition_players_exec(game, ctx, player)?
+            Ok(ctx
+                .matching_players(game, player)?
                 .into_iter()
                 .any(|player_id| count_for(player_id) > count_for(ctx.controller)))
         }
-        Condition::AnOpponentControlsMoreThanPlayer { player, filter } => {
-            Ok(matching_condition_players_exec(game, ctx, player)?
-                .into_iter()
-                .any(|player_id| {
-                    any_opponent_controls_more_than_player(
-                        game, ctx.source, player, player_id, filter,
-                    )
-                }))
-        }
-        Condition::AnOpponentHasFewerThanPlayer { player, filter } => {
-            Ok(matching_condition_players_exec(game, ctx, player)?
-                .into_iter()
-                .any(|player_id| {
-                    any_opponent_has_fewer_than_player(game, ctx.source, player, player_id, filter)
-                }))
-        }
-        Condition::PlayerLifeAtMostHalfStartingLifeTotal { player } => {
-            Ok(matching_condition_players_exec(game, ctx, player)?
-                .into_iter()
-                .any(|player_id| player_life_compares_to_half_starting(game, player_id, true)))
-        }
-        Condition::PlayerLifeLessThanHalfStartingLifeTotal { player } => {
-            Ok(matching_condition_players_exec(game, ctx, player)?
-                .into_iter()
-                .any(|player_id| player_life_compares_to_half_starting(game, player_id, false)))
-        }
+        Condition::AnOpponentControlsMoreThanPlayer { player, filter } => Ok(ctx
+            .matching_players(game, player)?
+            .into_iter()
+            .any(|player_id| {
+                any_opponent_controls_more_than_player(game, ctx.source, player, player_id, filter)
+            })),
+        Condition::AnOpponentHasFewerThanPlayer { player, filter } => Ok(ctx
+            .matching_players(game, player)?
+            .into_iter()
+            .any(|player_id| {
+                any_opponent_has_fewer_than_player(game, ctx.source, player, player_id, filter)
+            })),
+        Condition::PlayerLifeAtMostHalfStartingLifeTotal { player } => Ok(ctx
+            .matching_players(game, player)?
+            .into_iter()
+            .any(|player_id| player_life_compares_to_half_starting(game, player_id, true))),
+        Condition::PlayerLifeLessThanHalfStartingLifeTotal { player } => Ok(ctx
+            .matching_players(game, player)?
+            .into_iter()
+            .any(|player_id| player_life_compares_to_half_starting(game, player_id, false))),
         Condition::PlayerHasLessLifeThanYou { player } => {
-            let you_life = game.player(ctx.controller).map(|p| p.life).unwrap_or(0);
-            Ok(matching_condition_players_exec(game, ctx, player)?
+            let life = game.player(ctx.controller).map(|p| p.life);
+            if ctx.is_cast_time() && life.is_none() {
+                return Ok(false);
+            }
+            let you_life = life.unwrap_or(0);
+            Ok(ctx
+                .matching_players(game, player)?
                 .into_iter()
-                .any(|player_id| game.player(player_id).map(|p| p.life).unwrap_or(0) < you_life))
+                .any(|player_id| {
+                    let other = game.player(player_id).map(|p| p.life);
+                    (!ctx.is_cast_time() || other.is_some()) && other.unwrap_or(0) < you_life
+                }))
         }
         Condition::PlayerHasMoreLifeThanYou { player } => {
-            let you_life = game.player(ctx.controller).map(|p| p.life).unwrap_or(0);
-            Ok(matching_condition_players_exec(game, ctx, player)?
+            let life = game.player(ctx.controller).map(|p| p.life);
+            if ctx.is_cast_time() && life.is_none() {
+                return Ok(false);
+            }
+            let you_life = life.unwrap_or(0);
+            Ok(ctx
+                .matching_players(game, player)?
                 .into_iter()
-                .any(|player_id| game.player(player_id).map(|p| p.life).unwrap_or(0) > you_life))
+                .any(|player_id| {
+                    let other = game.player(player_id).map(|p| p.life);
+                    (!ctx.is_cast_time() || other.is_some()) && other.unwrap_or(0) > you_life
+                }))
         }
-        Condition::PlayerHasNoOpponentWithMoreLifeThan { player } => {
-            Ok(matching_condition_players_exec(game, ctx, player)?
-                .into_iter()
-                .any(|player_id| player_has_no_opponent_with_more_life_than(game, player_id)))
-        }
-        Condition::PlayerHasMoreLifeThanEachOtherPlayer { player } => {
-            Ok(matching_condition_players_exec(game, ctx, player)?
-                .into_iter()
-                .any(|player_id| player_has_more_life_than_each_other_player(game, player_id)))
-        }
-        Condition::PlayerIsMonarch { player } => {
-            Ok(matching_condition_players_exec(game, ctx, player)?
-                .into_iter()
-                .any(|player_id| game.is_monarch(player_id)))
-        }
+        Condition::PlayerHasNoOpponentWithMoreLifeThan { player } => Ok(ctx
+            .matching_players(game, player)?
+            .into_iter()
+            .any(|player_id| player_has_no_opponent_with_more_life_than(game, player_id))),
+        Condition::PlayerHasMoreLifeThanEachOtherPlayer { player } => Ok(ctx
+            .matching_players(game, player)?
+            .into_iter()
+            .any(|player_id| player_has_more_life_than_each_other_player(game, player_id))),
+        Condition::PlayerIsMonarch { player } => Ok(ctx
+            .matching_players(game, player)?
+            .into_iter()
+            .any(|player_id| game.is_monarch(player_id))),
         Condition::PlayerHasInitiative { player } => {
-            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            let Some(player_id) = ctx.resolve_player(game, player)? else {
+                return Ok(false);
+            };
             Ok(game.has_initiative(player_id))
         }
         Condition::PlayerHasCitysBlessing { player } => {
-            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            let Some(player_id) = ctx.resolve_player(game, player)? else {
+                return Ok(false);
+            };
             Ok(game.has_citys_blessing(player_id))
         }
         Condition::PlayerCommittedCrimeThisTurn { player } => {
-            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            let Some(player_id) = ctx.resolve_player(game, player)? else {
+                return Ok(false);
+            };
             Ok(game
                 .turn_store
                 .turn_history
                 .player_committed_crime_this_turn(player_id))
         }
         Condition::PlayerRolledResultThisTurn { player, result } => {
-            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            let Some(player_id) = ctx.resolve_player(game, player)? else {
+                return Ok(false);
+            };
             Ok(game
                 .turn_store
                 .turn_history
@@ -5661,30 +3399,52 @@ fn evaluate_condition(
             player,
             dungeon_name,
         } => {
-            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            let Some(player_id) = ctx.resolve_player(game, player)? else {
+                return Ok(false);
+            };
             Ok(match dungeon_name {
                 Some(name) => game.has_completed_named_dungeon(player_id, name),
                 None => game.has_completed_dungeon(player_id),
             })
         }
         Condition::PlayerCardsInHandOrMore { player, count } => {
-            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
-            let hand_count = game.player(player_id).map(|p| p.hand.len()).unwrap_or(0);
-            Ok(hand_count >= *count as usize)
+            let Some(player_id) = ctx.resolve_player(game, player)? else {
+                return Ok(false);
+            };
+            let hand = game.player(player_id).map(|p| p.hand.len());
+            // External gating uses a signed comparison and requires the player to exist.
+            // Cast/resolution historically compare usize counts, with a missing hand as zero.
+            Ok(if ctx.external().is_some() {
+                hand.is_some_and(|hand| hand as i32 >= *count)
+            } else {
+                hand.unwrap_or(0) >= *count as usize
+            })
         }
         Condition::PlayerCardsInHandOrFewer { player, count } => {
-            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
-            let hand_count = game.player(player_id).map(|p| p.hand.len()).unwrap_or(0);
-            Ok(hand_count <= *count as usize)
+            let Some(player_id) = ctx.resolve_player(game, player)? else {
+                return Ok(false);
+            };
+            let hand = game.player(player_id).map(|p| p.hand.len());
+            // External gating uses a signed comparison and requires the player to exist.
+            // Cast/resolution historically compare usize counts, with a missing hand as zero.
+            Ok(if ctx.external().is_some() {
+                hand.is_some_and(|hand| hand as i32 <= *count)
+            } else {
+                hand.unwrap_or(0) <= *count as usize
+            })
         }
         Condition::PlayerCardsInHandAtTurnStartOrMore { player, count } => {
-            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            let Some(player_id) = ctx.resolve_player(game, player)? else {
+                return Ok(false);
+            };
             Ok(player_hand_count_at_turn_start(game, player_id)
                 .map(|hand_count| hand_count >= *count)
                 .unwrap_or(false))
         }
         Condition::PlayerCardsInHandAtTurnStartOrFewer { player, count } => {
-            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            let Some(player_id) = ctx.resolve_player(game, player)? else {
+                return Ok(false);
+            };
             Ok(player_hand_count_at_turn_start(game, player_id)
                 .map(|hand_count| hand_count <= *count)
                 .unwrap_or(false))
@@ -5694,40 +3454,40 @@ fn evaluate_condition(
                 .player(ctx.controller)
                 .map(|p| p.hand.len())
                 .unwrap_or(0);
-            Ok(matching_condition_players_exec(game, ctx, player)?
+            Ok(ctx
+                .matching_players(game, player)?
                 .into_iter()
                 .any(|player_id| {
                     game.player(player_id).map(|p| p.hand.len()).unwrap_or(0) > your_hand
                 }))
         }
-        Condition::PlayerHasMoreCardsInHandThanEachOtherPlayer { player } => {
-            Ok(matching_condition_players_exec(game, ctx, player)?
-                .into_iter()
-                .any(|player_id| {
-                    let hand = game.player(player_id).map(|p| p.hand.len()).unwrap_or(0);
-                    game.players
-                        .iter()
-                        .filter(|candidate| candidate.is_in_game())
-                        .all(|candidate| candidate.id == player_id || hand > candidate.hand.len())
-                }))
-        }
-        Condition::PlayerHasPoisonCountersOrMore { player, count } => {
-            Ok(matching_condition_players_exec(game, ctx, player)?
-                .into_iter()
-                .any(|player_id| player_poison_counters_or_more(game, player_id, *count)))
-        }
+        Condition::PlayerHasMoreCardsInHandThanEachOtherPlayer { player } => Ok(ctx
+            .matching_players(game, player)?
+            .into_iter()
+            .any(|player_id| {
+                let hand = game.player(player_id).map(|p| p.hand.len()).unwrap_or(0);
+                game.players
+                    .iter()
+                    .filter(|candidate| candidate.is_in_game())
+                    .all(|candidate| candidate.id == player_id || hand > candidate.hand.len())
+            })),
+        Condition::PlayerHasPoisonCountersOrMore { player, count } => Ok(ctx
+            .matching_players(game, player)?
+            .into_iter()
+            .any(|player_id| player_poison_counters_or_more(game, player_id, *count))),
         Condition::PlayerHasCountersOrMore {
             player,
             counter_type,
             count,
-        } => Ok(matching_condition_players_exec(game, ctx, player)?
+        } => Ok(ctx
+            .matching_players(game, player)?
             .into_iter()
             .any(|player_id| {
                 game.player(player_id)
                     .is_some_and(|player| player.counter_count(*counter_type) >= *count)
             })),
         Condition::PlayerCastSpellsThisTurnOrMore { player, count } => {
-            let filter_ctx = ctx.filter_context(game);
+            let filter_ctx = ctx.spell_history_filter_context(game);
             let player_ids: Vec<PlayerId> = match player {
                 PlayerFilter::You => vec![ctx.controller],
                 PlayerFilter::Opponent => filter_ctx.opponents,
@@ -5747,7 +3507,9 @@ fn evaluate_condition(
             Ok(cast_count >= *count)
         }
         Condition::PlayerTappedLandForManaThisTurn { player } => {
-            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            let Some(player_id) = ctx.resolve_player(game, player)? else {
+                return Ok(false);
+            };
             Ok(game
                 .turn_store
                 .turn_history
@@ -5755,7 +3517,9 @@ fn evaluate_condition(
                 .contains(&player_id))
         }
         Condition::PlayerGainedLifeThisTurnOrMore { player, count } => {
-            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            let Some(player_id) = ctx.resolve_player(game, player)? else {
+                return Ok(false);
+            };
             Ok(game
                 .turn_store
                 .turn_history
@@ -5771,28 +3535,23 @@ fn evaluate_condition(
             victim,
             damager,
             count,
-        } => Ok(creatures_dealt_damage_by_source_died_this_turn(
-            game,
-            SharedConditionContext {
-                controller: ctx.controller,
-                source: ctx.source,
-                filter_source: Some(ctx.source),
-                triggering_event: None,
-                trigger_identity: None,
-                ability_index: ctx.ability_index,
-            },
-            victim,
-            damager,
-        ) >= *count),
+        } => Ok(
+            creatures_dealt_damage_by_source_died_this_turn(game, shared, victim, damager)
+                >= *count,
+        ),
         Condition::CreatureCardPutIntoYourGraveyardThisTurn => Ok(
-            creature_card_was_put_into_your_graveyard_this_turn(game, ctx.controller),
+            creature_card_was_put_into_your_graveyard_this_turn(game, shared.controller),
         ),
         Condition::PlayerHadLandEnterBattlefieldThisTurn { player } => {
-            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            let Some(player_id) = ctx.resolve_player(game, player)? else {
+                return Ok(false);
+            };
             Ok(player_had_land_enter_battlefield_this_turn(game, player_id))
         }
         Condition::PlayerDescendedThisTurn { player } => {
-            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            let Some(player_id) = ctx.resolve_player(game, player)? else {
+                return Ok(false);
+            };
             Ok(game
                 .turn_store
                 .turn_history
@@ -5800,13 +3559,20 @@ fn evaluate_condition(
                 > 0)
         }
         Condition::TargetIsTapped => {
-            // Check if the target is tapped
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+
             if let Some(crate::effects::ResolvedTarget::Object(id)) = ctx.targets.first() {
                 return Ok(game.is_tapped(*id));
             }
             Ok(false)
         }
         Condition::TargetWasKicked => {
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+
             for target in &ctx.targets {
                 if let crate::effects::ResolvedTarget::Object(id) = target
                     && let Some(obj) = game.object(*id)
@@ -5816,22 +3582,48 @@ fn evaluate_condition(
             }
             Ok(false)
         }
-        Condition::ThisSpellWasKicked => Ok(resolve_value(game, &Value::WasKicked, ctx)? != 0),
-        Condition::ThisSpellEscaped => Ok(this_spell_escaped(game, ctx.source, ctx)),
+        Condition::ThisSpellWasKicked => {
+            if let Some(ctx) = ctx.execution() {
+                Ok(resolve_value(game, &Value::WasKicked, ctx)? != 0)
+            } else {
+                Ok(game
+                    .object(ctx.source)
+                    .is_some_and(|obj| obj.optional_costs_paid.was_kicked()))
+            }
+        }
+        Condition::ThisSpellEscaped => Ok(source_escaped(game, shared.source)),
         Condition::ThisSpellWasCastFromZone(zone) => {
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+
             Ok(this_spell_was_cast_from_zone(game, ctx.source, ctx, *zone))
         }
         Condition::ThisSpellWasCastFromNonHand => {
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+
             Ok(this_spell_was_cast_from_non_hand(game, ctx.source, ctx))
         }
         Condition::ThisSpellWasCastAtSorceryTiming => Ok(game
-            .object(ctx.source)
+            .object(shared.source)
             .is_some_and(|object| object.optional_costs_paid.was_cast_at_sorcery_timing())),
         Condition::ThisSpellPaidLabel(label) => {
-            Ok(resolve_value(game, &Value::WasPaidLabel(label.clone()), ctx)? != 0)
+            if let Some(ctx) = ctx.execution() {
+                Ok(resolve_value(game, &Value::WasPaidLabel(label.clone()), ctx)? != 0)
+            } else {
+                Ok(game
+                    .object(ctx.source)
+                    .is_some_and(|obj| obj.optional_costs_paid.was_paid_label(label.clone())))
+            }
         }
-        Condition::YouHaveFullParty => Ok(player_has_full_party(game, ctx.controller)),
+        Condition::YouHaveFullParty => Ok(player_has_full_party(game, shared.controller)),
         Condition::TargetSpellCastOrderThisTurn(order) => {
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+
             for target in &ctx.targets {
                 if let crate::effects::ResolvedTarget::Object(id) = target {
                     let actual = game
@@ -5845,6 +3637,10 @@ fn evaluate_condition(
             Ok(false)
         }
         Condition::TargetSpellControllerIsPoisoned => {
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+
             for target in &ctx.targets {
                 if let crate::effects::ResolvedTarget::Object(id) = target
                     && let Some(obj) = game.object(*id)
@@ -5856,6 +3652,10 @@ fn evaluate_condition(
             Ok(false)
         }
         Condition::TargetSpellManaSpentToCastAtLeast { amount, symbol } => {
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+
             for target in &ctx.targets {
                 if let crate::effects::ResolvedTarget::Object(id) = target
                     && let Some(obj) = game.object(*id)
@@ -5865,28 +3665,23 @@ fn evaluate_condition(
             }
             Ok(false)
         }
-        Condition::TriggeringSpellManaSpentToCastAtLeast { amount, symbol } => {
-            Ok(triggering_spell_mana_spent_at_least(
-                game,
-                ctx.triggering_event.as_ref(),
-                *amount,
-                *symbol,
-            ))
-        }
+        Condition::TriggeringSpellManaSpentToCastAtLeast { amount, symbol } => Ok(
+            triggering_spell_mana_spent_at_least(game, shared.triggering_event, *amount, *symbol),
+        ),
         Condition::ColoredManaSpentToCastThisSpellAtLeast(amount) => {
-            let Some(source_obj) = game.object(ctx.source) else {
+            let Some(source_obj) = game.object(shared.source) else {
                 return Ok(false);
             };
             Ok(mana_pool_colored_total(&source_obj.mana_spent_to_cast) >= *amount)
         }
-        Condition::TriggeringSpellColoredManaSpentToCastAtLeast(amount) => {
-            Ok(triggering_spell_colored_mana_spent_at_least(
-                game,
-                ctx.triggering_event.as_ref(),
-                *amount,
-            ))
-        }
+        Condition::TriggeringSpellColoredManaSpentToCastAtLeast(amount) => Ok(
+            triggering_spell_colored_mana_spent_at_least(game, shared.triggering_event, *amount),
+        ),
         Condition::YouControlMoreCreaturesThanTargetSpellController => {
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+
             let target_controller = ctx.targets.iter().find_map(|target| match target {
                 crate::effects::ResolvedTarget::Object(id) => {
                     game.object(*id).map(|obj| game.controller_of(obj))
@@ -5920,6 +3715,10 @@ fn evaluate_condition(
             Ok(you_count > target_count)
         }
         Condition::TargetHasGreatestPowerAmongCreatures => {
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+
             let target_id = ctx.targets.iter().find_map(|target| match target {
                 crate::effects::ResolvedTarget::Object(id) => Some(*id),
                 _ => None,
@@ -5949,6 +3748,10 @@ fn evaluate_condition(
             Ok(max_power.is_some_and(|max| target_power >= max))
         }
         Condition::TargetManaValueLteColorsSpentToCastThisSpell => {
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+
             let target_id = ctx.targets.iter().find_map(|target| match target {
                 crate::effects::ResolvedTarget::Object(id) => Some(*id),
                 _ => None,
@@ -5979,26 +3782,65 @@ fn evaluate_condition(
             .count() as u32;
             Ok(target_mana_value <= colors_spent)
         }
-        Condition::SourceIsTapped => Ok(game.is_tapped(ctx.source)),
-        Condition::SourceIsSaddled => Ok(game.is_saddled(ctx.source)),
-        Condition::SourceCrewedByExactly { count, filter } => Ok(
-            source_crewed_by_exactly_from_resolution_tags(game, ctx, *count, filter),
-        ),
+        Condition::SourceIsTapped => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(game.is_tapped(ctx.source))
+        }
+        Condition::SourceIsSaddled => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(game.is_saddled(ctx.source))
+        }
+        Condition::SourceCrewedByExactly { count, filter } => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(if let Some(exec) = ctx.execution() {
+                source_crewed_by_exactly_from_resolution_tags(game, exec, *count, filter)
+            } else {
+                source_crewed_by_exactly(
+                    game,
+                    ctx.controller,
+                    ctx.source,
+                    shared.filter_source,
+                    shared.triggering_event,
+                    *count,
+                    filter,
+                )
+            })
+        }
         Condition::SourceDevouredCreaturesOrMore(count) => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+
             Ok(game.devoured_count(ctx.source) >= *count)
         }
-        Condition::SourceIsMonstrous => Ok(game.is_monstrous(ctx.source)),
-        Condition::SourceIsFaceDown => Ok(source_is_face_down_or_alternate_face(game, ctx.source)),
+        Condition::SourceIsMonstrous => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(game.is_monstrous(ctx.source))
+        }
+        Condition::SourceIsFaceDown => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(source_is_face_down_or_alternate_face(game, ctx.source))
+        }
         Condition::SourceMatches(filter) => {
-            let filter_ctx = ctx.filter_context(game);
+            let filter_ctx = game.filter_context_for(shared.controller, Some(shared.source));
             Ok(game
-                .object(ctx.source)
+                .object(shared.source)
                 .is_some_and(|obj| filter.matches(obj, &filter_ctx, game)))
         }
         Condition::AttachedToSourceMatches(filter) => {
-            let filter_ctx = ctx.filter_context(game);
+            let filter_ctx = game.filter_context_for(shared.controller, Some(shared.source));
             Ok(game
-                .object(ctx.source)
+                .object(shared.source)
                 .and_then(|source| source.attached_to)
                 .and_then(|target| target.object_id())
                 .and_then(|id| game.object(id))
@@ -6010,10 +3852,10 @@ fn evaluate_condition(
             comparison,
             ..
         } => {
-            let filter_ctx = ctx.filter_context(game);
+            let filter_ctx = game.filter_context_for(shared.controller, Some(shared.source));
             Ok(attachment_count_condition_matches(
                 game,
-                ctx.source,
+                shared.source,
                 attachment,
                 host,
                 comparison,
@@ -6021,16 +3863,25 @@ fn evaluate_condition(
             ))
         }
         Condition::SourcePowerAtLeast(min_power) => Ok(game
-            .calculated_power(ctx.source)
-            .or_else(|| game.object(ctx.source).and_then(|obj| obj.power()))
+            .calculated_power(shared.source)
+            .or_else(|| game.object(shared.source).and_then(|obj| obj.power()))
             .is_some_and(|power| power >= *min_power as i32)),
         Condition::SourceHasCountersAtLeast(count) => Ok(game
-            .object(ctx.source)
-            .is_some_and(|obj| obj.counters.values().copied().sum::<u32>() >= *count)),
-        Condition::SourceAttackedOrBlockedThisTurn => Ok(game
-            .creature_attacked_this_turn(ctx.source)
-            || game.creature_blocked_this_turn(ctx.source)),
+            .object(shared.source)
+            .map(|obj| obj.counters.values().copied().sum::<u32>() >= *count)
+            .unwrap_or(false)),
+        Condition::SourceAttackedOrBlockedThisTurn => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(game.creature_attacked_this_turn(ctx.source)
+                || game.creature_blocked_this_turn(ctx.source))
+        }
         Condition::TargetIsAttacking => {
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+
             let Some(crate::effects::ResolvedTarget::Object(id)) = ctx.targets.first() else {
                 return Ok(false);
             };
@@ -6040,6 +3891,10 @@ fn evaluate_condition(
                 .is_some_and(|combat| crate::combat_state::is_attacking(combat, *id)))
         }
         Condition::TargetIsBlocked => {
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+
             if let Some(crate::effects::ResolvedTarget::Object(id)) = ctx.targets.first()
                 && let Some(combat) = &game.combat
             {
@@ -6048,6 +3903,14 @@ fn evaluate_condition(
             Ok(false)
         }
         Condition::TaggedObjectMatches(tag, filter) => {
+            if let Some(external) = ctx.external() {
+                return Ok(tag.as_str() == "triggering"
+                    && triggering_event_object_matches(game, external, filter));
+            }
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+
             if let Some(matches) = tagged_object_name_matches_object_set(game, ctx, tag, filter) {
                 return Ok(matches);
             }
@@ -6078,9 +3941,8 @@ fn evaluate_condition(
                 }));
             }
 
-            // Some compile-time conditional lowering paths synthesize a branch-local tag
-            // (for example "countered_0") before runtime tagging exists. In these cases,
-            // fall back to evaluating against the first object target.
+            // Lowering can synthesize a branch-local tag before runtime tagging
+            // exists. Preserve the first-target fallback for those tags only.
             let synthetic_tag = tag.as_str().rsplit_once('_').is_some_and(|(head, suffix)| {
                 !head.is_empty() && suffix.chars().all(|c| c.is_ascii_digit())
             });
@@ -6100,6 +3962,14 @@ fn evaluate_condition(
             Ok(false)
         }
         Condition::TaggedObjectMatchedLastKnown(tag, filter) => {
+            if let Some(external) = ctx.external() {
+                return Ok(tag.as_str() == "triggering"
+                    && triggering_event_object_matched_last_known(game, external, filter));
+            }
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+
             let filter_ctx = ctx.filter_context(game);
             if tag.as_str() == "triggering"
                 && let Some(snapshot) = ctx
@@ -6123,6 +3993,10 @@ fn evaluate_condition(
             }))
         }
         Condition::TaggedObjectIsTopOfLibrary { tag, player } => {
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
             let Some(tagged) = ctx.get_tagged_all(tag.as_str()) else {
                 return Ok(false);
@@ -6147,23 +4021,75 @@ fn evaluate_condition(
                 *library_top_revision,
             ),
         ),
-        Condition::TaggedObjectWasCast(tag) => Ok(tagged_object_was_cast(game, tag, ctx)),
+        Condition::TaggedObjectWasCast(tag) => {
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+            Ok(tagged_object_was_cast(game, tag, ctx))
+        }
         Condition::TaggedObjectIsSoulbondPaired(tag) => {
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+
             let tagged_id = ctx
                 .get_tagged(tag.as_str())
                 .map(|snapshot| snapshot.object_id);
             Ok(tagged_id.is_some_and(|id| game.is_soulbond_paired(id)))
         }
-        Condition::EnchantedPermanentAttackedThisTurn => Ok(game
-            .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
-            .is_some_and(|attached_to| game.creature_attacked_this_turn(attached_to))),
-        Condition::EnchantedPermanentAttackedOrBlockedSinceLastUpkeep => Ok(game
-            .enchanted_permanent_attacked_or_blocked_since_last_upkeep(ctx.source, ctx.controller)),
+        Condition::EnchantedPermanentAttackedThisTurn => {
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+            Ok(game
+                .object(ctx.source)
+                .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
+                .is_some_and(|attached_to| game.creature_attacked_this_turn(attached_to)))
+        }
+        Condition::EnchantedPermanentAttackedOrBlockedSinceLastUpkeep => {
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+            Ok(
+                game.enchanted_permanent_attacked_or_blocked_since_last_upkeep(
+                    ctx.source,
+                    ctx.controller,
+                ),
+            )
+        }
         Condition::SourceBlockedOrBecameBlockedSinceLastUpkeep => {
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+
             Ok(game.source_blocked_or_became_blocked_since_last_upkeep(ctx.source, ctx.controller))
         }
         Condition::TargetMatches(filter) => {
+            if let Some(ctx) = ctx.external() {
+                return Ok({
+                    let filter_ctx = condition_filter_context(
+                        game,
+                        ctx.controller,
+                        ctx.source,
+                        &PlayerFilter::You,
+                        ctx.triggering_event,
+                    );
+                    let Some(event) = ctx.triggering_event else {
+                        return Ok(false);
+                    };
+                    if let Some(snapshot) = event.snapshot() {
+                        return Ok(filter.matches_snapshot(snapshot, &filter_ctx, game));
+                    }
+                    event.object_id().is_some_and(|object_id| {
+                        game.object(object_id)
+                            .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
+                    })
+                });
+            }
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+
             let filter_ctx = ctx.filter_context(game);
             let Some(crate::effects::ResolvedTarget::Object(id)) = ctx.targets.first() else {
                 return Ok(false);
@@ -6177,9 +4103,17 @@ fn evaluate_condition(
             Ok(false)
         }
         Condition::TargetObjectsHaveDifferentColorSets => {
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+
             Ok(target_objects_have_different_color_sets(game, ctx))
         }
         Condition::TargetIsSoulbondPaired => {
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+
             let target_id = ctx.targets.iter().find_map(|target| match target {
                 crate::effects::ResolvedTarget::Object(id) => Some(*id),
                 _ => None,
@@ -6192,6 +4126,10 @@ fn evaluate_condition(
             filter,
             mode,
         } => {
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
             let Some(tagged) = ctx.get_tagged_all(tag.as_str()) else {
                 return Ok(false);
@@ -6225,6 +4163,10 @@ fn evaluate_condition(
             Ok(false)
         }
         Condition::PlayerTaggedObjectEnteredBattlefieldThisTurn { player, tag } => {
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
             let Some(tagged) = ctx.get_tagged_all(tag.as_str()) else {
                 return Ok(false);
@@ -6235,42 +4177,63 @@ fn evaluate_condition(
                     .object_entered_battlefield_controller_this_turn(snapshot.stable_id)
                     .is_some_and(|entry_controller| entry_controller == player_id)
             }))
+        } // Registration limits must not invalidate an already-registered trigger
+          // when its condition is checked again during resolution.
+        Condition::FirstTimeThisTurn => {
+            let Some(ctx) = ctx.external() else {
+                return Ok(true);
+            };
+            Ok(ctx
+                .trigger_identity
+                .map(|id| game.trigger_fire_count_this_turn(ctx.source, id) == 0)
+                .unwrap_or(true))
         }
-        Condition::FirstTimeThisTurn
-        | Condition::SourceFirstCrewedThisTurn
-        | Condition::MaxTimesEachTurn(_)
-        | Condition::DoThisMaxTimesEachTurn(_) => Ok(true),
-        Condition::TriggeringObjectWasEnchanted => Ok(ctx
+        Condition::SourceFirstCrewedThisTurn => {
+            let Some(ctx) = ctx.external() else {
+                return Ok(true);
+            };
+            Ok(source_first_crewed_this_turn(
+                game,
+                ctx.source,
+                ctx.triggering_event,
+            ))
+        }
+        Condition::MaxTimesEachTurn(limit) | Condition::DoThisMaxTimesEachTurn(limit) => {
+            let Some(ctx) = ctx.external() else {
+                return Ok(true);
+            };
+            Ok(ctx
+                .trigger_identity
+                .map(|id| game.trigger_fire_count_this_turn(ctx.source, id) < *limit)
+                .unwrap_or(true))
+        }
+        Condition::TriggeringObjectWasEnchanted => Ok(shared
             .triggering_event
-            .as_ref()
             .and_then(|event| event.snapshot())
             .is_some_and(|snapshot| snapshot.was_enchanted)),
-        Condition::TriggeringObjectBecameTappedFirstTimeThisTurn => {
-            Ok(triggering_object_became_tapped_first_time_this_turn(
-                game,
-                ctx.triggering_event.as_ref(),
-            ))
-        }
-        Condition::TriggeringObjectHadCountersPutFirstTimeThisTurn => {
-            Ok(triggering_object_had_counters_put_first_time_this_turn(
-                game,
-                ctx.triggering_event.as_ref(),
-            ))
-        }
+        Condition::TriggeringObjectBecameTappedFirstTimeThisTurn => Ok(
+            triggering_object_became_tapped_first_time_this_turn(game, shared.triggering_event),
+        ),
+        Condition::TriggeringObjectHadCountersPutFirstTimeThisTurn => Ok(
+            triggering_object_had_counters_put_first_time_this_turn(game, shared.triggering_event),
+        ),
         Condition::TriggeringObjectHadToAttackThisCombat => Ok(
-            triggering_object_had_to_attack_this_combat(game, ctx.triggering_event.as_ref()),
+            triggering_object_had_to_attack_this_combat(game, shared.triggering_event),
         ),
         Condition::TriggeringObjectHadCounters {
             counter_type,
             min_count,
-        } => Ok(ctx
+        } => Ok(shared
             .triggering_event
-            .as_ref()
             .and_then(|event| event.snapshot())
             .is_some_and(|snapshot| {
                 snapshot.counters.get(counter_type).copied().unwrap_or(0) >= *min_count
             })),
         Condition::ControlCreaturesTotalPowerAtLeast(required_power) => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+
             let total_power = game
                 .battlefield
                 .iter()
@@ -6287,103 +4250,242 @@ fn evaluate_condition(
         Condition::CardInYourGraveyard {
             card_types,
             subtypes,
-        } => Ok(game.player(ctx.controller).is_some_and(|player_state| {
-            player_state.graveyard.iter().any(|&card_id| {
-                if game.object(card_id).is_none() {
-                    return false;
+        } => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(game.player(ctx.controller).is_some_and(|player_state| {
+                player_state.graveyard.iter().any(|&card_id| {
+                    if game.object(card_id).is_none() {
+                        return false;
+                    }
+                    let card_type_match = card_types.is_empty()
+                        || card_types
+                            .iter()
+                            .any(|card_type| game.current_has_card_type(card_id, *card_type));
+                    let subtype_match = subtypes.is_empty()
+                        || subtypes
+                            .iter()
+                            .any(|subtype| game.current_has_subtype(card_id, *subtype));
+                    card_type_match && subtype_match
+                })
+            }))
+        }
+        Condition::ActivationTiming(timing) => {
+            let Some(ctx) = ctx.external() else {
+                return Ok(false);
+            };
+            Ok({
+                if ctx.options.ignore_timing {
+                    return Ok(true);
                 }
-                let card_type_match = card_types.is_empty()
-                    || card_types
-                        .iter()
-                        .any(|card_type| game.current_has_card_type(card_id, *card_type));
-                let subtype_match = subtypes.is_empty()
-                    || subtypes
-                        .iter()
-                        .any(|subtype| game.current_has_subtype(card_id, *subtype));
-                card_type_match && subtype_match
+                match timing {
+                    crate::ability::ActivationTiming::AnyTime => true,
+                    crate::ability::ActivationTiming::DuringCombat => {
+                        matches!(game.turn.phase, crate::game_state::Phase::Combat)
+                    }
+                    crate::ability::ActivationTiming::SorcerySpeed => {
+                        game.is_active_player(ctx.controller)
+                            && matches!(
+                                game.turn.phase,
+                                crate::game_state::Phase::FirstMain
+                                    | crate::game_state::Phase::NextMain
+                            )
+                            && game.stack_is_empty()
+                    }
+                    crate::ability::ActivationTiming::OncePerTurn => {
+                        let Some(ability_index) = ctx.ability_index else {
+                            return Ok(false);
+                        };
+                        game.ability_activation_count_this_turn(ctx.source, ability_index) == 0
+                    }
+                    crate::ability::ActivationTiming::DuringYourTurn => {
+                        game.is_active_player(ctx.controller)
+                    }
+                    crate::ability::ActivationTiming::DuringOpponentsTurn => {
+                        !game.is_active_player(ctx.controller)
+                    }
+                    crate::ability::ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep => {
+                        game.is_active_player(ctx.controller)
+                            && game.turn.phase != crate::game_state::Phase::Ending
+                    }
+                    crate::ability::ActivationTiming::DuringSourceOwnersUpkeep => {
+                        game.object(ctx.source)
+                            .is_some_and(|object| game.is_active_player(object.owner))
+                            && game.turn.phase == crate::game_state::Phase::Beginning
+                            && game.turn.step == Some(crate::game_state::Step::Upkeep)
+                    }
+                }
             })
-        })),
-        Condition::ActivationTiming(_) | Condition::MaxActivationsPerTurn(_) => Ok(false),
-        Condition::SourceIsEquipped => Ok(game.object(ctx.source).is_some_and(|source_obj| {
-            source_obj.attachments.iter().any(|id| {
-                game.object(*id)
-                    .is_some_and(|obj| obj.subtypes.contains(&crate::types::Subtype::Equipment))
+        }
+        Condition::MaxActivationsPerTurn(limit) => {
+            let Some(ctx) = ctx.external() else {
+                return Ok(false);
+            };
+            Ok({
+                if ctx.options.ignore_activation_limits {
+                    return Ok(true);
+                }
+                let Some(ability_index) = ctx.ability_index else {
+                    return Ok(false);
+                };
+                game.ability_activation_count_this_turn(ctx.source, ability_index) < *limit
             })
-        })),
-        Condition::SourceIsEnchanted => Ok(game.object(ctx.source).is_some_and(|source_obj| {
-            source_obj.attachments.iter().any(|id| {
-                game.object(*id)
-                    .is_some_and(|obj| obj.subtypes.contains(&crate::types::Subtype::Aura))
-            })
-        })),
-        Condition::EnchantedPermanentIsCreature => Ok(game
-            .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
-            .is_some_and(|attached| {
-                game.object_has_card_type(attached, crate::types::CardType::Creature)
-            })),
-        Condition::EnchantedPermanentIsLand => Ok(game
-            .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
-            .is_some_and(|attached| {
-                game.object_has_card_type(attached, crate::types::CardType::Land)
-            })),
-        Condition::EnchantedPermanentIsEquipment => Ok(game
-            .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
-            .is_some_and(|attached| {
-                game.calculated_subtypes(attached)
-                    .contains(&crate::types::Subtype::Equipment)
-            })),
-        Condition::EnchantedPermanentIsVehicle => Ok(game
-            .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
-            .is_some_and(|attached| {
-                game.calculated_subtypes(attached)
-                    .contains(&crate::types::Subtype::Vehicle)
-            })),
-        Condition::EquippedCreatureTapped => Ok(game
-            .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
-            .is_some_and(|attached| game.is_tapped(attached))),
-        Condition::EquippedCreatureUntapped => Ok(game
-            .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
-            .is_some_and(|attached| !game.is_tapped(attached))),
-        Condition::EquippedCreatureAttacking => Ok(game
-            .object(ctx.source)
-            .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
-            .is_some_and(|attached| {
-                game.combat
-                    .as_ref()
-                    .is_some_and(|combat| crate::combat_state::is_attacking(combat, attached))
-            })),
-        Condition::SourceChosenOption(expected) => Ok(game
-            .chosen_named_option(ctx.source)
-            .is_some_and(|chosen| chosen.eq_ignore_ascii_case(expected))),
-        Condition::SecretChoicesMatch => Ok(ctx
-            .secret_choice_results
-            .get(&ctx.source)
-            .is_some_and(|result| result.choices_match())),
-        Condition::VoteOptionGetsMoreVotes(option) => Ok(ctx
-            .vote_results
-            .get(&ctx.source)
-            .is_some_and(|result| result.option_gets_more_votes(option))),
-        Condition::VoteOptionGetsMoreVotesOrTied(option) => Ok(ctx
-            .vote_results
-            .get(&ctx.source)
-            .is_some_and(|result| result.option_gets_more_votes_or_tied(option))),
+        }
+        Condition::SourceIsEquipped => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(game.object(ctx.source).is_some_and(|source_obj| {
+                source_obj.attachments.iter().any(|id| {
+                    game.object(*id)
+                        .is_some_and(|obj| obj.subtypes.contains(&crate::types::Subtype::Equipment))
+                })
+            }))
+        }
+        Condition::SourceIsEnchanted => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(game.object(ctx.source).is_some_and(|source_obj| {
+                source_obj.attachments.iter().any(|id| {
+                    game.object(*id)
+                        .is_some_and(|obj| obj.subtypes.contains(&crate::types::Subtype::Aura))
+                })
+            }))
+        }
+        Condition::EnchantedPermanentIsCreature => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(game
+                .object(ctx.source)
+                .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
+                .is_some_and(|attached| {
+                    game.object_has_card_type(attached, crate::types::CardType::Creature)
+                }))
+        }
+        Condition::EnchantedPermanentIsLand => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(game
+                .object(ctx.source)
+                .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
+                .is_some_and(|attached| {
+                    game.object_has_card_type(attached, crate::types::CardType::Land)
+                }))
+        }
+        Condition::EnchantedPermanentIsEquipment => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(game
+                .object(ctx.source)
+                .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
+                .is_some_and(|attached| {
+                    game.calculated_subtypes(attached)
+                        .contains(&crate::types::Subtype::Equipment)
+                }))
+        }
+        Condition::EnchantedPermanentIsVehicle => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(game
+                .object(ctx.source)
+                .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
+                .is_some_and(|attached| {
+                    game.calculated_subtypes(attached)
+                        .contains(&crate::types::Subtype::Vehicle)
+                }))
+        }
+        Condition::EquippedCreatureTapped => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(game
+                .object(ctx.source)
+                .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
+                .is_some_and(|attached| game.is_tapped(attached)))
+        }
+        Condition::EquippedCreatureUntapped => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(game
+                .object(ctx.source)
+                .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
+                .is_some_and(|attached| !game.is_tapped(attached)))
+        }
+        Condition::EquippedCreatureAttacking => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(game
+                .object(ctx.source)
+                .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
+                .is_some_and(|attached| {
+                    game.combat
+                        .as_ref()
+                        .is_some_and(|combat| crate::combat_state::is_attacking(combat, attached))
+                }))
+        }
+        Condition::SourceChosenOption(expected) => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(game
+                .chosen_named_option(ctx.source)
+                .is_some_and(|chosen| chosen.eq_ignore_ascii_case(expected)))
+        }
+        Condition::SecretChoicesMatch => {
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+            Ok(ctx
+                .secret_choice_results
+                .get(&ctx.source)
+                .is_some_and(|result| result.choices_match()))
+        }
+        Condition::VoteOptionGetsMoreVotes(option) => {
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+            Ok(ctx
+                .vote_results
+                .get(&ctx.source)
+                .is_some_and(|result| result.option_gets_more_votes(option)))
+        }
+        Condition::VoteOptionGetsMoreVotesOrTied(option) => {
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+            Ok(ctx
+                .vote_results
+                .get(&ctx.source)
+                .is_some_and(|result| result.option_gets_more_votes_or_tied(option)))
+        }
         Condition::CountComparison {
             count, comparison, ..
-        } => Ok(
-            comparison.evaluate(crate::static_abilities::resolve_anthem_count_expression(
-                count,
-                game,
-                ctx.source,
-                ctx.controller,
-            )),
-        ),
+        } => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(
+                comparison.evaluate(crate::static_abilities::resolve_anthem_count_expression(
+                    count,
+                    game,
+                    ctx.source,
+                    ctx.controller,
+                )),
+            )
+        }
         Condition::CountParity { count, even, .. } => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+
             let value = crate::static_abilities::resolve_anthem_count_expression(
                 count,
                 game,
@@ -6396,108 +4498,415 @@ fn evaluate_condition(
             left,
             operator,
             right,
-        } => Ok(operator.evaluate(
-            resolve_value(game, left, ctx)?,
-            resolve_value(game, right, ctx)?,
-        )),
-        Condition::ValueIsPrime(value) => Ok(is_prime_integer(resolve_value(game, value, ctx)?)),
-        Condition::OwnsCardExiledWithCounter(counter) => Ok(game.exile.iter().any(|&id| {
-            game.object(id).is_some_and(|obj| {
-                obj.owner == ctx.controller && obj.counters.get(counter).copied().unwrap_or(0) > 0
-            })
-        })),
-        Condition::SourceAttackedThisTurn => Ok(game.creature_attacked_this_turn(ctx.source)),
-        Condition::SourceAttackedBattleThisTurn => {
-            Ok(game.creature_attacked_battle_this_turn(ctx.source))
+        } => {
+            if let Some(exec) = ctx.execution() {
+                Ok(operator.evaluate(
+                    resolve_value(game, left, exec)?,
+                    resolve_value(game, right, exec)?,
+                ))
+            } else {
+                let external = ctx.external();
+                Ok(evaluate_value_comparison(
+                    game,
+                    ctx.controller,
+                    ctx.source,
+                    left,
+                    *operator,
+                    right,
+                    shared.triggering_event,
+                    external.and_then(|c| c.defending_player),
+                    external.and_then(|c| c.attacking_player),
+                ))
+            }
         }
-        Condition::SourceSuspected => Ok(game.is_suspected(ctx.source)),
-        Condition::SourceDealtCombatDamageToPlayerThisTurn => {
-            Ok(game.source_dealt_combat_damage_to_player_this_turn(ctx.source))
+        Condition::ValueIsPrime(value) => {
+            if let Some(exec) = ctx.execution() {
+                Ok(is_prime_integer(resolve_value(game, value, exec)?))
+            } else {
+                Ok(evaluate_value_is_prime(
+                    game,
+                    ctx.controller,
+                    ctx.source,
+                    value,
+                    shared.triggering_event,
+                ))
+            }
         }
-        Condition::SourceCameUnderYourControlThisTurn => {
-            Ok(game.object(ctx.source).is_some_and(|obj| {
-                game.turn_store
-                    .turn_history
-                    .object_came_under_controller_this_turn(obj.stable_id, ctx.controller)
+        Condition::OwnsCardExiledWithCounter(counter) => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(game.exile.iter().any(|&id| {
+                game.object(id).is_some_and(|obj| {
+                    obj.owner == ctx.controller
+                        && obj.counters.get(counter).copied().unwrap_or(0) > 0
+                })
             }))
         }
-        Condition::SourceIsUntapped => Ok(!game.is_tapped(ctx.source)),
-        Condition::SourceIsAttacking => Ok(game
-            .combat
-            .as_ref()
-            .is_some_and(|combat| crate::combat_state::is_attacking(combat, ctx.source))),
-        Condition::SourceIsBlocking => Ok(game
-            .combat
-            .as_ref()
-            .is_some_and(|combat| crate::combat_state::is_blocking(combat, ctx.source))),
-        Condition::SourceIsSoulbondPaired => Ok(game.is_soulbond_paired(ctx.source)),
+        Condition::SourceAttackedThisTurn => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(game.creature_attacked_this_turn(ctx.source))
+        }
+        Condition::SourceAttackedBattleThisTurn => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+
+            Ok(game.creature_attacked_battle_this_turn(ctx.source))
+        }
+        Condition::SourceSuspected => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(game.is_suspected(ctx.source))
+        }
+        Condition::SourceDealtCombatDamageToPlayerThisTurn => {
+            Ok(game.source_dealt_combat_damage_to_player_this_turn(shared.source))
+        }
+        Condition::SourceCameUnderYourControlThisTurn => {
+            Ok(game.object(shared.source).is_some_and(|obj| {
+                game.turn_store
+                    .turn_history
+                    .object_came_under_controller_this_turn(obj.stable_id, shared.controller)
+            }))
+        }
+        Condition::SourceIsUntapped => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(!game.is_tapped(ctx.source))
+        }
+        Condition::SourceIsAttacking => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(game
+                .combat
+                .as_ref()
+                .is_some_and(|combat| crate::combat_state::is_attacking(combat, ctx.source)))
+        }
+        Condition::SourceIsBlocking => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(game
+                .combat
+                .as_ref()
+                .is_some_and(|combat| crate::combat_state::is_blocking(combat, ctx.source)))
+        }
+        Condition::SourceIsSoulbondPaired => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(game.is_soulbond_paired(ctx.source))
+        }
         Condition::SourceSoulbondPartnerMatches(filter) => Ok(game
             .soulbond_partner(ctx.source)
             .and_then(|id| game.object(id))
-            .is_some_and(|partner| filter.matches(partner, &ctx.filter_context(game), game))),
-        Condition::TurnHistory(_) => unreachable!("handled by shared condition evaluator"),
-        Condition::XValueAtLeast(min) => Ok(ctx.x_value.unwrap_or(0) >= *min),
-        Condition::Custom(_)
-        | Condition::LifeTotalOrLess(_)
-        | Condition::LifeTotalOrGreater(_)
-        | Condition::CardsInHandOrMore(_)
-        | Condition::YouHaveCardInHandMatching(_)
-        | Condition::YourTurn
-        | Condition::CurrentTurnIsExtra
-        | Condition::SourceControllersMainPhase
-        | Condition::SourceControllersEndStep
-        | Condition::SourceIsRenowned
-        | Condition::YourFirstTurnsOfTheGameOrFewer(_)
-        | Condition::CreatureDiedThisTurn
-        | Condition::CastSpellThisTurn
-        | Condition::AttackedThisTurn
-        | Condition::AttackedWithNOrMoreCreaturesThisTurn(_)
-        | Condition::OpponentLostLifeThisTurn
-        | Condition::AnyPlayerLostLifeThisTurnOrMore { .. }
-        | Condition::OpponentWasDealtDamageThisTurn
-        | Condition::PermanentLeftBattlefieldThisTurn
-        | Condition::NonlandPermanentLeftBattlefieldThisTurn
-        | Condition::SpellWasWarpedThisTurn
-        | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn { .. }
-        | Condition::ObjectEnteredBattlefieldThisTurn(_)
-        | Condition::ObjectEnteredBattlefieldLastTurn(_)
-        | Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(_)
-        | Condition::SourceWasCast
-        | Condition::NoSpellsWereCastLastTurn
-        | Condition::SpellsWereCastLastTurnOrMore(_)
-        | Condition::SourceHasNoCounter(_)
-        | Condition::SourceHasCounterAtLeast { .. }
-        | Condition::SourceInGraveyardWithCardsAbove { .. }
-        | Condition::SourceIsInZone(_)
-        | Condition::ManaSpentToCastThisSpellAtLeast { .. }
-        | Condition::SnowManaOfAnySpellColorSpentToCastThisSpell
-        | Condition::TriggeringSpellSnowManaOfAnySpellColorSpentToCast
-        | Condition::SameColorManaSpentToCastThisSpellAtLeast(_)
-        | Condition::ColorsOfManaSpentToCastThisSpellOrMore(_)
-        | Condition::PlayerGraveyardHasCardsAtLeast { .. }
-        | Condition::SourceIsRingBearer { .. }
-        | Condition::PlayerRingTemptedThisGameOrMore { .. }
-        | Condition::PlayerRemovedDraftCardMatching { .. }
-        | Condition::YouControlCommander
-        | Condition::ThisAbilityResolvedThisTurnExactly(_)
-        | Condition::Not(_)
-        | Condition::And(_, _)
-        | Condition::Or(_, _) => {
-            unreachable!("handled before resolution match")
+            .is_some_and(|partner| {
+                let filter_ctx = if let Some(exec) = ctx.execution() {
+                    exec.filter_context(game)
+                } else {
+                    FilterContext::new(ctx.controller).with_source(ctx.source)
+                };
+                filter.matches(partner, &filter_ctx, game)
+            })),
+        Condition::TurnHistory(condition) => {
+            Ok(evaluate_turn_history_condition(game, condition, shared))
         }
+        Condition::XValueAtLeast(min) => Ok(if let Some(exec) = ctx.execution() {
+            exec.x_value.unwrap_or(0) >= *min
+        } else if ctx.external().is_some() {
+            game.object(ctx.source)
+                .and_then(|object| object.x_value)
+                .unwrap_or(0)
+                >= *min
+        } else {
+            false
+        }),
+        Condition::Custom(_) => Ok(false),
+        Condition::LifeTotalOrLess(threshold) => Ok(game
+            .player(shared.controller)
+            .map(|p| p.life <= *threshold)
+            .unwrap_or(false)),
+        Condition::LifeTotalOrGreater(threshold) => Ok(game
+            .player(shared.controller)
+            .map(|p| p.life >= *threshold)
+            .unwrap_or(false)),
+        Condition::CardsInHandOrMore(threshold) => Ok(game
+            .player(shared.controller)
+            .map(|p| p.hand.len() as i32 >= *threshold)
+            .unwrap_or(false)),
+        Condition::YouHaveCardInHandMatching(filter) => Ok(player_has_card_in_hand_matching(
+            game,
+            shared.controller,
+            filter,
+            shared.filter_source,
+        )),
+        Condition::YourTurn => Ok(game.is_active_player(shared.controller)),
+        Condition::CurrentTurnIsExtra => Ok(game.turn_store.current_turn_is_extra),
+        Condition::SourceControllersMainPhase => Ok(game.is_active_player(shared.controller)
+            && matches!(
+                game.turn.phase,
+                crate::game_state::Phase::FirstMain | crate::game_state::Phase::NextMain
+            )),
+        Condition::SourceControllersEndStep => Ok(game.is_active_player(shared.controller)
+            && game.turn.phase == crate::game_state::Phase::Ending),
+        Condition::SourceIsRenowned => Ok(game.is_renowned(shared.source)),
+        Condition::YourFirstTurnsOfTheGameOrFewer(count) => {
+            Ok(game.is_active_player(shared.controller) && game.turn.turn_number <= *count)
+        }
+        Condition::CreatureDiedThisTurn => Ok(game
+            .turn_store
+            .turn_history
+            .total_creatures_died_this_turn()
+            > 0),
+        Condition::CastSpellThisTurn => {
+            Ok(game.turn_store.turn_history.any_spell_was_cast_this_turn())
+        }
+        Condition::AttackedThisTurn => Ok(game
+            .turn_store
+            .turn_history
+            .players_attacked_this_turn
+            .contains(&shared.controller)),
+        Condition::AttackedWithNOrMoreCreaturesThisTurn(count) => Ok(game
+            .turn_store
+            .turn_history
+            .creatures_attacked_this_turn
+            .iter()
+            .filter(|id| game.current_controller(**id) == Some(shared.controller))
+            .count() as u32
+            >= *count),
+        Condition::OpponentLostLifeThisTurn => {
+            let filter_ctx = game.filter_context_for(shared.controller, shared.filter_source);
+            Ok(filter_ctx.opponents.iter().any(|opponent| {
+                game.turn_store
+                    .turn_history
+                    .player_lost_life_this_turn(*opponent)
+            }))
+        }
+        Condition::AnyPlayerLostLifeThisTurnOrMore { count } => {
+            Ok(game.players.iter().any(|player| {
+                player.is_in_game()
+                    && game
+                        .turn_store
+                        .turn_history
+                        .total_life_lost_for_players(&[player.id])
+                        >= *count
+            }))
+        }
+        Condition::OpponentWasDealtDamageThisTurn => {
+            let filter_ctx = game.filter_context_for(shared.controller, shared.filter_source);
+            Ok(filter_ctx.opponents.iter().any(|opponent| {
+                game.turn_store
+                    .turn_history
+                    .player_was_dealt_damage_this_turn(*opponent)
+            }))
+        }
+        Condition::PermanentLeftBattlefieldThisTurn => Ok(game
+            .turn_store
+            .turn_history
+            .permanents_left_battlefield_this_turn()
+            > 0),
+        Condition::NonlandPermanentLeftBattlefieldThisTurn => Ok(game
+            .turn_store
+            .turn_history
+            .nonland_permanents_left_battlefield_this_turn()
+            > 0),
+        Condition::SpellWasWarpedThisTurn => {
+            Ok(game.turn_store.turn_history.spell_was_warped_this_turn())
+        }
+        Condition::PermanentLeftBattlefieldUnderYourControlThisTurn { .. } => Ok(game
+            .turn_store
+            .turn_history
+            .permanents_left_battlefield_under_controller(shared.controller)
+            > 0),
+        Condition::ObjectEnteredBattlefieldThisTurn(filter) => Ok(
+            object_matching_entered_battlefield_this_turn(game, shared, filter),
+        ),
+        Condition::ObjectEnteredBattlefieldLastTurn(filter) => Ok(
+            object_matching_entered_battlefield_last_turn(game, shared, filter),
+        ),
+        Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter) => Ok(
+            object_matching_was_put_into_graveyard_from_battlefield_this_turn(game, shared, filter),
+        ),
+        Condition::SourceWasCast => Ok(source_was_cast(
+            game,
+            shared.source,
+            shared.triggering_event,
+        )),
+        Condition::NoSpellsWereCastLastTurn => Ok(game.turn_store.spells_cast_last_turn_total == 0),
+        Condition::SpellsWereCastLastTurnOrMore(count) => {
+            Ok(game.turn_store.spells_cast_last_turn_total >= *count)
+        }
+        Condition::SourceHasNoCounter(counter_type) => Ok(game
+            .object(shared.source)
+            .map(|obj| obj.counters.get(counter_type).copied().unwrap_or(0) == 0)
+            .unwrap_or(false)),
+        Condition::SourceHasCounterAtLeast {
+            counter_type,
+            count,
+            ..
+        } => Ok(game
+            .object(shared.source)
+            .map(|obj| obj.counters.get(counter_type).copied().unwrap_or(0) >= *count)
+            .unwrap_or(false)),
+        Condition::SourceInGraveyardWithCardsAbove { filter, count } => {
+            Ok(game.object(shared.source).is_some_and(|source| {
+                if source.zone != crate::zone::Zone::Graveyard {
+                    return false;
+                }
+                let Some(graveyard) = game.player(source.owner).map(|player| &player.graveyard)
+                else {
+                    return false;
+                };
+                let Some(source_index) = graveyard.iter().position(|id| *id == shared.source)
+                else {
+                    return false;
+                };
+                let filter_ctx = game.filter_context_for(shared.controller, Some(shared.source));
+                graveyard[source_index + 1..]
+                    .iter()
+                    .filter(|id| {
+                        game.object(**id)
+                            .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+                    })
+                    .count()
+                    >= *count as usize
+            }))
+        }
+        Condition::SourceIsInZone(zone) => Ok(game
+            .object(shared.source)
+            .map(|obj| obj.zone == *zone)
+            .unwrap_or(false)),
+        Condition::ManaSpentToCastThisSpellAtLeast { amount, symbol } => {
+            let Some(source_obj) = game.object(shared.source) else {
+                return Ok(false);
+            };
+            Ok(mana_pool_amount(&source_obj.mana_spent_to_cast, *symbol) >= *amount)
+        }
+Condition::SnowManaOfAnySpellColorSpentToCastThisSpell => {
+            Ok(game.object(shared.source).is_some_and(|object| {
+                let snapshot =
+                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                        object, game,
+                    );
+                matching_snow_mana_was_spent(&snapshot)
+            }))
+        }
+Condition::TriggeringSpellSnowManaOfAnySpellColorSpentToCast => {
+            Ok(shared.triggering_event
+                .and_then(|event| event.downcast::<crate::events::SpellCastEvent>())
+                .is_some_and(|cast| {
+                    game.object(cast.spell).filter(|object| object.zone == crate::zone::Zone::Stack)
+                        .map_or_else(|| cast.snapshot.as_ref().is_some_and(matching_snow_mana_was_spent), |object| {
+                            matching_snow_mana_was_spent(&crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
+                        })
+                }))
+        },
+        Condition::SameColorManaSpentToCastThisSpellAtLeast(amount) => {
+            let Some(source_obj) = game.object(shared.source) else {
+                return Ok(false);
+            };
+            let spent = &source_obj.mana_spent_to_cast;
+            let most_spent_of_one_color =
+                [spent.white, spent.blue, spent.black, spent.red, spent.green]
+                    .into_iter()
+                    .max()
+                    .unwrap_or(0);
+            Ok(most_spent_of_one_color >= *amount)
+        }
+        Condition::ColorsOfManaSpentToCastThisSpellOrMore(amount) => {
+            let Some(source_obj) = game.object(shared.source) else {
+                return Ok(false);
+            };
+            let spent = &source_obj.mana_spent_to_cast;
+            let distinct_colors = [
+                spent.white > 0,
+                spent.blue > 0,
+                spent.black > 0,
+                spent.red > 0,
+                spent.green > 0,
+            ]
+            .into_iter()
+            .filter(|present| *present)
+            .count() as u32;
+            Ok(distinct_colors >= *amount)
+        }
+        Condition::PlayerGraveyardHasCardsAtLeast { player, count } => Ok(game
+            .player(*player)
+            .is_some_and(|p| p.graveyard.len() >= *count)),
+        Condition::SourceIsRingBearer { player } => {
+            Ok(
+                matching_condition_players_simple(game, shared.controller, player)
+                    .into_iter()
+                    .any(|player_id| game.current_ring_bearer(player_id) == Some(shared.source)),
+            )
+        }
+        Condition::PlayerRingTemptedThisGameOrMore { player, count } => Ok(
+            matching_condition_players_simple(game, shared.controller, player)
+                .into_iter()
+                .any(|player_id| game.ring_temptations(player_id) >= *count),
+        ),
+        Condition::PlayerRemovedDraftCardMatching {
+            player,
+            filter,
+            with_cards_named,
+        } => Ok(
+            matching_condition_players_simple(game, shared.controller, player)
+                .into_iter()
+                .any(|player_id| {
+                    game.removed_from_draft_card_matches(
+                        player_id,
+                        with_cards_named,
+                        filter,
+                        shared.filter_source,
+                    )
+                }),
+        ),
+        Condition::YouControlCommander => {
+            if let Some(player) = game.player(shared.controller) {
+                let commanders = player.get_commanders();
+                for &commander_id in commanders {
+                    if game.battlefield.contains(&commander_id)
+                        && let Some(obj) = game.object(commander_id)
+                        && game.controller_of(obj) == shared.controller
+                    {
+                        return Ok(true);
+                    }
+                    for &bf_id in &game.battlefield {
+                        if let Some(obj) = game.object(bf_id)
+                            && game.controller_of(obj) == shared.controller
+                            && obj.stable_id == StableId::from(commander_id)
+                        {
+                            return Ok(true);
+                        }
+                    }
+                }
+            }
+            Ok(false)
+        }
+        Condition::ThisAbilityResolvedThisTurnExactly(count) => {
+            Ok(if let Some(ability_index) = shared.ability_index {
+                game.activated_ability_resolution_count_this_turn(shared.source, ability_index)
+                    == *count
+            } else {
+                shared.trigger_identity.is_some_and(|trigger_identity| {
+                    game.triggered_ability_resolution_count_this_turn(
+                        shared.source,
+                        trigger_identity,
+                    ) == *count
+                })
+            })
+        }
+        Condition::Not(inner) => Ok(!evaluate_condition_in_context(game, inner, ctx)?),
+        Condition::And(a, b) => Ok(evaluate_condition_in_context(game, a, ctx)?
+            && evaluate_condition_in_context(game, b, ctx)?),
+        Condition::Or(a, b) => Ok(evaluate_condition_in_context(game, a, ctx)?
+            || evaluate_condition_in_context(game, b, ctx)?),
     }
 }
-
-fn matching_snow_mana_was_spent(snapshot: &crate::snapshot::ObjectSnapshot) -> bool {
-    use crate::color::Color;
-    let spent = &snapshot.snow_mana_spent_to_cast;
-    [
-        (Color::White, spent.white),
-        (Color::Blue, spent.blue),
-        (Color::Black, spent.black),
-        (Color::Red, spent.red),
-        (Color::Green, spent.green),
-    ]
-    .into_iter()
-    .any(|(color, amount)| amount > 0 && snapshot.colors.contains(color))
-}
+#[cfg(test)]
+mod context_tests;

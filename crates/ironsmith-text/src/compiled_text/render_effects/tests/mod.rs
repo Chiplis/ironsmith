@@ -313,3 +313,19 @@ mod cohort_aura_returns_and_branches;
 mod cohort_offers_and_references;
 
 mod cohort_attachment_and_cast_history;
+
+mod cohort_conditional_counter_references;
+
+mod cohort_turn_conditions_and_owner_references;
+
+mod cohort_copy_and_target_restrictions;
+
+mod cohort_combat_permissions_and_sacrifice;
+
+mod cohort_history_extrema_and_references;
+
+mod cohort_value_followups_and_attached_conditions;
+mod cohort_spell_unions_and_related_subjects;
+mod cohort_counter_choices_and_kicked_history;
+
+mod cohort_prevention_and_historical_counts;

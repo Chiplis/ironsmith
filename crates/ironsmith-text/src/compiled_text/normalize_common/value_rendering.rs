@@ -2920,6 +2920,14 @@ pub(crate) fn describe_card_choice_count(count: ChoiceCount) -> String {
 }
 
 pub(crate) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> String {
+    if let ChooseSpec::Object(filter) = spec.base()
+        && filter.has_singular_pronoun_reference_surface()
+        && filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        })
+    {
+        return "it".to_string();
+    }
     match spec {
         ChooseSpec::SurfaceHinted { spec: inner, .. } => {
             describe_choose_spec_without_graveyard_zone(inner)
@@ -4447,6 +4455,9 @@ pub(crate) fn describe_effect_metric_value(
         }
         crate::effect::EffectMetric::IteratedPlayerCount => "that many".to_string(),
         crate::effect::EffectMetric::PlayersWithPositiveCount => "that many players".to_string(),
+        crate::effect::EffectMetric::NameStickerUniqueVowels => {
+            "the number of unique vowels on that sticker".to_string()
+        }
         crate::effect::EffectMetric::OtherNumber => "the other result".to_string(),
     };
     match offset {
@@ -4609,7 +4620,7 @@ pub(crate) fn describe_prior_effect_metric_basis(
         let noun = if plural { "cards" } else { "card" };
         return format!("{noun} returned to your hand this way");
     }
-    if query.action == Some(crate::effect::PriorEffectAction::PutIntoGraveyard)
+    if matches!(query.action, Some(crate::effect::PriorEffectAction::PutIntoGraveyard | crate::effect::PriorEffectAction::Destroyed))
         && let Some(controller) = query
             .filter
             .as_ref()
@@ -4625,8 +4636,9 @@ pub(crate) fn describe_prior_effect_metric_basis(
         } else {
             describe_player_filter(controller)
         };
+        let action = describe_prior_effect_action_clause(query.action.unwrap());
         return format!(
-            "{noun} {player} controlled that {} put into a graveyard this way",
+            "{noun} {player} controlled that {} {action} this way",
             if plural { "were" } else { "was" }
         );
     }

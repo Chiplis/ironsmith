@@ -64,6 +64,7 @@ function warningText(value) {
 function sourceActionLabel(source) {
   if (source.payment_kind === "convoke") return "Tap for convoke";
   if (source.payment_kind === "improvise") return "Tap for improvise";
+  if (source.payment_kind === "delve") return "Exile for delve";
   return source.planned ? "" : "Available permanent";
 }
 
@@ -72,6 +73,7 @@ function pipPaymentLabel(allocation) {
   if (allocation.payment_kind === "life") return `${allocation.life || 0} life`;
   if (allocation.payment_kind === "convoke") return "convoke";
   if (allocation.payment_kind === "improvise") return "improvise";
+  if (allocation.payment_kind === "delve") return "delve";
   if (allocation.payment_kind === "assist") return "assist";
   return allocation.symbol ? `pay ${allocation.symbol}` : "mana";
 }

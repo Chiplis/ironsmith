@@ -88,8 +88,9 @@ export function DragProvider({ children }) {
     const next = { ...prev, currentX: x, currentY: y,
       hoverCandidate: hoverChanged ? hit : prev.hoverCandidate };
     dragStateRef.current = next;
+    // Pointer and hover changes belong to frame subscribers. Publishing a new
+    // session here rerenders every battlefield card when the target changes.
     motion.set(next);
-    if (hoverChanged) setSession(next);
   }, [motion]);
 
   const markCastIntent = useCallback((sourcePoint) => {
@@ -201,7 +202,7 @@ export function DragProvider({ children }) {
 
   return (
     <DragMotionContext.Provider value={motion}>
-    <CastHoverContext.Provider value={dragState?.castIntent ? dragState.hoverCandidate : null}>
+    <CastHoverContext.Provider value={motion}>
       <CastTargetContext.Provider value={dragState?.castIntent || null}>
         <DragStateContext.Provider value={dragState}>
           <DragActionsContext.Provider value={actions}>
@@ -226,10 +227,12 @@ export function useDragSession() {
   return dragState;
 }
 
-export function useDragState() {
+export function useDragState({ trackPointer = true } = {}) {
   const motion = useContext(DragMotionContext);
+  const session = useContext(DragStateContext);
   if (!motion) throw new Error("useDragState must be inside DragProvider");
-  return useSyncExternalStore(motion.subscribe, motion.getSnapshot, motion.getSnapshot);
+  const getSnapshot = useCallback(() => trackPointer ? motion.getSnapshot() : session, [motion, session, trackPointer]);
+  return useSyncExternalStore(motion.subscribe, getSnapshot, getSnapshot);
 }
 
 export function useDragActions() {
@@ -274,11 +277,33 @@ export function useCastTargeting() {
   return useContext(CastTargetContext);
 }
 
+const subscribeNoHover = () => () => {};
+const identity = value => value;
+
+function useCastHoverSelection(select) {
+  const motion = useContext(CastHoverContext);
+  const getSnapshot = useCallback(() => {
+    const drag = motion?.getSnapshot();
+    return select(drag?.castIntent ? drag.hoverCandidate ?? null : null);
+  }, [motion, select]);
+  return useSyncExternalStore(motion?.subscribe || subscribeNoHover, getSnapshot, getSnapshot);
+}
+
 export function useCastTargetHover() {
-  return useContext(CastHoverContext);
+  return useCastHoverSelection(identity);
+}
+
+export function useCastObjectHovered(objectIds) {
+  return useCastHoverSelection(useCallback(candidate => Boolean(candidate?.kind === "object"
+    && candidate.objectIds.some(id => objectIds.includes(Number(id)))), [objectIds]));
 }
 
 export function useCastPlayerHovered(playerId) {
-  const candidate = useCastTargetHover();
-  return candidate?.kind === "player" && candidate.playerIds.some(id => Number(id) === Number(playerId));
+  return useCastHoverSelection(useCallback(candidate => Boolean(candidate?.kind === "player"
+    && candidate.playerIds.some(id => Number(id) === Number(playerId))), [playerId]));
+}
+
+export function useCastZoneHovered(playerId, zone) {
+  return useCastHoverSelection(useCallback(candidate => Boolean(candidate?.kind === "zone"
+    && candidate.zone === zone && String(candidate.playerId) === String(playerId)), [playerId, zone]));
 }

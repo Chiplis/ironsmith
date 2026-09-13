@@ -430,6 +430,11 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 parse_object_filter_lexed(filter_tokens, other)
                     .map(|mut filter| {
                         filter.other |= other;
+                        if parser_filter_words.contains(&"kicked")
+                            && !filter.ability_markers.iter().any(|marker| marker == "kicked")
+                        {
+                            filter.ability_markers.push("kicked".to_string());
+                        }
                         // The event object is on the stack, but an authored
                         // "from ... hand" clause constrains the cast's origin.
                         if from_their_hand || from_your_hand || from_a_hand {

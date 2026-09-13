@@ -6,6 +6,7 @@ import {I18nProvider} from '../src/i18n/I18nContext';
 import {HoverProvider, useHoverActions} from '../src/context/HoverContext';
 import {DragProvider} from '../src/context/DragContext';
 import FloatingCardPreview from '../src/components/right-rail/FloatingCardPreview';
+import GameCard from '../src/components/cards/GameCard';
 import '../src/index.css';
 
 // Controlled, page-local transport. No live Scryfall or game requests.
@@ -13,15 +14,18 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const scenarios = [];
 const originalFetch = window.fetch.bind(window);
 window.fetch = async (input, options) => {
-  const url = String(input), s = scenarios.find(s => url.includes(s.slug) || url.includes(s.uuid));
+  const url = String(input), decoded = decodeURIComponent(url.replaceAll('+', ' '));
+  const s = scenarios.find(s => url.includes(s.slug) || url.includes(s.uuid) || decoded.includes(s.printing.name));
   if (!s) return originalFetch(input, options);
   if (url.includes('api.scryfall.com')) {
     s.apiCalls = (s.apiCalls || 0) + 1;
     await sleep(s.flavorDelay && s.apiCalls === 1 ? s.flavorDelay : s.apiDelay || 0);
-    return s.fail ? new Response('', {status:503}) : Response.json(s.printing);
+    return s.fail ? new Response('', {status:503}) : Response.json(url.includes('/search?') ? {data:[s.printing],has_more:false} : s.printing);
   }
   if (url.includes('/cards/')) {
-    const printing = {...s.printing};
+    // Resolve the image locally; delayed API calls exercise frame metadata,
+    // independently of the current default-printing search policy.
+    const printing = {...s.printing,standard_printing:true,frame:'2015'};
     if (s.flavorDelay) delete printing.flavor_text;
     return Response.json({scryfall:printing});
   }
@@ -37,7 +41,7 @@ Object.defineProperty(HTMLImageElement.prototype, 'src', {...src, set(url) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="488" height="${normal ? 684 : 356}"><rect width="488" height="684" fill="#171612"/><rect x="24" y="28" width="440" height="625" fill="#9c7848"/><rect x="48" y="70" width="390" height="300" fill="#b4d2f0"/><rect x="48" y="416" width="390" height="185" fill="#ece0ca"/></svg>`;
   if (normal && s.fail) {queueMicrotask(() => this.onerror?.(new Event('error'))); return;}
   if (normal && s.textureDelay) {
-    s.textureStarted = performance.now();
+    s.textureStarted ??= performance.now();
     setTimeout(() => src.set.call(this, `data:image/svg+xml,${encodeURIComponent(svg)}`), s.textureDelay);
   } else src.set.call(this, `data:image/svg+xml,${encodeURIComponent(svg)}`);
 }});
@@ -63,8 +67,9 @@ async function until(predicate) {
 export default function Fixture() {
   const {hoverCard, clearHover} = useHoverActions();
   const [cards, setCards] = useState([]), [results, setResults] = useState([]), [running, setRunning] = useState(false);
+  const [fieldCard, setFieldCard] = useState(false);
   const run = async () => {
-    setRunning(true);setResults([]);
+    setRunning(true);setResults([]);setFieldCard(false);
     try {
       await Promise.all(['400 100px "Goudy Medieval"','400 100px "MPlantin"','italic 400 100px "MPlantin"'].map(font => loadFont(font)));
       for (const [label, delays] of [
@@ -130,7 +135,21 @@ export default function Fixture() {
       flushSync(() => hoverCard(cards[0]?.id || scenarios.length));await sleep(100);
       flushSync(() => clearHover());await sleep(600);
       check(document.querySelector('[data-card-hover-preview]').dataset.visible === 'false', 'Abandoned hover reopened');
-      setResults(items => [...items,'PASS cancelled hover stays closed','ALL CHECKS PASSED']);
+      setResults(items => [...items,'PASS cancelled hover stays closed']);
+      const id = scenarios.length + 1, uuid = `aaaaaaaa-bbbb-cccc-dddd-${String(id).padStart(12,'0')}`;
+      const art = `https://cards.scryfall.io/art_crop/front/a/b/${uuid}.jpg`;
+      const card = {id,name:'Background frame fixture',type_line:'Artifact',oracle_text:'Flying',mana_cost:'{0}'};
+      scenarios.push({uuid,slug:'background-frame-fixture',apiDelay:400,printing:{...card,frame:'1997',image_uris:{art_crop:art,normal:art.replace('/art_crop/','/normal/')}}});
+      flushSync(() => {setCards([card]);setFieldCard(true);});
+      const smallFrame = () => document.querySelector('.battlefield-prepared-frame .interactive-card-frame-stage');
+      await until(() => smallFrame()?.dataset.renderReady === 'true');
+      check(!document.querySelector('.battlefield-prepared-frame .card-frame-art-preview'), 'Small frame flashes a second art preview');
+      check(document.querySelector('.battlefield-prepared-frame').inert, 'Small frame accepts inspector interactions');
+      flushSync(() => hoverCard(id));
+      await until(() => document.querySelector('[data-card-hover-preview] .interactive-card-frame-stage')?.dataset.renderReady === 'true');
+      check(document.querySelector('[data-card-hover-preview] .interactive-card-frame-stage').dataset.frameReused === 'true', 'Hover did not reuse background frame');
+      check(!document.querySelector('[data-card-hover-preview] .card-frame-art-preview'), 'Prepared hover switched artwork');
+      setResults(items => [...items,'PASS battlefield prepares before hover and shares its finished frame','ALL CHECKS PASSED']);
     } catch (error) {setResults(items => [...items, `FAIL ${error.message}`]);}
     finally {fontDelay = 0;setRunning(false);}
   };
@@ -141,7 +160,9 @@ export default function Fixture() {
   }}}}>
     <button disabled={running} onClick={run}>Run readiness checks</button>
     <pre aria-label="Readiness results">{results.join('\n')}</pre>
-    {cards.map(card => <div key={card.id} className="game-card battlefield-row-card" data-object-id={card.id} style={{width:80,height:110,marginTop:250}}>{card.name}</div>)}
+    {cards.map(card => fieldCard
+      ? <GameCard key={card.id} card={card} variant="battlefield" battlefieldVisualMode="portrait" sourceImageUrl={scenarios.at(-1).printing.image_uris.normal} style={{width:80,height:110,marginTop:250}} />
+      : <div key={card.id} className="game-card battlefield-row-card" data-object-id={card.id} style={{width:80,height:110,marginTop:250}}>{card.name}</div>)}
     <FloatingCardPreview />
   </GameContext.Provider>;
 }

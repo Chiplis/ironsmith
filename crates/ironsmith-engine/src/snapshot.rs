@@ -174,6 +174,8 @@ pub struct ObjectSnapshot {
     pub cast_order_this_turn: Option<u32>,
     /// Mana spent to cast this object when it was a spell on the stack.
     pub mana_spent_to_cast: ManaPool,
+    /// Optional costs paid for this cast, retained for historical spell filters.
+    pub optional_costs_paid: crate::cost::OptionalCostsPaid,
     pub snow_mana_spent_to_cast: ManaPool,
     /// Last-known snapshots of the sources that produced mana spent to cast
     /// this object. This remains available after the spell leaves the stack
@@ -267,6 +269,7 @@ impl ObjectSnapshot {
             x_value: obj.x_value,
             cast_order_this_turn: game.turn_store.turn_history.spell_cast_order(obj.id),
             mana_spent_to_cast: obj.mana_spent_to_cast.clone(),
+            optional_costs_paid: obj.optional_costs_paid.clone(),
             snow_mana_spent_to_cast: obj.snow_mana_spent_to_cast.clone(),
             mana_sources_spent_to_cast: obj
                 .cast_tagged_objects
@@ -630,10 +633,12 @@ impl ObjectSnapshot {
             mana_spent_to_cast: ManaPool::default(),
             snow_mana_spent_to_cast: ManaPool::default(),
             mana_sources_spent_to_cast: Vec::new(),
+            optional_costs_paid: crate::cost::OptionalCostsPaid::default(),
             counters: HashMap::new(),
             is_token: false,
             tapped: false,
             attacking: false,
+            goaded: Some(false),
             flipped: false,
             face_down: false,
             transform_count: 0,

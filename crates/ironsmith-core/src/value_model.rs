@@ -69,6 +69,8 @@ pub enum EffectMetric {
     IteratedPlayerCount,
     PlayersWithPositiveCount,
     OtherNumber,
+    /// Distinct A/E/I/O/U/Y letters in the name sticker applied by this effect.
+    NameStickerUniqueVowels,
 }
 
 /// The authored action that produced a prior-effect metric query.
@@ -171,6 +173,9 @@ pub enum ValueSurfaceHint {
     /// distinct from the semantically equivalent "is equal to N" surface.
     /// The comparison operator remains the executable source of truth.
     ExactComparison,
+    /// An authored indefinite counter requirement ("has a counter") means
+    /// presence, rather than an exact quantity of one.
+    IndefiniteCounterPresence,
     /// Preserve an authored maximum-selection phrase of the form
     /// "A or B, whichever is greater." The executable value is represented
     /// with ordinary arithmetic primitives (`A + B - min(A, B)`), while this
@@ -230,6 +235,9 @@ pub enum ValueSurfaceHint {
     /// ("with the greatest power"), so rendering should not append an
     /// explicit "among ..." clause.
     ExtremumImplicitScope,
+    /// Preserve an explicitly authored battlefield domain on an extremum's
+    /// comparison set; an implicit battlefield default has the same semantics.
+    ExtremumExplicitBattlefieldScope,
     /// Preserve an explicit full tie clause such as "or tied for the greatest
     /// power" after an extremum predicate.
     ExtremumTiedForCharacteristic,

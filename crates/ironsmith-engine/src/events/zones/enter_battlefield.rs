@@ -39,6 +39,7 @@ pub struct EnterBattlefieldEvent {
     /// Additional card types granted by the copy-as-enters replacement.
     pub added_card_types: Vec<CardType>,
     /// Supertypes removed by the copy-as-enters replacement.
+    pub added_supertypes: Vec<Supertype>,
     pub removed_supertypes: Vec<Supertype>,
     /// Additional subtypes granted by the copy-as-enters replacement.
     pub added_subtypes: Vec<Subtype>,
@@ -66,6 +67,7 @@ impl EnterBattlefieldEvent {
             copy_name_override: None,
             added_colors: ColorSet::new(),
             added_card_types: Vec::new(),
+            added_supertypes: Vec::new(),
             removed_supertypes: Vec::new(),
             added_subtypes: Vec::new(),
             added_abilities: Vec::new(),
@@ -88,6 +90,7 @@ impl EnterBattlefieldEvent {
             copy_name_override: None,
             added_colors: ColorSet::new(),
             added_card_types: Vec::new(),
+            added_supertypes: Vec::new(),
             removed_supertypes: Vec::new(),
             added_subtypes: Vec::new(),
             added_abilities: Vec::new(),
@@ -193,6 +196,17 @@ impl EnterBattlefieldEvent {
         }
     }
 
+    /// Return a new event with additional copiable supertypes as it enters.
+    pub fn with_added_supertypes(&self, supertypes: &[Supertype]) -> Self {
+        let mut added_supertypes = self.added_supertypes.clone();
+        for supertype in supertypes {
+            if !added_supertypes.contains(supertype) {
+                added_supertypes.push(*supertype);
+            }
+        }
+        Self { added_supertypes, ..self.clone() }
+    }
+
     /// Return a new event with supertypes removed as it enters.
     pub fn with_removed_supertypes(&self, supertypes: &[Supertype]) -> Self {
         let mut removed_supertypes = self.removed_supertypes.clone();
@@ -288,6 +302,11 @@ impl EnterBattlefieldEvent {
             object
                 .supertypes
                 .retain(|supertype| !self.removed_supertypes.contains(supertype));
+            for supertype in &self.added_supertypes {
+                if !object.supertypes.contains(supertype) {
+                    object.supertypes.push(*supertype);
+                }
+            }
             for subtype in &self.added_subtypes {
                 if !object.subtypes.contains(subtype) {
                     object.subtypes.push(*subtype);

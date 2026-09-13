@@ -828,6 +828,127 @@ mod tests {
         assert_eq!(tagging.filter.as_ref(), Some(&filter));
     }
 
+    fn cast_payment_probe(game: &mut ironsmith::GameState, spell: ironsmith::ids::ObjectId, method: ironsmith::alternative_cast::CastingMethod) {
+        use ironsmith::game_loop::*;
+        let from_zone = game.object(spell).unwrap().zone;
+        let action = ironsmith::decision::LegalAction::CastSpell { spell_id: spell, from_zone, casting_method: method };
+        let mut state = PriorityLoopState::new(2);
+        let mut queue = ironsmith::triggers::TriggerQueue::new();
+        let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
+        let mut progress = apply_priority_response_with_dm(game, &mut queue, &mut state,
+            &PriorityResponse::PriorityAction(action), &mut dm).unwrap();
+        for _ in 0..30 {
+            if state.pending_cast.is_none() && !game.stack.is_empty() { break; }
+            if let ironsmith::GameProgress::NeedsDecisionCtx(ctx) = progress {
+                progress = apply_decision_context_with_dm(game, &mut queue, &mut state, &ctx, &mut dm).unwrap();
+            } else { break; }
+        }
+        assert!(state.pending_cast.is_none(), "casting must finish");
+        assert_eq!(game.stack.len(), 1);
+    }
+
+    #[test]
+    fn impending_and_web_slinging_execute_their_compiled_costs() {
+        use ironsmith::{alternative_cast::CastingMethod, types::CardType, object::CounterType};
+        let alice = PlayerId::from_index(0);
+        let impending = compile_to_runtime_definition("Impending probe",
+            "Mana cost: {0}\nType: Enchantment Creature — Avatar\nPower/Toughness: 4/4\nImpending 2—{0}", false).unwrap();
+        for paid in [false, true] {
+            let mut game = ironsmith::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+            let spell = game.create_object_from_definition(&impending, alice, Zone::Hand);
+            cast_payment_probe(&mut game, spell, if paid { CastingMethod::Alternative(0) } else { CastingMethod::Normal });
+            ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
+            let permanent = *game.battlefield.last().unwrap();
+            assert_eq!(game.object(permanent).unwrap().counters.get(&CounterType::Time).copied().unwrap_or(0), if paid { 2 } else { 0 });
+            assert_eq!(game.object_has_card_type(permanent, CardType::Creature), !paid);
+        }
+        let mut game = ironsmith::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+        let fodder = game.create_object_from_definition(&impending, alice, Zone::Battlefield);
+        game.tap(fodder);
+        let web = compile_to_runtime_definition("Web probe", "Mana cost: {5}\nType: Creature — Human\nPower/Toughness: 2/2\nWeb-slinging {0}", false).unwrap();
+        let spell = game.create_object_from_definition(&web, alice, Zone::Hand);
+        cast_payment_probe(&mut game, spell, CastingMethod::Alternative(0));
+        assert!(!game.battlefield.contains(&fodder));
+        assert!(game.player(alice).unwrap().hand.iter().any(|id| game.object(*id).unwrap().name == "Impending probe"));
+    }
+
+    #[test]
+    fn mayhem_requires_this_turns_discard_and_does_not_exile_after_resolution() {
+        use ironsmith::alternative_cast::CastingMethod;
+        let alice = PlayerId::from_index(0);
+        let definition = compile_to_runtime_definition("Mayhem probe", "Mana cost: {5}\nType: Sorcery\nMayhem {0}\nYou gain 1 life.", false).unwrap();
+        let mut game = ironsmith::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+        let ordinary = game.create_object_from_definition(&definition, alice, Zone::Graveyard);
+        assert!(!ironsmith::decision::compute_legal_actions(&game, alice).iter().any(|action|
+            matches!(action, ironsmith::decision::LegalAction::CastSpell { spell_id, .. } if *spell_id == ordinary)));
+        let card = game.create_object_from_definition(&definition, alice, Zone::Hand);
+        let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
+        let mut ctx = ironsmith::effects::EffectContext::new(card, alice, &mut dm);
+        ironsmith::effects::execute_effect(&mut game, &ironsmith::Effect::discard(1), &mut ctx).unwrap();
+        let discarded = *game.player(alice).unwrap().graveyard.last().unwrap();
+        assert!(ironsmith::decision::compute_legal_actions(&game, alice).iter().any(|action|
+            matches!(action, ironsmith::decision::LegalAction::CastSpell { spell_id, casting_method: CastingMethod::Alternative(0), .. } if *spell_id == discarded)));
+        cast_payment_probe(&mut game, discarded, CastingMethod::Alternative(0));
+        ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
+        assert!(game.exile.is_empty());
+        assert_eq!(game.player(alice).unwrap().life, 21);
+    }
+
+    #[test]
+    fn more_than_meets_the_eye_uses_the_linked_back_face() {
+        use ironsmith::alternative_cast::CastingMethod;
+        let alice = PlayerId::from_index(0);
+        let mut front = compile_to_runtime_definition("Converted front", "Mana cost: {5}\nType: Creature — Robot\nPower/Toughness: 4/4\nMore than meets the eye {0}", false).unwrap();
+        let back = compile_to_runtime_definition("Converted back", "Type: Artifact — Vehicle", false).unwrap();
+        front.card.other_face = Some(back.card.id);
+        front.card.other_face_name = Some(back.card.name.to_string());
+        front.card.linked_face_layout = ironsmith::card::LinkedFaceLayout::TransformLike;
+        let mut game = ironsmith::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+        game.register_linked_face_definition(&back);
+        let source = game.create_object_from_definition(&front, alice, Zone::Hand);
+        assert!(ironsmith::decision::compute_legal_actions(&game, alice).iter().any(|action|
+            matches!(action, ironsmith::decision::LegalAction::CastSpell { spell_id, casting_method: CastingMethod::Alternative(0), .. } if *spell_id == source)));
+        cast_payment_probe(&mut game, source, CastingMethod::Alternative(0));
+        let stack = game.stack.last().unwrap().object_id;
+        assert_eq!(game.object(stack).unwrap().name, "Converted back");
+        assert!(game.object_has_card_type(stack, ironsmith::types::CardType::Artifact));
+        assert!(!game.object_has_card_type(stack, ironsmith::types::CardType::Creature));
+        ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
+        assert!(game.battlefield.iter().any(|id| game.object(*id).unwrap().name == "Converted back"));
+    }
+
+    #[test]
+    fn alternative_payment_keywords_lower_to_executable_costs() {
+        for (keyword, expected) in [("Web-slinging {1}{U}", "Web-slinging"), ("Mayhem {B}", "Mayhem"), ("More than meets the eye {2}{U}", "More than meets the eye"), ("Impending 4—{1}{G}", "Impending"), ("Emerge from artifact {4}{U}", "Emerge")] {
+            let definition = compile_to_runtime_definition("Payment keyword probe",
+                format!("Mana cost: {{4}}\nType: Creature — Human\n{keyword}"), false).unwrap();
+            assert_eq!(definition.alternative_casts.len(), 1);
+            let method = &definition.alternative_casts[0];
+            assert_eq!(method.name(), expected);
+            if expected == "Web-slinging" {
+                // Returning a chosen permanent lowers to selection followed by return.
+                assert_eq!(method.non_mana_costs().len(), 2);
+                assert!(format!("{:?}", method.non_mana_costs()).contains("tapped: true"));
+            } else if expected == "Mayhem" {
+                assert_eq!(method.cast_from_zone(), ironsmith::zone::Zone::Graveyard);
+                assert!(method.cast_condition().is_some());
+                assert!(!method.exiles_after_resolution());
+            } else if expected == "Impending" {
+                assert_eq!(definition.abilities.len(), 3);
+            } else if expected == "More than meets the eye" { assert!(method.casts_transformed()); }
+        }
+        let mayhem_land = compile_to_runtime_definition("Mayhem land probe", "Type: Land\nMayhem", false).unwrap();
+        assert_eq!(mayhem_land.abilities.len(), 1);
+        assert!(format!("{:?}", mayhem_land.abilities).contains("discarded_or_cycled_this_turn_by: Some(You)"));
+        let offering = compile_to_runtime_definition("Offering probe", "Mana cost: {5}{G}\nType: Creature — Spirit\nGoblin offering", false).unwrap();
+        assert_eq!(offering.optional_costs.len(), 1);
+        assert_eq!(offering.optional_costs[0].kind, ironsmith::cost::OptionalCostKind::Offering);
+    }
+
     #[test]
     fn compile_to_runtime_definition_handles_representative_spell_text() {
         let definition = compile_to_runtime_definition(

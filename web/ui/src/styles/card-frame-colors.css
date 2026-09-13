@@ -417,12 +417,21 @@
 .interactive-card-frame__stats-text { display: inline-block; white-space: nowrap; }
 .interactive-card-frame-stage[data-source-frame="true"][style*="--printed-rules-font-size"] .interactive-card-frame__rules[data-fit-text="true"] {
   font-size: var(--card-fitted-rules-font-size, var(--printed-rules-font-size));
-  padding-top: max(4px, calc(var(--printed-rules-padding-top) * var(--card-rules-spacing-scale, 1) - 1px));
+  line-height: var(--printed-rules-line-height);
+  padding-top: max(4px, calc(var(--printed-rules-padding-top) - 1px));
   padding-left: max(6px, calc(var(--printed-rules-padding-left) * var(--card-rules-fit-scale, 1) - 1px));
-  padding-right: 6px;
+  /* Keep the scan's text width proportional at miniature and preview sizes. */
+  padding-right: calc(6 * var(--card-frame-source-unit));
 }
 .interactive-card-frame-stage[data-source-frame="true"][style*="--printed-rules-font-size"] .interactive-card-frame__rule-line {
   line-height: var(--printed-rules-line-height);
+}
+.interactive-card-frame-stage[data-source-frame="true"] .rules-reminder-text {
+  font-size: calc(1em * var(--printed-reminder-scale, 1));
+}
+.interactive-card-frame-stage[data-source-frame="true"][style*="--printed-flavor-offset"] .inspector-flavor-text {
+  line-height: var(--printed-flavor-line-height);
+  margin-top: calc(max(0px, var(--printed-flavor-offset) - var(--card-flavor-natural-top, 100000px)) * var(--card-rules-spacing-scale, 1));
 }
 /* Printings that centre their text keep the live text centred as well. */
 .interactive-card-frame-stage[data-source-frame="true"][style*="--printed-rules-text-align"] .interactive-card-frame__rules[data-fit-text="true"],

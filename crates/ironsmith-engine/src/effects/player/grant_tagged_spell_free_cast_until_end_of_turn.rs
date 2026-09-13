@@ -27,6 +27,9 @@ impl EffectExecutor for GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
 
         let expires_end_of_turn = match self.duration {
             crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn => game.turn.turn_number,
+            crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnStart => {
+                next_turn_number_for_player(game, player_id).saturating_sub(1)
+            },
             crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd => {
                 next_turn_number_for_player(game, player_id)
             }
@@ -68,6 +71,8 @@ impl EffectExecutor for GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
                     player: object.owner,
                     library_top_revision: game.library_top_revision(object.owner),
                 }
+            } else if self.duration == crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnStart {
+                GrantSource::until_player_next_turn_start(ctx.source, player_id, game.turn.turn_number)
             } else if self.duration == crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd
             {
                 GrantSource::until_player_next_turn_end(ctx.source, player_id, expires_end_of_turn)

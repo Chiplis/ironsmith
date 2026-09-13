@@ -518,6 +518,7 @@ pub(super) fn rivals_duel_rejects_targets_that_share_a_creature_type_and_fights_
                 min_targets: requirement.min_targets,
                 max_targets: requirement.max_targets,
                 distinct_player_group: requirement.distinct_player_group,
+                shared_player_group: requirement.shared_player_group.clone(),
             },
         )
         .collect::<Vec<_>>();

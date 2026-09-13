@@ -68,6 +68,10 @@ pub(super) const REGISTRY: RuleId = RuleId::new("alternative-cast-registry");
 /// The readings, in the order they were ranked.
 const READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("emerge-from"), head: HeadDiscriminator::Any, admits: |_| true,
+        read: |input| input.outcome(read_emerge_from(input)),
+    },
+    Reading {
         id: RuleId::new("aftermath"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -90,6 +94,30 @@ const READINGS: &[Reading] = &[
         head: HeadDiscriminator::Any,
         admits: |_| true,
         read: |input| input.outcome(read_freerunning(input)),
+    },
+    Reading {
+        id: RuleId::new("more-than-meets-the-eye"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_more_than_meets_the_eye(input)),
+    },
+    Reading {
+        id: RuleId::new("offering"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_offering(input)),
+    },
+    Reading {
+        id: RuleId::new("mayhem"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_mayhem(input)),
+    },
+    Reading {
+        id: RuleId::new("web-slinging"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_web_slinging(input)),
     },
     Reading {
         id: RuleId::new("sneak"),
@@ -309,6 +337,80 @@ fn read_freerunning(
     }
     Ok(None)
 }
+fn read_more_than_meets_the_eye(input: &AlternativeCastLine<'_>) -> Result<Option<KeywordLinePayload>, CardTextError> {
+    let Some(tokens) = keyword_tokens_for_shape(input.tokens, input.full_tokens, KeywordPrefixShape::MoreThanMeetsTheEye) else { return Ok(None); };
+    let (cost, _) = leading_mana_cost_from_tokens(tokens.get(5..).unwrap_or_default())
+        .ok_or_else(|| CardTextError::ParseError("more than meets the eye keyword missing mana cost".into()))?;
+    Ok(ast(LineAst::AlternativeCastingMethod(
+        crate::model::CompilerAlternativeCastingMethod::alternative_cost("More than meets the eye", Some(cost), vec![])
+    )))
+}
+
+fn read_emerge_from(input: &AlternativeCastLine<'_>) -> Result<Option<KeywordLinePayload>, CardTextError> {
+    let words = crate::grammar::primitives::TokenWordView::new(input.tokens).word_refs();
+    if !words.starts_with(&["emerge", "from"]) { return Ok(None); }
+    let quality = words.get(2).ok_or_else(|| CardTextError::ParseError("emerge from missing quality".into()))?;
+    let mut filter = crate::target::ObjectFilter::default().you_control();
+    if let Some(card_type) = crate::util::parse_card_type(quality) { filter.card_types.push(card_type); }
+    else if let Some(subtype) = crate::util::parse_subtype_word(quality) { filter.subtypes.push(subtype); }
+    else { return Err(CardTextError::ParseError("unsupported emerge permanent quality".into())); }
+    let (cost, _) = leading_mana_cost_from_tokens(input.tokens.get(3..).unwrap_or_default())
+        .ok_or_else(|| CardTextError::ParseError("emerge from missing mana cost".into()))?;
+    Ok(ast(LineAst::AlternativeCastingMethod(
+        crate::model::CompilerAlternativeCastingMethod::alternative_cost("Emerge", Some(cost),
+            vec![crate::model::CompilerCost::Sacrifice { count: ironsmith_core::ChoiceCount::exactly(1), filter, all: false, binding: None }])
+    )))
+}
+
+fn read_offering(input: &AlternativeCastLine<'_>) -> Result<Option<KeywordLinePayload>, CardTextError> {
+    let words = crate::grammar::primitives::TokenWordView::new(input.tokens).word_refs();
+    if words.len() != 2 || words[1] != "offering" { return Ok(None); }
+    let subtype = crate::util::parse_subtype_word(words[0])
+        .ok_or_else(|| CardTextError::ParseError("unknown offering permanent quality".into()))?;
+    let mut filter = crate::target::ObjectFilter::default().you_control();
+    filter.subtypes.push(subtype);
+    let cost = crate::model::CompilerCost::Sacrifice { count: ironsmith_core::ChoiceCount::exactly(1),
+        filter, all: false, binding: None };
+    Ok(ast(LineAst::OptionalCost(crate::model::CompilerOptionalCost::custom("Offering", ironsmith_core::TotalCost::from_cost(cost)))))
+}
+
+fn read_mayhem(input: &AlternativeCastLine<'_>) -> Result<Option<KeywordLinePayload>, CardTextError> {
+    let Some(tokens) = keyword_tokens_for_shape(input.tokens, input.full_tokens, KeywordPrefixShape::Mayhem) else { return Ok(None); };
+    if crate::grammar::primitives::TokenWordView::new(tokens).word_refs().len() == 1
+        && leading_mana_cost_from_tokens(tokens.get(1..).unwrap_or_default()).is_none() {
+        let filter = crate::target::ObjectFilter::source()
+            .discarded_or_cycled_this_turn_by(crate::target::PlayerFilter::You);
+        let mut ability = crate::model::CompilerStaticAbilityCore::grants(
+            crate::model::CompilerGrantSpecCore::new(crate::model::CompilerGrantableCore::play_from(), filter,
+                crate::zone::Zone::Graveyard));
+        ability.label = "Mayhem".into();
+        return Ok(ast(LineAst::StaticAbility(ability.into())));
+    }
+    let (cost, _) = leading_mana_cost_from_tokens(tokens.get(1..).unwrap_or_default())
+        .ok_or_else(|| CardTextError::ParseError("mayhem keyword missing mana cost".into()))?;
+    let condition = crate::static_abilities::ThisSpellCostCondition::ConditionExpr {
+        condition: crate::effect::Condition::SourceMatches(crate::target::ObjectFilter::default()
+            .discarded_or_cycled_this_turn_by(crate::target::PlayerFilter::You)),
+        display: "you discarded this card this turn".into(),
+    };
+    Ok(ast(LineAst::AlternativeCastingMethod(
+        crate::model::CompilerAlternativeCastingMethod::cast_from_zone_with_total_cost("Mayhem",
+            crate::zone::Zone::Graveyard, ironsmith_core::TotalCost::from_cost(crate::model::CompilerCost::Mana(cost)), Some(condition), false)
+    )))
+}
+
+fn read_web_slinging(input: &AlternativeCastLine<'_>) -> Result<Option<KeywordLinePayload>, CardTextError> {
+    let Some(tokens) = keyword_tokens_for_shape(input.tokens, input.full_tokens, KeywordPrefixShape::WebSlinging) else { return Ok(None); };
+    let (cost, _) = leading_mana_cost_from_tokens(tokens.get(1..).unwrap_or_default())
+        .ok_or_else(|| CardTextError::ParseError("web-slinging keyword missing mana cost".into()))?;
+    let mut filter = crate::target::ObjectFilter::creature().you_control();
+    filter.tapped = true;
+    Ok(ast(LineAst::AlternativeCastingMethod(
+        crate::model::CompilerAlternativeCastingMethod::alternative_cost("Web-slinging", Some(cost),
+            vec![crate::model::CompilerCost::ReturnChosenToHand { count: 1, filter }])
+    )))
+}
+
 fn read_sneak(
     input: &AlternativeCastLine<'_>,
 ) -> Result<Option<KeywordLinePayload>, CardTextError> {
@@ -323,7 +425,7 @@ fn read_sneak(
         } else {
             full_tokens
         };
-        if !is_supported_sneak_line(support_tokens) {
+        if !line.info.semantic_facts.supported_sneak_form && !is_supported_sneak_line(support_tokens) {
             return Err(CardTextError::ParseError(format!(
                 "sneak keyword form is not yet supported: '{}'",
                 line.info.raw_line

@@ -469,6 +469,9 @@ struct ObjectAnnotationStore {
     noted_life_totals: HashMap<ObjectId, i32>,
     /// Stickers attached to an object, keyed by stable object identity.
     object_stickers: HashMap<StableId, Vec<StickerMarker>>,
+    /// Names from the player's accessible sticker sheets, keyed by physical sticker identity.
+    accessible_name_stickers: HashMap<PlayerId, Vec<(u64, String)>>,
+    next_sticker_id: u64,
     /// Token instance -> source instance that created it. Stable identities
     /// preserve the link when the source leaves the battlefield and its
     /// leaves-trigger resolves from last known information.
@@ -1590,6 +1593,15 @@ pub struct StickerMarker {
     pub action: KeywordActionKind,
     pub name_letter_count: Option<u32>,
     pub name: Option<String>,
+    pub sticker_id: Option<u64>,
+    pub name_effect: Option<crate::continuous::ContinuousEffectId>,
+}
+
+pub fn name_sticker_unique_vowels(name: &str) -> u32 {
+    ['a', 'e', 'i', 'o', 'u', 'y']
+        .into_iter()
+        .filter(|vowel| name.chars().any(|ch| ch.eq_ignore_ascii_case(vowel)))
+        .count() as u32
 }
 
 #[derive(Debug, Clone)]
@@ -3712,27 +3724,143 @@ impl GameState {
                 action,
                 name_letter_count: None,
                 name: None,
+                sticker_id: None,
+                name_effect: None,
             });
     }
 
+    /// Register a name from the sheets made accessible during game setup. Equal
+    /// printed names remain distinct physical stickers and receive different IDs.
+    pub fn add_accessible_name_sticker(&mut self, owner: PlayerId, name: impl Into<String>) -> u64 {
+        let store = self.object_annotations_mut();
+        store.next_sticker_id += 1;
+        let id = store.next_sticker_id;
+        store
+            .accessible_name_stickers
+            .entry(owner)
+            .or_default()
+            .push((id, name.into()));
+        id
+    }
+
+    pub fn available_name_stickers(&self, owner: PlayerId) -> Vec<(u64, String)> {
+        let used: HashSet<u64> = self
+            .object_annotations
+            .object_stickers
+            .values()
+            .flatten()
+            .filter_map(|marker| marker.sticker_id)
+            .collect();
+        self.object_annotations
+            .accessible_name_stickers
+            .get(&owner)
+            .into_iter()
+            .flatten()
+            .filter(|(id, _)| !used.contains(id))
+            .cloned()
+            .collect()
+    }
+
+    pub fn apply_available_name_sticker(
+        &mut self,
+        owner: PlayerId,
+        object_id: ObjectId,
+        sticker_id: u64,
+        after_word_count: usize,
+    ) -> Option<String> {
+        if self.object(object_id)?.owner != owner {
+            return None;
+        }
+        let (_, name) = self
+            .available_name_stickers(owner)
+            .into_iter()
+            .find(|(id, _)| *id == sticker_id)?;
+        self.apply_name_sticker(object_id, name.clone(), Some(sticker_id), after_word_count)?;
+        Some(name)
+    }
+
     pub fn put_name_sticker_on_object(&mut self, object_id: ObjectId, name: impl Into<String>) {
-        let Some(stable_id) = self.object(object_id).map(|object| object.stable_id) else {
-            return;
-        };
-        let name = name.into();
-        let name_letter_count = name
-            .chars()
-            .filter(|character| character.is_alphabetic())
-            .count();
+        let _ = self.apply_name_sticker(object_id, name.into(), None, 0);
+    }
+
+    fn apply_name_sticker(
+        &mut self,
+        object_id: ObjectId,
+        name: String,
+        sticker_id: Option<u64>,
+        after_word_count: usize,
+    ) -> Option<()> {
+        let object = self.object(object_id)?;
+        if !object.zone.is_public() {
+            return None;
+        }
+        let stable_id = object.stable_id;
+        let controller = self.current_controller(object_id).unwrap_or(object.owner);
+        let effect = crate::continuous::ContinuousEffect::new(
+            object_id,
+            controller,
+            crate::continuous::EffectTarget::Specific(object_id),
+            crate::continuous::Modification::InsertNameWords {
+                words: name.clone(),
+                after_word_count,
+            },
+        )
+        .with_source_type(crate::continuous::EffectSourceType::Resolution {
+            locked_targets: vec![object_id],
+        });
+        let effect_id = self.effect_store.continuous_effects.add_effect(effect);
+        let name_letter_count = name.chars().filter(|ch| ch.is_alphabetic()).count() as u32;
         self.object_annotations_mut()
             .object_stickers
             .entry(stable_id)
             .or_default()
             .push(StickerMarker {
                 action: KeywordActionKind::NameSticker,
-                name_letter_count: Some(name_letter_count as u32),
+                name_letter_count: Some(name_letter_count),
                 name: Some(name),
+                sticker_id,
+                name_effect: Some(effect_id),
             });
+        self.refresh_continuous_state();
+        Some(())
+    }
+
+    fn move_stickers_to_new_object(
+        &mut self,
+        stable_id: StableId,
+        new_id: ObjectId,
+        new_zone: Zone,
+    ) {
+        if new_zone.is_public() {
+            let effects: Vec<_> = self
+                .object_annotations
+                .object_stickers
+                .get(&stable_id)
+                .into_iter()
+                .flatten()
+                .filter_map(|marker| marker.name_effect)
+                .collect();
+            for id in effects {
+                self.effect_store
+                    .continuous_effects
+                    .retarget_sticker(id, new_id);
+            }
+        } else {
+            self.remove_stickers(stable_id);
+        }
+    }
+
+    fn remove_stickers(&mut self, stable_id: StableId) {
+        for marker in self
+            .object_annotations_mut()
+            .object_stickers
+            .remove(&stable_id)
+            .unwrap_or_default()
+        {
+            if let Some(id) = marker.name_effect {
+                self.effect_store.continuous_effects.remove_effect(id);
+            }
+        }
     }
 
     pub fn name_sticker_character_count_on_object(
@@ -4205,6 +4333,7 @@ impl GameState {
         filter.cast_this_turn
             || filter.first_spell_cast_each_turn
             || filter.spell_cast_ordinal_each_turn.is_some()
+            || filter.spell_cast_minimum_each_turn.is_some()
             || filter.mana_from_source_spent_to_cast.is_some()
             || filter.attacking
             || filter.attacked_this_turn
@@ -5290,13 +5419,22 @@ impl GameState {
         if let Some(candidate) = self.object(creature) {
             for source in &self.battlefield {
                 if self.is_phased_out(*source)
-                    || !view.object_has_static_ability_id(*source, crate::static_abilities::StaticAbilityId::GoadMatching)
-                { continue; }
-                let Some(chars) = view.calculated_characteristics(*source) else { continue };
+                    || !view.object_has_static_ability_id(
+                        *source,
+                        crate::static_abilities::StaticAbilityId::GoadMatching,
+                    )
+                {
+                    continue;
+                }
+                let Some(chars) = view.calculated_characteristics(*source) else {
+                    continue;
+                };
                 let controller = chars.controller;
                 let ctx = self.filter_context_for(controller, Some(*source));
                 if chars.static_abilities.iter().any(|ability| {
-                    ability.goads_matching().is_some_and(|filter| filter.matches(candidate, &ctx, self))
+                    ability
+                        .goads_matching()
+                        .is_some_and(|filter| filter.matches(candidate, &ctx, self))
                 }) {
                     goaders.insert(controller);
                 }

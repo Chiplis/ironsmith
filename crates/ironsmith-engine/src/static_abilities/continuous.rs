@@ -285,6 +285,43 @@ pub(crate) fn pluralized_subject_text(filter: &ObjectFilter) -> String {
     if let Some(subject) = shared_head_characteristic_anthem_subject(filter) {
         return subject;
     }
+    if filter.card_types.as_slice() == [crate::types::CardType::Creature]
+        && filter.any_of.len() == 2
+    {
+        let selectors = filter
+            .any_of
+            .iter()
+            .map(|branch| {
+                let mut plain = branch.clone();
+                let noun = if plain.token && plain.subtypes.is_empty() {
+                    plain.token = false;
+                    "tokens".to_string()
+                } else if !plain.token && plain.subtypes.len() == 1 {
+                    let noun = pluralize_subject_clause(&plain.subtypes[0].to_string());
+                    plain.subtypes.clear();
+                    noun
+                } else {
+                    return None;
+                };
+                (plain == ObjectFilter::default()).then_some(noun)
+            })
+            .collect::<Option<Vec<_>>>();
+        if let Some(selectors) = selectors {
+            let mut base = filter.clone();
+            base.any_of.clear();
+            base.set_relative_characteristic_list_surface(false);
+            let connective = match filter.union_surface.connective() {
+                crate::filter::ObjectFilterUnionConnective::AndOr => "and/or",
+                crate::filter::ObjectFilterUnionConnective::Or => "or",
+            };
+            return format!(
+                "{} that are {} {connective} {}",
+                pluralized_subject_text(&base),
+                selectors[0],
+                selectors[1]
+            );
+        }
+    }
     // Coordinated relative characteristic lists put the grammatical head
     // before the final selector ("a creature you control that's a Zombie
     // and/or token").  The local fallback pluralizer normally pluralizes the
@@ -1951,6 +1988,9 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             let subject = describe_static_player(player);
             let count_text = number_word_u32(*count)
                 .unwrap_or_else(|| count.to_string());
+            if matches!(player, crate::target::PlayerFilter::You) {
+                return format!("as long as you've cast {count_text} or more spells this turn");
+            }
             let verb = if matches!(player, crate::target::PlayerFilter::You) {
                 "have"
             } else {
@@ -2596,9 +2636,9 @@ fn entered_battlefield_this_turn_count(
                                 }
                             }
                             Modification::RemoveCardTypes(card_types) => {
-                                adjusted
-                                    .card_types
-                                    .retain(|card_type| !card_types.contains(card_type));
+                                crate::continuous::remove_card_types_and_prune_subtypes(
+                                    &mut adjusted.card_types, &mut adjusted.subtypes, card_types,
+                                );
                             }
                             Modification::SetCardTypes(card_types) => {
                                 crate::continuous::replace_card_types_and_prune_subtypes(

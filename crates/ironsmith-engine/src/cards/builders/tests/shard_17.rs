@@ -1206,6 +1206,7 @@ pub(super) fn target_assignments_for_requirements(
                 min_targets: requirement.min_targets,
                 max_targets: requirement.max_targets,
                 distinct_player_group: requirement.distinct_player_group,
+                shared_player_group: requirement.shared_player_group.clone(),
             },
         )
         .collect::<Vec<_>>();

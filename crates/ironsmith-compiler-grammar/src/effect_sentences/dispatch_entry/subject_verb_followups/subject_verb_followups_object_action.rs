@@ -62,13 +62,16 @@ pub(super) fn pre_rule_token_followups(
             route: Some("subject-verb verb=Create subject=implicit recognizer=prior-token-instead"),
         }));
     }
-    if let Some((effects, predicate)) = parse_instead_replacement_sentence(sentence_tokens)?
+    if let Some((mut effects, predicate)) = parse_instead_replacement_sentence(sentence_tokens)?
         && !state.effects.is_empty()
     {
         let previous = state
             .effects
             .pop()
             .expect("non-empty effect list yields a previous effect");
+        if let Some(target) = primary_target_from_effect(&previous) {
+            replace_it_target_in_effects(&mut effects, &target);
+        }
         state.effects.push(EffectAst::SelfReplacement {
             predicate,
             if_true: effects,

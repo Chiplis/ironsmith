@@ -171,7 +171,9 @@ test('zone card inspectors leave the clicked card and expanded strip uncovered',
           const cardBox = await card.boundingBox();
           const stripBox = await page.locator('.zone-pile-menu').boundingBox();
           const previewBox = await preview.boundingBox();
-          assert.ok(previewBox.width > 50 && previewBox.height > 50);
+          await preview.locator('.interactive-card-frame-stage[data-render-ready="true"]').waitFor();
+          assert.equal(await preview.locator('.interactive-card-frame-stage').getAttribute('data-frame-mode'), 'original', 'other zones use original printing previews without masking');
+          assert.ok(previewBox.width > 50 && previewBox.height > 50, JSON.stringify({viewport, zone, id, previewBox, stripBox}));
           assert.ok(previewBox.y >= stripBox.y + stripBox.height || previewBox.y + previewBox.height <= stripBox.y,
             JSON.stringify({viewport,zone,id,previewBox,stripBox}));
           assert.ok(previewBox.x >= 0 && previewBox.x + previewBox.width <= viewport.width + 1);

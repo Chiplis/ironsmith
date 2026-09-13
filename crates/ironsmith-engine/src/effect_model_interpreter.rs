@@ -1441,6 +1441,7 @@ where
         if let Some(filter) = payload.filter.clone() {
             grant = grant.with_filter(filter);
         }
+        grant.spell_filter = payload.spell_filter.clone();
         if let Some(counter_type) = payload.during_turns_counter_put_on_source {
             grant = grant.during_turns_counter_put_on_source(counter_type);
         }

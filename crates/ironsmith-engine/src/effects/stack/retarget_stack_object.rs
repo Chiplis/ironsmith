@@ -33,7 +33,9 @@ fn requires_target_selection(spec: &ChooseSpec) -> bool {
         | ChooseSpec::Player(_)
         | ChooseSpec::Object(_)
         | ChooseSpec::PlayerOrPlaneswalker(_) => true,
-        ChooseSpec::WithCount(inner, _) | ChooseSpec::WithCountValue(inner, _, _) => {
+        ChooseSpec::SurfaceHinted { spec: inner, .. }
+        | ChooseSpec::WithCount(inner, _)
+        | ChooseSpec::WithCountValue(inner, _, _) => {
             requires_target_selection(inner)
         }
         _ => false,
@@ -105,6 +107,7 @@ fn extract_requirements(
             min_targets: count.min,
             max_targets: count.max,
             distinct_player_group: None,
+            shared_player_group: None,
         });
     }
 

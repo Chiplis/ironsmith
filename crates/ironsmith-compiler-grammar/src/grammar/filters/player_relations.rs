@@ -22,6 +22,7 @@ pub(super) enum PlayerRelationVerb {
     Cast,
     Control,
     Own,
+    Protect,
 }
 
 #[derive(Clone, Copy)]
@@ -126,6 +127,8 @@ fn parse_relation_verb_word_slice(
         relation_phrase(&["controls"]).value(PlayerRelationVerb::Control),
         relation_phrase(&["own"]).value(PlayerRelationVerb::Own),
         relation_phrase(&["owns"]).value(PlayerRelationVerb::Own),
+        relation_phrase(&["protect"]).value(PlayerRelationVerb::Protect),
+        relation_phrase(&["protects"]).value(PlayerRelationVerb::Protect),
     ))
     .parse_next(input)
 }
@@ -137,6 +140,7 @@ fn parse_passive_relation_verb_word_slice(
         relation_phrase(&["cast", "by"]).value(PlayerRelationVerb::Cast),
         relation_phrase(&["controlled", "by"]).value(PlayerRelationVerb::Control),
         relation_phrase(&["owned", "by"]).value(PlayerRelationVerb::Own),
+        relation_phrase(&["protected", "by"]).value(PlayerRelationVerb::Protect),
     ))
     .parse_next(input)
 }
@@ -556,6 +560,7 @@ pub(super) fn apply_player_relation(
         PlayerRelationVerb::Cast => filter.cast_by = Some(player),
         PlayerRelationVerb::Control => filter.controller = Some(player),
         PlayerRelationVerb::Own => filter.owner = Some(player),
+        PlayerRelationVerb::Protect => filter.protected_by = Some(player),
     }
 }
 
@@ -618,7 +623,7 @@ pub(super) fn try_apply_negated_you_relation_clause(
         match verb {
             PlayerRelationVerb::Control => filter.controller = Some(excluding_pronoun),
             PlayerRelationVerb::Own => filter.owner = Some(excluding_pronoun),
-            PlayerRelationVerb::Cast => return None,
+            PlayerRelationVerb::Cast | PlayerRelationVerb::Protect => return None,
         }
         return Some(consumed + 1);
     }
@@ -627,7 +632,7 @@ pub(super) fn try_apply_negated_you_relation_clause(
     match verb {
         PlayerRelationVerb::Control => filter.controller = Some(PlayerFilter::NotYou),
         PlayerRelationVerb::Own => filter.owner = Some(PlayerFilter::NotYou),
-        PlayerRelationVerb::Cast => return None,
+        PlayerRelationVerb::Cast | PlayerRelationVerb::Protect => return None,
     }
     Some(consumed)
 }

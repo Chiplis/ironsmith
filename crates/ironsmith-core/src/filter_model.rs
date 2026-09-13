@@ -564,6 +564,10 @@ pub struct ObjectFilterUnionSurface {
     /// the bare pronoun `them`. The tagged constraint retains identity; this
     /// flag only distinguishes that surface from `those creatures`, etc.
     plural_pronoun_reference: bool,
+    /// The authored singular `it` refers to the tagged object. Zone and owner
+    /// restrictions remain executable even when its noun is rendered briefly.
+    #[cfg_attr(feature = "serde", serde(default))]
+    singular_pronoun_reference: bool,
     /// Oracle explicitly quantified this set with `all` or distributive
     /// `each`. This is presentation-only and does not change the matched set.
     set_quantifier: Option<crate::effect::SetQuantifierSurface>,
@@ -682,6 +686,7 @@ impl ObjectFilterUnionSurface {
             explicit_branch_articles: false,
             one_of_tagged_set: false,
             plural_pronoun_reference: false,
+            singular_pronoun_reference: false,
             set_quantifier: None,
             plural_object_noun: false,
             return_destination_first: false,
@@ -877,6 +882,15 @@ impl ObjectFilterUnionSurface {
 
     pub const fn plural_pronoun_reference(self) -> bool {
         self.plural_pronoun_reference
+    }
+
+    pub const fn with_singular_pronoun_reference(mut self, pronoun: bool) -> Self {
+        self.singular_pronoun_reference = pronoun;
+        self
+    }
+
+    pub const fn singular_pronoun_reference(self) -> bool {
+        self.singular_pronoun_reference
     }
 
     pub const fn with_set_quantifier(
@@ -1868,6 +1882,9 @@ pub struct ObjectFilter {
     /// cast this turn. `None` is the ordinary unrestricted set; `Some(2)` is
     /// the reusable surface used by "the second spell you cast each turn".
     pub spell_cast_ordinal_each_turn: Option<u32>,
+    /// Minimum ordinal among matching spells cast by the bound caster this turn.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub spell_cast_minimum_each_turn: Option<u32>,
     /// A stack spell must have had mana produced by a matching source spent
     /// to cast it. The runtime evaluates this against the source snapshots
     /// recorded on the spell as each mana unit is paid.
@@ -2375,6 +2392,14 @@ impl ObjectFilter {
 
     pub const fn has_plural_pronoun_reference_surface(&self) -> bool {
         self.union_surface.plural_pronoun_reference()
+    }
+
+    pub fn set_singular_pronoun_reference_surface(&mut self, pronoun: bool) {
+        self.union_surface = self.union_surface.with_singular_pronoun_reference(pronoun);
+    }
+
+    pub const fn has_singular_pronoun_reference_surface(&self) -> bool {
+        self.union_surface.singular_pronoun_reference()
     }
 
     /// Preserve an authored leading `all`/`each` quantifier without changing
@@ -2953,6 +2978,7 @@ impl ObjectFilter {
             excluded_cast_origin_zone: self.excluded_cast_origin_zone,
             first_spell_cast_each_turn: self.first_spell_cast_each_turn,
             spell_cast_ordinal_each_turn: self.spell_cast_ordinal_each_turn,
+            spell_cast_minimum_each_turn: self.spell_cast_minimum_each_turn,
             single_graveyard: self.single_graveyard,
             ..Self::default()
         };
@@ -3865,6 +3891,9 @@ impl ObjectFilter {
         }
         if self.first_spell_cast_each_turn {
             post_noun_qualifiers.push("first spell cast each turn".to_string());
+        }
+        if let Some(minimum) = self.spell_cast_minimum_each_turn {
+            post_noun_qualifiers.push(format!("with matching cast ordinal at least {minimum} this turn"));
         }
         if let Some(ordinal) = self.spell_cast_ordinal_each_turn {
             let word = match ordinal {
@@ -6621,7 +6650,7 @@ fn describe_alternative_cast_kind(kind: AlternativeCastKind) -> &'static str {
     }
 }
 
-fn describe_filter_static_ability(ability_id: StaticAbilityId) -> Option<&'static str> {
+pub fn describe_filter_static_ability(ability_id: StaticAbilityId) -> Option<&'static str> {
     use StaticAbilityId::*;
     match ability_id {
         Flying => Some("flying"),
@@ -6654,6 +6683,7 @@ fn describe_filter_static_ability(ability_id: StaticAbilityId) -> Option<&'stati
         Infect => Some("infect"),
         Changeling => Some("changeling"),
         Cascade => Some("cascade"),
+        Convoke => Some("convoke"),
         _ => None,
     }
 }
@@ -6814,6 +6844,11 @@ fn describe_extremum_filter_comparison(
     if !value.has_surface_hint(crate::ValueSurfaceHint::ExtremumImplicitScope) {
         description.push_str(" among ");
         description.push_str(&describe_extremum_scope(scope));
+        if scope.zone == Some(Zone::Battlefield)
+            && value.has_surface_hint(crate::ValueSurfaceHint::ExtremumExplicitBattlefieldScope)
+        {
+            description.push_str(" on the battlefield");
+        }
     }
     if value.has_surface_hint(crate::ValueSurfaceHint::ExtremumTiedShort) {
         description.push_str(&format!(" or tied for {direction}"));

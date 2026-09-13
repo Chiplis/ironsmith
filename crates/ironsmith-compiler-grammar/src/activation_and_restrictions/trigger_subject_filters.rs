@@ -645,6 +645,16 @@ pub fn parse_spell_activity_trigger(
     let timing = activity_facts
         .during_combat
         .then_some(ironsmith_core::TriggerTimingRestriction::DuringCombat);
+    let repeated_counted_spell_domain = clause_words.windows(4)
+        .position(|part| part == ["other", "than", "the", "first"])
+        .is_some_and(|other| {
+            let Some(cast) = clause_words[..other].iter().position(|word| matches!(*word, "cast" | "casts")) else { return false; };
+            let leading = clause_words[cast + 1..other].iter().copied()
+                .filter(|word| !matches!(*word, "a" | "an" | "the")).collect::<Vec<_>>();
+            let tail = &clause_words[other + 4..];
+            let Some(noun) = tail.iter().position(|word| matches!(*word, "spell" | "spells")) else { return false; };
+            leading == tail[..=noun]
+        });
     let normalize_cast_count_filter = |mut filter: Option<ObjectFilter>| {
         if (min_spells_this_turn.is_some() || exact_spells_this_turn.is_some())
             && let Some(filter) = filter.as_mut()
@@ -655,6 +665,11 @@ pub fn parse_spell_activity_trigger(
             // ObjectFilter makes the renderer describe "another spell" and
             // conflates an event-history constraint with source exclusion.
             filter.other = false;
+            if repeated_counted_spell_domain && let Some(minimum) = min_spells_this_turn {
+                filter.spell_cast_minimum_each_turn = Some(minimum);
+                filter.cast_by = Some(PlayerFilter::IteratedPlayer);
+            }
+
         }
         filter
     };
@@ -720,6 +735,13 @@ pub fn parse_spell_activity_trigger(
                 }
                 match parse_object_filter(filter_tokens, false) {
                     Ok(mut filter) => {
+                        // A kicked spell records a paid optional cost; merely having
+                        // kicker in its rules text does not satisfy this qualifier.
+                        if filter_words.contains(&"kicked")
+                            && !filter.ability_markers.iter().any(|marker| marker == "kicked")
+                        {
+                            filter.ability_markers.push("kicked".to_string());
+                        }
                         if let Some(origin_filter) = parse_spell_origin_zone_filter() {
                             filter.zone = origin_filter.zone;
                             if matches!(

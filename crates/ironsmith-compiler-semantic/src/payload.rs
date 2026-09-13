@@ -85,6 +85,7 @@ pub enum KeywordAction {
     Plot(ManaCost),
     Melee,
     Mobilize(u32),
+    Impending { time: u32, cost: ManaCost },
     Suspend {
         time: u32,
         cost: ManaCost,
@@ -416,6 +417,7 @@ impl KeywordAction {
             Self::Awaken { amount, cost } => format!("Awaken {amount}—{}", cost.to_oracle()),
             Self::Spectacle(cost) => format!("Spectacle {}", cost.to_oracle()),
             Self::Foretell(cost) => format!("Foretell {}", cost.to_oracle()),
+            Self::Impending { time, cost } => format!("Impending {time}—{}", cost.to_oracle()),
             Self::Echo { text, .. } => text.clone(),
             Self::CumulativeUpkeep { text, .. } => text.clone(),
             Self::Casualty(amount) => format!("Casualty {amount}"),

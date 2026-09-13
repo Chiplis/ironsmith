@@ -226,6 +226,7 @@ pub enum StaticAbilityId {
     PreventDamageToSelfRemoveCounter,
     PreventDamageToSelfPutCountersInstead,
     PreventConstrainedDamageToSelfPutCountersInstead,
+    DamagePreventionWithFollowUp,
     ReplaceDamageWithCountersInstead,
     PreventDamageToOtherCreatureYouControlPutCountersInstead,
     PreventAllNoncombatDamageToOtherCreaturesYouControl,
@@ -541,6 +542,7 @@ impl StaticAbilityId {
             | PreventDamageToSelfRemoveCounter
             | PreventDamageToSelfPutCountersInstead
             | PreventConstrainedDamageToSelfPutCountersInstead
+            | DamagePreventionWithFollowUp
             | ReplaceDamageWithCountersInstead
             | PreventDamageToOtherCreatureYouControlPutCountersInstead
             | PreventAllNoncombatDamageToOtherCreaturesYouControl

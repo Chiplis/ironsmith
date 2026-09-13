@@ -215,6 +215,7 @@ fn first_matching_spell_cast_each_turn_matches(
     matching_spell_cast_ordinal_each_turn_matches(
         filter,
         1,
+        false,
         object_id,
         ctx,
         game,
@@ -225,14 +226,17 @@ fn first_matching_spell_cast_each_turn_matches(
 fn matching_spell_cast_ordinal_each_turn_matches(
     filter: &ObjectFilter,
     ordinal: u32,
+    at_least: bool,
     object_id: ObjectId,
     ctx: &FilterContext,
     game: &GameState,
     fallback_cast_player: Option<PlayerId>,
 ) -> bool {
+    let ordinal_matches = |actual: u32| if at_least { actual >= ordinal } else { actual == ordinal };
     let mut matching_filter = filter.clone();
     matching_filter.first_spell_cast_each_turn = false;
     matching_filter.spell_cast_ordinal_each_turn = None;
+    matching_filter.spell_cast_minimum_each_turn = None;
 
     let cast_origin_zone = matching_filter.zone.filter(|zone| *zone != Zone::Stack);
     let excluded_cast_origin_zone = matching_filter.excluded_cast_origin_zone.take();
@@ -291,7 +295,7 @@ fn matching_spell_cast_ordinal_each_turn_matches(
         if matching_filter.matches_snapshot(snapshot, &history_ctx, game) {
             matching_ordinal = matching_ordinal.saturating_add(1);
             if event.spell == object_id {
-                return matching_ordinal == ordinal;
+                return ordinal_matches(matching_ordinal);
             }
         }
     }
@@ -305,13 +309,13 @@ fn matching_spell_cast_ordinal_each_turn_matches(
     }
 
     if let Some(current_live_match) = current_live_match {
-        return current_live_match && matching_ordinal.saturating_add(1) == ordinal;
+        return current_live_match && ordinal_matches(matching_ordinal.saturating_add(1));
     }
 
     // Cost previews ask about the next matching cast before a stack entry
     // or cast event exists. Ordinary object queries must not assume a cast.
     if ctx.prospective_cast == Some(object_id) && ctx.caster.is_some() {
-        return matching_ordinal.saturating_add(1) == ordinal;
+        return ordinal_matches(matching_ordinal.saturating_add(1));
     }
 
     let cast_order = fallback_cast_player
@@ -321,7 +325,7 @@ fn matching_spell_cast_ordinal_each_turn_matches(
                 .spell_cast_order_for_player(object_id, player)
         })
         .or_else(|| game.turn_store.turn_history.spell_cast_order(object_id));
-    cast_order == Some(ordinal)
+    cast_order.is_some_and(ordinal_matches)
 }
 
 pub(crate) trait TaggedConstraintSubject {
@@ -1775,6 +1779,20 @@ fn resolve_filter_comparison_rhs_value(
         Value::LeastPower(filter) => aggregate_pt(filter, game, ctx, true, false),
         Value::LeastToughness(filter) => aggregate_pt(filter, game, ctx, false, false),
         Value::LeastManaValue(filter) => aggregate_mana_value(filter, game, ctx, false),
+        Value::PlayerCounters(player, counter_type) => {
+            if *player == PlayerFilter::You && ctx.you.is_none() {
+                return None;
+            }
+            let mut seen_teams = std::collections::HashSet::new();
+            let count = game.players.iter()
+                .filter(|candidate| player_filter_matches_game(player, candidate.id, game, ctx))
+                .filter(|candidate| {
+                    *counter_type != CounterType::Poison || game.two_headed_giant().is_none()
+                        || game.team_index_for(candidate.id).is_none_or(|team| seen_teams.insert(team))
+                })
+                .fold(0u32, |count, candidate| count.saturating_add(candidate.counter_count(*counter_type)));
+            Some(i32::try_from(count).unwrap_or(i32::MAX))
+        }
         Value::CountersOnSource(counter_type) => {
             let source = game.object(ctx.source?)?;
             Some(source.counters.get(counter_type).copied().unwrap_or(0) as i32)
@@ -3463,10 +3481,16 @@ impl ObjectFilterExt for ObjectFilter {
         {
             return false;
         }
+        if let Some(minimum) = self.spell_cast_minimum_each_turn
+            && !matching_spell_cast_ordinal_each_turn_matches(self, minimum, true, object.id, ctx, game, resolved_cast_player)
+        {
+            return false;
+        }
         if let Some(ordinal) = self.spell_cast_ordinal_each_turn
             && !matching_spell_cast_ordinal_each_turn_matches(
                 self,
                 ordinal,
+                false,
                 object.id,
                 ctx,
                 game,
@@ -4448,10 +4472,16 @@ impl ObjectFilterExt for ObjectFilter {
         {
             return false;
         }
+        if let Some(minimum) = self.spell_cast_minimum_each_turn
+            && !matching_spell_cast_ordinal_each_turn_matches(self, minimum, true, snapshot.object_id, ctx, game, None)
+        {
+            return false;
+        }
         if let Some(ordinal) = self.spell_cast_ordinal_each_turn
             && !matching_spell_cast_ordinal_each_turn_matches(
                 self,
                 ordinal,
+                false,
                 snapshot.object_id,
                 ctx,
                 game,

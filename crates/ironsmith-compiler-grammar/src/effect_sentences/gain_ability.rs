@@ -1989,6 +1989,9 @@ fn parse_gain_ability_sentence_inner(
     if super::clause_dispatch::parse_targeting_as_though_no_ability_spec(tokens)?.is_some() {
         return Ok(None);
     }
+    if let Some(effects) = super::dispatch_inner::parse_attached_and_related_get_and_gain(tokens)? {
+        return Ok(Some(effects));
+    }
     if let Some(effects) = parse_complete_simple_source_gain_ability_sentence(tokens)? {
         return Ok(Some(effects));
     }

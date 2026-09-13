@@ -1729,10 +1729,11 @@ fn grant_applies_to_card(
     game: &GameState,
 ) -> bool {
     if let Some(target_id) = grant.target_id {
-        return target_id == card_id
-            || grant
-                .target_stable_id
-                .is_some_and(|target_stable_id| target_stable_id == card.stable_id);
+        let identity_matches = target_id == card_id
+            || grant.target_stable_id.is_some_and(|target| target == card.stable_id);
+        return identity_matches && grant.filter.as_ref().is_none_or(|filter| {
+            filter.matches_non_recursive(card, &grant_filter_context(ctx, grant, game), game)
+        });
     }
 
     grant
@@ -1749,10 +1750,11 @@ fn grant_applies_to_card_non_recursive(
     game: &GameState,
 ) -> bool {
     if let Some(target_id) = grant.target_id {
-        return target_id == card_id
-            || grant
-                .target_stable_id
-                .is_some_and(|target_stable_id| target_stable_id == card.stable_id);
+        let identity_matches = target_id == card_id
+            || grant.target_stable_id.is_some_and(|target| target == card.stable_id);
+        return identity_matches && grant.filter.as_ref().is_none_or(|filter| {
+            filter.matches_non_recursive(card, &grant_filter_context(ctx, grant, game), game)
+        });
     }
 
     grant.filter.as_ref().is_some_and(|filter| {

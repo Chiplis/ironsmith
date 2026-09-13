@@ -38,6 +38,38 @@ fn attached_object_host_filter(mut filter: ObjectFilter) -> ObjectFilter {
 }
 
 fn bind_condition_to_attached_object(condition: PredicateAst) -> PredicateAst {
+    if let PredicateAst::ValueComparison { left, operator, right } = &condition {
+        let characteristic = match left.unhinted() {
+            Value::PowerOf(spec) => Some((true, spec)),
+            Value::ToughnessOf(spec) => Some((false, spec)),
+            _ => None,
+        };
+        if let Some((power, spec)) = characteristic
+            && (matches!(spec.base(), ChooseSpec::Source)
+                || matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()))
+            && spec.source_reference_surface().is_some_and(|surface| surface.display_text() == "it")
+        {
+            use crate::effect::ValueComparisonOperator as Op;
+            use crate::filter::Comparison;
+            let comparison = match (operator, right.unhinted()) {
+                (Op::Equal, Value::Fixed(n)) => Comparison::Equal(*n),
+                (Op::NotEqual, Value::Fixed(n)) => Comparison::NotEqual(*n),
+                (Op::LessThan, Value::Fixed(n)) => Comparison::LessThan(*n),
+                (Op::LessThanOrEqual, Value::Fixed(n)) => Comparison::LessThanOrEqual(*n),
+                (Op::GreaterThan, Value::Fixed(n)) => Comparison::GreaterThan(*n),
+                (Op::GreaterThanOrEqual, Value::Fixed(n)) => Comparison::GreaterThanOrEqual(*n),
+                (Op::Equal, _) => Comparison::EqualExpr(Box::new(right.clone())),
+                (Op::NotEqual, _) => Comparison::NotEqualExpr(Box::new(right.clone())),
+                (Op::LessThan, _) => Comparison::LessThanExpr(Box::new(right.clone())),
+                (Op::LessThanOrEqual, _) => Comparison::LessThanOrEqualExpr(Box::new(right.clone())),
+                (Op::GreaterThan, _) => Comparison::GreaterThanExpr(Box::new(right.clone())),
+                (Op::GreaterThanOrEqual, _) => Comparison::GreaterThanOrEqualExpr(Box::new(right.clone())),
+            };
+            let mut filter = ObjectFilter::default();
+            if power { filter.power = Some(comparison); } else { filter.toughness = Some(comparison); }
+            return PredicateAst::AttachedToSourceMatches(filter);
+        }
+    }
     match condition {
         PredicateAst::TargetMatches(filter) => {
             PredicateAst::AttachedToSourceMatches(filter)

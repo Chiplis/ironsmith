@@ -2,7 +2,7 @@ import { cardArtColors } from "@/lib/card-art-colors";
 import LoadingCardArt from "./LoadingCardArt";
 import useUiText from "@/i18n/useUiText";
 import { translateUiText as ui } from "@/i18n/catalog";
-import { useCastTargeting, useCastTargetHover } from "@/context/DragContext";
+import { useCastTargeting, useCastObjectHovered } from "@/context/DragContext";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { useChosenObjectIdAmong } from "@/context/ObjectSelectionContext";
@@ -14,6 +14,10 @@ import { getPlayerAccent } from "@/lib/player-colors";
 import { fetchScryfallCardMeta } from "@/lib/scryfall";
 import { useScryfallImage } from "@/hooks/useScryfallImageUrl";
 import { useTranslatedCardName } from "@/i18n/useTranslatedCardName";
+import usePreparedCardFrame from "@/hooks/usePreparedCardFrame";
+import { cardArtCropUrl } from "@/lib/card-image-variants";
+import MiniatureCardFrame from "./MiniatureCardFrame";
+import { cardNeedsFrame } from '@/lib/card-frame-scope';
 
 const semanticScoreCache = new Map();
 
@@ -860,15 +864,14 @@ export default function GameCard({
   const { game, inspectorDebug, state, playerAccentOverrides } = useGame();
   const sourceAccent = getPlayerAccent(state?.players || [], card.owner ?? card.controller, state?.perspective, playerAccentOverrides);
   const castIntent = useCastTargeting();
-  const castHover = useCastTargetHover();
   const targetDecision = state?.decision?.kind === "targets" ? state.decision : castIntent?.targetDecision;
   const targetingMode = Boolean(castIntent) || state?.decision?.kind === "targets";
   const targetIds = [card.id, ...(card.member_ids || [])].map(Number);
   const isLegalTarget = targetingMode && (targetDecision?.requirements || []).some((requirement) =>
     (requirement.legal_targets || []).some((target) => target.kind === "object" && targetIds.includes(Number(target.object)))
   );
-  const isCastTargetHovered = isLegalTarget && castHover?.kind === "object"
-    && castHover.objectIds.some(id => targetIds.includes(Number(id)));
+  const castObjectHovered = useCastObjectHovered(targetIds);
+  const isCastTargetHovered = isLegalTarget && castObjectHovered;
   const chosenObjectId = useChosenObjectIdAmong(targetIds);
   const glowKind = targetingMode ? (isLegalTarget ? "target-legal" : null) : requestedGlowKind;
   const showActionBorder = (hasAvailableAction || glowKind === "action-link") && !targetingMode;
@@ -880,6 +883,9 @@ export default function GameCard({
   const artVersion = variant === "hand" || usePortraitBattlefield ? "normal" : "art_crop";
   const { url: resolvedArtUrl, ready: artResolved } = useScryfallImage(sourceImageUrl ? "" : name, artVersion);
   const artUrl = sourceImageUrl || resolvedArtUrl;
+  // Share the hover inspector's preparation from the moment a visible card
+  // has an image, including while it is still in hand.
+  const preparedFrame = usePreparedCardFrame(cardArtCropUrl(artUrl), card.type_line, Boolean(artUrl) && cardNeedsFrame(state, card.id));
   const imageLoading = variant === "hand" ? "eager" : "lazy";
   const imageFetchPriority = variant === "hand" ? "high" : "auto";
   const [repairedHandArt, setRepairedHandArt] = useState(null);
@@ -1623,6 +1629,9 @@ export default function GameCard({
       )}
       {variant !== "stack" && <span className="card-inspector-source-glow" aria-hidden="true" />}
       <div className="game-card-surface">
+        {usePortraitBattlefield && preparedFrame && (
+          <MiniatureCardFrame card={card} imageUrl={artUrl} />
+        )}
         {(showActionBorder || isLegalTarget) && !useTokenBattlefield && (
           <span className="card-action-border" aria-hidden="true" />
         )}

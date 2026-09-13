@@ -2461,6 +2461,15 @@ impl GameState {
             && let Some(source_obj) = self.object(source_id)
         {
             tagged_objects.extend(source_obj.cast_tagged_objects.clone());
+            let source_exiled = self.get_exiled_with_source_links(source_id)
+                .iter()
+                .filter_map(|id| self.object(*id))
+                .filter(|object| object.zone == crate::zone::Zone::Exile)
+                .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, self))
+                .collect::<Vec<_>>();
+            if !source_exiled.is_empty() {
+                tagged_objects.insert(crate::tag::SOURCE_EXILED_TAG.into(), source_exiled);
+            }
             tagged_objects.insert(
                 crate::tag::TagKey::from(crate::tag::SOURCE_OBJECT_TAG),
                 vec![crate::snapshot::ObjectSnapshot::from_object(

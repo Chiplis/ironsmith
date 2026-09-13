@@ -4758,7 +4758,8 @@ pub(super) fn parse_flat_independent_statements(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if sentences.iter().skip(1).any(|sentence| {
         crate::word_primitives::parse_sequence_prefix(
-            &crate::lexer::token_word_refs(sentence), &["they", "each"],
+            &crate::lexer::token_word_refs(sentence),
+            &["they", "each"],
         )
     }) {
         // A plural participant reference belongs to the preceding player
@@ -6267,7 +6268,8 @@ fn append_effects_to_optional_search(
         ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
             zones, search_mode: Some(_), ..
         }
-    )] if zones.as_slice() == [Zone::Library]) {
+    )] if zones.as_slice() == [Zone::Library])
+    {
         return false;
     }
     body.append(&mut followups);
@@ -10758,7 +10760,12 @@ pub fn replace_unbound_x_in_effect_anywhere(
     ) -> Result<(), CardTextError> {
         match target {
             TargetAst::Object(filter, _, _) => replace_in_filter(filter, replacement, clause)?,
-            TargetAst::WithCount(inner, _) => replace_in_target(inner, replacement, clause)?,
+            TargetAst::WithCount(inner, count) => {
+                replace_in_target(inner, replacement, clause)?;
+                if count.dynamic_x {
+                    *target = TargetAst::WithCountValue(inner.clone(), *count, replacement.clone());
+                }
+            }
             TargetAst::WithCountValue(inner, _, value) => {
                 replace_in_target(inner, replacement, clause)?;
                 replace_value(value, replacement, clause)?;
@@ -11135,11 +11142,16 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 replace_value(remove_count, replacement, clause)?;
             }
             SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump {
+                target,
                 power,
                 toughness,
                 ..
-            })
-            | SubjectVerbActionAst::Characteristics(
+            }) => {
+                replace_in_target(target, replacement, clause)?;
+                replace_value(power, replacement, clause)?;
+                replace_value(toughness, replacement, clause)?;
+            }
+            SubjectVerbActionAst::Characteristics(
                 CharacteristicActionAst::SetBasePowerToughness {
                     power, toughness, ..
                 },

@@ -463,6 +463,7 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("if"),
             StaticAbilityLineHeadHint::Pair("if", "this"),
         ],
+        "parse_damage_prevention_with_owner_shuffle_line" => vec![StaticAbilityLineHeadHint::Single("if")],
         "parse_players_skip_extra_turns_line" => vec![
             StaticAbilityLineHeadHint::Single("if"),
             StaticAbilityLineHeadHint::Pair("if", "an"),
@@ -1234,6 +1235,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             parse_prevent_damage_to_source_put_counters_line
         ),
         single_static_ability_ast_rule!(parse_prevent_damage_to_you_from_source_filter_line),
+        single_static_ability_ast_rule!(parse_damage_prevention_with_owner_shuffle_line),
         single_static_ability_ast_rule!(parse_replace_damage_with_counters_instead_line),
         single_static_ability_ast_rule!(parse_choose_color_as_enters_line),
         single_static_ability_ast_rule!(parse_damage_redirect_to_source_controller_line),
@@ -4343,10 +4345,13 @@ pub fn parse_enter_as_copy_as_enters_line(
                     name_override: None,
                     added_colors: ColorSet::new(),
                     added_card_types: Vec::new(),
+                    added_supertypes: Vec::new(),
                     removed_supertypes: Vec::new(),
                     added_subtypes: Vec::new(),
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
+                    additional_counters: Vec::new(),
+                    additional_counters_source_filter: None,
                     added_abilities_source_filter: None,
                     set_base_power_toughness_from_self: false,
                 },
@@ -4385,10 +4390,13 @@ pub fn parse_enter_as_copy_as_enters_line(
                     name_override: None,
                     added_colors: ColorSet::new(),
                     added_card_types: Vec::new(),
+                    added_supertypes: Vec::new(),
                     removed_supertypes: Vec::new(),
                     added_subtypes: Vec::new(),
                     added_abilities: Vec::new(),
                     set_base_power_toughness: None,
+                    additional_counters: Vec::new(),
+                    additional_counters_source_filter: None,
                     added_abilities_source_filter: None,
                     set_base_power_toughness_from_self: false,
                 },
@@ -4432,9 +4440,12 @@ pub fn parse_enter_as_copy_as_enters_line(
             let mut name_override = None;
             let mut added_colors = ColorSet::new();
             let mut added_card_types = Vec::new();
+            let mut added_supertypes = Vec::new();
             let mut removed_supertypes = Vec::new();
             let mut added_subtypes = Vec::new();
             let mut added_abilities = Vec::new();
+            let mut additional_counters = Vec::new();
+            let mut additional_counters_source_filter = None;
             let mut added_abilities_source_filter = None;
             let mut set_base_power_toughness = None;
             let mut set_base_power_toughness_from_self = false;
@@ -4522,6 +4533,16 @@ pub fn parse_enter_as_copy_as_enters_line(
                         }
                         let mut parsed_type_or_subtype = false;
                         while cursor < characteristic_words.len() {
+                            if characteristic_words[cursor] == "and" {
+                                cursor += 1;
+                                continue;
+                            }
+                            if let Some(supertype) = crate::util::parse_supertype_word(characteristic_words[cursor]) {
+                                crate::slice_primitives::push_unique(&mut added_supertypes, supertype);
+                                parsed_type_or_subtype = true;
+                                cursor += 1;
+                                continue;
+                            }
                             if let Some(color) = Color::from_name(characteristic_words[cursor]) {
                                 added_colors = added_colors.with(color);
                                 parsed_type_or_subtype = true;
@@ -4559,6 +4580,23 @@ pub fn parse_enter_as_copy_as_enters_line(
                         }
                         match remainder {
                             keyword_static_lines::CopyCharacteristicRemainder::None => {}
+                            keyword_static_lines::CopyCharacteristicRemainder::ConditionalEntry(entry) => {
+                                let words = parser_token_word_refs(entry);
+                                let parsed = (|| {
+                                    let ["its" | "it's", "a" | "an", type_word, "it", "enters", "with", count, "additional", counter, "counters", "on", "it", "and", "has", ..] = words.as_slice() else { return None; };
+                                    let card_type = parse_card_type(type_word)?;
+                                    let count = u32::try_from(parse_number_word_i32(count)?).ok()?;
+                                    let counter = parse_counter_type_word(counter)?;
+                                    Some((card_type, count, counter))
+                                })().ok_or_else(|| CardTextError::ParseError("unsupported conditional copy entry modification".into()))?;
+                                let (card_type, count, counter) = parsed;
+                                let filter = ObjectFilter::default().with_type(card_type);
+                                additional_counters = vec![(counter, count)];
+                                additional_counters_source_filter = Some(filter.clone());
+                                added_abilities_source_filter = Some(filter);
+                                let has_index = entry.iter().position(|token| token.is_word("has")).ok_or_else(|| CardTextError::ParseError("missing conditional copy ability".into()))?;
+                                added_abilities = parse_added_copy_abilities(&entry[has_index + 1..], &clause_words)?;
+                            }
                             keyword_static_lines::CopyCharacteristicRemainder::PowerToughnessFromSource => {
                                 set_base_power_toughness_from_self = true;
                             }
@@ -4595,8 +4633,11 @@ pub fn parse_enter_as_copy_as_enters_line(
                     added_subtypes,
                     added_abilities,
                     set_base_power_toughness,
+                    additional_counters,
+                    additional_counters_source_filter,
                     added_abilities_source_filter,
                     set_base_power_toughness_from_self,
+                    added_supertypes,
                     removed_supertypes,
                 },
                 display,

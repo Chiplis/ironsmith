@@ -2632,6 +2632,68 @@ pub fn parse_prevent_damage_to_you_from_source_filter_line(
     ))
 }
 
+/// Read a prevention event followed by its recipient's owner shuffling that recipient.
+/// The event selectors and the additional effects remain independently executable.
+pub fn parse_damage_prevention_with_owner_shuffle_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let tokens = trim_edge_punctuation_tokens(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
+    if words.first() != Some(&"if") { return Ok(None); }
+    let Some(would) = tokens.iter().position(|t| t.as_word() == Some("would")) else {
+        return Ok(None);
+    };
+    let Some(comma) = tokens.iter().position(|t| t.kind == TokenKind::Comma) else {
+        return Ok(None);
+    };
+    if would <= 1 || comma <= would { return Ok(None); }
+    let source_tokens = &tokens[1..would];
+    let source_words = crate::lexer::token_word_refs(source_tokens);
+    let source_filter = if is_source_reference_words(&source_words) {
+        let mut filter = ObjectFilter::source();
+        filter.source_surface = source_reference_surface_for_words(&source_words);
+        filter
+    } else {
+        let Ok(filter) = parse_object_filter_lexed(source_tokens, false) else {return Ok(None);};
+        filter
+    };
+    let damage_words = crate::lexer::token_word_refs(&tokens[would..comma]);
+    let (combat_only, prefix_len) = if damage_words.starts_with(&["would", "deal", "combat", "damage", "to"]) {
+        (Some(true), 5)
+    } else if damage_words.starts_with(&["would", "deal", "noncombat", "damage", "to"]) {
+        (Some(false), 5)
+    } else if damage_words.starts_with(&["would", "deal", "damage", "to"]) {
+        (None, 4)
+    } else {return Ok(None);};
+    // This bounded head contains only words, so token and word offsets coincide.
+    let target_tokens = &tokens[would + prefix_len..comma];
+    let target_words = crate::lexer::token_word_refs(target_tokens);
+    let Some(noun) = target_words.last().copied() else {return Ok(None);};
+    if !matches!(noun, "creature" | "permanent" | "planeswalker" | "battle") {
+        return Ok(None);
+    }
+    let tail = crate::lexer::token_word_refs(&tokens[comma + 1..]);
+    let possessive = format!("{noun}'s");
+    if tail != ["prevent", "that", "damage", "and", "that", possessive.as_str(), "owner", "shuffles", "it", "into", "their", "library"] {
+        return Ok(None);
+    }
+    let target_filter = parse_object_filter_lexed(target_tokens, false)?;
+    let recipient = crate::tag::TagRef::of("__prevented_damage_recipient__");
+    let shuffle = crate::cards::builders::EffectAst::subject_verb(
+        SubjectVerbRoleAst::LibraryOwner, PlayerAst::ItsOwner,
+        SubjectVerbActionAst::Library(crate::cards::builders::LibraryActionAst::ShuffleObjectsIntoLibrary {
+            target: TargetAst::Tagged(recipient.clone(), None),
+            all: false,
+            owner_library_destination: true,
+            possessive_owner_subject: true,
+            shuffle_subject_library: false,
+        }),
+    );
+    Ok(Some(StaticAbility::damage_prevention_with_follow_up(
+        source_filter, target_filter, combat_only, recipient.key.clone(), vec![shuffle],
+    )))
+}
+
 pub fn parse_replace_damage_with_counters_instead_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -3650,6 +3712,15 @@ pub fn parse_cast_this_spell_as_though_it_had_flash_line(
 pub fn parse_attacks_each_combat_if_able_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    if let Some(unless) = tokens.iter().position(|token| token.is_word("unless"))
+        && let Some(ability) = parse_attacks_each_combat_if_able_line(&tokens[..unless])?
+    {
+        let condition = parse_static_condition_clause(&tokens[unless + 1..])?;
+        return Ok(Some(StaticAbilityAst::ConditionalStaticAbility {
+            ability: Box::new(ability),
+            condition: PredicateAst::Not(Box::new(condition)),
+        }));
+    }
     let Some(fact) = late_static_facts::parse_attack_each_combat_if_able_tokens(tokens) else {
         return Ok(None);
     };

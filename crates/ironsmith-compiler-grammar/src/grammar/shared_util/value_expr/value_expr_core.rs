@@ -134,6 +134,23 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     {
         return Some((Value::EventValue(EventValueSpec::Amount), *used));
     }
+    if let Some(used) = prefix_len(
+        words,
+        &[
+            &[
+                "the", "number", "of", "unique", "vowels", "on", "that", "sticker",
+            ],
+            &["number", "of", "unique", "vowels", "on", "that", "sticker"],
+        ],
+    ) {
+        return Some((
+            Value::PendingEffectMetric {
+                source: ironsmith_core::EffectMetricSource::Outcome,
+                metric: ironsmith_core::EffectMetric::NameStickerUniqueVowels,
+            },
+            used,
+        ));
+    }
     if permission_shapes::prefix_words(words, &["the", "other", "result"]) {
         return Some((
             Value::PendingEffectMetric {

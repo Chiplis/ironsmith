@@ -21,6 +21,9 @@ pub enum MetadataLine {
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LineSemanticFacts {
+    /// Extracted before reminder text is removed from authored rules tokens.
+    pub station_creature_threshold: Option<i32>,
+    pub supported_sneak_form: bool,
     pub static_ability: StaticLineSemanticFacts,
     pub statement: StatementLineSemanticFacts,
     pub triggered_ability: TriggeredLineSemanticFacts,
@@ -100,6 +103,7 @@ pub enum StatementReplacementSurfaceKind {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StaticLineSemanticFacts {
+    pub leading_as_long_as_your_turn: bool,
     pub explicit_functional_zones: Option<Vec<Zone>>,
     pub references_this_ability_cost: bool,
     pub this_spell_cost: Option<ThisSpellCostFacts>,

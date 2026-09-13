@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {isPanelInk,expandGlyphMask,clearEdgeRules,glyphSimilarity,inpaintGlyphMask} from '../src/lib/card-frame-font-mask.js';
+import {protectBottomOrnaments,isPanelInk,expandGlyphMask,clearEdgeRules,glyphSimilarity,inpaintGlyphMask} from '../src/lib/card-frame-font-mask.js';
 
 test('glyph matching distinguishes shape rather than merely dark pixels',()=>{
   const a={w:3,h:3,pixels:Uint8Array.from([1,0,0,1,0,0,1,1,1])};
@@ -61,4 +61,39 @@ test('white lettering is recognized on midtone gold without selecting gold mater
   assert.equal(isPanelInk(30,30,30,224),true,'black ink on light paper');
   assert.equal(isPanelInk(230,230,230,224),false,'light paper grain');
   assert.equal(isPanelInk(240,240,240,64),true,'white ink on dark paper');
+});
+
+test('joined-word splitting retains all ink across scan scales',async()=>{
+  const {splitJoinedGlyph}=await import('../src/lib/card-frame-font-mask.js');
+  for(const scale of [1,2,3]) {
+    const w=60*scale,h=12*scale,pixels=new Uint8Array(w*h);
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(x%(10*scale)<2*scale||y===h-2)pixels[y*w+x]=1;
+    const parts=splitJoinedGlyph({w,h,pixels});
+    assert.ok(parts.length>1);
+    assert.equal(parts.reduce((n,p)=>n+p.pixels.reduce((a,b)=>a+b,0),0),pixels.reduce((a,b)=>a+b,0));
+    assert.ok(parts.every(p=>p.w<=h*1.5));
+  }
+});
+
+test('residual verification rejects a missed word even in an otherwise clean region',async()=>{
+  const {residualTextQuality}=await import('../src/lib/card-frame-font-mask.js');
+  const width=100,height=20,data=new Uint8ClampedArray(width*height*4).fill(220);
+  const c={points:[101,102,103,104,201,202,203,204]};
+  for(const p of c.points)data.set([20,20,20,255],p*4);
+  const scan={width,height,data};
+  assert.equal(residualTextQuality(scan,scan,[c],()=>220).safe,false);
+  const clean={...scan,data:new Uint8ClampedArray(data.length).fill(220)};
+  assert.equal(residualTextQuality(scan,clean,[c],()=>220).safe,true);
+});
+
+test('bottom-connected security ornament stays protected without removing nearby text',()=>{
+  const width=40,height=30,ink=new Uint8Array(width*height);
+  for(let y=25;y<height;y++)for(let x=16;x<24;x++)ink[y*width+x]=1;
+  for(let y=14;y<21;y++)ink[y*width+10]=1;
+  const protectedPixels=protectBottomOrnaments(ink,width,height);
+  assert.equal(ink[25*width+20],0);
+  assert.equal(protectedPixels[25*width+20],1);
+  assert.equal(ink[18*width+10],1);
+  const expanded=expandGlyphMask(ink,width,height,protectedPixels,8);
+  assert.equal(expanded[25*width+20],0);
 });

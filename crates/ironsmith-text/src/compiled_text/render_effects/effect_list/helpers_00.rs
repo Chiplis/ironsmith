@@ -4437,8 +4437,11 @@ pub(crate) fn describe_shape_anew_like_bundle(effects: &[&Effect]) -> Option<Str
             | PlayerFilter::AliasedControllerOf(crate::filter::ObjectRef::Tagged(tag))
             if wrapped_effect_tag(sacrifice_effect) == Some(tag));
     if consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Reveal
-        || !matches!(consult.stop_rule, crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
-            | crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)))
+        || !matches!(
+            consult.stop_rule,
+            crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
+                | crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1))
+        )
         || !controller_reference_matches
         || consult.filter.card_types != vec![CardType::Artifact]
     {

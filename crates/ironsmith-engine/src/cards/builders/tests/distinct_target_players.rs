@@ -79,6 +79,7 @@ fn assert_distinct_player_requirements(
                 min_targets: requirement.min_targets,
                 max_targets: requirement.max_targets,
                 distinct_player_group: requirement.distinct_player_group,
+                shared_player_group: requirement.shared_player_group.clone(),
             },
         )
         .collect::<Vec<_>>();

@@ -1,5 +1,6 @@
 import useUiText from "@/i18n/useUiText";
 import { zoneHasLegalTargets } from "@/lib/zone-piles";
+import { createCardVisualSnapshotCache } from "@/lib/card-visual-snapshot";
 import { objectExistsInState } from "@/lib/inspector-selection";
 import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
@@ -365,12 +366,6 @@ function visibleCardRectPriority(el) {
   return 10;
 }
 
-function sourceCloneHtmlForCardElement(el) {
-  const clone = el.cloneNode(true);
-  clone.classList.remove("battlefield-row-card--layout-hold");
-  return clone.outerHTML;
-}
-
 function setVisibleCardRect(rects, key, snapshot) {
   if (!key || !snapshot) return;
   const current = rects.get(key);
@@ -378,7 +373,7 @@ function setVisibleCardRect(rects, key, snapshot) {
   rects.set(key, snapshot);
 }
 
-function collectVisibleCardRects() {
+function collectVisibleCardRects(cloneCache) {
   if (typeof document === "undefined") return new Map();
   const rects = new Map();
   const cardEls = document.querySelectorAll(".game-card[data-object-id]");
@@ -398,7 +393,7 @@ function collectVisibleCardRects() {
       x: rect.x,
       y: rect.y,
       rectPriority,
-      sourceCloneHtml: sourceCloneHtmlForCardElement(el),
+      sourceCloneHtml: cloneCache.read(el),
       sourceImageUrl: el.querySelector("img")?.currentSrc || el.querySelector("img")?.src || null,
     };
     const objectId = el.getAttribute("data-object-id");
@@ -751,6 +746,8 @@ export default function Workspace({
   const previousStackIdsRef = useRef([]);
   const previousZoneTransitionSnapshotRef = useRef(null);
   const previousCardRectsRef = useRef(new Map());
+  const cardVisualSnapshots = useMemo(() => createCardVisualSnapshotCache(), []);
+  useEffect(() => () => cardVisualSnapshots.dispose(), [cardVisualSnapshots]);
   const processedRuntimeZoneTransitionIdsRef = useRef(new Set());
   const transitionInspectorRevealTimerRef = useRef(null);
   const castIntentDispatchKeyRef = useRef(null);
@@ -1086,18 +1083,18 @@ export default function Workspace({
   ]);
 
   useLayoutEffect(() => {
-    previousCardRectsRef.current = collectVisibleCardRects();
+    previousCardRectsRef.current = collectVisibleCardRects(cardVisualSnapshots);
   });
 
   useEffect(() => {
     const refreshVisibleCardRects = () => {
-      previousCardRectsRef.current = collectVisibleCardRects();
+      previousCardRectsRef.current = collectVisibleCardRects(cardVisualSnapshots);
     };
     window.addEventListener("ironsmith:battlefield-layout-fitted", refreshVisibleCardRects);
     return () => {
       window.removeEventListener("ironsmith:battlefield-layout-fitted", refreshVisibleCardRects);
     };
-  }, []);
+  }, [cardVisualSnapshots]);
 
   useEffect(() => {
     if (!combatDeclarationActive) return;

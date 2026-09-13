@@ -269,10 +269,11 @@ function namedCardJsonUrls(cardName, printPreference = null) {
   return urls;
 }
 
-const STANDARD_PRINT_FILTER = "-is:fullart -border:borderless -frame:showcase -frame:extendedart -is:textless";
+const STANDARD_PRINT_FILTER = "-is:fullart -border:borderless -frame:showcase -frame:extendedart -is:textless -frame:1993 -frame:1997";
 
 function isStandardPrinting(card) {
   return Boolean(card) && card.full_art !== true && card.textless !== true
+    && !["1993", "1997"].includes(card.frame)
     && card.border_color !== "borderless"
     && !(card.frame_effects || []).some(effect =>
       ["showcase", "extendedart", "borderless"].includes(effect));
@@ -280,7 +281,7 @@ function isStandardPrinting(card) {
 
 // Older baked assets lack treatment metadata; resolve those through Scryfall.
 function isVerifiedStandardLocalPrinting(card) {
-  return card?.standard_printing === true && isStandardPrinting(card);
+  return card?.standard_printing === true && Boolean(card.frame) && isStandardPrinting(card);
 }
 
 function standardPrintingSearchUrl(cardName, printPreference = null) {

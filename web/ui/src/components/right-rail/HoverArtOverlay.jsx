@@ -14,6 +14,7 @@ import useCardTypography from "@/hooks/useCardTypography";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import usePreparedCardFrame from "@/hooks/usePreparedCardFrame";
+import { fullCardImageUrl } from '@/lib/card-frame-colors';
 import "@/styles/card-frame-colors.css";
 import { useScryfallImage } from "@/hooks/useScryfallImageUrl";
 import useScryfallFlavorText from "@/hooks/useScryfallFlavorText";
@@ -191,7 +192,8 @@ function InspectorFlavorText({ text, style, className }) {
       style={style}
       aria-label={ui("Flavor text")}
     >
-      {text}
+      {text.split(/(\*[^*\n]+\*)/g).map((part,index)=>part.startsWith("*")&&part.endsWith("*")
+        ? <span key={index} style={{fontStyle:"normal"}}>{part.slice(1,-1)}</span> : part)}
     </div>
   );
 }
@@ -644,11 +646,14 @@ export default function HoverArtOverlay({
   onPreferredInspectorWidthChange = null,
   onInspectorAccentChange = null,
   onCardFrameReadyChange = null,
+  showFramePreview = true,
+  enableFramePreparation = true,
   sourceImageUrl = null,
   interactiveActions = [],
   onInteractiveAction = null,
 }) {
   const ui = useUiText();
+  const isMiniatureFrame = displayMode === "miniature-frame";
   const { state, game, playerAccentOverrides } = useGame();
   const paymentActions = useInspectorPaymentActions(game, state, interactiveActions);
   const { locale, t } = useI18n();
@@ -724,7 +729,7 @@ export default function HoverArtOverlay({
   // Cached details are only valid for the state snapshot they were fetched
   // against — P/T, counters, and zone all change under a stable object id.
   useEffect(() => {
-    if (!game || detailsObjectIdNum == null || !detailsObjectIdKey) return;
+    if (isMiniatureFrame || !game || detailsObjectIdNum == null || !detailsObjectIdKey) return;
     if (cachedInspectorDetails(game, state, detailsObjectIdKey)?.ready) return;
     const cachedEntry = detailsCache[detailsObjectIdKey];
     if (cachedEntry && cachedEntry.state === state) return;
@@ -751,16 +756,16 @@ export default function HoverArtOverlay({
     return () => {
       active = false;
     };
-  }, [game, detailsObjectIdNum, detailsObjectIdKey, detailsCache, state]);
+  }, [game, detailsObjectIdNum, detailsObjectIdKey, detailsCache, state, isMiniatureFrame]);
 
 
 
-  const details = sharedDetails?.ready ? sharedDetails.value
-    : detailsObjectIdKey ? (detailsCache[detailsObjectIdKey]?.value ?? null) : null;
   const cardSnapshot = useMemo(
     () => findCardSnapshotForObjectId(state, detailsObjectIdNum),
     [detailsObjectIdNum, state]
   );
+  const details = isMiniatureFrame ? cardSnapshot : sharedDetails?.ready ? sharedDetails.value
+    : detailsObjectIdKey ? (detailsCache[detailsObjectIdKey]?.value ?? null) : null;
   const hoveredStackObject = useMemo(
     () => selectedStackEntry
       || visibleStackObjects.find((entry) => String(entry.id) === String(objectIdNum))
@@ -768,7 +773,7 @@ export default function HoverArtOverlay({
     [visibleStackObjects, objectIdNum, selectedStackEntry]
   );
   const isFullArtMode = displayMode === "full-art";
-  const isCardFrameMode = displayMode === "card-frame";
+  const isCardFrameMode = displayMode === "card-frame" || isMiniatureFrame;
   const artStackObject = useMemo(() => {
     if (hoveredStackObject) return hoveredStackObject;
     return null;
@@ -877,7 +882,9 @@ export default function HoverArtOverlay({
   const artObjectName = stableLinkedObjectName || objectName;
   const image = useScryfallImage(sourceImageUrl ? "" : artObjectName, "art_crop");
   const imageUrl = sourceImageUrl ? cardArtCropUrl(sourceImageUrl) : image.url;
-  const preparedFrame = usePreparedCardFrame(imageUrl, typeLine, isCardFrameMode && image.ready);
+  const generatedFrame = usePreparedCardFrame(imageUrl, typeLine, isCardFrameMode && image.ready && enableFramePreparation);
+  const originalFrame = useMemo(() => ({imageUrl, originalImageUrl: fullCardImageUrl(imageUrl) || imageUrl}), [imageUrl]);
+  const preparedFrame = enableFramePreparation ? generatedFrame : originalFrame;
   const defaultTypography = useCardTypography(isCardFrameMode ? "" : imageUrl);
   const typography = preparedFrame?.typography || defaultTypography;
   const inspectorMeasureFont = typography.rules;
@@ -993,8 +1000,8 @@ export default function HoverArtOverlay({
     if (oracleRulesLines.length > 0) {
       return oracleRulesLines;
     }
-    return compiledRulesLines;
-  }, [compiledRulesLines, oracleRulesLines, shouldPreferStackAbilityRules]);
+    return isMiniatureFrame ? String(preparedFrame?.printing?.oracle_text || '').split('\n').filter(Boolean) : compiledRulesLines;
+  }, [compiledRulesLines, oracleRulesLines, shouldPreferStackAbilityRules, isMiniatureFrame, preparedFrame?.printing?.oracle_text]);
   const baseDisplayRulesText = baseDisplayRulesLines.join("\n");
   const baseDisplayObjectName = debugInspector ? null : objectName;
   const baseDisplayTypeLine = debugInspector ? null : typeLineDisplay;
@@ -1068,7 +1075,7 @@ export default function HoverArtOverlay({
   const displayZoneLine = debugInspector || inspectorZone.toLowerCase() === "battlefield" ? null : zoneLine;
   const displayCountersLine = debugInspector ? null : countersLine;
   const displayManaCost = debugInspector ? null : manaCost;
-  const displayStatsText = debugInspector || transitionTitle ? null : statsText;
+  const displayStatsText = debugInspector || transitionTitle || isMiniatureFrame ? null : statsText;
   const printedStatsAtRules = Boolean(displayStatsText && /^[^/]+\/[^/]+$/.test(displayStatsText) && cardFrameColors?.["--printed-pt-position"] === "rules");
   const displayTypeZoneLine = useMemo(
     () => [displayZoneLine, displayTypeLine].filter(Boolean).join(" - ") || null,
@@ -2337,9 +2344,9 @@ export default function HoverArtOverlay({
     return (
       <CardFrameStage
         assets={preparedFrame}
-        previewUrl={sourceImageUrl || imageUrl}
+        previewUrl={showFramePreview ? sourceImageUrl || imageUrl : null}
         previewName={objectName}
-        preparation={game && detailsObjectIdKey && !details && !sharedDetails?.ready && settledDetailsKey !== detailsObjectIdKey ? null : preparedFrame}
+        preparation={!isMiniatureFrame && game && detailsObjectIdKey && !details && !sharedDetails?.ready && settledDetailsKey !== detailsObjectIdKey ? null : preparedFrame}
         onReadyChange={onCardFrameReadyChange}
         className="interactive-card-frame-stage absolute inset-0 z-30 pointer-events-auto"
         data-card-frame-tone={frameTone}
@@ -2349,6 +2356,7 @@ export default function HoverArtOverlay({
         data-frame-geometry={cardFrameColors && Object.keys(cardFrameColors).some(key => key.startsWith("--printed-gap-")) ? "true" : undefined}
         data-card-colors={hasSourceMask ? "sampled" : undefined}
         data-frame-mode={preparedFrame?.registration ? "registered" : hasSourceMask ? "masked" : "original"}
+        data-frame-presentation={isMiniatureFrame ? "miniature" : "inspector"}
         data-frame-fallback-reason={cardFrameColors?.["--source-frame-fallback-reason"] || undefined}
         data-inspected-object-id={detailsObjectIdKey || undefined}
         data-inner-frame-border={cardFrameColors?.["--inner-frame-bevel-profile"] ? cardFrameColors["--inner-frame-border-kind"] : undefined}
@@ -2366,9 +2374,11 @@ export default function HoverArtOverlay({
         {preparedFrame?.registration ? <RegisteredCardFrame
           registration={preparedFrame.registration} imageUrl={preparedFrame.originalImageUrl}
           typography={preparedFrame.typography} rulesView={rulesView} name={displayObjectName}
+          interactive={!isMiniatureFrame}
           typeLine={displayTypeLine} stats={displayStatsText} flavorText={flavorText}
           onActivate={onInteractiveAction} highlighted={highlightedRuleLineIndices}
         /> : !hasSourceMask ? <OriginalCardFallback
+          showDetails={!isMiniatureFrame}
           imageUrl={preparedFrame?.originalImageUrl || sourceImageUrl || imageUrl}
           name={displayObjectName} rulesView={rulesView} onActivate={onInteractiveAction}
           highlighted={highlightedRuleLineIndices} flavorText={flavorText}
@@ -2378,7 +2388,7 @@ export default function HoverArtOverlay({
           <div className="interactive-card-frame__inner">
             <header className="interactive-card-frame__title-row">
               <div className="interactive-card-frame__title-wrap">
-                {groupedCardCount > 1 && (
+              {!isMiniatureFrame && groupedCardCount > 1 && (
                   <span className="interactive-card-frame__count">×{groupedCardCount}</span>
                 )}
                 <CardFrameSingleLine as="h2" className="interactive-card-frame__title">
@@ -2416,7 +2426,7 @@ export default function HoverArtOverlay({
               ) : (
                 <div className="interactive-card-frame__art-fallback" aria-hidden="true" />
               )}
-              {displayZoneLine && (
+              {!isMiniatureFrame && displayZoneLine && (
                 <span className="interactive-card-frame__zone">{ui(displayZoneLine)}</span>
               )}
               {displayStatsText && !printedStatsAtRules && (
@@ -2430,7 +2440,7 @@ export default function HoverArtOverlay({
               </CardFrameSingleLine>
             </div>
 
-            {displayTypeLineBadges.length > 0 && (
+            {!isMiniatureFrame && displayTypeLineBadges.length > 0 && (
               <div className="interactive-card-frame__badges">
                 {displayTypeLineBadges.map((badge) => (
                   <span key={badge}>{ui(badge)}</span>
@@ -2463,7 +2473,7 @@ export default function HoverArtOverlay({
                     );
                     return (
                       <div key={`${lineIndex}-${line.slice(0, 32)}`} className="interactive-card-frame__rule inspector-ability-section" data-stack-highlighted={highlightedRuleLineIndices.has(lineIndex) ? "true" : undefined}>
-                        {rulesView.manaGroups.has(lineIndex) ? (
+                        {isMiniatureFrame ? content : rulesView.manaGroups.has(lineIndex) ? (
                           <GroupedManaAbility group={rulesView.manaGroups.get(lineIndex)}
                             name={displayObjectName} onActivate={onInteractiveAction}
                             className="interactive-card-frame__ability interactive-card-frame__rule-line inspector-oracle-line" />
@@ -2501,7 +2511,7 @@ export default function HoverArtOverlay({
               {printedStatsAtRules && <div className="interactive-card-frame__art-stats interactive-card-frame__printed-stats"><CardFrameSingleLine className="interactive-card-frame__stats-text">{displayStatsText}</CardFrameSingleLine></div>}
             </div>
 
-            {displayCountersLine && (
+            {!isMiniatureFrame && displayCountersLine && (
               <footer className="interactive-card-frame__footer">
                 <div className="interactive-card-frame__footer-meta">
                   <span>{ui(displayCountersLine)}</span>

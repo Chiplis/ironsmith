@@ -1,8 +1,9 @@
 import { sourceMaskLayoutGap } from './card-frame-layout.js';
 import {manaTemplates,locateManaSymbols} from './card-mana-match.js';
 import { locateSetSymbol } from './card-set-symbol.js';
-import { fontGuidedPanel } from './card-frame-font-mask.js';
-import { maskSourceFrame } from './card-frame-source.js';
+import { fontGuidedPanelAsync, inpaintGlyphMask } from './card-frame-font-mask.js';
+import { maskSourceFrameAsync } from './card-frame-source.js';
+import { frameCanvas, frameCanvasUrl } from './card-frame-canvas.js';
 
 // Printing materials, source panel reconstruction, and frame geometry.
 // Panel reconstruction is independent of the typography selection.
@@ -14,17 +15,17 @@ export function fullCardImageUrl(artUrl) {
 }
 
 export function materialColor(data) {
-  const bins = new Map();
+  const counts = new Uint32Array(512), sums = new Float64Array(512 * 3), first = new Uint32Array(512);
   for (let i = 0; i < data.length; i += 4) {
     if (data[i + 3] < 128) continue;
-    const key = [data[i], data[i + 1], data[i + 2]].map(v => Math.floor(v / 32)).join(',');
-    const bin = bins.get(key) || { count: 0, rgb: [0, 0, 0] };
-    bin.count++;
-    for (let c = 0; c < 3; c++) bin.rgb[c] += data[i + c];
-    bins.set(key, bin);
+    const key = (data[i] >> 5) * 64 + (data[i + 1] >> 5) * 8 + (data[i + 2] >> 5);
+    if (!counts[key]) first[key] = i;
+    counts[key]++;
+    sums[key * 3] += data[i]; sums[key * 3 + 1] += data[i + 1]; sums[key * 3 + 2] += data[i + 2];
   }
-  const bin = [...bins.values()].sort((a, b) => b.count - a.count)[0];
-  return bin ? bin.rgb.map(v => Math.round(v / bin.count)) : [150, 150, 150];
+  let best = -1;
+  for (let key = 0; key < 512; key++) if (counts[key] && (best < 0 || counts[key] > counts[best] || counts[key] === counts[best] && first[key] < first[best])) best = key;
+  return best < 0 ? [150, 150, 150] : [0, 1, 2].map(c => Math.round(sums[best * 3 + c] / counts[best]));
 }
 
 function luminance(rgb) {
@@ -35,7 +36,7 @@ function luminance(rgb) {
   return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
 }
 
-function analyzeSection({ data, width, height }, {minGlyphHeight=5} = {}) {
+function analyzeSection({ data, width, height }, {minGlyphHeight=5,minimumGlyphs=4} = {}) {
   const paper = materialColor(data), light = luminance(paper);
   const mask = new Uint8Array(width * height), ink = [];
   for (let p = 0; p < mask.length; p++) {
@@ -65,7 +66,12 @@ function analyzeSection({ data, width, height }, {minGlyphHeight=5} = {}) {
     if (component.length < 3 || h < 2 || h > Math.min(36, height * 0.95)
       || w > Math.min(width * 0.6, h * 10) || minX === 0 || minY === 0 || maxX === width - 1 || maxY === height - 1) continue;
     glyphs++;
-    if (h >= minGlyphHeight && w <= h * 2.5 && component.length >= h) {heights.push(h);boxes.push({x:minX,y:minY,width:w,height:h});}
+    if (h >= minGlyphHeight && component.length >= h) {
+      // Individual letters establish the baseline; connected words still
+      // contribute to the extent of that line once its baseline is known.
+      if(w<=h*2.5)heights.push(h);
+      boxes.push({x:minX,y:minY,width:w,height:h});
+    }
     for (const at of component) ink.push(data[at * 4], data[at * 4 + 1], data[at * 4 + 2], 255);
   }
   // Use a repeated glyph-height cluster, not punctuation, borders, or symbols.
@@ -76,14 +82,14 @@ function analyzeSection({ data, width, height }, {minGlyphHeight=5} = {}) {
   }
   cluster.sort((a, b) => a - b);
   const matched=boxes.filter(box=>cluster.includes(box.height));
-  const glyphBounds=matched.length>=4?{
+  const glyphBounds=matched.length>=minimumGlyphs?{
     x:Math.min(...matched.map(b=>b.x)),y:Math.min(...matched.map(b=>b.y)),
     right:Math.max(...matched.map(b=>b.x+b.width)),bottom:Math.max(...matched.map(b=>b.y+b.height)),
   }:null;
   const letters = glyphBounds ? boxes.filter(b => b.height >= cluster[0] * .6
     && b.y < glyphBounds.bottom && b.y + b.height > glyphBounds.y
     && b.height <= cluster.at(-1) * 2.2) : [];
-  const textBounds = letters.length >= 4 ? {
+  const textBounds = letters.length >= minimumGlyphs ? {
     x: Math.min(...letters.map(b => b.x)), y: Math.min(...letters.map(b => b.y)),
     right: Math.max(...letters.map(b => b.x + b.width)), bottom: Math.max(...letters.map(b => b.y + b.height)),
   } : null;
@@ -92,7 +98,7 @@ function analyzeSection({ data, width, height }, {minGlyphHeight=5} = {}) {
     ink: glyphs >= 2 && ink.length >= 24 ? materialColor(ink) : light > .35 ? [23, 24, 25] : [245, 241, 230],
     glyphBounds,
     textBounds,
-    glyphHeight: cluster.length >= 4 ? cluster[Math.floor((cluster.length - 1) * .8)] : null,
+    glyphHeight: cluster.length >= minimumGlyphs ? cluster[Math.floor((cluster.length - 1) * .8)] : null,
   };
 }
 
@@ -102,9 +108,9 @@ export function sectionInk(region) {
     ? [255, 255, 255] : [0, 0, 0];
 }
 export function printedGlyphHeight(region) { return analyzeSection(region).glyphHeight; }
-export function printedTextBounds(region) { return analyzeSection(region).textBounds; }
+export function printedTextBounds(region,options) { return analyzeSection(region,options).textBounds; }
 
-export function measureRulesFirstLine(ctx, box, text, family, { italic = false, bandIndex = 0 } = {}) {
+function scanRulesLines(ctx, box, rowGap) {
   const x = Math.ceil(box.x + 9), y = Math.ceil(box.y + 8);
   const scan = ctx.getImageData(x, y, Math.floor(box.width - 18), Math.floor(box.height - 16));
   const paper = luminance(materialColor(scan.data));
@@ -127,47 +133,66 @@ export function measureRulesFirstLine(ctx, box, text, family, { italic = false, 
   const bands = [];
   for (const row of rows) {
     const band = bands.at(-1);
-    if (!band || row - band.bottom > 2) bands.push({top:row,bottom:row});
+    if (!band || row - band.bottom > rowGap) bands.push({top:row,bottom:row});
     else band.bottom = row;
   }
+  return {x, y, scan, ink, bands};
+}
+
+export function measureRulesFirstLine(ctx, box, text, family, { italic = false, bandIndex = 0, geometryFallback = false, rowGap = 2, source = null } = {}) {
+  const sampled = source || scanRulesLines(ctx, box, rowGap);
+  if (!sampled) return null;
+  const {x, y, scan, ink, bands} = sampled;
   const lineBand = bands.filter(b => b.bottom - b.top >= 7 && b.bottom - b.top <= 32)[bandIndex];
   if (!lineBand) return null;
   const {top,bottom} = lineBand;
-  const nextLine = bands.find(b => b.top > bottom && b.bottom - b.top >= 7);
-  const lineHeight = nextLine ? nextLine.top - top : null;
+  // The first line can be a whole keyword paragraph. Its following gap is
+  // paragraph spacing, not the leading of every wrapped rules/reminder line.
+  // Estimate leading from the shorter repeated advances across the text box.
+  const textBands = bands.filter(b => b.bottom - b.top >= 7 && b.bottom - b.top <= 32);
+  const advances = textBands.slice(1).map((b, i) => b.top - textBands[i].top)
+    .filter(step => step >= bottom - top + 1 && step <= (bottom - top + 1) * 2)
+    .sort((a, b) => a - b);
+  const nextLine = textBands.find(b => b.top > bottom);
+  const nextAdvance = nextLine ? nextLine.top - top : null;
+  const lineHeight = !italic && nextAdvance && nextAdvance <= (bottom - top + 1) * 1.6
+    ? nextAdvance : advances.length ? advances[Math.floor((advances.length - 1) * .25)] : null;
   let left = scan.width, right = 0;
   for (let py = top; py <= bottom; py++) for (let px = 0; px < scan.width; px++) if (ink[py * scan.width + px]) {
     left = Math.min(left, px); right = Math.max(right, px);
   }
   const width = right - left + 1, height = bottom - top + 1;
-  const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
+  const canvas = frameCanvas(width, height);
   const template = canvas.getContext('2d', {willReadFrequently:true});
   const words = String(text || '').split(/\n/)[0].split(/\s+/).filter(Boolean);
   const candidates = [];
   for (let n = 1; n <= Math.min(24, words.length); n++) {
-    const line = words.slice(0, n).join(' '); if (line.includes('{')) break;
-    template.font = `${italic ? "italic " : ""}400 100px ${family}`;
-    const m = template.measureText(line), size = width / (m.actualBoundingBoxLeft + m.actualBoundingBoxRight) * 100;
-    const expectedHeight = (m.actualBoundingBoxAscent + m.actualBoundingBoxDescent) * size / 100;
-    if (size < 12 || size > 36 || expectedHeight < height * .8 || expectedHeight > height * 1.2) continue;
-    template.clearRect(0, 0, width, height);
-    template.save(); template.scale(size / 100, height / (m.actualBoundingBoxAscent + m.actualBoundingBoxDescent));
-    template.fillStyle = 'white'; template.fillText(line, m.actualBoundingBoxLeft, m.actualBoundingBoxAscent); template.restore();
-    const pixels = template.getImageData(0, 0, width, height).data;
-    let intersection = 0, union = 0;
-    for (let py = 0; py < height; py++) for (let px = 0; px < width; px++) {
-      const a = ink[(py + top) * scan.width + px + left], b = pixels[(py * width + px) * 4 + 3] > 80;
-      if (a && b) intersection++; if (a || b) union++;
+    const wording = words.slice(0, n).join(' '); if (wording.includes('{')) break;
+    for (const line of new Set([wording, wording.replace(/^"/, '“')])) {
+      template.font = `${italic ? "italic " : ""}400 100px ${family}`;
+      const m = template.measureText(line), size = width / (m.actualBoundingBoxLeft + m.actualBoundingBoxRight) * 100;
+      const expectedHeight = (m.actualBoundingBoxAscent + m.actualBoundingBoxDescent) * size / 100;
+      if (size < 12 || size > 36 || expectedHeight < height * .8 || expectedHeight > height * 1.2) continue;
+      template.clearRect(0, 0, width, height);
+      template.save(); template.scale(size / 100, height / (m.actualBoundingBoxAscent + m.actualBoundingBoxDescent));
+      template.fillStyle = 'white'; template.fillText(line, m.actualBoundingBoxLeft, m.actualBoundingBoxAscent); template.restore();
+      const pixels = template.getImageData(0, 0, width, height).data;
+      let intersection = 0, union = 0;
+      for (let py = 0; py < height; py++) for (let px = 0; px < width; px++) {
+        const a = ink[(py + top) * scan.width + px + left], b = pixels[(py * width + px) * 4 + 3] > 80;
+        if (a && b) intersection++; if (a || b) union++;
+      }
+      candidates.push({size, confidence:intersection / union, words:n, line, x:x+left, y:y+top, width, height, lineHeight});
     }
-    candidates.push({size, confidence:intersection / union, line, x:x+left, y:y+top, width, height, lineHeight});
   }
   candidates.sort((a,b) => b.confidence - a.confidence);
   const best = candidates[0];
-  if(best?.confidence > .4 && (!candidates[1] || best.confidence - candidates[1].confidence > .06))return best;
-  // Symbol-led lines cannot be compared as plain canvas text. Their printed
-  // letter height still gives a font size without treating {T} as three glyphs.
+  if(best?.confidence > .4 && (!candidates[1] || best.confidence - (candidates.find(c => c.words !== best.words)?.confidence ?? 0) > .06))return best;
+  // Symbols, italic reminder spans and Oracle wording updates can prevent
+  // an exact string match. The measured first line still supplies its size
+  // and position; flavor searches must keep requiring an exact text match.
   const first = String(text || '').split('\n')[0];
-  if (first.includes('{')) {
+  if (first.includes('{') || geometryFallback && bandIndex===0 && !italic) {
     const letters = first.replace(/\{[^}]+\}/g, '').trim();
     if (letters) {
       template.font = `${italic ? "italic " : ""}400 100px ${family}`;
@@ -181,14 +206,34 @@ export function measureRulesFirstLine(ctx, box, text, family, { italic = false, 
 
 // Flavor can start below several rules lines. Match its own italic text against
 // each printed band; never inherit the size of an unrelated activated ability.
-export function measureFlavorFirstLine(ctx, box, text, family) {
+export function measureFlavorFirstLine(ctx, box, text, family, sources = null) {
   if (!text) return null;
   const candidates = [];
+  sources ||= [2, 1].map(rowGap => scanRulesLines(ctx, box, rowGap)).filter(Boolean);
   for (let bandIndex = 0; bandIndex < 18; bandIndex++) {
-    const match = measureRulesFirstLine(ctx, box, text, family, {italic:true, bandIndex});
-    if (match) candidates.push(match);
+    for (const source of sources) {
+      const match = measureRulesFirstLine(ctx, box, text.replace(/\*/g,''), family, {italic:true, bandIndex, source});
+      if (match) candidates.push(match);
+    }
   }
   return candidates.sort((a,b) => b.confidence - a.confidence)[0] || null;
+}
+
+// A reminder often starts at the end of a roman ability line. Match a full
+// continuation line so the roman prefix cannot determine its italic size.
+export function measureReminderText(ctx, box, text, family) {
+  const matches = [];
+  const reminders = [...String(text || '').matchAll(/\([^()]+\)/g)];
+  if (!reminders.length) return null;
+  const sources = [2, 1].map(rowGap => scanRulesLines(ctx, box, rowGap)).filter(Boolean);
+  for (const [reminder] of reminders) {
+    const words = reminder.split(/\s+/);
+    for (let start = 0; start < Math.min(8, words.length - 3); start++) {
+      const match = measureFlavorFirstLine(ctx, box, words.slice(start).join(' '), family, sources);
+      if (match && match.words >= 4) matches.push(match);
+    }
+  }
+  return matches.sort((a, b) => a.y - b.y || b.confidence - a.confidence)[0] || null;
 }
 
 const sourceImages = new Map();
@@ -664,7 +709,11 @@ export function printedStatsTreatment(scan,stats) {
 export function detectStatsPanelBounds(scan, stats) {
   if(!stats || printedStatsTreatment(scan,stats)!=='panel') return null;
   const {width,height,data}=scan;
-  const dark=(x,y)=>{const at=(y*width+x)*4;return (data[at]+data[at+1]+data[at+2])/3<100;};
+  const samples=[];
+  for(let y=stats.y;y<stats.y+stats.height;y++)for(let x=stats.x;x<stats.x+stats.width;x++)samples.push(...data.subarray((y*width+x)*4,(y*width+x)*4+4));
+  const paper=materialColor(samples).reduce((a,b)=>a+b,0)/3;
+  // Silver bevels in low-resolution scans are gray, not near-black.
+  const dark=(x,y)=>{const at=(y*width+x)*4;return (data[at]+data[at+1]+data[at+2])/3<paper-35;};
   const edge=(axis,start,direction,limit)=>{
     for(let d=3;d<limit;d++) {
       const p=Math.round(start+direction*d);let count=0;
@@ -681,7 +730,10 @@ export function detectStatsPanelBounds(scan, stats) {
   const left=edge('x',stats.x,-1,width*.085),right=edge('x',stats.x+stats.width,1,width*.085);
   const top=edge('y',stats.y,-1,stats.height),bottom=edge('y',stats.y+stats.height,1,stats.height);
   if([left,right,top,bottom].some(v=>v===null))return null;
-  return {x:left-3,y:top-3,width:right-left+7,height:bottom-top+7};
+  // The detected stroke is inside the bevel. Reserve its surrounding
+  // highlight and antialiasing at the same scale as the printed numerals.
+  const bevel=Math.ceil(stats.height*.3)+1;
+  return {x:left-bevel,y:top-bevel,width:right-left+bevel*2+1,height:bottom-top+bevel*2+1};
 }
 
 export function measureFrameGeometry(scan,art,conventional=true) {
@@ -808,7 +860,7 @@ export function basicLandBoxIsTextless(printing) {
   return !/\p{L}{3,}/u.test(String(printing?.printed_text || ''));
 }
 
-async function sample(fullUrl, typography, printing, setSymbolUrl) {
+async function sample(fullUrl, typography, printing, setSymbolUrl, execute) {
   const layoutGap=sourceMaskLayoutGap(printing);
   if(layoutGap)return {'--source-frame-status':'original','--source-frame-fallback-reason':layoutGap};
   const artUrl = /^https:\/\/cards\.scryfall\.io\/normal\//.test(fullUrl) ? fullUrl.replace('/normal/', '/art_crop/') : '';
@@ -826,6 +878,21 @@ async function sample(fullUrl, typography, printing, setSymbolUrl) {
     cropCtx.drawImage(art, 0, 0, crop.width, crop.height);
     artScan = cropCtx.getImageData(0, 0, crop.width, crop.height);
   }
+  const symbolScan = setSymbolUrl ? await loadImage(setSymbolUrl).then(symbol => {
+    const icon = frameCanvas(48, Math.max(1, Math.round(symbol.height * 48 / symbol.width)));
+    const context = icon.getContext('2d', {willReadFrequently:true});
+    context.drawImage(symbol, 0, 0, icon.width, icon.height);
+    return context.getImageData(0, 0, icon.width, icon.height);
+  }).catch(() => null) : null;
+  const icons = await manaTemplates(printing?.mana_cost).catch(() => []);
+  const task = {fullScan, artScan, symbolScan, icons, typography, printing};
+  return execute ? execute(task) : sampleCardFramePixels(task);
+}
+
+export async function sampleCardFramePixels({fullScan, artScan, symbolScan, icons: preparedIcons, typography, printing}, inpaint = inpaintGlyphMask) {
+  const canvas = frameCanvas(fullScan.width, fullScan.height);
+  const ctx = canvas.getContext('2d', {willReadFrequently: true});
+  ctx.putImageData(new ImageData(fullScan.data, fullScan.width, fullScan.height), 0, 0);
   // Geometry is evidence for placing editable text, never a recipe for a
   // replacement frame. If it cannot be measured, retain the original card.
   const future = printing?.frame === 'future';
@@ -858,12 +925,7 @@ async function sample(fullUrl, typography, printing, setSymbolUrl) {
   let setSymbol=null;
   if(style['--printed-layout']) {
     const type=JSON.parse(style['--printed-layout']).type;
-    if(setSymbolUrl)try {
-      const symbol=await loadImage(setSymbolUrl),icon=document.createElement('canvas');
-      icon.width=48;icon.height=Math.max(1,Math.round(symbol.height*48/symbol.width));
-      const iconCtx=icon.getContext('2d',{willReadFrequently:true});iconCtx.drawImage(symbol,0,0,icon.width,icon.height);
-      setSymbol=locateSetSymbol(fullScan,type,iconCtx.getImageData(0,0,icon.width,icon.height));
-    }catch { /* Keep a conservative symbol slot if the SVG is unavailable. */ }
+    if(symbolScan)setSymbol=locateSetSymbol(fullScan,type,symbolScan);
     const stop=setSymbol?setSymbol.x-5:fullScan.width*.855-5;
     style['--printed-type-text-width']=`${Math.max(40,stop-type.x-7)/fullScan.width*100}cqw`;
     if(setSymbol)style['--printed-set-symbol-bounds']=JSON.stringify(setSymbol);
@@ -871,19 +933,19 @@ async function sample(fullUrl, typography, printing, setSymbolUrl) {
   let manaMatch=null,icons=[];
   if(style['--printed-layout']) {
     const box=JSON.parse(style['--printed-layout']).title;
-    try {icons=await manaTemplates(printing?.mana_cost);manaMatch=locateManaSymbols(fullScan,box,icons,future ? {vertical:true,bounds:{x:fullScan.width*.09,y:fullScan.height*.125,width:fullScan.width*.13,height:fullScan.height*.40}} : {});}catch { /* Keep font masks if no reliable SVG registration is available. */ }
+    try {icons=preparedIcons;manaMatch=locateManaSymbols(fullScan,box,icons,future ? {vertical:true,bounds:{x:fullScan.width*.09,y:fullScan.height*.125,width:fullScan.width*.13,height:fullScan.height*.40}} : {});}catch { /* Keep font masks if no reliable SVG registration is available. */ }
     // Unregistered mana may live outside the title (for example future frames).
     // Never move it to a conventional title slot or leave a duplicate behind.
     if (printing.mana_cost && !manaMatch) return fallback('mana-registration');
     if(manaMatch) {
       if (future) for (const symbol of manaMatch.symbols) {
         // Preserve unusual ink colors and disc treatments from this printing.
-        const sprite=document.createElement('canvas');
+        const sprite=frameCanvas(symbol.width,symbol.height);
         sprite.width=symbol.width; sprite.height=symbol.height;
         const spriteCtx=sprite.getContext('2d');
         spriteCtx.beginPath();spriteCtx.arc(symbol.width/2,symbol.height/2,symbol.width/2,0,Math.PI*2);spriteCtx.clip();
         spriteCtx.drawImage(canvas,symbol.x,symbol.y,symbol.width,symbol.height,0,0,symbol.width,symbol.height);
-        symbol.image=sprite.toDataURL();
+        symbol.image=await frameCanvasUrl(sprite);
       }
       style['--printed-mana-symbols']=JSON.stringify(manaMatch);
       const first=manaMatch.symbols[0];
@@ -916,9 +978,17 @@ async function sample(fullUrl, typography, printing, setSymbolUrl) {
           // A rounded title's detected rail can start inside the first capital.
           // Include the space just outside that estimate so the connected-component
           // scan sees complete glyphs; clipped components are deliberately rejected.
-          const x = Math.max(0, Math.ceil(box.x + (enclosed && section === 'title' ? -6 : insetX))), y = Math.ceil(box.y + insetY);
-          const right = Math.floor(Math.min(box.x + box.width - insetX, (stop ?? fullScan.width * (section === 'title' ? .78 : .855)) - 4));
-          const measured = printedTextBounds(ctx.getImageData(x, y, right - x, Math.floor(box.height - insetY * 2)));
+          const x = Math.max(0, Math.ceil(box.x + (enclosed && section === 'title' ? -6 : insetX))), y = Math.max(0,Math.floor(box.y + (enclosed && section === 'title' ? -3 : insetY)));
+          const sampleHeight=Math.ceil(box.height+(enclosed&&section==='title'?6:-insetY*2));
+          // Keep complete terminal glyphs when a long localized label reaches
+          // the registered symbol. Cropping four pixels early can cut its last
+          // letter, which connected-component measurement then rejects.
+          const right = Math.floor(Math.min(box.x + box.width - insetX, (stop ?? fullScan.width * (section === 'title' ? .78 : .855)) - 1));
+          // Short known labels cannot supply four same-height letters. Require
+          // a pair for those labels, while keeping the stronger default for
+          // unconstrained region analysis and longer strings.
+          const minimumGlyphs=content.replace(/[^\p{L}\p{N}]/gu,'').length<=5?2:4;
+          const measured = printedTextBounds(ctx.getImageData(x, y, right - x, sampleHeight),{minimumGlyphs});
           if (!measured) { if(future)return fallback('text-registration'); continue; }
           bounds = {x:x+measured.x, y:y+measured.y, width:measured.right-measured.x, height:measured.bottom-measured.y};
         }
@@ -936,8 +1006,24 @@ async function sample(fullUrl, typography, printing, setSymbolUrl) {
       if (flavorLine) {
         style['--printed-flavor-font-size'] = `${flavorLine.size / fullScan.width * 100}cqw`;
         style['--printed-flavor-first-line'] = JSON.stringify(flavorLine);
+        ctx.font = `italic 400 ${flavorLine.size}px ${typography.rules}`;
+        const metrics = ctx.measureText(flavorLine.line);
+        const leading = flavorLine.lineHeight || flavorLine.size * 1.24;
+        const inkTop = (leading - metrics.fontBoundingBoxAscent - metrics.fontBoundingBoxDescent) / 2
+          + metrics.fontBoundingBoxAscent - metrics.actualBoundingBoxAscent;
+        style['--printed-flavor-line-height'] = leading / flavorLine.size;
+        style['--printed-flavor-offset'] = `${(flavorLine.y - boxes.rules.y - inkTop) / fullScan.width * 100}cqw`;
       }
-      const firstLine = measureRulesFirstLine(ctx, boxes.rules, printing.printed_text || printing.oracle_text, typography.rules);
+      const firstLine = measureRulesFirstLine(ctx, boxes.rules, printing.printed_text || printing.oracle_text, typography.rules, {geometryFallback:true});
+      const reminderLine = measureReminderText(ctx, boxes.rules, printing.printed_text || printing.oracle_text, typography.rules);
+      if (reminderLine && firstLine) {
+        style['--printed-reminder-first-line'] = JSON.stringify(reminderLine);
+        style['--printed-reminder-scale'] = reminderLine.size / firstLine.size;
+        ctx.font = `italic 400 ${reminderLine.size}px ${typography.rules}`;
+        const metrics = ctx.measureText(reminderLine.line);
+        const rangeTop = reminderLine.y - metrics.fontBoundingBoxAscent + metrics.actualBoundingBoxAscent;
+        style['--printed-reminder-offset'] = `${(rangeTop - boxes.rules.y) / fullScan.width * 100}cqw`;
+      }
       if (firstLine) {
         style['--printed-rules-first-line'] = JSON.stringify(firstLine);
         style['--printed-rules-font-size'] = `${firstLine.size / fullScan.width * 100}cqw`;
@@ -973,18 +1059,20 @@ async function sample(fullUrl, typography, printing, setSymbolUrl) {
         style['--printed-rules-padding-left'] = `${padding / fullScan.width * 100}cqw`;
       }
     }
-    const masked=maskSourceFrame(fullScan,JSON.parse(style['--printed-layout']),stats,detectStatsPanelBounds(fullScan,stats),typography ? (patch,options)=>fontGuidedPanel(patch,{
+    let unsafeMask=null;
+    const masked=await maskSourceFrameAsync(fullScan,JSON.parse(style['--printed-layout']),stats,detectStatsPanelBounds(fullScan,stats),typography ? (patch,options)=>fontGuidedPanelAsync(patch,{
       family:typography[options.section==='footer'?'rules':options.section]||typography.rules,
       weight:['title','type'].includes(options.section)?typography.titleWeight:options.section==='stats'?typography.style['--card-stats-weight']:400,
-      section:options.section,
+      section:options.section,excludedPixels:options.excludedPixels,protectBottomBoundary:options.protectBottomBoundary,
       allowItalic:options.section==='rules',symbols:options.section==='rules'||options.section==='title'&&Boolean(printing.mana_cost)&&!manaMatch,
       text:options.section==='rules'?`${printing?.printed_text||printing?.oracle_text||''} ${printing?.flavor_text||''}`:options.section==='title'?(printing?.printed_name||printing?.name):options.section==='type'?(printing?.printed_type_line||printing?.type_line):options.section==='footer'?`${printing?.artist||''} Illus. Ilus. Wizards of the Coast Inc.`:`${printing?.power||''}/${printing?.toughness||''}`,
-    }):reconstructPanel,{title:titlePanel?.kind,type:typePanel?.kind,fontGuided:!!typography,setSymbol,manaMatch,icons,preserveRules:basicLandBoxIsTextless(printing),textBounds:Object.fromEntries(['title','type'].map(name=>[name,JSON.parse(style[`--printed-${name}-text-bounds`]||'null')]))});
+    },inpaint):reconstructPanel,{onUnsafeMask:failure=>{unsafeMask=failure;},title:titlePanel?.kind,type:typePanel?.kind,fontGuided:!!typography,setSymbol,manaMatch,icons,preserveRules:basicLandBoxIsTextless(printing),textBounds:Object.fromEntries(['title','type'].map(name=>[name,JSON.parse(style[`--printed-${name}-text-bounds`]||'null')]))},inpaint);
+    if(unsafeMask)return fallback(`residual-text-${unsafeMask.section}`);
     if(masked) {
-      const original=document.createElement('canvas');original.width=masked.width;original.height=masked.height;
+      const original=frameCanvas(masked.width,masked.height);
       original.getContext('2d').putImageData(new ImageData(masked.data,masked.width,masked.height),0,0);
       style['--source-frame-mask-method']=typography?'font-template':'contrast';
-      style['--source-frame-image']=`url("${original.toDataURL()}")`;
+      style['--source-frame-image']=`url("${await frameCanvasUrl(original)}")`;
     }
   }
   if (!style['--source-frame-image']) return fallback('glyph-mask');
@@ -1001,11 +1089,11 @@ async function sample(fullUrl, typography, printing, setSymbolUrl) {
   return style;
 }
 
-export function sampleCardFrameColors(fullUrl, { typography, printing, setSymbolUrl } = {}) {
+export function sampleCardFrameColors(fullUrl, { typography, printing, setSymbolUrl, execute } = {}) {
   if (!fullUrl) return Promise.resolve(null);
   const key = `${typography ? "font-template" : "contrast"}:source-mask:${fullUrl}`;
   if (cache.has(key)) return cache.get(key);
-  const request = sample(fullUrl, typography, printing, setSymbolUrl).catch(() => { cache.delete(key); return null; });
+  const request = sample(fullUrl, typography, printing, setSymbolUrl, execute).catch(() => { cache.delete(key); return null; });
   cache.set(key, request);
   if (cache.size > 48) cache.delete(cache.keys().next().value);
   return request;

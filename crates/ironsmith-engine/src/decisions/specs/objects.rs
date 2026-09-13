@@ -957,6 +957,7 @@ fn runtime_requirements(
             min_targets: req.min_targets,
             max_targets: req.max_targets,
             distinct_player_group: None,
+            shared_player_group: None,
         })
         .collect()
 }

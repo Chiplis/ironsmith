@@ -59,6 +59,13 @@
    every property, would report the previous size and derail the search. */
 .interactive-card-frame__rules[data-fit-text="true"],
 .interactive-card-frame__rules[data-fit-text="true"] *,
+.interactive-card-frame__title-row,
+.interactive-card-frame__title-row *,
+.interactive-card-frame__type-row,
+.interactive-card-frame__type-row *,
+.interactive-card-frame__title,
+.interactive-card-frame__type,
+.interactive-card-frame__stats-text,
 .registered-card-frame__field {
   transition: none !important;
 }

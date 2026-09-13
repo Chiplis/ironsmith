@@ -350,6 +350,20 @@ pub fn choose_spec_for_target(target: &TargetAst) -> ChooseSpec {
             }
         }
         TargetAst::Object(filter, explicit_target_span, reference_span) => {
+            if explicit_target_span.is_none()
+                && let Some(surface) = filter.additional_cost_object_surface()
+                && surface.action == ironsmith_core::AdditionalCostObjectAction::Sacrificed
+                && let [constraint] = filter.tagged_constraints.as_slice()
+                && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+            {
+                let mut plain = filter.clone();
+                plain.set_additional_cost_object_surface(None);
+                if plain == ObjectFilter::tagged(constraint.tag.clone()) {
+                    return ChooseSpec::Tagged(constraint.tag.clone()).with_surface_hint(
+                        ChooseSpecSurfaceHint::SacrificedObject(surface.kind),
+                    );
+                }
+            }
             let spec = if filter.source && filter.zone != Some(Zone::Exile) {
                 source_reference_hinted_spec(ChooseSpec::Source, filter.source_surface.clone())
             } else if explicit_target_span.is_some() {

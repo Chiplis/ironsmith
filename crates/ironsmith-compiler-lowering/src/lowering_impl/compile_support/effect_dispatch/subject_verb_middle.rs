@@ -1170,6 +1170,9 @@ pub(super) fn compile_subject_verb_middle(
             allow_land,
             allow_any_color_for_cast,
             until_next_end_step,
+            until_next_turn_start,
+            spell_filter,
+            surface,
             max_plays,
         }) => {
             let player_filter =
@@ -1190,7 +1193,9 @@ pub(super) fn compile_subject_verb_middle(
             let mut grant_play = crate::effects::GrantPlayTaggedEffect::new(
                 resolved_tag.clone(),
                 player_filter,
-                if *until_next_end_step {
+                if *until_next_turn_start {
+                    crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnStart
+                } else if *until_next_end_step {
                     crate::effects::GrantPlayTaggedDuration::UntilYourNextEndStep
                 } else {
                     crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd
@@ -1199,6 +1204,8 @@ pub(super) fn compile_subject_verb_middle(
                 *allow_any_color_for_cast,
             )
             .with_max_plays(*max_plays);
+            grant_play.spell_filter = spell_filter.clone();
+            grant_play.surface = surface.clone();
             if is_sentence_helper_exiled_collection_tag(&resolved_tag)
                 && ctx.last_exiled_collection_is_plural
             {

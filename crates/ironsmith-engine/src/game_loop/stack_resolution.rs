@@ -1624,7 +1624,7 @@ pub(super) fn resolve_stack_entry_full(
                         )
                 });
 
-            // Check if cast with flashback/escape/jump-start/granted escape (exiles after resolution)
+            // Only methods which explicitly replace leaving the stack exile the spell.
             let should_exile = match &entry.casting_method {
                 CastingMethod::Normal => false,
                 CastingMethod::FaceDown => false,
@@ -1638,7 +1638,7 @@ pub(super) fn resolve_stack_entry_full(
                     .get(*idx)
                     .map(|m| m.exiles_after_resolution())
                     .unwrap_or(false),
-                CastingMethod::GrantedEscape { .. } => true, // Granted escape always exiles
+                CastingMethod::GrantedEscape { .. } => false,
                 CastingMethod::GrantedFlashback => true,     // Granted flashback always exiles
                 CastingMethod::PlayFrom {
                     use_alternative: Some(idx),

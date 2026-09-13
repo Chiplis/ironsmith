@@ -506,7 +506,9 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         filter: ObjectFilter,
     },
     /// Matching permanents are goaded by this source's controller.
-    GoadMatching { filter: ObjectFilter },
+    GoadMatching {
+        filter: ObjectFilter,
+    },
     Companion(CompanionDeckCondition),
     Anthem(Anthem<ICond>),
     AttachedAbilityGrant(Box<AttachedAbilityGrant<T, E, C, Cond>>),
@@ -1005,6 +1007,14 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         amount: u32,
         source_filter: ObjectFilter,
         display: String,
+    },
+    /// Prevent matching damage and execute an additional effect using that event.
+    DamagePreventionWithFollowUp {
+        source_filter: ObjectFilter,
+        target_filter: ObjectFilter,
+        combat_only: Option<bool>,
+        recipient_tag: crate::tag::TagKey,
+        effects: Vec<E>,
     },
     ReplaceDamageWithCountersInstead {
         counter_type: CounterType,
@@ -2070,10 +2080,13 @@ where
                         name_override: spec.name_override,
                         added_colors: spec.added_colors,
                         added_card_types: spec.added_card_types,
+                        added_supertypes: spec.added_supertypes,
                         removed_supertypes: spec.removed_supertypes,
                         added_subtypes: spec.added_subtypes,
                         added_abilities,
                         set_base_power_toughness: spec.set_base_power_toughness,
+                        additional_counters: spec.additional_counters.clone(),
+                        additional_counters_source_filter: spec.additional_counters_source_filter.clone(),
                         added_abilities_source_filter: spec.added_abilities_source_filter.clone(),
                         set_base_power_toughness_from_self: spec
                             .set_base_power_toughness_from_self,
@@ -2395,6 +2408,12 @@ where
                 amount,
                 source_filter,
                 display,
+            },
+            StaticAbilityPayload::DamagePreventionWithFollowUp {
+                source_filter, target_filter, combat_only, recipient_tag, effects,
+            } => StaticAbilityPayload::DamagePreventionWithFollowUp {
+                source_filter, target_filter, combat_only, recipient_tag,
+                effects: effects.into_iter().map(map_effect).collect::<Result<Vec<_>, _>>()?,
             },
             StaticAbilityPayload::ReplaceDamageWithCountersInstead {
                 counter_type,
@@ -4434,6 +4453,21 @@ impl<
             payload: StaticAbilityPayload::PreventDamageToSelfPutCountersInstead {
                 counter_type,
                 display,
+            },
+        }
+    }
+    pub fn damage_prevention_with_follow_up(
+        source_filter: ObjectFilter,
+        target_filter: ObjectFilter,
+        combat_only: Option<bool>,
+        recipient_tag: crate::tag::TagKey,
+        effects: Vec<E>,
+    ) -> Self {
+        Self {
+            id: Some(StaticAbilityId::DamagePreventionWithFollowUp),
+            label: "damage prevention with follow-up".into(),
+            payload: StaticAbilityPayload::DamagePreventionWithFollowUp {
+                source_filter, target_filter, combat_only, recipient_tag, effects,
             },
         }
     }

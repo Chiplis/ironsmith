@@ -13,6 +13,7 @@ import HoverArtOverlay from "./HoverArtOverlay";
 import useDisplayedCardImage from "@/hooks/useDisplayedCardImage";
 import { cardArtCropUrl } from "@/lib/card-image-variants";
 import { prepareCardFrame } from "@/lib/card-frame-preparation";
+import { cardNeedsFrame } from '@/lib/card-frame-scope';
 import { resolveScryfallImageUrl } from "@/lib/scryfall";
 import { playerAccentVars } from "@/lib/player-colors";
 import { samePlayerId } from "@/lib/player-display";
@@ -127,13 +128,27 @@ function objectFamilyIds(state, objectId) {
 function zonePreviewLayout(anchorRect, size, source = null) {
   const margin = 8;
   const gap = 14;
-  const minimumTop = phaseToolbarTop(margin);
-  const availableHeight = Math.max(0, window.innerHeight - margin - minimumTop);
+  const localStrip = source?.closest?.('[data-local-zone-strip="true"]');
+  // Our zone previews may extend across the phase band and opponent's board.
+  const minimumTop = localStrip ? margin : phaseToolbarTop(margin);
+  // All of our zone strips share an exclusion boundary, including closed
+  // piles, so hovering Exile cannot cover Graveyard or Look above it.
+  const stripTops = localStrip
+    ? Array.from(document.querySelectorAll(
+      '[data-local-zone-piles="true"] .zone-pile-slot, [data-local-zone-strip="true"]'
+    )).map((element) => element.getBoundingClientRect())
+      .filter((rect) => rect.width > 0 && rect.height > 0)
+      .map((rect) => rect.top)
+    : [];
+  const maximumBottom = Math.min(window.innerHeight - margin, ...stripTops.map((top) => top - gap));
+  // Moving above the strips changes placement, not the inspector's size cap.
+  const battlefieldAvailableHeight = Math.max(0, window.innerHeight - margin - phaseToolbarTop(margin));
+  const availableHeight = Math.max(0, Math.min(maximumBottom - minimumTop, battlefieldAvailableHeight));
   const height = Math.min(size.height, availableHeight, (window.innerWidth - margin * 2) * 88 / 63);
   const width = Math.min(size.width, height * (63 / 88), window.innerWidth - (margin * 2));
   const top = Math.max(
     minimumTop,
-    Math.min(window.innerHeight - height - margin, anchorRect.top + (anchorRect.height / 2) - (height / 2))
+    Math.min(maximumBottom - height, anchorRect.top + (anchorRect.height / 2) - (height / 2))
   );
   const minimumLeft = previewLeftInset({ top, height, minimumLeft: margin });
   const maximumLeft = Math.max(minimumLeft, window.innerWidth - width - margin);
@@ -163,7 +178,7 @@ function zonePreviewLayout(anchorRect, size, source = null) {
     left: Math.round(left),
     top: Math.round(top),
     right: "auto",
-    maxHeight: `${Math.max(0, Math.floor(height))}px`,
+    maxHeight: `${Math.max(0, Math.floor(Math.min(availableHeight, (window.innerWidth - margin * 2) * 88 / 63)))}px`,
   };
 }
 
@@ -358,19 +373,20 @@ export default function FloatingCardPreview({
   }, [requestedObjectId, state]);
   const preparationName = preparationCard?.name;
   const preparationType = preparationCard?.type_line;
+  const shouldPrepareFrame = cardNeedsFrame(state, requestedObjectId);
   const isStackSource = id => id != null && id === lockedObjectId
     && getVisibleStackObjects(state).some(entry => String(entry.id) === id);
   const requestedImageUrl = useDisplayedCardImage(requestedObjectId, isStackSource(requestedObjectId));
   const renderedImageUrl = useDisplayedCardImage(renderedObjectId, isStackSource(renderedObjectId));
   useEffect(() => {
-    if (!preparationName) return undefined;
+    if (!preparationName || !shouldPrepareFrame) return undefined;
     let active = true;
     // Start asset work immediately, in parallel with the existing hover delay.
     (requestedImageUrl ? Promise.resolve(cardArtCropUrl(requestedImageUrl)) : resolveScryfallImageUrl(preparationName, 'art_crop'))
       .then(url => active ? prepareCardFrame(url, preparationType) : null)
       .catch(() => {});
     return () => { active = false; };
-  }, [preparationName, preparationType, requestedImageUrl]);
+  }, [preparationName, preparationType, requestedImageUrl, shouldPrepareFrame]);
 
   const interactiveActions = useMemo(() => {
     if (renderedObjectId == null) return [];
@@ -524,6 +540,7 @@ export default function FloatingCardPreview({
             ? getVisibleStackObjects(state).find(entry => String(entry.id) === String(pinnedObjectId))
             : null}
           displayMode="card-frame"
+          enableFramePreparation={cardNeedsFrame(state, renderedObjectId)}
           sourceImageUrl={renderedImageUrl}
           availableInspectorWidth={size.width}
           availableInspectorHeight={size.height}

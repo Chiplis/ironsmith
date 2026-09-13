@@ -744,13 +744,10 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
         }
         Value::Fixed(n) => (format!("{{{n}}}"), None),
         Value::X => ("{X}".to_string(), None),
-        Value::PlayerCounters(_, _) => {
-            let description = describe_value(amount);
-            let counted = description
-                .strip_prefix("the number of ")
-                .map(singularize_first_plural_word)
-                .unwrap_or(description);
-            ("{1}".to_string(), Some(format!("for each {counted}")))
+        Value::PlayerCounters(player, counter) => {
+            let subject = player.description();
+            let verb = if *player == PlayerFilter::You { "have" } else { "has" };
+            ("{1}".to_string(), Some(format!("for each {} counter {subject} {verb}", counter.description())))
         }
         Value::PowerOf(_) | Value::ToughnessOf(_) | Value::ManaValueOf(_) => (
             "{X}".to_string(),
@@ -1253,6 +1250,11 @@ fn is_anywhere_other_than_hand_filter(filter: &ObjectFilter) -> bool {
 }
 
 fn describe_spell_filter(filter: &ObjectFilter) -> String {
+    if filter.ability_markers.iter().any(|marker| marker == "kicked") {
+        let mut base = filter.clone();
+        base.ability_markers.retain(|marker| marker != "kicked");
+        return format!("kicked {}", describe_spell_filter(&base));
+    }
     if filter.source {
         return "this spell".to_string();
     }

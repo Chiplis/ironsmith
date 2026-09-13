@@ -950,11 +950,17 @@ pub struct EnterAsCopyAsEntersSpec<T, E, C, Cond, ICond = Condition> {
     pub name_override: Option<String>,
     pub added_colors: ColorSet,
     pub added_card_types: Vec<CardType>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub added_supertypes: Vec<Supertype>,
     pub removed_supertypes: Vec<Supertype>,
     pub added_subtypes: Vec<Subtype>,
     pub added_abilities: Vec<AbilityModel<T, E, C, Cond, ICond>>,
     pub set_base_power_toughness: Option<(i32, i32)>,
     /// Add the extra abilities only when the chosen copy source matches this filter.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub additional_counters: Vec<(crate::CounterType, u32)>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub additional_counters_source_filter: Option<ObjectFilter>,
     #[cfg_attr(feature = "serde", serde(default))]
     pub added_abilities_source_filter: Option<ObjectFilter>,
     pub set_base_power_toughness_from_self: bool,

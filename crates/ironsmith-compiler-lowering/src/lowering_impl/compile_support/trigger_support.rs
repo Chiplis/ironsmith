@@ -986,11 +986,15 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             });
             if filter.source {
                 filter.source = false;
+                let source_surface = filter.source_surface.take();
                 let mut trigger = crate::triggers::zone_changes::ZoneChangeTrigger::new()
                     .to(crate::zone::Zone::Battlefield)
                     .filter(filter)
                     .this()
                     .cause_filter(cause_filter);
+                if let Some(surface) = source_surface {
+                    trigger = trigger.this_surface(surface);
+                }
                 if let Some(origin_condition) = origin_condition {
                     trigger = trigger.origin_condition(origin_condition);
                 }

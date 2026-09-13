@@ -18,6 +18,9 @@ pub enum KeywordFallbackKind {
 pub enum KeywordPrefixShape {
     Surge,
     Freerunning,
+    WebSlinging,
+    Mayhem,
+    MoreThanMeetsTheEye,
     Sneak,
     Exploit,
 }
@@ -86,6 +89,9 @@ fn parse_keyword_prefix_shape_lexed<'a>(input: &mut LexStream<'a>) -> WResult<Ke
     alt((
         primitives::kw("surge").value(KeywordPrefixShape::Surge),
         primitives::kw("freerunning").value(KeywordPrefixShape::Freerunning),
+        primitives::kw("web-slinging").value(KeywordPrefixShape::WebSlinging),
+        primitives::kw("mayhem").value(KeywordPrefixShape::Mayhem),
+        primitives::phrase(&["more", "than", "meets", "the", "eye"]).value(KeywordPrefixShape::MoreThanMeetsTheEye),
         primitives::kw("sneak").value(KeywordPrefixShape::Sneak),
         primitives::kw("exploit").value(KeywordPrefixShape::Exploit),
     ))

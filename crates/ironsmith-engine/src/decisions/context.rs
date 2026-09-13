@@ -1270,6 +1270,14 @@ impl PriorityContext {
 // ============================================================================
 
 /// A targeting requirement with legal targets.
+/// Cast-time relationship between separately announced targets. A player
+/// target represents itself; an object target represents its controller.
+#[derive(Debug, Clone)]
+pub struct SharedTargetPlayerGroup {
+    pub group: usize,
+    pub target_players: Vec<(crate::game_state::Target, PlayerId)>,
+}
+
 #[derive(Debug, Clone)]
 pub struct TargetRequirementContext {
     /// Description of what's being targeted.
@@ -1288,6 +1296,8 @@ pub struct TargetRequirementContext {
     /// Requirements in the same group must select different targets.
     /// The field retains its original player-only API name.
     pub distinct_player_group: Option<usize>,
+    /// Requirements in this group resolve to the same player or object controller.
+    pub shared_player_group: Option<crate::decisions::context::SharedTargetPlayerGroup>,
 }
 
 impl TargetRequirementContext {
@@ -1304,6 +1314,7 @@ impl TargetRequirementContext {
             min_targets: 1,
             max_targets: Some(1),
             distinct_player_group: None,
+            shared_player_group: None,
         }
     }
 }

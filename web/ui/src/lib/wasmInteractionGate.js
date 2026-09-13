@@ -16,8 +16,8 @@ export function createWasmInteractionGate({
 
   const isBlocked = () => inFlight || now() < cooldownUntil;
 
-  const run = async (task) => {
-    if (typeof task !== "function" || isBlocked()) {
+  const run = async (task, { automatic = false } = {}) => {
+    if (typeof task !== "function" || inFlight || (!automatic && isBlocked())) {
       return undefined;
     }
 
@@ -26,13 +26,17 @@ export function createWasmInteractionGate({
       return await task();
     } finally {
       inFlight = false;
-      cooldownUntil = now() + debounceMs;
+      if (!automatic) cooldownUntil = now() + debounceMs;
     }
   };
 
   return {
     isBlocked,
+    isInFlight: () => inFlight,
     run,
+    // Continuations are not new clicks. Serialize them without waiting for or
+    // extending the user-input cooldown.
+    runAutomatic: (task) => run(task, { automatic: true }),
     async runWhenReady(task, isCurrent = () => true) {
       while (isCurrent()) {
         if (!isBlocked()) return run(task);

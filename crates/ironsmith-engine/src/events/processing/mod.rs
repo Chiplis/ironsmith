@@ -319,15 +319,25 @@ fn push_enter_as_copy_effects_for_spec(
             .flatten()
     });
 
+    let copy_condition_matches = |candidate, filter: &Option<crate::target::ObjectFilter>| {
+        filter.as_ref().is_none_or(|filter| {
+            let Some(mut object) = game.object(candidate).cloned() else { return false; };
+            let effects = game.all_continuous_effects();
+            if let Some(values) = crate::continuous::copiable_values_with_effects(
+                candidate, game.objects_map(), &effects, &game.battlefield,
+                game.commander_objects(), game,
+            ) {
+                object.copy_copiable_values_from_values(&values);
+            }
+            for card_type in &spec.added_card_types {
+                if !object.card_types.contains(card_type) { object.card_types.push(*card_type); }
+            }
+            let ctx = game.filter_context_for(controller, Some(entering_object));
+            filter.matches_non_recursive(&object, &ctx, game)
+        })
+    };
     let added_abilities_for_source = |candidate| {
-        let matches = spec
-            .added_abilities_source_filter
-            .as_ref()
-            .is_none_or(|filter| {
-                let ctx = game.filter_context_for(controller, Some(entering_object));
-                game.object(candidate)
-                    .is_some_and(|object| filter.matches(object, &ctx, game))
-            });
+        let matches = copy_condition_matches(candidate, &spec.added_abilities_source_filter);
         if matches {
             spec.added_abilities.clone()
         } else {
@@ -374,6 +384,7 @@ fn push_enter_as_copy_effects_for_spec(
                             name_override: spec.name_override.clone(),
                             added_colors: spec.added_colors,
                             added_card_types: spec.added_card_types.clone(),
+                            added_supertypes: spec.added_supertypes.clone(),
                             removed_supertypes: spec.removed_supertypes.clone(),
                             added_subtypes: spec.added_subtypes.clone(),
                             added_abilities: added_abilities_for_source(copy_candidate),
@@ -410,10 +421,15 @@ fn push_enter_as_copy_effects_for_spec(
                     enters_tapped: spec.enters_tapped_if_chosen,
                     copy_duration: spec.copy_duration.clone(),
                     linked_exile_objects: Vec::new(),
-                    additional_counters: Vec::new(),
+                    additional_counters: if copy_condition_matches(candidate, &spec.additional_counters_source_filter) {
+                        spec.additional_counters.clone()
+                    } else {
+                        Vec::new()
+                    },
                     name_override: spec.name_override.clone(),
                     added_colors: spec.added_colors,
                     added_card_types: spec.added_card_types.clone(),
+                    added_supertypes: spec.added_supertypes.clone(),
                     removed_supertypes: spec.removed_supertypes.clone(),
                     added_subtypes: spec.added_subtypes.clone(),
                     added_abilities: added_abilities_for_source(candidate),
@@ -1358,6 +1374,7 @@ fn resolve_madness_discard(
                             min_targets: requirement.min_targets,
                             max_targets: requirement.max_targets,
                             distinct_player_group: requirement.distinct_player_group,
+                            shared_player_group: requirement.shared_player_group.clone(),
                         },
                     )
                     .collect(),
@@ -2793,6 +2810,7 @@ pub struct EtbEventResult {
     /// Additional card types granted by an ETB copy choice.
     pub added_card_types: Vec<crate::types::CardType>,
     /// Supertypes removed by an ETB copy choice.
+    pub added_supertypes: Vec<crate::types::Supertype>,
     pub removed_supertypes: Vec<crate::types::Supertype>,
     /// Additional subtypes granted by an ETB copy choice.
     pub added_subtypes: Vec<crate::types::Subtype>,
@@ -4126,6 +4144,7 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
             copy_name_override: None,
             added_colors: crate::color::ColorSet::new(),
             added_card_types: Vec::new(),
+            added_supertypes: Vec::new(),
             removed_supertypes: Vec::new(),
             added_subtypes: Vec::new(),
             added_abilities: Vec::new(),
@@ -4232,6 +4251,7 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
                         copy_name_override: etb.copy_name_override.clone(),
                         added_colors: etb.added_colors,
                         added_card_types: etb.added_card_types.clone(),
+                        added_supertypes: etb.added_supertypes.clone(),
                         removed_supertypes: etb.removed_supertypes.clone(),
                         added_subtypes: etb.added_subtypes.clone(),
                         added_abilities: etb.added_abilities.clone(),
@@ -5025,10 +5045,13 @@ mod tests {
                 name_override: None,
                 added_colors: crate::color::ColorSet::new(),
                 added_card_types: Vec::new(),
+                added_supertypes: Vec::new(),
                 removed_supertypes: Vec::new(),
                 added_subtypes: Vec::new(),
                 added_abilities: Vec::new(),
                 set_base_power_toughness: None,
+                additional_counters: Vec::new(),
+                additional_counters_source_filter: None,
                 added_abilities_source_filter: None,
                 set_base_power_toughness_from_self: false,
             },
@@ -5166,10 +5189,13 @@ mod tests {
                         name_override: None,
                         added_colors: crate::color::ColorSet::new(),
                         added_card_types: Vec::new(),
+                        added_supertypes: Vec::new(),
                         removed_supertypes: Vec::new(),
                         added_subtypes: Vec::new(),
                         added_abilities: Vec::new(),
                         set_base_power_toughness: None,
+                        additional_counters: Vec::new(),
+                        additional_counters_source_filter: None,
                         added_abilities_source_filter: None,
                         set_base_power_toughness_from_self: false,
                     },

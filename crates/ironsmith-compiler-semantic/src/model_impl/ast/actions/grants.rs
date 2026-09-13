@@ -38,6 +38,9 @@ pub enum GrantActionAst {
         allow_land: bool,
         allow_any_color_for_cast: ironsmith_core::value_model::ManaSpendMode,
         until_next_end_step: bool,
+        until_next_turn_start: bool,
+        spell_filter: Option<ObjectFilter>,
+        surface: Option<ironsmith_core::GrantPlayTaggedSurface>,
         /// Total plays shared by the tagged collection across the duration.
         max_plays: Option<u32>,
     },

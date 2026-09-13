@@ -134,6 +134,17 @@ pub fn generate_replacement_effects_from_abilities(game: &GameState) -> Vec<Repl
             let controller = game.controller_of(object);
             let zone = object.zone;
 
+            // These payment methods replace every subsequent departure from
+            // the stack (CR 702.34, 702.133, 702.180), including counter/bounce.
+            if zone == crate::zone::Zone::Stack && object.cast_alternative_method.as_deref().is_some_and(|method|
+                matches!(method, crate::alternative_cast::AlternativeCastingMethod::Flashback { .. }
+                    | crate::alternative_cast::AlternativeCastingMethod::JumpStart { .. }
+                    | crate::alternative_cast::AlternativeCastingMethod::Harmonize { .. })) {
+                effects.push(crate::replacement::ZoneReplacementSpec::new(
+                    crate::target::ObjectFilter::specific(object_id), crate::zone::Zone::Exile)
+                    .from_zone(crate::zone::Zone::Stack).build(object_id, controller));
+            }
+
             // Process each static ability on the object.
             for ability in object.abilities.iter() {
                 if let AbilityKind::Static(static_ability) = &ability.kind {

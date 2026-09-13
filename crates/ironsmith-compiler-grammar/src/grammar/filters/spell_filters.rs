@@ -36,7 +36,11 @@ fn classify_object_filter_grammar_domain(tokens: &[OwnedLexToken]) -> ObjectFilt
         ],
     );
 
-    if has_temporal_graveyard_history
+    let has_protector_relation = words
+        .iter()
+        .any(|word| matches!(*word, "protect" | "protects" | "protected"));
+    if has_protector_relation
+        || has_temporal_graveyard_history
         || has_power_toughness_relation
         || has_supertype_subtype_disjunction
         || has_target_count_relation

@@ -45,10 +45,14 @@ pub struct ManaPaymentPreferences {
     pub excluded_sources: Vec<ObjectId>,
     pub preserve_sources: Vec<ObjectId>,
     pub prefer_life: bool,
+    /// Expanded pips the player explicitly chose to pay with life.
+    pub required_life_pips: Vec<ManaPipId>,
 }
 
 impl ManaPaymentPreferences {
     pub fn normalize(&mut self) {
+        self.required_life_pips.sort_unstable();
+        self.required_life_pips.dedup();
         self.required_sources.sort_unstable();
         self.required_sources.dedup();
         for activation in &mut self.required_activations {
@@ -107,6 +111,12 @@ pub struct ManaPaymentRequest {
     pub cost: ManaCost,
     pub x_value: u32,
     pub spend_policy: ManaSpendPolicy,
+    /// Resources already committed to a separate tap cost, such as Harmonize.
+    pub reserved_tap_sources: Vec<ObjectId>,
+    /// Graveyard cards reserved for payment after mana abilities finish.
+    pub reserved_graveyard_sources: Vec<ObjectId>,
+    /// Permanents announced for later sacrifice; tapping for mana is allowed.
+    pub reserved_permanent_sources: Vec<ObjectId>,
     pub allow_mana_abilities: bool,
     pub allow_life_payment: bool,
     pub allow_black_life: bool,
@@ -123,6 +133,9 @@ impl ManaPaymentRequest {
             cost,
             x_value: 0,
             spend_policy: ManaSpendPolicy::default(),
+            reserved_tap_sources: Vec::new(),
+            reserved_graveyard_sources: Vec::new(),
+            reserved_permanent_sources: Vec::new(),
             allow_mana_abilities: true,
             allow_life_payment: true,
             allow_black_life: false,
@@ -162,6 +175,7 @@ pub enum ManaPaymentSourceKind {
     ManaAbility,
     Convoke,
     Improvise,
+    Delve,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -187,6 +201,7 @@ pub enum PlannedPipPayment {
     Life(u32),
     Convoke(ObjectId),
     Improvise(ObjectId),
+    Delve(ObjectId),
     Assist {
         player: PlayerId,
         symbol: ManaSymbol,

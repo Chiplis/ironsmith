@@ -1403,6 +1403,7 @@ export const ui = {
   "Sync failed: {0}": "Error de sincronización: {0}",
   "Tap": "Girar",
   "Tap a highlighted card or player on the battlefield.": "Pulsa una carta o jugador resaltado del campo de batalla.",
+  "Exile for delve": "Exiliar para excavar",
   "Tap for convoke": "Girar para convocar",
   "Tap for improvise": "Girar para improvisar",
   "Tap highlighted permanents on the battlefield.": "Pulsa los permanentes resaltados del campo de batalla.",

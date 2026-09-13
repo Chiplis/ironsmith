@@ -3,14 +3,12 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { useGame } from "@/context/GameContext";
 import { useI18n } from "@/i18n/I18nContext";
-import { useCastTargeting, useCastTargetHover } from "@/context/DragContext";
+import { useCastTargeting, useCastZoneHovered } from "@/context/DragContext";
 import { useHover } from "@/context/HoverContext";
 import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
 import { LOOK_DONE_EVENT, LOOK_FADE_MS, lookViewKey, temporaryLookView, persistentLookCards, mergeLookCards } from "@/lib/look-pile";
 import { samePlayerId } from "@/lib/player-display";
 import { isFaceUpZoneCard, PILE_ZONES, zonePileCards } from "@/lib/zone-piles";
-import { cardArtCropUrl } from "@/lib/card-image-variants";
-import { prepareCardFrame } from "@/lib/card-frame-preparation";
 import { isObjectChosen, requestObjectSelection } from "@/lib/object-selection";
 import { useChosenObjectIds } from "@/context/ObjectSelectionContext";
 import SelectionCheckBadge from "@/components/cards/SelectionCheckBadge";
@@ -28,9 +26,6 @@ function ZoneArt({ card }) {
     source.dataset.cardImageUrl = url;
     return () => { delete source.dataset.cardImageUrl; };
   }, [url]);
-  useEffect(() => {
-    if (url) void prepareCardFrame(cardArtCropUrl(url), card?.type_line).catch(() => {});
-  }, [url, card?.type_line]);
   return url ? <img ref={imageRef} src={url} alt="" draggable={false} loading="lazy" referrerPolicy="no-referrer" />
     : <span className="zone-pile-placeholder" aria-hidden="true">{card ? "◇" : "—"}</span>;
 }
@@ -42,7 +37,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
   const chosenObjectIds = useChosenObjectIds();
   const { hoverCard, clearHover, showAnchoredCardPreview } = useHover();
   const castIntent = useCastTargeting();
-  const castHover = useCastTargetHover();
+  const castZoneHovered = useCastZoneHovered(player.id ?? player.index, zone);
   const [open, setOpen] = useState(false);
   useEffect(() => { onOpenChange?.(open); }, [open, onOpenChange]);
   const triggerRef = useRef(null);
@@ -99,8 +94,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
       (req.legal_targets || []).some((target) => target.kind === "object" && String(target.object) === String(card.id))
     );
   const hasLegalCards = canChoose && (choosingTarget || choosingObject) && cards.some(isLegal);
-  const hoverOpensZone = Boolean(castIntent && hasLegalCards && castHover?.kind === "zone"
-    && castHover.zone === zone && String(castHover.playerId) === String(player.id ?? player.index));
+  const hoverOpensZone = Boolean(castIntent && hasLegalCards && castZoneHovered);
   useEffect(() => {
     if (!hoverOpensZone) return undefined;
     const timer = setTimeout(() => setOpen(true), 160);
@@ -233,6 +227,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
       ) : null}
       </div>
       <PopoverContent ref={menuRef} className={`zone-pile-menu${zone === "look" ? " zone-pile-menu--look" : ""}`} side={zone === "look" ? "right" : "left"} align="start" sideOffset={-(stripBounds.cardWidth + 6)} alignOffset={-6} avoidCollisions={false}
+        data-local-zone-strip={samePlayerId(player.id ?? player.index, state?.perspective) ? "true" : undefined}
         style={{ "--zone-strip-width": `${stripBounds.width}px`, "--zone-strip-card-width": `${stripBounds.cardWidth}px` }}
         aria-label={ui("{0}'s {1}", { 0: player.name, 1: ui(label) })}
         onOpenAutoFocus={(event) => event.preventDefault()}
@@ -309,12 +304,14 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
       const rowBounds = row?.getBoundingClientRect();
       const top = cards.length ? Math.min(...cards.map((card) => card.top)) : (rowBounds?.top ?? bounds.top) + 12;
       const cardWidth = cards[0]?.width || (row ? parseFloat(getComputedStyle(row).getPropertyValue("--bf-card-width")) : 72) || 72;
-      piles.style.setProperty("--zone-pile-width", `${Math.min(56, cardWidth * 0.7)}px`);
       const board = container.closest(".my-zone-board-shell");
+      // Read geometry before writing styles; target highlights must not force
+      // another synchronous layout of the entire battlefield.
+      const boardBounds = board?.getBoundingClientRect();
+      const pilesBounds = board ? piles.getBoundingClientRect() : null;
+      piles.style.setProperty("--zone-pile-width", `${Math.min(56, cardWidth * 0.7)}px`);
       if (board) {
-        const boardBounds = board.getBoundingClientRect();
         board.style.setProperty("--battlefield-objects-top", `${Math.max(0, top - boardBounds.top)}px`);
-        const pilesBounds = piles.getBoundingClientRect();
         const lookTop = Math.max(0, top - boardBounds.top);
         const pileWidth = Math.min(56, cardWidth * 0.7);
         // Keep Look above the stack, reserving its label and card height even
@@ -330,12 +327,25 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
     observer.observe(container);
     observer.observe(piles);
     if (row) observer.observe(row);
-    const mutations = new MutationObserver(schedule);
-    if (row) mutations.observe(row, { attributes: true, childList: true, subtree: true, attributeFilter: ["style", "class"] });
+    const mutations = new MutationObserver((records) => {
+      // Card internals change for hover, targeting and animation. Only the
+      // grid and its positioned wrappers determine the piles' placement.
+      const layoutClasses = (value) => (value || "").split(/\s+/)
+        .filter(name => name.startsWith("battlefield-row-card--") || name === "tapped").join(" ");
+      if (records.some(({ target, type, attributeName, oldValue }) => {
+        if (target === row) return true;
+        if (!(target instanceof Element) || !target.matches(".battlefield-row-card")) return false;
+        if (type !== "attributes") return false;
+        if (attributeName === "class") return layoutClasses(oldValue) !== layoutClasses(target.className);
+        return oldValue !== target.getAttribute(attributeName);
+      })) schedule();
+    });
+    if (row) mutations.observe(row, { attributes: true, attributeOldValue: true, childList: true, subtree: true, attributeFilter: ["style", "class"] });
     window.addEventListener("resize", schedule);
     return () => { cancelAnimationFrame(frame); observer.disconnect(); mutations.disconnect(); window.removeEventListener("resize", schedule); };
   }, [player]);
-  return <div ref={ref} className="player-zone-piles" data-player-zone-piles>
+  return <div ref={ref} className="player-zone-piles" data-player-zone-piles
+    data-local-zone-piles={samePlayerId(player.id ?? player.index, state?.perspective) ? "true" : undefined}>
     {PILE_ZONES.map((zone) => <ZonePile key={zone} player={player} zone={zone}
       onCardClick={onCardClick} legalTargetObjectIds={legalTargetObjectIds} />)}
     {samePlayerId(player.id ?? player.index, state?.perspective) &&

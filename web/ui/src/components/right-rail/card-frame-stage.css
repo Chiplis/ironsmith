@@ -4,6 +4,37 @@
   overflow: hidden;
 }
 
+/* Keep the live battlefield badges and interaction surface above the frame. */
+.battlefield-prepared-frame {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.battlefield-prepared-frame {
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+
+.battlefield-prepared-frame__composition {
+  position: absolute;
+  transform-origin: center;
+  flex-shrink: 0;
+  /* Fitting temporarily cancels this scale to read layout coordinates.
+     Even reduced-motion transitions otherwise return the previous scale. */
+  transition: none !important;
+}
+
+.battlefield-prepared-frame .interactive-card-frame__rules {
+  overflow: hidden !important;
+}
+
+.battlefield-prepared-frame * {
+  pointer-events: none !important;
+}
+
 .card-frame-art-preview {
   position: absolute;
   inset: 0;

@@ -80,7 +80,7 @@ function fieldMeasurer(typography) {
   };
 }
 
-export default function RegisteredCardFrame({registration,imageUrl,typography,rulesView,name,typeLine,stats,flavorText,onActivate,highlighted}) {
+export default function RegisteredCardFrame({registration,imageUrl,typography,rulesView,name,typeLine,stats,flavorText,onActivate,highlighted,interactive=true}) {
   const fields=useMemo(()=>mergeRegisteredLineSegments(trimRegisteredNameCosts(registration.fields,fieldMeasurer(typography)('name'))),[registration,typography]);
   const assignments=useMemo(()=>registeredRuleAssignments(fields,rulesView),[fields,rulesView]);
   const {locale}=useI18n();
@@ -119,7 +119,7 @@ export default function RegisteredCardFrame({registration,imageUrl,typography,ru
   useLayoutEffect(()=>{
     const node=surfaceRef.current;
     if(!node)return undefined;
-    const update=()=>setUnit(node.getBoundingClientRect().width);
+    const update=()=>setUnit(node.clientWidth);
     update();
     const observer=new ResizeObserver(update);
     observer.observe(node);
@@ -139,8 +139,8 @@ export default function RegisteredCardFrame({registration,imageUrl,typography,ru
       if(indices.length) {
         const live=indices.map(i=>rulesView.lines[i]).join('\n');
         if(!same(live,field.text))text=live;
-        actions=indices.flatMap(i=>rulesView.actions.get(i)||[]);
-        group=indices.length===1?rulesView.manaGroups.get(indices[0]):null;
+        actions=interactive?indices.flatMap(i=>rulesView.actions.get(i)||[]):[];
+        group=interactive&&indices.length===1?rulesView.manaGroups.get(indices[0]):null;
         isHighlighted=indices.some(i=>highlighted.has(i));
       }
     } else if(field.kind==='name'&&name&&!name.includes(' // ')&&fields.filter(f=>f.kind==='name').length===1&&(locale==='en'||!same(name,field.text)))text=name;
@@ -148,7 +148,7 @@ export default function RegisteredCardFrame({registration,imageUrl,typography,ru
     else if(field.kind==='stats'&&stats&&fields.filter(f=>f.kind==='stats').length===1)text=stats.replace(/\s/g,'');
     else if(field.kind==='flavor'&&flavorText&&fields.filter(f=>f.kind==='flavor').length===1)text=flavorText;
     return {text,actions,group,isHighlighted};
-  }),[fields,registration.lang,locale,translatedFaces,assignments,rulesView,highlighted,name,typeLine,stats,flavorText]);
+  }),[fields,registration.lang,locale,translatedFaces,assignments,rulesView,highlighted,name,typeLine,stats,flavorText,interactive]);
   const texts=useMemo(()=>entries.map(entry=>entry?.text??''),[entries]);
   // Natural text heights, as fields report them after each fit. A report only
   // counts while the field still shows the text, width and scale it measured.

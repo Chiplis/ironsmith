@@ -1396,7 +1396,10 @@ pub(super) fn describe_sequential_any_player_may_action(
         {
             let action = describe_effect(effect);
             let action = action.strip_prefix("You ").unwrap_or(&action);
-            return Some(format!("{subject} may have you {}", lowercase_first(action)));
+            return Some(format!(
+                "{subject} may have you {}",
+                lowercase_first(action)
+            ));
         }
         let damage = effect
             .downcast_ref::<crate::effects::DealDamageEffect>()
@@ -2662,7 +2665,8 @@ pub(super) fn describe_council_dilemma_named_vote_sequence(effects: &[Effect]) -
     let mut subject_last_clauses = Vec::new();
     let (repeat_effects, trailing_effects) = repeat_effects.split_at(options.len());
     for (option, repeat_effect) in options.iter().zip(repeat_effects.iter()) {
-        let repeat_effect = repeat_effect.downcast_ref::<crate::effects::WithIdEffect>()
+        let repeat_effect = repeat_effect
+            .downcast_ref::<crate::effects::WithIdEffect>()
             .map_or(repeat_effect, |wrapped| &wrapped.effect);
         let repeat = repeat_effect.downcast_ref::<crate::effects::RepeatEffectsEffect>()?;
         let Value::VoteCount(repeat_option) = &repeat.count else {
@@ -2697,25 +2701,35 @@ pub(super) fn describe_council_dilemma_named_vote_sequence(effects: &[Effect]) -
     }
 
     let shared_imperative_subject = repeat_effects.iter().all(|effect| {
-        let effect = effect.downcast_ref::<crate::effects::WithIdEffect>()
+        let effect = effect
+            .downcast_ref::<crate::effects::WithIdEffect>()
             .map_or(effect, |wrapped| &wrapped.effect);
-        let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatEffectsEffect>() else { return false };
-        let [effect] = repeat.effects.as_slice() else { return false };
-        effect.downcast_ref::<crate::effects::DrawCardsEffect>().is_some_and(|draw| draw.player == PlayerFilter::You)
-            || effect.downcast_ref::<crate::effects::PutCountersEffect>().is_some_and(|put| matches!(put.target.base(), ChooseSpec::Source))
+        let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatEffectsEffect>() else {
+            return false;
+        };
+        let [effect] = repeat.effects.as_slice() else {
+            return false;
+        };
+        effect
+            .downcast_ref::<crate::effects::DrawCardsEffect>()
+            .is_some_and(|draw| draw.player == PlayerFilter::You)
+            || effect
+                .downcast_ref::<crate::effects::PutCountersEffect>()
+                .is_some_and(|put| matches!(put.target.base(), ChooseSpec::Source))
     });
-    let shared_quantified_subject = shared_imperative_subject || [
-        "each opponent ",
-        "each player ",
-        "each other player ",
-        "you ",
-    ]
-    .iter()
-    .any(|prefix| {
-        subject_last_clauses
-            .iter()
-            .all(|clause| clause.starts_with(prefix))
-    });
+    let shared_quantified_subject = shared_imperative_subject
+        || [
+            "each opponent ",
+            "each player ",
+            "each other player ",
+            "you ",
+        ]
+        .iter()
+        .any(|prefix| {
+            subject_last_clauses
+                .iter()
+                .all(|clause| clause.starts_with(prefix))
+        });
     let option_names = options
         .iter()
         .map(|option| {
@@ -6037,6 +6051,13 @@ pub(in crate::compiled_text) fn describe_coordinated_hand_reveal_choice_exile(
 pub(in crate::compiled_text) fn describe_look_hand_choose_then_discard_or_exile(
     effects: &[&Effect],
 ) -> Option<String> {
+    describe_look_hand_choose_action_with_exile_boundary(effects, false)
+}
+
+pub(in crate::compiled_text) fn describe_look_hand_choose_action_with_exile_boundary(
+    effects: &[&Effect],
+    exile_new_sentence: bool,
+) -> Option<String> {
     let [look_effect, choose_effect, action_effect] = effects else {
         return None;
     };
@@ -6086,7 +6107,9 @@ pub(in crate::compiled_text) fn describe_look_hand_choose_then_discard_or_exile(
             ));
         }
         if let Some(exile) = action_effect.downcast_ref::<crate::effects::ExileEffect>()
-            && exile_uses_chosen_tag(&exile.spec, choose.tag.as_str())
+            && !exile.face_down && !exile.turn_face_up
+            && (exile_uses_chosen_tag(&exile.spec, choose.tag.as_str())
+                || matches!(exile.spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "__it__"))
         {
             return Some(format!(
                 "{reveal_text}. You choose {choice_text}. Exile that card"
@@ -6116,18 +6139,24 @@ pub(in crate::compiled_text) fn describe_look_hand_choose_then_discard_or_exile(
     }
 
     if let Some(exile) = action_effect.downcast_ref::<crate::effects::ExileEffect>()
-        && exile_uses_chosen_tag(&exile.spec, choose.tag.as_str())
+        && !exile.face_down && !exile.turn_face_up
+            && (exile_uses_chosen_tag(&exile.spec, choose.tag.as_str())
+                || matches!(exile.spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "__it__"))
     {
-        return Some(format!(
-            "{reveal_text}. You choose {choice_from_it} and exile that card"
-        ));
+        return Some(if exile_new_sentence {
+            format!("{reveal_text}. You choose {choice_from_it}. Exile that card")
+        } else {
+            format!("{reveal_text}. You choose {choice_from_it} and exile that card")
+        });
     }
     if let Some(move_to_zone) = action_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
         && move_to_exile_uses_chosen_tag(move_to_zone, choose.tag.as_str())
     {
-        return Some(format!(
-            "{reveal_text}. You choose {choice_from_it} and exile that card"
-        ));
+        return Some(if exile_new_sentence {
+            format!("{reveal_text}. You choose {choice_from_it}. Exile that card")
+        } else {
+            format!("{reveal_text}. You choose {choice_from_it} and exile that card")
+        });
     }
     None
 }
@@ -7200,7 +7229,7 @@ pub(super) fn tagged_move_to_library_nth_from_effect(
         .downcast_ref::<crate::effects::MoveToLibraryNthFromTopEffect>()
 }
 
-pub(super) fn describe_hand_choose_then_library_placement(effects: &[&Effect]) -> Option<String> {
+pub(super) fn describe_hand_choose_then_zone_move(effects: &[&Effect]) -> Option<String> {
     let [look_effect, choose_effect, move_effect] = effects else {
         return None;
     };
@@ -7212,13 +7241,53 @@ pub(super) fn describe_hand_choose_then_library_placement(effects: &[&Effect]) -
 
     let looked_player = describe_choose_spec(&look.target);
     let looked_filter = choose_spec_player_filter(&look.target)?;
-    if !choose.filter.owner.as_ref().is_some_and(|owner| {
-        player_filters_refer_to_same_player(owner, &looked_filter)
-    }) {
+    if !choose
+        .filter
+        .owner
+        .as_ref()
+        .is_some_and(|owner| player_filters_refer_to_same_player(owner, &looked_filter))
+    {
         return None;
     }
 
     let selection = hand_choice_selection_from_it(choose);
+    if look.reveal
+        && choose.count.is_single()
+        && choose.count_value.is_none()
+        && choose.filter.tagged_constraints.iter().all(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == crate::tag::REVEALED_THIS_WAY_TAG
+        })
+        && let Some(exile) =
+            unwrap_basic_tag_wrappers(move_effect).downcast_ref::<crate::effects::ExileEffect>()
+        && !exile.face_down
+        && matches!(exile.spec.unhinted(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+    {
+        return Some(format!(
+            "{} {} their hand. You choose {selection} from it. Exile that card",
+            capitalize_first(&looked_player),
+            player_verb(&looked_player, "reveal", "reveals")
+        ));
+    }
+    if look.reveal
+        && choose.count.is_single()
+        && choose.count_value.is_none()
+        && choose.filter.tagged_constraints.iter().all(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == crate::tag::REVEALED_THIS_WAY_TAG
+        })
+        && let Some(moved) = unwrap_basic_tag_wrappers(move_effect)
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()
+        && moved.zone == Zone::Exile
+        && matches!(moved.target.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+    {
+        return Some(format!(
+            "{} {} their hand. You choose {selection} from it. {}",
+            capitalize_first(&looked_player),
+            player_verb(&looked_player, "reveal", "reveals"),
+            describe_effect(move_effect).trim_end_matches('.'),
+        ));
+    }
     if let Some(move_to_zone) =
         unwrap_basic_tag_wrappers(move_effect).downcast_ref::<crate::effects::MoveToZoneEffect>()
         && move_to_library_uses_chosen_tag(move_to_zone, choose.tag.as_str())

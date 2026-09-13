@@ -21,5 +21,7 @@ createRoot(document.getElementById('root')).render(<>
   <Registered name="registered" height={30} size="22px" lineHeight={1} text="Protección contra humanos" />
   <Sample name="short" height={160} text="Add green mana." flavor="As patient and generous as life." />
   <Sample name="spacing" height={66} text="Add green mana." flavor="A separate italic line." />
+  <style>{`[data-sample="reserved"] .interactive-card-frame__rules {padding-bottom:30px!important;}`}</style>
+  <Sample name="reserved" height={110} text={"The final line must leave room for the printed power and toughness plaque. ".repeat(2)} />
   <Sample name="long" height={100} text={'Texto traducido muy largo. '.repeat(60)} />
 </>);

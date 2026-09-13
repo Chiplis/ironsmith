@@ -3,15 +3,24 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 
-test('name and type stay on one line and refit around content, resizing, and fonts', async () => {
+for(const reducedMotion of ['no-preference','reduce'])test(`name and type stay on one line and refit around content, resizing, and fonts (${reducedMotion})`, async () => {
   const vite = await createServer({ server: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
   await vite.listen();
   const browser = await chromium.launch();
   try {
-    const page = await browser.newPage();
+    const page = await browser.newPage({reducedMotion});
     await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-frame-single-line.html`);
     await page.evaluate(() => document.fonts.ready);
-    const settle = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const settle = () => page.evaluate(() => new Promise((resolve,reject) => {
+      let last='',stable=0,frames=0;
+      const check=()=>{
+        const next=JSON.stringify([...document.querySelectorAll('.interactive-card-frame__title,.interactive-card-frame__type')].map(e=>[e.getBoundingClientRect().width,getComputedStyle(e).fontSize]));
+        stable=next===last?stable+1:0;last=next;
+        if(stable>=4)return resolve();
+        if(++frames>90)return reject(Error('Card labels did not settle'));
+        requestAnimationFrame(check);
+      };requestAnimationFrame(check);
+    }));
     const measure = async () => {
       await settle();
       const metrics = await page.locator('.interactive-card-frame-stage').evaluate(stage => {
@@ -47,7 +56,8 @@ test('name and type stay on one line and refit around content, resizing, and fon
     await page.getByRole('button', { name: 'Toggle mana' }).click();
     await page.locator('#panel-host').evaluate(el => { el.style.width = '420px'; });
     const restored = await measure();
-    restored.forEach((size, i) => assert.ok(Math.abs(size - wide[i]) < 0.02, 'preferred sizing returns after resizing'));
+    // Flex allocation rounds to subpixels; verify recovery within a tenth of a pixel.
+    restored.forEach((size, i) => assert.ok(Math.abs(size - wide[i]) < 0.1, JSON.stringify({message:'preferred sizing returns after resizing',wide,restored})));
     await page.getByRole('button', { name: 'Change text' }).click();
     assert.deepEqual(await measure(), [18, 14], 'short text uses the preferred printing size');
     await page.getByRole('button', { name: 'Change preferred size' }).click();

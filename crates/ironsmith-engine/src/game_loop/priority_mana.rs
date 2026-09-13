@@ -327,6 +327,30 @@ fn execute_planned_keyword_payments(
     _decision_maker: &mut impl DecisionMaker,
 ) -> Result<(), GameLoopError> {
     for allocation in &payment.plan.allocations {
+        if let crate::mana_payment::PlannedPipPayment::Delve(card_id) = allocation.payment {
+            if !game
+                .player(pending.caster)
+                .is_some_and(|player| player.graveyard.contains(&card_id))
+            {
+                return Err(GameLoopError::InvalidState(
+                    "planned delve card is no longer available".to_string(),
+                ));
+            }
+            pay_selected_cost(
+                game,
+                &crate::costs::Cost::exile_from_graveyard(1, None),
+                pending.spell_id,
+                pending.caster,
+                crate::costs::PaymentReason::CastSpell,
+                pending.provenance,
+                card_id,
+                None,
+                &mut pending.tagged_objects,
+                _decision_maker,
+            )?;
+            drain_pending_trigger_events(game, trigger_queue);
+            continue;
+        }
         let (permanent_id, effect) = match allocation.payment {
             crate::mana_payment::PlannedPipPayment::Convoke(permanent_id) => {
                 (permanent_id, AlternativePaymentEffect::Convoke)
@@ -466,6 +490,18 @@ fn refresh_prepared_spell_payment(
             .preferences
             .required_sources
             .retain(|source| *source != activated.source);
+        if let Some(index) = request
+            .preferences
+            .required_activations
+            .iter()
+            .position(|selected| {
+                selected.source == activated.source
+                    && selected.ability_index == activated.ability_index
+                    && selected.color_restriction == activated.color_restriction
+            })
+        {
+            request.preferences.required_activations.remove(index);
+        }
     }
     request.preferences.normalize();
     let plan = crate::mana_payment::plan_mana_payment(game, &request)
@@ -565,6 +601,18 @@ pub(super) fn commit_prepared_activation_mana_payment(
             .preferences
             .required_sources
             .retain(|source| *source != activated.source);
+        if let Some(index) = request
+            .preferences
+            .required_activations
+            .iter()
+            .position(|selected| {
+                selected.source == activated.source
+                    && selected.ability_index == activated.ability_index
+                    && selected.color_restriction == activated.color_restriction
+            })
+        {
+            request.preferences.required_activations.remove(index);
+        }
     }
     request.preferences.normalize();
     let plan = match crate::mana_payment::plan_mana_payment(game, &request) {
@@ -710,9 +758,16 @@ pub(super) fn apply_mana_payment_plan_response(
         let mut preferences = request.preferences;
         if activated {
             preferences.required_sources.retain(|id| id != source);
-            preferences
-                .required_activations
-                .retain(|activation| activation.source != *source);
+            preferences.required_activations.retain(|activation| {
+                activation.source != *source
+                    && game.object(activation.source).is_some()
+                    && !(game.is_tapped(activation.source)
+                        && activated_ability_has_tap_cost(
+                            game,
+                            activation.source,
+                            activation.ability_index,
+                        ))
+            });
         }
         return apply_mana_payment_plan_response(
             game,
@@ -2538,6 +2593,9 @@ pub(crate) fn propose_spell_cast(
             zone,
             ..
         } => crate::decision::resolve_play_from_alternative_method(game, caster, obj, *zone, *idx),
+        CastingMethod::GrantedFlashback => Some(crate::alternative_cast::AlternativeCastingMethod::Flashback {
+            total_cost: crate::cost::TotalCost::mana(obj.mana_cost_owned().unwrap_or_default()),
+        }),
         _ => None,
     });
     let selected_method_for_overlay = selected_method.clone();
@@ -2585,10 +2643,10 @@ pub(crate) fn propose_spell_cast(
     if let Some(snapshot) = cast_origin_snapshot {
         game.set_cast_origin_snapshot(new_id, snapshot);
     }
-    let disturb_other_def = if matches!(
-        selected_method,
-        Some(crate::alternative_cast::AlternativeCastingMethod::Disturb { .. })
-    ) {
+    let disturb_other_def = if selected_method
+        .as_ref()
+        .is_some_and(|method| method.casts_transformed())
+    {
         let obj = game.object(new_id).ok_or_else(|| {
             GameLoopError::InvalidState(
                 "Disturb spell should exist before cast overlays".to_string(),
@@ -2677,7 +2735,7 @@ pub(crate) fn propose_spell_cast(
                 obj.apply_prototype_cast_overlay(cost, power_toughness);
             }
 
-            if let crate::alternative_cast::AlternativeCastingMethod::Disturb { .. } = method {
+            if method.casts_transformed() {
                 let other_def = disturb_other_def
                     .as_ref()
                     .expect("disturb linked face should be resolved before mutating the spell");
@@ -3515,26 +3573,7 @@ pub fn apply_decision_context_with_dm<D: DecisionMaker>(
 
     match ctx {
         DecisionContext::ManaPayment(payment_ctx) => {
-            let select_ctx = crate::decisions::context::SelectOptionsContext::new(
-                payment_ctx.player,
-                Some(payment_ctx.source),
-                format!("Confirm mana payment for {}", payment_ctx.subject),
-                vec![
-                    crate::decisions::context::SelectableOption::new(1, "Confirm payment"),
-                    crate::decisions::context::SelectableOption::new(0, "Cancel"),
-                ],
-                1,
-                1,
-            );
-            let result = decision_maker.decide_options(game, &select_ctx);
-            let response = if result.first().copied() == Some(1) {
-                crate::mana_payment::ManaPaymentResponse::Confirm {
-                    plan_id: payment_ctx.plan.id,
-                    request_hash: payment_ctx.plan.request_hash,
-                }
-            } else {
-                crate::mana_payment::ManaPaymentResponse::Cancel
-            };
+            let response = decision_maker.decide_mana_payment(game, payment_ctx);
             apply_mana_payment_plan_response(game, trigger_queue, state, &response, decision_maker)
         }
         DecisionContext::Priority(priority_ctx) => {
@@ -3636,6 +3675,22 @@ pub fn apply_decision_context_with_dm<D: DecisionMaker>(
         }
         DecisionContext::SelectOptions(options_ctx) => {
             let result = decision_maker.decide_options(game, options_ctx);
+            if state
+                .pending_cast
+                .as_ref()
+                .is_some_and(|pending| pending.stage == CastStage::ChoosingCostResource)
+            {
+                let choice = result.first().copied().ok_or_else(|| {
+                    GameLoopError::InvalidState("cost resource choice required".into())
+                })?;
+                return apply_cost_resource_response(
+                    game,
+                    trigger_queue,
+                    state,
+                    choice,
+                    decision_maker,
+                );
+            }
 
             if state
                 .pending_cast

@@ -1332,6 +1332,13 @@ fn compute_object_targets_with_view(
 ) -> Vec<Target> {
     let mut targets = Vec::new();
 
+    let mut candidate_filter;
+    let filter = if filter.controller == Some(crate::target::PlayerFilter::TargetPlayerOrControllerOfTarget) {
+        candidate_filter = filter.clone();
+        candidate_filter.controller = None;
+        &candidate_filter
+    } else { filter };
+
     // Build filter context
     let mut filter_ctx = target_filter_context(game, caster, source_id);
     if game.source_snapshot_is_exempt_from_range(source_id, source_snapshot) {

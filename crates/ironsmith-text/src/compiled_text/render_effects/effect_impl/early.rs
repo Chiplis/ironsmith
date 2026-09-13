@@ -1686,6 +1686,7 @@
                 move_to_zone.destination_player_surface.as_ref(),
                 Some(&move_to_zone.battlefield_controller),
                 move_to_zone.enters_tapped,
+                Some((move_to_zone.to_top, move_to_zone.library_order.as_ref())),
             );
             let excludes_source_card = matches!(
                 move_to_zone.target.base(),
@@ -1846,7 +1847,7 @@
                         ),
                         None => "a graveyard".to_string(),
                     };
-                    let to_text = contextual_destination.clone().unwrap_or_else(|| match &owner {
+                    let to_text = contextual_destination.as_ref().map(|owner| format!("{owner} hand")).unwrap_or_else(|| match &owner {
                         Some(owner) => format!("{} hand", describe_possessive_player_filter(owner)),
                         None => owner_hand_phrase_for_spec(&move_to_zone.target).to_string(),
                     });
@@ -5014,6 +5015,7 @@
                 return_to_hand.destination_player_surface.as_ref(),
                 None,
                 false,
+                None,
             );
         }
         let contextual_hand = return_to_hand
@@ -6363,6 +6365,14 @@
             .map(|text| lowercase_first(&text))
             .or_else(|| describe_effect_clause_list(branch_effects))
             .unwrap_or_else(|| describe_effect_list(branch_effects));
+            if let crate::effect::Condition::TaggedObjectMatches(tag, filter) = &conditional.condition
+                && let [action] = branch_effects
+                && let Some(copy) = copy_spell_from_effect(action)
+                && matches!(copy.target.base(), ChooseSpec::Tagged(copied) if copied == tag)
+                && let Some(relative) = filter.description().strip_prefix("spell that ")
+            {
+                return finish_condition(format!("{effect_text} if it {relative}"));
+            }
             // "Destroy target creature if it has mana value 2 or less" — the
             // condition inspects the pending target of THIS clause's own
             // action, so its tag must read present-tense, not as a

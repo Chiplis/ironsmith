@@ -48,6 +48,7 @@ pub enum CopyCharacteristicRemainder<'a> {
     None,
     PowerToughnessFromSource,
     Abilities(&'a [OwnedLexToken]),
+    ConditionalEntry(&'a [OwnedLexToken]),
     Unsupported,
 }
 
@@ -408,6 +409,13 @@ fn parse_copy_characteristic_remainder<'a>(
         return Ok(CopyCharacteristicRemainder::None);
     }
     alt((
+        (
+            primitives::kw("and"),
+            opt(primitives::comma()),
+            primitives::kw("if"),
+            take_sentence_body,
+        )
+            .map(|(_, _, _, entry)| CopyCharacteristicRemainder::ConditionalEntry(entry)),
         (
             opt(primitives::kw("and")),
             primitives::phrase(&[

@@ -612,11 +612,7 @@ pub(super) fn then_followup_facts(
     }
 }
 
-pub(super) fn comma_boundary_facts(
-    before: &[OwnedLexToken],
-    after: &[OwnedLexToken],
-) -> CommaBoundaryFacts {
-    let before_has_verb = find_chain_verb_tokens(before).is_some();
+pub fn starts_effect_clause_tokens(after: &[OwnedLexToken]) -> bool {
     let after_verb = find_chain_verb_tokens(after);
     let explicit_subject_action = after_verb.is_some_and(|found| found.word_index > 0)
         && starts_any(
@@ -634,9 +630,17 @@ pub(super) fn comma_boundary_facts(
                 &["defending", "player"],
             ],
         );
-    let after_starts_effect = after_verb.is_some_and(|found| found.word_index == 0)
+    after_verb.is_some_and(|found| found.word_index == 0)
         || explicit_subject_action
-        || has_extended_effect_head_tokens(after);
+        || has_extended_effect_head_tokens(after)
+}
+
+pub(super) fn comma_boundary_facts(
+    before: &[OwnedLexToken],
+    after: &[OwnedLexToken],
+) -> CommaBoundaryFacts {
+    let before_has_verb = find_chain_verb_tokens(before).is_some();
+    let after_starts_effect = starts_effect_clause_tokens(after);
     let duration_trigger = starts_any(before, &[&["until"], &["during"]])
         && (contains_any(before, &["whenever", "when"])
             || primitives::has_phrase(before, &["at", "the"]));

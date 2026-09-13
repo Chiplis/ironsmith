@@ -98,6 +98,12 @@ export async function loadTranslatedCardView(locale, cardView) {
       // printed fields; everything else stays English. Machine translation is
       // reserved for rules text.
       const official = translationForFace(await loadOfficialCardTranslation(locale, cardName, oracleId), cardName);
+      // Some older buckets have a translated name/rules but omit the type.
+      // Complete those fields from official printed data rather than silently
+      // publishing an English type line inside a translated card frame.
+      const supplement = official && !official.typeLine
+        ? translationForFace(await fetchScryfallLocalizedCardTranslation(cardName, locale).catch(() => null), cardName)
+        : null;
       const officialRulesText = String(official?.oracleText || "").trim();
       const generatedRulesText = !officialRulesText && rulesText
         ? await loadGeneratedTextTranslation(locale, rulesText)
@@ -106,7 +112,7 @@ export async function loadTranslatedCardView(locale, cardView) {
       if (!official && !generatedRulesText) return null;
       return {
         name: official?.name || cardName || null,
-        typeLine: official?.typeLine || typeLine || null,
+        typeLine: official?.typeLine || supplement?.typeLine || typeLine || null,
         rulesText: officialRulesText || generatedRulesText || rulesText || null,
         rulesSource: officialRulesText ? "scryfall" : generatedRulesText ? "generated" : "original",
         source: official ? "scryfall" : "generated",

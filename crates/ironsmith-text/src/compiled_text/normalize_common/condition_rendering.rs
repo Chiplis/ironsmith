@@ -1503,9 +1503,16 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         } => {
             let subject = describe_player_filter(player);
             if *count == 0 {
+                if let Some(text) = describe_player_controls_other_than_source(player, filter, true) {
+                    return text;
+                }
                 if let [constraint] = filter.tagged_constraints.as_slice()
                     && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
                 {
+
+                    if matches!(&filter.source_surface, Some(crate::target::SourceReferenceSurface::ThisPermanentType(noun)) if noun == "it") {
+                        return format!("{subject} {} it", player_verb(&subject, "don't control", "doesn't control"));
+                    }
                     let mut noun_filter = filter.clone();
                     noun_filter.tagged_constraints.clear();
                     if noun_filter.controller.as_ref() == Some(player) {
@@ -3315,6 +3322,11 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             operator,
             right,
         } => {
+            if right.has_surface_hint(ironsmith_core::ValueSurfaceHint::IndefiniteCounterPresence)
+                && let (Value::CountersOn(spec, Some(counter)), crate::effect::ValueComparisonOperator::GreaterThanOrEqual, Value::Fixed(1)) = (left.unhinted(), operator, right.unhinted())
+            {
+                return format!("{} has {} counter on it", describe_choose_spec(spec), with_indefinite_article(&counter.description()));
+            }
             let mut sole_creature_card = ObjectFilter::creature()
                 .in_zone(Zone::Graveyard)
                 .owned_by(PlayerFilter::You);
@@ -5370,7 +5382,8 @@ fn describe_shared_you_control_and_hand_condition(
     fn is_you_control(condition: &Condition) -> bool {
         match condition {
             Condition::YouControl(_) => true,
-            Condition::PlayerControls { player, .. } => *player == PlayerFilter::You,
+            Condition::PlayerControls { player, .. }
+            | Condition::PlayerControlsExactly { player, .. } => *player == PlayerFilter::You,
             Condition::Not(inner) => is_you_control(inner),
             _ => false,
         }

@@ -1838,6 +1838,58 @@ pub(super) fn get_pips_requiring_announcement(
 /// The previous cast flow prompted for X before modes and skipped modal
 /// selection entirely on modal X spells. Keep X behind the earlier
 /// announcements and preserve the pending proposal while the choice is made.
+fn cast_resource_sacrifice_filter(game: &GameState, pending: &PendingCast) -> Option<ObjectFilter> {
+    let spell = game.object(pending.spell_id)?;
+    if let Some(optional) = spell.optional_costs.iter().find(|cost| cost.kind == ironsmith_core::OptionalCostKind::Offering
+        && pending.optional_costs_paid.was_paid_label(cost.cost_ref())) {
+        return optional.cost.non_mana_costs().find_map(|cost| cost.sacrifice_filter().cloned());
+    }
+    crate::decision::alternative_method_for_casting_method(game, pending.caster, spell, &pending.casting_method)?
+        .non_mana_costs().into_iter().find_map(|cost| cost.sacrifice_filter().cloned())
+}
+
+pub(super) fn cast_cost_resource_candidates(game: &GameState, pending: &PendingCast) -> Option<(bool, Vec<ObjectId>)> {
+    let spell = game.object(pending.spell_id)?;
+    if let Some(cost) = spell.optional_costs.iter().find(|cost| cost.kind == ironsmith_core::OptionalCostKind::Offering
+        && pending.optional_costs_paid.was_paid_label(cost.cost_ref())) {
+        let filter = cost.cost.non_mana_costs().find_map(|cost| cost.sacrifice_filter().cloned())?;
+        return Some((false, get_legal_sacrifice_targets(game, pending.caster, pending.spell_id, &filter, crate::costs::PaymentReason::CastSpell)));
+    }
+    let method = crate::decision::alternative_method_for_casting_method(game, pending.caster, spell, &pending.casting_method)?;
+    if matches!(method, crate::alternative_cast::AlternativeCastingMethod::Harmonize { .. }) {
+        return Some((true, crate::decision::get_convoke_creatures(game, pending.caster).into_iter().map(|(id, _)| id).collect()));
+    }
+    if method.name().eq_ignore_ascii_case("Emerge") {
+        let filter = method.non_mana_costs().into_iter().find_map(|cost| cost.sacrifice_filter().cloned())?;
+        return Some((false, get_legal_sacrifice_targets(game, pending.caster, pending.spell_id, &filter,
+            crate::costs::PaymentReason::CastSpell)));
+    }
+    None
+}
+
+pub(super) fn apply_cost_resource_response(game: &mut GameState, trigger_queue: &mut TriggerQueue,
+    state: &mut PriorityLoopState, choice: usize, decision_maker: &mut impl DecisionMaker) -> Result<GameProgress, GameLoopError> {
+    let mut pending = state.pending_cast.take().ok_or_else(|| GameLoopError::InvalidState("missing cost proposal".into()))?;
+    let (is_tap, candidates) = cast_cost_resource_candidates(game, &pending)
+        .ok_or_else(|| GameLoopError::InvalidState("missing cost resource choices".into()))?;
+    let selected = if is_tap && choice == 0 { None } else {
+        Some(*candidates.get(choice.saturating_sub(usize::from(is_tap)))
+            .ok_or_else(|| GameLoopError::InvalidState("invalid cost resource".into()))?)
+    };
+    pending.cost_resource_announced = true;
+    pending.cost_resource = selected;
+    pending.cost_resource_is_tap = is_tap;
+    pending.cost_resource_reduction = selected.map_or(0, |id| if is_tap {
+        game.current_power(id).unwrap_or(0).max(0) as u32
+    } else { game.object(id).unwrap().mana_cost.as_ref().map_or(0, |cost| cost.mana_value()) });
+    if game.object(pending.spell_id).is_some_and(|spell| spell.optional_costs.iter().any(|cost|
+        cost.kind == ironsmith_core::OptionalCostKind::Offering && pending.optional_costs_paid.was_paid_label(cost.cost_ref()))) {
+        pending.cost_resource_mana_reduction = selected.and_then(|id| game.object(id).and_then(|obj| obj.mana_cost_owned()));
+        pending.cost_resource_reduction = 0;
+    }
+    check_x_or_continue(game, trigger_queue, state, pending, decision_maker)
+}
+
 pub(super) fn check_x_or_continue(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
@@ -1845,6 +1897,22 @@ pub(super) fn check_x_or_continue(
     mut pending: PendingCast,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
+    if !pending.cost_resource_announced {
+        if let Some((is_tap, candidates)) = cast_cost_resource_candidates(game, &pending) {
+            let mut options = Vec::new();
+            if is_tap { options.push(crate::decisions::context::SelectableOption::new(0, "Do not tap a creature")); }
+            options.extend(candidates.iter().enumerate().map(|(index, id)| {
+                crate::decisions::context::SelectableOption::new(index + usize::from(is_tap),
+                    format!("{} {}", if is_tap { "Tap" } else { "Sacrifice" }, game.object(*id).unwrap().name))
+            }));
+            let context = crate::decisions::context::SelectOptionsContext::new(pending.caster,
+                Some(pending.spell_id), "Choose a cost reduction resource", options, 1, 1);
+            pending.stage = CastStage::ChoosingCostResource;
+            state.pending_cast = Some(pending);
+            return Ok(GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::SelectOptions(context)));
+        }
+        pending.cost_resource_announced = true;
+    }
     if pending.base_mana_cost_waived {
         if game
             .object(pending.spell_id)
@@ -1872,7 +1940,7 @@ pub(super) fn check_x_or_continue(
         &pending.casting_method,
         pending.from_zone,
     );
-    let (needs_x, min_x, max_x) = compute_spell_cast_x_bounds(
+    let (needs_x, min_x, mut max_x) = compute_spell_cast_x_bounds(
         game,
         pending.caster,
         pending.spell_id,
@@ -1880,6 +1948,10 @@ pub(super) fn check_x_or_continue(
         mana_cost.as_ref(),
     );
 
+    if needs_x && pending.cost_resource_reduction > 0 {
+        let x_pips = mana_cost.as_ref().map_or(1, |cost| cost.pips().iter().filter(|pip| pip.contains(&crate::mana::ManaSymbol::X)).count().max(1)) as u32;
+        max_x = max_x.saturating_add(pending.cost_resource_reduction / x_pips);
+    }
     if needs_x && pending.x_value.is_none() {
         pending.stage = CastStage::ChoosingX;
         let player = pending.caster;
@@ -2249,6 +2321,7 @@ pub(super) fn continue_to_targets_or_mana_payment(
                     min_targets: r.min_targets,
                     max_targets: r.max_targets,
                     distinct_player_group: r.distinct_player_group,
+                    shared_player_group: r.shared_player_group.clone(),
                 })
                 .collect(),
         );
@@ -2737,6 +2810,13 @@ pub(super) fn spell_mana_payment_request(
         );
     if let Some(existing) = pending.pending_mana_payment.as_ref() {
         request.preferences = existing.request.preferences.clone();
+    }
+    if pending.cost_resource_is_tap && let Some(resource) = pending.cost_resource && !game.is_tapped(resource) {
+        request.reserved_tap_sources.push(resource);
+    }
+    if !pending.cost_resource_is_tap && let Some(resource) = pending.cost_resource
+        && game.object(resource).is_some_and(|object| object.zone == Zone::Battlefield) {
+        request.reserved_permanent_sources.push(resource);
     }
     Ok(request)
 }
@@ -3331,7 +3411,7 @@ pub(super) fn continue_to_mana_payment(
             )
         };
 
-        // Apply cost reductions (affinity, delve, convoke, improvise)
+        // Calculate total costs; keyword payment substitutions happen in the planner.
         base_cost.map(|bc| {
             let bc = mana_cost_with_paid_optional_and_splice_costs(
                 &bc,
@@ -3354,6 +3434,12 @@ pub(super) fn continue_to_mana_payment(
                 &pending.casting_method,
                 pending.from_zone,
             );
+            let effective = pending.cost_resource_mana_reduction.as_ref().map_or(effective.clone(),
+                |reduction| crate::decision::reduce_offering_mana_cost(&effective, reduction));
+            let effective = crate::decision::apply_minimum_spell_total_mana_with_view(
+                &crate::derived_view::DerivedGameView::new(game),
+                &crate::decision::mana_cost_with_locked_x_and_generic_reduction(&effective,
+                    pending.x_value.unwrap_or(0), pending.cost_resource_reduction));
             pending
                 .effect_mana_cost_reduction
                 .as_ref()
@@ -3379,18 +3465,16 @@ pub(super) fn continue_to_mana_payment(
             pending.chosen_targets.len(),
             pending.from_zone,
         );
-        if game
-            .object(pending.spell_id)
-            .is_some_and(crate::decision::has_delve)
-            && pending
-                .mana_cost_to_pay
-                .as_ref()
-                .is_some_and(|cost| cost.generic_mana_total() > 0)
-            && game
-                .player(pending.caster)
-                .is_some_and(|player| !player.graveyard.is_empty())
-        {
-            pending.remaining_cost_steps.push(delve_cost_step());
+        if let Some(resource) = pending.cost_resource {
+            let original_filter = cast_resource_sacrifice_filter(game, &pending);
+            if pending.cost_resource_is_tap {
+                pending.remaining_cost_steps.push(ActivationCostStep::Cost(crate::costs::Cost::validated_effect(
+                    crate::effect::Effect::tap(ChooseSpec::SpecificObject(resource)))));
+            } else if let Some(ActivationCostStep::Sacrifice { filter, cost, .. }) = pending.remaining_cost_steps.iter_mut()
+                .find(|step| matches!(step, ActivationCostStep::Sacrifice { filter, .. } if Some(filter) == original_filter.as_ref())) {
+                *filter = ObjectFilter::specific(resource);
+                *cost = crate::costs::Cost::sacrifice(filter.clone());
+            }
         }
     }
 
@@ -5411,6 +5495,7 @@ pub(super) fn continue_activation(
                                 min_targets: r.min_targets,
                                 max_targets: r.max_targets,
                                 distinct_player_group: r.distinct_player_group,
+                                shared_player_group: r.shared_player_group.clone(),
                             })
                             .collect(),
                     );
@@ -5588,3 +5673,7 @@ pub(super) fn auto_pay_activation_tap_cost_steps(
         }
     }
 }
+
+#[cfg(test)]
+#[path = "cost_resource_tests.rs"]
+mod cost_resource_tests;

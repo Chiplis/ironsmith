@@ -4234,6 +4234,9 @@ pub(super) fn describe_coordinated_sequence(
     if let Some(rendered) = describe_next_turn_pt_modifier_and_activation_lock(sequence) {
         return Some(rendered);
     }
+    if let Some(rendered) = describe_target_players_base_pt_leading_duration(sequence) {
+        return Some(rendered);
+    }
     if let Some(rendered) = describe_single_dynamic_base_pt_leading_duration(sequence) {
         return Some(rendered);
     }
@@ -4642,6 +4645,42 @@ pub(super) fn describe_coordinated_sequence(
 /// modifier. The continuous-effect renderer deliberately describes a global
 /// filter as an `Each ... has` sentence; the sequence surface proves that the
 /// source instead authored a leading duration over the plural set.
+fn describe_target_players_base_pt_leading_duration(
+    sequence: &crate::effects::SequenceEffect,
+) -> Option<String> {
+    if sequence.surface != ironsmith_core::SequenceSurface::CoordinatedLeadingDuration
+        || sequence.result_label.is_some()
+    { return None; }
+    let [declaration, modification] = sequence.effects.as_slice() else { return None; };
+    let target = structural_unwrap_render_wrappers(declaration)
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    if target.explicit_declaration { return None; }
+    let player = choose_spec_player_filter(&target.target)?;
+    if !matches!(player, PlayerFilter::Target(_)) { return None; }
+    let apply = structural_unwrap_render_wrappers(modification)
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    let crate::continuous::EffectTarget::Filter(filter) = &apply.target else { return None; };
+    if filter.controller.as_ref() != Some(&player)
+        || !matches!(apply.target_spec.as_ref()?.base(), ChooseSpec::All(selected) | ChooseSpec::Object(selected) if selected == filter)
+        || apply.target_spec.as_ref()?.is_target()
+        || !apply.additional_modifications.is_empty()
+        || !apply.runtime_modifications.is_empty()
+        || apply.condition.is_some()
+        || apply.source_type.is_some()
+        || apply.source_reference_surface.is_some()
+        || apply.set_quantifier_surface.is_some()
+        || apply.type_retention_surface.is_some()
+        || apply.animation_pt_surface.is_some()
+        || apply.animation_duration_surface.is_some()
+    { return None; }
+    let Some(crate::continuous::Modification::SetPowerToughness {
+        power, toughness, sublayer: crate::continuous::PtSublayer::Setting,
+    }) = &apply.modification else { return None; };
+    let (Value::Fixed(power), Value::Fixed(toughness)) = (power.unhinted(), toughness.unhinted()) else { return None; };
+    let subject = pluralize_noun_phrase(strip_leading_article(&describe_object_filter_with_fixed_pt_shorthand(filter)));
+    Some(format!("{}, {subject} have base power and toughness {power}/{toughness}", capitalize_first(&describe_until(&apply.until))))
+}
+
 fn describe_single_dynamic_base_pt_leading_duration(
     sequence: &crate::effects::SequenceEffect,
 ) -> Option<String> {
@@ -4704,6 +4743,26 @@ fn describe_leading_duration_typed_fallback(
 ) -> Option<String> {
     if sequence.surface != ironsmith_core::SequenceSurface::CoordinatedLeadingDuration {
         return None;
+    }
+    // A leading restriction can carry its own duration surface as well as
+    // the sequence's shared duration. Factor it with an adjacent continuous
+    // effect only after proving both runtime effects end together.
+    if let [restriction, continuous] = sequence.effects.as_slice()
+        && let Some(cant) = restriction.downcast_ref::<crate::effects::CantEffect>()
+        && cant.duration == Until::EndOfTurn
+        && cant.start == crate::effect::RestrictionStart::Immediate
+    {
+        let inner = continuous.downcast_ref::<crate::effects::TaggedEffect>()
+            .map_or(continuous, |tagged| &tagged.effect);
+        if let Some(apply) = inner.downcast_ref::<crate::effects::ApplyContinuousEffect>()
+            && apply.until == Until::EndOfTurn
+        {
+            let rendered = describe_effect(continuous);
+            if let Some(body) = rendered.trim().trim_end_matches('.').strip_suffix(" until end of turn") {
+                return Some(format!("Until end of turn, {}, and {}",
+                    lowercase_first(&describe_restriction(&cant.restriction)), lowercase_first(body)));
+            }
+        }
     }
     let rendered = describe_typed_coordinated_clause_fallback(&sequence.effects)?;
     let rendered = rendered.trim().trim_end_matches('.');
@@ -16803,7 +16862,11 @@ pub(super) fn describe_next_spell_delayed_trigger(
                 ". You may choose new targets for the copy",
                 ". You may choose new targets for the copies",
             );
-    } else {
+    } else if !schedule.effects.flattened_default_effects().iter().any(|effect| {
+        copy_spell_from_effect(effect).is_some_and(|copy| {
+            copy.target_reference_kind.is_some() && !copy.target_reference_pronoun
+        })
+    }) {
         delayed_text = delayed_text
             .replace(
                 "copy that spell. You may choose new targets for the copy",

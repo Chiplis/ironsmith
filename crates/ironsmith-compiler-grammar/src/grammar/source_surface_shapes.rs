@@ -163,6 +163,38 @@ pub fn parse_unique_named_counter_on_operand(
     unique_surface(surfaces)
 }
 
+/// An authored proper-name possessive immediately before a characteristic.
+/// Consumers must independently establish source identity in the parsed AST.
+pub fn parse_unique_named_characteristic_operand(
+    tokens: &[OwnedLexToken],
+    characteristic: &str,
+) -> Option<SourceOperandSurfaceShape> {
+    let mut surfaces = Vec::new();
+    for (index, token) in tokens.iter().enumerate() {
+        if !token.is_word(characteristic) || index == 0 {
+            continue;
+        }
+        let possessive = &tokens[index - 1];
+        let name = possessive.slice.strip_suffix("'s")
+            .or_else(|| possessive.slice.strip_suffix("’s"))
+            .or_else(|| possessive.slice.strip_suffix('\''))
+            .or_else(|| possessive.slice.strip_suffix('’'));
+        let Some(name) = name else { continue };
+        for start in 0..index {
+            if !tokens[start].slice.chars().next().is_some_and(char::is_uppercase) {
+                continue;
+            }
+            let mut candidate = tokens[start..index].to_vec();
+            *candidate.last_mut()? = OwnedLexToken::word(name, possessive.span);
+            if let Some(surface) = parse_named_surface(&candidate) {
+                push_unique_surface(&mut surfaces, surface);
+                break;
+            }
+        }
+    }
+    unique_surface(surfaces)
+}
+
 pub fn parse_unique_pronoun_operand_after(
     tokens: &[OwnedLexToken],
     action_word: &str,

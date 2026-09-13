@@ -87,6 +87,7 @@ export function usePeerLobby({
   game,
   state,
   setState,
+  subscribeState,
   setStatus,
   applySyncedCommand,
 }) {
@@ -182,8 +183,15 @@ export function usePeerLobby({
   }, [game]);
 
   useEffect(() => {
-    stateRef.current = state;
-  }, [state]);
+    if (!subscribeState) stateRef.current = state;
+  }, [state, subscribeState]);
+
+  // Command sequencing must see publications immediately, even while React
+  // is yielding the corresponding board render to pointer/animation work.
+  useEffect(() => {
+    if (!subscribeState) return undefined;
+    return subscribeState(snapshot => { stateRef.current = snapshot; });
+  }, [subscribeState]);
 
   useEffect(() => {
     peerRef.current?.advertise?.({

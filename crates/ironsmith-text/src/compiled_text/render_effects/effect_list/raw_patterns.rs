@@ -350,7 +350,7 @@
     if let Some(compact) = describe_target_player_choose_hand_top_library_any_order(effects) {
         return compact;
     }
-    if let Some(compact) = describe_hand_choose_then_library_placement(&raw_effects) {
+    if let Some(compact) = describe_hand_choose_then_zone_move(&raw_effects) {
         return compact;
     }
     if let Some(compact) = describe_reveal_hand_choose_graveyard_or_hand_exile(&raw_effects) {

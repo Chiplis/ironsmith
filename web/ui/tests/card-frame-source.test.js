@@ -48,3 +48,32 @@ test('modern basic-land watermark regions are preserved instead of treated as ru
   assert.deepEqual(touched,['title','type']);
   for(let y=158;y<208;y++)for(let x=10;x<150;x++)assert.equal(result.mask[y*width+x],0);
 });
+
+test('residual text failure discards the entire replacement frame',()=>{
+  const width=160,height=220,data=new Uint8ClampedArray(width*height*4).fill(210);
+  const boxes={title:{x:10,y:10,width:140,height:30},type:{x:10,y:125,width:140,height:30},rules:{x:10,y:158,width:140,height:50}};
+  const original=data.slice();
+  const result=maskSourceFrame({width,height,data},boxes,null,null,(scan,{section})=>({...scan,mask:new Uint8Array(scan.width*scan.height),quality:{safe:section!=='type'}}));
+  assert.equal(result,null);
+  assert.deepEqual(data,original);
+});
+
+test('a registered symbol lets label masking examine suffixes beyond measured bounds',()=>{
+  const width=160,height=220,data=new Uint8ClampedArray(width*height*4).fill(210);
+  data.set([10,10,10,255],(135*width+90)*4);
+  const boxes={title:{x:10,y:10,width:140,height:30},type:{x:10,y:125,width:140,height:30},rules:{x:10,y:158,width:140,height:50}};
+  const clean=scan=>{const mask=new Uint8Array(scan.width*scan.height),out=scan.data.slice();for(let p=0;p<mask.length;p++)if(out[p*4]<50){mask[p]=1;out.set([210,210,210,255],p*4);}return {...scan,data:out,mask};};
+  const result=maskSourceFrame({width,height,data},boxes,null,null,clean,{setSymbol:{x:120,y:128,width:10,height:20},textBounds:{type:{x:15,y:133,width:30,height:10}}});
+  assert.equal(result.data[(135*width+90)*4],210);
+});
+
+test('the rules mask receives the protected stats region before quality validation',()=>{
+  const width=160,height=220,data=new Uint8ClampedArray(width*height*4).fill(220);
+  const boxes={title:{x:10,y:10,width:140,height:30},type:{x:10,y:125,width:140,height:30},rules:{x:10,y:158,width:140,height:50}};
+  const panel={x:115,y:190,width:30,height:20};let protectedCount=0;
+  maskSourceFrame({data,width,height},boxes,null,panel,(patch,options)=>{
+    if(options.section==='rules')protectedCount=options.excludedPixels.reduce((a,b)=>a+b,0);
+    return {...patch,mask:new Uint8Array(patch.width*patch.height)};
+  });
+  assert.ok(protectedCount>0);
+});

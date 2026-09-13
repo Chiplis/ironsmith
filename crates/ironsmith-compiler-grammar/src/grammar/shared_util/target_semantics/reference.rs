@@ -73,12 +73,17 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     }
 
     if let Some(kind) = sacrificed_object_kind(&token_words) {
-        let _ = kind;
-        let span = token_slice_span(tokens);
-        return Ok(TargetAst::Tagged(
-            crate::tag::CompilerReferenceTag::It.bind(),
-            span,
+        // Retain the sacrificed-object reference through normalization. Its
+        // last-known snapshot, rather than the card in its new zone, is used
+        // by copy and characteristic effects.
+        let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
+        filter.set_additional_cost_object_surface(Some(
+            ironsmith_core::AdditionalCostObjectSurface::new(
+                ironsmith_core::AdditionalCostObjectAction::Sacrificed,
+                kind,
+            ),
         ));
+        return Ok(TargetAst::Object(filter, None, token_slice_span(tokens)));
     }
     if matches_surface(token_words.as_slice(), YOUR_OPPONENTS_TARGET_PATTERN) {
         return Ok(TargetAst::Player(

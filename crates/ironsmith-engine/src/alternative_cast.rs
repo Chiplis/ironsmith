@@ -77,7 +77,6 @@ impl CastingMethod {
         matches!(
             self,
             Self::GrantedFlashback
-                | Self::GrantedEscape { .. }
                 | Self::SplitOtherHalfPlayFrom { .. }
         )
     }
@@ -132,7 +131,8 @@ mod tests {
         };
 
         assert_eq!(escape.cast_from_zone(), Zone::Graveyard);
-        assert!(escape.exiles_after_resolution());
+        assert!(!escape.exiles_after_resolution());
+        assert!(!CastingMethod::GrantedEscape { source: crate::ids::ObjectId(1), exile_count: 3 }.exiles_after_resolution());
         assert!(escape.mana_cost().is_some());
         assert_eq!(escape.name(), "Escape");
     }

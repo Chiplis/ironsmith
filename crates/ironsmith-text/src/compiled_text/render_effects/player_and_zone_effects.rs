@@ -2940,6 +2940,7 @@ pub(super) fn describe_exiled_with_source_move(
     contextual_player: Option<&PlayerFilter>,
     battlefield_controller: Option<&crate::effects::BattlefieldController>,
     enters_tapped: bool,
+    library_placement: Option<(bool, Option<&crate::effects::LibraryPlacementOrder>)>,
 ) -> String {
     use ironsmith_core::{
         ExiledWithSourceDestinationSurface as DestinationSurface,
@@ -2962,9 +2963,15 @@ pub(super) fn describe_exiled_with_source_move(
         ReferenceSurface::It => " exiled with it".to_string(),
         ReferenceSurface::Omitted => String::new(),
     };
+    let library_position = if library_placement.is_some_and(|(top, _)| top) { "top" } else { "bottom" };
+    let library_order = match library_placement.and_then(|(_, order)| order) {
+        Some(crate::effects::LibraryPlacementOrder::Random) => " in a random order",
+        Some(crate::effects::LibraryPlacementOrder::ChosenBy(_)) => " in any order",
+        None => "",
+    };
     if matches!(&surface.subject, SubjectSurface::OwnerOfEachCard) && zone == Zone::Library {
         return format!(
-            "The owner of each card{source} puts that card on the bottom of their library"
+            "The owner of each card{source} puts that card on the {library_position} of their library{library_order}"
         );
     }
     let zone_noun = match zone {
@@ -3028,6 +3035,9 @@ pub(super) fn describe_exiled_with_source_move(
         ironsmith_core::ExiledWithSourceMoveVerbSurface::Put => "Put",
         ironsmith_core::ExiledWithSourceMoveVerbSurface::Return => "Return",
     };
+    if zone == Zone::Library && library_placement.is_some() {
+        return format!("{verb} {subject}{source} on the {library_position} of {destination}{library_order}");
+    }
     format!("{verb} {subject}{source} {preposition} {destination}")
 }
 
@@ -3737,6 +3747,20 @@ pub(crate) fn describe_choose_then_move_to_battlefield(
         ));
     }
 
+    if move_to_zone.verb_surface == ironsmith_core::MoveToZoneVerbSurface::Return {
+        let actor = if chooser == "you" {
+            "Return".to_string()
+        } else {
+            format!(
+                "{} {}",
+                capitalize_first(&chooser),
+                player_verb(&chooser, "return", "returns")
+            )
+        };
+        return Some(format!(
+            "{actor} {chosen} {origin} to the battlefield{tapped}{attacking}{face_down}{transformed}{control_suffix}{where_x_clause}"
+        ));
+    }
     let put_verb = player_verb(&chooser, "put", "puts");
     Some(format!(
         "{chooser} {put_verb} {chosen} {origin} onto the battlefield{tapped}{attacking}{face_down}{transformed}{control_suffix}{where_x_clause}"
@@ -4443,6 +4467,10 @@ pub(super) fn describe_exile_top_then_play(
     };
     if grant_play.tag != *first_tag {
         return None;
+    }
+    if grant_play.spell_filter.is_some() {
+        let (exile_clause, _) = describe_exile_top_clause(exile_top, suppress_count_where_clause)?;
+        return Some(format!("{exile_clause}. {}", describe_effect(&Effect::new(grant_play.clone()))));
     }
     let duration_text = match grant_play.duration {
         crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn => "Until end of turn",

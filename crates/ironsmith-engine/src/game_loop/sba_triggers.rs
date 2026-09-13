@@ -1190,6 +1190,7 @@ fn trigger_target_requirement_contexts(
                 min_targets: requirement.min_targets,
                 max_targets: requirement.max_targets,
                 distinct_player_group: requirement.distinct_player_group,
+                shared_player_group: requirement.shared_player_group.clone(),
             },
         )
         .collect()
@@ -1298,6 +1299,7 @@ fn target_requirements_from_explicit_choices(
                 min_targets: count.min,
                 max_targets: count.max,
                 distinct_player_group: None,
+                shared_player_group: None,
                 distribution_value: None,
                 distribution_min_per_target: 1,
             }

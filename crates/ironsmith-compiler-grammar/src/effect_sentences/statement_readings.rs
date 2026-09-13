@@ -640,6 +640,8 @@ fn read_complete_simple_subject_verb(
     }
     if (crate::grammar::effects::counter_marker_shapes::parse_shared_counter_target_tokens(sentence)
         .is_some()
+        || crate::grammar::effects::counter_marker_shapes::parse_put_counter_choice_tokens(sentence)
+            .is_some()
         || crate::grammar::effects::counter_marker_shapes::parse_counter_placement_sequence_tokens(sentence)
             .is_some())
         && let Some(effects) = super::subject_verb_primitives::parse_sentence_put_counter_sequence(
@@ -927,6 +929,21 @@ fn read_leading_result_prefix(
     let Some(prefix) = split_leading_result_prefix_lexed(input.sentence) else {
         return Ok(None);
     };
+    // A value definition can sit between two actions in this consequence.
+    // The single-verb shortcut below cannot consume that whole action chain.
+    if effect_grammar::dispatch_entry_shapes::parse_where_x_usage_shape_tokens(prefix.trailing_tokens)
+        .is_some_and(|shape| shape.followup_tokens.is_some())
+    {
+        let effects = super::parse_effect_chain_lexed(prefix.trailing_tokens)?;
+        return Ok(Some(vec![EffectAst::Conditionals(match prefix.kind {
+            LeadingResultPrefixKind::If => ConditionalEffectAst::IfResult {
+                predicate: prefix.predicate, effects,
+            },
+            LeadingResultPrefixKind::When => ConditionalEffectAst::WhenResult {
+                predicate: prefix.predicate, effects,
+            },
+        })]));
+    }
     if crate::grammar::structure::split_leading_numeric_result_prefix_lexed(input.sentence)
         .is_some()
     {

@@ -91,6 +91,7 @@ pub fn apply_keyword_action(
         KeywordAction::Renown(amount) => builder.renown(amount),
         KeywordAction::Myriad => builder.myriad(),
         KeywordAction::Mobilize(amount) => builder.mobilize(amount),
+        KeywordAction::Impending { time, cost } => builder.impending(time, cost),
         KeywordAction::Cipher => builder.cipher(),
         KeywordAction::Suspend { time, cost } => builder.suspend(time, cost),
         KeywordAction::Overload(cost) => builder.overload(cost),

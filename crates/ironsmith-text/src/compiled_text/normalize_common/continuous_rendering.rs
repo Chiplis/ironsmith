@@ -3137,6 +3137,23 @@ pub(crate) fn describe_apply_continuous_effect(
     effect: &crate::effects::ApplyContinuousEffect,
 ) -> Option<String> {
     if effect.condition.is_none()
+        && effect.additional_modifications.is_empty()
+        && effect.runtime_modifications.is_empty()
+        && effect.until == Until::EndOfTurn
+        && let Some(crate::continuous::Modification::AddAbility(ability)) = &effect.modification
+        && ability.id() == crate::static_abilities::StaticAbilityId::CanAttackAsThoughNoDefender
+    {
+        let (target, plural) = describe_apply_continuous_target(effect);
+        let (target, plural) = if let crate::continuous::EffectTarget::Filter(filter) = &effect.target
+            && effect.target_spec.as_ref().is_none_or(|spec| !spec.is_target() && matches!(spec.base(), ChooseSpec::Object(_) | ChooseSpec::All(_)))
+        {
+            let mut filter = filter.clone();
+            filter.set_set_quantifier_surface(None);
+            (capitalize_first(&pluralize_noun_phrase(strip_leading_article(&filter.description()))), true)
+        } else { (target, plural) };
+        return Some(format!("{target} can attack this turn as though {} didn't have defender", if plural { "they" } else { "it" }));
+    }
+    if effect.condition.is_none()
         && effect.target_spec.is_none()
         && effect.additional_modifications.is_empty()
         && effect.runtime_modifications.is_empty()
@@ -4914,6 +4931,9 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 describe_player_filter(filter)
             ),
         },
+        crate::effect::Restriction::ChangeLifeTotal(PlayerFilter::You) => {
+            "your life total can't change".to_string()
+        }
         crate::effect::Restriction::ChangeLifeTotal(filter) => {
             format!(
                 "{} can't have life total changed",

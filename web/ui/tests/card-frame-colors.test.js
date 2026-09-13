@@ -2,6 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fullCardImageUrl, materialColor, sectionInk, artBottomRail, reconstructPanel, classifyTitlePanel, classifyTypePanel, printedGlyphHeight, printedTextBounds, detectPanelBounds, detectEnclosedPanelBounds, matchArtBounds, detectPrintedStats, printedStatsTreatment, tracePanelRim, detectStatsPanelBounds } from '../src/lib/card-frame-colors.js';
 
+test('palette histogram preserves first-seen ties and excludes transparent pixels', () => {
+  const data = new Uint8ClampedArray([255,0,0,255, 0,0,255,255, 0,0,255,255, 255,0,0,255, 0,0,255,0]);
+  assert.deepEqual(materialColor(data), [255,0,0]);
+  assert.deepEqual(materialColor(new Uint8ClampedArray([255,255,255,0])), [150,150,150]);
+});
+
 test('complete text bounds include capitals and descenders without absorbing a frame rail', () => {
   const width=220,height=44,data=new Uint8ClampedArray(width*height*4);
   for(let p=0;p<width*height;p++)data.set([230,230,230,255],p*4);
@@ -217,4 +223,21 @@ test('lower rail detection includes the full stroke beyond its first transition'
     if(y===32||y>=69||x===30||x===455)ink(x,y);
   const box=detectPanelBounds({data,width,height},'title');
   assert.ok(box.y+box.height>72,'all four pixels of the lower stroke remain inside the crop');
+});
+
+test('line measurement includes a connected word after isolated baseline letters',()=>{
+  const width=180,height=32,data=new Uint8ClampedArray(width*height*4).fill(225);
+  for(const [left,right]of [[10,14],[22,26],[34,38],[46,50],[70,125]])
+    for(let y=8;y<20;y++)for(let x=left;x<=right;x++)data.set([15,15,15,255],(y*width+x)*4);
+  const bounds=printedTextBounds({data,width,height});
+  assert.equal(bounds.x,10);assert.equal(bounds.right,126);
+});
+
+test('gray stats bevels are detected relative to their panel paper',()=>{
+  const width=488,height=680,data=new Uint8ClampedArray(width*height*4);
+  for(let p=0;p<width*height;p++)data.set([220,220,220,255],p*4);
+  for(let y=608;y<647;y++)for(let x=377;x<457;x++)if(x<380||x>453||y<611||y>643)data.set([140,140,140,255],(y*width+x)*4);
+  const stats={x:403,y:616,width:33,height:20};
+  const bounds=detectStatsPanelBounds({data,width,height},stats);
+  assert.ok(bounds&&bounds.x<=380&&bounds.y<=611,JSON.stringify(bounds));
 });

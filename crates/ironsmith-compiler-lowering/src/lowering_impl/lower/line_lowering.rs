@@ -219,6 +219,7 @@ fn materialize_static_abilities(
     }
 
     let mut lowered_abilities = Vec::with_capacity(member_count);
+    let mut turn_surface_recorded = false;
     for ability in abilities {
         match ability {
             StaticAbilityAst::AttachmentRestriction { filter, .. } => {
@@ -229,8 +230,18 @@ fn materialize_static_abilities(
             }
             ability => {
                 let ability = lower_static_ability_ast(ability)?;
-                let ability =
+                let mut ability =
                     materialize_self_spell_cost_facts(ability, &semantic_facts.static_ability);
+                if semantic_facts.static_ability.leading_as_long_as_your_turn
+                    && !turn_surface_recorded
+                {
+                    ability.label = format!(
+                        "{}{}",
+                        ironsmith_core::static_ability_model::AS_LONG_AS_ITS_YOUR_TURN_STATIC_LABEL_PREFIX,
+                        ability.label,
+                    );
+                    turn_surface_recorded = true;
+                }
                 lowered_abilities.push(ability);
             }
         }
@@ -389,6 +400,7 @@ fn materialize_ability(
     semantic_facts: &LineSemanticFacts,
 ) -> Result<CardDefinitionBuilder, CardTextError> {
     let mut ability = lower_prepared_ability(ability)?;
+    preserve_ability_self_replacement_surface(&mut ability, &semantic_facts.statement);
     preserve_triggered_leading_unless_surface(
         &mut ability,
         semantic_facts.triggered_ability.leading_unless_surface,
@@ -423,6 +435,7 @@ fn materialize_triggered(
         parsed,
         prepared: Some(NormalizedPreparedAbility::Triggered { trigger, prepared }),
     })?;
+    preserve_ability_self_replacement_surface(&mut parsed, &semantic_facts.statement);
     preserve_triggered_leading_unless_surface(
         &mut parsed,
         semantic_facts.triggered_ability.leading_unless_surface,
@@ -642,7 +655,10 @@ fn preserve_single_statement_self_replacement_surface(
     program: &mut crate::resolution::ResolutionProgram,
     facts: &crate::model::facts::StatementLineSemanticFacts,
 ) {
-    if !facts.instead_followup.leading_instead_surface && facts.presentation_label.is_none() {
+    if !facts.instead_followup.leading_instead_surface
+        && facts.presentation_label.is_none()
+        && facts.trailing_instead_if_predicate.is_none()
+    {
         return;
     }
     let branch_count = program
@@ -659,8 +675,24 @@ fn preserve_single_statement_self_replacement_surface(
         .find_map(|segment| segment.self_replacements.first_mut())
         .expect("one replacement branch was counted");
     branch.leading_instead_surface |= facts.instead_followup.leading_instead_surface;
+    branch.condition_after_replacement |= facts.trailing_instead_if_predicate.is_some();
     if branch.presentation_label.is_none() {
         branch.presentation_label = facts.presentation_label.clone();
+    }
+}
+
+fn preserve_ability_self_replacement_surface(
+    ability: &mut Ability,
+    facts: &crate::model::facts::StatementLineSemanticFacts,
+) {
+    match &mut ability.kind {
+        AbilityKind::Activated(activated) => {
+            preserve_single_statement_self_replacement_surface(&mut activated.effects, facts);
+        }
+        AbilityKind::Triggered(triggered) => {
+            preserve_single_statement_self_replacement_surface(&mut triggered.effects, facts);
+        }
+        _ => {}
     }
 }
 

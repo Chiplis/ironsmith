@@ -199,6 +199,7 @@ mod tests {
                 mana_spent_to_cast: crate::player::ManaPool::default(),
                 snow_mana_spent_to_cast: crate::player::ManaPool::default(),
                 mana_sources_spent_to_cast: Vec::new(),
+                optional_costs_paid: crate::cost::OptionalCostsPaid::default(),
                 counters: std::collections::HashMap::new(),
                 is_token: false,
                 tapped: false,

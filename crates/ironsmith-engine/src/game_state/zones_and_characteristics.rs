@@ -704,7 +704,9 @@ impl GameState {
             self.set_summoning_sick(new_id);
         }
 
+        let sticker_identity = new_object.stable_id;
         self.add_object(new_object);
+        self.move_stickers_to_new_object(sticker_identity, new_id, new_zone);
         if new_zone == Zone::Battlefield {
             self.note_attraction_entered_battlefield(new_id);
         }
@@ -1865,6 +1867,11 @@ impl GameState {
                     copiable_values
                         .supertypes
                         .retain(|supertype| !result.removed_supertypes.contains(supertype));
+                    for supertype in &result.added_supertypes {
+                        if !copiable_values.supertypes.contains(supertype) {
+                            copiable_values.supertypes.push(*supertype);
+                        }
+                    }
                     for subtype in &result.added_subtypes {
                         if !copiable_values.subtypes.contains(subtype) {
                             copiable_values.subtypes.push(*subtype);
@@ -1948,6 +1955,15 @@ impl GameState {
                 for card_type in &result.added_card_types {
                     if !new_obj.card_types.contains(card_type) {
                         new_obj.card_types.push(*card_type);
+                    }
+                }
+            }
+            if !result.added_supertypes.is_empty()
+                && let Some(new_obj) = self.object_mut(new_id)
+            {
+                for supertype in &result.added_supertypes {
+                    if !new_obj.supertypes.contains(supertype) {
+                        new_obj.supertypes.push(*supertype);
                     }
                 }
             }
@@ -2205,6 +2221,9 @@ impl GameState {
         if !self.objects.contains_key(&id) {
             return;
         }
+        if let Some(stable_id) = self.object(id).map(|object| object.stable_id) {
+            self.remove_stickers(stable_id);
+        }
         self.mark_continuous_state_dirty();
         self.bump_mutation_revision();
         self.object_store.changes.record(id);
@@ -2300,7 +2319,14 @@ impl GameState {
                     removed = player.sideboard.len() != before;
                 }
             }
-            Zone::Stack => {}
+            Zone::Stack => {
+                let before = self.stack.len();
+                // A spell leaving the stack also leaves its zone index.
+                // Triggered/activated abilities sharing its source ID remain
+                // independent stack objects and must survive that move.
+                self.stack.retain(|entry| entry.object_id != id || entry.is_ability);
+                removed = self.stack.len() != before;
+            }
         }
         if removed {
             self.bump_zone_revision(zone);
@@ -4028,7 +4054,7 @@ impl GameState {
             | Modification::CopyTriggeredAbilities { .. }
             | Modification::AddCombatDamageDrawAbility
             | Modification::ChangeController(_)
-            | Modification::SetName(_)
+            | Modification::SetName(_) | Modification::InsertNameWords { .. }
             | Modification::AddCardTypes(_)
             | Modification::RemoveCardTypes(_)
             | Modification::SetCardTypes(_)

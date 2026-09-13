@@ -453,6 +453,7 @@ impl StaticAbilityModelInterpreter {
                     name_override: spec.name_override.clone(),
                     added_colors: spec.added_colors,
                     added_card_types: spec.added_card_types.clone(),
+                    added_supertypes: spec.added_supertypes.clone(),
                     removed_supertypes: spec.removed_supertypes.clone(),
                     added_subtypes: spec.added_subtypes.clone(),
                     added_abilities: spec
@@ -461,6 +462,8 @@ impl StaticAbilityModelInterpreter {
                         .map(Self::ability_from_model)
                         .collect(),
                     set_base_power_toughness: spec.set_base_power_toughness,
+                    additional_counters: spec.additional_counters.clone(),
+                    additional_counters_source_filter: spec.additional_counters_source_filter.clone(),
                     added_abilities_source_filter: spec.added_abilities_source_filter.clone(),
                     set_base_power_toughness_from_self: spec.set_base_power_toughness_from_self,
                 })
@@ -1517,6 +1520,7 @@ impl StaticAbilityModelInterpreter {
                         name_override: spec.name_override.clone(),
                         added_colors: spec.added_colors,
                         added_card_types: spec.added_card_types.clone(),
+                        added_supertypes: spec.added_supertypes.clone(),
                         removed_supertypes: spec.removed_supertypes.clone(),
                         added_subtypes: spec.added_subtypes.clone(),
                         added_abilities: spec
@@ -1525,6 +1529,8 @@ impl StaticAbilityModelInterpreter {
                             .map(Self::ability_from_model)
                             .collect(),
                         set_base_power_toughness: spec.set_base_power_toughness,
+                        additional_counters: spec.additional_counters.clone(),
+                        additional_counters_source_filter: spec.additional_counters_source_filter.clone(),
                         added_abilities_source_filter: spec.added_abilities_source_filter.clone(),
                         set_base_power_toughness_from_self: spec
                             .set_base_power_toughness_from_self,
@@ -1839,6 +1845,14 @@ impl StaticAbilityModelInterpreter {
                 source_filter.clone(),
                 display.clone(),
             ),
+            ironsmith_core::StaticAbilityPayload::DamagePreventionWithFollowUp {
+                source_filter, target_filter, combat_only, recipient_tag, effects,
+            } => StaticAbility::new(super::misc::DamagePreventionWithFollowUp {
+                source_filter: source_filter.clone(),
+                target_filter: target_filter.clone(),
+                combat_only: *combat_only,
+                effects: std::iter::once(crate::effect::Effect::tag_triggering_damage_target(recipient_tag.clone())).chain(effects.iter().cloned()).collect(),
+            }),
             ironsmith_core::StaticAbilityPayload::ReplaceDamageWithCountersInstead {
                 counter_type,
                 display,
@@ -2122,6 +2136,11 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
                 condition.clone(),
             )
         })
+    }
+
+    fn may_generate_continuous_effects(&self) -> bool {
+        self.leaf_static_ability()
+            .is_some_and(StaticAbility::may_generate_continuous_effects)
     }
 
     fn generate_effects(
